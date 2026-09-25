@@ -189,11 +189,11 @@ function validateWorkflowDefinition(input) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((field) => !STEP_FIELDS.has(field)))
       return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, base);
     const step = raw;
-    const id = text(step.id, `${base}.id`, { safe: true });
-    if (!id.ok) return id;
-    if (ids.has(id.value))
-      return failure(WORKFLOW_DEFINITION_ERROR_CODES.DUPLICATE_STEP_ID, `${base}.id`, { stepId: id.value });
-    ids.add(id.value);
+    const id2 = text(step.id, `${base}.id`, { safe: true });
+    if (!id2.ok) return id2;
+    if (ids.has(id2.value))
+      return failure(WORKFLOW_DEFINITION_ERROR_CODES.DUPLICATE_STEP_ID, `${base}.id`, { stepId: id2.value });
+    ids.add(id2.value);
     const name = text(step.name, `${base}.name`);
     if (!name.ok) return name;
     const responsibility = step.responsibility;
@@ -220,7 +220,7 @@ function validateWorkflowDefinition(input) {
       dependencies.push(dependency.value);
     }
     steps.push({
-      id: id.value,
+      id: id2.value,
       name: name.value,
       responsibility: { kind: responsibilityRecord.kind, name: responsibilityName.value },
       dependsOn: dependencies
@@ -238,13 +238,13 @@ function validateWorkflowDefinition(input) {
   const graph = new Map(steps.map((step) => [step.id, step.dependsOn]));
   const visiting = /* @__PURE__ */ new Set();
   const visited = /* @__PURE__ */ new Set();
-  function cyclic(id) {
-    if (visiting.has(id)) return true;
-    if (visited.has(id)) return false;
-    visiting.add(id);
-    for (const dependency of graph.get(id) ?? []) if (cyclic(dependency)) return true;
-    visiting.delete(id);
-    visited.add(id);
+  function cyclic(id2) {
+    if (visiting.has(id2)) return true;
+    if (visited.has(id2)) return false;
+    visiting.add(id2);
+    for (const dependency of graph.get(id2) ?? []) if (cyclic(dependency)) return true;
+    visiting.delete(id2);
+    visited.add(id2);
     return false;
   }
   for (const step of steps)
@@ -326,7 +326,7 @@ function createWorkflowInstance(command, definition, controllerExecution, observ
     revision: 1,
     title: command.title,
     status: "ready",
-    steps: steps.map(({ id, status }) => ({ id, status })),
+    steps: steps.map(({ id: id2, status }) => ({ id: id2, status })),
     relations: { ...command.relations ?? independentWorkflowRelations(command.workflowId) },
     controllerExecution: { ...controllerExecution, observedAt },
     environmentRef: null,
@@ -401,7 +401,7 @@ function validateWorkflowTransitionRequest(input, expectedWorkflowId) {
     return invalidTransitionRequest();
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1 || !isWorkflowStatus(requestedStatus))
     return invalidTransitionRequest();
-  if (!Array.isArray(evidenceIds) || evidenceIds.length > 100 || new Set(evidenceIds).size !== evidenceIds.length || evidenceIds.some((id) => typeof id !== "string" || !SAFE_ID2.test(id)))
+  if (!Array.isArray(evidenceIds) || evidenceIds.length > 100 || new Set(evidenceIds).size !== evidenceIds.length || evidenceIds.some((id2) => typeof id2 !== "string" || !SAFE_ID2.test(id2)))
     return invalidTransitionRequest();
   if (idempotencyKey !== void 0 && (typeof idempotencyKey !== "string" || !idempotencyKey || idempotencyKey.length > 128 || /[\r\n]/.test(idempotencyKey)))
     return invalidTransitionRequest();
@@ -429,19 +429,19 @@ function transitionSemanticHash(request) {
     })
   ).digest("hex");
 }
-function transitionScopeHash(namespaceId, request, execution) {
+function transitionScopeHash(namespaceId, request, execution2) {
   return createHash3("sha256").update(
     JSON.stringify({
       namespaceId,
       workflowId: request.workflowId,
       stepId: request.stepId,
       source: {
-        kind: execution.kind,
-        runtimeId: execution.runtimeId,
-        agentId: execution.agentId,
-        actorId: execution.actorId,
-        caseId: execution.caseId,
-        threadId: execution.threadId
+        kind: execution2.kind,
+        runtimeId: execution2.runtimeId,
+        agentId: execution2.agentId,
+        actorId: execution2.actorId,
+        caseId: execution2.caseId,
+        threadId: execution2.threadId
       },
       idempotencyKey: request.idempotencyKey
     })
@@ -451,7 +451,7 @@ function evaluateHumanCheckpointOpen({
   request,
   snapshot,
   definition,
-  execution
+  execution: execution2
 }) {
   if (!snapshot) return deny("WORKFLOW_NOT_FOUND", "workflow_not_found");
   if (snapshot.governanceMode !== "governed" || snapshot.instance?.governanceMode !== "governed")
@@ -468,15 +468,15 @@ function evaluateHumanCheckpointOpen({
   if (declared.responsibility?.kind !== "human") return deny("ACTOR_NOT_AUTHORIZED", "step_is_not_human_owned");
   if (current.status !== "ready") return deny("ILLEGAL_TRANSITION", "human_step_is_not_ready");
   const missing = declared.dependsOn.filter(
-    (id) => instance.steps.find((step) => step.id === id)?.status !== "completed"
+    (id2) => instance.steps.find((step) => step.id === id2)?.status !== "completed"
   );
   if (missing.length)
     return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", { missingEvidence: missing });
   if (request.requestedStatus !== "waiting_human" || request.evidenceIds.length !== 0)
     return deny("ACTOR_NOT_AUTHORIZED", "human_gate_opener_can_only_open_checkpoint");
-  const factoryHumanGate = execution.kind === "factory-human-gate" && execution.runtimeId === "factory-dashboard" && execution.agentId === "factory-runner" && execution.actorId === void 0;
+  const factoryHumanGate = execution2.kind === "factory-human-gate" && execution2.runtimeId === "factory-dashboard" && execution2.agentId === "factory-runner" && execution2.actorId === void 0;
   const controller = instance.controllerExecution ?? snapshot.controllerExecution;
-  const originalController = controller && controller.kind === execution.kind && controller.runtimeId === execution.runtimeId && controller.agentId === execution.agentId && controller.caseId === execution.caseId && controller.threadId === execution.threadId;
+  const originalController = controller && controller.kind === execution2.kind && controller.runtimeId === execution2.runtimeId && controller.agentId === execution2.agentId && controller.caseId === execution2.caseId && controller.threadId === execution2.threadId;
   if (!factoryHumanGate && !originalController) return deny("ACTOR_NOT_AUTHORIZED", "execution_cannot_open_human_gate");
   return { allowed: true };
 }
@@ -485,9 +485,9 @@ function evaluateHumanResolutionTransition({
   snapshot,
   definition,
   evidence,
-  execution
+  execution: execution2
 }) {
-  if (execution.kind === "factory-human-gate" || execution.kind !== "factory-human" || execution.runtimeId !== "factory-dashboard" || typeof execution.actorId !== "string" || execution.actorId.length === 0)
+  if (execution2.kind === "factory-human-gate" || execution2.kind !== "factory-human" || execution2.runtimeId !== "factory-dashboard" || typeof execution2.actorId !== "string" || execution2.actorId.length === 0)
     return deny("ACTOR_NOT_AUTHORIZED", "human_resolution_requires_authenticated_human");
   const current = snapshot?.instance?.steps?.find((step) => step.id === request.stepId);
   if (current?.status !== "waiting_human") return deny("INTERACTION_STALE", "human_step_is_not_waiting");
@@ -505,7 +505,7 @@ function evaluateHumanResolutionTransition({
       }
     };
     const decision = evidence.find(
-      (item) => request.evidenceIds.includes(item.evidenceId) && item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && item.source?.actorId === execution.actorId
+      (item) => request.evidenceIds.includes(item.evidenceId) && item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && item.source?.actorId === execution2.actorId
     );
     if (!decision)
       return deny("PASS_EVIDENCE_REQUIRED", "matching_human_decision_required", {
@@ -516,7 +516,7 @@ function evaluateHumanResolutionTransition({
       snapshot: bridged,
       definition,
       evidence,
-      execution: { ...execution, kind: "factory-human-resolution" }
+      execution: { ...execution2, kind: "factory-human-resolution" }
     });
     return !evaluated.allowed && evaluated.code === "ACTOR_NOT_AUTHORIZED" && evaluated.reason === "runtime_cannot_transition_step_responsibility" ? { allowed: true } : evaluated;
   }
@@ -525,12 +525,12 @@ function evaluateHumanResolutionTransition({
     snapshot,
     definition,
     evidence,
-    execution
+    execution: execution2
   });
   if (!completion.allowed) return completion;
-  const selected = request.evidenceIds.map((id) => evidence.find((item) => item.evidenceId === id)).filter((item) => Boolean(item));
+  const selected = request.evidenceIds.map((id2) => evidence.find((item) => item.evidenceId === id2)).filter((item) => Boolean(item));
   return selected.some(
-    (item) => item.kind === "human-decision" && item.outcome === "fail" && item.source?.kind === "factory-human" && item.source?.actorId === execution.actorId
+    (item) => item.kind === "human-decision" && item.outcome === "fail" && item.source?.kind === "factory-human" && item.source?.actorId === execution2.actorId
   ) ? { allowed: true } : deny("FAIL_EVIDENCE_REQUIRED", "matching_human_decision_fail_required", {
     missingEvidence: ["human-decision:fail"]
   });
@@ -540,7 +540,7 @@ function evaluateWorkflowTransition({
   snapshot,
   definition,
   evidence,
-  execution
+  execution: execution2
 }) {
   if (!snapshot) return deny("WORKFLOW_NOT_FOUND", "workflow_not_found");
   if (snapshot.governanceMode !== "governed" || snapshot.instance?.governanceMode !== "governed")
@@ -558,30 +558,30 @@ function evaluateWorkflowTransition({
     return deny("ILLEGAL_TRANSITION", "transition_not_allowed");
   if (["ready", "running", "completed"].includes(request.requestedStatus)) {
     const missing = declared.dependsOn.filter(
-      (id) => instance.steps.find((step) => step.id === id)?.status !== "completed"
+      (id2) => instance.steps.find((step) => step.id === id2)?.status !== "completed"
     );
     if (missing.length)
       return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", { missingEvidence: missing });
   }
-  const factoryOracle = declared.responsibility.kind === "code" && execution.kind === "factory-oracle" && execution.runtimeId === "factory-dashboard";
-  const factoryHuman = declared.responsibility.kind === "human" && execution.kind === "factory-human" && execution.runtimeId === "factory-dashboard" && typeof execution.actorId === "string" && execution.actorId.length > 0;
-  const factoryRetry = declared.responsibility.kind === "agent" && current.status === "blocked" && request.requestedStatus === "ready" && execution.kind === "factory-control-plane" && execution.runtimeId === "factory-dashboard" && execution.agentId === "factory-runner" && typeof execution.actorId === "string" && execution.actorId.length > 0;
+  const factoryOracle = declared.responsibility.kind === "code" && execution2.kind === "factory-oracle" && execution2.runtimeId === "factory-dashboard";
+  const factoryHuman = declared.responsibility.kind === "human" && execution2.kind === "factory-human" && execution2.runtimeId === "factory-dashboard" && typeof execution2.actorId === "string" && execution2.actorId.length > 0;
+  const factoryRetry = declared.responsibility.kind === "agent" && current.status === "blocked" && request.requestedStatus === "ready" && execution2.kind === "factory-control-plane" && execution2.runtimeId === "factory-dashboard" && execution2.agentId === "factory-runner" && typeof execution2.actorId === "string" && execution2.actorId.length > 0;
   if (declared.responsibility.kind !== "agent" && !factoryOracle && !factoryHuman)
     return deny("ACTOR_NOT_AUTHORIZED", "runtime_cannot_transition_step_responsibility");
-  if (declared.responsibility.kind === "agent" && !factoryRetry && declared.responsibility.name && declared.responsibility.name !== execution.agentId)
+  if (declared.responsibility.kind === "agent" && !factoryRetry && declared.responsibility.name && declared.responsibility.name !== execution2.agentId)
     return deny("ACTOR_NOT_AUTHORIZED", "agent_responsibility_mismatch");
   if (factoryHuman && current.status !== "waiting_human") return deny("INTERACTION_STALE", "human_step_is_not_waiting");
   const selected = [];
-  for (const id of request.evidenceIds) {
-    const item = evidence.find((candidate) => candidate.evidenceId === id);
-    if (!item) return deny("EVIDENCE_NOT_FOUND", "evidence_not_found", { missingEvidence: [id] });
-    if (item.namespaceId !== execution.namespaceId || item.workflowId !== request.workflowId || item.stepId !== request.stepId)
+  for (const id2 of request.evidenceIds) {
+    const item = evidence.find((candidate) => candidate.evidenceId === id2);
+    if (!item) return deny("EVIDENCE_NOT_FOUND", "evidence_not_found", { missingEvidence: [id2] });
+    if (item.namespaceId !== execution2.namespaceId || item.workflowId !== request.workflowId || item.stepId !== request.stepId)
       return deny("EVIDENCE_SCOPE_MISMATCH", "evidence_scope_mismatch");
     selected.push(item);
   }
   if (request.requestedStatus === "blocked" && declared.responsibility.kind === "agent") {
     const negative = selected.find(
-      (item) => item.kind === "agent-result" && ["fail", "indeterminate"].includes(item.outcome ?? "") && item.source?.kind === execution.kind && item.source?.runtimeId === execution.runtimeId && item.source?.agentId === execution.agentId && item.source?.caseId === execution.caseId && item.source?.threadId === execution.threadId
+      (item) => item.kind === "agent-result" && ["fail", "indeterminate"].includes(item.outcome ?? "") && item.source?.kind === execution2.kind && item.source?.runtimeId === execution2.runtimeId && item.source?.agentId === execution2.agentId && item.source?.caseId === execution2.caseId && item.source?.threadId === execution2.threadId
     );
     if (!negative)
       return deny("NEGATIVE_EVIDENCE_REQUIRED", "matching_agent_result_negative_required", {
@@ -590,7 +590,7 @@ function evaluateWorkflowTransition({
   }
   if (request.requestedStatus === "ready" && current.status === "blocked") {
     const controller = instance.controllerExecution ?? snapshot.controllerExecution;
-    if (execution.kind !== "factory-control-plane" || execution.runtimeId !== "factory-dashboard" || execution.agentId !== "factory-runner" || typeof execution.actorId !== "string" || execution.actorId.length === 0 || !controller || controller.caseId !== execution.caseId)
+    if (execution2.kind !== "factory-control-plane" || execution2.runtimeId !== "factory-dashboard" || execution2.agentId !== "factory-runner" || typeof execution2.actorId !== "string" || execution2.actorId.length === 0 || !controller || controller.caseId !== execution2.caseId)
       return deny("ACTOR_NOT_AUTHORIZED", "manual_retry_requires_factory_controller_and_human_actor");
     const retry = selected.find(
       (item) => item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && typeof item.source?.actorId === "string" && item.source.actorId.length > 0
@@ -603,27 +603,27 @@ function evaluateWorkflowTransition({
   if (request.requestedStatus === "completed") {
     if (factoryHuman) {
       const decision = selected.find(
-        (item) => item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && item.source?.actorId === execution.actorId
+        (item) => item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && item.source?.actorId === execution2.actorId
       );
       if (!decision)
         return deny("PASS_EVIDENCE_REQUIRED", "matching_human_decision_required", {
           missingEvidence: ["human-decision:pass"]
         });
     } else if (factoryOracle) {
-      const pass = selected.find(
+      const pass2 = selected.find(
         (item) => item.kind === "oracle-result" && item.outcome === "pass" && item.source?.kind === "factory-oracle" && item.facts?.oracleId === declared.responsibility.name
       );
-      if (!pass)
+      if (!pass2)
         return deny("PASS_EVIDENCE_REQUIRED", "matching_oracle_result_pass_required", {
           missingEvidence: ["oracle-result:pass"]
         });
     } else {
       if (selected.some((item) => item.kind === "agent-result" && ["fail", "indeterminate"].includes(item.outcome ?? "")))
         return deny("EVIDENCE_NEGATIVE", "agent_result_not_pass");
-      const pass = selected.find(
-        (item) => item.kind === "agent-result" && item.outcome === "pass" && item.source?.kind === execution.kind && item.source?.runtimeId === execution.runtimeId && item.source?.agentId === execution.agentId && item.source?.caseId === execution.caseId && item.source?.threadId === execution.threadId
+      const pass2 = selected.find(
+        (item) => item.kind === "agent-result" && item.outcome === "pass" && item.source?.kind === execution2.kind && item.source?.runtimeId === execution2.runtimeId && item.source?.agentId === execution2.agentId && item.source?.caseId === execution2.caseId && item.source?.threadId === execution2.threadId
       );
-      if (!pass)
+      if (!pass2)
         return deny("PASS_EVIDENCE_REQUIRED", "matching_agent_result_pass_required", {
           missingEvidence: ["agent-result:pass"]
         });
@@ -636,7 +636,7 @@ function applyWorkflowTransition(snapshot, definition, request, observedAt = (/*
   previous.set(request.stepId, request.requestedStatus);
   if (request.requestedStatus === "completed") {
     for (const step of definition.steps)
-      if (previous.get(step.id) === "pending" && step.dependsOn.every((id) => previous.get(id) === "completed"))
+      if (previous.get(step.id) === "pending" && step.dependsOn.every((id2) => previous.get(id2) === "completed"))
         previous.set(step.id, "ready");
   }
   const statuses = [...previous.values()];
@@ -798,7 +798,6 @@ function validateWorkflowEvidenceInput(input, expectedWorkflowId) {
 }
 function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/* @__PURE__ */ new Date()).toISOString(), evidenceId = randomUUID2()) {
   const { idempotencyKey, ...rest } = validated;
-  void idempotencyKey;
   const record = {
     evidenceId,
     namespaceId,
@@ -1000,7 +999,7 @@ function validateAgentStepResultBusiness(value) {
     return false;
   const artifacts = record.artifacts;
   if (artifacts !== void 0 && (!Array.isArray(artifacts) || artifacts.length > AGENT_STEP_RESULT_LIMITS.artifacts || artifacts.some(
-    (artifact) => !artifact || typeof artifact !== "object" || Array.isArray(artifact) || Object.keys(artifact).some((key) => !ARTIFACT_FIELDS.has(key)) || typeof artifact.kind !== "string" || artifact.kind.length === 0 || artifact.kind.length > AGENT_STEP_RESULT_LIMITS.artifactKind || artifact.encoding !== "markdown" || typeof artifact.content !== "string" || artifact.content.length === 0 || Buffer.byteLength(artifact.content, "utf8") > AGENT_STEP_RESULT_LIMITS.artifactContentBytes
+    (artifact2) => !artifact2 || typeof artifact2 !== "object" || Array.isArray(artifact2) || Object.keys(artifact2).some((key) => !ARTIFACT_FIELDS.has(key)) || typeof artifact2.kind !== "string" || artifact2.kind.length === 0 || artifact2.kind.length > AGENT_STEP_RESULT_LIMITS.artifactKind || artifact2.encoding !== "markdown" || typeof artifact2.content !== "string" || artifact2.content.length === 0 || Buffer.byteLength(artifact2.content, "utf8") > AGENT_STEP_RESULT_LIMITS.artifactContentBytes
   )))
     return false;
   const findings = record.findings;
@@ -1402,7 +1401,6 @@ var FilesystemWorkflowInstanceRepository = class {
       options
     );
     const snapshot = this.#requireSnapshot(result, "WORKFLOW_INSTANCE_TRANSITION_FAILED");
-    void workflowId;
     return snapshot;
   }
   async remove(namespaceId, workflowId, actor) {
@@ -1496,10 +1494,6 @@ var FilesystemWorkflowHumanInteractionRepository = class {
         interactionId
       });
     const result = await this.store.transact(namespaceId, storageId, interactionId, action);
-    void reply;
-    void actorId;
-    void evidenceId;
-    void transitionRequestId;
     return result.interaction;
   }
 };
@@ -1645,9 +1639,9 @@ var AgentStepResultStore = class {
   async resolve(token) {
     if (typeof token !== "string" || token.length < 32 || token.length > 256) return null;
     await this.initialize();
-    const digest2 = sha256(token);
-    const located = this.capabilityIndex.get(digest2);
-    return located && safeEqual(located.event.tokenHash, digest2) ? located : null;
+    const digest4 = sha256(token);
+    const located = this.capabilityIndex.get(digest4);
+    return located && safeEqual(located.event.tokenHash, digest4) ? located : null;
   }
   async submit(token, business, observed = {}) {
     if (!validateAgentStepResultBusiness(business)) return { ok: false, code: "RESULT_SCHEMA_INVALID" };
@@ -1738,12 +1732,12 @@ function createAgentOsHttpCaseTerminator(options) {
   const timeoutMs = options.timeoutMs ?? 5e3;
   return {
     async terminate(caseId) {
-      const response = await fetchImpl(`${options.baseUrl}/api/cases/${encodeURIComponent(caseId)}/kill`, {
+      const response2 = await fetchImpl(`${options.baseUrl}/api/cases/${encodeURIComponent(caseId)}/kill`, {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-External-User-Id": options.userId },
         signal: AbortSignal.timeout(timeoutMs)
       });
-      if (!response.ok) throw new Error(`AgentOS kill ${caseId} returned HTTP ${response.status}`);
+      if (!response2.ok) throw new Error(`AgentOS kill ${caseId} returned HTTP ${response2.status}`);
     }
   };
 }
@@ -1811,7 +1805,7 @@ ${responseBody}`);
     },
     async bindFactoryStepResult(caseId, binding) {
       if (!bindingSecret) throw new Error("FACTORY_AGENTOS_BINDING_SECRET is required");
-      const response = await fetchImpl(
+      const response2 = await fetchImpl(
         `${baseUrl}/internal/factory/cases/${encodeURIComponent(caseId)}/step-result-binding`,
         {
           method: "PUT",
@@ -1823,8 +1817,8 @@ ${responseBody}`);
           signal: AbortSignal.timeout(timeoutMs)
         }
       );
-      if (!response.ok) {
-        throw new Error(`AgentOS Factory binding rejected with HTTP ${response.status}`);
+      if (!response2.ok) {
+        throw new Error(`AgentOS Factory binding rejected with HTTP ${response2.status}`);
       }
     },
     async getCase(caseId) {
@@ -1880,7 +1874,7 @@ function formatAgentInventory(agents) {
   ].join("\n");
 }
 function createAgentOsCapabilityInspector(deps) {
-  const realpath3 = deps.realpath ?? realpathSync;
+  const realpath4 = deps.realpath ?? realpathSync;
   async function inspectWorker(namespaceId, workerName) {
     let agents;
     try {
@@ -2036,7 +2030,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     const declaredRoot = integration?.parameters?.rootPath;
     if (declaredRoot) {
       try {
-        actual = realpath3(declaredRoot);
+        actual = realpath4(declaredRoot);
       } catch {
         actual = null;
       }
@@ -2093,7 +2087,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     let canonicalRoot = null;
     if (rootPath) {
       try {
-        canonicalRoot = realpath3(rootPath);
+        canonicalRoot = realpath4(rootPath);
       } catch {
         canonicalRoot = null;
       }
@@ -2148,7 +2142,7 @@ function findLastStatusEvent(events, statuses) {
 }
 function findUnansweredQuestions(allEvents) {
   const answered = new Set(
-    allEvents.filter((e) => e.type === "AnswerEvent").map((e) => e.questionId).filter((id) => typeof id === "string")
+    allEvents.filter((e) => e.type === "AnswerEvent").map((e) => e.questionId).filter((id2) => typeof id2 === "string")
   );
   return allEvents.filter((e) => e.type === "QuestionEvent" && !answered.has(e.id));
 }
@@ -2659,14 +2653,14 @@ async function verifyArtifacts(result, repoRoot, expectedKind) {
   if (expectedKind && !artifacts.some((a) => a.kind === expectedKind))
     return { ok: false, code: "EXPECTED_ARTIFACT_MISSING" };
   const verified = [];
-  for (const artifact of artifacts) {
-    if (isAbsolute2(artifact.path)) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
-    const absolute = resolve2(repoRoot, artifact.path);
+  for (const artifact2 of artifacts) {
+    if (isAbsolute2(artifact2.path)) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
+    const absolute = resolve2(repoRoot, artifact2.path);
     if (relative(repoRoot, absolute).startsWith("..")) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
     try {
       if (!(await stat(absolute)).isFile()) return { ok: false, code: "ARTIFACT_NOT_FILE" };
       const content = await readFile2(absolute);
-      verified.push({ ...artifact, hash: sha256(content) });
+      verified.push({ ...artifact2, hash: sha256(content) });
     } catch {
       return { ok: false, code: "ARTIFACT_MISSING" };
     }
@@ -2687,17 +2681,17 @@ async function materializeInlineArtifact({
     return artifacts.length ? { ok: false, code: "INLINE_ARTIFACT_FORBIDDEN" } : { ok: true, artifacts: [] };
   if (artifacts.length !== 1)
     return { ok: false, code: artifacts.length ? "ARTIFACT_AMBIGUOUS" : "EXPECTED_ARTIFACT_MISSING" };
-  const artifact = artifacts[0];
-  if (!artifact || typeof artifact !== "object" || Array.isArray(artifact))
+  const artifact2 = artifacts[0];
+  if (!artifact2 || typeof artifact2 !== "object" || Array.isArray(artifact2))
     return { ok: false, code: "INLINE_ARTIFACT_SCHEMA_INVALID" };
-  if ("path" in artifact) return { ok: false, code: "ARTIFACT_PATH_FORBIDDEN" };
-  if (Object.keys(artifact).some((key) => !["kind", "encoding", "content"].includes(key)))
+  if ("path" in artifact2) return { ok: false, code: "ARTIFACT_PATH_FORBIDDEN" };
+  if (Object.keys(artifact2).some((key) => !["kind", "encoding", "content"].includes(key)))
     return { ok: false, code: "INLINE_ARTIFACT_SCHEMA_INVALID" };
-  if (artifact.kind !== expectedKind) return { ok: false, code: "ARTIFACT_KIND_MISMATCH" };
-  if (artifact.encoding !== "markdown") return { ok: false, code: "ARTIFACT_ENCODING_INVALID" };
-  if (typeof artifact.content !== "string" || artifact.content.length === 0)
+  if (artifact2.kind !== expectedKind) return { ok: false, code: "ARTIFACT_KIND_MISMATCH" };
+  if (artifact2.encoding !== "markdown") return { ok: false, code: "ARTIFACT_ENCODING_INVALID" };
+  if (typeof artifact2.content !== "string" || artifact2.content.length === 0)
     return { ok: false, code: "ARTIFACT_CONTENT_EMPTY" };
-  const content = Buffer.from(artifact.content, "utf8");
+  const content = Buffer.from(artifact2.content, "utf8");
   if (content.length === 0) return { ok: false, code: "ARTIFACT_CONTENT_EMPTY" };
   if (content.byteLength > maxBytes) return { ok: false, code: "ARTIFACT_CONTENT_TOO_LARGE" };
   if (!safeSegment(workflowId) || !safeSegment(stepId) || !safeSegment(attemptId))
@@ -2857,7 +2851,7 @@ async function executeAgentStepAttempt(input) {
     });
     return { ok: false, code: "RESULT_BINDING_FAILED" };
   }
-  const execution = { kind: "agentos", runtimeId, agentId: agentName, caseId: caseRecord.id, threadId: null };
+  const execution2 = { kind: "agentos", runtimeId, agentId: agentName, caseId: caseRecord.id, threadId: null };
   const runningRequest = validateWorkflowTransitionRequest(
     {
       workflowId,
@@ -2870,7 +2864,7 @@ async function executeAgentStepAttempt(input) {
     workflowId
   );
   if (!runningRequest.ok) throw new Error("INVALID_RUNNING_TRANSITION");
-  const running = await projectionStore.transition(namespaceId, runningRequest.value, definition, [], execution);
+  const running = await projectionStore.transition(namespaceId, runningRequest.value, definition, [], execution2);
   if (!running.ok) {
     await attemptStore.append(namespaceId, storageId, {
       ...attempt,
@@ -2938,21 +2932,21 @@ async function executeAgentStepAttempt(input) {
     }
   }
   if (!failureCode && result.status !== "PASS") failureCode = "AGENT_REPORTED_FAIL";
-  const evidenceSource = { ...execution };
+  const evidenceSource = { ...execution2 };
   const artifactEvidence = [];
   if (!failureCode && input.stepId === "technical-review") {
     if (!Array.isArray(result.findings) || result.findings.length > 0)
       failureCode = "REVIEW_SCHEMA_INVALID";
   }
-  for (const artifact of artifacts) {
+  for (const artifact2 of artifacts) {
     const validated = validateWorkflowEvidenceInput(
       {
         workflowId,
         stepId: input.stepId,
         kind: "artifact",
-        artifactRef: artifact.path,
-        artifactHash: artifact.hash,
-        idempotencyKey: artifactEvidenceIdempotencyKey(attemptId, artifact.path)
+        artifactRef: artifact2.path,
+        artifactHash: artifact2.hash,
+        idempotencyKey: artifactEvidenceIdempotencyKey(attemptId, artifact2.path)
       },
       workflowId
     );
@@ -2998,7 +2992,7 @@ async function executeAgentStepAttempt(input) {
   await attemptStore.append(namespaceId, storageId, finished);
   if (failureCode) {
     const latest2 = await projectionStore.read(namespaceId, workflowId);
-    const blocked = validateWorkflowTransitionRequest(
+    const blocked2 = validateWorkflowTransitionRequest(
       {
         workflowId,
         stepId: input.stepId,
@@ -3009,7 +3003,7 @@ async function executeAgentStepAttempt(input) {
       },
       workflowId
     );
-    if (!blocked.ok)
+    if (!blocked2.ok)
       return {
         ok: false,
         code: failureCode,
@@ -3019,10 +3013,10 @@ async function executeAgentStepAttempt(input) {
       };
     const transition2 = await projectionStore.transition(
       namespaceId,
-      blocked.value,
+      blocked2.value,
       definition,
       [resultEvidence],
-      execution
+      execution2
     );
     return transition2.ok ? { ok: false, code: failureCode, attempt: finished, evidence: resultEvidence, snapshot: transition2.snapshot } : {
       ok: false,
@@ -3050,7 +3044,7 @@ async function executeAgentStepAttempt(input) {
     completed.value,
     definition,
     [resultEvidence, ...artifactEvidence],
-    execution
+    execution2
   );
   return transition.ok ? {
     ok: true,
@@ -3249,8 +3243,8 @@ var OracleDefinitionRegistryCore = class {
     this.items = next;
     return this;
   }
-  get(id) {
-    return this.items.get(id) ?? null;
+  get(id2) {
+    return this.items.get(id2) ?? null;
   }
 };
 
@@ -3708,15 +3702,15 @@ function extractOracleDiagnostics(oracleName, stdout, stderr, maxLines = 200) {
   }
   const identities = [];
   for (const line of rawLines) {
-    const id = normalizeDiagnosticLine(line);
-    if (id !== null) identities.push(id);
+    const id2 = normalizeDiagnosticLine(line);
+    if (id2 !== null) identities.push(id2);
   }
   const seen = /* @__PURE__ */ new Set();
   const uniqueIdentities = [];
-  for (const id of identities) {
-    if (!seen.has(id)) {
-      seen.add(id);
-      uniqueIdentities.push(id);
+  for (const id2 of identities) {
+    if (!seen.has(id2)) {
+      seen.add(id2);
+      uniqueIdentities.push(id2);
     }
   }
   return { identities: uniqueIdentities, rawLines };
@@ -3809,11 +3803,11 @@ function classifyOracleResult(params) {
     };
   }
   const infraIdentities = postEditIdentities.filter(isInfrastructureIdentity);
-  const productIdentities = postEditIdentities.filter((id) => !isInfrastructureIdentity(id));
+  const productIdentities = postEditIdentities.filter((id2) => !isInfrastructureIdentity(id2));
   if (infraIdentities.length > 0 && productIdentities.length === 0) {
     return {
       classification: "ORACLE_INFRASTRUCTURE",
-      reason: `Only TypeScript infrastructure/config error codes found: ${infraIdentities.map((id) => id.split(":")[1]).join(", ")}. Not a product regression.`,
+      reason: `Only TypeScript infrastructure/config error codes found: ${infraIdentities.map((id2) => id2.split(":")[1]).join(", ")}. Not a product regression.`,
       baselineIdentities,
       postEditIdentities,
       newDiagnostics: infraIdentities,
@@ -3823,17 +3817,17 @@ function classifyOracleResult(params) {
       postEditPassed: false
     };
   }
-  const newProductDiagnostics = productIdentities.filter((id) => !baselineSet.has(id));
-  const preExistingProductDiagnostics = productIdentities.filter((id) => baselineSet.has(id));
-  const newInfraDiagnostics = infraIdentities.filter((id) => !baselineSet.has(id));
+  const newProductDiagnostics = productIdentities.filter((id2) => !baselineSet.has(id2));
+  const preExistingProductDiagnostics = productIdentities.filter((id2) => baselineSet.has(id2));
+  const newInfraDiagnostics = infraIdentities.filter((id2) => !baselineSet.has(id2));
   const newDiagnostics = [...newProductDiagnostics, ...newInfraDiagnostics];
   const preExistingDiagnostics = [
     ...preExistingProductDiagnostics,
-    ...infraIdentities.filter((id) => baselineSet.has(id))
+    ...infraIdentities.filter((id2) => baselineSet.has(id2))
   ];
   const newDiagnosticLines = postEditRawLines.filter((line) => {
-    const id = normalizeDiagnosticLine(line);
-    return id !== null && newDiagnostics.includes(id);
+    const id2 = normalizeDiagnosticLine(line);
+    return id2 !== null && newDiagnostics.includes(id2);
   });
   if (newProductDiagnostics.length === 0 && preExistingProductDiagnostics.length > 0) {
     return {
@@ -3850,9 +3844,9 @@ function classifyOracleResult(params) {
   }
   if (newProductDiagnostics.length > 0) {
     const scopeFiles = /* @__PURE__ */ new Set([...changedFiles, ...plannedFiles]);
-    const allNewInScope = newProductDiagnostics.every((id) => {
-      if (id.startsWith("TS:")) {
-        const parts = id.split(":");
+    const allNewInScope = newProductDiagnostics.every((id2) => {
+      if (id2.startsWith("TS:")) {
+        const parts = id2.split(":");
         const filePath = parts[2] ?? "";
         if (!filePath) return false;
         return [...scopeFiles].some((sf) => filePath.includes(sf) || sf.includes(filePath) || filePath === sf);
@@ -4026,8 +4020,8 @@ var WorkUnitEnvironmentStore = class {
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
         artifact: "unsafe_path"
       });
-    const canonical = await realpath2(path);
-    if (path !== this.root && !contained(this.root, canonical))
+    const canonical5 = await realpath2(path);
+    if (path !== this.root && !contained(this.root, canonical5))
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
         artifact: "path_escape"
       });
@@ -4044,11 +4038,11 @@ var WorkUnitEnvironmentStore = class {
     if (!validateNamespaceId(ns).ok)
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_NAMESPACE);
   }
-  paths(ns, id) {
+  paths(ns, id2) {
     this._namespace(ns);
-    if (!this.root || typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id))
+    if (!this.root || typeof id2 !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id2))
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
-    const directory = join9(this.root, ns, digest(`${ns}:${id}`));
+    const directory = join9(this.root, ns, digest(`${ns}:${id2}`));
     if (!contained(this.root, directory))
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
     return {
@@ -4058,9 +4052,9 @@ var WorkUnitEnvironmentStore = class {
       pending: join9(directory, "pending.json")
     };
   }
-  _locked(ns, id, fn) {
+  _locked(ns, id2, fn) {
     this._namespace(ns);
-    const k = `${ns}\0${id}`;
+    const k = `${ns}\0${id2}`;
     const p = this.locks.get(k) ?? Promise.resolve();
     const o = p.then(fn);
     const t = o.catch(() => {
@@ -4078,10 +4072,10 @@ var WorkUnitEnvironmentStore = class {
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, e);
     }
   }
-  async _recover(p, ns, id) {
+  async _recover(p, ns, id2) {
     const q = await this._json(p.pending);
     if (!q) return;
-    const valid = q && Number.isSafeInteger(q.revision) && q.revision > 0 && q.environment?.namespaceId === ns && q.environment?.environmentId === id && validateWorkUnitEnvironment(q.environment).ok && q.environmentHash === snapshotHash(q.environment);
+    const valid = q && Number.isSafeInteger(q.revision) && q.revision > 0 && q.environment?.namespaceId === ns && q.environment?.environmentId === id2 && validateWorkUnitEnvironment(q.environment).ok && q.environmentHash === snapshotHash(q.environment);
     if (!valid)
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "pending" });
     let facts;
@@ -4090,9 +4084,7 @@ var WorkUnitEnvironmentStore = class {
     } catch (e) {
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "journal" }, e);
     }
-    if (!facts.some(
-      (f) => f.revision === q.revision && f.environmentId === id && f.environmentHash === q.environmentHash
-    ))
+    if (!facts.some((f) => f.revision === q.revision && f.environmentId === id2 && f.environmentHash === q.environmentHash))
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
         artifact: "recovery_binding"
       });
@@ -4100,11 +4092,11 @@ var WorkUnitEnvironmentStore = class {
     await rm3(p.pending);
     await syncDir(p.directory);
   }
-  async read(ns, id) {
+  async read(ns, id2) {
     this._namespace(ns);
-    const p = this.paths(ns, id);
+    const p = this.paths(ns, id2);
     await this._guard(p);
-    await this._recover(p, ns, id);
+    await this._recover(p, ns, id2);
     const s = await this._json(p.snapshot);
     if (!s) return null;
     if (!Number.isSafeInteger(s.revision) || s.environmentHash !== snapshotHash(s.environment) || !validateWorkUnitEnvironment(s.environment).ok)
@@ -4152,10 +4144,10 @@ var WorkUnitEnvironmentStore = class {
       return this._write(null, v.environment, "provisioning_reserved");
     });
   }
-  async transition(ns, id, next, { expectedRevision, errorCode } = {}) {
+  async transition(ns, id2, next, { expectedRevision, errorCode } = {}) {
     this._namespace(ns);
-    return this._locked(ns, id, async () => {
-      const c = await this.read(ns, id);
+    return this._locked(ns, id2, async () => {
+      const c = await this.read(ns, id2);
       if (!c) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.NOT_FOUND } };
       if (expectedRevision !== void 0 && expectedRevision !== c.revision)
         return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.REVISION_CONFLICT } };
@@ -4225,7 +4217,7 @@ var machine = (e) => {
   const code = e?.code;
   return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "GIT_FAILED";
 };
-var sameIdentity = (environment, input, id) => environment.environmentId === id && environment.workflowId === (input.workflowId ?? environment.workflowId) && environment.workUnitId === input.workUnitId && environment.namespaceId === input.namespaceId && environment.repoRoot === input.repoRoot && environment.integrationBranch === input.integrationBranch && environment.branch === input.branch && environment.worktreePath === input.worktreePath && environment.createdBy === input.createdBy;
+var sameIdentity = (environment, input, id2) => environment.environmentId === id2 && environment.workflowId === (input.workflowId ?? environment.workflowId) && environment.workUnitId === input.workUnitId && environment.namespaceId === input.namespaceId && environment.repoRoot === input.repoRoot && environment.integrationBranch === input.integrationBranch && environment.branch === input.branch && environment.worktreePath === input.worktreePath && environment.createdBy === input.createdBy;
 var WorkUnitEnvironmentService = class {
   store;
   git;
@@ -4248,8 +4240,8 @@ var WorkUnitEnvironmentService = class {
     this.fault = fault;
     this.locks = /* @__PURE__ */ new Map();
   }
-  _locked(ns, id, fn) {
-    const k = `${ns}\0${id}`;
+  _locked(ns, id2, fn) {
+    const k = `${ns}\0${id2}`;
     const p = this.locks.get(k) ?? Promise.resolve();
     const o = p.then(fn);
     const t = o.catch(() => {
@@ -4260,14 +4252,14 @@ var WorkUnitEnvironmentService = class {
     });
   }
   async provision(input) {
-    const id = input.environmentId ?? this.idGenerator();
-    return this._locked(input.namespaceId, id, () => this._provision(input, id));
+    const id2 = input.environmentId ?? this.idGenerator();
+    return this._locked(input.namespaceId, id2, () => this._provision(input, id2));
   }
-  async _provision(input, id) {
-    let current = await this.store.read(input.namespaceId, id);
+  async _provision(input, id2) {
+    let current = await this.store.read(input.namespaceId, id2);
     if (current) {
       const e = current.environment;
-      if (!sameIdentity(e, input, id)) return { ok: false, error: { code: "ENVIRONMENT_IDENTITY_CONFLICT" } };
+      if (!sameIdentity(e, input, id2)) return { ok: false, error: { code: "ENVIRONMENT_IDENTITY_CONFLICT" } };
       if (e.lifecycleState !== "provisioning")
         return e.lifecycleState === "error" ? { ok: false, error: { code: "ENVIRONMENT_ERROR" } } : { ok: false, error: { code: "INVALID_PROVISION" } };
       const reconciliation = await this.git.reconcile(e);
@@ -4283,7 +4275,7 @@ var WorkUnitEnvironmentService = class {
         if (!reserved) {
           const descriptor = {
             schemaVersion: "1",
-            environmentId: id,
+            environmentId: id2,
             workUnitId: input.workUnitId,
             ...input.workflowId ? { workflowId: input.workflowId } : {},
             namespaceId: input.namespaceId,
@@ -4303,13 +4295,13 @@ var WorkUnitEnvironmentService = class {
           reserved = r.snapshot;
         }
       });
-      await this.fault("after-git-add", { namespaceId: input.namespaceId, environmentId: id });
-      current = await this.store.read(input.namespaceId, id);
+      await this.fault("after-git-add", { namespaceId: input.namespaceId, environmentId: id2 });
+      current = await this.store.read(input.namespaceId, id2);
       if (current.environment.baseCommit !== facts.baseCommit)
         return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" } };
       return { ok: true, changed: false, snapshot: current, headCommit: facts.headCommit };
     } catch (error2) {
-      current = await this.store.read(input.namespaceId, id);
+      current = await this.store.read(input.namespaceId, id2);
       if (current?.environment.lifecycleState === "provisioning") {
         let reconciliation;
         try {
@@ -4321,7 +4313,7 @@ var WorkUnitEnvironmentService = class {
         if (reconciliation.status === "uncertain") return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" } };
         await this.store.transition(
           input.namespaceId,
-          id,
+          id2,
           { ...current.environment, lifecycleState: "error" },
           { expectedRevision: current.revision, errorCode: machine(error2) }
         );
@@ -4329,33 +4321,33 @@ var WorkUnitEnvironmentService = class {
       throw error2;
     }
   }
-  async bindParentCase(ns, id, caseId) {
-    return this._locked(ns, id, async () => {
-      const c = await this.store.read(ns, id);
+  async bindParentCase(ns, id2, caseId) {
+    return this._locked(ns, id2, async () => {
+      const c = await this.store.read(ns, id2);
       if (c?.environment.lifecycleState === "active" && c.environment.parentCaseId === caseId)
         return { ok: true, changed: false, snapshot: c };
       if (!c || c.environment.lifecycleState !== "provisioning" || !c.environment.baseCommit)
         return { ok: false, error: { code: "INVALID_BIND" } };
       const existing = await this.store.list(ns, { states: ["active"] });
       if (existing.some(
-        (snapshot) => snapshot.environment.environmentId !== id && snapshot.environment.parentCaseId === caseId
+        (snapshot) => snapshot.environment.environmentId !== id2 && snapshot.environment.parentCaseId === caseId
       ))
         return { ok: false, error: { code: "WRITER_ALREADY_ACTIVE" } };
       if (existing.some(
-        (snapshot) => snapshot.environment.environmentId !== id && snapshot.environment.worktreePath === c.environment.worktreePath
+        (snapshot) => snapshot.environment.environmentId !== id2 && snapshot.environment.worktreePath === c.environment.worktreePath
       ))
         return { ok: false, error: { code: "WORKTREE_ALREADY_ACTIVE" } };
       return this.store.transition(
         ns,
-        id,
+        id2,
         { ...c.environment, parentCaseId: caseId, lifecycleState: "active" },
         { expectedRevision: c.revision }
       );
     });
   }
-  async inspect(ns, id) {
-    return this._locked(ns, id, async () => {
-      const snapshot = await this.store.read(ns, id);
+  async inspect(ns, id2) {
+    return this._locked(ns, id2, async () => {
+      const snapshot = await this.store.read(ns, id2);
       if (!snapshot) return { ok: false, error: { code: "NOT_FOUND" } };
       if (snapshot.environment.lifecycleState === "removed")
         return { ok: true, snapshot, reconciliation: { status: "absent" } };
@@ -4365,15 +4357,15 @@ var WorkUnitEnvironmentService = class {
       return { ok: true, snapshot, reconciliation };
     });
   }
-  async setState(ns, id, state) {
-    return this._locked(ns, id, async () => {
-      const c = await this.store.read(ns, id);
-      return c ? this.store.transition(ns, id, { ...c.environment, lifecycleState: state }, { expectedRevision: c.revision }) : { ok: false, error: { code: "NOT_FOUND" } };
+  async setState(ns, id2, state) {
+    return this._locked(ns, id2, async () => {
+      const c = await this.store.read(ns, id2);
+      return c ? this.store.transition(ns, id2, { ...c.environment, lifecycleState: state }, { expectedRevision: c.revision }) : { ok: false, error: { code: "NOT_FOUND" } };
     });
   }
-  async remove(ns, id) {
-    return this._locked(ns, id, async () => {
-      const c = await this.store.read(ns, id);
+  async remove(ns, id2) {
+    return this._locked(ns, id2, async () => {
+      const c = await this.store.read(ns, id2);
       if (!c) return { ok: false, error: { code: "NOT_FOUND" } };
       if (c.environment.lifecycleState === "removed") return { ok: true, changed: false, snapshot: c };
       if (!["completed", "abandoned", "error"].includes(c.environment.lifecycleState))
@@ -4381,7 +4373,7 @@ var WorkUnitEnvironmentService = class {
       await this.git.removeWorktree(c.environment);
       return this.store.transition(
         ns,
-        id,
+        id2,
         { ...c.environment, lifecycleState: "removed" },
         { expectedRevision: c.revision }
       );
@@ -4417,15 +4409,7 @@ var WorkUnitEnvironmentController = class {
   policy;
   workflowStore;
   service;
-  constructor({
-    store,
-    git,
-    policy,
-    workflowStore,
-    clock,
-    idGenerator,
-    fault
-  }) {
+  constructor({ store, git, policy, workflowStore, clock, idGenerator, fault }) {
     this.store = store;
     this.git = git;
     this.policy = policy;
@@ -4531,9 +4515,9 @@ async function handleWorkUnitEnvironmentRequest({
 }) {
   const provision = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment\/provision$/);
   const reconcile = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment\/reconcile$/);
-  const release = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment\/release$/);
+  const release2 = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment\/release$/);
   const detail = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment$/);
-  if (!provision && !reconcile && !release && !detail) return false;
+  if (!provision && !reconcile && !release2 && !detail) return false;
   try {
     if (provision && method === "POST") {
       const trust2 = await identity();
@@ -4557,7 +4541,7 @@ async function handleWorkUnitEnvironmentRequest({
       return true;
     }
     const namespaceId = trust.namespaceId;
-    const workflowId = decodeURIComponent((reconcile ?? release ?? detail)[1]);
+    const workflowId = decodeURIComponent((reconcile ?? release2 ?? detail)[1]);
     if (reconcile && method === "POST") {
       const result = await controller.reconcile(namespaceId, workflowId);
       if (result.ok && result.data.environment.parentCaseId !== trust.caseId) {
@@ -4568,7 +4552,7 @@ async function handleWorkUnitEnvironmentRequest({
       else error(send, result.status, result.error.code, "Environment reconciliation failed closed.");
       return true;
     }
-    if (release && method === "POST") {
+    if (release2 && method === "POST") {
       const current = await controller.get(namespaceId, workflowId);
       if (current.ok && current.data.environment.parentCaseId !== trust.caseId) {
         error(send, 409, "ENVIRONMENT_NOT_BOUND", "Environment is not bound to the controlling case.");
@@ -4598,6 +4582,2073 @@ async function handleWorkUnitEnvironmentRequest({
     return true;
   }
 }
+
+// ../src/domain/delivery/delivery-definition.ts
+import { createHash as createHash11 } from "node:crypto";
+var DELIVERY_DEFINITION_SCHEMA_VERSION = "1";
+var DELIVERY_STAGES = Object.freeze([
+  "implementation-ready",
+  "artifact-ready",
+  "release-approved",
+  "deployed",
+  "production-verified"
+]);
+var DELIVERY_EVIDENCE_KINDS = Object.freeze([
+  "implementation-result",
+  "artifact",
+  "oracle-result",
+  "human-decision",
+  "deployment-result",
+  "smoke-result",
+  "rollback-result"
+]);
+var SAFE4 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SEMVER2 = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+var TOP = /* @__PURE__ */ new Set([
+  "schemaVersion",
+  "deliveryType",
+  "version",
+  "title",
+  "checkpoints",
+  "artifactPolicy",
+  "promotionPolicy",
+  "deploymentPolicy",
+  "retentionPolicy"
+]);
+var CHECKPOINT = /* @__PURE__ */ new Set(["stage", "responsibility", "requiredEvidence"]);
+var RESPONSIBILITY = /* @__PURE__ */ new Set(["kind", "name"]);
+var EVIDENCE = /* @__PURE__ */ new Set(["kind", "outcome", "oracleId"]);
+var fail2 = (path, reason = "invalid_value") => ({
+  ok: false,
+  error: { code: "INVALID_DELIVERY_DEFINITION", path, reason }
+});
+var canonical = (value) => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).sort().map((key) => [key, canonical(value[key])])
+) : value;
+function validateDeliveryDefinition(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !TOP.has(key)))
+    return fail2("$");
+  const candidate = input;
+  if (candidate.schemaVersion !== DELIVERY_DEFINITION_SCHEMA_VERSION) return fail2("schemaVersion");
+  if (!SAFE4.test(candidate.deliveryType ?? "") || !SEMVER2.test(candidate.version ?? "") || typeof candidate.title !== "string" || !candidate.title.trim() || candidate.title.length > 256)
+    return fail2("$");
+  if (!Array.isArray(candidate.checkpoints) || candidate.checkpoints.length !== DELIVERY_STAGES.length)
+    return fail2("checkpoints");
+  const checkpoints = [];
+  for (let index = 0; index < candidate.checkpoints.length; index++) {
+    const raw = candidate.checkpoints[index];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((key) => !CHECKPOINT.has(key)) || raw.stage !== DELIVERY_STAGES[index])
+      return fail2(`checkpoints[${index}]`);
+    const responsibility = raw.responsibility;
+    if (!responsibility || Object.keys(responsibility).some((key) => !RESPONSIBILITY.has(key)) || !["code", "human"].includes(responsibility.kind) || !SAFE4.test(responsibility.name ?? ""))
+      return fail2(`checkpoints[${index}].responsibility`);
+    if (raw.stage === "release-approved" && responsibility.kind !== "human")
+      return fail2(`checkpoints[${index}].responsibility`, "release_requires_human");
+    if (raw.stage !== "release-approved" && responsibility.kind !== "code")
+      return fail2(`checkpoints[${index}].responsibility`, "factory_code_required");
+    if (!Array.isArray(raw.requiredEvidence) || raw.requiredEvidence.length === 0 || raw.requiredEvidence.length > 16)
+      return fail2(`checkpoints[${index}].requiredEvidence`);
+    const requiredEvidence = [];
+    for (let evidenceIndex = 0; evidenceIndex < raw.requiredEvidence.length; evidenceIndex++) {
+      const item = raw.requiredEvidence[evidenceIndex];
+      if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some((key) => !EVIDENCE.has(key)) || !DELIVERY_EVIDENCE_KINDS.includes(item.kind) || !["pass", "fail", "indeterminate", "approved", "rejected"].includes(item.outcome))
+        return fail2(`checkpoints[${index}].requiredEvidence[${evidenceIndex}]`);
+      if (item.oracleId !== void 0 && !SAFE4.test(item.oracleId))
+        return fail2(`checkpoints[${index}].requiredEvidence[${evidenceIndex}].oracleId`);
+      requiredEvidence.push({
+        kind: item.kind,
+        outcome: item.outcome,
+        ...item.oracleId ? { oracleId: item.oracleId } : {}
+      });
+    }
+    checkpoints.push({
+      stage: raw.stage,
+      responsibility: { ...responsibility },
+      requiredEvidence
+    });
+  }
+  for (const [field, maximum] of [
+    ["artifactPolicy", 32],
+    ["promotionPolicy", 32],
+    ["deploymentPolicy", 32],
+    ["retentionPolicy", 16]
+  ]) {
+    const value = candidate[field];
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length === 0 || Object.keys(value).length > maximum)
+      return fail2(field);
+  }
+  return { ok: true, definition: canonical({ ...candidate, checkpoints }) };
+}
+function hashDeliveryDefinition(definition) {
+  return createHash11("sha256").update(JSON.stringify(canonical(definition))).digest("hex");
+}
+function defaultDeliveryDefinition() {
+  return {
+    schemaVersion: "1",
+    deliveryType: "factory-delivery",
+    version: "1.0.0",
+    title: "Governed Factory delivery",
+    checkpoints: [
+      {
+        stage: "implementation-ready",
+        responsibility: { kind: "code", name: "implementation-policy" },
+        requiredEvidence: [{ kind: "implementation-result", outcome: "pass" }]
+      },
+      {
+        stage: "artifact-ready",
+        responsibility: { kind: "code", name: "artifact-oracle" },
+        requiredEvidence: [
+          { kind: "artifact", outcome: "pass" },
+          { kind: "oracle-result", outcome: "pass" }
+        ]
+      },
+      {
+        stage: "release-approved",
+        responsibility: { kind: "human", name: "release-approver" },
+        requiredEvidence: [{ kind: "human-decision", outcome: "approved" }]
+      },
+      {
+        stage: "deployed",
+        responsibility: { kind: "code", name: "deployment-control-plane" },
+        requiredEvidence: [{ kind: "deployment-result", outcome: "pass" }]
+      },
+      {
+        stage: "production-verified",
+        responsibility: { kind: "code", name: "production-smoke" },
+        requiredEvidence: [{ kind: "smoke-result", outcome: "pass" }]
+      }
+    ],
+    artifactPolicy: { requireBuildAndTests: true, extensibleChecks: "sast sca secrets sbom signature provenance" },
+    promotionPolicy: { ordered: true, automaticMerge: false, requireFactoryEvidence: true },
+    deploymentPolicy: { environmentsFromTrustedConfiguration: true, requireRollbackCapability: true },
+    retentionPolicy: { deleteWorktreeBeforeProductionVerified: false }
+  };
+}
+
+// ../src/domain/delivery/delivery-policy.ts
+import { createHash as createHash12, randomUUID as randomUUID6 } from "node:crypto";
+var DELIVERY_INITIAL_STAGE = "implementation-ready";
+var SAFE5 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var FIELDS3 = /* @__PURE__ */ new Set(["deliveryId", "expectedRevision", "requestedStage", "evidenceIds", "idempotencyKey"]);
+var deny2 = (code, reason) => ({ allowed: false, code, reason });
+var hash = (value) => createHash12("sha256").update(JSON.stringify(value)).digest("hex");
+function validateDeliveryPromotionRequest(input, expectedDeliveryId) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !FIELDS3.has(key)))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  const candidate = input;
+  if (candidate.deliveryId !== expectedDeliveryId || !SAFE5.test(candidate.deliveryId ?? "") || !Number.isSafeInteger(candidate.expectedRevision) || candidate.expectedRevision < 1 || !DELIVERY_STAGES.includes(candidate.requestedStage))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  if (!Array.isArray(candidate.evidenceIds) || candidate.evidenceIds.length > 100 || new Set(candidate.evidenceIds).size !== candidate.evidenceIds.length || candidate.evidenceIds.some((id2) => !SAFE5.test(id2 ?? "")))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  if (typeof candidate.idempotencyKey !== "string" || !candidate.idempotencyKey || candidate.idempotencyKey.length > 128 || /[\r\n]/.test(candidate.idempotencyKey))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  return {
+    ok: true,
+    value: {
+      requestId: randomUUID6(),
+      deliveryId: candidate.deliveryId,
+      expectedRevision: candidate.expectedRevision,
+      requestedStage: candidate.requestedStage,
+      evidenceIds: [...candidate.evidenceIds],
+      idempotencyKey: candidate.idempotencyKey
+    }
+  };
+}
+var deliveryScopeHash = (namespaceId, request, execution2) => hash({
+  namespaceId,
+  deliveryId: request.deliveryId,
+  caseId: execution2.caseId,
+  runtimeId: execution2.runtimeId,
+  idempotencyKey: request.idempotencyKey
+});
+var deliverySemanticHash = (request) => hash({
+  deliveryId: request.deliveryId,
+  expectedRevision: request.expectedRevision,
+  requestedStage: request.requestedStage,
+  evidenceIds: [...request.evidenceIds].sort()
+});
+function evaluateDeliveryPromotion({
+  request,
+  snapshot,
+  definition,
+  evidence,
+  execution: execution2
+}) {
+  if (!snapshot) return deny2("DELIVERY_NOT_FOUND", "delivery_not_found");
+  if (snapshot.revision !== request.expectedRevision) return deny2("REVISION_CONFLICT", "stale_delivery_revision");
+  if (snapshot.namespaceId !== execution2.namespaceId || snapshot.workflowId !== execution2.workflowId || snapshot.parentCaseId !== execution2.caseId)
+    return deny2("DELIVERY_SCOPE_MISMATCH", "controlling_execution_mismatch");
+  if (snapshot.definitionHash !== definition.definitionHash)
+    return deny2("DELIVERY_DEFINITION_MISMATCH", "definition_identity_mismatch");
+  const currentIndex = DELIVERY_STAGES.indexOf(snapshot.stage), requestedIndex = DELIVERY_STAGES.indexOf(request.requestedStage);
+  if (requestedIndex !== currentIndex + 1) return deny2("ILLEGAL_PROMOTION", "ordered_promotion_required");
+  const checkpoint = definition.checkpoints.find((item) => item.stage === request.requestedStage);
+  if (!checkpoint) return deny2("DELIVERY_DEFINITION_MISMATCH", "checkpoint_missing");
+  const isHuman = checkpoint.responsibility.kind === "human";
+  if (isHuman ? !(execution2.kind === "factory-human" && execution2.actorId && execution2.runtimeId === "factory-dashboard") : !(execution2.kind === "factory-control-plane" && execution2.runtimeId === "factory-dashboard"))
+    return deny2("ACTOR_NOT_AUTHORIZED", "factory_responsibility_required");
+  const selected = [];
+  for (const id2 of request.evidenceIds) {
+    const item = evidence.find((candidate) => candidate.evidenceId === id2);
+    if (!item) return deny2("EVIDENCE_NOT_FOUND", "evidence_not_found");
+    if (item.namespaceId !== snapshot.namespaceId || item.workflowId !== snapshot.workflowId || item.deliveryId !== snapshot.deliveryId || item.environmentHash !== snapshot.environmentHash || item.caseId !== snapshot.parentCaseId || item.headCommit !== snapshot.headCommit)
+      return deny2("EVIDENCE_SCOPE_MISMATCH", "bounded_fact_mismatch");
+    selected.push(item);
+  }
+  for (const requirement of checkpoint.requiredEvidence) {
+    const match = selected.find(
+      (item) => item.kind === requirement.kind && item.outcome === requirement.outcome && (!requirement.oracleId || item.oracleId === requirement.oracleId) && item.source?.kind !== "agent"
+    );
+    if (!match) return deny2("PASS_EVIDENCE_REQUIRED", `${requirement.kind}:${requirement.outcome}`);
+  }
+  if (request.requestedStage === "release-approved" && !selected.some(
+    (item) => item.kind === "human-decision" && item.outcome === "approved" && item.source?.kind === "factory-human"
+  ))
+    return deny2("HUMAN_APPROVAL_REQUIRED", "release_approval_missing");
+  if (request.requestedStage === "deployed" && currentIndex < DELIVERY_STAGES.indexOf("release-approved"))
+    return deny2("RELEASE_NOT_APPROVED", "release_approval_missing");
+  if (request.requestedStage === "production-verified" && !selected.some((item) => item.kind === "smoke-result" && item.outcome === "pass"))
+    return deny2("SMOKE_PASS_REQUIRED", "production_smoke_missing");
+  return { allowed: true };
+}
+function applyDeliveryPromotion(snapshot, request, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+  return {
+    ...snapshot,
+    stage: request.requestedStage,
+    revision: snapshot.revision + 1,
+    updatedAt: observedAt,
+    evidenceIds: [.../* @__PURE__ */ new Set([...snapshot.evidenceIds ?? [], ...request.evidenceIds])]
+  };
+}
+
+// ../src/domain/delivery/delivery-operation-definition.ts
+import { createHash as createHash13 } from "node:crypto";
+var DELIVERY_OPERATION_KINDS = Object.freeze([
+  "deployment",
+  "production-verification",
+  "rollback",
+  "rollback-verification"
+]);
+var DELIVERY_OPERATION_STATES = Object.freeze(["pending", "running", "succeeded", "failed", "indeterminate"]);
+var DELIVERY_OPERATION_ERROR_CODES = Object.freeze({
+  INVALID_REQUEST: "INVALID_DELIVERY_OPERATION_REQUEST",
+  INVALID_RECORD: "INVALID_DELIVERY_OPERATION_RECORD",
+  INVALID_TRANSITION: "INVALID_DELIVERY_OPERATION_TRANSITION",
+  RECONCILIATION_REQUIRED: "DELIVERY_OPERATION_RECONCILIATION_REQUIRED"
+});
+var SAFE6 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SHA2 = /^[0-9a-f]{40}$/i;
+var DIGEST = /^sha256:[0-9a-f]{64}$/i;
+var MEDIA = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i;
+var canonical2 = (value) => Array.isArray(value) ? value.map(canonical2) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).sort().map((k) => [k, canonical2(value[k])])
+) : value;
+var canonicalDeliveryHash = (value) => `sha256:${createHash13("sha256").update(JSON.stringify(canonical2(value))).digest("hex")}`;
+var fail3 = (path, reason = "invalid_value") => ({
+  ok: false,
+  error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_REQUEST, path, reason }
+});
+var exact = (v, fields) => v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).every((k) => fields.includes(k));
+var id = (v) => typeof v === "string" && SAFE6.test(v);
+var digest2 = (v) => typeof v === "string" && DIGEST.test(v);
+var sha = (v) => typeof v === "string" && SHA2.test(v);
+function artifact(v, path = "artifactRef") {
+  if (!exact(v, ["digest", "mediaType", "producerRef", "buildRef", "sourceCommit"]) || !digest2(v.digest) || !MEDIA.test(v.mediaType ?? "") || !id(v.producerRef) || !id(v.buildRef) || !sha(v.sourceCommit))
+    return fail3(path);
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      digest: v.digest.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase()
+    })
+  };
+}
+function release(v, path = "releaseRef") {
+  if (!exact(v, ["releaseId", "artifactDigest", "sourceCommit", "approvedEvidenceId"]) || !id(v.releaseId) || !digest2(v.artifactDigest) || !sha(v.sourceCommit) || !id(v.approvedEvidenceId))
+    return fail3(path);
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      artifactDigest: v.artifactDigest.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase()
+    })
+  };
+}
+function operationRef(v, path, kind) {
+  if (!exact(v, ["operationId", "kind", "state", "targetHash", "sourceCommit", "artifactDigest"]) || !id(v.operationId) || v.kind !== kind || v.state !== "succeeded" || !digest2(v.targetHash) || !sha(v.sourceCommit) || !digest2(v.artifactDigest))
+    return fail3(path);
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      targetHash: v.targetHash.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase(),
+      artifactDigest: v.artifactDigest.toLowerCase()
+    })
+  };
+}
+var BASE = ["kind", "expectedRevision", "idempotencyKey", "targetId"];
+var SPEC = {
+  deployment: ["artifactRef", "releaseRef"],
+  "production-verification": ["deploymentRef"],
+  rollback: ["deploymentRef", "priorArtifactRef", "priorReleaseRef", "rollbackRequestId", "approvedEvidenceId"],
+  "rollback-verification": ["rollbackRef"]
+};
+function normalizeDeliveryOperationRequest(input) {
+  const candidate = input;
+  if (!candidate || !DELIVERY_OPERATION_KINDS.includes(candidate.kind) || !exact(candidate, [...BASE, ...SPEC[candidate.kind]]))
+    return fail3("$", "unknown_or_missing_field");
+  if (!Number.isSafeInteger(candidate.expectedRevision) || candidate.expectedRevision < 1 || !id(candidate.idempotencyKey) || !id(candidate.targetId))
+    return fail3("$");
+  const out = {
+    kind: candidate.kind,
+    expectedRevision: candidate.expectedRevision,
+    idempotencyKey: candidate.idempotencyKey,
+    targetId: candidate.targetId
+  };
+  if (candidate.kind === "deployment") {
+    const a = artifact(candidate.artifactRef), r = release(candidate.releaseRef);
+    if (!a.ok) return a;
+    if (!r.ok) return r;
+    if (a.value.digest !== r.value.artifactDigest || a.value.sourceCommit !== r.value.sourceCommit)
+      return fail3("releaseRef", "artifact_identity_mismatch");
+    Object.assign(out, { artifactRef: a.value, releaseRef: r.value });
+  }
+  if (candidate.kind === "production-verification") {
+    const d = operationRef(candidate.deploymentRef, "deploymentRef", "deployment");
+    if (!d.ok) return d;
+    out.deploymentRef = d.value;
+  }
+  if (candidate.kind === "rollback") {
+    const d = operationRef(candidate.deploymentRef, "deploymentRef", "deployment"), a = artifact(candidate.priorArtifactRef, "priorArtifactRef"), r = release(candidate.priorReleaseRef, "priorReleaseRef");
+    if (!d.ok) return d;
+    if (!a.ok) return a;
+    if (!r.ok) return r;
+    if (!id(candidate.rollbackRequestId) || !id(candidate.approvedEvidenceId) || a.value.digest !== r.value.artifactDigest || a.value.sourceCommit !== r.value.sourceCommit)
+      return fail3("$", "rollback_identity_mismatch");
+    Object.assign(out, {
+      deploymentRef: d.value,
+      priorArtifactRef: a.value,
+      priorReleaseRef: r.value,
+      rollbackRequestId: candidate.rollbackRequestId,
+      approvedEvidenceId: candidate.approvedEvidenceId
+    });
+  }
+  if (candidate.kind === "rollback-verification") {
+    const r = operationRef(candidate.rollbackRef, "rollbackRef", "rollback");
+    if (!r.ok) return r;
+    out.rollbackRef = r.value;
+  }
+  return { ok: true, value: Object.freeze(out) };
+}
+function deriveDeliveryOperationIdentity({ namespaceId, workflowId, deliveryId, caseId, runtimeId }, request, targetHash) {
+  for (const v of [namespaceId, workflowId, deliveryId, caseId, runtimeId]) if (!id(v)) return fail3("scope");
+  if (!digest2(targetHash)) return fail3("targetHash");
+  const scopeHash = canonicalDeliveryHash({
+    namespaceId,
+    workflowId,
+    deliveryId,
+    caseId,
+    runtimeId,
+    idempotencyKey: request.idempotencyKey
+  });
+  const semanticHash = canonicalDeliveryHash({
+    kind: request.kind,
+    expectedRevision: request.expectedRevision,
+    targetHash,
+    ...Object.fromEntries(
+      Object.entries(request).filter(([k]) => /Ref$/.test(k) || ["rollbackRequestId", "approvedEvidenceId"].includes(k))
+    )
+  });
+  return { ok: true, value: { operationId: `dop_${scopeHash.slice(7, 39)}`, scopeHash, semanticHash } };
+}
+var ALLOWED2 = {
+  pending: ["running", "failed"],
+  running: ["succeeded", "failed", "indeterminate"],
+  indeterminate: ["succeeded", "failed"],
+  succeeded: [],
+  failed: []
+};
+function validateDeliveryOperationTransition(previous, next, { inspectedObservation } = {}) {
+  if (!previous || !next || previous.operationId !== next.operationId || !DELIVERY_OPERATION_STATES.includes(previous.state) || !ALLOWED2[previous.state]?.includes(next.state))
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_TRANSITION } };
+  if (previous.state === "indeterminate" && (!inspectedObservation || inspectedObservation.operationId !== previous.operationId || inspectedObservation.state !== next.state || !["succeeded", "failed"].includes(next.state) || next.resolvedOperationId !== previous.operationId))
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.RECONCILIATION_REQUIRED } };
+  return { ok: true };
+}
+function validateDeliveryOperationRecord(v) {
+  const fields = [
+    "recordType",
+    "operationId",
+    "kind",
+    "expectedRevision",
+    "targetRef",
+    "artifactRef",
+    "releaseRef",
+    "deploymentRef",
+    "rollbackRef",
+    "state",
+    "attempt",
+    "requestedAt",
+    "startedAt",
+    "completedAt",
+    "execution",
+    "adapterCorrelation",
+    "scopeHash",
+    "semanticHash",
+    "result",
+    "error",
+    "resolvedOperationId",
+    "sourceCommit",
+    "artifactDigest",
+    "rollbackRequestId",
+    "approvedEvidenceId"
+  ];
+  if (!exact(v, fields) || v.recordType !== "delivery-operation" || !id(v.operationId) || !DELIVERY_OPERATION_KINDS.includes(v.kind) || !DELIVERY_OPERATION_STATES.includes(v.state) || !Number.isSafeInteger(v.expectedRevision) || !Number.isSafeInteger(v.attempt) || v.attempt < 0 || !digest2(v.scopeHash) || !digest2(v.semanticHash))
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD } };
+  for (const key of ["requestedAt", "startedAt", "completedAt"])
+    if (v[key] !== void 0 && (!Number.isFinite(Date.parse(v[key])) || new Date(Date.parse(v[key])).toISOString() !== v[key]))
+      return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD, path: key } };
+  return { ok: true, value: Object.freeze({ ...v }) };
+}
+
+// ../src/domain/delivery/delivery-operation-policy.ts
+var deny3 = (code, reason) => ({ allowed: false, code, reason });
+var pass = () => ({ allowed: true });
+function evaluateDeliveryOperationPolicy({
+  request,
+  snapshot,
+  target,
+  identity,
+  existingOperations = []
+}) {
+  if (!snapshot) return deny3("DELIVERY_NOT_FOUND", "delivery_not_found");
+  if (snapshot.revision !== request.expectedRevision) return deny3("REVISION_CONFLICT", "stale_delivery_revision");
+  if (!target) return deny3("DELIVERY_TARGET_NOT_FOUND", "trusted_target_missing");
+  if (identity?.targetHash !== target.targetHash)
+    return deny3("DELIVERY_TARGET_HASH_MISMATCH", "target_binding_mismatch");
+  if (existingOperations.some((o) => o.state === "indeterminate" && !o.resolvedOperationId))
+    return deny3("DELIVERY_OPERATION_INDETERMINATE", "reconciliation_required");
+  const head = snapshot.headCommit;
+  if (request.artifactRef && request.artifactRef.sourceCommit !== head)
+    return deny3("SOURCE_COMMIT_MISMATCH", "artifact_not_at_head");
+  if (request.releaseRef && request.releaseRef.sourceCommit !== head)
+    return deny3("SOURCE_COMMIT_MISMATCH", "release_not_at_head");
+  if (request.kind === "deployment" && snapshot.stage !== "release-approved")
+    return deny3("RELEASE_NOT_APPROVED", "release_approved_stage_required");
+  if (request.kind === "production-verification") {
+    if (snapshot.stage !== "deployed" || request.deploymentRef?.state !== "succeeded")
+      return deny3("SUCCESSFUL_DEPLOYMENT_REQUIRED", "linked_deployment_required");
+    if (request.deploymentRef?.targetHash !== target.targetHash || request.deploymentRef?.sourceCommit !== head)
+      return deny3("DEPLOYMENT_SCOPE_MISMATCH", "deployment_binding_mismatch");
+    if (!target.verificationSuiteId || !target.verificationSuiteHash)
+      return deny3("VERIFICATION_SUITE_NOT_CONFIGURED", "trusted_suite_required");
+  }
+  if (request.kind === "rollback") {
+    if (request.deploymentRef?.state !== "succeeded")
+      return deny3("SUCCESSFUL_DEPLOYMENT_REQUIRED", "linked_deployment_required");
+    if (!target.supportsRollback) return deny3("ROLLBACK_NOT_SUPPORTED", "target_disallows_rollback");
+    if (!request.approvedEvidenceId) return deny3("ROLLBACK_APPROVAL_REQUIRED", "approval_evidence_required");
+    if (request.priorArtifactRef?.digest === request.deploymentRef?.artifactDigest)
+      return deny3("ROLLBACK_RELEASE_UNCHANGED", "prior_release_must_differ");
+    if (request.deploymentRef?.targetHash !== target.targetHash || request.deploymentRef?.sourceCommit !== head)
+      return deny3("DEPLOYMENT_SCOPE_MISMATCH", "deployment_binding_mismatch");
+  }
+  if (request.kind === "rollback-verification") {
+    if (request.rollbackRef?.state !== "succeeded")
+      return deny3("SUCCESSFUL_ROLLBACK_REQUIRED", "linked_rollback_required");
+    if (request.rollbackRef?.targetHash !== target.targetHash)
+      return deny3("ROLLBACK_SCOPE_MISMATCH", "rollback_binding_mismatch");
+    if (!target.verificationSuiteId || !target.verificationSuiteHash)
+      return deny3("VERIFICATION_SUITE_NOT_CONFIGURED", "trusted_suite_required");
+  }
+  return pass();
+}
+function resolveDeliveryVerificationRequest(request, target) {
+  if (!target?.verificationSuiteId || !target?.verificationSuiteHash)
+    return { ok: false, error: { code: "VERIFICATION_SUITE_NOT_CONFIGURED" } };
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...request,
+      verificationSuiteRef: Object.freeze({
+        suiteId: target.verificationSuiteId,
+        suiteHash: target.verificationSuiteHash
+      })
+    })
+  };
+}
+
+// ../src/adapters/persistence/delivery-store.ts
+import { createHash as createHash14, randomBytes as randomBytes5 } from "node:crypto";
+import { appendFile as appendFile3, mkdir as mkdir4, open as open4, readFile as readFile5, rename as rename4, rm as rm4 } from "node:fs/promises";
+import { dirname as dirname5, isAbsolute as isAbsolute5, join as join10 } from "node:path";
+var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SHA3 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var HASH2 = /^sha256:[0-9a-f]{64}$/;
+var canonical3 = (value) => Array.isArray(value) ? value.map(canonical3) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).filter((key) => value[key] !== void 0).sort().map((key) => [key, canonical3(value[key])])
+) : value;
+var hash2 = (value) => createHash14("sha256").update(JSON.stringify(canonical3(value))).digest("hex");
+async function sync(path) {
+  const handle = await open4(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function atomic2(path, value) {
+  await mkdir4(dirname5(path), { recursive: true });
+  const temp = `${path}.tmp-${process.pid}-${randomBytes5(6).toString("hex")}`;
+  const handle = await open4(temp, "wx", 384);
+  try {
+    await handle.writeFile(`${JSON.stringify(value)}
+`);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename4(temp, path);
+  await sync(dirname5(path));
+}
+async function append2(path, value) {
+  await mkdir4(dirname5(path), { recursive: true });
+  await appendFile3(path, `${JSON.stringify(value)}
+`, { mode: 384 });
+  await sync(path);
+}
+var validSnapshot = (value) => value !== null && typeof value === "object" && value.schemaVersion === "1" && UUID3.test(value.namespaceId ?? "") && SAFE7.test(value.deliveryId ?? "") && SAFE7.test(value.workflowId ?? "") && UUID3.test(value.environmentId ?? "") && HASH2.test(value.environmentHash ?? "") && UUID3.test(value.parentCaseId ?? "") && SAFE7.test(value.runtimeId ?? "") && SHA3.test(value.baseCommit ?? "") && SHA3.test(value.headCommit ?? "") && Number.isSafeInteger(value.revision) && value.revision > 0;
+var DeliveryStore = class {
+  dataRoot;
+  fault;
+  locks;
+  constructor(dataRoot, { fault = async () => {
+  } } = {}) {
+    if (!isAbsolute5(dataRoot)) throw new Error("INVALID_DATA_ROOT");
+    this.dataRoot = dataRoot;
+    this.fault = fault;
+    this.locks = /* @__PURE__ */ new Map();
+  }
+  async initialize() {
+    await mkdir4(join10(this.dataRoot, "deliveries"), { recursive: true });
+  }
+  paths(namespaceId, deliveryId) {
+    if (!UUID3.test(namespaceId ?? "") || !SAFE7.test(deliveryId ?? "")) throw new Error("INVALID_DELIVERY_SCOPE");
+    const directory = join10(
+      this.dataRoot,
+      "deliveries",
+      namespaceId,
+      createHash14("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex")
+    );
+    return {
+      directory,
+      snapshot: join10(directory, "delivery.json"),
+      journal: join10(directory, "operations.jsonl"),
+      pending: join10(directory, "pending.json")
+    };
+  }
+  _locked(namespaceId, deliveryId, action) {
+    const key = `${namespaceId}\0${deliveryId}`, prior = this.locks.get(key) ?? Promise.resolve(), operation = prior.then(action), tail = operation.catch(() => {
+    });
+    this.locks.set(key, tail);
+    return operation.finally(() => {
+      if (this.locks.get(key) === tail) this.locks.delete(key);
+    });
+  }
+  async _json(path) {
+    try {
+      return JSON.parse(await readFile5(path, "utf8"));
+    } catch (error2) {
+      if (error2?.code === "ENOENT") return null;
+      throw Object.assign(new Error("CORRUPT_DELIVERY_STORAGE"), { code: "CORRUPT_DELIVERY_STORAGE" });
+    }
+  }
+  async journal(namespaceId, deliveryId) {
+    try {
+      return (await readFile5(this.paths(namespaceId, deliveryId).journal, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    } catch (error2) {
+      if (error2?.code === "ENOENT") return [];
+      throw Object.assign(new Error("CORRUPT_DELIVERY_JOURNAL"), { code: "CORRUPT_DELIVERY_JOURNAL" });
+    }
+  }
+  async _recover(paths) {
+    const pending = await this._json(paths.pending);
+    if (!pending) return;
+    const pendingSnapshot = pending.snapshot, pendingOperation = pending.operation;
+    const records = await this.journal(pendingSnapshot.namespaceId, pendingSnapshot.deliveryId);
+    const matching = records.filter((item) => item.operationId === pendingOperation.operationId);
+    if (!matching.length)
+      throw Object.assign(new Error("DELIVERY_OPERATION_INDETERMINATE"), { code: "DELIVERY_OPERATION_INDETERMINATE" });
+    const last = matching[matching.length - 1];
+    if (last.state === "succeeded" && pending.snapshotHash === hash2(pendingSnapshot)) {
+      await atomic2(paths.snapshot, pendingSnapshot);
+      await rm4(paths.pending, { force: true });
+      return;
+    }
+    throw Object.assign(new Error("DELIVERY_OPERATION_INDETERMINATE"), { code: "DELIVERY_OPERATION_INDETERMINATE" });
+  }
+  async read(namespaceId, deliveryId) {
+    const paths = this.paths(namespaceId, deliveryId);
+    await this._recover(paths);
+    const snapshot = await this._json(paths.snapshot);
+    if (!snapshot) return null;
+    if (!validSnapshot(snapshot) || snapshot.snapshotHash !== hash2({ ...snapshot, snapshotHash: void 0 }))
+      throw Object.assign(new Error("CORRUPT_DELIVERY_STORAGE"), { code: "CORRUPT_DELIVERY_STORAGE" });
+    return snapshot;
+  }
+  async create(input) {
+    return this._locked(input.namespaceId, input.deliveryId, async () => {
+      const current = await this.read(input.namespaceId, input.deliveryId);
+      if (current)
+        return JSON.stringify({ ...current, snapshotHash: void 0 }) === JSON.stringify(input) ? { ok: true, changed: false, snapshot: current } : { ok: false, error: { code: "DELIVERY_IDENTITY_CONFLICT" } };
+      if (!validSnapshot(input)) return { ok: false, error: { code: "INVALID_DELIVERY_SNAPSHOT" } };
+      return this._write(null, input, { kind: "delivery_created", idempotencyKey: `create:${input.deliveryId}` });
+    });
+  }
+  async promote({ namespaceId, request, definition, evidence, execution: execution2 }) {
+    return this._locked(namespaceId, request.deliveryId, async () => {
+      const current = await this.read(namespaceId, request.deliveryId);
+      const records = await this.journal(namespaceId, request.deliveryId);
+      const scopeHash = deliveryScopeHash(namespaceId, request, execution2), semanticHash = deliverySemanticHash(request), prior = records.find((item) => item.scopeHash === scopeHash && item.state === "succeeded");
+      if (prior) {
+        if (prior.semanticHash !== semanticHash) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        return { ok: true, changed: false, idempotent: true, snapshot: current };
+      }
+      const decision = evaluateDeliveryPromotion({ request, snapshot: current, definition, evidence, execution: execution2 });
+      if (!decision.allowed) return { ok: false, error: decision };
+      const next = applyDeliveryPromotion(current, request);
+      return this._write(current, next, {
+        kind: "delivery_promoted",
+        idempotencyKey: request.idempotencyKey,
+        scopeHash,
+        semanticHash,
+        evidenceIds: request.evidenceIds
+      });
+    });
+  }
+  async _write(current, value, operationInput) {
+    const paths = this.paths(value.namespaceId, value.deliveryId), operationId = createHash14("sha256").update(`${value.namespaceId}:${value.deliveryId}:${operationInput.idempotencyKey}`).digest("hex"), operation = {
+      schemaVersion: "1",
+      operationId,
+      deliveryId: value.deliveryId,
+      revision: (current?.revision ?? 0) + (current ? 1 : 0),
+      kind: operationInput.kind,
+      state: "pending",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ...operationInput.scopeHash ? { scopeHash: operationInput.scopeHash, semanticHash: operationInput.semanticHash } : {},
+      ...operationInput.evidenceIds ? { evidenceIds: [...operationInput.evidenceIds].sort() } : {}
+    };
+    const clean = { ...value };
+    delete clean.snapshotHash;
+    const snapshot = { ...clean, snapshotHash: hash2(clean) };
+    await atomic2(paths.pending, { operation, snapshot, snapshotHash: hash2(snapshot) });
+    await append2(paths.journal, operation);
+    await this.fault("after-pending-journal");
+    const running = { ...operation, state: "running", timestamp: (/* @__PURE__ */ new Date()).toISOString() };
+    await append2(paths.journal, running);
+    await this.fault("after-running");
+    const succeeded = {
+      ...operation,
+      state: "succeeded",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      resultHash: snapshot.snapshotHash
+    };
+    await append2(paths.journal, succeeded);
+    await this.fault("after-success");
+    await atomic2(paths.snapshot, snapshot);
+    await this.fault("after-snapshot");
+    await rm4(paths.pending, { force: true });
+    return { ok: true, changed: true, idempotent: false, snapshot };
+  }
+  async recordOperation(namespaceId, deliveryId, input) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const records = await this.journal(namespaceId, deliveryId), operationId = createHash14("sha256").update(`${namespaceId}:${deliveryId}:${input.idempotencyKey}`).digest("hex"), prior = records.filter((item) => item.operationId === operationId).at(-1);
+      const semanticHash = hash2(input.facts);
+      if (prior) {
+        if (prior.semanticHash !== semanticHash) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        return { ok: true, changed: false, operation: prior };
+      }
+      const operation = {
+        schemaVersion: "1",
+        operationId,
+        deliveryId,
+        kind: input.kind,
+        state: input.state,
+        semanticHash,
+        facts: input.facts,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await append2(this.paths(namespaceId, deliveryId).journal, operation);
+      return { ok: true, changed: true, operation };
+    });
+  }
+  _deliveryOperationProjection(records) {
+    const history = records.filter((record) => record.recordType === "delivery-operation");
+    const current = /* @__PURE__ */ new Map();
+    const resolved = new Set(
+      history.filter((record) => record.resolvedOperationId && ["succeeded", "failed"].includes(record.state)).map((record) => record.resolvedOperationId)
+    );
+    for (const record of history) current.set(record.operationId, record);
+    const rollbackHistory = records.filter((record) => record.recordType === "rollback-request");
+    const rollbackCurrent = /* @__PURE__ */ new Map();
+    for (const record of rollbackHistory) rollbackCurrent.set(record.rollbackRequestId, record);
+    return {
+      history,
+      operations: [...current.values()],
+      rollbackRequests: [...rollbackCurrent.values()],
+      rollbackRequestHistory: rollbackHistory,
+      unresolvedIndeterminate: [...current.values()].filter(
+        (record) => record.state === "indeterminate" && !resolved.has(record.operationId)
+      )
+    };
+  }
+  async readWithOperations(namespaceId, deliveryId) {
+    const snapshot = await this.read(namespaceId, deliveryId);
+    if (!snapshot) return null;
+    const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId));
+    return { ...snapshot, deliveryOperations: projection.operations, rollbackRequests: projection.rollbackRequests };
+  }
+  async inspectDeliveryOperations(namespaceId, deliveryId) {
+    return this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId));
+  }
+  async createRollbackRequest({
+    namespaceId,
+    deliveryId,
+    workflowId,
+    caseId,
+    runtimeId,
+    request,
+    execution: execution2
+  }) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const snapshot = await this.read(namespaceId, deliveryId);
+      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      if (snapshot.workflowId !== workflowId || snapshot.parentCaseId !== caseId || snapshot.runtimeId !== runtimeId)
+        return { ok: false, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), prior = projection.rollbackRequestHistory.find((record2) => record2.scopeHash === request.scopeHash);
+      if (prior)
+        return prior.semanticHash === request.semanticHash ? {
+          ok: true,
+          changed: false,
+          idempotent: true,
+          request: projection.rollbackRequests.find((item) => item.rollbackRequestId === prior.rollbackRequestId) ?? prior
+        } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+      if (snapshot.revision !== request.expectedRevision) return { ok: false, error: { code: "REVISION_CONFLICT" } };
+      const record = {
+        recordType: "rollback-request",
+        schemaVersion: "1",
+        rollbackRequestId: request.rollbackRequestId,
+        deliveryId,
+        workflowId,
+        namespaceId,
+        caseId,
+        runtimeId,
+        status: "requested",
+        expectedRevision: request.expectedRevision,
+        idempotencyKey: request.idempotencyKey,
+        scopeHash: request.scopeHash,
+        semanticHash: request.semanticHash,
+        targetId: request.targetId,
+        targetHash: request.targetHash,
+        deploymentRef: canonical3(request.deploymentRef),
+        priorArtifactRef: canonical3(request.priorArtifactRef),
+        priorReleaseRef: canonical3(request.priorReleaseRef),
+        reasonCode: request.reasonCode,
+        ...request.reason ? { reason: request.reason } : {},
+        requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        requestedBy: canonical3(execution2)
+      };
+      await append2(this.paths(namespaceId, deliveryId).journal, record);
+      return { ok: true, changed: true, idempotent: false, request: record };
+    });
+  }
+  async approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const snapshot = await this.read(namespaceId, deliveryId);
+      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), current = projection.rollbackRequests.find((item) => item.rollbackRequestId === rollbackRequestId);
+      if (!current) return { ok: false, error: { code: "ROLLBACK_REQUEST_NOT_FOUND" } };
+      const scopeHash = `sha256:${hash2({ rollbackRequestId, idempotencyKey: approval.idempotencyKey })}`, semanticHash = `sha256:${hash2({ rollbackRequestId, expectedRevision: approval.expectedRevision, actorId: approval.execution.actorId })}`, prior = projection.rollbackRequestHistory.find((item) => item.approvalScopeHash === scopeHash);
+      if (prior)
+        return prior.approvalSemanticHash === semanticHash ? { ok: true, changed: false, idempotent: true, request: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+      if (snapshot.revision !== approval.expectedRevision || current.expectedRevision !== approval.expectedRevision)
+        return { ok: false, error: { code: "REVISION_CONFLICT" } };
+      if (current.status !== "requested") return { ok: false, error: { code: "ROLLBACK_REQUEST_ALREADY_DECIDED" } };
+      const record = {
+        ...current,
+        status: "approved",
+        approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        approvedBy: canonical3(approval.execution),
+        approvalScopeHash: scopeHash,
+        approvalSemanticHash: semanticHash,
+        approvalIdempotencyKey: approval.idempotencyKey
+      };
+      await append2(this.paths(namespaceId, deliveryId).journal, record);
+      return { ok: true, changed: true, idempotent: false, request: record };
+    });
+  }
+  async createDeliveryOperation({
+    namespaceId,
+    workflowId,
+    deliveryId,
+    caseId,
+    runtimeId,
+    request,
+    targetRef,
+    execution: execution2
+  }) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const normalized = normalizeDeliveryOperationRequest(request);
+      if (!normalized.ok) return normalized;
+      const snapshot = await this.read(namespaceId, deliveryId);
+      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      const targetHash = targetRef?.targetHash;
+      const identity = deriveDeliveryOperationIdentity(
+        { namespaceId, workflowId, deliveryId, caseId, runtimeId },
+        normalized.value,
+        targetHash
+      );
+      if (!identity.ok) return identity;
+      const records = await this.journal(namespaceId, deliveryId), projection = this._deliveryOperationProjection(records), existing = projection.history.find((record) => record.scopeHash === identity.value.scopeHash);
+      if (existing)
+        return existing.semanticHash === identity.value.semanticHash ? {
+          ok: true,
+          changed: false,
+          idempotent: true,
+          operation: projection.operations.find((record) => record.operationId === existing.operationId) ?? existing
+        } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+      if (snapshot.revision !== normalized.value.expectedRevision)
+        return { ok: false, error: { code: "REVISION_CONFLICT" } };
+      if (projection.unresolvedIndeterminate.length)
+        return { ok: false, error: { code: "DELIVERY_OPERATION_INDETERMINATE" } };
+      const now = (/* @__PURE__ */ new Date()).toISOString(), source = normalized.value.artifactRef ?? normalized.value.priorArtifactRef, operation = {
+        recordType: "delivery-operation",
+        operationId: identity.value.operationId,
+        kind: normalized.value.kind,
+        expectedRevision: normalized.value.expectedRevision,
+        targetRef: canonical3(targetRef),
+        artifactRef: normalized.value.artifactRef ?? normalized.value.priorArtifactRef,
+        releaseRef: normalized.value.releaseRef ?? normalized.value.priorReleaseRef,
+        deploymentRef: normalized.value.deploymentRef,
+        rollbackRef: normalized.value.rollbackRef,
+        state: "pending",
+        attempt: 0,
+        requestedAt: now,
+        startedAt: void 0,
+        completedAt: void 0,
+        execution: canonical3(execution2),
+        adapterCorrelation: void 0,
+        scopeHash: identity.value.scopeHash,
+        semanticHash: identity.value.semanticHash,
+        result: void 0,
+        error: void 0,
+        resolvedOperationId: void 0,
+        sourceCommit: source?.sourceCommit,
+        artifactDigest: source?.digest,
+        rollbackRequestId: normalized.value.rollbackRequestId,
+        approvedEvidenceId: normalized.value.approvedEvidenceId
+      };
+      const persisted = Object.fromEntries(Object.entries(operation).filter(([, value]) => value !== void 0));
+      const contract = validateDeliveryOperationRecord(persisted);
+      if (!contract.ok) return { ok: false, error: contract.error };
+      await append2(this.paths(namespaceId, deliveryId).journal, persisted);
+      await this.fault("after-delivery-operation-write");
+      return { ok: true, changed: true, idempotent: false, operation: persisted };
+    });
+  }
+  async recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options = {}) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      await this.read(namespaceId, deliveryId);
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), previous = projection.operations.find((record) => record.operationId === operationId);
+      if (!previous) return { ok: false, error: { code: "DELIVERY_OPERATION_NOT_FOUND" } };
+      const now = (/* @__PURE__ */ new Date()).toISOString(), state = transition.state, next = {
+        ...previous,
+        state,
+        attempt: state === "running" ? previous.attempt + 1 : previous.attempt,
+        startedAt: state === "running" ? now : previous.startedAt,
+        completedAt: ["succeeded", "failed"].includes(state) ? now : void 0,
+        adapterCorrelation: transition.adapterCorrelation ?? previous.adapterCorrelation,
+        result: transition.result,
+        error: transition.error,
+        resolvedOperationId: transition.resolvedOperationId
+      };
+      const clean = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== void 0)), valid = validateDeliveryOperationTransition(previous, clean, options);
+      if (!valid.ok) return valid;
+      const contract = validateDeliveryOperationRecord(clean);
+      if (!contract.ok) return contract;
+      await append2(this.paths(namespaceId, deliveryId).journal, clean);
+      await this.fault(`after-delivery-operation-${state}`);
+      return { ok: true, changed: true, operation: clean };
+    });
+  }
+  async startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation) {
+    return this.recordDeliveryOperation(namespaceId, deliveryId, operationId, { state: "running", adapterCorrelation });
+  }
+  async reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation) {
+    return this.recordDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operationId,
+      {
+        state: observation.state,
+        result: observation.result,
+        error: observation.error,
+        adapterCorrelation: observation.adapterCorrelation,
+        resolvedOperationId: operationId
+      },
+      { inspectedObservation: { ...observation, operationId } }
+    );
+  }
+  /** Only an indeterminate logical operation without a later terminal reconciliation blocks. */
+  async hasIndeterminateOperation(namespaceId, deliveryId) {
+    try {
+      return (await this.inspectDeliveryOperations(namespaceId, deliveryId)).unresolvedIndeterminate.length > 0;
+    } catch {
+      return true;
+    }
+  }
+  /**
+   * Atomically patch specific fields in the delivery snapshot and append a journal record.
+   * Supports dot-notation keys like 'git.checkpoint' to set nested properties.
+   * Used after checkpoint/push/PR to persist the new state without a full promote cycle.
+   */
+  async updateSnapshot(namespaceId, deliveryId, patch, operationInput) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const current = await this.read(namespaceId, deliveryId);
+      if (!current) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      const updated = { ...current };
+      for (const [key, value] of Object.entries(patch)) {
+        const parts = key.split(".");
+        if (parts.length === 1) {
+          updated[key] = value;
+        } else if (parts.length === 2) {
+          const head = parts[0], tail = parts[1];
+          updated[head] = { ...updated[head] ?? {}, [tail]: value };
+        } else {
+          updated[key] = value;
+        }
+      }
+      updated.updatedAt = patch.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
+      return this._write(current, updated, operationInput);
+    });
+  }
+};
+
+// ../src/adapters/persistence/delivery-evidence-store.ts
+import { createHash as createHash15, randomUUID as randomUUID7 } from "node:crypto";
+import { appendFile as appendFile4, mkdir as mkdir5, open as open5, readFile as readFile6 } from "node:fs/promises";
+import { dirname as dirname6, join as join11 } from "node:path";
+var SAFE8 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var HASH3 = /^sha256:[0-9a-f]{64}$/;
+var SHA4 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var ALLOWED3 = /* @__PURE__ */ new Set([
+  "deliveryId",
+  "workflowId",
+  "environmentHash",
+  "caseId",
+  "runtimeId",
+  "headCommit",
+  "kind",
+  "outcome",
+  "oracleId",
+  "facts",
+  "idempotencyKey"
+]);
+var canonical4 = (value) => Array.isArray(value) ? value.map(canonical4) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).sort().map((key) => [key, canonical4(value[key])])
+) : value;
+var digest3 = (value) => createHash15("sha256").update(JSON.stringify(canonical4(value))).digest("hex");
+async function append3(path, value) {
+  await mkdir5(dirname6(path), { recursive: true });
+  await appendFile4(path, `${JSON.stringify(value)}
+`, { mode: 384 });
+  const handle = await open5(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+function validateDeliveryEvidence(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !ALLOWED3.has(key)))
+    return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
+  const candidate = input;
+  if (![candidate.deliveryId, candidate.workflowId, candidate.runtimeId, candidate.kind, candidate.outcome, candidate.idempotencyKey].every(
+    (value) => SAFE8.test(value ?? "")
+  ) || !HASH3.test(candidate.environmentHash ?? "") || !UUID4.test(candidate.caseId ?? "") || !SHA4.test(candidate.headCommit ?? ""))
+    return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
+  if (!candidate.facts || typeof candidate.facts !== "object" || Array.isArray(candidate.facts) || Object.keys(candidate.facts).length > 32 || JSON.stringify(candidate.facts).length > 4096)
+    return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
+  return { ok: true, value: canonical4(candidate) };
+}
+var DeliveryEvidenceStore = class {
+  dataRoot;
+  locks;
+  constructor(dataRoot) {
+    if (!dataRoot || typeof dataRoot !== "string") throw new Error("INVALID_DATA_ROOT");
+    this.dataRoot = dataRoot;
+    this.locks = /* @__PURE__ */ new Map();
+  }
+  path(namespaceId, deliveryId) {
+    if (!UUID4.test(namespaceId ?? ""))
+      throw Object.assign(new Error("INVALID_NAMESPACE_ID"), { code: "INVALID_NAMESPACE_ID" });
+    if (!SAFE8.test(deliveryId ?? ""))
+      throw Object.assign(new Error("INVALID_DELIVERY_ID"), { code: "INVALID_DELIVERY_ID" });
+    return join11(
+      this.dataRoot,
+      "deliveries",
+      namespaceId,
+      createHash15("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex"),
+      "evidence.jsonl"
+    );
+  }
+  async list(namespaceId, deliveryId) {
+    try {
+      return (await readFile6(this.path(namespaceId, deliveryId), "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    } catch (error2) {
+      if (error2?.code === "ENOENT") return [];
+      throw error2;
+    }
+  }
+  _locked(key, action) {
+    const prior = this.locks.get(key) ?? Promise.resolve(), operation = prior.then(action), tail = operation.catch(() => {
+    });
+    this.locks.set(key, tail);
+    return operation.finally(() => {
+      if (this.locks.get(key) === tail) this.locks.delete(key);
+    });
+  }
+  async record(namespaceId, input, source) {
+    const validation = validateDeliveryEvidence(input);
+    if (!validation.ok) return validation;
+    const value = validation.value;
+    return this._locked(`${namespaceId}\0${value.deliveryId}`, async () => {
+      const existing = await this.list(namespaceId, value.deliveryId), scopeHash = digest3({
+        namespaceId,
+        deliveryId: value.deliveryId,
+        workflowId: value.workflowId,
+        caseId: value.caseId,
+        runtimeId: value.runtimeId,
+        idempotencyKey: value.idempotencyKey
+      }), semanticHash = digest3({ ...value, idempotencyKey: void 0 });
+      const prior = existing.find((item) => item.idempotency.scopeHash === scopeHash);
+      if (prior)
+        return prior.idempotency.semanticHash === semanticHash ? { ok: true, created: false, evidence: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+      const evidence = {
+        evidenceId: randomUUID7(),
+        namespaceId,
+        ...value,
+        source: { ...source },
+        observedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        idempotency: { scopeHash, semanticHash }
+      };
+      await append3(this.path(namespaceId, value.deliveryId), evidence);
+      return { ok: true, created: true, evidence };
+    });
+  }
+};
+
+// ../src/adapters/delivery/delivery-target-registry.ts
+var SAFE9 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var DIGEST2 = /^sha256:[0-9a-f]{64}$/i;
+var FIELDS4 = [
+  "targetId",
+  "environmentKind",
+  "adapterId",
+  "adapterTargetRef",
+  "supportsRollback",
+  "verificationSuiteId",
+  "verificationSuiteHash"
+];
+var unavailable = () => ({ ok: false, error: { code: "DELIVERY_TARGET_REGISTRY_UNAVAILABLE" } });
+var DeliveryTargetRegistry = class {
+  #targets;
+  constructor(definitions) {
+    this.#targets = null;
+    if (definitions === void 0) return;
+    if (!Array.isArray(definitions))
+      throw Object.assign(new Error("Invalid target registry"), { code: "INVALID_DELIVERY_TARGET_REGISTRY" });
+    const map = /* @__PURE__ */ new Map();
+    for (const raw of definitions) {
+      if (!raw || Object.keys(raw).some((k) => !FIELDS4.includes(k)) || !SAFE9.test(raw.targetId ?? "") || !["development", "staging", "production"].includes(raw.environmentKind) || !SAFE9.test(raw.adapterId ?? "") || !SAFE9.test(raw.adapterTargetRef ?? "") || typeof raw.supportsRollback !== "boolean" || raw.verificationSuiteId !== void 0 && !SAFE9.test(raw.verificationSuiteId) || raw.verificationSuiteHash !== void 0 && !DIGEST2.test(raw.verificationSuiteHash))
+        throw Object.assign(new Error("Invalid target"), { code: "INVALID_DELIVERY_TARGET" });
+      if (map.has(raw.targetId))
+        throw Object.assign(new Error("Duplicate target"), { code: "DUPLICATE_DELIVERY_TARGET_ID" });
+      const targetHash = canonicalDeliveryHash(raw);
+      if ([...map.values()].some((v) => v.targetHash === targetHash))
+        throw Object.assign(new Error("Ambiguous target hash"), { code: "AMBIGUOUS_DELIVERY_TARGET_HASH" });
+      map.set(raw.targetId, Object.freeze({ ...raw, targetHash }));
+    }
+    this.#targets = map;
+  }
+  lookup(targetId) {
+    if (!this.#targets) return unavailable();
+    if (!SAFE9.test(targetId ?? "")) return { ok: false, error: { code: "DELIVERY_TARGET_NOT_FOUND" } };
+    const target = this.#targets.get(targetId);
+    return target ? { ok: true, target } : { ok: false, error: { code: "DELIVERY_TARGET_NOT_FOUND" } };
+  }
+};
+var unavailableDeliveryTargetRegistry = Object.freeze({ lookup: unavailable });
+
+// ../src/adapters/delivery/delivery-git-control-plane.ts
+import { execFile } from "node:child_process";
+import { createHash as createHash16 } from "node:crypto";
+import { realpath as realpath3 } from "node:fs/promises";
+import { isAbsolute as isAbsolute6 } from "node:path";
+import { promisify } from "node:util";
+var execute = promisify(execFile);
+var SHA5 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var SAFE_REMOTE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SAFE_BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/;
+var fail4 = (code, details = {}) => {
+  throw Object.assign(new Error(code), { code, details });
+};
+function createExecFileRunner() {
+  return async (file, args, o = {}) => {
+    try {
+      const r = await execute(file, args, { cwd: o.cwd, encoding: "utf8" });
+      return { exitCode: 0, stdout: r.stdout ?? "", stderr: r.stderr ?? "" };
+    } catch (e) {
+      const error2 = e;
+      return {
+        exitCode: Number.isInteger(error2.code) ? error2.code : 1,
+        stdout: error2.stdout ?? "",
+        stderr: error2.stderr ?? ""
+      };
+    }
+  };
+}
+function parseStatusZ(raw) {
+  const results = [];
+  let i = 0;
+  while (i < raw.length) {
+    if (raw.length - i < 4) break;
+    const xy = raw.slice(i, i + 2);
+    if (raw[i + 2] !== " ") {
+      i++;
+      continue;
+    }
+    const nulPos = raw.indexOf("\0", i + 3);
+    if (nulPos === -1) break;
+    const path = raw.slice(i + 3, nulPos);
+    i = nulPos + 1;
+    let originalPath = null;
+    if (xy[0] === "R" || xy[0] === "C" || xy[1] === "R" || xy[1] === "C") {
+      const nulPos2 = raw.indexOf("\0", i);
+      if (nulPos2 !== -1) {
+        originalPath = raw.slice(i, nulPos2);
+        i = nulPos2 + 1;
+      }
+    }
+    results.push({ code: xy, path, originalPath });
+  }
+  return results;
+}
+function safePath(path) {
+  return typeof path === "string" && path.length > 0 && !isAbsolute6(path) && !path.split(/[\\/]/).includes("..") && !path.includes("\0");
+}
+var matchesPrefix = (path, prefix) => path === prefix || path.startsWith(`${prefix}/`);
+var DeliveryGitControlPlane = class {
+  runner;
+  identity;
+  remote;
+  allowedPaths;
+  protectedPaths;
+  constructor({
+    runner = createExecFileRunner(),
+    serviceIdentity,
+    configuredRemote,
+    allowedPaths = [],
+    protectedPaths = []
+  }) {
+    if (!serviceIdentity?.name || !serviceIdentity?.email) fail4("SERVICE_IDENTITY_NOT_CONFIGURED");
+    if (configuredRemote !== null && configuredRemote !== void 0 && !SAFE_REMOTE.test(configuredRemote))
+      fail4("INVALID_REMOTE_CONFIGURATION");
+    if (![...allowedPaths, ...protectedPaths].every(safePath)) fail4("INVALID_PATH_POLICY");
+    this.runner = runner;
+    this.identity = serviceIdentity;
+    this.remote = configuredRemote;
+    this.allowedPaths = allowedPaths;
+    this.protectedPaths = protectedPaths;
+  }
+  async _run(args, cwd) {
+    return this.runner("git", args, { cwd });
+  }
+  async inspect(binding) {
+    const canonical5 = await realpath3(binding.worktreePath).catch(() => fail4("CANONICAL_WORKTREE_REQUIRED"));
+    if (canonical5 !== binding.worktreePath) fail4("CANONICAL_WORKTREE_REQUIRED");
+    const top = await this._run(["rev-parse", "--show-toplevel"], canonical5);
+    if (top.exitCode || await realpath3(top.stdout.trim()).catch(() => null) !== canonical5)
+      fail4("CANONICAL_WORKTREE_REQUIRED");
+    if (!SAFE_BRANCH.test(binding.branch ?? "")) fail4("INVALID_BRANCH_NAME");
+    const branch = await this._run(["branch", "--show-current"], canonical5), head = await this._run(["rev-parse", "HEAD"], canonical5);
+    if (branch.exitCode || branch.stdout.trim() !== binding.branch || head.exitCode || !SHA5.test(head.stdout.trim()))
+      fail4("WORKTREE_BINDING_UNCERTAIN");
+    if (head.stdout.trim() !== binding.expectedHead)
+      fail4("STALE_HEAD", { expected: binding.expectedHead, actual: head.stdout.trim() });
+    const status = await this._run(["status", "--porcelain=v1", "-z", "--untracked-files=all"], canonical5);
+    if (status.exitCode) fail4("GIT_INSPECTION_FAILED");
+    const files = parseStatusZ(status.stdout);
+    const protectedHit = files.find(
+      (item) => this.protectedPaths.some(
+        (prefix) => matchesPrefix(item.path, prefix) || item.originalPath && matchesPrefix(item.originalPath, prefix)
+      )
+    );
+    if (protectedHit) fail4("PROTECTED_FILE_CHANGED", { path: protectedHit.path });
+    const outOfScope = files.find(
+      (item) => !this.allowedPaths.some((prefix) => matchesPrefix(item.path, prefix)) || item.originalPath && !this.allowedPaths.some((prefix) => matchesPrefix(item.originalPath, prefix))
+    );
+    if (outOfScope) fail4("SCOPE_VIOLATION", { path: outOfScope.path });
+    const allPaths = [
+      ...new Set(files.flatMap((item) => item.originalPath ? [item.path, item.originalPath] : [item.path]))
+    ].sort();
+    const trackedDiff = await this._run(
+      ["diff", "--binary", "--no-ext-diff", binding.baseCommit, "--", ...allPaths],
+      canonical5
+    );
+    if (trackedDiff.exitCode) fail4("GIT_INSPECTION_FAILED");
+    const untracked = files.filter((item) => item.code === "??").map((item) => item.path).sort();
+    const diffContent = `${trackedDiff.stdout}
+${untracked.map((path) => `untracked ${path}`).join("\n")}`;
+    return {
+      worktreePath: canonical5,
+      branch: binding.branch,
+      headCommit: head.stdout.trim(),
+      files,
+      diffHash: `sha256:${createHash16("sha256").update(diffContent).digest("hex")}`
+    };
+  }
+  compareClaims(inspection, claims) {
+    const candidate = claims;
+    if (!candidate) fail4("INVALID_CLAIMS");
+    if (Object.keys(candidate).some((key) => !["paths", "diffHash"].includes(key)) || !Array.isArray(candidate.paths))
+      fail4("INVALID_CLAIMS");
+    const trusted = candidate;
+    const actual = [...new Set(inspection.files.map((item) => item.path))].sort(), claimed = [...new Set(trusted.paths)].sort();
+    if (JSON.stringify(actual) !== JSON.stringify(claimed) || trusted.diffHash !== inspection.diffHash)
+      fail4("CLAIMS_MISMATCH");
+    return { ok: true };
+  }
+  async checkpoint(binding, { message, claims }) {
+    const inspection = await this.inspect(binding);
+    this.compareClaims(inspection, claims);
+    if (inspection.files.length === 0) return { changed: false, commit: inspection.headCommit, inspection };
+    const paths = inspection.files.map((item) => item.path);
+    const add = await this._run(["add", "--", ...paths], inspection.worktreePath);
+    if (add.exitCode) fail4("GIT_STAGE_FAILED");
+    const staged = await this._run(["diff", "--cached", "--quiet", "--exit-code"], inspection.worktreePath);
+    if (staged.exitCode === 0) return { changed: false, commit: inspection.headCommit, inspection };
+    if (staged.exitCode !== 1) fail4("GIT_STAGE_INDETERMINATE");
+    const commit = await this._run(
+      [
+        "-c",
+        `user.name=${this.identity.name}`,
+        "-c",
+        `user.email=${this.identity.email}`,
+        "commit",
+        "--no-gpg-sign",
+        "-m",
+        message,
+        "--",
+        ...paths
+      ],
+      inspection.worktreePath
+    );
+    if (commit.exitCode) fail4("GIT_COMMIT_FAILED");
+    const head = await this._run(["rev-parse", "HEAD"], inspection.worktreePath), identity = await this._run(["show", "-s", "--format=%cn%n%ce", "HEAD"], inspection.worktreePath);
+    if (head.exitCode || !SHA5.test(head.stdout.trim()) || identity.stdout.trim() !== `${this.identity.name}
+${this.identity.email}`)
+      fail4("GIT_COMMIT_INDETERMINATE");
+    return { changed: true, commit: head.stdout.trim(), previousHead: inspection.headCommit, inspection };
+  }
+  async push(binding) {
+    if (!this.remote) return { ok: false, blocked: true, error: { code: "REMOTE_NOT_CONFIGURED" } };
+    const inspection = await this.inspect(binding), remoteHeadBefore = await this._run(
+      ["ls-remote", "--heads", this.remote, `refs/heads/${binding.branch}`],
+      inspection.worktreePath
+    );
+    if (remoteHeadBefore.exitCode) fail4("REMOTE_INSPECTION_FAILED");
+    const previous = remoteHeadBefore.stdout.trim().split(/\s+/)[0] || null;
+    if (previous === inspection.headCommit) return { ok: true, changed: false, headCommit: inspection.headCommit };
+    const push = await this._run(
+      ["push", "--porcelain", this.remote, `refs/heads/${binding.branch}:refs/heads/${binding.branch}`],
+      inspection.worktreePath
+    );
+    if (push.exitCode) fail4("GIT_PUSH_FAILED");
+    const remoteHeadAfter = await this._run(
+      ["ls-remote", "--heads", this.remote, `refs/heads/${binding.branch}`],
+      inspection.worktreePath
+    ), actual = remoteHeadAfter.stdout.trim().split(/\s+/)[0];
+    if (remoteHeadAfter.exitCode || actual !== inspection.headCommit) fail4("GIT_PUSH_INDETERMINATE");
+    return { ok: true, changed: true, headCommit: inspection.headCommit, previousRemoteHead: previous };
+  }
+};
+
+// ../src/adapters/delivery/delivery-pr-adapter.ts
+var TRUSTED_PR_HOSTS = /* @__PURE__ */ new Set(["github.com", "www.github.com"]);
+function trustedPullRequestUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && TRUSTED_PR_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+var DeliveryPullRequestAdapter = class {
+  provider;
+  constructor({ provider = null } = {}) {
+    this.provider = provider;
+  }
+  /**
+   * Find an existing PR by stable identity (head branch + base branch from trusted configuration).
+   * Returns { ok: true, pullRequest } if found, { ok: true, pullRequest: null } if not found,
+   * or { ok: false, error } if the provider is not configured or inspection fails.
+   */
+  async findExisting(context) {
+    const provider = this.provider;
+    if (!provider) return { ok: false, blocked: true, error: { code: "PULL_REQUEST_NOT_CONFIGURED" } };
+    if (typeof provider.findExisting !== "function") return { ok: true, pullRequest: null };
+    try {
+      const result = await provider.findExisting(context);
+      if (!result) return { ok: true, pullRequest: null };
+      if (!result.id || !trustedPullRequestUrl(result.url) || !result.state)
+        return { ok: false, blocked: true, error: { code: "PULL_REQUEST_RESULT_INDETERMINATE" } };
+      return {
+        ok: true,
+        pullRequest: { id: String(result.id), url: result.url, draft: result.draft === true, state: result.state }
+      };
+    } catch {
+      return { ok: false, blocked: true, error: { code: "PULL_REQUEST_INSPECTION_FAILED" } };
+    }
+  }
+  async createDraft(context) {
+    const provider = this.provider;
+    if (!provider) return { ok: false, blocked: true, error: { code: "PULL_REQUEST_NOT_CONFIGURED" } };
+    const existing = await this.findExisting(context);
+    if (!existing.ok) return existing;
+    if (existing.pullRequest) return { ok: true, pullRequest: existing.pullRequest, reused: true };
+    try {
+      const result = await provider.createDraft(context);
+      if (!result?.id || !trustedPullRequestUrl(result.url) || result.draft !== true)
+        return { ok: false, blocked: true, error: { code: "PULL_REQUEST_RESULT_INDETERMINATE" } };
+      return {
+        ok: true,
+        pullRequest: { id: String(result.id), url: result.url, draft: true, state: "open" },
+        reused: false
+      };
+    } catch {
+      return { ok: false, blocked: true, error: { code: "PULL_REQUEST_CREATION_FAILED" } };
+    }
+  }
+  async inspect(context) {
+    const provider = this.provider;
+    if (!provider) return { ok: false, blocked: true, error: { code: "PULL_REQUEST_NOT_CONFIGURED" } };
+    const result = await provider.inspect(context);
+    return result?.id && trustedPullRequestUrl(result.url) && result?.state ? { ok: true, pullRequest: result } : { ok: false, blocked: true, error: { code: "PULL_REQUEST_RESULT_INDETERMINATE" } };
+  }
+};
+
+// ../src/adapters/delivery/delivery-deployment-adapter.ts
+var SAFE10 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var DELIVERY_ADAPTER_OUTCOMES = Object.freeze(["running", "succeeded", "failed", "indeterminate"]);
+function normalizeDeliveryAdapterOutcome(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((k) => !["state", "correlationRef", "resultRef", "errorCode", "observedAt"].includes(k)) || !DELIVERY_ADAPTER_OUTCOMES.includes(value.state))
+    return { ok: false, error: { code: "INVALID_DELIVERY_ADAPTER_OUTCOME" } };
+  const candidate = value;
+  for (const key of ["correlationRef", "resultRef", "errorCode"])
+    if (candidate[key] !== void 0 && !SAFE10.test(candidate[key]))
+      return { ok: false, error: { code: "INVALID_DELIVERY_ADAPTER_OUTCOME", path: key } };
+  if (candidate.observedAt !== void 0 && (!Number.isFinite(Date.parse(candidate.observedAt)) || new Date(Date.parse(candidate.observedAt)).toISOString() !== candidate.observedAt))
+    return { ok: false, error: { code: "INVALID_DELIVERY_ADAPTER_OUTCOME", path: "observedAt" } };
+  return { ok: true, value: Object.freeze({ ...candidate }) };
+}
+var DeliveryDeploymentAdapter = class {
+  async deploy(..._args) {
+    throw new Error("Not implemented");
+  }
+  async rollback(..._args) {
+    throw new Error("Not implemented");
+  }
+  async inspect(..._args) {
+    throw new Error("Not implemented");
+  }
+  async reconcile(operation) {
+    return this.inspect(operation);
+  }
+};
+var DeliveryVerificationAdapter = class {
+  async verify(..._args) {
+    throw new Error("Not implemented");
+  }
+  async inspect(..._args) {
+    throw new Error("Not implemented");
+  }
+};
+var blocked = async () => ({
+  ok: false,
+  error: { code: "DELIVERY_ADAPTER_NOT_CONFIGURED" }
+});
+var UnconfiguredDeliveryDeploymentAdapter = class {
+  deploy = blocked;
+  rollback = blocked;
+  inspect = blocked;
+  reconcile = blocked;
+};
+var UnconfiguredDeliveryVerificationAdapter = class {
+  verify = blocked;
+  inspect = blocked;
+};
+
+// ../src/application/delivery/delivery-controller.ts
+var UUID5 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE11 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var FORBIDDEN = /* @__PURE__ */ new Set([
+  "root",
+  "repoRoot",
+  "worktreePath",
+  "remote",
+  "url",
+  "owner",
+  "repo",
+  "command",
+  "credentials",
+  "token"
+]);
+var rejectUntrusted = (body) => !body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((key) => FORBIDDEN.has(key));
+var DeliveryController = class {
+  store;
+  evidenceStore;
+  environmentController;
+  workflowStore;
+  git;
+  pullRequests;
+  definition;
+  configuration;
+  constructor({
+    store,
+    evidenceStore,
+    environmentController,
+    workflowStore,
+    git,
+    pullRequests,
+    definition,
+    trustedConfiguration
+  }) {
+    const validated = validateDeliveryDefinition(definition);
+    if (!validated.ok) throw new Error("INVALID_DELIVERY_DEFINITION");
+    this.store = store;
+    this.evidenceStore = evidenceStore;
+    this.environmentController = environmentController;
+    this.workflowStore = workflowStore;
+    this.git = git;
+    this.pullRequests = pullRequests;
+    this.definition = Object.freeze({
+      ...validated.definition,
+      definitionHash: hashDeliveryDefinition(validated.definition)
+    });
+    this.configuration = trustedConfiguration;
+  }
+  async initialize() {
+    await this.store.initialize();
+  }
+  async resolve(identity, workflowId) {
+    if (!identity || !UUID5.test(identity.namespaceId ?? "") || !UUID5.test(identity.caseId ?? "") || !SAFE11.test(workflowId ?? ""))
+      return { ok: false, status: 400, error: { code: "INVALID_TRUST_CONTEXT" } };
+    let workflow = await this.workflowStore.read(identity.namespaceId, workflowId), environmentResult = await this.environmentController.get(identity.namespaceId, workflowId);
+    if (!workflow?.instance || !environmentResult.ok)
+      return { ok: false, status: 409, error: { code: "DELIVERY_BINDING_UNAVAILABLE" } };
+    const environment = environmentResult.data?.environment, reconciliation = environmentResult.data?.reconciliation;
+    if (workflow.instance.controllerExecution?.caseId !== identity.caseId || environment.parentCaseId !== identity.caseId || environment.workflowId !== workflowId || reconciliation?.status !== "owned" || reconciliation.worktreePath !== environment.worktreePath)
+      return { ok: false, status: 409, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
+    const deliveryId = `${workflowId}-delivery`, runtimeId = workflow.instance.controllerExecution.runtimeId ?? "agentos", environmentHash = workflow.instance.environmentRef?.environmentHash;
+    if (!environmentHash) return { ok: false, status: 409, error: { code: "DELIVERY_BINDING_UNAVAILABLE" } };
+    const existing = await this.store.read(identity.namespaceId, deliveryId);
+    if (!existing) {
+      const created = await this.store.create({
+        schemaVersion: "1",
+        deliveryId,
+        namespaceId: identity.namespaceId,
+        workflowId,
+        environmentId: environment.environmentId,
+        environmentHash,
+        parentCaseId: identity.caseId,
+        runtimeId,
+        worktreePath: environment.worktreePath,
+        branch: environment.branch,
+        baseCommit: environment.baseCommit,
+        headCommit: reconciliation.headCommit,
+        definitionType: this.definition.deliveryType,
+        definitionVersion: this.definition.version,
+        definitionHash: this.definition.definitionHash,
+        stage: "implementation-ready",
+        revision: 1,
+        evidenceIds: [],
+        createdAt: environment.createdAt,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        git: { checkpoint: null, push: null, pullRequest: null },
+        artifact: { state: "pending" },
+        release: { state: "pending" },
+        deployment: { state: "pending" },
+        verification: { state: "pending" },
+        blockers: []
+      });
+      if (!created.ok) return { ok: false, status: 409, error: created.error };
+      const linked = await this.workflowStore.bindDelivery(identity.namespaceId, workflowId, {
+        deliveryId,
+        definitionHash: this.definition.definitionHash
+      });
+      if (!linked.ok) return { ok: false, status: 409, error: linked.error };
+      return { ok: true, snapshot: created.snapshot, environment, reconciliation };
+    }
+    let deliveryRef = workflow.instance.deliveryRef;
+    if (!deliveryRef) {
+      const linked = await this.workflowStore.bindDelivery(identity.namespaceId, workflowId, {
+        deliveryId,
+        definitionHash: existing.definitionHash
+      });
+      if (!linked.ok) return { ok: false, status: 409, error: linked.error };
+      workflow = linked.snapshot;
+      deliveryRef = workflow.instance.deliveryRef;
+    } else if (deliveryRef.deliveryId !== existing.deliveryId || deliveryRef.definitionHash !== existing.definitionHash)
+      return { ok: false, status: 409, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
+    if (existing.environmentId !== environment.environmentId || existing.environmentHash !== workflow.instance.environmentRef?.environmentHash || existing.worktreePath !== environment.worktreePath || existing.parentCaseId !== identity.caseId || existing.runtimeId !== runtimeId)
+      return { ok: false, status: 409, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
+    const hasIndeterminate = await this.store.hasIndeterminateOperation(identity.namespaceId, deliveryId);
+    if (hasIndeterminate) return { ok: false, status: 409, error: { code: "DELIVERY_INDETERMINATE_OPERATION_PENDING" } };
+    if (existing.headCommit !== reconciliation.headCommit)
+      return {
+        ok: false,
+        status: 409,
+        error: {
+          code: "DELIVERY_HEAD_RECONCILIATION_REQUIRED",
+          expectedHead: existing.headCommit,
+          observedHead: reconciliation.headCommit
+        }
+      };
+    return { ok: true, snapshot: existing, environment, reconciliation };
+  }
+  async status(identity, workflowId) {
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const projection = await this.store.inspectDeliveryOperations(
+      identity.namespaceId,
+      resolved.snapshot.deliveryId
+    );
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        ...resolved.snapshot,
+        deliveryOperations: projection.operations,
+        unresolvedIndeterminate: projection.unresolvedIndeterminate,
+        rollbackRequests: projection.rollbackRequests
+      }
+    };
+  }
+  async checkpoint(identity, workflowId, body) {
+    if (rejectUntrusted(body) || Object.keys(body).some(
+      (key) => !["expectedHead", "message", "claims", "idempotencyKey"].includes(key)
+    ))
+      return { ok: false, status: 400, error: { code: "UNTRUSTED_DELIVERY_INPUT" } };
+    const input = body;
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    if (input.expectedHead !== resolved.reconciliation.headCommit || resolved.snapshot.headCommit !== input.expectedHead)
+      return { ok: false, status: 409, error: { code: "STALE_HEAD" } };
+    const binding = {
+      worktreePath: resolved.environment.worktreePath,
+      branch: resolved.environment.branch,
+      baseCommit: resolved.environment.baseCommit,
+      expectedHead: input.expectedHead
+    };
+    let gitResult;
+    try {
+      gitResult = await this.git.checkpoint(binding, { message: input.message, claims: input.claims });
+    } catch (error2) {
+      const code = error2?.code;
+      const state = ["GIT_COMMIT_INDETERMINATE", "GIT_STAGE_INDETERMINATE"].includes(code) ? "indeterminate" : "failed";
+      await this.store.recordOperation(identity.namespaceId, resolved.snapshot.deliveryId, {
+        kind: "git-checkpoint",
+        state,
+        idempotencyKey: input.idempotencyKey ?? `checkpoint:${input.expectedHead}`,
+        facts: { code: code ?? "GIT_FAILED" }
+      });
+      return { ok: false, status: 409, error: { code: code ?? "GIT_FAILED" } };
+    }
+    const newHead = gitResult.commit;
+    const snapshotPatch = {
+      headCommit: newHead,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      "git.checkpoint": {
+        commit: newHead,
+        previousHead: gitResult.previousHead ?? input.expectedHead,
+        changed: gitResult.changed,
+        diffHash: gitResult.inspection.diffHash,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    };
+    await this.store.updateSnapshot(identity.namespaceId, resolved.snapshot.deliveryId, snapshotPatch, {
+      kind: "git-checkpoint",
+      idempotencyKey: input.idempotencyKey ?? `checkpoint:${input.expectedHead}`,
+      facts: { commit: newHead, changed: gitResult.changed, diffHash: gitResult.inspection.diffHash }
+    });
+    return { ok: true, status: gitResult.changed ? 201 : 200, data: gitResult };
+  }
+  async push(identity, workflowId, body) {
+    if (rejectUntrusted(body) || Object.keys(body).some((key) => !["expectedHead", "idempotencyKey"].includes(key)))
+      return { ok: false, status: 400, error: { code: "UNTRUSTED_DELIVERY_INPUT" } };
+    const input = body;
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const expectedHead = input.expectedHead ?? resolved.snapshot.headCommit;
+    let result;
+    try {
+      result = await this.git.push({
+        worktreePath: resolved.environment.worktreePath,
+        branch: resolved.environment.branch,
+        baseCommit: resolved.environment.baseCommit,
+        expectedHead
+      });
+    } catch (error2) {
+      const code = error2?.code;
+      const state = code === "GIT_PUSH_INDETERMINATE" ? "indeterminate" : "failed";
+      await this.store.recordOperation(identity.namespaceId, resolved.snapshot.deliveryId, {
+        kind: "git-push",
+        state,
+        idempotencyKey: input.idempotencyKey ?? `push:${expectedHead}`,
+        facts: { code: code ?? "GIT_PUSH_FAILED" }
+      });
+      return { ok: false, status: 409, error: { code: code ?? "GIT_PUSH_FAILED" } };
+    }
+    if (!result.ok) {
+      await this.store.recordOperation(identity.namespaceId, resolved.snapshot.deliveryId, {
+        kind: "git-push",
+        state: "failed",
+        idempotencyKey: input.idempotencyKey ?? `push:${expectedHead}`,
+        facts: { code: result.error.code }
+      });
+      return { ok: false, status: 422, error: result.error };
+    }
+    const snapshotPatch = {
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      "git.push": {
+        headCommit: result.headCommit,
+        changed: result.changed,
+        remote: this.git.remote ?? null,
+        branch: resolved.environment.branch,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    };
+    await this.store.updateSnapshot(identity.namespaceId, resolved.snapshot.deliveryId, snapshotPatch, {
+      kind: "git-push",
+      idempotencyKey: input.idempotencyKey ?? `push:${expectedHead}`,
+      facts: { headCommit: result.headCommit, changed: result.changed }
+    });
+    return { ok: true, status: 200, data: result };
+  }
+  async pullRequest(identity, workflowId, body) {
+    if (rejectUntrusted(body) || Object.keys(body).some((key) => !["title", "body", "idempotencyKey"].includes(key)))
+      return { ok: false, status: 400, error: { code: "UNTRUSTED_DELIVERY_INPUT" } };
+    const input = body;
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const configured = this.configuration.pullRequest;
+    if (!configured) return { ok: false, status: 422, error: { code: "PULL_REQUEST_NOT_CONFIGURED" } };
+    const context = {
+      owner: configured.owner,
+      repo: configured.repo,
+      baseBranch: configured.baseBranch,
+      headBranch: resolved.environment.branch,
+      title: input.title,
+      body: input.body,
+      idempotencyKey: input.idempotencyKey
+    };
+    const result = await this.pullRequests.createDraft(context);
+    const state = result.ok ? "succeeded" : "failed";
+    await this.store.recordOperation(identity.namespaceId, resolved.snapshot.deliveryId, {
+      kind: "pull-request",
+      state,
+      idempotencyKey: input.idempotencyKey ?? `pr:${resolved.environment.branch}`,
+      facts: result.ok ? {
+        id: result.pullRequest.id,
+        url: result.pullRequest.url,
+        reused: result.reused ?? false
+      } : { code: result.error.code }
+    });
+    if (!result.ok) return { ok: false, status: 422, error: result.error };
+    const pullRequest = result.pullRequest;
+    const snapshotPatch = {
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      "git.pullRequest": {
+        id: pullRequest.id,
+        url: pullRequest.url,
+        draft: pullRequest.draft,
+        state: pullRequest.state,
+        reused: result.reused ?? false,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    };
+    await this.store.updateSnapshot(identity.namespaceId, resolved.snapshot.deliveryId, snapshotPatch, {
+      kind: "pull-request-persisted",
+      idempotencyKey: `pr-persisted:${pullRequest.id}`,
+      facts: { id: pullRequest.id }
+    });
+    return { ok: true, status: result.reused ? 200 : 201, data: pullRequest };
+  }
+  async promote(identity, workflowId, body) {
+    if (rejectUntrusted(body) || Object.keys(body).some(
+      (key) => !["deliveryId", "expectedRevision", "requestedStage", "evidenceIds", "idempotencyKey"].includes(key)
+    ))
+      return { ok: false, status: 400, error: { code: "UNTRUSTED_DELIVERY_INPUT" } };
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const validation = validateDeliveryPromotionRequest(body, resolved.snapshot.deliveryId);
+    if (!validation.ok) return { ok: false, status: 400, error: validation.error };
+    const evidence = await this.evidenceStore.list(
+      identity.namespaceId,
+      resolved.snapshot.deliveryId
+    );
+    const actorId = identity.resolvedActorId ?? "factory-operator";
+    const execution2 = {
+      kind: validation.value.requestedStage === "release-approved" ? "factory-human" : "factory-control-plane",
+      namespaceId: identity.namespaceId,
+      workflowId,
+      caseId: identity.caseId,
+      runtimeId: "factory-dashboard",
+      actorId
+    };
+    const result = await this.store.promote({
+      namespaceId: identity.namespaceId,
+      request: validation.value,
+      definition: this.definition,
+      evidence,
+      execution: execution2
+    });
+    return result.ok ? { ok: true, status: result.changed ? 201 : 200, data: result.snapshot } : { ok: false, status: 409, error: result.error };
+  }
+  /**
+   * Record a Factory-only delivery evidence entry.
+   * sourceKind must be one of the trusted internal producers.
+   * Agents are not permitted to write delivery evidence.
+   */
+  async recordEvidence(identity, workflowId, input, sourceKind) {
+    const ALLOWED_SOURCE_KINDS = /* @__PURE__ */ new Set(["factory-build", "factory-human"]);
+    const forbiddenAuthority = /* @__PURE__ */ new Set(["deployment-result", "smoke-result", "rollback-result"]);
+    if (!ALLOWED_SOURCE_KINDS.has(sourceKind) || forbiddenAuthority.has(input?.kind))
+      return { ok: false, status: 403, error: { code: "DELIVERY_EVIDENCE_AUTHORITY_FORBIDDEN" } };
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const result = await this.evidenceStore.record(
+      identity.namespaceId,
+      {
+        ...input,
+        deliveryId: resolved.snapshot.deliveryId,
+        workflowId,
+        environmentHash: resolved.snapshot.environmentHash,
+        caseId: identity.caseId,
+        runtimeId: "factory-dashboard",
+        headCommit: resolved.snapshot.headCommit
+      },
+      { kind: sourceKind, actorId: identity.resolvedActorId ?? "factory-operator" }
+    );
+    return result.ok ? { ok: true, status: result.created ? 201 : 200, data: result.evidence } : { ok: false, status: 409, error: result.error };
+  }
+};
+async function handleDeliveryRequest({
+  method,
+  path,
+  readBody,
+  send,
+  identity,
+  controller,
+  log = console
+}) {
+  const match = path.match(
+    /^\/api\/factory\/workflows\/([^/]+)\/delivery(?:\/(checkpoint|push|pull-request|promote|evidence))?$/
+  );
+  if (!match) return false;
+  try {
+    const trust = await identity();
+    if (!trust) {
+      send(401, { error: { code: "TRUST_CONTEXT_UNAVAILABLE" } });
+      return true;
+    }
+    const workflowId = decodeURIComponent(match[1]), action = match[2];
+    let result;
+    if (!action && method === "GET") result = await controller.status(trust, workflowId);
+    else if (action === "checkpoint" && method === "POST")
+      result = await controller.checkpoint(trust, workflowId, await readBody());
+    else if (action === "push" && method === "POST") result = await controller.push(trust, workflowId, await readBody());
+    else if (action === "pull-request" && method === "POST")
+      result = await controller.pullRequest(trust, workflowId, await readBody());
+    else if (action === "promote" && method === "POST")
+      result = await controller.promote(trust, workflowId, await readBody());
+    else if (action === "evidence" && method === "POST")
+      result = await controller.recordEvidence(trust, workflowId, await readBody(), "factory-build");
+    else result = { ok: false, status: 405, error: { code: "METHOD_NOT_ALLOWED" } };
+    send(result.status ?? (result.ok ? 200 : 409), result.ok ? { data: result.data } : { error: result.error });
+    return true;
+  } catch (error2) {
+    log.error("Delivery control-plane failure", { code: error2?.code ?? "UNEXPECTED" });
+    send(500, { error: { code: "DELIVERY_CONTROL_PLANE_FAILURE" } });
+    return true;
+  }
+}
+
+// ../src/application/delivery/delivery-operation-controller.ts
+var SAFE12 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var REASON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+var FORBIDDEN2 = /* @__PURE__ */ new Set([
+  "targetConfig",
+  "adapterId",
+  "adapterTargetRef",
+  "callbackUrl",
+  "command",
+  "env",
+  "credentials",
+  "result",
+  "outcome",
+  "success",
+  "sourceKind",
+  "facts"
+]);
+var exact2 = (value, fields) => value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).every((key) => fields.includes(key)) && !Object.keys(value).some((key) => FORBIDDEN2.has(key));
+var response = (error2, fallback = 409) => ({
+  ok: false,
+  status: error2?.code?.includes("NOT_CONFIGURED") || error2?.code === "DELIVERY_TARGET_REGISTRY_UNAVAILABLE" ? 503 : fallback,
+  error: error2
+});
+var execution = (identity, workflowId) => ({
+  kind: "factory-control-plane",
+  namespaceId: identity.namespaceId,
+  workflowId,
+  caseId: identity.caseId,
+  runtimeId: "factory-dashboard",
+  actorId: identity.resolvedActorId ?? identity.actorId ?? "factory-operator"
+});
+var requestId = (scopeHash) => `rrq_${scopeHash.slice(7, 39)}`;
+var DeliveryOperationController = class {
+  deliveryController;
+  store;
+  targetRegistry;
+  deploymentAdapters;
+  verificationAdapters;
+  constructor({
+    deliveryController,
+    store,
+    targetRegistry,
+    deploymentAdapters = /* @__PURE__ */ new Map(),
+    verificationAdapters = /* @__PURE__ */ new Map()
+  }) {
+    this.deliveryController = deliveryController;
+    this.store = store;
+    this.targetRegistry = targetRegistry;
+    this.deploymentAdapters = deploymentAdapters;
+    this.verificationAdapters = verificationAdapters;
+  }
+  async resolve(identity, workflowId) {
+    return this.deliveryController.resolve(identity, workflowId);
+  }
+  async target(targetId) {
+    const found = await this.targetRegistry.lookup(targetId);
+    return found.ok ? found : response(found.error, found.error?.code === "DELIVERY_TARGET_REGISTRY_UNAVAILABLE" ? 503 : 404);
+  }
+  adapter(registry2, target) {
+    const adapter = registry2.get?.(target.adapterId);
+    return adapter ? { ok: true, adapter } : response({ code: "DELIVERY_ADAPTER_NOT_CONFIGURED" }, 503);
+  }
+  async status(identity, workflowId) {
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId);
+    return {
+      ok: true,
+      status: 200,
+      data: {
+        ...resolved.snapshot,
+        deliveryOperations: projection.operations,
+        unresolvedIndeterminate: projection.unresolvedIndeterminate,
+        rollbackRequests: projection.rollbackRequests
+      }
+    };
+  }
+  async prepare(identity, workflowId, body, kind, fields, adapterRegistry) {
+    if (!exact2(body, fields)) return response({ code: "UNTRUSTED_DELIVERY_INPUT" }, 400);
+    const normalized = normalizeDeliveryOperationRequest({ ...body, kind });
+    if (!normalized.ok) return response(normalized.error, 400);
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const targetResult = await this.target(normalized.value.targetId);
+    if (!targetResult.ok) return targetResult;
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId);
+    const decision = evaluateDeliveryOperationPolicy({
+      request: normalized.value,
+      snapshot: resolved.snapshot,
+      target: targetResult.target,
+      identity: { targetHash: targetResult.target.targetHash },
+      existingOperations: projection.operations
+    });
+    if (!decision.allowed) return response({ code: decision.code, reason: decision.reason });
+    const available = this.adapter(adapterRegistry, targetResult.target);
+    if (!available.ok) return available;
+    return {
+      ok: true,
+      resolved,
+      target: targetResult.target,
+      request: normalized.value,
+      adapter: available.adapter,
+      projection
+    };
+  }
+  async deploy(identity, workflowId, body) {
+    const prepared = await this.prepare(
+      identity,
+      workflowId,
+      body,
+      "deployment",
+      ["expectedRevision", "idempotencyKey", "targetId", "artifactRef", "releaseRef"],
+      this.deploymentAdapters
+    );
+    if (!prepared.ok) return prepared;
+    return response({ code: "DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED" }, 503);
+  }
+  async verify(identity, workflowId, body) {
+    const prepared = await this.prepare(
+      identity,
+      workflowId,
+      body,
+      "production-verification",
+      ["expectedRevision", "idempotencyKey", "targetId", "deploymentRef"],
+      this.verificationAdapters
+    );
+    if (!prepared.ok) return prepared;
+    const suite = resolveDeliveryVerificationRequest(prepared.request, prepared.target);
+    if (!suite.ok) return response(suite.error);
+    return response({ code: "DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED" }, 503);
+  }
+  async reconcile(identity, workflowId, body) {
+    if (!exact2(body, ["operationId"])) return response({ code: "UNTRUSTED_DELIVERY_INPUT" }, 400);
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId);
+    const operation = projection.operations.find((item) => item.operationId === body.operationId);
+    if (!operation || !["running", "indeterminate"].includes(operation.state))
+      return response({ code: "DELIVERY_OPERATION_NOT_RECONCILABLE" }, 409);
+    const adapterResult = this.adapter(
+      operation.kind.includes("verification") ? this.verificationAdapters : this.deploymentAdapters,
+      operation.targetRef
+    );
+    if (!adapterResult.ok) return adapterResult;
+    return response({ code: "DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED" }, 503);
+  }
+  async requestRollback(identity, workflowId, body) {
+    const fields = [
+      "expectedRevision",
+      "idempotencyKey",
+      "targetId",
+      "deploymentRef",
+      "priorArtifactRef",
+      "priorReleaseRef",
+      "reasonCode",
+      "reason"
+    ];
+    if (!exact2(body, fields) || !SAFE12.test(body.idempotencyKey ?? "") || !SAFE12.test(body.targetId ?? "") || !REASON.test(body.reasonCode ?? "") || body.reason !== void 0 && (typeof body.reason !== "string" || body.reason.length < 1 || body.reason.length > 512))
+      return response({ code: "INVALID_ROLLBACK_REQUEST" }, 400);
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const targetResult = await this.target(body.targetId);
+    if (!targetResult.ok) return targetResult;
+    if (resolved.snapshot.revision !== body.expectedRevision) return response({ code: "REVISION_CONFLICT" });
+    const scopeHash = canonicalDeliveryHash({
+      namespaceId: identity.namespaceId,
+      workflowId,
+      deliveryId: resolved.snapshot.deliveryId,
+      caseId: identity.caseId,
+      runtimeId: "factory-dashboard",
+      idempotencyKey: body.idempotencyKey
+    });
+    const semanticHash = canonicalDeliveryHash({
+      targetHash: targetResult.target.targetHash,
+      deploymentRef: body.deploymentRef,
+      priorArtifactRef: body.priorArtifactRef,
+      priorReleaseRef: body.priorReleaseRef,
+      reasonCode: body.reasonCode,
+      reason: body.reason ?? null,
+      expectedRevision: body.expectedRevision
+    });
+    const result = await this.store.createRollbackRequest({
+      namespaceId: identity.namespaceId,
+      deliveryId: resolved.snapshot.deliveryId,
+      workflowId,
+      caseId: identity.caseId,
+      runtimeId: "factory-dashboard",
+      request: {
+        rollbackRequestId: requestId(scopeHash),
+        expectedRevision: body.expectedRevision,
+        idempotencyKey: body.idempotencyKey,
+        targetId: body.targetId,
+        targetHash: targetResult.target.targetHash,
+        deploymentRef: body.deploymentRef,
+        priorArtifactRef: body.priorArtifactRef,
+        priorReleaseRef: body.priorReleaseRef,
+        reasonCode: body.reasonCode,
+        reason: body.reason,
+        scopeHash,
+        semanticHash
+      },
+      execution: execution(identity, workflowId)
+    });
+    return result.ok ? { ok: true, status: result.changed ? 201 : 200, data: result.request } : response(result.error);
+  }
+  async approveRollback(identity, workflowId, requestIdValue, body) {
+    if (!exact2(body, ["expectedRevision", "idempotencyKey"]) || !SAFE12.test(requestIdValue ?? "") || !SAFE12.test(body.idempotencyKey ?? ""))
+      return response({ code: "INVALID_ROLLBACK_APPROVAL" }, 400);
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const result = await this.store.approveRollbackRequest(
+      identity.namespaceId,
+      resolved.snapshot.deliveryId,
+      requestIdValue,
+      {
+        expectedRevision: body.expectedRevision,
+        idempotencyKey: body.idempotencyKey,
+        execution: execution(identity, workflowId)
+      }
+    );
+    return result.ok ? { ok: true, status: result.changed ? 201 : 200, data: result.request } : response(result.error);
+  }
+  async executeRollback(identity, workflowId, requestIdValue, body) {
+    if (!exact2(body, ["expectedRevision", "idempotencyKey"]) || !SAFE12.test(requestIdValue ?? ""))
+      return response({ code: "UNTRUSTED_DELIVERY_INPUT" }, 400);
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const projection = await this.store.inspectDeliveryOperations(identity.namespaceId, resolved.snapshot.deliveryId);
+    const rollback = projection.rollbackRequests.find((item) => item.rollbackRequestId === requestIdValue);
+    if (!rollback) return response({ code: "ROLLBACK_REQUEST_NOT_FOUND" }, 404);
+    if (rollback.status !== "approved") return response({ code: "ROLLBACK_APPROVAL_REQUIRED" });
+    const targetResult = await this.target(rollback.targetId);
+    if (!targetResult.ok) return targetResult;
+    const available = this.adapter(this.deploymentAdapters, targetResult.target);
+    if (!available.ok) return available;
+    return response({ code: "DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED" }, 503);
+  }
+  async verifyRollback(identity, workflowId, requestIdValue, body) {
+    if (!exact2(body, ["expectedRevision", "idempotencyKey", "rollbackRef", "targetId"]) || !SAFE12.test(requestIdValue ?? ""))
+      return response({ code: "UNTRUSTED_DELIVERY_INPUT" }, 400);
+    const resolved = await this.resolve(identity, workflowId);
+    if (!resolved.ok) return resolved;
+    const targetResult = await this.target(body.targetId);
+    if (!targetResult.ok) return targetResult;
+    const available = this.adapter(this.verificationAdapters, targetResult.target);
+    if (!available.ok) return available;
+    return response({ code: "DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED" }, 503);
+  }
+};
 export {
   AGENT_STEP_ATTEMPT_IMMUTABLE_FIELDS,
   AGENT_STEP_ATTEMPT_STATUSES,
@@ -4608,6 +6659,23 @@ export {
   AgentStepAttemptStore,
   AgentStepResultStore,
   DEFAULT_PROCESS_LOCK_FILE,
+  DELIVERY_ADAPTER_OUTCOMES,
+  DELIVERY_DEFINITION_SCHEMA_VERSION,
+  DELIVERY_EVIDENCE_KINDS,
+  DELIVERY_INITIAL_STAGE,
+  DELIVERY_OPERATION_ERROR_CODES,
+  DELIVERY_OPERATION_KINDS,
+  DELIVERY_OPERATION_STATES,
+  DELIVERY_STAGES,
+  DeliveryController,
+  DeliveryDeploymentAdapter,
+  DeliveryEvidenceStore,
+  DeliveryGitControlPlane,
+  DeliveryOperationController,
+  DeliveryPullRequestAdapter,
+  DeliveryStore,
+  DeliveryTargetRegistry,
+  DeliveryVerificationAdapter,
   ENVIRONMENT_STORE_ERROR_CODES,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
@@ -4620,6 +6688,8 @@ export {
   STORAGE_FORMAT_VERSION,
   STORAGE_KERNEL_ERROR_CODES,
   StorageKernelError,
+  UnconfiguredDeliveryDeploymentAdapter,
+  UnconfiguredDeliveryVerificationAdapter,
   WORKFLOW_DEFINITION_ERROR_CODES,
   WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES,
   WORKFLOW_DEFINITION_RESPONSIBILITIES,
@@ -4643,6 +6713,7 @@ export {
   acquireProcessLock,
   agentStepAttemptKey,
   appendDurableJson,
+  applyDeliveryPromotion,
   applyHumanCheckpointOpen,
   applyWorkflowTransition,
   artifactEvidenceIdempotencyKey,
@@ -4654,6 +6725,7 @@ export {
   buildOracleCommand,
   buildQuarantineRecord,
   canonicalAgentStepResultJson,
+  canonicalDeliveryHash,
   canonicalHumanInteractionInput,
   canonicalJson,
   canonicalOracleDefinition,
@@ -4679,10 +6751,16 @@ export {
   createShutdownController,
   createWorkflowEvidence,
   createWorkflowInstance,
+  defaultDeliveryDefinition,
+  deliveryScopeHash,
+  deliverySemanticHash,
+  deriveDeliveryOperationIdentity,
   diffSince,
   diffSnapshots,
   endCurrentRunOnce,
   endRun,
+  evaluateDeliveryOperationPolicy,
+  evaluateDeliveryPromotion,
   evaluateHumanCheckpointOpen,
   evaluateHumanResolutionTransition,
   evaluateWorkflowTransition,
@@ -4695,9 +6773,11 @@ export {
   getAgentOsRuntimeAdapter,
   getCase,
   getCurrentRun,
+  handleDeliveryRequest,
   handleWorkUnitEnvironmentRequest,
   hashAgentBrief,
   hashAgentStepResult,
+  hashDeliveryDefinition,
   hashOracleDefinition,
   hashStructuredAgentResult,
   hashWorkflowDefinition,
@@ -4714,6 +6794,8 @@ export {
   listEvents,
   listIntegrations,
   materializeInlineArtifact,
+  normalizeDeliveryAdapterOutcome,
+  normalizeDeliveryOperationRequest,
   normalizeDiagnosticLine,
   openedInteractionRevision,
   oracleArtifact,
@@ -4730,6 +6812,7 @@ export {
   readJsonLines,
   registerActiveCase,
   resolveBuildHosts,
+  resolveDeliveryVerificationRequest,
   resolveOwnerProjects,
   runAgentTurn,
   runBaselineOracle,
@@ -4744,10 +6827,16 @@ export {
   syncDirectory,
   transitionScopeHash,
   transitionSemanticHash,
+  unavailableDeliveryTargetRegistry,
   unregisterActiveCase,
   validateAgentStepAttempt,
   validateAgentStepResultBusiness,
   validateCanonicalAbsolutePath,
+  validateDeliveryDefinition,
+  validateDeliveryEvidence,
+  validateDeliveryOperationRecord,
+  validateDeliveryOperationTransition,
+  validateDeliveryPromotionRequest,
   validateGitRef,
   validateHumanInteractionOpenInput,
   validateIsoInstant,

@@ -129,3 +129,25 @@ export * from '../application/oracle/oracle-baseline.js'
 export * from '../adapters/persistence/work-unit-environment-store.js'
 export * from '../application/environment/work-unit-environment-service.js'
 export * from '../application/environment/work-unit-environment-controller.js'
+
+// --------------------------------------------------------------------------
+// Delivery (tranche 8): pure domain, file-backed stores, control-plane
+// adapters and trusted application controllers.
+//
+// Le domaine (`domain/delivery/*`) ne porte aucune dépendance node:fs/HTTP/Git
+// ; les stores, adaptateurs et contrôleurs vivent dans `adapters/` et
+// `application/`. Les façades `factory/lib/delivery-*.mjs` réexportent la
+// surface ci-dessous sans dupliquer d'état.
+// --------------------------------------------------------------------------
+export * from '../domain/delivery/delivery-definition.js'
+export * from '../domain/delivery/delivery-policy.js'
+export * from '../domain/delivery/delivery-operation-definition.js'
+export * from '../domain/delivery/delivery-operation-policy.js'
+export * from '../adapters/persistence/delivery-store.js'
+export * from '../adapters/persistence/delivery-evidence-store.js'
+export * from '../adapters/delivery/delivery-target-registry.js'
+export * from '../adapters/delivery/delivery-git-control-plane.js'
+export * from '../adapters/delivery/delivery-pr-adapter.js'
+export * from '../adapters/delivery/delivery-deployment-adapter.js'
+export * from '../application/delivery/delivery-controller.js'
+export * from '../application/delivery/delivery-operation-controller.js'
