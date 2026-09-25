@@ -1,6 +1,6 @@
 // Targeted tests for the generated operational bundle. Run only after generation.
 import assert from 'node:assert/strict'
-import { copyFile, mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -619,6 +619,201 @@ try {
   for (const source of deliverySources) {
     const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
     assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
+  }
+
+  // Tranche 9: Forge/BMAD domain, adapters, application services and Jira.
+  const expectedForgeExports = [
+    // domain/forge-bmad/forge-roots.ts
+    'FORGE_ROOTS_SCHEMA_VERSION', 'DEFAULT_RUN_STORE_POLICY', 'EXTERNAL_RUN_STORE_POLICY',
+    'REPO_RUN_STORE_POLICY', 'isWithin', 'defaultRunStoreRoot',
+    // domain/forge-bmad/forge-human-decision.ts
+    'G1_POLICY_VERSION', 'G1_OUTCOMES', 'G1_REASON_CODES', 'canonicalG1', 'computeG1EvidenceSetHash',
+    // domain/forge-bmad/forge-spec.ts
+    'FORGE_SPEC_SCHEMA_VERSION', 'G2_POLICY_VERSION', 'ORACLE_CATALOG',
+    'parseForgeSpecFrontmatter', 'validateForgeSpecSchema', 'computeForgeSpecHash',
+    // domain/forge-bmad/forge-story-spec.ts
+    'FORGE_STORY_SPEC_SCHEMA_VERSION', 'G2_US_POLICY_VERSION', 'parseStorySpecFrontmatter',
+    'validateStorySpec', 'validateInheritance', 'computeStorySpecHash',
+    // domain/forge-bmad/forge-bmad-parser.ts
+    'parseYamlMinimal', 'extractFrontmatter', 'normalizeForgeRunYaml', 'normalizeStoryFrontmatterFields',
+    'normalizeSprintStatus', 'validateStrictForgeYamlSyntax', 'validateForgeRunStructure',
+    // domain/forge-bmad/forge-ledger.ts
+    'FORGE_LEDGER_SCHEMA_VERSION', 'FORGE_WORKFLOW_VERSION', 'parseForgeLedgerLines', 'projectForgeRun',
+    // domain/forge-bmad/forge-workflow-adapter.ts
+    'FORGE_WORKFLOW_ERROR_CODES', 'adaptForgeRunToWorkflowProjection',
+    // domain/forge-bmad/jira.ts
+    'COMMENTS_CHAR_BUDGET', 'extractTicketId', 'extractAdfText', 'applyCommentBudget',
+    // adapters/forge/forge-roots-resolver.ts
+    'resolveForgeRoots', 'ensureForgeRunStore',
+    // adapters/forge/forge-bmad-file-reader.ts
+    'readForgeRunYaml', 'readForgeRunYamlStrict', 'readStoryFrontmatter', 'readSprintStatus',
+    // adapters/forge/forge-spec-reader.ts
+    'loadForgeSpec', 'readStorySpec', 'hashStorySpec',
+    // adapters/forge/forge-ledger-store.ts
+    'appendForgeLedgerEvent', 'createEpicRun', 'parseForgeLedger', 'listForgeRunProjections',
+    // adapters/jira/jira-client.ts
+    'fetchJiraComments', 'fetchJiraTicket',
+    // application/forge-bmad/forge-human-decision.ts
+    'recordHumanDecision',
+    // application/forge-bmad/forge-g2.ts
+    'evaluateG2', 'evaluateG2US',
+    // application/forge-bmad/forge-story-analysis.ts
+    'AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION', 'STORY_ANALYSIS_POLICY_VERSION',
+    'STORY_ANALYSIS_PLAN_SCHEMA_VERSION', 'writeStoryAnalysisArtifact', 'executeStoryAnalysis',
+    // application/forge-bmad/forge-story-edit.ts
+    'STORY_EDIT_SCHEMA_VERSION', 'STORY_EDIT_POLICY_VERSION', 'executeStoryEdit',
+    // application/forge-bmad/forge-story-oracles.ts
+    'STORY_ORACLE_POLICY_VERSION', 'isAllowedStoryOracleRequestBody', 'executeStoryOracles',
+    // application/forge-bmad/forge-workflow-sync.ts
+    'SAFE_FORGE_TICKET_ID', 'sanitizeForgeSyncAttribution', 'syncForgeWorkflowProjection',
+    // application/forge-bmad/forge-front-oracle-resolution.ts
+    'FRONT_ORACLE_MAP_SCHEMA_VERSION', 'resolveOwnerProjectConfigs', 'inspectNxProject',
+    'parseFrontBuildHostMap', 'resolveFrontOraclePlan',
+  ]
+  for (const name of expectedForgeExports) assert.ok(name in module, `missing forge export ${name}`)
+  for (const name of [
+    'isWithin', 'defaultRunStoreRoot', 'canonicalG1', 'computeG1EvidenceSetHash', 'parseForgeSpecFrontmatter',
+    'validateForgeSpecSchema', 'computeForgeSpecHash', 'parseStorySpecFrontmatter', 'validateStorySpec',
+    'validateInheritance', 'computeStorySpecHash', 'parseYamlMinimal', 'extractFrontmatter',
+    'normalizeForgeRunYaml', 'normalizeStoryFrontmatterFields', 'normalizeSprintStatus',
+    'validateStrictForgeYamlSyntax', 'validateForgeRunStructure', 'parseForgeLedgerLines', 'projectForgeRun',
+    'adaptForgeRunToWorkflowProjection', 'extractTicketId', 'extractAdfText', 'applyCommentBudget',
+    'resolveForgeRoots', 'ensureForgeRunStore', 'readForgeRunYaml', 'readForgeRunYamlStrict',
+    'readStoryFrontmatter', 'readSprintStatus', 'loadForgeSpec', 'readStorySpec', 'hashStorySpec',
+    'appendForgeLedgerEvent', 'createEpicRun', 'parseForgeLedger', 'listForgeRunProjections',
+    'fetchJiraComments', 'fetchJiraTicket', 'recordHumanDecision', 'evaluateG2', 'evaluateG2US',
+    'writeStoryAnalysisArtifact', 'executeStoryAnalysis', 'executeStoryEdit',
+    'isAllowedStoryOracleRequestBody', 'executeStoryOracles', 'sanitizeForgeSyncAttribution',
+    'syncForgeWorkflowProjection', 'resolveOwnerProjectConfigs', 'inspectNxProject',
+    'parseFrontBuildHostMap', 'resolveFrontOraclePlan',
+  ])
+    assert.equal(typeof module[name], 'function', `missing forge function ${name}`)
+
+  const forgeFacades = {
+    '../lib/forge-roots.mjs': [
+      'FORGE_ROOTS_SCHEMA_VERSION', 'DEFAULT_RUN_STORE_POLICY', 'EXTERNAL_RUN_STORE_POLICY',
+      'REPO_RUN_STORE_POLICY', 'resolveForgeRoots', 'defaultRunStoreRoot', 'ensureForgeRunStore',
+    ],
+    '../lib/forge-spec.mjs': [
+      'FORGE_SPEC_SCHEMA_VERSION', 'G2_POLICY_VERSION', 'ORACLE_CATALOG', 'loadForgeSpec',
+    ],
+    '../lib/forge-story-spec.mjs': [
+      'FORGE_STORY_SPEC_SCHEMA_VERSION', 'G2_US_POLICY_VERSION', 'validateInheritance', 'readStorySpec', 'hashStorySpec',
+    ],
+    '../lib/forge-bmad-reader.mjs': [
+      'readForgeRunYaml', 'readForgeRunYamlStrict', 'readStoryFrontmatter', 'readSprintStatus',
+    ],
+    '../lib/forge-human-decision.mjs': [
+      'G1_POLICY_VERSION', 'computeG1EvidenceSetHash', 'recordHumanDecision',
+    ],
+    '../lib/forge-ledger.mjs': [
+      'FORGE_LEDGER_SCHEMA_VERSION', 'FORGE_WORKFLOW_VERSION', 'createEpicRun', 'parseForgeLedger',
+      'projectForgeRun', 'listForgeRunProjections',
+    ],
+    '../lib/forge-g2.mjs': ['evaluateG2', 'evaluateG2US'],
+    '../lib/forge-story-analysis.mjs': [
+      'AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION', 'STORY_ANALYSIS_POLICY_VERSION',
+      'STORY_ANALYSIS_PLAN_SCHEMA_VERSION', 'writeStoryAnalysisArtifact', 'executeStoryAnalysis',
+    ],
+    '../lib/forge-story-edit.mjs': ['STORY_EDIT_SCHEMA_VERSION', 'STORY_EDIT_POLICY_VERSION', 'executeStoryEdit'],
+    '../lib/forge-story-oracles.mjs': [
+      'STORY_ORACLE_POLICY_VERSION', 'isAllowedStoryOracleRequestBody', 'executeStoryOracles',
+    ],
+    '../lib/forge-workflow-adapter.mjs': ['FORGE_WORKFLOW_ERROR_CODES', 'adaptForgeRunToWorkflowProjection'],
+    '../lib/forge-workflow-sync.mjs': [
+      'SAFE_FORGE_TICKET_ID', 'sanitizeForgeSyncAttribution', 'syncForgeWorkflowProjection',
+    ],
+    '../lib/forge-front-oracle-resolution.mjs': [
+      'FRONT_ORACLE_MAP_SCHEMA_VERSION', 'resolveOwnerProjectConfigs', 'inspectNxProject',
+      'parseFrontBuildHostMap', 'resolveFrontOraclePlan',
+    ],
+    '../lib/jira.mjs': [
+      'extractTicketId', 'extractAdfText', 'fetchJiraComments', 'applyCommentBudget', 'fetchJiraTicket',
+    ],
+  }
+  for (const [facadePath, names] of Object.entries(forgeFacades)) {
+    const facade = await import(facadePath)
+    for (const name of names) assert.equal(facade[name], module[name], `${name} facade identity mismatch in ${facadePath}`)
+  }
+
+  // Exercise the migrated Forge/Jira surface for real behaviour.
+  assert.equal(module.defaultRunStoreRoot('/repo'), '/repo/forge/factory-runs')
+  assert.equal(module.G1_POLICY_VERSION, 'forge-g1-human-v1')
+  assert.equal(module.G2_POLICY_VERSION, 'forge-g2-deterministic-v1')
+  assert.equal(module.G2_US_POLICY_VERSION, 'forge-g2-us-deterministic-v1')
+  assert.equal(module.STORY_ORACLE_POLICY_VERSION, 'forge-story-oracles-v1')
+  assert.equal(module.STORY_EDIT_POLICY_VERSION, 'forge-story-edit-v1')
+  assert.equal(module.STORY_ANALYSIS_POLICY_VERSION, 'forge-story-analysis-v2')
+  assert.equal(module.FORGE_LEDGER_SCHEMA_VERSION, 1)
+  assert.ok(module.ORACLE_CATALOG.has('front.build'))
+  assert.equal(module.extractTicketId('https://acme.atlassian.net/browse/proj-1234'), 'PROJ-1234')
+  assert.equal(module.extractTicketId('not-a-ticket'), null)
+  assert.equal(
+    module.extractAdfText({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] }),
+    'hi\n'
+  )
+  assert.deepEqual(module.applyCommentBudget([{ author: 'a', created: '', body: '' }], 8000), {
+    included: [{ author: 'a', created: '', body: '' }],
+    omitted: 0,
+  })
+  assert.equal(module.projectForgeRun([]), null)
+  assert.equal(module.parseForgeLedgerLines('{"schemaVersion":1}\n').length, 1)
+  assert.throws(() => module.parseForgeLedgerLines('not json'), /invalid JSONL/)
+  assert.deepEqual(
+    module.validateInheritance(
+      { scope: { allow: ['apps/**'], create: [], deny: [] }, oracles: [] },
+      { scope: { allow: ['apps/**'], create: [], deny: [] }, oracles: [] }
+    ),
+    { valid: true, violations: [] }
+  )
+  const validProjection = module.adaptForgeRunToWorkflowProjection({
+    ticketId: 'WZ-1', ticketSummary: null, gates: {}, runOutcome: { status: 'in-progress' },
+  })
+  assert.equal(validProjection.ok, true)
+  assert.equal(validProjection.projection.workflowId, 'forge-run-WZ-1')
+  assert.equal(module.sanitizeForgeSyncAttribution({ actorId: 'factory' }).ok, true)
+  assert.equal(module.sanitizeForgeSyncAttribution({ prompt: 'x' }).error.code, 'INVALID_ATTRIBUTION')
+  assert.equal(module.isAllowedStoryOracleRequestBody({ editId: 'e', expectedSpecHash: 'h', attempt: 1 }), true)
+  assert.equal(module.isAllowedStoryOracleRequestBody({ command: 'rm' }), false)
+  assert.equal(module.validateStrictForgeYamlSyntax('ticket_id: WZ-1\nrun_outcome:\n  status: in-progress\n'), true)
+  assert.equal(module.validateStrictForgeYamlSyntax('- list'), false)
+  assert.equal(module.validateForgeRunStructure({ ticket_id: 'WZ-1', run_outcome: { status: 'in-progress' } }, 'WZ-1').ok, true)
+  assert.deepEqual(module.parseFrontBuildHostMap('{"*":["a"]}'), { '*': ['a'] })
+
+  const forgeSources = [
+    'src/domain/forge-bmad/types.ts',
+    'src/domain/forge-bmad/forge-roots.ts',
+    'src/domain/forge-bmad/forge-human-decision.ts',
+    'src/domain/forge-bmad/forge-spec.ts',
+    'src/domain/forge-bmad/forge-story-spec.ts',
+    'src/domain/forge-bmad/forge-bmad-parser.ts',
+    'src/domain/forge-bmad/forge-ledger.ts',
+    'src/domain/forge-bmad/forge-workflow-adapter.ts',
+    'src/domain/forge-bmad/jira.ts',
+    'src/adapters/forge/forge-roots-resolver.ts',
+    'src/adapters/forge/forge-bmad-file-reader.ts',
+    'src/adapters/forge/forge-spec-reader.ts',
+    'src/adapters/forge/forge-ledger-store.ts',
+    'src/adapters/jira/jira-client.ts',
+    'src/application/forge-bmad/forge-human-decision.ts',
+    'src/application/forge-bmad/forge-g2.ts',
+    'src/application/forge-bmad/forge-story-analysis.ts',
+    'src/application/forge-bmad/forge-story-edit.ts',
+    'src/application/forge-bmad/forge-story-oracles.ts',
+    'src/application/forge-bmad/forge-workflow-sync.ts',
+    'src/application/forge-bmad/forge-front-oracle-resolution.ts',
+  ]
+  for (const source of forgeSources) {
+    const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
+    assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
+  }
+
+  // Domain purity: the Forge/BMAD domain must not reach for I/O, HTTP or process runners.
+  const domainDirectory = resolve(import.meta.dirname, '../src/domain/forge-bmad')
+  const forbiddenImport = /(?:from|import\s*\()\s*['"]node:(?:fs|child_process|http|https|net)['"]/
+  for (const file of await readdir(domainDirectory)) {
+    const source = await readFile(join(domainDirectory, file), 'utf8')
+    assert.doesNotMatch(source, forbiddenImport, `${file} must not import an I/O or process runner module`)
   }
 } finally {
   if (previousObservabilityFile === undefined) delete process.env.FACTORY_ACTIVE_CASE_FILE

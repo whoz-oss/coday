@@ -1,4 +1,9 @@
 // GENERATED FILE — DO NOT EDIT. Source: factory/src/entrypoints/factory-operational.ts
+var __defProp = Object.defineProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
 
 // ../src/lib/active-case.ts
 import { unlinkSync, writeFileSync } from "node:fs";
@@ -54,22 +59,22 @@ function generateRunId() {
   const timestamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
   return `${timestamp}-${randomBytes(2).toString("hex")}`;
 }
-function appendLine(filePath, record) {
-  appendFileSync(filePath, `${JSON.stringify(record)}
+function appendLine(filePath, record2) {
+  appendFileSync(filePath, `${JSON.stringify(record2)}
 `, "utf8");
 }
 function createRun(workflowName, opts = {}) {
   mkdirSync(RUNS_DIR, { recursive: true });
   const runId = generateRunId();
   const filePath = join(RUNS_DIR, `${runId}.jsonl`);
-  const record = {
+  const record2 = {
     kind: "run_start",
     runId,
     workflow: workflowName,
     startedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
-  if (opts.namespaceId) record.namespaceId = opts.namespaceId;
-  appendLine(filePath, record);
+  if (opts.namespaceId) record2.namespaceId = opts.namespaceId;
+  appendLine(filePath, record2);
   const run = { runId, filePath, _startedAt: Date.now() };
   if (opts.namespaceId) run.namespaceId = opts.namespaceId;
   currentRun = run;
@@ -101,14 +106,14 @@ function failPhase(phase, facts = {}) {
   endPhase(phase, "fail", facts);
 }
 function endRun(run, status, facts = {}) {
-  const record = {
+  const record2 = {
     kind: "run_end",
     status,
     durationMs: Date.now() - run._startedAt,
     endedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
-  if (Object.keys(facts).length > 0) record.facts = facts;
-  appendLine(run.filePath, record);
+  if (Object.keys(facts).length > 0) record2.facts = facts;
+  appendLine(run.filePath, record2);
 }
 function endCurrentRunOnce(status, facts = {}) {
   const run = currentRun;
@@ -151,21 +156,21 @@ function text(value, path, options = {}) {
 function validateWorkflowDefinition(input) {
   if (!input || typeof input !== "object" || Array.isArray(input))
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_DEFINITION, "$");
-  const record = input;
-  if (Object.keys(record).some((field) => !DEFINITION_FIELDS.has(field)))
+  const record2 = input;
+  if (Object.keys(record2).some((field) => !DEFINITION_FIELDS.has(field)))
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "$", { reason: "unknown_field" });
-  if (record.schemaVersion !== WORKFLOW_DEFINITION_SCHEMA_VERSION)
+  if (record2.schemaVersion !== WORKFLOW_DEFINITION_SCHEMA_VERSION)
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_SCHEMA_VERSION, "schemaVersion");
-  const type = text(record.workflowType, "workflowType", { safe: true });
+  const type = text(record2.workflowType, "workflowType", { safe: true });
   if (!type.ok) return type;
-  const version = record.version;
+  const version = record2.version;
   if (typeof version !== "string" || !SEMVER.test(version))
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "version");
-  const title = text(record.title, "title");
+  const title = text(record2.title, "title");
   if (!title.ok) return title;
   let trustedExecution;
-  if (record.trustedExecution !== void 0) {
-    const rawTrusted = record.trustedExecution;
+  if (record2.trustedExecution !== void 0) {
+    const rawTrusted = record2.trustedExecution;
     if (!rawTrusted || typeof rawTrusted !== "object" || Array.isArray(rawTrusted) || Object.keys(rawTrusted).some((field) => !TRUSTED_EXECUTION_FIELDS.has(field)) || !Array.isArray(rawTrusted.allowedPaths) || rawTrusted.allowedPaths.length === 0)
       return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "trustedExecution");
     const allowedPaths = [];
@@ -178,11 +183,11 @@ function validateWorkflowDefinition(input) {
     }
     trustedExecution = { allowedPaths };
   }
-  if (!Array.isArray(record.steps) || record.steps.length === 0 || record.steps.length > 500)
+  if (!Array.isArray(record2.steps) || record2.steps.length === 0 || record2.steps.length > 500)
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "steps");
   const ids = /* @__PURE__ */ new Set();
   const steps = [];
-  const rawSteps = record.steps;
+  const rawSteps = record2.steps;
   for (let index = 0; index < rawSteps.length; index++) {
     const raw = rawSteps[index];
     const base = `steps[${index}]`;
@@ -264,9 +269,9 @@ function validateWorkflowDefinition(input) {
 function canonicalizeValue(value) {
   if (Array.isArray(value)) return value.map((entry) => canonicalizeValue(entry));
   if (value !== null && typeof value === "object") {
-    const record = value;
+    const record2 = value;
     return Object.fromEntries(
-      Object.keys(record).sort().map((key) => [key, canonicalizeValue(record[key])])
+      Object.keys(record2).sort().map((key) => [key, canonicalizeValue(record2[key])])
     );
   }
   return value;
@@ -287,9 +292,9 @@ function independentWorkflowRelations(workflowId) {
 function canonicalize(value) {
   if (Array.isArray(value)) return value.map(canonicalize);
   if (value !== null && typeof value === "object") {
-    const record = value;
+    const record2 = value;
     return Object.fromEntries(
-      Object.keys(record).sort().map((key) => [key, canonicalize(record[key])])
+      Object.keys(record2).sort().map((key) => [key, canonicalize(record2[key])])
     );
   }
   return value;
@@ -388,15 +393,15 @@ function isWorkflowStatus(value) {
 }
 function validateWorkflowTransitionRequest(input, expectedWorkflowId) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return invalidTransitionRequest();
-  const record = input;
-  if (Object.keys(record).some((key) => !FIELDS.has(key))) return invalidTransitionRequest();
-  if (record.requestId !== void 0) return { ok: false, error: { code: "UNTRUSTED_REQUEST_ID" } };
-  const workflowId = record.workflowId;
-  const stepId = record.stepId;
-  const expectedRevision = record.expectedRevision;
-  const requestedStatus = record.requestedStatus;
-  const evidenceIds = record.evidenceIds;
-  const idempotencyKey = record.idempotencyKey;
+  const record2 = input;
+  if (Object.keys(record2).some((key) => !FIELDS.has(key))) return invalidTransitionRequest();
+  if (record2.requestId !== void 0) return { ok: false, error: { code: "UNTRUSTED_REQUEST_ID" } };
+  const workflowId = record2.workflowId;
+  const stepId = record2.stepId;
+  const expectedRevision = record2.expectedRevision;
+  const requestedStatus = record2.requestedStatus;
+  const evidenceIds = record2.evidenceIds;
+  const idempotencyKey = record2.idempotencyKey;
   if (workflowId !== expectedWorkflowId || !SAFE_ID2.test(String(workflowId ?? "")) || !SAFE_ID2.test(String(stepId ?? "")))
     return invalidTransitionRequest();
   if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1 || !isWorkflowStatus(requestedStatus))
@@ -747,36 +752,36 @@ function isEvidenceOutcome(value) {
 }
 function validateWorkflowEvidenceInput(input, expectedWorkflowId) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return invalid("$", "not_object");
-  const record = input;
-  if (Object.keys(record).some((field) => !INPUT_FIELDS.has(field))) return invalid("$", "unknown_field");
-  if (record.workflowId !== expectedWorkflowId || !SAFE_ID3.test(String(record.workflowId ?? "")))
+  const record2 = input;
+  if (Object.keys(record2).some((field) => !INPUT_FIELDS.has(field))) return invalid("$", "unknown_field");
+  if (record2.workflowId !== expectedWorkflowId || !SAFE_ID3.test(String(record2.workflowId ?? "")))
     return invalid("workflowId");
-  if (!SAFE_ID3.test(String(record.stepId ?? ""))) return invalid("stepId");
-  if (!isEvidenceKind(record.kind)) return invalid("kind");
-  if (record.idempotencyKey !== void 0 && !boundedText(record.idempotencyKey, WORKFLOW_EVIDENCE_LIMITS.idempotencyKey))
+  if (!SAFE_ID3.test(String(record2.stepId ?? ""))) return invalid("stepId");
+  if (!isEvidenceKind(record2.kind)) return invalid("kind");
+  if (record2.idempotencyKey !== void 0 && !boundedText(record2.idempotencyKey, WORKFLOW_EVIDENCE_LIMITS.idempotencyKey))
     return invalid("idempotencyKey");
-  if (record.kind === "artifact") {
-    if (record.outcome !== void 0 || record.facts !== void 0) return invalid("$", "artifact_fields");
-    if (!boundedText(record.artifactRef, WORKFLOW_EVIDENCE_LIMITS.artifactRef)) return invalid("artifactRef");
-    if (!HASH.test(String(record.artifactHash ?? ""))) return invalid("artifactHash");
+  if (record2.kind === "artifact") {
+    if (record2.outcome !== void 0 || record2.facts !== void 0) return invalid("$", "artifact_fields");
+    if (!boundedText(record2.artifactRef, WORKFLOW_EVIDENCE_LIMITS.artifactRef)) return invalid("artifactRef");
+    if (!HASH.test(String(record2.artifactHash ?? ""))) return invalid("artifactHash");
     return {
       ok: true,
       value: {
-        workflowId: record.workflowId,
-        stepId: record.stepId,
+        workflowId: record2.workflowId,
+        stepId: record2.stepId,
         kind: "artifact",
-        artifactRef: record.artifactRef,
-        artifactHash: record.artifactHash,
-        ...record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}
+        artifactRef: record2.artifactRef,
+        artifactHash: record2.artifactHash,
+        ...record2.idempotencyKey ? { idempotencyKey: record2.idempotencyKey } : {}
       }
     };
   }
-  if (["oracle-result", "human-decision"].includes(record.kind) && record.outcome === void 0)
+  if (["oracle-result", "human-decision"].includes(record2.kind) && record2.outcome === void 0)
     return invalid("outcome");
-  if (record.artifactRef !== void 0 || record.artifactHash !== void 0) return invalid("$", "agent_result_fields");
-  if (record.outcome !== void 0 && !isEvidenceOutcome(record.outcome)) return invalid("outcome");
-  if (!record.facts || typeof record.facts !== "object" || Array.isArray(record.facts)) return invalid("facts");
-  const entries = Object.entries(record.facts);
+  if (record2.artifactRef !== void 0 || record2.artifactHash !== void 0) return invalid("$", "agent_result_fields");
+  if (record2.outcome !== void 0 && !isEvidenceOutcome(record2.outcome)) return invalid("outcome");
+  if (!record2.facts || typeof record2.facts !== "object" || Array.isArray(record2.facts)) return invalid("facts");
+  const entries = Object.entries(record2.facts);
   if (entries.length === 0 || entries.length > WORKFLOW_EVIDENCE_LIMITS.facts) return invalid("facts");
   for (const [key, value] of entries) {
     if (!FACT_KEYS.has(key) || key.length > WORKFLOW_EVIDENCE_LIMITS.factKey)
@@ -787,25 +792,25 @@ function validateWorkflowEvidenceInput(input, expectedWorkflowId) {
   return {
     ok: true,
     value: {
-      workflowId: record.workflowId,
-      stepId: record.stepId,
-      kind: record.kind,
-      ...record.outcome ? { outcome: record.outcome } : {},
-      facts: { ...record.facts },
-      ...record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}
+      workflowId: record2.workflowId,
+      stepId: record2.stepId,
+      kind: record2.kind,
+      ...record2.outcome ? { outcome: record2.outcome } : {},
+      facts: { ...record2.facts },
+      ...record2.idempotencyKey ? { idempotencyKey: record2.idempotencyKey } : {}
     }
   };
 }
 function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/* @__PURE__ */ new Date()).toISOString(), evidenceId = randomUUID2()) {
   const { idempotencyKey, ...rest } = validated;
-  const record = {
+  const record2 = {
     evidenceId,
     namespaceId,
     ...rest,
     source: Object.freeze({ ...source }),
     observedAt
   };
-  return Object.freeze(record);
+  return Object.freeze(record2);
 }
 
 // ../src/domain/interaction/workflow-human-interaction.ts
@@ -817,9 +822,9 @@ var KINDS2 = new Set(HUMAN_INTERACTION_KINDS);
 function canonicalHumanInteractionInput(value) {
   if (Array.isArray(value)) return value.map((entry) => canonicalHumanInteractionInput(entry));
   if (value && typeof value === "object") {
-    const record = value;
+    const record2 = value;
     return Object.fromEntries(
-      Object.keys(record).sort().map((key) => [key, canonicalHumanInteractionInput(record[key])])
+      Object.keys(record2).sort().map((key) => [key, canonicalHumanInteractionInput(record2[key])])
     );
   }
   return value;
@@ -842,30 +847,30 @@ function humanInteractionSemanticHash(input) {
 }
 function validateHumanInteractionOpenInput(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
-  const record = input;
-  const rawActions = record.actions;
+  const record2 = input;
+  const rawActions = record2.actions;
   const actionsValid = Array.isArray(rawActions) && rawActions.length === 2 && new Set(rawActions.map((action) => action?.id)).size === 2 && rawActions.every((action) => {
     if (!action || typeof action !== "object" || Array.isArray(action)) return false;
     const candidate = action;
     return SAFE_ID4.test(typeof candidate.id === "string" ? candidate.id : "") && typeof candidate.label === "string" && !!candidate.label && candidate.label.length <= 128 && WORKFLOW_STATUSES.includes(candidate.requestedStatus);
   });
-  if (!SAFE_ID4.test(String(record.workflowId ?? "")) || !SAFE_ID4.test(String(record.stepId ?? "")) || !KINDS2.has(record.kind) || !Number.isSafeInteger(record.expectedRevision) || record.expectedRevision < 1 || typeof record.prompt !== "string" || !record.prompt || record.prompt.length > 2e3 || !actionsValid || typeof record.idempotencyKey !== "string" || !record.idempotencyKey || record.idempotencyKey.length > 128 || /[\r\n]/.test(record.idempotencyKey) || record.interactionId !== void 0 && !SAFE_ID4.test(String(record.interactionId)))
+  if (!SAFE_ID4.test(String(record2.workflowId ?? "")) || !SAFE_ID4.test(String(record2.stepId ?? "")) || !KINDS2.has(record2.kind) || !Number.isSafeInteger(record2.expectedRevision) || record2.expectedRevision < 1 || typeof record2.prompt !== "string" || !record2.prompt || record2.prompt.length > 2e3 || !actionsValid || typeof record2.idempotencyKey !== "string" || !record2.idempotencyKey || record2.idempotencyKey.length > 128 || /[\r\n]/.test(record2.idempotencyKey) || record2.interactionId !== void 0 && !SAFE_ID4.test(String(record2.interactionId)))
     return null;
   return {
-    workflowId: record.workflowId,
-    stepId: record.stepId,
-    expectedRevision: record.expectedRevision,
-    kind: record.kind,
-    prompt: record.prompt,
+    workflowId: record2.workflowId,
+    stepId: record2.stepId,
+    expectedRevision: record2.expectedRevision,
+    kind: record2.kind,
+    prompt: record2.prompt,
     actions: rawActions.map((action) => ({
       id: action.id,
       label: action.label,
       requestedStatus: action.requestedStatus
     })),
-    idempotencyKey: record.idempotencyKey,
-    ...record.interactionId ? { interactionId: record.interactionId } : {},
-    ...record.interactionType ? { interactionType: record.interactionType } : {},
-    ...record.reasonCode ? { reasonCode: record.reasonCode } : {}
+    idempotencyKey: record2.idempotencyKey,
+    ...record2.interactionId ? { interactionId: record2.interactionId } : {},
+    ...record2.interactionType ? { interactionType: record2.interactionType } : {},
+    ...record2.reasonCode ? { reasonCode: record2.reasonCode } : {}
   };
 }
 function openedInteractionRevision(event) {
@@ -914,15 +919,15 @@ function isValidAgentStepAttemptInstant(value) {
   return typeof value === "string" && !Number.isNaN(Date.parse(value));
 }
 function validateAgentStepAttempt(attempt) {
-  const record = attempt ?? {};
-  if (!attempt || typeof attempt !== "object" || !SAFE_ID5.test(String(record.attemptId ?? "")) || !SAFE_ID5.test(String(record.workflowId ?? "")) || !SAFE_ID5.test(String(record.stepId ?? "")) || !SAFE_ID5.test(String(record.namespaceId ?? "")) || typeof record.runtimeId !== "string" || !record.runtimeId || typeof record.agentName !== "string" || !record.agentName || !BRIEF_HASH.test(String(record.briefHash ?? "")) || !Number.isSafeInteger(record.workflowRevisionAtStart) || record.workflowRevisionAtStart < 1 || !Number.isSafeInteger(record.attemptNumber) || record.attemptNumber < 1 || !isAgentStepAttemptStatus(record.status) || !isValidAgentStepAttemptInstant(record.startedAt))
+  const record2 = attempt ?? {};
+  if (!attempt || typeof attempt !== "object" || !SAFE_ID5.test(String(record2.attemptId ?? "")) || !SAFE_ID5.test(String(record2.workflowId ?? "")) || !SAFE_ID5.test(String(record2.stepId ?? "")) || !SAFE_ID5.test(String(record2.namespaceId ?? "")) || typeof record2.runtimeId !== "string" || !record2.runtimeId || typeof record2.agentName !== "string" || !record2.agentName || !BRIEF_HASH.test(String(record2.briefHash ?? "")) || !Number.isSafeInteger(record2.workflowRevisionAtStart) || record2.workflowRevisionAtStart < 1 || !Number.isSafeInteger(record2.attemptNumber) || record2.attemptNumber < 1 || !isAgentStepAttemptStatus(record2.status) || !isValidAgentStepAttemptInstant(record2.startedAt))
     throw new Error("INVALID_AGENT_STEP_ATTEMPT");
-  if (record.caseId !== null && typeof record.caseId !== "string") throw new Error("INVALID_AGENT_STEP_ATTEMPT");
-  const terminal = isAgentStepAttemptTerminal(record.status);
-  if (terminal !== isValidAgentStepAttemptInstant(record.finishedAt) || !terminal && record.finishedAt !== null)
+  if (record2.caseId !== null && typeof record2.caseId !== "string") throw new Error("INVALID_AGENT_STEP_ATTEMPT");
+  const terminal = isAgentStepAttemptTerminal(record2.status);
+  if (terminal !== isValidAgentStepAttemptInstant(record2.finishedAt) || !terminal && record2.finishedAt !== null)
     throw new Error("INVALID_AGENT_STEP_ATTEMPT");
-  if (record.status === "starting" && record.caseId !== null) throw new Error("INVALID_AGENT_STEP_ATTEMPT");
-  if (record.status !== "starting" && !record.caseId) throw new Error("INVALID_AGENT_STEP_ATTEMPT");
+  if (record2.status === "starting" && record2.caseId !== null) throw new Error("INVALID_AGENT_STEP_ATTEMPT");
+  if (record2.status !== "starting" && !record2.caseId) throw new Error("INVALID_AGENT_STEP_ATTEMPT");
   return attempt;
 }
 
@@ -955,9 +960,9 @@ function sha256(value) {
 function canonicalizeAgentStepResult(value) {
   if (Array.isArray(value)) return value.map((entry) => canonicalizeAgentStepResult(entry));
   if (value !== null && typeof value === "object") {
-    const record = value;
+    const record2 = value;
     return Object.fromEntries(
-      Object.keys(record).sort().map((key) => [key, canonicalizeAgentStepResult(record[key])])
+      Object.keys(record2).sort().map((key) => [key, canonicalizeAgentStepResult(record2[key])])
     );
   }
   return value;
@@ -989,20 +994,20 @@ function agentStepAttemptKey(namespaceId, storageId, attemptId) {
 function validateAgentStepResultBusiness(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((key) => !BUSINESS_FIELDS.has(key)))
     return false;
-  const record = value;
-  if (!["PASS", "FAIL"].includes(record.status) || typeof record.summary !== "string" || record.summary.length === 0 || record.summary.length > AGENT_STEP_RESULT_LIMITS.summary)
+  const record2 = value;
+  if (!["PASS", "FAIL"].includes(record2.status) || typeof record2.summary !== "string" || record2.summary.length === 0 || record2.summary.length > AGENT_STEP_RESULT_LIMITS.summary)
     return false;
-  const claims = record.claims;
+  const claims = record2.claims;
   if (!claims || typeof claims !== "object" || Array.isArray(claims) || Object.keys(claims).some((key) => key !== "modifiedFiles") || !Array.isArray(claims.modifiedFiles) || claims.modifiedFiles.length > AGENT_STEP_RESULT_LIMITS.modifiedFiles || claims.modifiedFiles.some(
     (file) => typeof file !== "string" || file.length === 0 || file.length > AGENT_STEP_RESULT_LIMITS.modifiedFileLength
   ))
     return false;
-  const artifacts = record.artifacts;
+  const artifacts = record2.artifacts;
   if (artifacts !== void 0 && (!Array.isArray(artifacts) || artifacts.length > AGENT_STEP_RESULT_LIMITS.artifacts || artifacts.some(
     (artifact2) => !artifact2 || typeof artifact2 !== "object" || Array.isArray(artifact2) || Object.keys(artifact2).some((key) => !ARTIFACT_FIELDS.has(key)) || typeof artifact2.kind !== "string" || artifact2.kind.length === 0 || artifact2.kind.length > AGENT_STEP_RESULT_LIMITS.artifactKind || artifact2.encoding !== "markdown" || typeof artifact2.content !== "string" || artifact2.content.length === 0 || Buffer.byteLength(artifact2.content, "utf8") > AGENT_STEP_RESULT_LIMITS.artifactContentBytes
   )))
     return false;
-  const findings = record.findings;
+  const findings = record2.findings;
   if (findings !== void 0 && (!Array.isArray(findings) || findings.length > AGENT_STEP_RESULT_LIMITS.findings || findings.some((finding) => {
     if (!finding || typeof finding !== "object" || Array.isArray(finding)) return true;
     const entry = finding;
@@ -1076,62 +1081,62 @@ function validateIsoInstant(value, path = "instant") {
 function validateWorkUnitEnvironment(input) {
   if (!input || typeof input !== "object" || Array.isArray(input))
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_ENVIRONMENT, "$");
-  const record = input;
-  if (record.schemaVersion !== "1")
+  const record2 = input;
+  if (record2.schemaVersion !== "1")
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_SCHEMA_VERSION, "schemaVersion");
   for (const field of ["environmentId", "workUnitId", "createdBy"]) {
-    const result = safe(record[field], field);
+    const result = safe(record2[field], field);
     if (!result.ok) return result;
   }
-  const workflow = safe(record.workflowId, "workflowId", true);
+  const workflow = safe(record2.workflowId, "workflowId", true);
   if (!workflow.ok) return workflow;
   for (const field of ["businessRef", "businessType"]) {
-    const result = safe(record[field], field, true);
+    const result = safe(record2[field], field, true);
     if (!result.ok) return result;
   }
-  const namespace = validateNamespaceId(record.namespaceId);
+  const namespace = validateNamespaceId(record2.namespaceId);
   if (!namespace.ok) return namespace;
-  if (record.parentCaseId !== void 0 && !UUID.test(record.parentCaseId))
+  if (record2.parentCaseId !== void 0 && !UUID.test(record2.parentCaseId))
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_UUID, "parentCaseId");
   for (const field of ["repoRoot", "worktreePath"]) {
-    const result = validateCanonicalAbsolutePath(record[field], field);
+    const result = validateCanonicalAbsolutePath(record2[field], field);
     if (!result.ok) return result;
   }
-  if (record.repoRoot === record.worktreePath)
+  if (record2.repoRoot === record2.worktreePath)
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_PATH, "worktreePath");
   for (const field of ["integrationBranch", "branch"]) {
-    const result = validateGitRef(record[field], field);
+    const result = validateGitRef(record2[field], field);
     if (!result.ok) return result;
   }
-  if (record.baseCommit !== null && !SHA.test(record.baseCommit ?? ""))
+  if (record2.baseCommit !== null && !SHA.test(record2.baseCommit ?? ""))
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_SHA, "baseCommit");
-  if (record.baseCommit === null && record.lifecycleState !== "provisioning")
+  if (record2.baseCommit === null && record2.lifecycleState !== "provisioning")
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_SHA, "baseCommit");
-  const createdAt = validateIsoInstant(record.createdAt, "createdAt");
+  const createdAt = validateIsoInstant(record2.createdAt, "createdAt");
   if (!createdAt.ok) return createdAt;
-  if (!STATES.has(record.lifecycleState))
+  if (!STATES.has(record2.lifecycleState))
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, "lifecycleState");
-  if (record.lifecycleState === "active" && !record.parentCaseId)
+  if (record2.lifecycleState === "active" && !record2.parentCaseId)
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, "parentCaseId");
-  if (record.lifecycleState === "provisioning" && record.parentCaseId)
+  if (record2.lifecycleState === "provisioning" && record2.parentCaseId)
     return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, "parentCaseId");
   const environment = {
     schemaVersion: "1",
-    environmentId: record.environmentId,
-    workUnitId: record.workUnitId,
-    ...record.workflowId ? { workflowId: record.workflowId } : {},
-    namespaceId: record.namespaceId,
-    ...record.parentCaseId ? { parentCaseId: record.parentCaseId } : {},
-    ...record.businessRef ? { businessRef: record.businessRef } : {},
-    ...record.businessType ? { businessType: record.businessType } : {},
-    repoRoot: record.repoRoot,
-    integrationBranch: record.integrationBranch,
-    branch: record.branch,
-    worktreePath: record.worktreePath,
-    baseCommit: record.baseCommit,
-    createdAt: record.createdAt,
-    createdBy: record.createdBy,
-    lifecycleState: record.lifecycleState
+    environmentId: record2.environmentId,
+    workUnitId: record2.workUnitId,
+    ...record2.workflowId ? { workflowId: record2.workflowId } : {},
+    namespaceId: record2.namespaceId,
+    ...record2.parentCaseId ? { parentCaseId: record2.parentCaseId } : {},
+    ...record2.businessRef ? { businessRef: record2.businessRef } : {},
+    ...record2.businessType ? { businessType: record2.businessType } : {},
+    repoRoot: record2.repoRoot,
+    integrationBranch: record2.integrationBranch,
+    branch: record2.branch,
+    worktreePath: record2.worktreePath,
+    baseCommit: record2.baseCommit,
+    createdAt: record2.createdAt,
+    createdBy: record2.createdBy,
+    lifecycleState: record2.lifecycleState
   };
   return { ok: true, environment };
 }
@@ -1218,9 +1223,9 @@ async function readJsonLines(filePath) {
 function canonicalize2(value) {
   if (Array.isArray(value)) return value.map((entry) => canonicalize2(entry));
   if (value !== null && typeof value === "object") {
-    const record = value;
+    const record2 = value;
     return Object.fromEntries(
-      Object.keys(record).sort().map((key) => [key, canonicalize2(record[key])])
+      Object.keys(record2).sort().map((key) => [key, canonicalize2(record2[key])])
     );
   }
   return value;
@@ -1620,7 +1625,7 @@ var AgentStepResultStore = class {
       }
       const token = randomBytes3(32).toString("base64url");
       const now = this.clock();
-      const record = {
+      const record2 = {
         type: "capability-issued",
         capabilityId: randomUUID3(),
         tokenHash: sha256(token),
@@ -1629,11 +1634,11 @@ var AgentStepResultStore = class {
         expiresAt: new Date(now.getTime() + this.ttlMs).toISOString(),
         submissionBudget: 1
       };
-      const entry = { namespaceId, storageId, event: record, result: null };
-      await appendDurableJson(this.path(namespaceId, storageId), record, { ensureDirectory: true });
-      this.capabilityIndex.set(record.tokenHash, entry);
+      const entry = { namespaceId, storageId, event: record2, result: null };
+      await appendDurableJson(this.path(namespaceId, storageId), record2, { ensureDirectory: true });
+      this.capabilityIndex.set(record2.tokenHash, entry);
       this.attemptIndex.set(key, entry);
-      return { token, expiresAt: record.expiresAt };
+      return { token, expiresAt: record2.expiresAt };
     });
   }
   async resolve(token) {
@@ -2247,7 +2252,7 @@ var DEFAULT_POLL_INTERVAL_MS = 2e3;
 var DEFAULT_START_TIMEOUT_MS = 3e4;
 var DEFAULT_WORK_TIMEOUT_MS = 10 * 60 * 1e3;
 function defaultSleep(ms) {
-  return new Promise((resolve3) => setTimeout(resolve3, ms));
+  return new Promise((resolve10) => setTimeout(resolve10, ms));
 }
 function executionFailure(status, message, extra = {}) {
   return {
@@ -2518,6 +2523,23 @@ function createAgentOsRuntimeAdapter(config = {}) {
 }
 
 // ../src/application/agentos-operations.ts
+var agentos_operations_exports = {};
+__export(agentos_operations_exports, {
+  bindFactoryStepResult: () => bindFactoryStepResult,
+  createCase: () => createCase,
+  getAgentOsRuntimeAdapter: () => getAgentOsRuntimeAdapter,
+  getCase: () => getCase,
+  killCase: () => killCase,
+  listAgents: () => listAgents,
+  listEvents: () => listEvents,
+  listIntegrations: () => listIntegrations,
+  postMessage: () => postMessage,
+  preflightAgent: () => preflightAgent,
+  preflightReadOnlyWorkspace: () => preflightReadOnlyWorkspace,
+  preflightWorkspace: () => preflightWorkspace,
+  preflightWritableWorkspace: () => preflightWritableWorkspace,
+  runAgentTurn: () => runAgentTurn
+});
 var defaultAgentOsAdapter = null;
 function getAgentOsRuntimeAdapter() {
   defaultAgentOsAdapter ??= createAgentOsRuntimeAdapter();
@@ -2591,11 +2613,11 @@ function extractSingleJsonObject(message) {
   const fence = [...text2.matchAll(/```json\s*([\s\S]*?)\s*```/gi)];
   if (fence.length > 1) return null;
   if (fence.length === 1) {
-    const match = fence[0];
-    if (!match) return null;
-    const outside = (text2.slice(0, match.index) + text2.slice(match.index + match[0].length)).trim();
+    const match2 = fence[0];
+    if (!match2) return null;
+    const outside = (text2.slice(0, match2.index) + text2.slice(match2.index + match2[0].length)).trim();
     if (/[{}]/.test(outside)) return null;
-    return match[1]?.trim() ?? null;
+    return match2[1]?.trim() ?? null;
   }
   const candidates = [];
   for (let start = 0; start < text2.length; start++) {
@@ -2640,13 +2662,13 @@ function parseAgentStepResult(message) {
     return { ok: false, code: "RESULT_NOT_JSON" };
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, code: "RESULT_SCHEMA_INVALID" };
-  const record = value;
-  const claims = record.claims;
-  if (!["PASS", "FAIL"].includes(record.status) || typeof record.summary !== "string" || !claims || !Array.isArray(claims.modifiedFiles))
+  const record2 = value;
+  const claims = record2.claims;
+  if (!["PASS", "FAIL"].includes(record2.status) || typeof record2.summary !== "string" || !claims || !Array.isArray(claims.modifiedFiles))
     return { ok: false, code: "RESULT_SCHEMA_INVALID" };
-  if (record.artifacts !== void 0 && !Array.isArray(record.artifacts))
+  if (record2.artifacts !== void 0 && !Array.isArray(record2.artifacts))
     return { ok: false, code: "RESULT_SCHEMA_INVALID" };
-  return { ok: true, value: record };
+  return { ok: true, value: record2 };
 }
 async function verifyArtifacts(result, repoRoot, expectedKind) {
   const artifacts = result.artifacts ?? [];
@@ -3292,12 +3314,12 @@ function resolveBuildHosts(ownerProjects, repoRoot) {
       ownerProjects: [...ownerProjects]
     };
   }
-  const record = hostMap;
-  const fallbackHosts = Array.isArray(record["*"]) ? record["*"] : [];
+  const record2 = hostMap;
+  const fallbackHosts = Array.isArray(record2["*"]) ? record2["*"] : [];
   const seen = /* @__PURE__ */ new Set();
   const hosts = [];
   for (const owner of ownerProjects) {
-    const mapped = Array.isArray(record[owner]) ? record[owner] : fallbackHosts;
+    const mapped = Array.isArray(record2[owner]) ? record2[owner] : fallbackHosts;
     for (const host of mapped) {
       if (typeof host === "string" && !seen.has(host)) {
         seen.add(host);
@@ -3533,7 +3555,7 @@ function executeOracle(definition, {
   spawnImpl = spawn,
   environment = process.env
 }) {
-  return new Promise((resolve3) => {
+  return new Promise((resolve10) => {
     const started = Date.now();
     const stdout = [];
     const stderr = [];
@@ -3582,7 +3604,7 @@ ${err.excerpt}`);
         stdout: out,
         stderr: err
       };
-      resolve3({ ...base, ...classifyOracleExecution(definition, base) });
+      resolve10({ ...base, ...classifyOracleExecution(definition, base) });
     });
   });
 }
@@ -4472,12 +4494,12 @@ var WorkUnitEnvironmentController = class {
     if (!UUID2.test(namespaceId ?? "") || !SAFE3.test(workflowId ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_LOOKUP" } };
     const workflow = await this.workflowStore?.read(namespaceId, workflowId);
-    const ref = workflow?.instance?.environmentRef;
-    if (!ref) return { ok: false, status: 404, error: { code: "ENVIRONMENT_NOT_FOUND" } };
-    const snapshot = await this.store.read(namespaceId, ref.environmentId);
-    if (!snapshot || snapshot.environmentHash !== ref.environmentHash)
+    const ref2 = workflow?.instance?.environmentRef;
+    if (!ref2) return { ok: false, status: 404, error: { code: "ENVIRONMENT_NOT_FOUND" } };
+    const snapshot = await this.store.read(namespaceId, ref2.environmentId);
+    if (!snapshot || snapshot.environmentHash !== ref2.environmentHash)
       return { ok: false, status: 409, error: { code: "ENVIRONMENT_BINDING_UNCERTAIN" } };
-    const result = await this.service.inspect(namespaceId, ref.environmentId);
+    const result = await this.service.inspect(namespaceId, ref2.environmentId);
     if (!result.ok) return { ok: false, status: 409, error: { code: result.error.code } };
     return { ok: true, status: 200, data: publicEnvironment(result) };
   }
@@ -4796,10 +4818,10 @@ function evaluateDeliveryPromotion({
     selected.push(item);
   }
   for (const requirement of checkpoint.requiredEvidence) {
-    const match = selected.find(
+    const match2 = selected.find(
       (item) => item.kind === requirement.kind && item.outcome === requirement.outcome && (!requirement.oracleId || item.oracleId === requirement.oracleId) && item.source?.kind !== "agent"
     );
-    if (!match) return deny2("PASS_EVIDENCE_REQUIRED", `${requirement.kind}:${requirement.outcome}`);
+    if (!match2) return deny2("PASS_EVIDENCE_REQUIRED", `${requirement.kind}:${requirement.outcome}`);
   }
   if (request.requestedStage === "release-approved" && !selected.some(
     (item) => item.kind === "human-decision" && item.outcome === "approved" && item.source?.kind === "factory-human"
@@ -5209,7 +5231,13 @@ var DeliveryStore = class {
       return this._write(null, input, { kind: "delivery_created", idempotencyKey: `create:${input.deliveryId}` });
     });
   }
-  async promote({ namespaceId, request, definition, evidence, execution: execution2 }) {
+  async promote({
+    namespaceId,
+    request,
+    definition,
+    evidence,
+    execution: execution2
+  }) {
     return this._locked(namespaceId, request.deliveryId, async () => {
       const current = await this.read(namespaceId, request.deliveryId);
       const records = await this.journal(namespaceId, request.deliveryId);
@@ -5287,22 +5315,22 @@ var DeliveryStore = class {
     });
   }
   _deliveryOperationProjection(records) {
-    const history = records.filter((record) => record.recordType === "delivery-operation");
+    const history = records.filter((record2) => record2.recordType === "delivery-operation");
     const current = /* @__PURE__ */ new Map();
     const resolved = new Set(
-      history.filter((record) => record.resolvedOperationId && ["succeeded", "failed"].includes(record.state)).map((record) => record.resolvedOperationId)
+      history.filter((record2) => record2.resolvedOperationId && ["succeeded", "failed"].includes(record2.state)).map((record2) => record2.resolvedOperationId)
     );
-    for (const record of history) current.set(record.operationId, record);
-    const rollbackHistory = records.filter((record) => record.recordType === "rollback-request");
+    for (const record2 of history) current.set(record2.operationId, record2);
+    const rollbackHistory = records.filter((record2) => record2.recordType === "rollback-request");
     const rollbackCurrent = /* @__PURE__ */ new Map();
-    for (const record of rollbackHistory) rollbackCurrent.set(record.rollbackRequestId, record);
+    for (const record2 of rollbackHistory) rollbackCurrent.set(record2.rollbackRequestId, record2);
     return {
       history,
       operations: [...current.values()],
       rollbackRequests: [...rollbackCurrent.values()],
       rollbackRequestHistory: rollbackHistory,
       unresolvedIndeterminate: [...current.values()].filter(
-        (record) => record.state === "indeterminate" && !resolved.has(record.operationId)
+        (record2) => record2.state === "indeterminate" && !resolved.has(record2.operationId)
       )
     };
   }
@@ -5329,7 +5357,7 @@ var DeliveryStore = class {
       if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
       if (snapshot.workflowId !== workflowId || snapshot.parentCaseId !== caseId || snapshot.runtimeId !== runtimeId)
         return { ok: false, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
-      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), prior = projection.rollbackRequestHistory.find((record2) => record2.scopeHash === request.scopeHash);
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), prior = projection.rollbackRequestHistory.find((record3) => record3.scopeHash === request.scopeHash);
       if (prior)
         return prior.semanticHash === request.semanticHash ? {
           ok: true,
@@ -5338,7 +5366,7 @@ var DeliveryStore = class {
           request: projection.rollbackRequests.find((item) => item.rollbackRequestId === prior.rollbackRequestId) ?? prior
         } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
       if (snapshot.revision !== request.expectedRevision) return { ok: false, error: { code: "REVISION_CONFLICT" } };
-      const record = {
+      const record2 = {
         recordType: "rollback-request",
         schemaVersion: "1",
         rollbackRequestId: request.rollbackRequestId,
@@ -5362,8 +5390,8 @@ var DeliveryStore = class {
         requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
         requestedBy: canonical3(execution2)
       };
-      await append2(this.paths(namespaceId, deliveryId).journal, record);
-      return { ok: true, changed: true, idempotent: false, request: record };
+      await append2(this.paths(namespaceId, deliveryId).journal, record2);
+      return { ok: true, changed: true, idempotent: false, request: record2 };
     });
   }
   async approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
@@ -5378,7 +5406,7 @@ var DeliveryStore = class {
       if (snapshot.revision !== approval.expectedRevision || current.expectedRevision !== approval.expectedRevision)
         return { ok: false, error: { code: "REVISION_CONFLICT" } };
       if (current.status !== "requested") return { ok: false, error: { code: "ROLLBACK_REQUEST_ALREADY_DECIDED" } };
-      const record = {
+      const record2 = {
         ...current,
         status: "approved",
         approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -5387,8 +5415,8 @@ var DeliveryStore = class {
         approvalSemanticHash: semanticHash,
         approvalIdempotencyKey: approval.idempotencyKey
       };
-      await append2(this.paths(namespaceId, deliveryId).journal, record);
-      return { ok: true, changed: true, idempotent: false, request: record };
+      await append2(this.paths(namespaceId, deliveryId).journal, record2);
+      return { ok: true, changed: true, idempotent: false, request: record2 };
     });
   }
   async createDeliveryOperation({
@@ -5413,13 +5441,13 @@ var DeliveryStore = class {
         targetHash
       );
       if (!identity.ok) return identity;
-      const records = await this.journal(namespaceId, deliveryId), projection = this._deliveryOperationProjection(records), existing = projection.history.find((record) => record.scopeHash === identity.value.scopeHash);
+      const records = await this.journal(namespaceId, deliveryId), projection = this._deliveryOperationProjection(records), existing = projection.history.find((record2) => record2.scopeHash === identity.value.scopeHash);
       if (existing)
         return existing.semanticHash === identity.value.semanticHash ? {
           ok: true,
           changed: false,
           idempotent: true,
-          operation: projection.operations.find((record) => record.operationId === existing.operationId) ?? existing
+          operation: projection.operations.find((record2) => record2.operationId === existing.operationId) ?? existing
         } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
       if (snapshot.revision !== normalized.value.expectedRevision)
         return { ok: false, error: { code: "REVISION_CONFLICT" } };
@@ -5463,7 +5491,7 @@ var DeliveryStore = class {
   async recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options = {}) {
     return this._locked(namespaceId, deliveryId, async () => {
       await this.read(namespaceId, deliveryId);
-      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), previous = projection.operations.find((record) => record.operationId === operationId);
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), previous = projection.operations.find((record2) => record2.operationId === operationId);
       if (!previous) return { ok: false, error: { code: "DELIVERY_OPERATION_NOT_FOUND" } };
       const now = (/* @__PURE__ */ new Date()).toISOString(), state = transition.state, next = {
         ...previous,
@@ -5578,9 +5606,14 @@ function validateDeliveryEvidence(input) {
   if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !ALLOWED3.has(key)))
     return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
   const candidate = input;
-  if (![candidate.deliveryId, candidate.workflowId, candidate.runtimeId, candidate.kind, candidate.outcome, candidate.idempotencyKey].every(
-    (value) => SAFE8.test(value ?? "")
-  ) || !HASH3.test(candidate.environmentHash ?? "") || !UUID4.test(candidate.caseId ?? "") || !SHA4.test(candidate.headCommit ?? ""))
+  if (![
+    candidate.deliveryId,
+    candidate.workflowId,
+    candidate.runtimeId,
+    candidate.kind,
+    candidate.outcome,
+    candidate.idempotencyKey
+  ].every((value) => SAFE8.test(value ?? "")) || !HASH3.test(candidate.environmentHash ?? "") || !UUID4.test(candidate.caseId ?? "") || !SHA4.test(candidate.headCommit ?? ""))
     return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
   if (!candidate.facts || typeof candidate.facts !== "object" || Array.isArray(candidate.facts) || Object.keys(candidate.facts).length > 32 || JSON.stringify(candidate.facts).length > 4096)
     return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
@@ -5920,7 +5953,12 @@ var DeliveryPullRequestAdapter = class {
         return { ok: false, blocked: true, error: { code: "PULL_REQUEST_RESULT_INDETERMINATE" } };
       return {
         ok: true,
-        pullRequest: { id: String(result.id), url: result.url, draft: result.draft === true, state: result.state }
+        pullRequest: {
+          id: String(result.id),
+          url: result.url,
+          draft: result.draft === true,
+          state: result.state
+        }
       };
     } catch {
       return { ok: false, blocked: true, error: { code: "PULL_REQUEST_INSPECTION_FAILED" } };
@@ -6368,17 +6406,17 @@ async function handleDeliveryRequest({
   controller,
   log = console
 }) {
-  const match = path.match(
+  const match2 = path.match(
     /^\/api\/factory\/workflows\/([^/]+)\/delivery(?:\/(checkpoint|push|pull-request|promote|evidence))?$/
   );
-  if (!match) return false;
+  if (!match2) return false;
   try {
     const trust = await identity();
     if (!trust) {
       send(401, { error: { code: "TRUST_CONTEXT_UNAVAILABLE" } });
       return true;
     }
-    const workflowId = decodeURIComponent(match[1]), action = match[2];
+    const workflowId = decodeURIComponent(match2[1]), action = match2[2];
     let result;
     if (!action && method === "GET") result = await controller.status(trust, workflowId);
     else if (action === "checkpoint" && method === "POST")
@@ -6649,7 +6687,2735 @@ var DeliveryOperationController = class {
     return response({ code: "DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED" }, 503);
   }
 };
+
+// ../src/domain/forge-bmad/forge-roots.ts
+import { isAbsolute as isAbsolute7, join as join12, relative as relative3 } from "node:path";
+var FORGE_ROOTS_SCHEMA_VERSION = 2;
+var DEFAULT_RUN_STORE_POLICY = "under_orchestrator";
+var EXTERNAL_RUN_STORE_POLICY = "external_allowed";
+var REPO_RUN_STORE_POLICY = "under_repo";
+var FORGE_RUN_STORE_POLICIES = Object.freeze([
+  DEFAULT_RUN_STORE_POLICY,
+  EXTERNAL_RUN_STORE_POLICY,
+  REPO_RUN_STORE_POLICY
+]);
+function isWithin(child, parent) {
+  const rel = relative3(parent, child);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute7(rel);
+}
+function defaultRunStoreRoot(repoRoot) {
+  return join12(repoRoot, "forge", "factory-runs");
+}
+
+// ../src/domain/forge-bmad/forge-human-decision.ts
+import { createHash as createHash17 } from "node:crypto";
+var G1_POLICY_VERSION = "forge-g1-human-v1";
+var G1_OUTCOMES = /* @__PURE__ */ new Set(["approved", "rejected"]);
+var G1_REASON_CODES = /* @__PURE__ */ new Set([
+  "intent_confirmed",
+  "intent_rejected",
+  "scope_unclear",
+  "risk_not_accepted"
+]);
+function canonicalG1(value) {
+  if (Array.isArray(value)) return `[${value.map(canonicalG1).join(",")}]`;
+  if (value && typeof value === "object")
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalG1(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+function computeG1EvidenceSetHash(events, runId, attempt = 1, policyVersion = G1_POLICY_VERSION) {
+  const evidence = events.filter(
+    (event) => event.event === "run_started" && event.runId === runId || event.event === "story_run_created" && event.parentRunId === runId || event.event === "gate_started" && event.runId === runId && event.gate === "G1" && event.attempt === attempt
+  );
+  return `sha256:${createHash17("sha256").update(canonicalG1({ policyVersion, evidence })).digest("hex")}`;
+}
+
+// ../src/domain/forge-bmad/forge-spec.ts
+import { createHash as createHash18 } from "node:crypto";
+var FORGE_SPEC_SCHEMA_VERSION = 1;
+var G2_POLICY_VERSION = "forge-g2-deterministic-v1";
+var ORACLE_CATALOG = /* @__PURE__ */ new Set(["front.build", "front.tests", "back.build"]);
+function fail5(code) {
+  const error2 = new Error(code);
+  error2.code = code;
+  throw error2;
+}
+function scalar(value) {
+  const trimmed = value.trim();
+  if (/^(true|false)$/.test(trimmed)) return trimmed === "true";
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'"))
+    return trimmed.slice(1, -1);
+  return trimmed;
+}
+function parseForgeSpecFrontmatter(text2) {
+  const lines = text2.split("\n");
+  const out = {};
+  let section = null;
+  let list = null;
+  for (const raw of lines) {
+    if (!raw.trim() || raw.trimStart().startsWith("#")) continue;
+    const indent = raw.length - raw.trimStart().length;
+    const line = raw.trim();
+    if (indent === 0) {
+      const match2 = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/);
+      if (!match2) fail5("G2_FRONTMATTER_INVALID");
+      const [, key, value] = match2;
+      if (Object.hasOwn(out, key)) fail5("G2_FRONTMATTER_INVALID");
+      if (value) {
+        out[key] = scalar(value);
+        section = null;
+      } else {
+        out[key] = {};
+        section = key;
+      }
+      list = null;
+      continue;
+    }
+    if (indent === 2 && section && line.match(/^([A-Za-z][A-Za-z0-9]*):\s*$/)) {
+      out[section][line.slice(0, -1)] = [];
+      list = out[section][line.slice(0, -1)];
+      continue;
+    }
+    if (indent === 2 && section) {
+      const match2 = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.+)$/);
+      if (match2) {
+        out[section][match2[1]] = scalar(match2[2]);
+        list = null;
+        continue;
+      }
+    }
+    if (indent === 2 && section && line.startsWith("- ") && section === "oracles") {
+      if (!Array.isArray(out.oracles)) out.oracles = [];
+      out.oracles.push(scalar(line.slice(2)));
+      continue;
+    }
+    if (indent === 4 && list && line.startsWith("- ")) {
+      list.push(scalar(line.slice(2)));
+      continue;
+    }
+    fail5("G2_FRONTMATTER_INVALID");
+  }
+  return out;
+}
+function validatePattern(pattern) {
+  if (typeof pattern !== "string" || !pattern || pattern.includes("\\") || pattern.startsWith("/") || pattern.includes("..") || pattern.includes("//"))
+    fail5("G2_SCOPE_PATTERN_INVALID");
+  const parts = pattern.split("/");
+  if (parts.some((part) => !part || part !== "*" && part !== "**" && !/^[A-Za-z0-9._@-]+$/.test(part)))
+    fail5("G2_SCOPE_PATTERN_INVALID");
+  if (parts.includes("**") && parts.at(-1) !== "**") fail5("G2_SCOPE_PATTERN_INVALID");
+}
+function validateForgeSpecSchema(data, workItem) {
+  if (data.schemaVersion !== FORGE_SPEC_SCHEMA_VERSION) fail5("G2_SPEC_SCHEMA_UNSUPPORTED");
+  if (!data.workItem || data.workItem.id !== workItem.id || data.workItem.kind !== workItem.kind)
+    fail5("G2_WORK_ITEM_MISMATCH");
+  if (!data.scope || typeof data.scope !== "object") fail5("G2_SCOPE_INVALID");
+  for (const key of ["allow", "create", "deny"]) {
+    if (!Array.isArray(data.scope[key]) || data.scope[key].length === 0) fail5("G2_SCOPE_INVALID");
+    data.scope[key].forEach(validatePattern);
+  }
+  if (!Array.isArray(data.oracles) || data.oracles.some((oracle) => typeof oracle !== "string" || !ORACLE_CATALOG.has(oracle)))
+    fail5("G2_ORACLE_UNKNOWN");
+  if (Object.keys(data).some((key) => !["schemaVersion", "workItem", "scope", "oracles"].includes(key)))
+    fail5("G2_FRONTMATTER_INVALID");
+}
+function computeForgeSpecHash(content) {
+  return `sha256:${createHash18("sha256").update(content).digest("hex")}`;
+}
+var FORGE_SPEC_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
+
+// ../src/domain/forge-bmad/forge-story-spec.ts
+import { createHash as createHash19 } from "node:crypto";
+var FORGE_STORY_SPEC_SCHEMA_VERSION = 1;
+var G2_US_POLICY_VERSION = "forge-g2-us-deterministic-v1";
+var STORY_SPEC_ALLOWED_KEYS = /* @__PURE__ */ new Set([
+  "schemaVersion",
+  "workItem",
+  "scope",
+  "oracles",
+  "acceptanceCriteria",
+  "impacts"
+]);
+function fail6(code, detail) {
+  const error2 = new Error(detail ?? code);
+  error2.code = code;
+  throw error2;
+}
+function scalar2(value) {
+  const trimmed = value.trim();
+  if (/^(true|false)$/.test(trimmed)) return trimmed === "true";
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'"))
+    return trimmed.slice(1, -1);
+  return trimmed;
+}
+function parseStorySpecFrontmatter(text2) {
+  const lines = text2.split("\n");
+  const out = {};
+  let section = null;
+  let list = null;
+  for (const raw of lines) {
+    if (!raw.trim() || raw.trimStart().startsWith("#")) continue;
+    const indent = raw.length - raw.trimStart().length;
+    const line = raw.trim();
+    if (indent === 0) {
+      const match2 = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/);
+      if (!match2) fail6("G2_FRONTMATTER_INVALID");
+      const [, key, value] = match2;
+      if (Object.hasOwn(out, key)) fail6("G2_FRONTMATTER_INVALID");
+      if (value) {
+        out[key] = scalar2(value);
+        section = null;
+      } else {
+        out[key] = {};
+        section = key;
+      }
+      list = null;
+      continue;
+    }
+    if (indent === 2 && section && line.match(/^([A-Za-z][A-Za-z0-9]*):\s*$/)) {
+      out[section][line.slice(0, -1)] = [];
+      list = out[section][line.slice(0, -1)];
+      continue;
+    }
+    if (indent === 2 && section) {
+      const match2 = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.+)$/);
+      if (match2) {
+        out[section][match2[1]] = scalar2(match2[2]);
+        list = null;
+        continue;
+      }
+    }
+    if (indent === 2 && section && line.startsWith("- ")) {
+      if (!Array.isArray(out[section])) out[section] = [];
+      out[section].push(scalar2(line.slice(2)));
+      continue;
+    }
+    if (indent === 4 && list && line.startsWith("- ")) {
+      list.push(scalar2(line.slice(2)));
+      continue;
+    }
+    fail6("G2_FRONTMATTER_INVALID");
+  }
+  return out;
+}
+function validateStorySpec(data) {
+  if (data.schemaVersion !== FORGE_STORY_SPEC_SCHEMA_VERSION) fail6("G2_US_SPEC_SCHEMA_UNSUPPORTED");
+  for (const key of Object.keys(data)) {
+    if (!STORY_SPEC_ALLOWED_KEYS.has(key)) fail6("G2_FRONTMATTER_INVALID", `unexpected key: ${key}`);
+  }
+  if (!data.workItem || typeof data.workItem !== "object") fail6("G2_US_WORK_ITEM_KIND_INVALID");
+  if (data.workItem.kind !== "Story") fail6("G2_US_WORK_ITEM_KIND_INVALID");
+  if (typeof data.workItem.id !== "string" || !data.workItem.id) fail6("G2_FRONTMATTER_INVALID");
+  if (typeof data.workItem.parentId !== "string" || !data.workItem.parentId) fail6("G2_US_PARENT_ID_MISSING");
+  if (!data.scope || typeof data.scope !== "object") fail6("G2_SCOPE_INVALID");
+  for (const key of ["allow", "create", "deny"]) {
+    if (!Array.isArray(data.scope[key]) || data.scope[key].length === 0) fail6("G2_SCOPE_INVALID");
+  }
+  if (data.oracles !== void 0 && !Array.isArray(data.oracles)) fail6("G2_FRONTMATTER_INVALID");
+  for (const key of ["acceptanceCriteria", "impacts"]) {
+    if (data[key] !== void 0) {
+      if (!Array.isArray(data[key])) fail6("G2_FRONTMATTER_INVALID");
+    }
+  }
+}
+function validateInheritance(storySpec, epicSpec) {
+  const violations = [];
+  const epicAllow = new Set(epicSpec.scope?.allow ?? []);
+  const epicCreate = new Set(epicSpec.scope?.create ?? []);
+  const epicDeny = new Set(epicSpec.scope?.deny ?? []);
+  const epicOracles = new Set(epicSpec.oracles ?? []);
+  for (const pattern of storySpec.scope?.allow ?? []) {
+    if (!epicAllow.has(pattern)) {
+      violations.push({ code: "G2_US_ALLOW_EXCEEDS_EPIC", detail: `allow pattern "${pattern}" not in Epic allow set` });
+    }
+  }
+  for (const pattern of storySpec.scope?.create ?? []) {
+    if (!epicCreate.has(pattern)) {
+      violations.push({
+        code: "G2_US_CREATE_EXCEEDS_EPIC",
+        detail: `create pattern "${pattern}" not in Epic create set`
+      });
+    }
+  }
+  const storyDeny = new Set(storySpec.scope?.deny ?? []);
+  for (const pattern of epicDeny) {
+    if (!storyDeny.has(pattern)) {
+      violations.push({
+        code: "G2_US_DENY_WEAKER_THAN_EPIC",
+        detail: `Epic deny pattern "${pattern}" missing from Story deny set`
+      });
+    }
+  }
+  for (const oracle of storySpec.oracles ?? []) {
+    if (!epicOracles.has(oracle)) {
+      violations.push({
+        code: "G2_US_ORACLE_UNKNOWN_IN_EPIC",
+        detail: `oracle "${oracle}" not declared in Epic oracles`
+      });
+    }
+  }
+  return { valid: violations.length === 0, violations };
+}
+function computeStorySpecHash(content) {
+  return `sha256:${createHash19("sha256").update(content).digest("hex")}`;
+}
+
+// ../src/domain/forge-bmad/forge-bmad-parser.ts
+function toLines(raw) {
+  return raw.replace(/\r\n/g, "\n").split("\n");
+}
+function parseScalar(raw) {
+  const v = raw.trim();
+  if (v === "" || v === "null" || v === "~") return null;
+  if (v.startsWith('"') && v.endsWith('"')) return v.slice(1, -1);
+  if (v.startsWith("'") && v.endsWith("'")) return v.slice(1, -1);
+  return v;
+}
+function indentOf(line) {
+  return line.length - line.trimStart().length;
+}
+function parseBlock(lines, start, indent) {
+  const obj = {};
+  let i = start;
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+    if (trimmed === "" || trimmed.startsWith("#")) {
+      i++;
+      continue;
+    }
+    const currentIndent = indentOf(line);
+    if (currentIndent < indent) break;
+    if (currentIndent > indent) {
+      i++;
+      continue;
+    }
+    const colonIdx = trimmed.indexOf(":");
+    if (colonIdx < 0) {
+      i++;
+      continue;
+    }
+    const key = trimmed.slice(0, colonIdx).trim();
+    const rest = trimmed.slice(colonIdx + 1);
+    let nextMeaningful = i + 1;
+    while (nextMeaningful < lines.length && lines[nextMeaningful].trim() === "") nextMeaningful++;
+    const hasSubBlock = nextMeaningful < lines.length && lines[nextMeaningful].trim() !== "" && !lines[nextMeaningful].trimStart().startsWith("#") && indentOf(lines[nextMeaningful]) > indent;
+    if (hasSubBlock && rest.trim() === "") {
+      const { obj: subObj, nextIndex } = parseBlock(lines, i + 1, indentOf(lines[nextMeaningful]));
+      obj[key] = subObj;
+      i = nextIndex;
+    } else {
+      obj[key] = parseScalar(rest);
+      i++;
+    }
+  }
+  return { obj, nextIndex: i };
+}
+function parseYamlMinimal(content) {
+  const lines = toLines(content);
+  const { obj } = parseBlock(lines, 0, 0);
+  return obj;
+}
+function extractFrontmatter(content) {
+  const lines = toLines(content);
+  if (lines[0]?.trim() !== "---") return null;
+  const end = lines.findIndex((l, i) => i > 0 && l.trim() === "---");
+  if (end < 0) return null;
+  return lines.slice(1, end).join("\n");
+}
+function str(obj, key) {
+  if (!obj || typeof obj !== "object") return null;
+  const v = obj[key];
+  if (v === null || v === void 0) return null;
+  if (typeof v === "string") return v;
+  return String(v);
+}
+function sub(obj, key) {
+  if (!obj || typeof obj !== "object") return null;
+  const v = obj[key];
+  if (!v || typeof v !== "object") return null;
+  return v;
+}
+function normalizeForgeRunYaml(raw, ticketId) {
+  const g12 = sub(raw, "gate_1");
+  const g22 = sub(raw, "gate_2");
+  const g3 = sub(raw, "gate_3");
+  const g4 = sub(raw, "gate_4");
+  const outcome = sub(raw, "run_outcome");
+  return {
+    forgeRunId: str(raw, "forge_run_id"),
+    ticketId: str(raw, "ticket_id") ?? ticketId,
+    ticketSummary: str(raw, "ticket_summary"),
+    workstream: str(raw, "workstream"),
+    gates: {
+      gate_1: {
+        startedAt: str(g12, "started_at"),
+        decidedAt: str(g12, "decided_at"),
+        humanDecision: str(g12, "human_decision"),
+        reviewVerdict: str(sub(g12, "review"), "verdict")
+      },
+      gate_2: {
+        startedAt: str(g22, "started_at"),
+        decidedAt: str(g22, "decided_at"),
+        humanDecision: str(g22, "human_decision"),
+        reviewVerdict: str(sub(g22, "review"), "verdict"),
+        specFile: str(g22, "spec_file"),
+        branch: str(g22, "branch")
+      },
+      gate_3: {
+        startedAt: str(g3, "started_at"),
+        decidedAt: str(g3, "decided_at"),
+        humanDecision: str(g3, "human_decision"),
+        reviewVerdict: str(sub(g3, "review"), "verdict"),
+        prLink: str(g3, "pr_link")
+      },
+      gate_4: {
+        startedAt: str(g4, "started_at"),
+        decidedAt: str(g4, "decided_at"),
+        humanDecision: str(g4, "human_decision")
+      }
+    },
+    runOutcome: {
+      status: str(outcome, "status") ?? "in-progress",
+      branch: str(outcome, "branch"),
+      prLink: str(outcome, "pr_link")
+    }
+  };
+}
+function normalizeStoryFrontmatterFields(parsed) {
+  return {
+    status: str(parsed, "status"),
+    jira: str(parsed, "jira"),
+    jiraEpic: str(parsed, "jira-epic"),
+    forgeGate: str(parsed, "forge_gate"),
+    title: str(parsed, "title"),
+    type: str(parsed, "type"),
+    created: str(parsed, "created")
+  };
+}
+function normalizeSprintStatus(raw) {
+  const devStatusRaw = sub(raw, "development_status");
+  const developmentStatus = /* @__PURE__ */ new Map();
+  if (devStatusRaw) {
+    for (const [k, v] of Object.entries(devStatusRaw)) {
+      if (typeof v === "string") developmentStatus.set(k, v);
+      else if (v === null) developmentStatus.set(k, "unknown");
+    }
+  }
+  return {
+    developmentStatus,
+    epicJira: str(raw, "epic_jira"),
+    sprintGate: str(raw, "sprint_gate")
+  };
+}
+var STRICT_GATE_FIELDS = ["started_at", "decided_at", "human_decision"];
+function validateStrictForgeYamlSyntax(content) {
+  const meaningful = toLines(content).map((line, index) => ({ line, index })).filter(({ line }) => line.trim() && !line.trimStart().startsWith("#") && line.trim() !== "---");
+  for (let position = 0; position < meaningful.length; position++) {
+    const { line } = meaningful[position];
+    if (line.includes("	")) return false;
+    const indent = indentOf(line);
+    if (indent % 2 !== 0) return false;
+    const text2 = line.trim();
+    if (text2.startsWith("- ") || text2.startsWith("[") || text2.startsWith("{")) return false;
+    let quote = null;
+    let colon = -1;
+    for (let i = 0; i < text2.length; i++) {
+      const char = text2[i];
+      if (quote) {
+        if (char === quote && (quote === "'" || text2[i - 1] !== "\\")) quote = null;
+      } else if (char === "'" || char === '"') quote = char;
+      else if (char === ":") {
+        colon = i;
+        break;
+      }
+    }
+    if (quote || colon <= 0 || !/^[A-Za-z0-9_-]+$/.test(text2.slice(0, colon).trim())) return false;
+    const rawValue = text2.slice(colon + 1).trim();
+    if (rawValue.startsWith("|") || rawValue.startsWith(">") || rawValue.startsWith("[") || rawValue.startsWith("{"))
+      return false;
+    if (rawValue) {
+      const first = rawValue[0];
+      if (first === "'" || first === '"') {
+        let closedAt = -1;
+        for (let i = 1; i < rawValue.length; i++) {
+          if (rawValue[i] === first && (first === "'" || rawValue[i - 1] !== "\\")) {
+            closedAt = i;
+            break;
+          }
+        }
+        if (closedAt < 0 || !/^\s*(?:#.*)?$/.test(rawValue.slice(closedAt + 1))) return false;
+      }
+    } else {
+      const next = meaningful[position + 1]?.line;
+      if (!next || indentOf(next) <= indent) return false;
+    }
+  }
+  return meaningful.length > 0;
+}
+function validateForgeRunStructure(raw, ticketId) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).length === 0)
+    return { ok: false, error: { code: "FORGE_RUN_TRUNCATED" } };
+  if (!Object.hasOwn(raw, "ticket_id") || typeof raw.ticket_id !== "string" || raw.ticket_id !== ticketId)
+    return { ok: false, error: { code: "FORGE_TICKET_MISMATCH" } };
+  const outcome = raw.run_outcome;
+  if (!outcome || typeof outcome !== "object" || Array.isArray(outcome) || !Object.hasOwn(outcome, "status") || typeof outcome.status !== "string" || !["in-progress", "completed", "abandoned"].includes(outcome.status)) {
+    return { ok: false, error: { code: "INVALID_FORGE_RUN_STRUCTURE", path: "run_outcome.status" } };
+  }
+  for (let number = 1; number <= 4; number++) {
+    const key = `gate_${number}`;
+    if (!Object.hasOwn(raw, key)) continue;
+    const gate2 = raw[key];
+    if (!gate2 || typeof gate2 !== "object" || Array.isArray(gate2))
+      return { ok: false, error: { code: "INVALID_FORGE_RUN_STRUCTURE", path: key } };
+    for (const field of STRICT_GATE_FIELDS) {
+      if (!Object.hasOwn(gate2, field) || gate2[field] !== null && typeof gate2[field] !== "string")
+        return { ok: false, error: { code: "INVALID_FORGE_RUN_STRUCTURE", path: `${key}.${field}` } };
+    }
+  }
+  return { ok: true };
+}
+
+// ../src/domain/forge-bmad/forge-ledger.ts
+var FORGE_LEDGER_SCHEMA_VERSION = 1;
+var FORGE_WORKFLOW_VERSION = "forge-epic-v1";
+function parseForgeLedgerLines(raw) {
+  return raw.split("\n").filter(Boolean).map((line, index) => {
+    let event;
+    try {
+      event = JSON.parse(line);
+    } catch {
+      throw new Error(`invalid JSONL at line ${index + 1}`);
+    }
+    if (event.schemaVersion !== FORGE_LEDGER_SCHEMA_VERSION)
+      throw new Error(`unsupported forge ledger schema at line ${index + 1}`);
+    return event;
+  });
+}
+function projectForgeRun(events) {
+  const start = events.find((event) => event.event === "run_started" && event.runType === "EpicRun");
+  if (!start) return null;
+  const storyEvents = events.filter((event) => event.event === "story_run_created" && event.parentRunId === start.runId).sort((a, b) => a.ordinal - b.ordinal);
+  const g12 = events.filter((event) => event.event === "gate_started" && event.runId === start.runId && event.gate === "G1").at(-1);
+  const decision = g12 && events.find(
+    (event) => event.event === "human_decision_recorded" && event.runId === start.runId && event.gate === "G1" && event.attempt === g12.attempt
+  );
+  const evidenceSetHash = g12 ? computeG1EvidenceSetHash(events, start.runId, g12.attempt, g12.policyVersion) : null;
+  const g1Status2 = decision ? decision.decision.outcome : g12?.status ?? "not_started";
+  const g22 = events.filter((event) => event.event === "g2_evaluated" && event.runId === start.runId).at(-1);
+  const validations = new Map(
+    events.filter((event) => event.event === "story_analysis_plan_validated").map((event) => [event.executionId, event])
+  );
+  const oracleCampaignsByStory = /* @__PURE__ */ new Map();
+  for (const gate2 of events.filter((event) => event.event === "story_g3_evaluated")) {
+    const results = events.filter((event) => event.event === "story_oracle_finished" && event.campaignId === gate2.campaignId).map((event) => ({
+      name: event.name,
+      status: event.status,
+      code: event.code,
+      ownerProjects: event.ownerProjects ?? [],
+      target: event.target ?? null,
+      buildHosts: event.buildHosts ?? [],
+      ownersWithTestTarget: event.ownersWithTestTarget ?? [],
+      ownersWithoutTestTarget: event.ownersWithoutTestTarget ?? [],
+      exitCode: event.exitCode,
+      durationMs: event.durationMs,
+      commandHash: event.commandHash
+    }));
+    const list = oracleCampaignsByStory.get(gate2.storyRunId) ?? [];
+    list.push({
+      campaignId: gate2.campaignId,
+      editId: gate2.editId,
+      status: gate2.status,
+      specHash: gate2.specHash,
+      policyVersion: gate2.policyVersion,
+      results
+    });
+    oracleCampaignsByStory.set(gate2.storyRunId, list);
+  }
+  const editsByStory = /* @__PURE__ */ new Map();
+  for (const edit of events.filter((event) => event.event === "story_edit_finished")) {
+    const list = editsByStory.get(edit.storyRunId) ?? [];
+    list.push({
+      editId: edit.editId,
+      status: edit.status,
+      outcome: edit.outcome,
+      caseId: edit.caseId,
+      diffValidation: edit.diffValidation,
+      filesModified: edit.filesModified,
+      filesCreated: edit.filesCreated
+    });
+    editsByStory.set(edit.storyRunId, list);
+  }
+  const g2usByStory = /* @__PURE__ */ new Map();
+  for (const ev of events.filter((event) => event.event === "g2_us_evaluated")) {
+    g2usByStory.set(ev.storyRunId, ev);
+  }
+  const executions = events.filter((event) => event.event === "agent_execution_finished");
+  const executionsByStory = /* @__PURE__ */ new Map();
+  for (const execution2 of executions) {
+    const list = executionsByStory.get(execution2.storyRunId) ?? [];
+    const validation = validations.get(execution2.executionId);
+    list.push({
+      executionId: execution2.executionId,
+      caseId: execution2.caseId,
+      runtime: execution2.runtime,
+      role: execution2.role,
+      agentName: execution2.agentName,
+      namespaceId: execution2.namespaceId,
+      status: execution2.status,
+      outcome: execution2.outcome,
+      caseStatus: execution2.caseStatus ?? null,
+      killedByBudget: execution2.killedByBudget === true,
+      artifact: execution2.artifact ?? null,
+      analysisValidation: validation ? { schemaVersion: validation.planSchemaVersion, status: validation.status, code: validation.code } : null,
+      observedAt: execution2.observedAt
+    });
+    executionsByStory.set(execution2.storyRunId, list);
+  }
+  return {
+    schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
+    runId: start.runId,
+    runType: start.runType,
+    workflow: start.workflow,
+    workItem: start.workItem,
+    roots: start.roots,
+    startedAt: start.at,
+    status: g1Status2,
+    gates: [
+      ...g12 ? [
+        {
+          gate: "G1",
+          attempt: g12.attempt,
+          status: g1Status2,
+          requiredDecision: g12.requiredDecision,
+          policyVersion: g12.policyVersion,
+          evidenceSetHash,
+          decision: decision?.decision ?? null
+        }
+      ] : [],
+      ...g22 ? [
+        {
+          gate: "G2",
+          attempt: g22.attempt,
+          status: g22.status,
+          code: g22.code,
+          policyVersion: g22.policyVersion,
+          spec: g22.spec ?? null
+        }
+      ] : []
+    ],
+    stories: storyEvents.map((event) => {
+      const executions2 = executionsByStory.get(event.runId) ?? [];
+      const edits = editsByStory.get(event.runId) ?? [];
+      const oracleCampaigns = oracleCampaignsByStory.get(event.runId) ?? [];
+      const g2usEvent = g2usByStory.get(event.runId) ?? null;
+      const storyG2 = g2usEvent ? {
+        gate: "G2-US",
+        attempt: g2usEvent.attempt,
+        status: g2usEvent.status,
+        code: g2usEvent.code,
+        policyVersion: g2usEvent.policyVersion,
+        storySpec: g2usEvent.storySpec ?? null
+      } : null;
+      const latestCampaign = oracleCampaigns.at(-1);
+      const latestEdit = edits.at(-1);
+      const latestExecution = executions2.at(-1);
+      const status = latestCampaign?.status ?? latestEdit?.status ?? latestExecution?.status ?? "not_started";
+      return {
+        runId: event.runId,
+        ordinal: event.ordinal,
+        status,
+        workItem: event.workItem,
+        executions: executions2,
+        edits,
+        oracleCampaigns,
+        storyG2
+      };
+    })
+  };
+}
+
+// ../lib/workflow-projection.mjs
+import { createHash as createHash20 } from "node:crypto";
+var WORKFLOW_STATUSES2 = Object.freeze([
+  "pending",
+  "ready",
+  "running",
+  "waiting_human",
+  "blocked",
+  "completed",
+  "failed",
+  "cancelled"
+]);
+var WORKFLOW_RESPONSIBILITY_KINDS = Object.freeze(["human", "agent", "code"]);
+var WORKFLOW_PROJECTION_LIMITS = Object.freeze({
+  id: 128,
+  text: 256,
+  description: 4096,
+  steps: 500,
+  dependenciesPerStep: 100,
+  actorName: 256
+});
+var WORKFLOW_PROJECTION_ERROR_CODES = Object.freeze({
+  INVALID_PROJECTION: "INVALID_PROJECTION",
+  INVALID_SCHEMA_VERSION: "INVALID_SCHEMA_VERSION",
+  INVALID_ID: "INVALID_ID",
+  INVALID_VALUE: "INVALID_VALUE",
+  INVALID_STATUS: "INVALID_STATUS",
+  EXCESSIVE_SIZE: "EXCESSIVE_SIZE",
+  DUPLICATE_STEP_ID: "DUPLICATE_STEP_ID",
+  MISSING_DEPENDENCY: "MISSING_DEPENDENCY",
+  SELF_DEPENDENCY: "SELF_DEPENDENCY",
+  DEPENDENCY_CYCLE: "DEPENDENCY_CYCLE"
+});
+var SAFE_ID7 = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
+var STATUS_SET = new Set(WORKFLOW_STATUSES2);
+var ACTOR_KIND_SET = new Set(WORKFLOW_RESPONSIBILITY_KINDS);
+var PROJECTION_FIELDS = /* @__PURE__ */ new Set([
+  "schemaVersion",
+  "workflowId",
+  "workflowType",
+  "title",
+  "status",
+  "expectedRevision",
+  "steps"
+]);
+var STEP_V1_FIELDS = /* @__PURE__ */ new Set(["id", "name", "status", "description", "dependsOn"]);
+var STEP_V2_FIELDS = /* @__PURE__ */ new Set([...STEP_V1_FIELDS, "responsibility"]);
+var RESPONSIBILITY_FIELDS2 = /* @__PURE__ */ new Set(["kind", "name"]);
+function failure2(code, path, details = {}) {
+  return { ok: false, error: { code, path, details } };
+}
+function boundedString(value, maximum, path, { safe: safe2 = false, optional = false } = {}) {
+  if (optional && value === void 0) return { ok: true, value: void 0 };
+  if (typeof value !== "string" || !value.trim())
+    return failure2(
+      safe2 ? WORKFLOW_PROJECTION_ERROR_CODES.INVALID_ID : WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE,
+      path
+    );
+  if (value.length > maximum) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.EXCESSIVE_SIZE, path, { maximum });
+  if (safe2 && !SAFE_ID7.test(value)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_ID, path);
+  return { ok: true, value };
+}
+function validateWorkflowProjection(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_PROJECTION, "$");
+  if (input.schemaVersion !== "1" && input.schemaVersion !== "2")
+    return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_SCHEMA_VERSION, "schemaVersion");
+  if (Object.keys(input).some((key) => !PROJECTION_FIELDS.has(key)))
+    return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, "$", { reason: "unknown_field" });
+  const schemaVersion = input.schemaVersion;
+  for (const [field, limit, safe2] of [
+    ["workflowId", WORKFLOW_PROJECTION_LIMITS.id, true],
+    ["workflowType", WORKFLOW_PROJECTION_LIMITS.text, false],
+    ["title", WORKFLOW_PROJECTION_LIMITS.text, false]
+  ]) {
+    const result = boundedString(input[field], limit, field, { safe: safe2 });
+    if (!result.ok) return result;
+  }
+  if (!STATUS_SET.has(input.status)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_STATUS, "status");
+  if (input.expectedRevision !== void 0 && (!Number.isSafeInteger(input.expectedRevision) || input.expectedRevision < 0))
+    return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, "expectedRevision");
+  if (!Array.isArray(input.steps)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, "steps");
+  if (input.steps.length > WORKFLOW_PROJECTION_LIMITS.steps)
+    return failure2(WORKFLOW_PROJECTION_ERROR_CODES.EXCESSIVE_SIZE, "steps", {
+      maximum: WORKFLOW_PROJECTION_LIMITS.steps
+    });
+  const steps = [];
+  const ids = /* @__PURE__ */ new Set();
+  for (let index = 0; index < input.steps.length; index++) {
+    const raw = input.steps[index];
+    const base = `steps[${index}]`;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw))
+      return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, base);
+    const allowed = schemaVersion === "2" ? STEP_V2_FIELDS : STEP_V1_FIELDS;
+    if (Object.keys(raw).some((key) => !allowed.has(key)))
+      return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, base, { reason: "unknown_field" });
+    const id2 = boundedString(raw.id, WORKFLOW_PROJECTION_LIMITS.id, `${base}.id`, { safe: true });
+    if (!id2.ok) return id2;
+    if (ids.has(raw.id))
+      return failure2(WORKFLOW_PROJECTION_ERROR_CODES.DUPLICATE_STEP_ID, `${base}.id`, { stepId: raw.id });
+    ids.add(raw.id);
+    const name = boundedString(raw.name, WORKFLOW_PROJECTION_LIMITS.text, `${base}.name`);
+    if (!name.ok) return name;
+    if (!STATUS_SET.has(raw.status)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_STATUS, `${base}.status`);
+    const description = boundedString(raw.description, WORKFLOW_PROJECTION_LIMITS.description, `${base}.description`, {
+      optional: true
+    });
+    if (!description.ok) return description;
+    if (raw.dependsOn !== void 0 && !Array.isArray(raw.dependsOn))
+      return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, `${base}.dependsOn`);
+    const dependencies = raw.dependsOn ?? [];
+    if (dependencies.length > WORKFLOW_PROJECTION_LIMITS.dependenciesPerStep)
+      return failure2(WORKFLOW_PROJECTION_ERROR_CODES.EXCESSIVE_SIZE, `${base}.dependsOn`, {
+        maximum: WORKFLOW_PROJECTION_LIMITS.dependenciesPerStep
+      });
+    const seen = /* @__PURE__ */ new Set();
+    for (let i = 0; i < dependencies.length; i++) {
+      const dependency = boundedString(dependencies[i], WORKFLOW_PROJECTION_LIMITS.id, `${base}.dependsOn[${i}]`, {
+        safe: true
+      });
+      if (!dependency.ok) return dependency;
+      if (seen.has(dependency.value))
+        return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, `${base}.dependsOn[${i}]`, {
+          reason: "duplicate_dependency"
+        });
+      seen.add(dependency.value);
+    }
+    let responsibility;
+    if (schemaVersion === "2") {
+      const actor = raw.responsibility;
+      if (!actor || typeof actor !== "object" || Array.isArray(actor))
+        return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, `${base}.responsibility`);
+      if (Object.keys(actor).some((key) => !RESPONSIBILITY_FIELDS2.has(key)))
+        return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, `${base}.responsibility`, {
+          reason: "unknown_field"
+        });
+      if (!ACTOR_KIND_SET.has(actor.kind))
+        return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_VALUE, `${base}.responsibility.kind`);
+      const actorName = boundedString(actor.name, WORKFLOW_PROJECTION_LIMITS.actorName, `${base}.responsibility.name`, {
+        optional: true
+      });
+      if (!actorName.ok) return actorName;
+      responsibility = { kind: actor.kind, ...actorName.value === void 0 ? {} : { name: actorName.value } };
+    }
+    steps.push({
+      id: raw.id,
+      name: raw.name,
+      status: raw.status,
+      ...raw.description === void 0 ? {} : { description: raw.description },
+      ...raw.dependsOn === void 0 ? {} : { dependsOn: [...dependencies] },
+      ...responsibility ? { responsibility } : {}
+    });
+  }
+  for (const step of steps)
+    for (const target of step.dependsOn ?? []) {
+      if (target === step.id)
+        return failure2(WORKFLOW_PROJECTION_ERROR_CODES.SELF_DEPENDENCY, `steps.${step.id}.dependsOn`, {
+          stepId: step.id
+        });
+      if (!ids.has(target))
+        return failure2(WORKFLOW_PROJECTION_ERROR_CODES.MISSING_DEPENDENCY, `steps.${step.id}.dependsOn`, {
+          stepId: step.id,
+          target
+        });
+    }
+  const graph = new Map(steps.map((step) => [step.id, step.dependsOn ?? []])), visiting = /* @__PURE__ */ new Set(), visited = /* @__PURE__ */ new Set();
+  function hasCycle(id2) {
+    if (visiting.has(id2)) return true;
+    if (visited.has(id2)) return false;
+    visiting.add(id2);
+    for (const target of graph.get(id2)) if (hasCycle(target)) return true;
+    visiting.delete(id2);
+    visited.add(id2);
+    return false;
+  }
+  for (const step of steps)
+    if (hasCycle(step.id))
+      return failure2(WORKFLOW_PROJECTION_ERROR_CODES.DEPENDENCY_CYCLE, "steps", { stepId: step.id });
+  return {
+    ok: true,
+    projection: {
+      schemaVersion,
+      workflowId: input.workflowId,
+      workflowType: input.workflowType,
+      title: input.title,
+      status: input.status,
+      steps
+    },
+    expectedRevision: input.expectedRevision
+  };
+}
+
+// ../src/domain/forge-bmad/forge-workflow-adapter.ts
+var FORGE_WORKFLOW_ERROR_CODES = Object.freeze({
+  INVALID_RUN: "INVALID_FORGE_RUN",
+  UNKNOWN_DECISION: "UNKNOWN_FORGE_DECISION",
+  UNKNOWN_OUTCOME: "UNKNOWN_FORGE_OUTCOME",
+  IMPOSSIBLE_GATE_ORDER: "IMPOSSIBLE_FORGE_GATE_ORDER",
+  INVALID_PROJECTION: "INVALID_FORGE_PROJECTION"
+});
+var DECISIONS = /* @__PURE__ */ new Map([
+  ["approved", "completed"],
+  ["approved-with-changes", "completed"],
+  ["rejected", "failed"]
+]);
+var GATES = Object.freeze([
+  ["gate_1", "gate-1", "Ticket"],
+  ["gate_2", "gate-2", "Spec"],
+  ["gate_3", "gate-3", "Tech Review"],
+  ["gate_4", "gate-4", "Func Review"]
+]);
+var TICKET = /^[A-Z][A-Z0-9]+-\d+$/;
+function failure3(code, path, details = {}) {
+  return { ok: false, error: { code, path, details } };
+}
+function validInstant(value) {
+  return typeof value === "string" && value.trim().length > 0 && !Number.isNaN(Date.parse(value));
+}
+function gateStatus(gate2, path) {
+  if (!gate2 || typeof gate2 !== "object") return { ok: true, status: "pending", started: false, terminal: false };
+  if (gate2.startedAt !== null && gate2.startedAt !== void 0 && !validInstant(gate2.startedAt))
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, `${path}.startedAt`, { reason: "invalid_timestamp" });
+  if (gate2.decidedAt !== null && gate2.decidedAt !== void 0 && !validInstant(gate2.decidedAt))
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, `${path}.decidedAt`, { reason: "invalid_timestamp" });
+  if (gate2.decidedAt && !gate2.startedAt)
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, `${path}.decidedAt`, { reason: "decided_without_start" });
+  if (gate2.startedAt && gate2.decidedAt && Date.parse(gate2.decidedAt) < Date.parse(gate2.startedAt))
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, `${path}.decidedAt`, { reason: "decision_before_start" });
+  const decision = gate2.humanDecision;
+  if (decision !== null && decision !== void 0) {
+    const status = DECISIONS.get(decision);
+    if (!status)
+      return failure3(FORGE_WORKFLOW_ERROR_CODES.UNKNOWN_DECISION, `${path}.humanDecision`, { value: decision });
+    if (!gate2.startedAt || !gate2.decidedAt)
+      return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, path, { reason: "decision_without_complete_timestamps" });
+    return { ok: true, status, started: true, terminal: true };
+  }
+  if (gate2.decidedAt)
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, `${path}.decidedAt`, {
+      reason: "decision_timestamp_without_decision"
+    });
+  return { ok: true, status: gate2.startedAt ? "running" : "pending", started: !!gate2.startedAt, terminal: false };
+}
+function adaptForgeRunToWorkflowProjection(run) {
+  if (!run || typeof run !== "object" || !TICKET.test(run.ticketId ?? ""))
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, "ticketId");
+  const states = [];
+  for (const [source] of GATES) {
+    const state = gateStatus(run.gates?.[source], `gates.${source}`);
+    if (!state.ok) return state;
+    states.push(state);
+  }
+  for (let index = 1; index < states.length; index++) {
+    if (states[index].started && states[index - 1].status !== "completed") {
+      return failure3(FORGE_WORKFLOW_ERROR_CODES.IMPOSSIBLE_GATE_ORDER, `gates.${GATES[index][0]}`, {
+        precedingGate: GATES[index - 1][0]
+      });
+    }
+  }
+  const outcome = run.runOutcome?.status;
+  if (!["in-progress", "completed", "abandoned"].includes(outcome))
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.UNKNOWN_OUTCOME, "runOutcome.status", { value: outcome });
+  if (outcome === "completed" && states.some((state) => state.status !== "completed"))
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, "runOutcome.status", {
+      reason: "completed_before_all_gates_approved"
+    });
+  if (outcome === "in-progress" && states.every((state) => state.status === "completed"))
+    return failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_RUN, "runOutcome.status", {
+      reason: "all_gates_complete_but_run_in_progress"
+    });
+  let status;
+  if (outcome === "completed") status = "completed";
+  else if (outcome === "abandoned") status = "cancelled";
+  else if (states.some((state) => state.status === "failed")) status = "failed";
+  else if (states.some((state) => state.status === "running")) status = "running";
+  else if (states.some((state) => state.status === "completed")) status = "ready";
+  else status = "pending";
+  const candidate = {
+    schemaVersion: "1",
+    workflowId: `forge-run-${run.ticketId}`,
+    workflowType: "forge-ticket-v1",
+    title: run.ticketSummary?.trim() || run.ticketId,
+    status,
+    steps: GATES.map(([, id2, name], index) => ({
+      id: id2,
+      name,
+      status: outcome === "abandoned" && !states[index].terminal ? "cancelled" : states[index].status,
+      dependsOn: index === 0 ? [] : [GATES[index - 1][1]]
+    }))
+  };
+  const validated = validateWorkflowProjection(candidate);
+  return validated.ok ? { ok: true, projection: validated.projection } : failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_PROJECTION, validated.error.path, { validation: validated.error });
+}
+
+// ../src/domain/forge-bmad/jira.ts
+var COMMENTS_CHAR_BUDGET = 8e3;
+function extractTicketId(input) {
+  if (!input || typeof input !== "string") return null;
+  const urlMatch = input.match(/\/browse\/([A-Z][A-Z0-9]+-\d+)/i);
+  if (urlMatch) return urlMatch[1].toUpperCase();
+  const idMatch = input.match(/^([A-Z][A-Z0-9]+-\d+)$/i);
+  if (idMatch) return idMatch[1].toUpperCase();
+  return null;
+}
+var BLOCK_TYPES = /* @__PURE__ */ new Set([
+  "paragraph",
+  "heading",
+  "listItem",
+  "bulletList",
+  "orderedList",
+  "blockquote",
+  "codeBlock",
+  "rule"
+]);
+function extractAdfText(node) {
+  if (!node || typeof node !== "object") return "";
+  if (node.type === "text" && typeof node.text === "string") return node.text;
+  const children = node.content ?? [];
+  const parts = children.map(extractAdfText);
+  return BLOCK_TYPES.has(node.type) ? parts.join("") + "\n" : parts.join("");
+}
+function applyCommentBudget(comments, budget) {
+  let remaining = budget;
+  const included = [];
+  for (const c of comments) {
+    const size = c.author.length + c.created.length + c.body.length + 50;
+    if (remaining <= 0) break;
+    included.push(c);
+    remaining -= size;
+  }
+  const omitted = comments.length - included.length;
+  return { included, omitted };
+}
+
+// ../src/adapters/forge/forge-roots-resolver.ts
+import { existsSync as existsSync2, mkdirSync as mkdirSync2, realpathSync as realpathSync2, statSync } from "node:fs";
+import { basename, dirname as dirname7, isAbsolute as isAbsolute8, join as join13, resolve as resolve3 } from "node:path";
+function resolveExistingDirectory(value, field) {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required`);
+  if (!isAbsolute8(value)) throw new Error(`${field} must be an absolute path`);
+  try {
+    const real = realpathSync2(resolve3(value));
+    if (!statSync(real).isDirectory()) throw new Error("not a directory");
+    return real;
+  } catch {
+    throw new Error(`${field} must exist as a directory and resolve without a broken symlink`);
+  }
+}
+function resolveStoreRoot(value) {
+  if (typeof value !== "string" || !value.trim()) throw new Error("roots.runStoreRoot is required");
+  if (!isAbsolute8(value)) throw new Error("roots.runStoreRoot must be an absolute path");
+  const requested = resolve3(value);
+  const parent = resolveExistingDirectory(dirname7(requested), "roots.runStoreParent");
+  const candidate = join13(parent, basename(requested));
+  if (existsSync2(candidate)) return resolveExistingDirectory(candidate, "roots.runStoreRoot");
+  return candidate;
+}
+function resolveForgeRoots(input) {
+  if (!input || typeof input !== "object") throw new Error("roots object is required");
+  const orchestratorRoot = resolveExistingDirectory(input.orchestratorRoot, "roots.orchestratorRoot");
+  const repoRoot = resolveExistingDirectory(input.repoRoot, "roots.repoRoot");
+  const forgeRoot = input.forgeRoot === void 0 ? void 0 : resolveExistingDirectory(input.forgeRoot, "roots.forgeRoot");
+  const runStoreRoot = resolveStoreRoot(input.runStoreRoot);
+  const runStorePolicy = input.runStorePolicy ?? DEFAULT_RUN_STORE_POLICY;
+  if (!FORGE_RUN_STORE_POLICIES.includes(runStorePolicy)) {
+    throw new Error(
+      `roots.runStorePolicy must be ${DEFAULT_RUN_STORE_POLICY}, ${EXTERNAL_RUN_STORE_POLICY}, or ${REPO_RUN_STORE_POLICY}`
+    );
+  }
+  const policy = runStorePolicy;
+  if (policy === DEFAULT_RUN_STORE_POLICY && !isWithin(runStoreRoot, orchestratorRoot)) {
+    throw new Error(
+      "roots.runStoreRoot must remain under roots.orchestratorRoot unless runStorePolicy is external_allowed"
+    );
+  }
+  if (policy === REPO_RUN_STORE_POLICY && !isWithin(runStoreRoot, repoRoot)) {
+    throw new Error("roots.runStoreRoot must remain under roots.repoRoot when runStorePolicy is under_repo");
+  }
+  return Object.freeze({
+    schemaVersion: FORGE_ROOTS_SCHEMA_VERSION,
+    orchestratorRoot,
+    runStoreRoot,
+    repoRoot,
+    ...forgeRoot ? { forgeRoot } : {},
+    runStorePolicy: policy
+  });
+}
+function ensureForgeRunStore(roots) {
+  mkdirSync2(roots.runStoreRoot, { recursive: true });
+  return resolveExistingDirectory(roots.runStoreRoot, "roots.runStoreRoot");
+}
+
+// ../src/adapters/forge/forge-bmad-file-reader.ts
+import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
+import { isAbsolute as isAbsolute9, join as join14 } from "node:path";
+function readFileSafe(filePath) {
+  if (!existsSync3(filePath)) return null;
+  try {
+    return readFileSync3(filePath, "utf8");
+  } catch {
+    return null;
+  }
+}
+function readYamlFile(filePath) {
+  const content = readFileSafe(filePath);
+  if (content === null) return null;
+  try {
+    return parseYamlMinimal(content);
+  } catch {
+    return null;
+  }
+}
+function readForgeRunYaml(repoRoot, ticketId) {
+  const yamlPath = join14(repoRoot, "forge", "state", "forge-runs", `${ticketId}.yaml`);
+  const raw = readYamlFile(yamlPath);
+  if (!raw) return null;
+  return normalizeForgeRunYaml(raw, ticketId);
+}
+function readForgeRunYamlStrict(repoRoot, ticketId) {
+  const yamlPath = join14(repoRoot, "forge", "state", "forge-runs", `${ticketId}.yaml`);
+  if (!existsSync3(yamlPath)) return { ok: false, error: { code: "FORGE_RUN_NOT_FOUND" } };
+  let content;
+  try {
+    content = readFileSync3(yamlPath, "utf8");
+  } catch {
+    return { ok: false, error: { code: "FORGE_RUN_READ_FAILURE" } };
+  }
+  if (!content.trim()) return { ok: false, error: { code: "FORGE_RUN_TRUNCATED" } };
+  if (!validateStrictForgeYamlSyntax(content)) return { ok: false, error: { code: "FORGE_RUN_PARSE_INVALID" } };
+  let raw;
+  try {
+    raw = parseYamlMinimal(content);
+  } catch {
+    return { ok: false, error: { code: "FORGE_RUN_PARSE_INVALID" } };
+  }
+  const structure = validateForgeRunStructure(raw, ticketId);
+  if (!structure.ok) return { ok: false, error: structure.error };
+  const normalized = readForgeRunYaml(repoRoot, ticketId);
+  if (!normalized) return { ok: false, error: { code: "FORGE_RUN_PARSE_INVALID" } };
+  return { ok: true, run: normalized };
+}
+function readStoryFrontmatter(repoRoot, storePath) {
+  const fullPath = isAbsolute9(storePath) ? storePath : join14(repoRoot, storePath);
+  const content = readFileSafe(fullPath);
+  if (content === null) return null;
+  const fmRaw = extractFrontmatter(content);
+  if (!fmRaw) return null;
+  let parsed;
+  try {
+    parsed = parseYamlMinimal(fmRaw);
+  } catch {
+    return null;
+  }
+  return normalizeStoryFrontmatterFields(parsed);
+}
+function readSprintStatus(repoRoot, workstreamSlug) {
+  const yamlPath = join14(
+    repoRoot,
+    "forge",
+    "bmad",
+    "workstreams",
+    workstreamSlug,
+    "implementation-artifacts",
+    "sprint-status.yaml"
+  );
+  const raw = readYamlFile(yamlPath);
+  if (!raw) return null;
+  return normalizeSprintStatus(raw);
+}
+
+// ../src/adapters/forge/forge-spec-reader.ts
+import { readFileSync as readFileSync4, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
+import { isAbsolute as isAbsolute10, relative as relative4, resolve as resolve4 } from "node:path";
+function inside2(child, root) {
+  const rel = relative4(root, child);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute10(rel);
+}
+function fail7(code) {
+  const error2 = new Error(code);
+  error2.code = code;
+  throw error2;
+}
+function loadForgeSpec({
+  specPath,
+  roots,
+  workItem
+}) {
+  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail7("G2_SPEC_PATH_INVALID");
+  let path;
+  try {
+    path = realpathSync3(resolve4(specPath));
+    if (!statSync2(path).isFile()) fail7("G2_SPEC_PATH_INVALID");
+  } catch (error2) {
+    if (error2.code?.startsWith("G2_")) throw error2;
+    fail7("G2_SPEC_PATH_INVALID");
+  }
+  if (!inside2(path, roots.repoRoot) && !(roots.forgeRoot && inside2(path, roots.forgeRoot)))
+    fail7("G2_SPEC_OUTSIDE_ROOT");
+  const content = readFileSync4(path, "utf8");
+  const match2 = content.match(FORGE_SPEC_FRONTMATTER_PATTERN);
+  if (!match2) fail7("G2_FRONTMATTER_MISSING");
+  const frontmatter = parseForgeSpecFrontmatter(match2[1]);
+  validateForgeSpecSchema(frontmatter, workItem);
+  return {
+    path,
+    sha256: computeForgeSpecHash(content),
+    schemaVersion: frontmatter.schemaVersion,
+    frontmatter
+  };
+}
+function readStorySpec(specPath, roots) {
+  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail7("G2_US_SPEC_PATH_INVALID");
+  let realPath;
+  try {
+    realPath = realpathSync3(resolve4(specPath));
+    if (!statSync2(realPath).isFile()) fail7("G2_US_SPEC_PATH_INVALID");
+  } catch (error2) {
+    if (error2.code?.startsWith("G2_")) throw error2;
+    fail7("G2_US_SPEC_PATH_INVALID");
+  }
+  if (!inside2(realPath, roots.repoRoot) && !(roots.forgeRoot && inside2(realPath, roots.forgeRoot)))
+    fail7("G2_US_SPEC_OUTSIDE_ROOT");
+  const rawContent = readFileSync4(realPath, "utf8");
+  const match2 = rawContent.match(FORGE_SPEC_FRONTMATTER_PATTERN);
+  if (!match2) fail7("G2_FRONTMATTER_MISSING");
+  const frontmatter = parseStorySpecFrontmatter(match2[1]);
+  validateStorySpec(frontmatter);
+  return {
+    path: realPath,
+    sha256: computeStorySpecHash(rawContent),
+    schemaVersion: frontmatter.schemaVersion,
+    frontmatter,
+    rawContent
+  };
+}
+function hashStorySpec(specPath) {
+  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail7("G2_US_SPEC_PATH_INVALID");
+  let realPath;
+  try {
+    realPath = realpathSync3(resolve4(specPath));
+    if (!statSync2(realPath).isFile()) fail7("G2_US_SPEC_PATH_INVALID");
+  } catch (error2) {
+    if (error2.code?.startsWith("G2_")) throw error2;
+    fail7("G2_US_SPEC_PATH_INVALID");
+  }
+  const content = readFileSync4(realPath, "utf8");
+  return computeStorySpecHash(content);
+}
+
+// ../src/adapters/forge/forge-ledger-store.ts
+import { appendFileSync as appendFileSync2, readdirSync, readFileSync as readFileSync5 } from "node:fs";
+import { join as join15 } from "node:path";
+import { randomUUID as randomUUID8 } from "node:crypto";
+function assertString(value, name) {
+  if (typeof value !== "string" || !value.trim()) throw new Error(`${name} is required`);
+}
+function assertWorkItem(item, name) {
+  if (!item || typeof item !== "object") throw new Error(`${name} is required`);
+  assertString(item.id, `${name}.id`);
+  assertString(item.kind, `${name}.kind`);
+}
+function appendForgeLedgerEvent(filePath, event) {
+  appendFileSync2(filePath, `${JSON.stringify(event)}
+`, "utf8");
+}
+function createEpicRun({
+  roots,
+  epic,
+  stories,
+  runId = `epic_${randomUUID8()}`,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  assertWorkItem(epic, "epic");
+  if (!Array.isArray(stories) || stories.length === 0)
+    throw new Error("stories must contain at least one explicit Story work item");
+  for (const story of stories) {
+    assertWorkItem(story, "story");
+    if (story.kind !== "Story") throw new Error('every child work item must have kind "Story"');
+  }
+  const filePath = join15(ensureForgeRunStore(roots), `${runId}.jsonl`);
+  const at = now();
+  appendForgeLedgerEvent(filePath, {
+    schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
+    event: "run_started",
+    runId,
+    runType: "EpicRun",
+    workflow: FORGE_WORKFLOW_VERSION,
+    workItem: epic,
+    roots,
+    at
+  });
+  const storyRuns = stories.map((workItem, index) => {
+    const storyRunId = `story_${randomUUID8()}`;
+    appendForgeLedgerEvent(filePath, {
+      schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
+      event: "story_run_created",
+      runId: storyRunId,
+      parentRunId: runId,
+      runType: "StoryRun",
+      ordinal: index + 1,
+      workItem,
+      at: now()
+    });
+    return { runId: storyRunId, parentRunId: runId, ordinal: index + 1, workItem };
+  });
+  appendForgeLedgerEvent(filePath, {
+    schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
+    event: "gate_started",
+    runId,
+    gate: "G1",
+    attempt: 1,
+    status: "waiting_human",
+    requiredDecision: "intent-approval",
+    policyVersion: G1_POLICY_VERSION,
+    at: now()
+  });
+  return { runId, filePath, storyRuns };
+}
+function parseForgeLedger(filePath) {
+  return parseForgeLedgerLines(readFileSync5(filePath, "utf8"));
+}
+function listForgeRunProjections(runStoreRoot) {
+  let files = [];
+  try {
+    files = readdirSync(runStoreRoot).filter((file) => file.endsWith(".jsonl"));
+  } catch {
+    return [];
+  }
+  return files.flatMap((file) => {
+    try {
+      const projection = projectForgeRun(parseForgeLedger(join15(runStoreRoot, file)));
+      return projection ? [projection] : [];
+    } catch {
+      return [];
+    }
+  }).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+}
+
+// ../src/adapters/jira/jira-client.ts
+function formatCommentsSection(comments, omitted) {
+  const parts = comments.map((c) => {
+    const date = c.created ? new Date(c.created).toISOString().slice(0, 10) : "";
+    return `**${c.author}** (${date}):
+${c.body}`;
+  });
+  let section = parts.join("\n\n---\n\n");
+  if (omitted > 0) {
+    section += `
+
+*(${omitted} older comment${omitted === 1 ? "" : "s"} omitted \u2014 budget exceeded)*`;
+  }
+  return section;
+}
+async function fetchJiraComments(ticketId, jiraBaseUrl, jiraEmail, jiraApiToken) {
+  const credentials = Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64");
+  const base = jiraBaseUrl.replace(/\/$/, "");
+  const PAGE_SIZE = 50;
+  const allComments = [];
+  let startAt = 0;
+  while (true) {
+    const url = `${base}/rest/api/3/issue/${encodeURIComponent(ticketId)}/comment?orderBy=-created&maxResults=${PAGE_SIZE}&startAt=${startAt}`;
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+        Accept: "application/json"
+      }
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Jira comments API ${res.status} pour ${ticketId} : ${body.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const comments = data.comments ?? [];
+    const total = data.total ?? 0;
+    for (const c of comments) {
+      const authorName = c.author?.displayName ?? c.author?.emailAddress ?? c.author?.accountId ?? "Unknown";
+      const created = c.created ?? "";
+      let body = "";
+      if (c.body) {
+        if (typeof c.body === "string") {
+          body = c.body;
+        } else {
+          body = extractAdfText(c.body).trim();
+        }
+      }
+      allComments.push({ author: authorName, created, body });
+    }
+    startAt += comments.length;
+    if (startAt >= total || comments.length === 0) break;
+  }
+  return allComments;
+}
+async function fetchJiraTicket(ticketId, jiraBaseUrl, jiraEmail, jiraApiToken) {
+  const url = `${jiraBaseUrl.replace(/\/$/, "")}/rest/api/3/issue/${encodeURIComponent(ticketId)}`;
+  const credentials = Buffer.from(`${jiraEmail}:${jiraApiToken}`).toString("base64");
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      Accept: "application/json"
+    }
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Jira API ${res.status} pour ${ticketId} : ${body.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  const fields = data.fields ?? {};
+  const summary = fields.summary ?? "";
+  const parent = fields.parent ?? null;
+  const epicKey = parent?.key ?? null;
+  const epicSummary = parent?.fields?.summary ?? null;
+  let description = "";
+  if (fields.description) {
+    if (typeof fields.description === "string") {
+      description = fields.description;
+    } else {
+      description = extractAdfText(fields.description).trim();
+    }
+  }
+  let acceptanceCriteria = "";
+  for (const [key, value] of Object.entries(fields)) {
+    if (!value) continue;
+    if (key.toLowerCase().includes("acceptance") || key === "customfield_10016") {
+      if (typeof value === "string") {
+        acceptanceCriteria = value;
+        break;
+      } else if (typeof value === "object") {
+        acceptanceCriteria = extractAdfText(value).trim();
+        break;
+      }
+    }
+  }
+  const allComments = await fetchJiraComments(ticketId, jiraBaseUrl, jiraEmail, jiraApiToken);
+  const commentCount = allComments.length;
+  const { included, omitted } = applyCommentBudget(allComments, COMMENTS_CHAR_BUDGET);
+  const commentsIncluded = included.length;
+  const commentsTruncated = omitted > 0;
+  const sections = [`## Summary
+${summary}`];
+  if (description) sections.push(`## Description
+${description}`);
+  if (acceptanceCriteria) sections.push(`## Acceptance criteria
+${acceptanceCriteria}`);
+  if (included.length > 0) {
+    sections.push(`## Comments
+${formatCommentsSection(included, omitted)}`);
+  }
+  const ticketContent = sections.join("\n\n");
+  const fieldCount = [summary, description, acceptanceCriteria].filter(Boolean).length;
+  return {
+    ticketContent,
+    summary,
+    epicKey,
+    epicSummary,
+    fieldCount,
+    commentCount,
+    commentsIncluded,
+    commentsTruncated
+  };
+}
+
+// ../src/application/forge-bmad/forge-human-decision.ts
+import { randomUUID as randomUUID9 } from "node:crypto";
+import { join as join16 } from "node:path";
+function currentGate(events, runId) {
+  return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === "G1").at(-1);
+}
+async function recordHumanDecision({
+  roots,
+  runId,
+  decision,
+  identityPort,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  if (!identityPort || typeof identityPort.authorize !== "function")
+    throw new Error("an identity authorization port is required");
+  if (!decision || typeof decision !== "object") throw new Error("decision is required");
+  if (!G1_OUTCOMES.has(decision.outcome)) throw new Error("decision.outcome must be approved or rejected");
+  if (!G1_REASON_CODES.has(decision.reasonCode)) throw new Error("decision.reasonCode is invalid");
+  if (decision.actorId !== void 0 || decision.actorRole !== void 0)
+    throw new Error("actor identity and role must not be declared by the decision payload");
+  const filePath = join16(ensureForgeRunStore(roots), `${runId}.jsonl`);
+  const events = parseForgeLedger(filePath);
+  const gate2 = currentGate(events, runId);
+  if (!gate2 || gate2.status !== "waiting_human") throw new Error("G1 is not waiting for a human decision");
+  if (decision.gate !== "G1" || decision.attempt !== gate2.attempt || decision.policyVersion !== G1_POLICY_VERSION)
+    throw new Error("decision does not match the active G1 attempt or policy");
+  const evidenceSetHash = computeG1EvidenceSetHash(events, runId, gate2.attempt, G1_POLICY_VERSION);
+  if (decision.evidenceSetHash !== evidenceSetHash) throw new Error("decision evidenceSetHash is stale or invalid");
+  const actorId = await identityPort.actorId();
+  if (typeof actorId !== "string" || !actorId) throw new Error("verified actor identity is required");
+  const authority = await identityPort.authorize({
+    actorId,
+    runId,
+    gate: "G1",
+    attempt: gate2.attempt,
+    policyVersion: G1_POLICY_VERSION
+  });
+  if (!authority || typeof authority.authorityId !== "string") throw new Error("actor is not authorized to decide G1");
+  const existing = events.find(
+    (event2) => event2.event === "human_decision_recorded" && event2.runId === runId && event2.gate === "G1" && event2.attempt === gate2.attempt
+  );
+  const fingerprint = canonicalG1({
+    outcome: decision.outcome,
+    reasonCode: decision.reasonCode,
+    evidenceSetHash,
+    actorId,
+    authorityId: authority.authorityId
+  });
+  if (existing) {
+    if (existing.idempotencyKey === fingerprint) return { status: "idempotent", event: existing };
+    throw new Error("a conflicting G1 decision already exists");
+  }
+  const event = {
+    schemaVersion: 1,
+    event: "human_decision_recorded",
+    decisionId: `decision_${randomUUID9()}`,
+    runId,
+    gate: "G1",
+    attempt: gate2.attempt,
+    policyVersion: G1_POLICY_VERSION,
+    evidenceSetHash,
+    decision: {
+      actorId,
+      authorityId: authority.authorityId,
+      outcome: decision.outcome,
+      reasonCode: decision.reasonCode
+    },
+    idempotencyKey: fingerprint,
+    at: now()
+  };
+  appendForgeLedgerEvent(filePath, event);
+  return { status: "recorded", event };
+}
+
+// ../src/application/forge-bmad/forge-g2.ts
+import { join as join17 } from "node:path";
+function gate(events, runId, name) {
+  return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === name).at(-1);
+}
+function g1Status(events, runId) {
+  const g12 = gate(events, runId, "G1");
+  const decision = g12 && events.find(
+    (event) => event.event === "human_decision_recorded" && event.runId === runId && event.gate === "G1" && event.attempt === g12.attempt
+  );
+  return decision?.decision.outcome ?? g12?.status ?? "missing";
+}
+function evaluateG2({
+  roots,
+  runId,
+  specPath,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  const filePath = join17(ensureForgeRunStore(roots), `${runId}.jsonl`);
+  const events = parseForgeLedger(filePath);
+  const start = events.find((event) => event.event === "run_started" && event.runId === runId);
+  if (!start) throw new Error("G2_RUN_NOT_FOUND");
+  const prior = events.filter((event) => event.event === "g2_evaluated" && event.runId === runId).at(-1);
+  let spec;
+  try {
+    spec = loadForgeSpec({ specPath, roots, workItem: start.workItem });
+  } catch (error2) {
+    const code = error2.code ?? "G2_SPEC_INVALID";
+    return record(filePath, runId, prior, null, "blocked", code, now);
+  }
+  if (prior?.status === "passed" && prior.spec?.sha256 === spec.sha256 && prior.policyVersion === G2_POLICY_VERSION)
+    return { status: "idempotent", event: prior };
+  if (prior?.status === "passed" && prior.spec?.sha256 !== spec.sha256)
+    return { status: "conflict", code: "G2_SPEC_HASH_CHANGED", event: prior };
+  if (g1Status(events, runId) !== "approved")
+    return record(filePath, runId, prior, spec, "blocked", "G2_G1_NOT_APPROVED", now);
+  return record(filePath, runId, prior, spec, "passed", "G2_SPEC_VALID", now);
+}
+function record(filePath, runId, prior, spec, status, code, now) {
+  const attempt = (prior?.attempt ?? 0) + 1;
+  const event = {
+    schemaVersion: 1,
+    event: "g2_evaluated",
+    runId,
+    gate: "G2",
+    attempt,
+    status,
+    code,
+    policyVersion: G2_POLICY_VERSION,
+    spec: spec && { path: spec.path, sha256: spec.sha256, schemaVersion: spec.schemaVersion },
+    at: now()
+  };
+  appendForgeLedgerEvent(filePath, event);
+  return { status: "recorded", event };
+}
+function evaluateG2US({
+  roots,
+  epicRunId,
+  storyRunId,
+  storySpecPath,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  const filePath = join17(ensureForgeRunStore(roots), `${epicRunId}.jsonl`);
+  const events = parseForgeLedger(filePath);
+  const prior = events.filter((e) => e.event === "g2_us_evaluated" && e.storyRunId === storyRunId).at(-1);
+  const epicStart = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
+  if (!epicStart)
+    return recordUS(filePath, epicRunId, storyRunId, null, prior, "blocked", "G2_US_EPIC_RUN_NOT_FOUND", now);
+  const storyRun = events.find(
+    (e) => e.event === "story_run_created" && e.runId === storyRunId && e.parentRunId === epicRunId
+  );
+  if (!storyRun)
+    return recordUS(filePath, epicRunId, storyRunId, null, prior, "blocked", "G2_US_STORY_RUN_NOT_FOUND", now);
+  if (g1Status(events, epicRunId) !== "approved")
+    return recordUS(filePath, epicRunId, storyRunId, null, prior, "blocked", "G2_US_G1_NOT_APPROVED", now);
+  const g2EpicEvent = events.filter((e) => e.event === "g2_evaluated" && e.runId === epicRunId && e.status === "passed").at(-1);
+  if (!g2EpicEvent) return recordUS(filePath, epicRunId, storyRunId, null, prior, "blocked", "G2_US_G2_NOT_PASSED", now);
+  let storySpec;
+  try {
+    storySpec = readStorySpec(storySpecPath, roots);
+  } catch (error2) {
+    const code = error2.code ?? "G2_US_SPEC_INVALID";
+    return recordUS(filePath, epicRunId, storyRunId, null, prior, "blocked", code, now);
+  }
+  if (prior?.storySpec?.sha256 === storySpec.sha256 && prior.policyVersion === G2_US_POLICY_VERSION && prior.code !== "G2_US_G1_NOT_APPROVED" && prior.code !== "G2_US_G2_NOT_PASSED")
+    return { status: "idempotent", event: prior };
+  if (prior && prior.status === "passed" && prior.storySpec?.sha256 !== storySpec.sha256) {
+    return { status: "conflict", code: "G2_US_SPEC_HASH_CHANGED", event: prior };
+  }
+  if (storySpec.frontmatter.workItem?.id !== storyRun.workItem?.id) {
+    return recordUS(filePath, epicRunId, storyRunId, storySpec, prior, "blocked", "G2_US_WORK_ITEM_MISMATCH", now);
+  }
+  let epicSpec;
+  try {
+    epicSpec = loadForgeSpec({ specPath: g2EpicEvent.spec.path, roots, workItem: epicStart.workItem });
+  } catch (error2) {
+    const code = error2.code ?? "G2_US_SPEC_INVALID";
+    return recordUS(filePath, epicRunId, storyRunId, storySpec, prior, "blocked", code, now);
+  }
+  const { valid, violations } = validateInheritance(storySpec.frontmatter, epicSpec.frontmatter);
+  if (!valid) {
+    return recordUS(
+      filePath,
+      epicRunId,
+      storyRunId,
+      storySpec,
+      prior,
+      "blocked",
+      "G2_US_INHERITANCE_VIOLATION",
+      now,
+      violations
+    );
+  }
+  return recordUS(filePath, epicRunId, storyRunId, storySpec, prior, "passed", "G2_US_SPEC_VALID", now);
+}
+function recordUS(filePath, epicRunId, storyRunId, storySpec, prior, status, code, now, violations) {
+  const attempt = (prior?.attempt ?? 0) + 1;
+  const event = {
+    schemaVersion: 1,
+    event: "g2_us_evaluated",
+    runId: epicRunId,
+    storyRunId,
+    gate: "G2-US",
+    attempt,
+    status,
+    code,
+    policyVersion: G2_US_POLICY_VERSION,
+    storySpec: storySpec ? { path: storySpec.path, sha256: storySpec.sha256, schemaVersion: storySpec.schemaVersion } : null,
+    ...violations ? { violations } : {},
+    at: now()
+  };
+  appendForgeLedgerEvent(filePath, event);
+  return { status: "recorded", event };
+}
+
+// ../src/application/forge-bmad/forge-story-analysis.ts
+import { mkdirSync as mkdirSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { createHash as createHash21, randomUUID as randomUUID10 } from "node:crypto";
+import { join as join19, relative as relative5, resolve as resolve5 } from "node:path";
+
+// ../lib/plan.mjs
+import { existsSync as existsSync4 } from "node:fs";
+import { join as join18, isAbsolute as isAbsolute11 } from "node:path";
+function extractJsonFragment(text2) {
+  const jsonFenceMatch = text2.match(/```json\s*([\s\S]*?)```/);
+  if (jsonFenceMatch) return jsonFenceMatch[1].trim();
+  const plainFenceMatch = text2.match(/```\s*([\s\S]*?)```/);
+  if (plainFenceMatch) return plainFenceMatch[1].trim();
+  const start = text2.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  for (let i = start; i < text2.length; i++) {
+    if (text2[i] === "{") depth++;
+    else if (text2[i] === "}") {
+      depth--;
+      if (depth === 0) return text2.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+function isSafePath(p) {
+  if (typeof p !== "string") return false;
+  if (isAbsolute11(p)) return false;
+  if (p.split("/").includes("..")) return false;
+  return true;
+}
+function parsePlan(agentMessage) {
+  const fragment = extractJsonFragment(agentMessage);
+  if (!fragment) {
+    return { ok: false, error: "Aucun bloc JSON trouv\xE9 dans la r\xE9ponse de l'analyste." };
+  }
+  let raw;
+  try {
+    raw = JSON.parse(fragment);
+  } catch (err) {
+    return { ok: false, error: `JSON invalide : ${err.message}` };
+  }
+  if (!Array.isArray(raw.files) || raw.files.length === 0) {
+    return { ok: false, error: 'Le plan doit contenir un champ "files" non vide.' };
+  }
+  for (const f of raw.files) {
+    if (!isSafePath(f)) {
+      return {
+        ok: false,
+        error: `Chemin invalide dans "files" : "${f}". Les chemins doivent \xEAtre relatifs \xE0 la racine du d\xE9p\xF4t (pas de chemin absolu, pas de "..")`
+      };
+    }
+  }
+  if (typeof raw.doneWhen !== "string" || raw.doneWhen.trim() === "") {
+    return { ok: false, error: 'Le plan doit contenir un champ "doneWhen" non vide.' };
+  }
+  return {
+    ok: true,
+    plan: {
+      files: raw.files,
+      doneWhen: raw.doneWhen,
+      ...Array.isArray(raw.steps) ? { steps: raw.steps } : {}
+    }
+  };
+}
+function checkPlanFiles(files, repoRoot) {
+  const missingFiles = files.filter((f) => !existsSync4(join18(repoRoot, f)));
+  return {
+    plannedFiles: files,
+    missingFiles,
+    fileCount: files.length
+  };
+}
+
+// ../src/application/forge-bmad/forge-story-analysis.ts
+var AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION = 1;
+var STORY_ANALYSIS_POLICY_VERSION = "forge-story-analysis-v2";
+var STORY_ANALYSIS_PLAN_SCHEMA_VERSION = 1;
+var MAX_FILES = 30;
+var MAX_TEXT = 4e3;
+function sha2562(content) {
+  return `sha256:${createHash21("sha256").update(content).digest("hex")}`;
+}
+function g1(events, runId) {
+  const gate2 = events.filter((e) => e.event === "gate_started" && e.runId === runId && e.gate === "G1").at(-1);
+  return gate2 && events.find(
+    (e) => e.event === "human_decision_recorded" && e.runId === runId && e.gate === "G1" && e.attempt === gate2.attempt
+  )?.decision.outcome;
+}
+function g2(events, runId, expected) {
+  const event = events.filter((e) => e.event === "g2_evaluated" && e.runId === runId && e.status === "passed").at(-1);
+  return event && (!expected || event.spec?.sha256 === expected) ? event : null;
+}
+function ref(data) {
+  return { schemaVersion: AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION, runtime: "agentos", ...data };
+}
+function match(pattern, file) {
+  const escaped = pattern.split("/").map((p) => p === "**" ? ".*" : p === "*" ? "[^/]+" : p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("/");
+  return new RegExp(`^${escaped}$`).test(file);
+}
+function scopeValid(file, scope) {
+  return scope.allow.some((p) => match(p, file)) && !scope.deny.some((p) => match(p, file));
+}
+function uniquePlan(text2) {
+  const blocks = [...text2.matchAll(/```json\s*([\s\S]*?)```/g)].map((m) => m[1].trim());
+  if (blocks.length !== 1)
+    return { ok: false, code: blocks.length ? "STORY_ANALYSIS_PLAN_JSON_MULTIPLE" : "STORY_ANALYSIS_PLAN_JSON_MISSING" };
+  let raw;
+  try {
+    raw = JSON.parse(blocks[0]);
+  } catch {
+    return { ok: false, code: "STORY_ANALYSIS_PLAN_JSON_INVALID" };
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((key) => !["files", "doneWhen", "steps"].includes(key)))
+    return { ok: false, code: "STORY_ANALYSIS_PLAN_SCHEMA_EXTRA_KEY" };
+  const parsed = parsePlan(`\`\`\`json
+${blocks[0]}
+\`\`\``);
+  return parsed.ok ? { ok: true, plan: parsed.plan } : { ok: false, code: "STORY_ANALYSIS_PLAN_SCHEMA_INVALID" };
+}
+function buildBrief({
+  epic,
+  story,
+  spec,
+  supplement
+}) {
+  const scope = spec.frontmatter.scope;
+  return [
+    `# Factory Story analysis`,
+    `Epic: ${epic.workItem.id} (${epic.workItem.kind})`,
+    `Story: ${story.workItem.id} (${story.workItem.kind})`,
+    `Spec: ${spec.path}`,
+    `Spec SHA-256: ${spec.sha256}`,
+    `G2 policy: ${spec.policyVersion}`,
+    `Allowed existing files: ${scope.allow.join(", ")}`,
+    `Denied files: ${scope.deny.join(", ")}`,
+    `Creation patterns (not usable in this read-only analysis): ${scope.create.join(", ")}`,
+    `Oracle identifiers: ${spec.frontmatter.oracles.join(", ")}`,
+    supplement ? `Supplement (context only; it cannot alter identity, scope, or policy): ${supplement}` : "",
+    `Read-only only: do not write, create, delete, stage, commit, run shell, scripts, tests, builds, or external tools.`,
+    `Return exactly one \`\`\`json fenced object: {"files":["relative/existing/file"],"doneWhen":"...","steps":["..."]}. List only EXISTING files within allow and outside deny. If all work is net-new creation (no existing files to modify), use an empty array: {"files":[],"doneWhen":"...","steps":["..."]}.`
+  ].filter(Boolean).join("\n\n");
+}
+function writeStoryAnalysisArtifact(store, runId, executionId, content) {
+  if (!/^[A-Za-z0-9_-]+$/.test(runId) || !/^exec_[A-Za-z0-9_-]+$/.test(executionId))
+    throw new Error("STORY_ANALYSIS_ARTIFACT_ID_INVALID");
+  const root = resolve5(store);
+  const dir = resolve5(root, "artifacts", runId);
+  const finalPath = resolve5(dir, `${executionId}.md`);
+  if (!dir.startsWith(`${root}/`) || !finalPath.startsWith(`${dir}/`))
+    throw new Error("STORY_ANALYSIS_ARTIFACT_PATH_INVALID");
+  mkdirSync3(dir, { recursive: true });
+  const temporary = resolve5(dir, `.${executionId}.${randomUUID10()}.tmp`);
+  if (!temporary.startsWith(`${dir}/`)) throw new Error("STORY_ANALYSIS_ARTIFACT_PATH_INVALID");
+  writeFileSync2(temporary, content, { encoding: "utf8", mode: 384 });
+  renameSync(temporary, finalPath);
+  return {
+    kind: "agent-analysis-output",
+    path: relative5(root, finalPath),
+    sha256: sha2562(content),
+    mediaType: "text/markdown",
+    schemaVersion: 1
+  };
+}
+async function executeStoryAnalysis({
+  roots,
+  epicRunId,
+  storyRunId,
+  namespaceId,
+  agentName,
+  expectedSpecHash,
+  storySpecHash,
+  supplement,
+  runtime = agentos_operations_exports,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  if (!namespaceId || !agentName) throw new Error("STORY_ANALYSIS_INPUT_INVALID");
+  if (supplement !== void 0 && (typeof supplement !== "string" || supplement.length > MAX_TEXT))
+    throw new Error("STORY_ANALYSIS_SUPPLEMENT_INVALID");
+  const store = ensureForgeRunStore(roots);
+  const filePath = join19(store, `${epicRunId}.jsonl`);
+  const events = parseForgeLedger(filePath);
+  const epic = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
+  const story = events.find(
+    (e) => e.event === "story_run_created" && e.runId === storyRunId && e.parentRunId === epicRunId
+  );
+  if (!epic || !story) throw new Error("STORY_RUN_NOT_FOUND");
+  const active = events.some(
+    (e) => e.event === "agent_execution_started" && e.storyRunId === storyRunId && e.role === "analyst" && !events.some((f) => f.event === "agent_execution_finished" && f.executionId === e.executionId)
+  );
+  if (active) throw new Error("STORY_ANALYSIS_ALREADY_RUNNING");
+  if (g1(events, epicRunId) !== "approved") throw new Error("STORY_ANALYSIS_G1_NOT_APPROVED");
+  const g2Event = g2(events, epicRunId, expectedSpecHash);
+  if (!g2Event) throw new Error("STORY_ANALYSIS_G2_NOT_PASSED");
+  if (storySpecHash !== void 0) {
+    const g2us = events.find(
+      (e) => e.event === "g2_us_evaluated" && e.storyRunId === storyRunId && e.status === "passed" && e.storySpec?.sha256 === storySpecHash
+    );
+    if (!g2us) throw new Error("STORY_ANALYSIS_G2_US_NOT_PASSED");
+  }
+  const spec = {
+    path: g2Event.spec.path,
+    sha256: g2Event.spec.sha256,
+    policyVersion: g2Event.policyVersion,
+    frontmatter: loadForgeSpec({ specPath: g2Event.spec.path, roots, workItem: epic.workItem }).frontmatter
+  };
+  if (spec.sha256 !== g2Event.spec.sha256) throw new Error("STORY_ANALYSIS_SPEC_HASH_STALE");
+  const agent = await runtime.preflightAgent(namespaceId, agentName);
+  if (!agent.ok) throw new Error(`STORY_ANALYSIS_AGENT_PREFLIGHT_FAILED:${agent.reason}`);
+  const ro = await runtime.preflightReadOnlyWorkspace(namespaceId, agent.agent, roots.repoRoot);
+  if (!ro.ok) throw new Error(`STORY_ANALYSIS_READ_ONLY_PREFLIGHT_FAILED:${ro.reason}`);
+  const executionId = `exec_${randomUUID10()}`;
+  const created = await runtime.createCase(namespaceId, `Forge analysis ${story.workItem.id}`);
+  const caseId = created.id;
+  const brief = buildBrief({ epic, story, spec, ...supplement !== void 0 ? { supplement } : {} });
+  appendForgeLedgerEvent(filePath, {
+    schemaVersion: 1,
+    event: "agent_execution_started",
+    runId: epicRunId,
+    parentRunId: epicRunId,
+    ...ref({
+      executionId,
+      caseId,
+      storyRunId,
+      role: "analyst",
+      agentName,
+      namespaceId,
+      observedAt: now(),
+      status: "started"
+    }),
+    policyVersion: STORY_ANALYSIS_POLICY_VERSION,
+    briefArtifact: { kind: "brief", sha256: sha2562(brief), mediaType: "text/plain", schemaVersion: 1 }
+  });
+  let turn;
+  try {
+    turn = await runtime.runAgentTurn(caseId, agentName, brief);
+  } catch {
+    turn = { status: "error", caseStatus: null, killedByBudget: false, message: "" };
+  }
+  const executionStatus = turn.status === "finished" ? "finished" : "failed";
+  const finished = ref({
+    executionId,
+    caseId,
+    storyRunId,
+    role: "analyst",
+    agentName,
+    namespaceId,
+    observedAt: now(),
+    status: executionStatus
+  });
+  const base = {
+    schemaVersion: 1,
+    event: "agent_execution_finished",
+    runId: epicRunId,
+    parentRunId: epicRunId,
+    ...finished,
+    policyVersion: STORY_ANALYSIS_POLICY_VERSION,
+    outcome: turn.status,
+    caseStatus: turn.caseStatus ?? null,
+    killedByBudget: turn.killedByBudget === true
+  };
+  if (turn.status !== "finished") {
+    appendForgeLedgerEvent(filePath, base);
+    return { execution: finished, outcome: turn.status };
+  }
+  const output = typeof turn.message === "string" ? turn.message : "";
+  if (!output) {
+    const validation2 = {
+      status: "invalid",
+      code: "STORY_ANALYSIS_OUTPUT_MISSING",
+      schemaVersion: STORY_ANALYSIS_PLAN_SCHEMA_VERSION,
+      message: "Agent runtime finished without a persisted analysis message."
+    };
+    appendForgeLedgerEvent(filePath, { ...base, analysisValidation: validation2 });
+    return { execution: finished, outcome: turn.status, validation: validation2 };
+  }
+  const descriptor = writeStoryAnalysisArtifact(store, epicRunId, executionId, output);
+  appendForgeLedgerEvent(filePath, { ...base, artifact: descriptor });
+  const parsed = uniquePlan(output);
+  let validation;
+  if (!parsed.ok) validation = { status: "invalid", code: parsed.code };
+  else if (parsed.plan.files.length > MAX_FILES || parsed.plan.doneWhen.length > MAX_TEXT || parsed.plan.steps?.some((s) => typeof s !== "string" || s.length > MAX_TEXT))
+    validation = { status: "invalid", code: "STORY_ANALYSIS_PLAN_LIMIT" };
+  else {
+    const files = parsed.plan.files.length > 0 ? checkPlanFiles(parsed.plan.files, roots.repoRoot) : { missingFiles: [] };
+    const outside = parsed.plan.files.filter((file) => !scopeValid(file, spec.frontmatter.scope));
+    validation = files.missingFiles.length ? { status: "invalid", code: "STORY_ANALYSIS_PLAN_FILE_MISSING", missingFiles: files.missingFiles } : outside.length ? { status: "invalid", code: "STORY_ANALYSIS_PLAN_OUT_OF_SCOPE", outsideFiles: outside } : { status: "valid", fileCount: parsed.plan.files.length };
+  }
+  appendForgeLedgerEvent(filePath, {
+    schemaVersion: 1,
+    event: "story_analysis_plan_validated",
+    runId: epicRunId,
+    storyRunId,
+    executionId,
+    planSchemaVersion: STORY_ANALYSIS_PLAN_SCHEMA_VERSION,
+    status: validation.status,
+    code: validation.code ?? "STORY_ANALYSIS_PLAN_VALID",
+    ...validation.missingFiles ? { missingFiles: validation.missingFiles } : {},
+    ...validation.outsideFiles ? { outsideFiles: validation.outsideFiles } : {},
+    artifact: descriptor,
+    at: now()
+  });
+  return { execution: finished, outcome: turn.status, validation };
+}
+
+// ../src/application/forge-bmad/forge-story-edit.ts
+import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
+import { createHash as createHash22, randomUUID as randomUUID11 } from "node:crypto";
+import { join as join20, resolve as resolve6 } from "node:path";
+var STORY_EDIT_SCHEMA_VERSION = 1;
+var STORY_EDIT_POLICY_VERSION = "forge-story-edit-v1";
+var fail8 = (code, message = code) => {
+  const error2 = new Error(message);
+  error2.code = code;
+  throw error2;
+};
+var hash3 = (value) => `sha256:${createHash22("sha256").update(value).digest("hex")}`;
+var safeArtifact = (store, descriptor) => {
+  if (!descriptor?.path || !descriptor?.sha256)
+    fail8("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact descriptor requires path and sha256.");
+  const root = resolve6(store);
+  const path = resolve6(root, descriptor.path);
+  if (!path.startsWith(`${root}/`))
+    fail8("STORY_EDIT_ANALYSIS_ARTIFACT_PATH_INVALID", "Analysis artifact path escapes the run store.");
+  if (!existsSync5(path)) fail8("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact does not exist.");
+  const text2 = readFileSync6(path, "utf8");
+  if (hash3(text2) !== descriptor.sha256)
+    fail8("STORY_EDIT_ANALYSIS_ARTIFACT_HASH_MISMATCH", "Analysis artifact content does not match its SHA-256.");
+  return text2;
+};
+var matches = (pattern, file) => new RegExp(
+  `^${pattern.split("/").map((p) => p === "**" ? ".*" : p === "*" ? "[^/]+" : p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("/")}$`
+).test(file);
+var allowedModified = (file, scope, plan) => plan.files.includes(file) && !scope.deny.some((p) => matches(p, file));
+var allowedCreated = (file, scope) => scope.create.some((p) => matches(p, file)) && !scope.deny.some((p) => matches(p, file));
+function planFromArtifact(text2) {
+  const blocks = [...text2.matchAll(/```json\s*([\s\S]*?)```/g)].map((m) => m[1].trim());
+  if (blocks.length !== 1)
+    fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact must contain exactly one JSON plan.");
+  let raw;
+  try {
+    raw = JSON.parse(blocks[0]);
+  } catch {
+    fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact JSON plan is invalid.");
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((k) => !["files", "doneWhen", "steps"].includes(k)))
+    fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact plan schema is invalid.");
+  const parsed = parsePlan(`\`\`\`json
+${blocks[0]}
+\`\`\``);
+  if (!parsed.ok) fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", parsed.error);
+  return parsed.plan;
+}
+async function executeStoryEdit({
+  roots,
+  epicRunId,
+  storyRunId,
+  analysisExecutionId,
+  namespaceId,
+  agentName,
+  expectedSpecHash,
+  storySpecHash,
+  supplement,
+  runtime = agentos_operations_exports,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  if (!namespaceId || !agentName) fail8("STORY_EDIT_INPUT_INVALID", "namespaceId and agentName are required.");
+  if (supplement !== void 0 && (typeof supplement !== "string" || supplement.length > 4e3))
+    fail8("STORY_EDIT_SUPPLEMENT_INVALID", "supplement must be a string of at most 4000 characters.");
+  const store = ensureForgeRunStore(roots);
+  const filePath = join20(store, `${epicRunId}.jsonl`);
+  if (!existsSync5(filePath)) fail8("STORY_EDIT_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
+  const events = parseForgeLedger(filePath);
+  const epic = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
+  if (!epic) fail8("STORY_EDIT_RUN_NOT_FOUND", `Epic run ${epicRunId} is absent from its ledger.`);
+  const story = events.find(
+    (e) => e.event === "story_run_created" && e.runId === storyRunId && e.parentRunId === epicRunId
+  );
+  if (!story) fail8("STORY_EDIT_STORY_NOT_FOUND", `Story run ${storyRunId} is absent from Epic run ${epicRunId}.`);
+  if (events.some(
+    (e) => e.event === "story_edit_started" && e.storyRunId === storyRunId && !events.some((f) => f.event === "story_edit_finished" && f.editId === e.editId)
+  ))
+    fail8("STORY_EDIT_ALREADY_RUNNING", "A Story edit is already active.");
+  const g1Event = events.find((e) => e.event === "human_decision_recorded" && e.runId === epicRunId && e.gate === "G1");
+  if (g1Event?.decision?.outcome !== "approved") fail8("STORY_EDIT_G1_NOT_APPROVED");
+  const g22 = events.filter((e) => e.event === "g2_evaluated" && e.runId === epicRunId && e.status === "passed").at(-1);
+  if (!g22 || g22.spec?.sha256 !== expectedSpecHash) fail8("STORY_EDIT_G2_NOT_PASSED");
+  if (storySpecHash !== void 0) {
+    const g2us = events.find(
+      (e) => e.event === "g2_us_evaluated" && e.storyRunId === storyRunId && e.status === "passed" && e.storySpec?.sha256 === storySpecHash
+    );
+    if (!g2us) fail8("STORY_EDIT_G2_US_NOT_PASSED");
+  }
+  const analysis = events.find(
+    (e) => e.event === "agent_execution_finished" && e.executionId === analysisExecutionId && e.storyRunId === storyRunId && e.status === "finished"
+  );
+  const validation = events.find(
+    (e) => e.event === "story_analysis_plan_validated" && e.executionId === analysisExecutionId && e.status === "valid"
+  );
+  if (!analysis || !validation) fail8("STORY_EDIT_ANALYSIS_NOT_VALID");
+  const text2 = safeArtifact(store, analysis.artifact);
+  if (validation.artifact?.sha256 !== analysis.artifact?.sha256 || validation.artifact?.path !== analysis.artifact?.path)
+    fail8("STORY_EDIT_ANALYSIS_PLAN_STALE", "Analysis validation does not reference the finished artifact.");
+  const plan = planFromArtifact(text2);
+  const missing = checkPlanFiles(plan.files, roots.repoRoot).missingFiles;
+  if (missing.length) fail8("STORY_EDIT_ANALYSIS_PLAN_STALE", `Analysis plan files are missing: ${missing.join(", ")}.`);
+  const spec = loadForgeSpec({
+    specPath: g22.spec.path,
+    roots,
+    workItem: epic.workItem
+  });
+  if (spec.sha256 !== g22.spec.sha256) fail8("STORY_EDIT_SPEC_HASH_STALE");
+  const agent = await runtime.preflightAgent(namespaceId, agentName);
+  if (!agent.ok) fail8("STORY_EDIT_AGENT_PREFLIGHT_FAILED");
+  const writable = await runtime.preflightWritableWorkspace(namespaceId, agent.agent, roots.repoRoot);
+  if (!writable.ok) fail8("STORY_EDIT_WRITABLE_PREFLIGHT_FAILED", writable.reason);
+  const editId = `edit_${randomUUID11()}`;
+  const brief = [
+    `Epic: ${epic.workItem.id}`,
+    `Story: ${story.workItem.id}`,
+    `Spec SHA-256: ${spec.sha256}`,
+    `Files to modify: ${plan.files.join(", ")}`,
+    `Done when: ${plan.doneWhen}`,
+    `Allow: ${spec.frontmatter.scope.allow.join(", ")}`,
+    `Create: ${spec.frontmatter.scope.create.join(", ")}`,
+    `Deny: ${spec.frontmatter.scope.deny.join(", ")}`,
+    supplement ? `Supplement: ${supplement}` : "",
+    "Implement only this plan. Do not run shell, git, tests, builds, or oracles."
+  ].filter(Boolean).join("\n");
+  const before = snapshotDiff(roots.repoRoot);
+  const created = await runtime.createCase(namespaceId, `Forge edit ${story.workItem.id}`);
+  appendForgeLedgerEvent(filePath, {
+    schemaVersion: 1,
+    event: "story_edit_started",
+    runId: epicRunId,
+    storyRunId,
+    editId,
+    analysisExecutionId,
+    caseId: created.id,
+    policyVersion: STORY_EDIT_POLICY_VERSION,
+    at: now()
+  });
+  const turn = await runtime.runAgentTurn(created.id, agentName, brief);
+  const changed = diffSince(before, roots.repoRoot);
+  const invalid3 = [
+    ...changed.modified.filter((file) => !allowedModified(file, spec.frontmatter.scope, plan)),
+    ...changed.untracked.filter((file) => !allowedCreated(file, spec.frontmatter.scope))
+  ];
+  const status = turn.status === "finished" && invalid3.length === 0 ? "finished" : "failed";
+  appendForgeLedgerEvent(filePath, {
+    schemaVersion: 1,
+    event: "story_edit_finished",
+    runId: epicRunId,
+    storyRunId,
+    editId,
+    caseId: created.id,
+    status,
+    outcome: turn.status,
+    caseStatus: turn.caseStatus ?? null,
+    killedByBudget: turn.killedByBudget === true,
+    filesModified: changed.modified,
+    filesCreated: changed.untracked,
+    diffValidation: {
+      status: invalid3.length ? "invalid" : "valid",
+      code: invalid3.length ? "STORY_EDIT_DIFF_OUT_OF_SCOPE" : "STORY_EDIT_DIFF_VALID",
+      invalidFiles: invalid3
+    },
+    at: now()
+  });
+  return {
+    editId,
+    status,
+    filesModified: changed.modified,
+    filesCreated: changed.untracked,
+    diffValidation: { status: invalid3.length ? "invalid" : "valid", invalidFiles: invalid3 }
+  };
+}
+
+// ../src/application/forge-bmad/forge-story-oracles.ts
+import { existsSync as existsSync7 } from "node:fs";
+import { createHash as createHash24, randomUUID as randomUUID12 } from "node:crypto";
+import { join as join23 } from "node:path";
+
+// ../lib/domains.mjs
+import { join as join21, dirname as dirname8, resolve as resolve7 } from "node:path";
+import { fileURLToPath as fileURLToPath2 } from "node:url";
+var __dirname = dirname8(fileURLToPath2(import.meta.url));
+var REPO_ROOT = process.env.FACTORY_ROOT ? resolve7(process.env.FACTORY_ROOT) : join21(__dirname, "..", "..");
+var domains = {
+  back: {
+    oracles: [
+      {
+        name: "build",
+        command: process.env.FACTORY_COMMAND_BACK ?? "./gradlew :agentos-service:build --rerun-tasks --console=plain",
+        cwd: process.env.FACTORY_CWD_BACK ?? join21(REPO_ROOT, "agentos")
+      }
+    ]
+    // lock: null  — placeholder pour le verrou lecteurs/écrivain à venir
+  },
+  front: {
+    oracles: [
+      {
+        // Oracle de build Angular — exécuté EN PREMIER (fail-fast).
+        //
+        // POURQUOI `build` ET PAS `type-check` (décision du 2026-08-XX)
+        // ─────────────────────────────────────────────────────────────────
+        // L'oracle `types` (`tsc --noEmit` via la cible Nx `type-check`) échoue
+        // systématiquement avec TS5090 (`Non-relative paths are not allowed when
+        // baseUrl is not set`) sur plusieurs apps du dépôt cible (admin, agentic-studio,
+        // etc.). TS5090 est une erreur de configuration tsconfig, pas une régression
+        // produit — mais elle fait échouer l'oracle à chaque run, même sans modification.
+        //
+        // L'oracle `build` (`@angular/build:application` via `pnpm nx run-many
+        // --target=build`) résout les chemins via le bundler esbuild, qui n'émet pas
+        // TS5090. Il valide en plus les templates Angular, que `tsc --noEmit` ne vérifie
+        // pas. C'est la commande équivalente à ce que CI exécute pour valider les PRs.
+        //
+        // RÉSOLUTION DES HÔTES BUILDABLES
+        // ─────────────────────────────────────────────────────────────────
+        // Les libs (projets propriétaires des fichiers modifiés) n'ont pas de cible
+        // `build` angulaire. On les mappe vers des apps hôtes via `buildHostArg: true`
+        // (voir oracle-command.mjs, `resolveBuildHosts`). Si aucun hôte n'est trouvé,
+        // l'oracle retourne ORACLE_INFRASTRUCTURE (gate humain), pas un succès vide.
+        //
+        // POURQUOI `--configuration=development` ET PAS `production`
+        // ─────────────────────────────────────────────────────────────────
+        // La configuration `production` active les optimisations (minification, tree
+        // shaking, budget de taille), qui augmentent significativement la durée du
+        // build. La configuration `development` compile les templates, vérifie les
+        // types Angular, et détecte les erreurs d'import — c'est suffisant pour
+        // valider une PR. Le coût en temps est acceptable (~2-5 min vs ~10-15 min).
+        //
+        // `--skip-nx-cache` est obligatoire : le cache Nx est partagé avec
+        // l'environnement de dev, et les apps hôtes peuvent avoir été buildées sur
+        // cet état. Sans `--skip-nx-cache`, on tomberait dans le piège
+        // `executed: 0` (garde A8 bloquante).
+        //
+        // ANGLE MORT CONNU : le build `development` ne détecte pas les erreurs de
+        // budget de taille (production uniquement). Acceptable pour un oracle de
+        // validation de PR.
+        //
+        // ORACLE `types` DÉSACTIVÉ TEMPORAIREMENT
+        // ─────────────────────────────────────────────────────────────────
+        // L'oracle `types` est commenté ci-dessous. Il sera réactivé quand les
+        // tsconfigs des apps cibles auront été réparés (ajout de `baseUrl` dans
+        // la chaîne d'extension vers `tsconfig.base.json`). Ne pas le supprimer —
+        // il documente l'intention et la raison de la désactivation.
+        name: "build",
+        command: process.env.FACTORY_COMMAND_FRONT_BUILD ?? "pnpm nx run-many --target=build --configuration=development --skip-nx-cache",
+        cwd: process.env.FACTORY_CWD_FRONT ?? REPO_ROOT,
+        buildHostArg: true
+      },
+      // ORACLE `types` DÉSACTIVÉ — TS5090 systématique dans le dépôt cible.
+      // Réactiver quand les tsconfigs seront réparés (baseUrl manquant).
+      // {
+      //   name: 'types',
+      //   command: process.env.FACTORY_COMMAND_FRONT_TYPES
+      //     ?? 'pnpm nx run-many --target=type-check --projects=aphrodite,admin,agentic-studio,copilot-chat --parallel=4',
+      //   cwd: process.env.FACTORY_CWD_FRONT
+      //     ?? REPO_ROOT,
+      // },
+      {
+        // Oracle de comportement — exécuté EN SECOND (seulement si `build` passe).
+        //
+        // Transpile sans vérifier les types (SWC/Babel/isolatedModules) —
+        // c'est pour ça que `build` le précède.
+        //
+        // FACTORY_COMMAND_FRONT surcharge cette commande (comportement historique).
+        // La commande surchargée doit contenir `-t <cible>` ou `--target=<cible>`
+        // pour que `buildOracleCommand` puisse extraire la cible et construire
+        // la commande `run-many` effective. FACTORY_FRONT_TEST_TARGET configure
+        // aussi la cible par défaut (frontend-test) sans remplacer la commande.
+        //
+        // POURQUOI `filesArg: true` — HISTORIQUE DES INCIDENTS
+        // ─────────────────────────────────────────────────────────────────────
+        // F21 : `affected --base=sprint` incluait 16 427 commits de divergence
+        // → 1033 projets, tous en cache, `executed: 0`.
+        //
+        // A2 (C4) : remplacement par `affected --files=<liste>`. 1 fichier → 53
+        // projets (clôture transitive). Correctif efficace sur le périmètre.
+        //
+        // Incident suivant : avec `--files=<6 fichiers>`, Nx calcule 216 projets
+        // (clôture transitive), tous servis depuis le cache. Cause : le cache Nx
+        // est partagé entre la factory et l'environnement de dev. `--skip-nx-cache`
+        // testé expérimentalement : ne réduit pas le périmètre (375 projets avec
+        // 3 fichiers), le problème de périmètre reste entier.
+        //
+        // SOLUTION RETENUE : `run-many --projects=<projets directs> --skip-nx-cache`
+        // ─────────────────────────────────────────────────────────────────────
+        // `filesArg: true` signale à `buildOracleCommand` de résoudre les projets
+        // propriétaires des fichiers modifiés (pas leurs dépendants transitifs),
+        // puis de construire :
+        //   pnpm nx run-many --target=<FACTORY_FRONT_TEST_TARGET> --projects=proj1,proj2 --skip-nx-cache
+        //
+        // La résolution se fait par remontée de dossiers jusqu'au premier
+        // `project.json`, en Node pur, sans appel Nx. Pour 6 fichiers dans 3 libs :
+        // 3 projets au lieu de 216.
+        //
+        // LIMITE ASSUMÉE : des régressions dans les consommateurs ne seront pas
+        // détectées. Acceptable parce que `verify-build` valide la compatibilité
+        // des interfaces via les apps hôtes, les consommateurs ont leurs propres
+        // tests en CI, et un oracle bloqué en permanence ne détecte rien du tout.
+        //
+        // Un oracle sans `filesArg` ni `buildHostArg` (comme `build` Gradle) reçoit
+        // sa commande telle quelle — périmètre fixe, indépendant du diff.
+        name: "tests",
+        command: process.env.FACTORY_COMMAND_FRONT ?? `pnpm nx affected -t ${process.env.FACTORY_FRONT_TEST_TARGET ?? "frontend-test"}`,
+        cwd: process.env.FACTORY_CWD_FRONT ?? REPO_ROOT,
+        filesArg: true
+      }
+    ]
+    // lock: null  — placeholder pour le verrou lecteurs/écrivain à venir
+  }
+};
+
+// ../src/application/forge-bmad/forge-front-oracle-resolution.ts
+import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { createHash as createHash23 } from "node:crypto";
+import { dirname as dirname9, isAbsolute as isAbsolute12, join as join22, relative as relative6, resolve as resolve8 } from "node:path";
+var FRONT_ORACLE_MAP_SCHEMA_VERSION = 1;
+var INSPECT_TIMEOUT_MS = 1e4;
+var INSPECT_MAX_BUFFER = 1024 * 1024;
+var fail9 = (code, message = code) => {
+  const error2 = new Error(message);
+  error2.code = code;
+  throw error2;
+};
+var hash4 = (value) => `sha256:${createHash23("sha256").update(JSON.stringify(value)).digest("hex")}`;
+var validName = (name) => typeof name === "string" && /^[A-Za-z0-9._-]+$/.test(name);
+var readProject = (path, label) => {
+  try {
+    const config = JSON.parse(readFileSync7(path, "utf8"));
+    if (!validName(config.name)) fail9("ORACLE_INFRASTRUCTURE", `${label} has an absent or invalid Nx project name.`);
+    return config;
+  } catch (error2) {
+    if (error2.code === "ORACLE_INFRASTRUCTURE") throw error2;
+    fail9("ORACLE_INFRASTRUCTURE", `Cannot read ${label}.`);
+  }
+};
+var hostProject = (root, name) => {
+  for (const path of [
+    join22(root, "apps", name, "project.json"),
+    join22(root, "frontend", "apps", name, "project.json"),
+    join22(root, name, "project.json")
+  ])
+    if (existsSync6(path)) return readProject(path, `Build host project.json for ${name}`);
+  return null;
+};
+function resolveOwnerProjectConfigs(files, repoRoot) {
+  const root = resolve8(repoRoot);
+  const byName = /* @__PURE__ */ new Map();
+  for (const file of files) {
+    if (typeof file !== "string" || !file || isAbsolute12(file))
+      fail9("ORACLE_INFRASTRUCTURE", `Invalid StoryEdit file path: ${String(file)}.`);
+    const absolute = resolve8(root, file);
+    if (relative6(root, absolute).startsWith(".."))
+      fail9("ORACLE_INFRASTRUCTURE", `StoryEdit file escapes repository root: ${file}.`);
+    let dir = dirname9(absolute);
+    let found = false;
+    while (dir === root || dir.startsWith(`${root}/`)) {
+      const projectPath = join22(dir, "project.json");
+      if (existsSync6(projectPath)) {
+        const config = readProject(projectPath, `Owner project.json for ${file}`);
+        const previous = byName.get(config.name);
+        if (previous && previous.projectPath !== projectPath)
+          fail9("ORACLE_INFRASTRUCTURE", `Nx owner ${config.name} resolves to multiple project.json files.`);
+        if (!previous) byName.set(config.name, { name: config.name, projectPath, config });
+        found = true;
+        break;
+      }
+      const parent = dirname9(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (!found) continue;
+  }
+  return [...byName.values()];
+}
+function inspectNxProject(name, repoRoot) {
+  if (!validName(name)) fail9("ORACLE_INFRASTRUCTURE", `Invalid Nx project name for inspection: ${String(name)}.`);
+  let output;
+  try {
+    output = execFileSync("pnpm", ["nx", "show", "project", name, "--json"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: INSPECT_TIMEOUT_MS,
+      maxBuffer: INSPECT_MAX_BUFFER,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+  } catch {
+    fail9("ORACLE_INFRASTRUCTURE", `Cannot inspect effective Nx configuration for ${name}.`);
+  }
+  let config;
+  try {
+    config = JSON.parse(output);
+  } catch {
+    fail9("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is not valid JSON.`);
+  }
+  if (config?.name !== name || !config.targets || typeof config.targets !== "object" || Array.isArray(config.targets))
+    fail9("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is invalid or mismatched.`);
+  return config;
+}
+var inspectEffectiveProject = (name, repoRoot, projectInspector) => {
+  let config;
+  try {
+    config = projectInspector(name, repoRoot);
+  } catch (error2) {
+    if (error2?.code === "ORACLE_INFRASTRUCTURE") throw error2;
+    fail9("ORACLE_INFRASTRUCTURE", `Cannot inspect effective Nx configuration for ${name}.`);
+  }
+  if (!config || config.name !== name || !config.targets || typeof config.targets !== "object" || Array.isArray(config.targets))
+    fail9("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is invalid or mismatched.`);
+  return config;
+};
+function parseFrontBuildHostMap(raw) {
+  if (typeof raw !== "string" || !raw) fail9("ORACLE_INFRASTRUCTURE", "FACTORY_FRONT_BUILD_HOST_MAP is required.");
+  let map;
+  try {
+    map = JSON.parse(raw);
+  } catch {
+    fail9("ORACLE_INFRASTRUCTURE", "FACTORY_FRONT_BUILD_HOST_MAP must be valid JSON.");
+  }
+  if (!map || typeof map !== "object" || Array.isArray(map))
+    fail9("ORACLE_INFRASTRUCTURE", "Host map must be an object.");
+  for (const [owner, hosts] of Object.entries(map)) {
+    if (owner !== "*" && !validName(owner) || !Array.isArray(hosts) || hosts.length === 0 || hosts.some((host) => !validName(host)))
+      fail9("ORACLE_INFRASTRUCTURE", "Host map contains an invalid owner or host.");
+  }
+  return Object.fromEntries(
+    Object.entries(map).map(([owner, hosts]) => [owner, [...new Set(hosts)].sort()])
+  );
+}
+function resolveFrontOraclePlan({
+  repoRoot,
+  files,
+  hostMapRaw,
+  buildTemplate,
+  testsTarget = process.env.FACTORY_FRONT_TEST_TARGET ?? "frontend-test",
+  requireBuild = true,
+  projectInspector = inspectNxProject
+}) {
+  const ownerProjects = resolveOwnerProjectConfigs(files, repoRoot);
+  const owners = ownerProjects.map((owner) => owner.name);
+  if (!owners.length) fail9("ORACLE_INFRASTRUCTURE", "No Nx owner project found for StoryEdit files.");
+  const inspected = /* @__PURE__ */ new Map();
+  const inspect = (name) => {
+    if (!inspected.has(name)) inspected.set(name, inspectEffectiveProject(name, repoRoot, projectInspector));
+    return inspected.get(name);
+  };
+  const map = requireBuild ? parseFrontBuildHostMap(hostMapRaw) : null;
+  const hosts = [];
+  const ownersWithTestTarget = [];
+  const ownersWithoutTestTarget = [];
+  for (const owner of ownerProjects) {
+    if (requireBuild) {
+      const mapped = map[owner.name] ?? map["*"];
+      if (!mapped) fail9("ORACLE_INFRASTRUCTURE", `No build host mapping for owner ${owner.name}.`);
+      for (const host of mapped) {
+        if (!hostProject(repoRoot, host)) fail9("ORACLE_INFRASTRUCTURE", `Build host ${host} does not exist.`);
+        if (!inspect(host).targets.build && !inspect(host).targets["build-angular"])
+          fail9("ORACLE_INFRASTRUCTURE", `Build host ${host} has no build target.`);
+        if (!hosts.includes(host)) hosts.push(host);
+      }
+    }
+    ;
+    (inspect(owner.name).targets[testsTarget] ? ownersWithTestTarget : ownersWithoutTestTarget).push(owner.name);
+  }
+  const buildHosts = [...hosts].sort();
+  const build = {
+    command: requireBuild ? `${buildTemplate} --projects=${buildHosts.join(",")}` : null,
+    cwd: repoRoot,
+    owners,
+    buildHosts,
+    target: "build",
+    configuration: "development"
+  };
+  const tests = {
+    command: ownersWithTestTarget.length ? `pnpm nx run-many --target=${testsTarget} --projects=${ownersWithTestTarget.join(",")} --skip-nx-cache` : null,
+    cwd: repoRoot,
+    owners: ownersWithTestTarget,
+    ownersWithTestTarget,
+    ownersWithoutTestTarget,
+    buildHosts: [],
+    target: testsTarget,
+    configuration: null
+  };
+  return {
+    schemaVersion: FRONT_ORACLE_MAP_SCHEMA_VERSION,
+    owners,
+    ownersWithTestTarget,
+    ownersWithoutTestTarget,
+    build,
+    tests,
+    commandHash: hash4({ build, tests })
+  };
+}
+
+// ../src/application/forge-bmad/forge-story-oracles.ts
+var STORY_ORACLE_POLICY_VERSION = "forge-story-oracles-v1";
+var fail10 = (code, message = code) => {
+  const error2 = new Error(message);
+  error2.code = code;
+  throw error2;
+};
+var isAllowedStoryOracleRequestBody = (body) => !!body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).every((key) => ["editId", "expectedSpecHash", "attempt"].includes(key));
+var hash5 = (value) => `sha256:${createHash24("sha256").update(value).digest("hex")}`;
+var catalog = {
+  "front.build": { domain: "front", name: "build" },
+  "front.tests": { domain: "front", name: "tests" },
+  "back.build": { domain: "back", name: "build" }
+};
+function resolve9(ids) {
+  const result = [];
+  for (const id2 of ids) {
+    const entry = catalog[id2];
+    if (!entry) fail10("STORY_ORACLE_CATALOG_INVALID", `Unknown oracle catalog id: ${id2}`);
+    const oracle = domains[entry.domain]?.oracles.find((item) => item.name === entry.name);
+    if (!oracle) fail10("STORY_ORACLE_CATALOG_INVALID", `Unavailable oracle catalog id: ${id2}`);
+    result.push({ id: id2, oracle });
+  }
+  return result;
+}
+async function executeStoryOracles({
+  roots,
+  epicRunId,
+  storyRunId,
+  editId,
+  expectedSpecHash,
+  attempt = 1,
+  executor = runCommand,
+  commandResolver = buildOracleCommand,
+  frontResolver = resolveFrontOraclePlan,
+  hostMapRaw = process.env.FACTORY_FRONT_BUILD_HOST_MAP,
+  now = () => (/* @__PURE__ */ new Date()).toISOString()
+}) {
+  if (!Number.isInteger(attempt) || attempt <= 0)
+    fail10("STORY_ORACLE_ATTEMPT_INVALID", "attempt must be a positive integer.");
+  const store = ensureForgeRunStore(roots);
+  const path = join23(store, `${epicRunId}.jsonl`);
+  if (!existsSync7(path)) fail10("STORY_ORACLE_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
+  const events = parseForgeLedger(path);
+  const start = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
+  const story = events.find(
+    (e) => e.event === "story_run_created" && e.runId === storyRunId && e.parentRunId === epicRunId
+  );
+  if (!start || !story) fail10("STORY_ORACLE_STORY_NOT_FOUND");
+  if (events.some(
+    (e) => e.event === "story_oracles_started" && e.editId === editId && !events.some((f) => f.event === "story_g3_evaluated" && f.campaignId === e.campaignId)
+  ))
+    fail10("STORY_ORACLE_ALREADY_RUNNING", "A Story oracle campaign is already active.");
+  if (events.some((e) => e.event === "story_g3_evaluated" && e.editId === editId && e.attempt === attempt))
+    fail10("STORY_ORACLE_ATTEMPT_COLLISION", "A terminal campaign already exists for this editId and attempt.");
+  const g12 = events.find((e) => e.event === "human_decision_recorded" && e.runId === epicRunId && e.gate === "G1");
+  if (g12?.decision?.outcome !== "approved") fail10("STORY_ORACLE_G1_NOT_APPROVED");
+  const g22 = events.filter((e) => e.event === "g2_evaluated" && e.runId === epicRunId && e.status === "passed").at(-1);
+  if (!g22 || g22.spec?.sha256 !== expectedSpecHash) fail10("STORY_ORACLE_G2_NOT_PASSED");
+  const edit = events.find(
+    (e) => e.event === "story_edit_finished" && e.editId === editId && e.storyRunId === storyRunId
+  );
+  if (!edit || edit.status !== "finished" || edit.outcome !== "finished" || edit.diffValidation?.status !== "valid")
+    fail10("STORY_ORACLE_EDIT_NOT_VALID");
+  let spec;
+  try {
+    spec = loadForgeSpec({ specPath: g22.spec.path, roots, workItem: start.workItem });
+  } catch (error2) {
+    if (error2.code === "G2_ORACLE_UNKNOWN")
+      fail10(
+        "STORY_ORACLE_CATALOG_INVALID",
+        "The persisted G2 spec references an oracle outside the StoryOracle catalog."
+      );
+    throw error2;
+  }
+  if (spec.sha256 !== g22.spec.sha256) fail10("STORY_ORACLE_SPEC_HASH_STALE");
+  const entries = resolve9(spec.frontmatter.oracles);
+  const files = [...edit.filesModified ?? [], ...edit.filesCreated ?? []];
+  let frontPlan;
+  try {
+    if (entries.some((entry) => entry.id.startsWith("front.")))
+      frontPlan = frontResolver({
+        repoRoot: roots.repoRoot,
+        files,
+        hostMapRaw,
+        buildTemplate: domains.front.oracles.find((item) => item.name === "build").command,
+        testsTarget: process.env.FACTORY_FRONT_TEST_TARGET ?? "frontend-test",
+        requireBuild: entries.some((entry) => entry.id === "front.build")
+      });
+  } catch (error2) {
+    const code = error2.code ?? "ORACLE_INFRASTRUCTURE";
+    const campaignId2 = `oracle_${randomUUID12()}`;
+    appendForgeLedgerEvent(path, {
+      schemaVersion: 1,
+      event: "story_oracles_started",
+      campaignId: campaignId2,
+      runId: epicRunId,
+      storyRunId,
+      editId,
+      attempt,
+      specHash: spec.sha256,
+      policyVersion: STORY_ORACLE_POLICY_VERSION,
+      at: now()
+    });
+    appendForgeLedgerEvent(path, {
+      schemaVersion: 1,
+      event: "story_oracle_finished",
+      campaignId: campaignId2,
+      runId: epicRunId,
+      storyRunId,
+      editId,
+      name: "front.infrastructure",
+      status: "blocked",
+      code,
+      exitCode: null,
+      durationMs: 0,
+      commandHash: null,
+      at: now()
+    });
+    appendForgeLedgerEvent(path, {
+      schemaVersion: 1,
+      event: "story_g3_evaluated",
+      campaignId: campaignId2,
+      runId: epicRunId,
+      storyRunId,
+      editId,
+      attempt,
+      status: "blocked",
+      specHash: spec.sha256,
+      policyVersion: STORY_ORACLE_POLICY_VERSION,
+      at: now()
+    });
+    return {
+      campaignId: campaignId2,
+      status: "blocked",
+      results: [
+        { name: "front.infrastructure", status: "blocked", code, exitCode: null, durationMs: 0, commandHash: null }
+      ]
+    };
+  }
+  const campaignId = `oracle_${randomUUID12()}`;
+  appendForgeLedgerEvent(path, {
+    schemaVersion: 1,
+    event: "story_oracles_started",
+    campaignId,
+    runId: epicRunId,
+    storyRunId,
+    editId,
+    attempt,
+    specHash: spec.sha256,
+    policyVersion: STORY_ORACLE_POLICY_VERSION,
+    at: now()
+  });
+  const results = [];
+  for (const { id: id2, oracle } of entries) {
+    if (id2 === "front.tests" && frontPlan.tests.command === null) {
+      const result2 = {
+        name: id2,
+        ownerProjects: frontPlan.tests.owners,
+        ownersWithTestTarget: frontPlan.tests.ownersWithTestTarget,
+        ownersWithoutTestTarget: frontPlan.tests.ownersWithoutTestTarget,
+        buildHosts: [],
+        target: frontPlan.tests.target,
+        configuration: null,
+        status: "skipped",
+        code: "ORACLE_NO_TEST_TARGET",
+        exitCode: null,
+        durationMs: 0,
+        commandHash: null
+      };
+      appendForgeLedgerEvent(path, {
+        schemaVersion: 1,
+        event: "story_oracle_finished",
+        campaignId,
+        runId: epicRunId,
+        storyRunId,
+        editId,
+        ...result2,
+        at: now()
+      });
+      results.push(result2);
+      continue;
+    }
+    let command;
+    try {
+      command = id2 === "front.build" ? frontPlan.build.command : id2 === "front.tests" ? frontPlan.tests.command : id2 === "back.build" ? {
+        noHost: true,
+        reason: "back.build is AgentOS-specific in the current domains catalog and is unavailable for a generic target repo."
+      } : commandResolver(oracle, files, roots.repoRoot);
+    } catch (error2) {
+      command = { noHost: true, reason: String(error2) };
+    }
+    if (typeof command !== "string") {
+      const result2 = {
+        name: id2,
+        status: "blocked",
+        code: "ORACLE_INFRASTRUCTURE",
+        exitCode: null,
+        durationMs: 0,
+        commandHash: null
+      };
+      appendForgeLedgerEvent(path, {
+        schemaVersion: 1,
+        event: "story_oracle_finished",
+        campaignId,
+        runId: epicRunId,
+        storyRunId,
+        editId,
+        ...result2,
+        at: now()
+      });
+      results.push(result2);
+      break;
+    }
+    let raw;
+    try {
+      raw = executor(command, { cwd: roots.repoRoot, timeoutMs: 20 * 60 * 1e3 });
+    } catch {
+      raw = { exitCode: -1, timedOut: false, durationMs: 0, crashed: true };
+    }
+    const status2 = raw.timedOut || raw.crashed ? "blocked" : raw.exitCode === 0 ? "passed" : "failed";
+    const testFacts = id2 === "front.tests" ? {
+      ownersWithTestTarget: frontPlan.tests.ownersWithTestTarget,
+      ownersWithoutTestTarget: frontPlan.tests.ownersWithoutTestTarget
+    } : {};
+    const result = {
+      name: id2,
+      ownerProjects: id2 === "front.tests" ? frontPlan.tests.owners : frontPlan?.owners ?? [],
+      ...testFacts,
+      buildHosts: id2 === "front.build" ? frontPlan?.build?.buildHosts ?? [] : [],
+      target: id2 === "front.build" ? "build" : id2 === "front.tests" ? frontPlan.tests.target : null,
+      configuration: id2 === "front.build" ? "development" : null,
+      status: status2,
+      code: raw.timedOut ? "ORACLE_TIMEOUT" : raw.crashed ? "ORACLE_CRASH" : raw.exitCode === 0 ? "ORACLE_PASS" : "ORACLE_FAIL",
+      exitCode: raw.exitCode,
+      durationMs: raw.durationMs ?? 0,
+      commandHash: hash5(command)
+    };
+    appendForgeLedgerEvent(path, {
+      schemaVersion: 1,
+      event: "story_oracle_finished",
+      campaignId,
+      runId: epicRunId,
+      storyRunId,
+      editId,
+      ...result,
+      at: now()
+    });
+    results.push(result);
+    if (status2 !== "passed") break;
+  }
+  const complete = results.length === entries.length && results.every(
+    (result, index) => result.name === entries[index].id && (result.status === "passed" || result.code === "ORACLE_NO_TEST_TARGET")
+  );
+  const status = results.some((r) => r.status === "blocked") ? "blocked" : complete ? "passed" : "failed";
+  appendForgeLedgerEvent(path, {
+    schemaVersion: 1,
+    event: "story_g3_evaluated",
+    campaignId,
+    runId: epicRunId,
+    storyRunId,
+    editId,
+    attempt,
+    status,
+    specHash: spec.sha256,
+    policyVersion: STORY_ORACLE_POLICY_VERSION,
+    at: now()
+  });
+  return { campaignId, status, results };
+}
+
+// ../src/application/forge-bmad/forge-workflow-sync.ts
+var ATTRIBUTION_FIELDS = /* @__PURE__ */ new Set(["actorId", "agentId", "caseId", "runId"]);
+var SAFE_ATTRIBUTION = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/;
+var SAFE_FORGE_TICKET_ID = /^[A-Z][A-Z0-9]+-\d+$/;
+function sanitizeForgeSyncAttribution(body = {}) {
+  if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).some((key) => !ATTRIBUTION_FIELDS.has(key)))
+    return { ok: false, error: { code: "INVALID_ATTRIBUTION" } };
+  for (const value of Object.values(body))
+    if (typeof value !== "string" || !SAFE_ATTRIBUTION.test(value))
+      return { ok: false, error: { code: "INVALID_ATTRIBUTION" } };
+  return { ok: true, attribution: { ...body } };
+}
+async function syncForgeWorkflowProjection({
+  repoRoot,
+  namespaceId,
+  ticketId,
+  attribution = {},
+  store
+}) {
+  if (typeof repoRoot !== "string" || !SAFE_FORGE_TICKET_ID.test(ticketId ?? ""))
+    return { ok: false, error: { code: "INVALID_SYNC_TARGET" } };
+  const authoritative = readForgeRunYamlStrict(repoRoot, ticketId);
+  if (!authoritative.ok) return authoritative;
+  const run = authoritative.run;
+  const adapted = adaptForgeRunToWorkflowProjection(run);
+  if (!adapted.ok) return adapted;
+  const published = await store.publish(namespaceId, adapted.projection, attribution);
+  if (!published.ok) return { ok: false, error: published.error };
+  return {
+    ok: true,
+    changed: published.changed,
+    workflowId: adapted.projection.workflowId,
+    revision: published.snapshot.revision,
+    projectionHash: published.snapshot.projectionHash
+  };
+}
 export {
+  AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION,
   AGENT_STEP_ATTEMPT_IMMUTABLE_FIELDS,
   AGENT_STEP_ATTEMPT_STATUSES,
   AGENT_STEP_ATTEMPT_TERMINAL_STATUSES,
@@ -6658,7 +9424,9 @@ export {
   AGENT_STEP_RESULT_STATUSES,
   AgentStepAttemptStore,
   AgentStepResultStore,
+  COMMENTS_CHAR_BUDGET,
   DEFAULT_PROCESS_LOCK_FILE,
+  DEFAULT_RUN_STORE_POLICY,
   DELIVERY_ADAPTER_OUTCOMES,
   DELIVERY_DEFINITION_SCHEMA_VERSION,
   DELIVERY_EVIDENCE_KINDS,
@@ -6677,16 +9445,39 @@ export {
   DeliveryTargetRegistry,
   DeliveryVerificationAdapter,
   ENVIRONMENT_STORE_ERROR_CODES,
+  EXTERNAL_RUN_STORE_POLICY,
+  FORGE_LEDGER_SCHEMA_VERSION,
+  FORGE_ROOTS_SCHEMA_VERSION,
+  FORGE_RUN_STORE_POLICIES,
+  FORGE_SPEC_FRONTMATTER_PATTERN,
+  FORGE_SPEC_SCHEMA_VERSION,
+  FORGE_STORY_SPEC_SCHEMA_VERSION,
+  FORGE_WORKFLOW_ERROR_CODES,
+  FORGE_WORKFLOW_VERSION,
+  FRONT_ORACLE_MAP_SCHEMA_VERSION,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
   FilesystemWorkflowHumanInteractionRepository,
   FilesystemWorkflowInstanceRepository,
+  G1_OUTCOMES,
+  G1_POLICY_VERSION,
+  G1_REASON_CODES,
+  G2_POLICY_VERSION,
+  G2_US_POLICY_VERSION,
   HUMAN_INTERACTION_KINDS,
   KeyedLock,
+  ORACLE_CATALOG,
   OracleDefinitionRegistry,
   OracleDefinitionRegistryCore,
+  REPO_RUN_STORE_POLICY,
+  SAFE_FORGE_TICKET_ID,
   STORAGE_FORMAT_VERSION,
   STORAGE_KERNEL_ERROR_CODES,
+  STORY_ANALYSIS_PLAN_SCHEMA_VERSION,
+  STORY_ANALYSIS_POLICY_VERSION,
+  STORY_EDIT_POLICY_VERSION,
+  STORY_EDIT_SCHEMA_VERSION,
+  STORY_ORACLE_POLICY_VERSION,
   StorageKernelError,
   UnconfiguredDeliveryDeploymentAdapter,
   UnconfiguredDeliveryVerificationAdapter,
@@ -6711,8 +9502,11 @@ export {
   WorkflowHumanInteractionRepositoryError,
   WorkflowInstanceRepositoryError,
   acquireProcessLock,
+  adaptForgeRunToWorkflowProjection,
   agentStepAttemptKey,
   appendDurableJson,
+  appendForgeLedgerEvent,
+  applyCommentBudget,
   applyDeliveryPromotion,
   applyHumanCheckpointOpen,
   applyWorkflowTransition,
@@ -6726,6 +9520,7 @@ export {
   buildQuarantineRecord,
   canonicalAgentStepResultJson,
   canonicalDeliveryHash,
+  canonicalG1,
   canonicalHumanInteractionInput,
   canonicalJson,
   canonicalOracleDefinition,
@@ -6736,11 +9531,15 @@ export {
   classifyOracleResult,
   clearActiveCaseId,
   computeCanonicalHash,
+  computeForgeSpecHash,
+  computeG1EvidenceSetHash,
+  computeStorySpecHash,
   countTaskOutcomes,
   createAgentOsHttpCaseTerminator,
   createAgentOsHttpClient,
   createAgentOsRuntimeAdapter,
   createCase,
+  createEpicRun,
   createFilesystemOracleDefinitionSource,
   createFilesystemWorkflowDefinitionRepository,
   createFilesystemWorkflowEvidenceRepository,
@@ -6752,6 +9551,7 @@ export {
   createWorkflowEvidence,
   createWorkflowInstance,
   defaultDeliveryDefinition,
+  defaultRunStoreRoot,
   deliveryScopeHash,
   deliverySemanticHash,
   deriveDeliveryOperationIdentity,
@@ -6759,15 +9559,26 @@ export {
   diffSnapshots,
   endCurrentRunOnce,
   endRun,
+  ensureForgeRunStore,
   evaluateDeliveryOperationPolicy,
   evaluateDeliveryPromotion,
+  evaluateG2,
+  evaluateG2US,
   evaluateHumanCheckpointOpen,
   evaluateHumanResolutionTransition,
   evaluateWorkflowTransition,
   executeAgentStepAttempt,
   executeOracle,
+  executeStoryAnalysis,
+  executeStoryEdit,
+  executeStoryOracles,
+  extractAdfText,
+  extractFrontmatter,
   extractOracleDiagnostics,
+  extractTicketId,
   failPhase,
+  fetchJiraComments,
+  fetchJiraTicket,
   getActiveCaseId,
   getActiveCaseIds,
   getAgentOsRuntimeAdapter,
@@ -6779,28 +9590,43 @@ export {
   hashAgentStepResult,
   hashDeliveryDefinition,
   hashOracleDefinition,
+  hashStorySpec,
   hashStructuredAgentResult,
   hashWorkflowDefinition,
   humanInteractionSemanticHash,
+  inspectNxProject,
   installSigtermHandler,
   isAgentStepAttemptStatus,
   isAgentStepAttemptTerminal,
+  isAllowedStoryOracleRequestBody,
   isInfrastructureIdentity,
   isNotFoundError,
   isSafeAgentStepResultId,
   isValidAgentStepAttemptInstant,
+  isWithin,
   killCase,
   listAgents,
   listEvents,
+  listForgeRunProjections,
   listIntegrations,
+  loadForgeSpec,
   materializeInlineArtifact,
   normalizeDeliveryAdapterOutcome,
   normalizeDeliveryOperationRequest,
   normalizeDiagnosticLine,
+  normalizeForgeRunYaml,
+  normalizeSprintStatus,
+  normalizeStoryFrontmatterFields,
   openedInteractionRevision,
   oracleArtifact,
   oracleRootIdentity,
   parseAgentStepResult,
+  parseForgeLedger,
+  parseForgeLedgerLines,
+  parseForgeSpecFrontmatter,
+  parseFrontBuildHostMap,
+  parseStorySpecFrontmatter,
+  parseYamlMinimal,
   passPhase,
   postMessage,
   preflightAgent,
@@ -6808,16 +9634,27 @@ export {
   preflightWorkspace,
   preflightWritableWorkspace,
   processExit,
+  projectForgeRun,
+  readForgeRunYaml,
+  readForgeRunYamlStrict,
   readFormatVersion,
   readJsonLines,
+  readSprintStatus,
+  readStoryFrontmatter,
+  readStorySpec,
+  recordHumanDecision,
   registerActiveCase,
   resolveBuildHosts,
   resolveDeliveryVerificationRequest,
+  resolveForgeRoots,
+  resolveFrontOraclePlan,
+  resolveOwnerProjectConfigs,
   resolveOwnerProjects,
   runAgentTurn,
   runBaselineOracle,
   runCommand,
   safeEqual,
+  sanitizeForgeSyncAttribution,
   setActiveCaseId,
   sha256,
   snapshotDiff,
@@ -6825,6 +9662,7 @@ export {
   storageErrorCode,
   stripAnsi,
   syncDirectory,
+  syncForgeWorkflowProjection,
   transitionScopeHash,
   transitionSemanticHash,
   unavailableDeliveryTargetRegistry,
@@ -6837,12 +9675,17 @@ export {
   validateDeliveryOperationRecord,
   validateDeliveryOperationTransition,
   validateDeliveryPromotionRequest,
+  validateForgeRunStructure,
+  validateForgeSpecSchema,
   validateGitRef,
   validateHumanInteractionOpenInput,
+  validateInheritance,
   validateIsoInstant,
   validateNamespaceId,
   validateOracleDefinition,
   validateOracleRoot,
+  validateStorySpec,
+  validateStrictForgeYamlSyntax,
   validateWorkUnitEnvironment,
   validateWorkflowDefinition,
   validateWorkflowEvidenceInput,
@@ -6850,5 +9693,6 @@ export {
   withFormatVersion,
   withProcessLock,
   workflowStartCommandHash,
-  wrapStorageError
+  wrapStorageError,
+  writeStoryAnalysisArtifact
 };
