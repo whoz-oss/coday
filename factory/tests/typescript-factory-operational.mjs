@@ -252,6 +252,178 @@ try {
     const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
     assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
   }
+
+  // Tranche 7: work-unit environment domain, store, service and controller.
+  const expectedEnvironmentExports = [
+    // domain/environment/work-unit-environment.ts
+    'WORK_UNIT_ENVIRONMENT_STATES', 'WORK_UNIT_ENVIRONMENT_ERROR_CODES',
+    'validateNamespaceId', 'validateCanonicalAbsolutePath', 'validateGitRef',
+    'validateIsoInstant', 'validateWorkUnitEnvironment',
+    // adapters/persistence/work-unit-environment-store.ts
+    'ENVIRONMENT_STORE_ERROR_CODES', 'WorkUnitEnvironmentStoreError', 'WorkUnitEnvironmentStore',
+    // application/environment/work-unit-environment-service.ts
+    'WorkUnitEnvironmentService',
+    // application/environment/work-unit-environment-controller.ts
+    'WorkUnitEnvironmentController', 'handleWorkUnitEnvironmentRequest',
+  ]
+  for (const name of expectedEnvironmentExports)
+    assert.ok(name in module, `missing work-unit environment export ${name}`)
+  for (const name of ['WorkUnitEnvironmentStore', 'WorkUnitEnvironmentService', 'WorkUnitEnvironmentController', 'handleWorkUnitEnvironmentRequest'])
+    assert.equal(typeof module[name], 'function', `missing work-unit environment function ${name}`)
+
+  const environmentFacade = await import('../lib/work-unit-environment.mjs')
+  for (const name of ['WORK_UNIT_ENVIRONMENT_STATES', 'WORK_UNIT_ENVIRONMENT_ERROR_CODES', 'validateNamespaceId', 'validateCanonicalAbsolutePath', 'validateGitRef', 'validateIsoInstant', 'validateWorkUnitEnvironment'])
+    assert.equal(environmentFacade[name], module[name], `${name} environment facade identity mismatch`)
+  const environmentStoreFacade = await import('../lib/work-unit-environment-store.mjs')
+  for (const name of ['ENVIRONMENT_STORE_ERROR_CODES', 'WorkUnitEnvironmentStoreError', 'WorkUnitEnvironmentStore'])
+    assert.equal(environmentStoreFacade[name], module[name], `${name} environment-store facade identity mismatch`)
+  const environmentServiceFacade = await import('../lib/work-unit-environment-service.mjs')
+  assert.equal(environmentServiceFacade.WorkUnitEnvironmentService, module.WorkUnitEnvironmentService, 'environment-service facade identity mismatch')
+  const environmentControllerFacade = await import('../lib/work-unit-environment-controller.mjs')
+  for (const name of ['WorkUnitEnvironmentController', 'handleWorkUnitEnvironmentRequest'])
+    assert.equal(environmentControllerFacade[name], module[name], `${name} environment-controller facade identity mismatch`)
+
+  // Exercise the migrated environment surface for real behaviour.
+  const environmentNamespace = '123e4567-e89b-42d3-a456-426614174000'
+  const environmentCase = '223e4567-e89b-42d3-a456-426614174000'
+  const environmentBase = {
+    schemaVersion: '1', environmentId: 'env-1', workUnitId: 'unit-1', namespaceId: environmentNamespace,
+    repoRoot: '/repo', integrationBranch: 'main', branch: 'feature/x', worktreePath: '/worktrees/x',
+    baseCommit: null, createdAt: '2025-01-01T00:00:00.000Z', createdBy: 'factory', lifecycleState: 'provisioning',
+  }
+  assert.equal(module.validateWorkUnitEnvironment(environmentBase).ok, true)
+  assert.equal(module.validateWorkUnitEnvironment({ ...environmentBase, branch: '../x' }).ok, false)
+  assert.equal(module.validateWorkUnitEnvironment({ ...environmentBase, repoRoot: 'repo' }).ok, false)
+  assert.equal(module.validateNamespaceId('not-a-uuid').ok, false)
+  assert.equal(module.validateIsoInstant('2025-01-01T00:00:00.000Z').ok, true)
+  assert.equal(module.validateIsoInstant('2025-02-30T00:00:00.000Z').ok, false)
+  assert.equal(module.validateGitRef('feature/x').ok, true)
+  assert.equal(module.validateCanonicalAbsolutePath('/worktrees/x').ok, true)
+  assert.deepEqual(module.WORK_UNIT_ENVIRONMENT_STATES, ['provisioning', 'active', 'completed', 'abandoned', 'error', 'removed'])
+
+  const environmentStore = new module.WorkUnitEnvironmentStore(join(temporaryDirectory, 'environment-store'))
+  await environmentStore.initialize()
+  const reserved = await environmentStore.reserve(environmentBase)
+  assert.equal(reserved.ok, true)
+  assert.equal(reserved.snapshot.revision, 1)
+  assert.equal((await environmentStore.reserve(environmentBase)).changed, false)
+  assert.equal((await environmentStore.list(environmentNamespace)).length, 1)
+  assert.equal((await environmentStore.read(environmentNamespace, 'env-1')).environment.environmentId, 'env-1')
+  {
+    let code
+    try {
+      await environmentStore.read('not-a-uuid', 'env-1')
+    } catch (error) {
+      code = error.code
+    }
+    assert.equal(code, module.ENVIRONMENT_STORE_ERROR_CODES.INVALID_NAMESPACE)
+  }
+
+  let environmentRevision = 0
+  const environmentSnapshots = []
+  const environmentStoreStub = {
+    async read(_ns, id) { return environmentSnapshots.find((x) => x.environment.environmentId === id) ?? null },
+    async reserve(environment) {
+      const snapshot = { revision: ++environmentRevision, environment }
+      environmentSnapshots.push(snapshot)
+      return { ok: true, changed: true, snapshot }
+    },
+    async transition(_ns, id, environment) {
+      const index = environmentSnapshots.findIndex((x) => x.environment.environmentId === id)
+      const snapshot = { revision: ++environmentRevision, environment }
+      environmentSnapshots[index] = snapshot
+      return { ok: true, changed: true, snapshot }
+    },
+    async list(_ns, { states } = {}) {
+      return environmentSnapshots.filter((x) => !states || states.includes(x.environment.lifecycleState))
+    },
+  }
+  const environmentSha = 'a'.repeat(40)
+  const environmentGit = {
+    async provisionWorktree(input, onReady) {
+      await onReady({ ...input, repoRoot: '/repo', worktreePath: input.worktreePath, baseCommit: environmentSha, integrationBranch: input.integrationBranch })
+      return { ...input, baseCommit: environmentSha, headCommit: environmentSha }
+    },
+    async reconcile(environment) { return { status: 'owned', ...environment, headCommit: environmentSha } },
+    async removeWorktree() { return { removed: true } },
+  }
+  const environmentService = new module.WorkUnitEnvironmentService({
+    store: environmentStoreStub,
+    git: environmentGit,
+    clock: () => new Date('2025-01-01T00:00:00.000Z'),
+  })
+  const environmentInput = {
+    environmentId: 'env-svc', workUnitId: 'unit-svc', namespaceId: environmentNamespace,
+    repoRoot: '/repo', integrationBranch: 'main', branch: 'feature/svc',
+    worktreePath: '/worktrees/svc', createdBy: 'factory',
+  }
+  const firstProvision = await environmentService.provision(environmentInput)
+  const secondProvision = await environmentService.provision(environmentInput)
+  assert.equal(firstProvision.ok, true)
+  assert.equal(secondProvision.ok, true)
+  assert.equal(secondProvision.changed, false)
+  const bound = await environmentService.bindParentCase(environmentNamespace, 'env-svc', environmentCase)
+  assert.equal(bound.ok, true)
+  assert.equal(bound.snapshot.environment.lifecycleState, 'active')
+  const inspected = await environmentService.inspect(environmentNamespace, 'env-svc')
+  assert.equal(inspected.ok, true)
+  assert.equal(inspected.reconciliation.status, 'owned')
+
+  const environmentWorkflowStore = {
+    async read() {
+      return {
+        instance: {
+          controllerExecution: { kind: 'agentos', caseId: environmentCase },
+          environmentRef: { environmentId: 'env-svc', environmentHash: undefined },
+        },
+      }
+    },
+    async bindEnvironment() { return { ok: true } },
+  }
+  const environmentController = new module.WorkUnitEnvironmentController({
+    store: environmentStoreStub,
+    git: environmentGit,
+    policy: { resolve: async () => ({ repoRoot: '/repo', worktreePath: '/worktrees/policy' }) },
+    workflowStore: environmentWorkflowStore,
+  })
+  const rejectedProvision = await environmentController.provision({
+    namespaceId: environmentNamespace,
+    caseId: '33333333-3333-4333-8333-333333333333',
+    createdBy: 'factory',
+    body: { workflowId: 'wf-1', workUnitId: 'unit-1', integrationBranch: 'main', branch: 'feature/x', repoRoot: '/attacker' },
+  })
+  assert.deepEqual([rejectedProvision.status, rejectedProvision.error.code], [400, 'INVALID_ENVIRONMENT_REQUEST'])
+
+  const requestContext = (caseId) => ({
+    method: 'GET',
+    path: '/api/factory/workflows/wf-1/environment',
+    url: new URL('http://local/api/factory/workflows/wf-1/environment'),
+    readBody: async () => ({}),
+    send: (status, body) => { requestContext.response = { status, body } },
+    controller: environmentController,
+    identity: async () => ({ namespaceId: environmentNamespace, caseId, actorId: 'factory' }),
+    log: { error() {} },
+  })
+  await module.handleWorkUnitEnvironmentRequest(requestContext(environmentCase))
+  assert.equal(requestContext.response.status, 200)
+  await module.handleWorkUnitEnvironmentRequest(requestContext('33333333-3333-4333-8333-333333333333'))
+  assert.deepEqual([requestContext.response.status, requestContext.response.body.error.code], [409, 'ENVIRONMENT_NOT_BOUND'])
+  assert.equal(
+    await module.handleWorkUnitEnvironmentRequest({ ...requestContext(environmentCase), path: '/not-an-environment-route' }),
+    false,
+    'unrelated paths must not be handled'
+  )
+
+  const environmentSources = [
+    'src/domain/environment/work-unit-environment.ts',
+    'src/adapters/persistence/work-unit-environment-store.ts',
+    'src/application/environment/work-unit-environment-service.ts',
+    'src/application/environment/work-unit-environment-controller.ts',
+  ]
+  for (const source of environmentSources) {
+    const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
+    assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
+  }
 } finally {
   if (previousObservabilityFile === undefined) delete process.env.FACTORY_ACTIVE_CASE_FILE
   else process.env.FACTORY_ACTIVE_CASE_FILE = previousObservabilityFile
