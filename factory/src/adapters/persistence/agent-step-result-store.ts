@@ -16,24 +16,16 @@ import {
   type AgentStepResultObservedIdentity,
   type AgentStepResultSubmitted,
 } from '../../domain/agent-attempt/agent-step-result.js'
+import type {
+  AgentStepResultIssueResult,
+  AgentStepResultSubmitResult,
+} from '../../ports/persistence/agent-step-result-repository.js'
 
 /** Injection points of the result store. */
 export interface AgentStepResultStoreOptions {
   clock?: () => Date
   ttlMs?: number
 }
-
-/** A freshly issued submission capability (the clear token is never persisted). */
-export interface AgentStepResultIssueResult {
-  token: string
-  expiresAt: string
-}
-
-/** Outcome of a capability-backed business result submission. */
-export type AgentStepResultSubmitResult =
-  | { ok: false; code: string }
-  | { ok: true; idempotent: true; result: AgentStepResultSubmitted }
-  | { ok: true; idempotent: false; result: AgentStepResultSubmitted }
 
 interface CapabilityEntry {
   namespaceId: string

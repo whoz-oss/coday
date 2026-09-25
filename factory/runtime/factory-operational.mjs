@@ -1539,6 +1539,22 @@ var AgentStepAttemptStore = class {
   }
 };
 
+// ../src/adapters/persistence/filesystem-agent-step-attempt-repository.ts
+var FilesystemAgentStepAttemptRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  list(namespaceId, storageId) {
+    return this.store.list(namespaceId, storageId);
+  }
+  append(namespaceId, storageId, attempt) {
+    return this.store.append(namespaceId, storageId, attempt);
+  }
+};
+function createFilesystemAgentStepAttemptRepository(store) {
+  return new FilesystemAgentStepAttemptRepository(store);
+}
+
 // ../src/adapters/persistence/agent-step-result-store.ts
 import { randomBytes as randomBytes3, randomUUID as randomUUID3 } from "node:crypto";
 import { readdir } from "node:fs/promises";
@@ -1692,6 +1708,118 @@ var AgentStepResultStore = class {
     return this.attemptIndex.get(agentStepAttemptKey(namespaceId, storageId, attemptId))?.result ?? null;
   }
 };
+
+// ../src/adapters/persistence/filesystem-agent-step-result-repository.ts
+var FilesystemAgentStepResultRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  issue(namespaceId, storageId, identity) {
+    return this.store.issue(namespaceId, storageId, identity);
+  }
+  submit(token, business, observed) {
+    return this.store.submit(token, business, observed);
+  }
+  getByAttempt(namespaceId, storageId, attemptId) {
+    return this.store.getByAttempt(namespaceId, storageId, attemptId);
+  }
+  list(namespaceId, storageId) {
+    return this.store.list(namespaceId, storageId);
+  }
+};
+function createFilesystemAgentStepResultRepository(store) {
+  return new FilesystemAgentStepResultRepository(store);
+}
+
+// ../src/adapters/persistence/filesystem-oracle-execution-repository.ts
+var FilesystemOracleExecutionRepository = class {
+  constructor(registry2) {
+    this.registry = registry2;
+  }
+  async list() {
+    return this.registry.list();
+  }
+  async get(id2) {
+    return this.registry.get(id2);
+  }
+};
+function createFilesystemOracleExecutionRepository(registry2) {
+  return new FilesystemOracleExecutionRepository(registry2);
+}
+
+// ../src/adapters/persistence/filesystem-work-environment-repository.ts
+var FilesystemWorkEnvironmentRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  paths(namespaceId, environmentId) {
+    return this.store.paths(namespaceId, environmentId);
+  }
+  read(namespaceId, environmentId) {
+    return this.store.read(namespaceId, environmentId);
+  }
+  list(namespaceId, filter) {
+    return this.store.list(namespaceId, filter);
+  }
+  reserve(environment) {
+    return this.store.reserve(environment);
+  }
+  transition(namespaceId, environmentId, next, options) {
+    return this.store.transition(namespaceId, environmentId, next, options);
+  }
+};
+function createFilesystemWorkEnvironmentRepository(store) {
+  return new FilesystemWorkEnvironmentRepository(store);
+}
+
+// ../src/adapters/persistence/filesystem-delivery-repository.ts
+var FilesystemDeliveryRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  read(namespaceId, deliveryId) {
+    return this.store.read(namespaceId, deliveryId);
+  }
+  create(input) {
+    return this.store.create(input);
+  }
+  promote(input) {
+    return this.store.promote(input);
+  }
+  readWithOperations(namespaceId, deliveryId) {
+    return this.store.readWithOperations(namespaceId, deliveryId);
+  }
+  inspectDeliveryOperations(namespaceId, deliveryId) {
+    return this.store.inspectDeliveryOperations(namespaceId, deliveryId);
+  }
+  createRollbackRequest(input) {
+    return this.store.createRollbackRequest(input);
+  }
+  approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
+    return this.store.approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval);
+  }
+  createDeliveryOperation(input) {
+    return this.store.createDeliveryOperation(input);
+  }
+  recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options) {
+    return this.store.recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options);
+  }
+  startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation) {
+    return this.store.startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation);
+  }
+  reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation) {
+    return this.store.reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation);
+  }
+  hasIndeterminateOperation(namespaceId, deliveryId) {
+    return this.store.hasIndeterminateOperation(namespaceId, deliveryId);
+  }
+  updateSnapshot(namespaceId, deliveryId, patch, operationInput) {
+    return this.store.updateSnapshot(namespaceId, deliveryId, patch, operationInput);
+  }
+};
+function createFilesystemDeliveryRepository(store) {
+  return new FilesystemDeliveryRepository(store);
+}
 
 // ../src/application/shutdown.ts
 function createShutdownController(deps) {
@@ -3264,6 +3392,10 @@ var OracleDefinitionRegistryCore = class {
     }
     this.items = next;
     return this;
+  }
+  /** Every loaded definition, in registry insertion order. */
+  list() {
+    return [...this.items.values()];
   }
   get(id2) {
     return this.items.get(id2) ?? null;
@@ -9455,6 +9587,11 @@ export {
   FORGE_WORKFLOW_ERROR_CODES,
   FORGE_WORKFLOW_VERSION,
   FRONT_ORACLE_MAP_SCHEMA_VERSION,
+  FilesystemAgentStepAttemptRepository,
+  FilesystemAgentStepResultRepository,
+  FilesystemDeliveryRepository,
+  FilesystemOracleExecutionRepository,
+  FilesystemWorkEnvironmentRepository,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
   FilesystemWorkflowHumanInteractionRepository,
@@ -9540,7 +9677,12 @@ export {
   createAgentOsRuntimeAdapter,
   createCase,
   createEpicRun,
+  createFilesystemAgentStepAttemptRepository,
+  createFilesystemAgentStepResultRepository,
+  createFilesystemDeliveryRepository,
   createFilesystemOracleDefinitionSource,
+  createFilesystemOracleExecutionRepository,
+  createFilesystemWorkEnvironmentRepository,
   createFilesystemWorkflowDefinitionRepository,
   createFilesystemWorkflowEvidenceRepository,
   createFilesystemWorkflowHumanInteractionRepository,

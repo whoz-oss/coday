@@ -8,6 +8,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  FilesystemAgentStepAttemptRepository,
+  FilesystemAgentStepResultRepository,
+  FilesystemDeliveryRepository,
+  FilesystemOracleExecutionRepository,
+  FilesystemWorkEnvironmentRepository,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
   FilesystemWorkflowHumanInteractionRepository,
@@ -15,6 +20,11 @@ import {
   WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES,
   WorkflowInstanceRepositoryError,
 } from '../runtime/factory-operational.mjs'
+import { createAgentStepAttemptRepository } from '../lib/agent-step-attempt-store.mjs'
+import { createAgentStepResultRepository } from '../lib/agent-step-result-store.mjs'
+import { createDeliveryRepository } from '../lib/delivery-store.mjs'
+import { createOracleDefinitionRepository } from '../lib/oracle-definition.mjs'
+import { createWorkEnvironmentRepository } from '../lib/work-unit-environment-store.mjs'
 import { createWorkflowDefinitionRepository } from '../lib/workflow-definition-registry.mjs'
 import { createWorkflowEvidenceRepository } from '../lib/workflow-evidence-store.mjs'
 import { createWorkflowHumanInteractionRepository } from '../lib/workflow-human-interaction-store.mjs'
@@ -221,6 +231,325 @@ try {
     )
     assert.equal(replied.status, 'replied')
     assert.equal((await repository.list(namespaceId, storageId, { openOnly: true })).length, 0)
+  })
+
+  await scenario('agent-step-attempt adapter appends transitions and lists the journal', async () => {
+    const repository = createAgentStepAttemptRepository(root)
+    assert.ok(repository instanceof FilesystemAgentStepAttemptRepository)
+    const storageId = 'attempt-storage'
+    const base = {
+      attemptId: 'attempt-adapter-1',
+      workflowId: 'wf-attempt',
+      workflowRevisionAtStart: 1,
+      stepId: 'build',
+      attemptNumber: 1,
+      namespaceId,
+      runtimeId: 'factory-runner',
+      caseId: null,
+      agentName: 'Worker',
+      briefHash: `sha256:${'a'.repeat(64)}`,
+      status: 'starting',
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      evidenceId: null,
+      failureCode: null,
+    }
+    assert.deepEqual(await repository.list(namespaceId, storageId), [])
+    await repository.append(namespaceId, storageId, base)
+    await repository.append(namespaceId, storageId, { ...base, caseId: 'case-1', status: 'running' })
+    const succeeded = await repository.append(namespaceId, storageId, {
+      ...base,
+      caseId: 'case-1',
+      status: 'succeeded',
+      finishedAt: new Date().toISOString(),
+      evidenceId: 'evidence-1',
+    })
+    assert.equal(succeeded.status, 'succeeded')
+    assert.deepEqual(
+      (await repository.list(namespaceId, storageId)).map((attempt) => attempt.status),
+      ['starting', 'running', 'succeeded']
+    )
+    await assert.rejects(
+      () =>
+        repository.append(namespaceId, storageId, {
+          ...base,
+          caseId: 'case-1',
+          agentName: 'Other',
+          status: 'succeeded',
+          finishedAt: new Date().toISOString(),
+        }),
+      /AGENT_STEP_ATTEMPT_IDENTITY_CONFLICT/
+    )
+    await assert.rejects(
+      () => repository.append(namespaceId, storageId, { ...base, caseId: 'case-1', status: 'running' }),
+      /INVALID_AGENT_STEP_ATTEMPT_TRANSITION/
+    )
+  })
+
+  await scenario('agent-step-result adapter issues, submits and projects results', async () => {
+    const repository = createAgentStepResultRepository(root)
+    assert.ok(repository instanceof FilesystemAgentStepResultRepository)
+    const storageId = 'result-storage'
+    const identity = {
+      attemptId: 'attempt-result-1',
+      workflowId: 'wf-result',
+      stepId: 'build',
+      namespaceId,
+      caseId: 'case-result',
+      agentName: 'Worker',
+      briefHash: `sha256:${'b'.repeat(64)}`,
+    }
+    const observed = { attemptId: identity.attemptId, caseId: identity.caseId, agentName: identity.agentName }
+    const business = { status: 'PASS', summary: 'all good', claims: { modifiedFiles: [] } }
+    assert.deepEqual(await repository.list(namespaceId, storageId), [])
+    const issued = await repository.issue(namespaceId, storageId, identity)
+    assert.equal(typeof issued.token, 'string')
+    assert.ok(issued.token.length >= 32)
+    assert.ok(!Number.isNaN(Date.parse(issued.expiresAt)))
+    const submitted = await repository.submit(issued.token, business, observed)
+    assert.equal(submitted.ok, true)
+    assert.equal(submitted.idempotent, false)
+    const replay = await repository.submit(issued.token, business, observed)
+    assert.equal(replay.ok, true)
+    assert.equal(replay.idempotent, true)
+    assert.equal((await repository.getByAttempt(namespaceId, storageId, identity.attemptId))?.summary, 'all good')
+    assert.equal(await repository.getByAttempt(namespaceId, storageId, 'missing'), null)
+    assert.deepEqual(
+      (await repository.list(namespaceId, storageId)).map((event) => event.type),
+      ['capability-issued', 'result-submitted']
+    )
+    assert.deepEqual(await repository.submit('not-a-token', business, observed), {
+      ok: false,
+      code: 'RESULT_CAPABILITY_INVALID',
+    })
+  })
+
+  await scenario('oracle-definition adapter lists and resolves definitions', async () => {
+    const definitionsRoot = join(root, 'oracle-definitions')
+    await mkdir(definitionsRoot, { recursive: true })
+    await writeFile(
+      join(definitionsRoot, 'adapter-smoke@1.0.0.json'),
+      `${JSON.stringify({
+        schemaVersion: '1',
+        id: 'adapter-smoke',
+        version: '1.0.0',
+        domain: 'factory',
+        argv: ['node', 'fixture.mjs'],
+        cwd: 'repo-root',
+        timeoutMs: 1000,
+        success: { rule: 'exit-code', requireWork: true },
+        applicable: { workflowTypes: ['oracle-smoke'], stepIds: ['verify-code'] },
+      })}\n`
+    )
+    const repository = await createOracleDefinitionRepository(definitionsRoot)
+    assert.ok(repository instanceof FilesystemOracleExecutionRepository)
+    const list = await repository.list()
+    assert.deepEqual(
+      list.map((definition) => definition.id),
+      ['adapter-smoke']
+    )
+    assert.equal(list[0].version, '1.0.0')
+    const found = await repository.get('adapter-smoke')
+    assert.equal(found.domain, 'factory')
+    assert.equal(await repository.get('missing'), null)
+  })
+
+  await scenario('work-environment adapter reserves, reads, lists and transitions', async () => {
+    const repository = await createWorkEnvironmentRepository(join(root, 'environment-adapter'))
+    assert.ok(repository instanceof FilesystemWorkEnvironmentRepository)
+    const caseId = '22222222-2222-4222-8222-222222222222'
+    const base = {
+      schemaVersion: '1',
+      environmentId: 'env-adapter',
+      workUnitId: 'unit-adapter',
+      namespaceId,
+      repoRoot: '/repo',
+      integrationBranch: 'main',
+      branch: 'feature/adapter',
+      worktreePath: '/worktrees/adapter',
+      baseCommit: 'a'.repeat(40),
+      createdAt: '2025-01-01T00:00:00.000Z',
+      createdBy: 'factory',
+      lifecycleState: 'provisioning',
+    }
+    const paths = repository.paths(namespaceId, 'env-adapter')
+    assert.ok(paths.snapshot.endsWith('environment.json'))
+    assert.ok(!paths.directory.endsWith('/env-adapter'))
+
+    const reserved = await repository.reserve(base)
+    assert.equal(reserved.ok, true)
+    assert.equal(reserved.snapshot.revision, 1)
+    assert.equal((await repository.read(namespaceId, 'env-adapter')).environment.lifecycleState, 'provisioning')
+    assert.equal((await repository.list(namespaceId)).length, 1)
+    assert.equal((await repository.list(namespaceId, { states: ['active'] })).length, 0)
+    assert.equal((await repository.list(namespaceId, { states: ['provisioning'] })).length, 1)
+
+    const rejected = await repository.reserve({ ...base, environmentId: 'bad id!' })
+    assert.equal(rejected.ok, false)
+
+    const active = await repository.transition(namespaceId, 'env-adapter', {
+      ...base,
+      lifecycleState: 'active',
+      parentCaseId: caseId,
+    })
+    assert.equal(active.ok, true)
+    assert.equal(active.snapshot.revision, 2)
+    assert.equal((await repository.read(namespaceId, 'env-adapter')).environment.lifecycleState, 'active')
+
+    const conflict = await repository.transition(
+      namespaceId,
+      'env-adapter',
+      { ...base, lifecycleState: 'completed', parentCaseId: caseId },
+      { expectedRevision: 99 }
+    )
+    assert.equal(conflict.error.code, 'REVISION_CONFLICT')
+    assert.equal(await repository.read(namespaceId, 'missing-env'), null)
+  })
+
+  await scenario('delivery adapter creates, promotes and projects operations', async () => {
+    const repository = createDeliveryRepository(join(root, 'delivery-adapter'))
+    assert.ok(repository instanceof FilesystemDeliveryRepository)
+    const deliveryId = 'wf-delivery-adapter'
+    const workflowId = 'wf-adapter'
+    const runtimeId = 'factory-dashboard'
+    const caseId = '22222222-2222-4222-8222-222222222222'
+    const environmentId = '33333333-3333-4333-8333-333333333333'
+    const sha = 'a'.repeat(40)
+    const digest = `sha256:${'b'.repeat(64)}`
+    const targetHash = `sha256:${'c'.repeat(64)}`
+    const now = new Date().toISOString()
+    const snapshot = {
+      schemaVersion: '1',
+      deliveryId,
+      namespaceId,
+      workflowId,
+      environmentId,
+      environmentHash: digest,
+      parentCaseId: caseId,
+      runtimeId,
+      worktreePath: '/repo',
+      branch: 'feature/adapter',
+      baseCommit: sha,
+      headCommit: sha,
+      definitionType: 'factory-delivery',
+      definitionVersion: '1.0.0',
+      definitionHash: digest,
+      stage: 'implementation-ready',
+      revision: 1,
+      evidenceIds: [],
+      createdAt: now,
+      updatedAt: now,
+      git: {},
+      artifact: {},
+      release: {},
+      deployment: {},
+      verification: {},
+      blockers: [],
+    }
+    const created = await repository.create(snapshot)
+    assert.equal(created.ok, true)
+    assert.equal((await repository.create(snapshot)).changed, false)
+    assert.equal((await repository.read(namespaceId, deliveryId)).stage, 'implementation-ready')
+
+    // Promotion is delegated to the store policy: an absent delivery fails closed.
+    const missing = await repository.promote({
+      namespaceId,
+      request: {
+        requestId: 'req-missing',
+        deliveryId: 'missing-delivery',
+        expectedRevision: 1,
+        requestedStage: 'artifact-ready',
+        evidenceIds: [],
+        idempotencyKey: 'promote-missing',
+      },
+      definition: {
+        schemaVersion: '1',
+        deliveryType: 'delivery',
+        version: '1.0.0',
+        checkpoints: [],
+        artifactPolicy: {},
+        promotionPolicy: {},
+        deploymentPolicy: {},
+        retentionPolicy: {},
+        definitionHash: digest,
+      },
+      evidence: [],
+      execution: { kind: 'factory-control-plane', namespaceId, workflowId, caseId, runtimeId },
+    })
+    assert.equal(missing.error.code, 'DELIVERY_NOT_FOUND')
+
+    const operationArgs = {
+      namespaceId,
+      workflowId,
+      deliveryId,
+      caseId,
+      runtimeId,
+      request: {
+        kind: 'deployment',
+        expectedRevision: 1,
+        idempotencyKey: 'deploy-once',
+        targetId: 'prod',
+        artifactRef: {
+          digest,
+          mediaType: 'application/zip',
+          producerRef: 'build',
+          buildRef: 'build-1',
+          sourceCommit: sha,
+        },
+        releaseRef: {
+          releaseId: 'release-1',
+          artifactDigest: digest,
+          sourceCommit: sha,
+          approvedEvidenceId: 'approval',
+        },
+      },
+      targetRef: { targetId: 'prod', targetHash, adapterId: 'test', adapterTargetRef: 'trusted' },
+      execution: { kind: 'factory-control-plane', actorId: 'factory' },
+    }
+    const operation = await repository.createDeliveryOperation(operationArgs)
+    assert.equal(operation.operation.state, 'pending')
+    assert.equal((await repository.createDeliveryOperation(operationArgs)).changed, false)
+    const started = await repository.startDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operation.operation.operationId,
+      'adapter-1'
+    )
+    assert.equal(started.operation.attempt, 1)
+    const indeterminate = await repository.recordDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operation.operation.operationId,
+      { state: 'indeterminate', error: { code: 'LOST_RESPONSE' } }
+    )
+    assert.equal(indeterminate.ok, true)
+    assert.equal(await repository.hasIndeterminateOperation(namespaceId, deliveryId), true)
+    const reconciled = await repository.reconcileDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operation.operation.operationId,
+      { state: 'succeeded', result: { deploymentId: 'd1' } }
+    )
+    assert.equal(reconciled.ok, true)
+    assert.equal(await repository.hasIndeterminateOperation(namespaceId, deliveryId), false)
+    const projection = await repository.inspectDeliveryOperations(namespaceId, deliveryId)
+    assert.equal(projection.operations[0].state, 'succeeded')
+    const withOperations = await repository.readWithOperations(namespaceId, deliveryId)
+    assert.equal(withOperations.revision, 1)
+    assert.equal(withOperations.deliveryOperations[0].state, 'succeeded')
+
+    const patched = await repository.updateSnapshot(
+      namespaceId,
+      deliveryId,
+      { git: { checkpoint: sha } },
+      {
+        kind: 'checkpoint',
+        idempotencyKey: 'checkpoint-1',
+        facts: { headCommit: sha },
+      }
+    )
+    assert.equal(patched.ok, true)
+    assert.equal((await repository.read(namespaceId, deliveryId)).git.checkpoint, sha)
   })
 } finally {
   await rm(root, { recursive: true, force: true })

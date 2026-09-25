@@ -34,3 +34,17 @@ export type {
   HumanInteractionOpenTransition,
   HumanInteractionReplyAction,
 } from './workflow-human-interaction-repository.js'
+
+export type { AgentStepAttemptRepository } from './agent-step-attempt-repository.js'
+
+export type {
+  AgentStepResultRepository,
+  AgentStepResultIssueResult,
+  AgentStepResultSubmitResult,
+} from './agent-step-result-repository.js'
+
+export type { OracleExecutionRepository } from './oracle-execution-repository.js'
+
+export type { WorkEnvironmentRepository } from './work-environment-repository.js'
+
+export type { DeliveryRepository } from './delivery-repository.js'
