@@ -4,8 +4,12 @@
 // It is intentionally *not* a SQL engine: it recognises the constrained subset
 // of statements the SQL adapters emit (single-table INSERT … [ON CONFLICT DO
 // NOTHING] / SELECT … [WHERE eq AND …] / UPDATE … SET … WHERE … / DELETE FROM …
-// WHERE …). This keeps the contract tests offline and Docker-free while still
-// exercising the adapters' query construction, row mapping and revision logic.
+// WHERE …) plus the transaction control statements `BEGIN` / `COMMIT` /
+// `ROLLBACK`. Transactions are simulated by snapshotting the table state on
+// `BEGIN` and restoring it on `ROLLBACK`, which lets the unit-of-work tests
+// assert atomicity offline. This keeps the contract tests offline and
+// Docker-free while still exercising the adapters' query construction, row
+// mapping and revision logic.
 
 const PRIMARY_KEYS = {
   workflow_definitions: ['organization_id', 'workflow_type', 'version'],
@@ -30,6 +34,21 @@ function resolveValue(token, params) {
 
 export function createInMemorySqlClient() {
   const tables = new Map()
+
+  // Stack of table-state snapshots, one per open transaction. It supports
+  // nested / re-entrant `BEGIN` (the inner snapshot is restored by the inner
+  // `ROLLBACK`) so the client behaves like a connection with savepoints.
+  const transactionSnapshots = []
+
+  // Deep copy of the table state. Rows only hold JSON-scalar values in these
+  // adapters, but `structuredClone` keeps the snapshot correct even if a row
+  // ever carries a nested object.
+  const snapshotTables = () => new Map([...tables.entries()].map(([table, rows]) => [table, structuredClone(rows)]))
+
+  const restoreTables = (snapshot) => {
+    tables.clear()
+    for (const [table, rows] of snapshot.entries()) tables.set(table, rows)
+  }
 
   const rowsFor = (table) => {
     if (!tables.has(table)) tables.set(table, [])
@@ -98,6 +117,23 @@ export function createInMemorySqlClient() {
   return {
     async query(text, params = []) {
       const sql = text.replace(/\s+/g, ' ').trim()
+      const beginMatch = sql.match(/^BEGIN(?: TRANSACTION)?;?$/i)
+      if (beginMatch) {
+        transactionSnapshots.push(snapshotTables())
+        return { rows: [], rowCount: 0 }
+      }
+      const commitMatch = sql.match(/^COMMIT;?$/i)
+      if (commitMatch) {
+        // Committing discards the snapshot: the writes stay in the tables.
+        if (transactionSnapshots.length > 0) transactionSnapshots.pop()
+        return { rows: [], rowCount: 0 }
+      }
+      const rollbackMatch = sql.match(/^ROLLBACK;?$/i)
+      if (rollbackMatch) {
+        const snapshot = transactionSnapshots.pop()
+        if (snapshot) restoreTables(snapshot)
+        return { rows: [], rowCount: 0 }
+      }
       const insertMatch = sql.match(/^INSERT INTO (\w+) \(([^)]+)\) VALUES \(([^)]+)\)/i)
       if (insertMatch) {
         const [, table, columns, values] = insertMatch
