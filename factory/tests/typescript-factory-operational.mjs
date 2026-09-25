@@ -171,6 +171,87 @@ try {
     const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
     assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
   }
+
+  // Tranche 6: oracle domain + application (command, executor, baseline, registry).
+  const expectedOracleExports = [
+    // domain/oracle/oracle.ts
+    'countTaskOutcomes', 'diffSnapshots',
+    // domain/oracle/oracle-definition.ts
+    'validateOracleDefinition', 'hashOracleDefinition', 'OracleDefinitionRegistryCore',
+    // application/oracle/oracle-definition-registry.ts
+    'OracleDefinitionRegistry',
+    // application/oracle/oracle-command.ts
+    'resolveBuildHosts', 'resolveOwnerProjects', 'buildOracleCommand',
+    // application/oracle/oracle-executor.ts
+    'runCommand', 'snapshotDiff', 'diffSince', 'classifyOracleExecution', 'validateOracleRoot',
+    'oracleRootIdentity', 'executeOracle', 'oracleArtifact',
+    // application/oracle/oracle-baseline.ts
+    'normalizeDiagnosticLine', 'extractOracleDiagnostics', 'isInfrastructureIdentity',
+    'runBaselineOracle', 'classifyOracleResult', 'buildQuarantineRecord',
+  ]
+  for (const name of expectedOracleExports) assert.ok(name in module, `missing oracle export ${name}`)
+  assert.equal(typeof module.OracleDefinitionRegistry, 'function', 'missing OracleDefinitionRegistry')
+  assert.equal(typeof module.executeOracle, 'function', 'missing executeOracle')
+  assert.equal(typeof module.runBaselineOracle, 'function', 'missing runBaselineOracle')
+
+  const oracleFacade = await import('../lib/oracle.mjs')
+  for (const name of ['countTaskOutcomes', 'diffSnapshots', 'runCommand', 'snapshotDiff', 'diffSince'])
+    assert.equal(oracleFacade[name], module[name], `${name} oracle facade identity mismatch`)
+  const oracleDefinitionFacade = await import('../lib/oracle-definition.mjs')
+  for (const name of ['validateOracleDefinition', 'hashOracleDefinition', 'OracleDefinitionRegistry'])
+    assert.equal(oracleDefinitionFacade[name], module[name], `${name} oracle-definition facade identity mismatch`)
+  const oracleCommandFacade = await import('../lib/oracle-command.mjs')
+  for (const name of ['resolveBuildHosts', 'resolveOwnerProjects', 'buildOracleCommand'])
+    assert.equal(oracleCommandFacade[name], module[name], `${name} oracle-command facade identity mismatch`)
+  const oracleExecutorFacade = await import('../lib/oracle-executor.mjs')
+  for (const name of ['classifyOracleExecution', 'validateOracleRoot', 'oracleRootIdentity', 'executeOracle', 'oracleArtifact'])
+    assert.equal(oracleExecutorFacade[name], module[name], `${name} oracle-executor facade identity mismatch`)
+  const oracleBaselineFacade = await import('../lib/oracle-baseline.mjs')
+  for (const name of ['normalizeDiagnosticLine', 'extractOracleDiagnostics', 'isInfrastructureIdentity', 'runBaselineOracle', 'classifyOracleResult', 'buildQuarantineRecord'])
+    assert.equal(oracleBaselineFacade[name], module[name], `${name} oracle-baseline facade identity mismatch`)
+
+  // Exercise the migrated oracle surface for real behaviour.
+  assert.deepEqual(
+    (({ upToDate, executed }) => ({ upToDate, executed }))(module.countTaskOutcomes('> Task :compileJava UP-TO-DATE')),
+    { upToDate: 1, executed: 0 }
+  )
+  assert.equal(module.diffSnapshots(
+    { modified: new Map([['a.ts', 'h1']]), untracked: new Map() },
+    { modified: new Map([['a.ts', 'h2']]), untracked: new Map([['b.ts', 'h3']]) }
+  ).modified.length, 1)
+  const validDefinition = {
+    schemaVersion: '1', id: 'smoke', version: '1.0.0', domain: 'factory',
+    argv: ['node', 'fixture.mjs'], cwd: 'repo-root', timeoutMs: 1000,
+    success: { rule: 'exit-code', requireWork: true },
+    applicable: { workflowTypes: ['oracle-smoke'], stepIds: ['verify-code'] },
+  }
+  const frozenDefinition = module.validateOracleDefinition(validDefinition)
+  assert.ok(Object.isFrozen(frozenDefinition))
+  assert.throws(() => module.validateOracleDefinition({ ...validDefinition, argv: ['sh', '-c', 'model'] }))
+  assert.match(module.hashOracleDefinition(validDefinition), /^sha256:[0-9a-f]{64}$/)
+  assert.equal(module.normalizeDiagnosticLine('src/app/foo.ts(42,7): error TS2345: nope'), 'TS:TS2345:src/app/foo.ts:42:7')
+  assert.equal(module.normalizeDiagnosticLine(' NX   Running target type-check for 4 projects failed'), null)
+  assert.equal(module.isInfrastructureIdentity('TS:TS5090:apps/client/tsconfig.app.json:1:1'), true)
+  assert.equal(module.isInfrastructureIdentity('TS:TS2345:src/app/foo.ts:42:7'), false)
+  assert.deepEqual(
+    module.classifyOracleExecution({ success: { rule: 'exit-code', requireWork: true } }, {
+      exitCode: 0, signal: null, timedOut: false, spawnError: null, counts: { executed: 0 },
+    }),
+    { classification: 'EMPTY_SUCCESS', outcome: 'indeterminate' }
+  )
+
+  const oracleSources = [
+    'src/domain/oracle/oracle.ts',
+    'src/domain/oracle/oracle-definition.ts',
+    'src/application/oracle/oracle-definition-registry.ts',
+    'src/application/oracle/oracle-command.ts',
+    'src/application/oracle/oracle-executor.ts',
+    'src/application/oracle/oracle-baseline.ts',
+  ]
+  for (const source of oracleSources) {
+    const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
+    assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
+  }
 } finally {
   if (previousObservabilityFile === undefined) delete process.env.FACTORY_ACTIVE_CASE_FILE
   else process.env.FACTORY_ACTIVE_CASE_FILE = previousObservabilityFile
