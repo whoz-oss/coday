@@ -29,6 +29,9 @@ import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
 import io.whozoss.agentos.feedback.FeedbackRepository
 import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
+import io.whozoss.agentos.git.CaseResourceBindingNodeNeo4jRepository
+import io.whozoss.agentos.git.CaseResourceBindingRepository
+import io.whozoss.agentos.git.Neo4jCaseResourceBindingRepository
 import io.whozoss.agentos.git.Neo4jRepositoryCheckoutRepository
 import io.whozoss.agentos.git.RepositoryCheckoutNodeNeo4jRepository
 import io.whozoss.agentos.git.RepositoryCheckoutRepository
@@ -155,6 +158,14 @@ class Neo4jPersistenceConfiguration {
     ): RepositoryCheckoutRepository {
         logger.info { "[Persistence] Neo4jRepositoryCheckoutRepository active" }
         return Neo4jRepositoryCheckoutRepository(repositoryCheckoutNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
+    fun neo4jCaseResourceBindingRepository(
+        caseResourceBindingNodeNeo4jRepository: CaseResourceBindingNodeNeo4jRepository,
+    ): CaseResourceBindingRepository {
+        logger.info { "[Persistence] Neo4jCaseResourceBindingRepository active" }
+        return Neo4jCaseResourceBindingRepository(caseResourceBindingNodeNeo4jRepository)
     }
 
     @Bean

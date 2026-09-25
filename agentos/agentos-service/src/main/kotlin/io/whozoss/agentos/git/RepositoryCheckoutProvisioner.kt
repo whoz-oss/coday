@@ -10,6 +10,7 @@ import io.whozoss.agentos.git.core.GitInvocation
 import mu.KLogging
 import org.springframework.stereotype.Service
 import java.nio.file.Files
+import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.io.path.exists
@@ -23,6 +24,7 @@ class RepositoryCheckoutProvisioner(
     private val exchangeStorageService: ExchangeStorageService,
     private val checkoutService: RepositoryCheckoutService,
     private val serviceAccountResolver: GitServiceAccountResolver,
+    private val bindingService: CaseResourceBindingService? = null,
 ) {
     /**
      * Return the namespace's ready checkout, preparing it if needed.
@@ -104,6 +106,17 @@ class RepositoryCheckoutProvisioner(
         return checkoutService.create(newCheckout(settings))
     }
 
+    /** A failed first attempt is replaceable only while no repository or active family can be orphaned. */
+    fun canReplaceFailedCheckout(checkout: RepositoryCheckout): Boolean =
+        checkout.status == RepositoryCheckoutStatus.FAILED &&
+            checkout.lastFetchedAt == null &&
+            !Files.exists(exchangeStorageService.namespaceGitDirectory(checkout.namespaceId), NOFOLLOW_LINKS) &&
+            bindingService?.findByParent(checkout.namespaceId)?.all {
+                // Deleted, never-provisioned families retain their audit rows. They must not
+                // permanently prevent an admin from correcting an unused failed association.
+                it.status == CaseResourceStatus.REMOVED && it.baseSha == null && !it.setupStarted && !it.setupCompleted
+            } == true
+
     /**
      * Re-point a checkout of the *same* repository at a re-created association.
      *
@@ -113,9 +126,8 @@ class RepositoryCheckoutProvisioner(
      * very same repository twice left a checkout no configuration could ever match, and every later
      * provisioning threw the permanent conflict below with no way out.
      *
-     * Adoption is only allowed when the URL and the branch are identical, which means the clone on
-     * disk is exactly what the new association asks for. Anything else still conflicts: that is the
-     * case where work would be orphaned, and it needs a real migration.
+     * Existing resources require identical URL and branch. A failed first attempt may change them
+     * only when [canReplaceFailedCheckout] proves there is no published repository or bound family.
      */
     private fun adoptIfSameRepository(
         existing: RepositoryCheckout,
@@ -123,6 +135,17 @@ class RepositoryCheckoutProvisioner(
     ): RepositoryCheckout {
         val sameRepository =
             existing.repositoryUrl == settings.repositoryUrl && existing.mainBranch == settings.mainBranch
+        if (!sameRepository && canReplaceFailedCheckout(existing)) {
+            return checkoutService.update(
+                existing.copy(
+                    integrationConfigId = settings.configId,
+                    repositoryUrl = settings.repositoryUrl,
+                    mainBranch = settings.mainBranch,
+                    status = RepositoryCheckoutStatus.PREPARING,
+                    failureReason = null,
+                ),
+            )
+        }
         if (existing.integrationConfigId == settings.configId || !sameRepository) return existing
 
         logger.info {

@@ -41,6 +41,8 @@ open class Neo4jCaseRepository(
             .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
+    override fun findIncludingRemovedByNamespace(namespaceId: UUID): List<Case> = caseNodeNeo4jRepository.findIncludingRemovedByNamespace(namespaceId.toString()).map { it.toDomain() }
+
     override fun findByParent(parentId: UUID): List<Case> =
         caseNodeNeo4jRepository
             .findActiveByNamespaceId(parentId.toString())

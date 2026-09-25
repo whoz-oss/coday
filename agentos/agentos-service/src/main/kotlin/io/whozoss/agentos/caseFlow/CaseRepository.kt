@@ -9,6 +9,9 @@ import java.util.UUID
  * Parent type is UUID representing the namespaceId.
  */
 interface CaseRepository : EntityRepository<Case, UUID> {
+    /** Internal lifecycle barrier includes soft-deleted cases whose tools may still be stopping. */
+    fun findIncludingRemovedByNamespace(namespaceId: UUID): List<Case> = findByParent(namespaceId)
+
     /**
      * Find cases in a namespace that [userId] is allowed to see.
      *

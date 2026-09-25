@@ -39,3 +39,7 @@ Inherited Git configuration and hostile local configuration are rejected or isol
 
 The sweep supports one AgentOS instance per workstream. Its in-process guard prevents overlapping
 passes in that JVM; multiple instances sharing the same database/storage would require a lease.
+
+## Workspace execution foundation
+
+Family directory resolution, workspace readiness checks and workspace-aware tool contexts are installed. Execution uses the existing AgentOS runtime without a durable command journal. Namespace options and worktree allocation are introduced in the next change. Existing unequipped cases retain their per-case Exchanges and execution path.

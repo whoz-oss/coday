@@ -21,6 +21,9 @@ interface PooledMcpConnection : McpConnectionPort {
     /** Closes the connection and terminates the underlying server process. */
     override fun close()
 
+    /** True only after the underlying process has actually exited. */
+    fun awaitTermination(): Boolean = false
+
     /** Tools discovered when the connection was established. */
     override val tools: List<Tool>
 }
