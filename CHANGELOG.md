@@ -1,3 +1,14 @@
+## 3.10.0 (2026-09-25)
+
+### 🚀 Features
+
+- display running delegation count in thinking loader ([cdf862f8](https://github.com/whoz-oss/coday/commit/cdf862f8))
+- display running delegation count in thinking loader ([#1227](https://github.com/whoz-oss/coday/pull/1227))
+
+### ❤️ Thank You
+
+- Romain Petit
+
 ## 3.9.0 (2026-09-25)
 
 ### 🚀 Features
