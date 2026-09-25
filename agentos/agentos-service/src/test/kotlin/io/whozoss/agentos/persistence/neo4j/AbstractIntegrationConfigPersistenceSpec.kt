@@ -1,15 +1,18 @@
 package io.whozoss.agentos.persistence.neo4j
 
+import io.kotest.assertions.throwables.shouldThrowAny
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
+import io.whozoss.agentos.integrationConfig.IntegrationTypeConstraints
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -40,6 +43,9 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
     lateinit var driver: Driver
 
     fun namespace() = Namespace(metadata = EntityMetadata(), name = "test-ns")
+
+    /** A type restricted to one active namespace-shared row, per [IntegrationTypeConstraints]. */
+    val singletonType: String = IntegrationTypeConstraints.GIT_REPOSITORY_TYPE
 
     fun config(
         namespaceId: UUID,
@@ -80,6 +86,60 @@ abstract class AbstractIntegrationConfigPersistenceSpec : StringSpec() {
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
+
+        // --- namespace-singleton types (IntegrationTypeConstraints) -------------------------
+        // These assert the database constraint itself, which no in-memory fixture can model.
+
+        "a namespace accepts only one active row of a singleton type" {
+            val ns = namespaceRepo.save(namespace())
+            repo.save(config(ns.id, name = "project-repository", integrationType = singletonType))
+
+            shouldThrowAny {
+                repo.save(config(ns.id, name = "another-repository", integrationType = singletonType))
+            }
+        }
+
+        "soft-deleting a singleton row frees the namespace slot" {
+            val ns = namespaceRepo.save(namespace())
+            val first = repo.save(config(ns.id, name = "project-repository", integrationType = singletonType))
+
+            repo.delete(first.id).shouldBeTrue()
+
+            // Fails if delete() tombstones tripleKey but leaves singletonKey set: uniqueness there
+            // is expressed by the property's absence, so a lingering value keeps the slot taken.
+            repo.save(config(ns.id, name = "replacement-repository", integrationType = singletonType))
+            repo.findActiveNamespaceSingleton(ns.id, singletonType).shouldNotBeNull()
+        }
+
+        "deleting a namespace's configs frees its singleton slot too" {
+            val ns = namespaceRepo.save(namespace())
+            repo.save(config(ns.id, name = "project-repository", integrationType = singletonType))
+
+            repo.deleteByParent(ns.id)
+
+            repo.save(config(ns.id, name = "project-repository", integrationType = singletonType))
+            repo.findActiveNamespaceSingleton(ns.id, singletonType).shouldNotBeNull()
+        }
+
+        "the singleton constraint is per namespace, not global" {
+            val first = namespaceRepo.save(namespace())
+            val second = namespaceRepo.save(namespace())
+
+            repo.save(config(first.id, name = "project-repository", integrationType = singletonType))
+            repo.save(config(second.id, name = "project-repository", integrationType = singletonType))
+
+            repo.findActiveNamespaceSingleton(first.id, singletonType).shouldNotBeNull()
+            repo.findActiveNamespaceSingleton(second.id, singletonType).shouldNotBeNull()
+        }
+
+        "an ordinary type is unaffected by the singleton constraint" {
+            val ns = namespaceRepo.save(namespace())
+
+            repo.save(config(ns.id, name = "JIRA_PROD", integrationType = "JIRA"))
+            repo.save(config(ns.id, name = "JIRA_STAGING", integrationType = "JIRA"))
+
+            repo.findByNamespaceId(ns.id) shouldHaveSize 2
+        }
 
         "save and findByIds returns the same config" {
             val ns = namespaceRepo.save(namespace())

@@ -79,6 +79,29 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     )
     fun findActiveByTripleKey(tripleKey: String): IntegrationConfigNode?
 
+    /**
+     * Find the single active namespace-shared config of a singleton type, by its
+     * [IntegrationConfigNode.singletonKey].
+     *
+     * An exact seek on the index provisioned by `integration_config_singleton_key_unique`. Because
+     * the key is only written for rows that are active, namespace-shared and of a singleton type,
+     * matching the key *is* matching all of those conditions — no scope predicate is needed, and a
+     * soft-deleted or user-scoped row cannot be returned.
+     *
+     * This read is intentionally free of the platform/user merge layers and of the filesystem-YAML
+     * augmentation: a namespace capability must come from an explicitly saved row, never from an
+     * inherited layer or a YAML file that happens to sit in the namespace config directory.
+     */
+    @Query(
+        $$"""
+            MATCH (c:IntegrationConfig {singletonKey: $singletonKey})
+            WHERE c.removed IS NULL OR c.removed = false
+            RETURN c
+            LIMIT 1
+            """,
+    )
+    fun findActiveBySingletonKey(singletonKey: String): IntegrationConfigNode?
+
     @Query(
         $$"""
             MATCH (c:IntegrationConfig)

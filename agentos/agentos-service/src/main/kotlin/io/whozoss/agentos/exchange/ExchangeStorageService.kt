@@ -48,6 +48,9 @@ class ExchangeStorageService(
 
     private val mountRoot: Path = Path.of(config.mountRoot)
 
+    /** Internal bare repository, outside both browsable Exchange roots. */
+    fun namespaceGitDirectory(namespaceId: UUID): Path = mountRoot.resolve(namespaceId.toString()).resolve("repository.git")
+
     /**
      * Whether an upload with this relative path passes the configured extension allow-list.
      * An empty [ExchangeStorageConfigProperties.allowedUploadExtensions] allows any extension.
