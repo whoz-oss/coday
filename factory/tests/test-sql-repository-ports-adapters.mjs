@@ -12,10 +12,33 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  FilesystemAgentStepAttemptRepository,
+  FilesystemAgentStepResultRepository,
+  FilesystemDeliveryRepository,
+  FilesystemOracleExecutionRepository,
+  FilesystemWorkEnvironmentRepository,
   FilesystemWorkflowDefinitionRepository,
+  FilesystemWorkflowEvidenceRepository,
+  FilesystemWorkflowHumanInteractionRepository,
   FilesystemWorkflowInstanceRepository,
+  SqlAgentStepAttemptRepository,
+  SqlAgentStepResultRepository,
+  SqlDeliveryRepository,
+  SqlOracleExecutionRepository,
+  SqlWorkEnvironmentRepository,
   SqlWorkflowDefinitionRepository,
+  SqlWorkflowEvidenceRepository,
+  SqlWorkflowHumanInteractionRepository,
   SqlWorkflowInstanceRepository,
+  createSqlAgentStepAttemptRepository,
+  createSqlAgentStepResultRepository,
+  createSqlDeliveryRepository,
+  createSqlOracleExecutionRepository,
+  createSqlWorkEnvironmentRepository,
+  createSqlWorkflowDefinitionRepository,
+  createSqlWorkflowEvidenceRepository,
+  createSqlWorkflowHumanInteractionRepository,
+  createSqlWorkflowInstanceRepository,
 } from '../runtime/factory-operational.mjs'
 import { createWorkflowDefinitionRepository } from '../lib/workflow-definition-registry.mjs'
 import { createWorkflowInstanceRepository } from '../lib/workflow-projection-store.mjs'
@@ -30,6 +53,75 @@ import {
   executeContractSuite,
   instanceRepositoryScenarios,
 } from './test-repository-contract.mjs'
+
+/** Public method names declared on a repository prototype (`constructor` excluded). */
+function prototypeMethods(repositoryClass) {
+  return Object.getOwnPropertyNames(repositoryClass.prototype)
+    .filter((name) => name !== 'constructor')
+    .sort()
+}
+
+/**
+ * The nine persistence ports, each paired with its filesystem adapter, its SQL
+ * adapter and the `createSql*Repository` factory exported by the operational
+ * bundle.
+ */
+const REPOSITORY_PORTS = [
+  {
+    port: 'workflow-definition',
+    filesystem: FilesystemWorkflowDefinitionRepository,
+    sql: SqlWorkflowDefinitionRepository,
+    createSql: createSqlWorkflowDefinitionRepository,
+  },
+  {
+    port: 'workflow-instance',
+    filesystem: FilesystemWorkflowInstanceRepository,
+    sql: SqlWorkflowInstanceRepository,
+    createSql: createSqlWorkflowInstanceRepository,
+  },
+  {
+    port: 'workflow-evidence',
+    filesystem: FilesystemWorkflowEvidenceRepository,
+    sql: SqlWorkflowEvidenceRepository,
+    createSql: createSqlWorkflowEvidenceRepository,
+  },
+  {
+    port: 'workflow-human-interaction',
+    filesystem: FilesystemWorkflowHumanInteractionRepository,
+    sql: SqlWorkflowHumanInteractionRepository,
+    createSql: createSqlWorkflowHumanInteractionRepository,
+  },
+  {
+    port: 'agent-step-attempt',
+    filesystem: FilesystemAgentStepAttemptRepository,
+    sql: SqlAgentStepAttemptRepository,
+    createSql: createSqlAgentStepAttemptRepository,
+  },
+  {
+    port: 'agent-step-result',
+    filesystem: FilesystemAgentStepResultRepository,
+    sql: SqlAgentStepResultRepository,
+    createSql: createSqlAgentStepResultRepository,
+  },
+  {
+    port: 'oracle-execution',
+    filesystem: FilesystemOracleExecutionRepository,
+    sql: SqlOracleExecutionRepository,
+    createSql: createSqlOracleExecutionRepository,
+  },
+  {
+    port: 'work-environment',
+    filesystem: FilesystemWorkEnvironmentRepository,
+    sql: SqlWorkEnvironmentRepository,
+    createSql: createSqlWorkEnvironmentRepository,
+  },
+  {
+    port: 'delivery',
+    filesystem: FilesystemDeliveryRepository,
+    sql: SqlDeliveryRepository,
+    createSql: createSqlDeliveryRepository,
+  },
+]
 
 const definitionFile = {
   schemaVersion: '1',
@@ -65,14 +157,7 @@ try {
     `INSERT INTO workflow_definitions
        (organization_id, workstream_id, workflow_type, version, definition_hash, definition_json)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb)`,
-    [
-      'default',
-      null,
-      CONTRACT_WORKFLOW_TYPE,
-      CONTRACT_WORKFLOW_VERSION,
-      'a'.repeat(64),
-      JSON.stringify(definitionFile),
-    ]
+    ['default', null, CONTRACT_WORKFLOW_TYPE, CONTRACT_WORKFLOW_VERSION, 'a'.repeat(64), JSON.stringify(definitionFile)]
   )
   const sqlDefinitionRepository = new SqlWorkflowDefinitionRepository(sqlDefinitionClient)
   const sqlInstanceRepository = new SqlWorkflowInstanceRepository(createInMemorySqlClient())
@@ -161,6 +246,69 @@ try {
   })
   passed += lockSuite.passed
   failed += lockSuite.failed
+
+  // ------------------------------------------------------------------------
+  // Port wiring parity: every persistence port is reachable from the
+  // operational bundle through a filesystem adapter, a SQL adapter and a
+  // `createSql*Repository` factory. The SQL class must be instantiable both
+  // through its constructor and its factory, and its public surface must cover
+  // the filesystem adapter's one (SQL-only methods are allowed).
+  // ------------------------------------------------------------------------
+  const wiringSuite = await executeContractSuite({
+    suiteName: 'ports/wiring',
+    scenarios: REPOSITORY_PORTS.flatMap((descriptor) => [
+      [
+        `${descriptor.port}: filesystem and SQL adapters are exported constructors`,
+        () => {
+          assert.equal(
+            typeof descriptor.filesystem,
+            'function',
+            `${descriptor.port}: filesystem adapter is not an exported constructor`
+          )
+          assert.equal(
+            typeof descriptor.sql,
+            'function',
+            `${descriptor.port}: SQL adapter is not an exported constructor`
+          )
+          assert.equal(
+            typeof descriptor.createSql,
+            'function',
+            `${descriptor.port}: createSql*Repository factory is not exported`
+          )
+          assert.ok(
+            prototypeMethods(descriptor.sql).length > 0,
+            `${descriptor.port}: SQL adapter exposes no public method`
+          )
+        },
+      ],
+      [
+        `${descriptor.port}: SQL adapter instantiates via constructor and factory`,
+        () => {
+          const viaConstructor = new descriptor.sql(createInMemorySqlClient())
+          assert.ok(
+            viaConstructor instanceof descriptor.sql,
+            `${descriptor.port}: constructor did not return a ${descriptor.sql.name}`
+          )
+          const viaFactory = descriptor.createSql(createInMemorySqlClient())
+          assert.ok(
+            viaFactory instanceof descriptor.sql,
+            `${descriptor.port}: factory did not return a ${descriptor.sql.name}`
+          )
+        },
+      ],
+      [
+        `${descriptor.port}: SQL surface covers the filesystem surface`,
+        () => {
+          const sqlMethods = prototypeMethods(descriptor.sql)
+          for (const method of prototypeMethods(descriptor.filesystem)) {
+            assert.ok(sqlMethods.includes(method), `${descriptor.port}: SQL adapter is missing the "${method}" method`)
+          }
+        },
+      ],
+    ]),
+  })
+  passed += wiringSuite.passed
+  failed += wiringSuite.failed
 } finally {
   await rm(root, { recursive: true, force: true })
 }

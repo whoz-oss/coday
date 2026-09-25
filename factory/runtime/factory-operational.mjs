@@ -803,6 +803,7 @@ function validateWorkflowEvidenceInput(input, expectedWorkflowId) {
 }
 function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/* @__PURE__ */ new Date()).toISOString(), evidenceId = randomUUID2()) {
   const { idempotencyKey, ...rest } = validated;
+  void idempotencyKey;
   const record2 = {
     evidenceId,
     namespaceId,
@@ -1406,6 +1407,7 @@ var FilesystemWorkflowInstanceRepository = class {
       options
     );
     const snapshot = this.#requireSnapshot(result, "WORKFLOW_INSTANCE_TRANSITION_FAILED");
+    void workflowId;
     return snapshot;
   }
   async remove(namespaceId, workflowId, actor) {
@@ -1499,6 +1501,10 @@ var FilesystemWorkflowHumanInteractionRepository = class {
         interactionId
       });
     const result = await this.store.transact(namespaceId, storageId, interactionId, action);
+    void reply;
+    void actorId;
+    void evidenceId;
+    void transitionRequestId;
     return result.interaction;
   }
 };
@@ -2078,6 +2084,7 @@ var SqlWorkflowInstanceRepository = class {
     };
   }
   async #setStatus(namespaceId, workflowId, from, to, actor, failureCode) {
+    void actor;
     const { rowCount } = await this.#client.query(
       `UPDATE workflow_instances
          SET status = $1, updated_at = $2
@@ -2093,6 +2100,7 @@ var SqlWorkflowInstanceRepository = class {
     await this.#setStatus(namespaceId, workflowId, REMOVED_STATUS, ACTIVE_STATUS, actor, "WORKFLOW_NOT_FOUND");
   }
   async purge(namespaceId, workflowId, actor) {
+    void actor;
     await this.#client.query(
       `DELETE FROM workflow_instances
        WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND workflow_id = $4`,
@@ -2102,6 +2110,2363 @@ var SqlWorkflowInstanceRepository = class {
 };
 function createSqlWorkflowInstanceRepository(client, options = {}) {
   return new SqlWorkflowInstanceRepository(client, options);
+}
+
+// ../src/adapters/persistence/sql/unit-of-work.ts
+async function withTransaction(client, work) {
+  await client.query("BEGIN");
+  try {
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error2) {
+    await client.query("ROLLBACK");
+    throw error2;
+  }
+}
+
+// ../src/adapters/persistence/sql/sql-workflow-evidence-repository.ts
+import { createHash as createHash7 } from "node:crypto";
+var WorkflowEvidenceStoreError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "WorkflowEvidenceStoreError";
+    this.code = code;
+    this.details = details;
+  }
+};
+var EVIDENCE_COLUMNS = [
+  "organization_id",
+  "workstream_id",
+  "namespace_id",
+  "workflow_id",
+  "evidence_id",
+  "evidence_type",
+  "source",
+  "producer",
+  "payload",
+  "created_at"
+].join(", ");
+var EVIDENCE_INSERT_COLUMNS = `${EVIDENCE_COLUMNS}`;
+function semanticHash(value) {
+  return createHash7("sha256").update(JSON.stringify(value)).digest("hex");
+}
+async function selectEvidence(client, organizationId, workstreamId, namespaceId, workflowId) {
+  const { rows } = await client.query(
+    `SELECT ${EVIDENCE_COLUMNS} FROM workflow_evidence
+     WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND workflow_id = $4`,
+    [organizationId, workstreamId, namespaceId, workflowId]
+  );
+  return rows.map((row) => parseJsonColumn(row.payload));
+}
+var SqlWorkflowEvidenceRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  }
+  async list(namespaceId, storageId, filter) {
+    const items = await selectEvidence(this.#client, this.#organizationId, this.#workstreamId, namespaceId, storageId);
+    return items.filter((item) => !filter?.stepId || item.stepId === filter.stepId).sort((left, right) => {
+      const chronology = left.observedAt.localeCompare(right.observedAt);
+      return chronology !== 0 ? chronology : left.evidenceId.localeCompare(right.evidenceId);
+    });
+  }
+  async record(namespaceId, storageId, input, source) {
+    return withTransaction(this.#client, async (tx) => {
+      const scope = {
+        namespaceId,
+        workflowId: input.workflowId,
+        stepId: input.stepId,
+        source,
+        idempotencyKey: input.idempotencyKey
+      };
+      const scopeHash = semanticHash(scope);
+      const fingerprint = semanticHash({ ...input, idempotencyKey: void 0 });
+      const existing = await selectEvidence(tx, this.#organizationId, this.#workstreamId, namespaceId, storageId);
+      if (input.idempotencyKey) {
+        const prior = existing.find((item) => item.idempotency?.scopeHash === scopeHash);
+        if (prior) {
+          if (prior.idempotency?.semanticHash !== fingerprint)
+            throw new WorkflowEvidenceStoreError("IDEMPOTENCY_KEY_COLLISION");
+          return { created: false, idempotent: true, evidence: prior };
+        }
+      }
+      const evidence = createWorkflowEvidence(input, namespaceId, source);
+      const stored = input.idempotencyKey ? { ...evidence, idempotency: { scopeHash, semanticHash: fingerprint } } : { ...evidence };
+      await tx.query(
+        `INSERT INTO workflow_evidence (${EVIDENCE_INSERT_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          namespaceId,
+          input.workflowId,
+          evidence.evidenceId,
+          input.kind,
+          source.kind ?? source.runtimeId ?? "unknown",
+          source.agentId ?? source.actorId ?? "system",
+          JSON.stringify(stored),
+          evidence.observedAt
+        ]
+      );
+      return { created: true, idempotent: false, evidence: stored };
+    });
+  }
+};
+function createSqlWorkflowEvidenceRepository(client, options = {}) {
+  return new SqlWorkflowEvidenceRepository(client, options);
+}
+
+// ../src/adapters/persistence/sql/sql-workflow-human-interaction-repository.ts
+import { randomUUID as randomUUID4 } from "node:crypto";
+var WorkflowHumanInteractionError = class extends Error {
+  code;
+  decision;
+  constructor(code, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "WorkflowHumanInteractionError";
+    this.code = code;
+  }
+};
+var WorkflowHumanInteractionRepositoryError2 = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "WorkflowHumanInteractionRepositoryError";
+    this.code = code;
+    this.details = details;
+  }
+};
+var EVENT_COLUMNS = [
+  "organization_id",
+  "workstream_id",
+  "namespace_id",
+  "workflow_id",
+  "interaction_id",
+  "event_id",
+  "event_type",
+  "actor_id",
+  "payload",
+  "created_at"
+].join(", ");
+function dbStatus(status) {
+  return status === "replied" ? "answered" : "waiting";
+}
+async function selectEvents(client, organizationId, workstreamId, namespaceId, workflowId) {
+  const { rows } = await client.query(
+    `SELECT ${EVENT_COLUMNS} FROM human_interaction_events
+     WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND workflow_id = $4`,
+    [organizationId, workstreamId, namespaceId, workflowId]
+  );
+  return rows.slice().sort((left, right) => {
+    if (left.created_at < right.created_at) return -1;
+    if (left.created_at > right.created_at) return 1;
+    return 0;
+  }).map((row) => parseJsonColumn(row.payload));
+}
+function projectEvents(events) {
+  const projected = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    if (event.event === "interaction_opening") {
+      const interaction = event.interaction;
+      if (!interaction?.interactionId || projected.has(interaction.interactionId))
+        throw new WorkflowHumanInteractionError("CORRUPT_INTERACTION_STORAGE");
+      projected.set(interaction.interactionId, { ...interaction, status: "opening" });
+    } else if (event.event === "interaction_opened") {
+      const interaction = event.interaction;
+      const current = interaction?.interactionId ? projected.get(interaction.interactionId) : void 0;
+      const revision = openedInteractionRevision(event);
+      if (current?.status === "opening") {
+        const validRevision = current.interactionType === "retry" ? revision === current.expectedRevision : (revision ?? 0) > current.expectedRevision;
+        if (!Number.isSafeInteger(revision) || !validRevision)
+          throw new WorkflowHumanInteractionError("CORRUPT_INTERACTION_STORAGE");
+        projected.set(current.interactionId, { ...current, status: "open", revision });
+      } else if (!current) {
+        if (!interaction?.interactionId || !Number.isSafeInteger(revision) || revision < 1)
+          throw new WorkflowHumanInteractionError("CORRUPT_INTERACTION_STORAGE");
+        projected.set(interaction.interactionId, { ...interaction, status: "open", revision });
+      } else {
+        throw new WorkflowHumanInteractionError("CORRUPT_INTERACTION_STORAGE");
+      }
+    } else if (event.event === "interaction_open_aborted") {
+      const interactionId = event.interactionId;
+      const current = interactionId ? projected.get(interactionId) : void 0;
+      if (!current || current.status !== "opening")
+        throw new WorkflowHumanInteractionError("CORRUPT_INTERACTION_STORAGE");
+      const aborted = { ...current, status: "aborted" };
+      if (event.errorCode !== void 0) aborted.errorCode = event.errorCode;
+      projected.set(interactionId, aborted);
+    } else if (event.event === "interaction_transitioned") {
+      const interactionId = event.interactionId;
+      const current = interactionId ? projected.get(interactionId) : void 0;
+      if (!current || current.status !== "open") throw new WorkflowHumanInteractionError("CORRUPT_INTERACTION_STORAGE");
+      const replied = { ...current, status: "replied" };
+      if (event.reply !== void 0) replied.reply = event.reply;
+      if (event.actorId !== void 0) replied.actorId = event.actorId;
+      if (event.repliedAt !== void 0) replied.repliedAt = event.repliedAt;
+      if (event.evidenceId !== void 0) replied.evidenceId = event.evidenceId;
+      if (event.transitionRequestId !== void 0) replied.transitionRequestId = event.transitionRequestId;
+      if (event.revision !== void 0) replied.revision = event.revision;
+      projected.set(interactionId, replied);
+    } else {
+      throw new WorkflowHumanInteractionError("CORRUPT_INTERACTION_STORAGE");
+    }
+  }
+  return [...projected.values()];
+}
+function interactionIdOf(event) {
+  return event.interaction?.interactionId ?? event.interactionId ?? "";
+}
+async function insertEvent(client, organizationId, workstreamId, namespaceId, workflowId, event, createdAt) {
+  await client.query(
+    `INSERT INTO human_interaction_events (${EVENT_COLUMNS}) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+    [
+      organizationId,
+      workstreamId,
+      namespaceId,
+      workflowId,
+      interactionIdOf(event),
+      randomUUID4(),
+      event.event,
+      event.actorId ?? "system",
+      JSON.stringify(event),
+      createdAt
+    ]
+  );
+}
+async function upsertInteractionRow(client, organizationId, workstreamId, namespaceId, workflowId, record2, timestamp) {
+  const status = dbStatus(record2.status);
+  const revision = Number.isSafeInteger(record2.revision) && record2.revision >= 1 ? record2.revision : 1;
+  const { rows } = await client.query(
+    `SELECT interaction_id FROM human_interactions
+     WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND workflow_id = $4 AND interaction_id = $5`,
+    [organizationId, workstreamId, namespaceId, workflowId, record2.interactionId]
+  );
+  if (rows.length > 0) {
+    await client.query(
+      `UPDATE human_interactions SET status = $1, revision = $2, payload = $3::jsonb, updated_at = $4
+       WHERE organization_id = $5 AND workstream_id = $6 AND namespace_id = $7 AND workflow_id = $8 AND interaction_id = $9`,
+      [
+        status,
+        revision,
+        JSON.stringify(record2),
+        timestamp,
+        organizationId,
+        workstreamId,
+        namespaceId,
+        workflowId,
+        record2.interactionId
+      ]
+    );
+    return;
+  }
+  await client.query(
+    `INSERT INTO human_interactions
+       (organization_id, workstream_id, namespace_id, workflow_id, interaction_id, interaction_type, status, revision, payload, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11)`,
+    [
+      organizationId,
+      workstreamId,
+      namespaceId,
+      workflowId,
+      record2.interactionId,
+      record2.interactionType ?? record2.kind,
+      status,
+      revision,
+      JSON.stringify(record2),
+      timestamp,
+      timestamp
+    ]
+  );
+}
+async function insertOutboxEvent(client, organizationId, workstreamId, eventType, payload) {
+  await client.query(
+    `INSERT INTO outbox_events (organization_id, id, workstream_id, event_type, payload, status, attempts, created_at)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
+    [
+      organizationId,
+      randomUUID4(),
+      workstreamId,
+      eventType,
+      JSON.stringify(payload),
+      "pending",
+      0,
+      (/* @__PURE__ */ new Date()).toISOString()
+    ]
+  );
+}
+async function insertEvidenceRecord(client, organizationId, workstreamId, evidence) {
+  await client.query(
+    `INSERT INTO workflow_evidence
+       (organization_id, workstream_id, namespace_id, workflow_id, evidence_id, evidence_type, source, producer, payload, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+    [
+      organizationId,
+      workstreamId,
+      evidence.namespaceId,
+      evidence.workflowId,
+      evidence.evidenceId,
+      evidence.kind,
+      evidence.source?.kind ?? evidence.source?.runtimeId ?? "unknown",
+      evidence.source?.agentId ?? evidence.source?.actorId ?? "system",
+      JSON.stringify(evidence),
+      evidence.observedAt
+    ]
+  );
+}
+var SqlWorkflowHumanInteractionRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  #lastMillis = 0;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  }
+  /** Strictly increasing ISO timestamps so the append-only log keeps its insertion order. */
+  #timestamp() {
+    const now = Math.max(Date.now(), this.#lastMillis + 1);
+    this.#lastMillis = now;
+    return new Date(now).toISOString();
+  }
+  async #events(client, namespaceId, workflowId) {
+    return selectEvents(client, this.#organizationId, this.#workstreamId, namespaceId, workflowId);
+  }
+  async #project(client, namespaceId, workflowId) {
+    return projectEvents(await this.#events(client, namespaceId, workflowId));
+  }
+  async list(namespaceId, storageId, options) {
+    const records = await this.#project(this.#client, namespaceId, storageId);
+    return records.filter((record2) => !options?.openOnly || record2.status === "open").sort((left, right) => {
+      const chronology = left.openedAt.localeCompare(right.openedAt);
+      return chronology !== 0 ? chronology : left.interactionId.localeCompare(right.interactionId);
+    });
+  }
+  async events(namespaceId, storageId) {
+    return this.#events(this.#client, namespaceId, storageId);
+  }
+  async reconcileOpen(namespaceId, storageId, input, snapshot, options) {
+    const workflowFacts = options?.workflowFacts ?? [];
+    const outcome = await withTransaction(this.#client, async (tx) => {
+      const items = await this.#project(tx, namespaceId, storageId);
+      const candidates = items.filter(
+        (item) => item.workflowId === input.workflowId && item.stepId === input.stepId && (item.status === "opening" || item.status === "aborted")
+      );
+      if (candidates.length === 0) throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_NOT_FOUND");
+      if (candidates.length !== 1) throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_AMBIGUOUS");
+      const opening = candidates[0];
+      if (opening.semanticHash !== humanInteractionSemanticHash(input))
+        throw new WorkflowHumanInteractionError("IDEMPOTENCY_KEY_COLLISION");
+      const view = snapshot ?? void 0;
+      const step = view?.instance?.steps?.find((candidate) => candidate.id === opening.stepId);
+      if (!Number.isSafeInteger(view?.revision) || !step)
+        throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_SNAPSHOT_INVALID");
+      if (step.status === "ready") {
+        if (view?.revision !== opening.expectedRevision)
+          throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_REVISION_DIVERGED");
+        if (opening.status === "opening") {
+          await insertEvent(
+            tx,
+            this.#organizationId,
+            this.#workstreamId,
+            namespaceId,
+            opening.workflowId,
+            {
+              event: "interaction_open_aborted",
+              interactionId: opening.interactionId,
+              errorCode: "RECOVERED_OPENING_WITH_READY_STEP",
+              recoveredAt: (/* @__PURE__ */ new Date()).toISOString()
+            },
+            this.#timestamp()
+          );
+        }
+        return { reopen: true, interaction: opening };
+      }
+      if (opening.status !== "opening") throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_STATE_DIVERGED");
+      if (step.status !== "waiting_human")
+        throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_STATE_DIVERGED");
+      const revision = view?.revision;
+      if (revision <= opening.expectedRevision)
+        throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_REVISION_DIVERGED");
+      const provesTransition = workflowFacts.some(
+        (fact) => fact?.kind === "transition_accepted" && fact?.revision === revision && fact?.transitionDelta?.steps?.some(
+          (change) => change.stepId === opening.stepId && change.status?.from === "ready" && change.status?.to === "waiting_human"
+        )
+      );
+      if (!provesTransition) throw new WorkflowHumanInteractionError("INTERACTION_RECOVERY_TRANSITION_UNPROVEN");
+      const opened = { ...opening, status: "open", revision };
+      await insertEvent(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        opening.workflowId,
+        {
+          event: "interaction_opened",
+          interaction: { ...opening, revision },
+          revision,
+          recovery: "authoritative-workflow-transition"
+        },
+        this.#timestamp()
+      );
+      await upsertInteractionRow(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        opening.workflowId,
+        opened,
+        this.#timestamp()
+      );
+      return { reopen: false, interaction: opened };
+    });
+    if (outcome.reopen)
+      throw new WorkflowHumanInteractionRepositoryError2("INTERACTION_RECOVERY_NOT_FOUND", { namespaceId, storageId });
+    return outcome.interaction;
+  }
+  async recordOpen(namespaceId, storageId, input, options) {
+    const transition = options?.transition;
+    if (!transition)
+      throw new WorkflowHumanInteractionRepositoryError2("HUMAN_INTERACTION_TRANSITION_REQUIRED", {
+        namespaceId,
+        storageId
+      });
+    const normalized = validateHumanInteractionOpenInput(input);
+    if (!normalized) throw new WorkflowHumanInteractionError("INVALID_INTERACTION");
+    const hash7 = humanInteractionSemanticHash(normalized);
+    return withTransaction(this.#client, async (tx) => {
+      const items = await this.#project(tx, namespaceId, storageId);
+      const prior = items.find((item) => item.idempotencyKey === normalized.idempotencyKey);
+      if (prior) {
+        if (prior.semanticHash !== hash7) throw new WorkflowHumanInteractionError("IDEMPOTENCY_KEY_COLLISION");
+        if (prior.status === "open") return { created: false, idempotent: true, interaction: prior };
+        throw new WorkflowHumanInteractionError("INTERACTION_OPEN_INDETERMINATE");
+      }
+      if (items.some(
+        (item) => item.workflowId === normalized.workflowId && item.stepId === normalized.stepId && (item.status === "opening" || item.status === "open")
+      ))
+        throw new WorkflowHumanInteractionError("INTERACTION_ALREADY_OPEN");
+      const interaction = {
+        interactionId: normalized.interactionId ?? randomUUID4(),
+        workflowId: normalized.workflowId,
+        stepId: normalized.stepId,
+        expectedRevision: normalized.expectedRevision,
+        kind: normalized.kind,
+        prompt: normalized.prompt,
+        actions: normalized.actions,
+        idempotencyKey: normalized.idempotencyKey,
+        semanticHash: hash7,
+        openedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      if (normalized.interactionType !== void 0) interaction.interactionType = normalized.interactionType;
+      if (normalized.reasonCode !== void 0) interaction.reasonCode = normalized.reasonCode;
+      await insertEvent(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        normalized.workflowId,
+        { event: "interaction_opening", interaction },
+        this.#timestamp()
+      );
+      await upsertInteractionRow(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        normalized.workflowId,
+        interaction,
+        this.#timestamp()
+      );
+      const result = await transition(interaction);
+      if (!result?.ok) {
+        const error2 = new WorkflowHumanInteractionError(result?.error?.code ?? "INVALID_INTERACTION_TRANSACTION");
+        if (result?.decision !== void 0) error2.decision = result.decision;
+        throw error2;
+      }
+      const revision = result.snapshot?.revision;
+      const opened = { ...interaction, status: "open" };
+      if (typeof revision === "number") opened.revision = revision;
+      const openedEvent = {
+        event: "interaction_opened",
+        interaction: { ...interaction, ...typeof revision === "number" ? { revision } : {} }
+      };
+      if (typeof revision === "number") openedEvent.revision = revision;
+      if (result.requestId !== void 0) openedEvent.transitionRequestId = result.requestId;
+      await insertEvent(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        normalized.workflowId,
+        openedEvent,
+        this.#timestamp()
+      );
+      await upsertInteractionRow(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        normalized.workflowId,
+        opened,
+        this.#timestamp()
+      );
+      await insertOutboxEvent(tx, this.#organizationId, this.#workstreamId, "human_interaction.opened", {
+        namespaceId,
+        workflowId: normalized.workflowId,
+        interactionId: interaction.interactionId,
+        revision,
+        interaction: opened
+      });
+      const idempotent = Boolean(result.idempotent);
+      return { created: !idempotent, idempotent, interaction: opened };
+    });
+  }
+  async recordTransition(namespaceId, storageId, interactionId, reply, actorId, evidenceId, transitionRequestId, options) {
+    const action = options?.action;
+    if (!action)
+      throw new WorkflowHumanInteractionRepositoryError2("HUMAN_INTERACTION_ACTION_REQUIRED", {
+        namespaceId,
+        storageId,
+        interactionId
+      });
+    void reply;
+    void actorId;
+    void evidenceId;
+    void transitionRequestId;
+    return withTransaction(this.#client, async (tx) => {
+      const items = await this.#project(tx, namespaceId, storageId);
+      const interaction = items.find((item) => item.interactionId === interactionId);
+      if (!interaction) throw new WorkflowHumanInteractionError("INTERACTION_NOT_FOUND");
+      if (interaction.status !== "open") throw new WorkflowHumanInteractionError("INTERACTION_CLOSED");
+      const result = await action(interaction);
+      if (!result?.transition?.ok) throw new WorkflowHumanInteractionError("INVALID_INTERACTION_TRANSACTION");
+      const revision = result.transition.snapshot?.revision;
+      const replied = { ...interaction, status: "replied" };
+      if (result.reply !== void 0) replied.reply = result.reply;
+      if (result.actorId !== void 0) replied.actorId = result.actorId;
+      if (result.evidenceId !== void 0) replied.evidenceId = result.evidenceId;
+      if (typeof revision === "number") replied.revision = revision;
+      const transitionedEvent = {
+        event: "interaction_transitioned",
+        interactionId,
+        expectedRevision: interaction.expectedRevision,
+        repliedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      if (result.reply !== void 0) transitionedEvent.reply = result.reply;
+      if (result.actorId !== void 0) transitionedEvent.actorId = result.actorId;
+      if (result.evidenceId !== void 0) transitionedEvent.evidenceId = result.evidenceId;
+      if (result.transition.requestId !== void 0) transitionedEvent.transitionRequestId = result.transition.requestId;
+      if (typeof revision === "number") transitionedEvent.revision = revision;
+      if (result.evidence)
+        await insertEvidenceRecord(tx, this.#organizationId, this.#workstreamId, result.evidence);
+      await insertEvent(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        interaction.workflowId,
+        transitionedEvent,
+        this.#timestamp()
+      );
+      await upsertInteractionRow(
+        tx,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        interaction.workflowId,
+        replied,
+        this.#timestamp()
+      );
+      await insertOutboxEvent(tx, this.#organizationId, this.#workstreamId, "human_interaction.transitioned", {
+        namespaceId,
+        workflowId: interaction.workflowId,
+        interactionId,
+        revision,
+        reply: result.reply,
+        evidenceId: result.evidenceId,
+        transitionRequestId: result.transition.requestId
+      });
+      return replied;
+    });
+  }
+};
+function createSqlWorkflowHumanInteractionRepository(client, options = {}) {
+  return new SqlWorkflowHumanInteractionRepository(client, options);
+}
+
+// ../src/adapters/persistence/sql/sql-agent-step-attempt-repository.ts
+import { randomUUID as randomUUID5 } from "node:crypto";
+var ATTEMPT_DB_STATUS = Object.freeze({
+  starting: "running",
+  running: "running",
+  succeeded: "completed",
+  failed: "failed",
+  indeterminate: "timed_out",
+  interrupted: "cancelled"
+});
+var SqlAgentStepAttemptRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  }
+  async #selectAttempt(client, namespaceId, workflowId, storageId, attemptId) {
+    const { rows } = await client.query(
+      `SELECT revision, payload FROM agent_step_attempts
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3
+         AND workflow_id = $4 AND step_id = $5 AND attempt_id = $6`,
+      [this.#organizationId, this.#workstreamId, namespaceId, workflowId, storageId, attemptId]
+    );
+    return rows[0] ?? null;
+  }
+  async list(namespaceId, storageId) {
+    const { rows } = await this.#client.query(
+      `SELECT created_at, payload FROM agent_step_attempt_events
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND step_id = $4`,
+      [this.#organizationId, this.#workstreamId, namespaceId, storageId]
+    );
+    return [...rows].sort((left, right) => String(left.created_at).localeCompare(String(right.created_at))).map((row) => parseJsonColumn(row.payload));
+  }
+  async append(namespaceId, storageId, attempt) {
+    const validated = validateAgentStepAttempt(attempt);
+    if (validated.namespaceId !== namespaceId) throw new Error("AGENT_STEP_ATTEMPT_NAMESPACE_MISMATCH");
+    const observedAt = (/* @__PURE__ */ new Date()).toISOString();
+    return withTransaction(this.#client, async (tx) => {
+      const existing = await this.#selectAttempt(tx, namespaceId, validated.workflowId, storageId, validated.attemptId);
+      if (existing) {
+        const previous = parseJsonColumn(existing.payload);
+        if (AGENT_STEP_ATTEMPT_IMMUTABLE_FIELDS.some((field) => previous[field] !== validated[field]))
+          throw new Error("AGENT_STEP_ATTEMPT_IDENTITY_CONFLICT");
+        const allowed = AGENT_STEP_ATTEMPT_TRANSITIONS[previous.status] ?? [];
+        if (!allowed.includes(validated.status)) throw new Error("INVALID_AGENT_STEP_ATTEMPT_TRANSITION");
+        const nextRevision = existing.revision + 1;
+        const { rowCount } = await tx.query(
+          `UPDATE agent_step_attempts
+             SET status = $1, revision = $2, payload = $3::jsonb, updated_at = $4
+           WHERE organization_id = $5 AND workstream_id = $6 AND namespace_id = $7
+             AND workflow_id = $8 AND step_id = $9 AND attempt_id = $10 AND revision = $11`,
+          [
+            ATTEMPT_DB_STATUS[validated.status],
+            nextRevision,
+            JSON.stringify(validated),
+            observedAt,
+            this.#organizationId,
+            this.#workstreamId,
+            namespaceId,
+            validated.workflowId,
+            storageId,
+            validated.attemptId,
+            existing.revision
+          ]
+        );
+        if (!rowCount) throw new Error("AGENT_STEP_ATTEMPT_REVISION_CONFLICT");
+      } else {
+        if (validated.status !== "starting") throw new Error("AGENT_STEP_ATTEMPT_MUST_START");
+        await tx.query(
+          `INSERT INTO agent_step_attempts
+             (organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id, agent_id,
+              status, revision, payload, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12)`,
+          [
+            this.#organizationId,
+            this.#workstreamId,
+            namespaceId,
+            validated.workflowId,
+            storageId,
+            validated.attemptId,
+            validated.agentName,
+            ATTEMPT_DB_STATUS[validated.status],
+            1,
+            JSON.stringify(validated),
+            observedAt,
+            observedAt
+          ]
+        );
+      }
+      await tx.query(
+        `INSERT INTO agent_step_attempt_events
+           (organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id,
+            event_id, event_type, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          namespaceId,
+          validated.workflowId,
+          storageId,
+          validated.attemptId,
+          randomUUID5(),
+          validated.status,
+          JSON.stringify(validated),
+          observedAt
+        ]
+      );
+      return validated;
+    });
+  }
+};
+function createSqlAgentStepAttemptRepository(client, options = {}) {
+  return new SqlAgentStepAttemptRepository(client, options);
+}
+
+// ../src/adapters/persistence/sql/sql-agent-step-result-repository.ts
+import { randomBytes as randomBytes4, randomUUID as randomUUID6 } from "node:crypto";
+var IDENTITY_FIELDS2 = ["attemptId", "workflowId", "stepId", "namespaceId", "caseId", "agentName"];
+var CAPABILITY_MATCH_FIELDS2 = [...IDENTITY_FIELDS2, "briefHash"];
+var BRIEF_HASH3 = /^sha256:[0-9a-f]{64}$/;
+var CAPABILITY_TYPE = "agent_step_submit";
+var DEFAULT_TTL_MS = 15 * 60 * 1e3;
+var RESULT_DB_STATUS = Object.freeze({
+  PASS: "success",
+  FAIL: "failure"
+});
+var ATTEMPT_TERMINAL_STATUS = Object.freeze({
+  PASS: "completed",
+  FAIL: "failed"
+});
+var SqlAgentStepResultRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  #clock;
+  #ttlMs;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+    this.#clock = options.clock ?? (() => /* @__PURE__ */ new Date());
+    this.#ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+  }
+  async #selectCapability(client, namespaceId, storageId, attemptId) {
+    const { rows } = await client.query(
+      `SELECT step_id, payload FROM result_capabilities
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3
+         AND step_id = $4 AND attempt_id = $5 AND capability_type = $6`,
+      [this.#organizationId, this.#workstreamId, namespaceId, storageId, attemptId, CAPABILITY_TYPE]
+    );
+    const row = rows[0];
+    if (!row) return null;
+    return { row, record: parseJsonColumn(row.payload) };
+  }
+  async #selectResult(client, namespaceId, storageId, attemptId) {
+    const { rows } = await client.query(
+      `SELECT payload FROM agent_step_results
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3
+         AND step_id = $4 AND attempt_id = $5`,
+      [this.#organizationId, this.#workstreamId, namespaceId, storageId, attemptId]
+    );
+    const row = rows[0];
+    return row ? parseJsonColumn(row.payload) : null;
+  }
+  async #findByToken(tokenHash) {
+    const { rows } = await this.#client.query(
+      `SELECT step_id, payload FROM result_capabilities WHERE capability_type = $1`,
+      [CAPABILITY_TYPE]
+    );
+    for (const row of rows) {
+      const record2 = parseJsonColumn(row.payload);
+      if (record2?.type === "capability-issued" && typeof record2.tokenHash === "string" && safeEqual(record2.tokenHash, tokenHash))
+        return { storageId: row.step_id, record: record2 };
+    }
+    return null;
+  }
+  async issue(namespaceId, storageId, identity) {
+    for (const key of IDENTITY_FIELDS2)
+      if (!isSafeAgentStepResultId(identity[key])) throw new Error("INVALID_RESULT_CAPABILITY_IDENTITY");
+    if (identity.namespaceId !== namespaceId || !BRIEF_HASH3.test(identity.briefHash ?? ""))
+      throw new Error("INVALID_RESULT_CAPABILITY_IDENTITY");
+    const token = randomBytes4(32).toString("base64url");
+    const now = this.#clock();
+    const record2 = {
+      type: "capability-issued",
+      capabilityId: randomUUID6(),
+      tokenHash: sha256(token),
+      attemptId: identity.attemptId,
+      workflowId: identity.workflowId,
+      stepId: identity.stepId,
+      namespaceId: identity.namespaceId,
+      caseId: identity.caseId,
+      agentName: identity.agentName,
+      briefHash: identity.briefHash,
+      issuedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + this.#ttlMs).toISOString(),
+      submissionBudget: 1
+    };
+    return withTransaction(this.#client, async (tx) => {
+      const existing = await this.#selectCapability(tx, namespaceId, storageId, identity.attemptId);
+      if (existing) {
+        const same = CAPABILITY_MATCH_FIELDS2.every((field) => existing.record[field] === identity[field]);
+        throw new Error(same ? "RESULT_CAPABILITY_ALREADY_ISSUED" : "RESULT_CAPABILITY_IDENTITY_CONFLICT");
+      }
+      await tx.query(
+        `INSERT INTO result_capabilities
+           (organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id,
+            result_id, capability_id, capability_type, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          namespaceId,
+          identity.workflowId,
+          storageId,
+          identity.attemptId,
+          "",
+          record2.capabilityId,
+          CAPABILITY_TYPE,
+          JSON.stringify(record2),
+          now.toISOString()
+        ]
+      );
+      return { token, expiresAt: record2.expiresAt };
+    });
+  }
+  async submit(token, business, observed = {}) {
+    if (!validateAgentStepResultBusiness(business)) return { ok: false, code: "RESULT_SCHEMA_INVALID" };
+    const located = await this.#findByToken(sha256(token));
+    if (!located) return { ok: false, code: "RESULT_CAPABILITY_INVALID" };
+    const issued = located.record;
+    if (observed.attemptId !== issued.attemptId || observed.caseId !== issued.caseId || observed.agentName !== issued.agentName)
+      return { ok: false, code: "RESULT_IDENTITY_MISMATCH" };
+    const resultHash = sha256(canonicalAgentStepResultJson(business));
+    return withTransaction(this.#client, async (tx) => {
+      const existing = await this.#selectResult(tx, issued.namespaceId, located.storageId, issued.attemptId);
+      if (existing)
+        return existing.resultHash === resultHash ? { ok: true, idempotent: true, result: existing } : { ok: false, code: "RESULT_SEMANTIC_COLLISION" };
+      if (this.#clock().getTime() > Date.parse(issued.expiresAt))
+        return { ok: false, code: "RESULT_CAPABILITY_EXPIRED" };
+      const result = {
+        type: "result-submitted",
+        resultId: randomUUID6(),
+        attemptId: issued.attemptId,
+        workflowId: issued.workflowId,
+        stepId: issued.stepId,
+        namespaceId: issued.namespaceId,
+        caseId: issued.caseId,
+        agentName: issued.agentName,
+        briefHash: issued.briefHash,
+        status: business.status,
+        summary: business.summary,
+        artifacts: business.artifacts ?? [],
+        claims: business.claims,
+        findings: business.findings ?? [],
+        submittedAt: this.#clock().toISOString(),
+        resultHash
+      };
+      await tx.query(
+        `INSERT INTO agent_step_results
+           (organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id,
+            result_id, result_status, semantic_signature, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          issued.namespaceId,
+          issued.workflowId,
+          located.storageId,
+          issued.attemptId,
+          result.resultId,
+          RESULT_DB_STATUS[result.status],
+          resultHash,
+          JSON.stringify(result),
+          result.submittedAt
+        ]
+      );
+      const attemptRevision = await tx.query(
+        `SELECT revision FROM agent_step_attempts
+         WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3
+           AND workflow_id = $4 AND step_id = $5 AND attempt_id = $6`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          issued.namespaceId,
+          issued.workflowId,
+          located.storageId,
+          issued.attemptId
+        ]
+      );
+      await tx.query(
+        `UPDATE agent_step_attempts
+           SET status = $1, revision = $2, updated_at = $3
+         WHERE organization_id = $4 AND workstream_id = $5 AND namespace_id = $6
+           AND workflow_id = $7 AND step_id = $8 AND attempt_id = $9`,
+        [
+          ATTEMPT_TERMINAL_STATUS[result.status],
+          (attemptRevision.rows[0]?.revision ?? 0) + 1,
+          result.submittedAt,
+          this.#organizationId,
+          this.#workstreamId,
+          issued.namespaceId,
+          issued.workflowId,
+          located.storageId,
+          issued.attemptId
+        ]
+      );
+      await tx.query(
+        `INSERT INTO outbox_events
+           (organization_id, id, workstream_id, event_type, payload, status, created_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+        [
+          this.#organizationId,
+          randomUUID6(),
+          this.#workstreamId,
+          "result_submitted",
+          JSON.stringify({
+            aggregateType: "agent_step_result",
+            attemptId: issued.attemptId,
+            resultId: result.resultId,
+            status: result.status
+          }),
+          "pending",
+          result.submittedAt
+        ]
+      );
+      return { ok: true, idempotent: false, result };
+    });
+  }
+  async getByAttempt(namespaceId, storageId, attemptId) {
+    return this.#selectResult(this.#client, namespaceId, storageId, attemptId);
+  }
+  async list(namespaceId, storageId) {
+    const [capabilities, results] = await Promise.all([
+      this.#client.query(
+        `SELECT created_at, payload FROM result_capabilities
+         WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND step_id = $4`,
+        [this.#organizationId, this.#workstreamId, namespaceId, storageId]
+      ),
+      this.#client.query(
+        `SELECT created_at, payload FROM agent_step_results
+         WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND step_id = $4`,
+        [this.#organizationId, this.#workstreamId, namespaceId, storageId]
+      )
+    ]);
+    return [...capabilities.rows, ...results.rows].sort((left, right) => String(left.created_at).localeCompare(String(right.created_at))).map((row) => parseJsonColumn(row.payload));
+  }
+};
+function createSqlAgentStepResultRepository(client, options = {}) {
+  return new SqlAgentStepResultRepository(client, options);
+}
+
+// ../src/domain/oracle/oracle-definition.ts
+import { createHash as createHash8 } from "node:crypto";
+var SAFE2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var VERSION = /^\d+\.\d+\.\d+$/;
+var FIELDS2 = /* @__PURE__ */ new Set([
+  "schemaVersion",
+  "id",
+  "version",
+  "domain",
+  "argv",
+  "cwd",
+  "timeoutMs",
+  "success",
+  "applicable"
+]);
+var SUCCESS_FIELDS = /* @__PURE__ */ new Set(["rule", "requireWork"]);
+var APPLICABLE_FIELDS = /* @__PURE__ */ new Set(["workflowTypes", "stepIds"]);
+var SHELL_EXECUTABLES = /* @__PURE__ */ new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "cmd",
+  "cmd.exe",
+  "powershell",
+  "powershell.exe",
+  "pwsh",
+  "pwsh.exe"
+]);
+var SHELL_FLAGS = /* @__PURE__ */ new Set(["-c", "--command", "/c", "-command", "-encodedcommand"]);
+function invalid2() {
+  throw new Error("INVALID_ORACLE_DEFINITION");
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function canonicalOracleDefinition(value) {
+  if (Array.isArray(value)) return value.map((entry) => canonicalOracleDefinition(entry));
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalOracleDefinition(value[key])])
+    );
+  }
+  return value;
+}
+function validateOracleDefinition(value) {
+  if (!isRecord(value)) invalid2();
+  const candidate = value;
+  if (Object.keys(candidate).some((key) => !FIELDS2.has(key))) invalid2();
+  if (candidate.schemaVersion !== "1" || !SAFE2.test(String(candidate.id ?? "")) || !VERSION.test(String(candidate.version ?? "")) || !SAFE2.test(String(candidate.domain ?? "")))
+    invalid2();
+  const argv = candidate.argv;
+  if (!Array.isArray(argv) || argv.length === 0 || argv.length > 32 || argv.some((entry) => typeof entry !== "string" || !entry || entry.length > 512 || /[\r\n\0]/.test(entry)))
+    invalid2();
+  const args = argv;
+  const executableRaw = args[0];
+  if (executableRaw === void 0) invalid2();
+  const executable = executableRaw.replace(/\\/g, "/").split("/").at(-1)?.toLowerCase();
+  if (executable === void 0 || SHELL_EXECUTABLES.has(executable) || args.some((arg, index) => index > 0 && SHELL_FLAGS.has(arg.toLowerCase())))
+    invalid2();
+  if (candidate.cwd !== "repo-root" || !Number.isSafeInteger(candidate.timeoutMs) || candidate.timeoutMs < 1 || candidate.timeoutMs > 36e5)
+    invalid2();
+  const success = candidate.success;
+  if (!isRecord(success) || Object.keys(success).some((key) => !SUCCESS_FIELDS.has(key)) || success.rule !== "exit-code" || typeof success.requireWork !== "boolean")
+    invalid2();
+  const applicable = candidate.applicable;
+  if (!isRecord(applicable) || Object.keys(applicable).some((key) => !APPLICABLE_FIELDS.has(key)) || !Array.isArray(applicable.workflowTypes) || applicable.workflowTypes.length === 0 || applicable.workflowTypes.some((entry) => !SAFE2.test(String(entry))) || !Array.isArray(applicable.stepIds) || applicable.stepIds.length === 0 || applicable.stepIds.some((entry) => !SAFE2.test(String(entry))))
+    invalid2();
+  return Object.freeze({
+    schemaVersion: "1",
+    id: candidate.id,
+    version: candidate.version,
+    domain: candidate.domain,
+    argv: Object.freeze([...args]),
+    cwd: "repo-root",
+    timeoutMs: candidate.timeoutMs,
+    success: Object.freeze({ rule: "exit-code", requireWork: success.requireWork }),
+    applicable: Object.freeze({
+      workflowTypes: Object.freeze([...applicable.workflowTypes]),
+      stepIds: Object.freeze([...applicable.stepIds])
+    })
+  });
+}
+function hashOracleDefinition(definition) {
+  return `sha256:${createHash8("sha256").update(JSON.stringify(canonicalOracleDefinition(definition))).digest("hex")}`;
+}
+function definitionIdentityFromFileName(fileName) {
+  const base = fileName.split(/[\\/]/).at(-1) ?? fileName;
+  return base.endsWith(".json") ? base.slice(0, -".json".length) : base;
+}
+var OracleDefinitionRegistryCore = class {
+  constructor(source) {
+    this.source = source;
+    this.items = /* @__PURE__ */ new Map();
+  }
+  items;
+  async initialize() {
+    const files = [...await this.source.listFiles()].filter((name) => name.endsWith(".json")).sort();
+    const next = /* @__PURE__ */ new Map();
+    for (const file of files) {
+      const definition = validateOracleDefinition(JSON.parse(await this.source.readFile(file)));
+      if (definitionIdentityFromFileName(file) !== `${definition.id}@${definition.version}`)
+        throw new Error("ORACLE_PATH_IDENTITY_MISMATCH");
+      if (next.has(definition.id)) throw new Error("DUPLICATE_ORACLE_ID");
+      next.set(definition.id, definition);
+    }
+    this.items = next;
+    return this;
+  }
+  /** Every loaded definition, in registry insertion order. */
+  list() {
+    return [...this.items.values()];
+  }
+  get(id2) {
+    return this.items.get(id2) ?? null;
+  }
+};
+
+// ../src/adapters/persistence/sql/sql-oracle-execution-repository.ts
+var SqlOracleExecutionRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  }
+  #toDefinition(payload) {
+    try {
+      return validateOracleDefinition(parseJsonColumn(payload));
+    } catch {
+      return null;
+    }
+  }
+  async list() {
+    const { rows } = await this.#client.query(
+      `SELECT created_at, payload FROM oracle_executions
+       WHERE organization_id = $1 AND workstream_id = $2`,
+      [this.#organizationId, this.#workstreamId]
+    );
+    const byId = /* @__PURE__ */ new Map();
+    for (const row of [...rows].sort(
+      (left, right) => String(left.created_at).localeCompare(String(right.created_at))
+    )) {
+      const definition = this.#toDefinition(row.payload);
+      if (definition && !byId.has(definition.id)) byId.set(definition.id, definition);
+    }
+    return [...byId.values()];
+  }
+  async get(id2) {
+    const { rows } = await this.#client.query(
+      `SELECT created_at, payload FROM oracle_executions
+       WHERE organization_id = $1 AND workstream_id = $2 AND oracle_id = $3`,
+      [this.#organizationId, this.#workstreamId, id2]
+    );
+    for (const row of rows) {
+      const definition = this.#toDefinition(row.payload);
+      if (definition && definition.id === id2) return definition;
+    }
+    return null;
+  }
+  /**
+   * Terminalizes an oracle execution and, atomically, publishes its linked
+   * artifact (Amendment 5: upload-then-commit).
+   */
+  async terminalize(input) {
+    const updatedAt = input.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
+    return withTransaction(this.#client, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT revision, artifact_id FROM oracle_executions
+         WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3
+           AND workflow_id = $4 AND execution_id = $5`,
+        [this.#organizationId, this.#workstreamId, input.namespaceId, input.workflowId, input.executionId]
+      );
+      const existing = rows[0];
+      const revision = (existing?.revision ?? 0) + 1;
+      const artifactId = input.artifactId ?? existing?.artifact_id ?? null;
+      await tx.query(
+        `UPDATE oracle_executions
+           SET status = $1, revision = $2, updated_at = $3
+         WHERE organization_id = $4 AND workstream_id = $5 AND namespace_id = $6
+           AND workflow_id = $7 AND execution_id = $8`,
+        [
+          input.status,
+          revision,
+          updatedAt,
+          this.#organizationId,
+          this.#workstreamId,
+          input.namespaceId,
+          input.workflowId,
+          input.executionId
+        ]
+      );
+      if (artifactId)
+        await tx.query(
+          `UPDATE artifacts
+             SET availability_status = $1, updated_at = $2
+           WHERE organization_id = $3 AND workstream_id = $4 AND namespace_id = $5
+             AND workflow_id = $6 AND artifact_id = $7`,
+          [
+            "available",
+            updatedAt,
+            this.#organizationId,
+            this.#workstreamId,
+            input.namespaceId,
+            input.workflowId,
+            artifactId
+          ]
+        );
+      return { executionId: input.executionId, status: input.status, revision, artifactId };
+    });
+  }
+};
+function createSqlOracleExecutionRepository(client, options = {}) {
+  return new SqlOracleExecutionRepository(client, options);
+}
+
+// ../src/adapters/persistence/sql/sql-work-environment-repository.ts
+import { createHash as createHash9 } from "node:crypto";
+var ERROR_CODES = Object.freeze({
+  INVALID_ENVIRONMENT: "INVALID_ENVIRONMENT",
+  INVALID_NAMESPACE: "INVALID_NAMESPACE",
+  NOT_FOUND: "NOT_FOUND",
+  REVISION_CONFLICT: "REVISION_CONFLICT",
+  INVALID_TRANSITION: "INVALID_TRANSITION",
+  CORRUPT_STORAGE: "CORRUPT_STORAGE"
+});
+var SAFE_ID7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var ENV_TYPE = "work-unit-environment";
+var IMMUTABLE_FIELDS = [
+  "schemaVersion",
+  "environmentId",
+  "workUnitId",
+  "workflowId",
+  "namespaceId",
+  "repoRoot",
+  "integrationBranch",
+  "branch",
+  "worktreePath",
+  "baseCommit",
+  "createdAt",
+  "createdBy"
+];
+var SqlWorkEnvironmentRepositoryError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "SqlWorkEnvironmentRepositoryError";
+    this.code = code;
+    this.details = details;
+  }
+};
+function statusForState(state) {
+  switch (state) {
+    case "provisioning":
+      return "provisioning";
+    case "active":
+      return "ready";
+    case "completed":
+    case "abandoned":
+    case "error":
+      return "busy";
+    case "removed":
+      return "decommissioned";
+  }
+}
+function snapshotHash(environment) {
+  return createHash9("sha256").update(JSON.stringify(environment, Object.keys(environment).sort())).digest("hex");
+}
+var SqlWorkEnvironmentRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  #locks;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+    this.#locks = /* @__PURE__ */ new Map();
+  }
+  #assertNamespace(namespaceId) {
+    if (!validateNamespaceId(namespaceId).ok) throw new SqlWorkEnvironmentRepositoryError(ERROR_CODES.INVALID_NAMESPACE);
+  }
+  #assertEnvironmentId(environmentId) {
+    if (typeof environmentId !== "string" || !SAFE_ID7.test(environmentId))
+      throw new SqlWorkEnvironmentRepositoryError(ERROR_CODES.INVALID_ENVIRONMENT);
+  }
+  /**
+   * Virtual artifact paths. The SQL adapter does no filesystem I/O; the paths
+   * follow the same digest algebra as the filesystem store (raw environment id
+   * never a path segment) so callers can reason about them uniformly.
+   */
+  paths(namespaceId, environmentId) {
+    this.#assertNamespace(namespaceId);
+    this.#assertEnvironmentId(environmentId);
+    const digest4 = createHash9("sha256").update(`${namespaceId}:${environmentId}`).digest("hex");
+    const directory = `sql://work-environments/${this.#organizationId}/${this.#workstreamId}/${namespaceId}/${digest4}`;
+    return {
+      directory,
+      snapshot: `${directory}/environment.json`,
+      events: `${directory}/events.jsonl`,
+      pending: `${directory}/pending.json`
+    };
+  }
+  #locked(namespaceId, environmentId, action) {
+    const key = `${namespaceId}\0${environmentId}`;
+    const prior = this.#locks.get(key) ?? Promise.resolve();
+    const operation = prior.then(action);
+    const tail = operation.catch(() => {
+    });
+    this.#locks.set(key, tail);
+    return operation.finally(() => {
+      if (this.#locks.get(key) === tail) this.#locks.delete(key);
+    });
+  }
+  async #selectRow(client, environmentId) {
+    const { rows } = await client.query(
+      `SELECT * FROM work_environments
+       WHERE organization_id = $1 AND workstream_id = $2 AND environment_id = $3`,
+      [this.#organizationId, this.#workstreamId, environmentId]
+    );
+    return rows[0] ?? null;
+  }
+  #snapshotFromRow(row) {
+    const environment = validateWorkUnitEnvironment(parseJsonColumn(row.payload));
+    if (!environment.ok)
+      throw new SqlWorkEnvironmentRepositoryError(ERROR_CODES.CORRUPT_STORAGE, { artifact: "snapshot" });
+    if (!Number.isSafeInteger(row.revision) || row.revision < 1)
+      throw new SqlWorkEnvironmentRepositoryError(ERROR_CODES.CORRUPT_STORAGE, { artifact: "revision" });
+    return {
+      revision: row.revision,
+      environmentHash: snapshotHash(environment.environment),
+      environment: environment.environment
+    };
+  }
+  async #read(client, namespaceId, environmentId) {
+    this.#assertNamespace(namespaceId);
+    this.#assertEnvironmentId(environmentId);
+    const row = await this.#selectRow(client, environmentId);
+    if (!row) return null;
+    const snapshot = this.#snapshotFromRow(row);
+    return snapshot.environment.namespaceId === namespaceId ? snapshot : null;
+  }
+  async #write(client, current, environment) {
+    const revision = (current?.revision ?? 0) + 1;
+    const environmentHash = snapshotHash(environment);
+    const snapshot = { revision, environmentHash, environment };
+    const status = statusForState(environment.lifecycleState);
+    const observedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const payload = JSON.stringify(environment);
+    if (current) {
+      const { rowCount } = await client.query(
+        `UPDATE work_environments
+           SET revision = $1, status = $2, payload = $3::jsonb, updated_at = $4
+         WHERE organization_id = $5 AND workstream_id = $6 AND environment_id = $7 AND revision = $8`,
+        [
+          revision,
+          status,
+          payload,
+          observedAt,
+          this.#organizationId,
+          this.#workstreamId,
+          environment.environmentId,
+          current.revision
+        ]
+      );
+      if (!rowCount) return { ok: false, error: { code: ERROR_CODES.REVISION_CONFLICT } };
+    } else {
+      await client.query(
+        `INSERT INTO work_environments
+           (organization_id, workstream_id, environment_id, env_type, status, revision, payload, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          environment.environmentId,
+          ENV_TYPE,
+          status,
+          revision,
+          payload,
+          observedAt,
+          observedAt
+        ]
+      );
+    }
+    return { ok: true, changed: true, snapshot };
+  }
+  async read(namespaceId, environmentId) {
+    return this.#read(this.#client, namespaceId, environmentId);
+  }
+  async list(namespaceId, filter = {}) {
+    this.#assertNamespace(namespaceId);
+    const { rows } = await this.#client.query(
+      `SELECT * FROM work_environments WHERE organization_id = $1 AND workstream_id = $2`,
+      [this.#organizationId, this.#workstreamId]
+    );
+    return rows.map((row) => this.#snapshotFromRow(row)).filter(
+      (snapshot) => snapshot.environment.namespaceId === namespaceId && (!filter.states || filter.states.includes(snapshot.environment.lifecycleState))
+    ).sort((left, right) => left.environment.environmentId.localeCompare(right.environment.environmentId));
+  }
+  async reserve(environment) {
+    const validated = validateWorkUnitEnvironment(environment);
+    if (!validated.ok) return validated;
+    this.#assertNamespace(validated.environment.namespaceId);
+    return this.#locked(
+      validated.environment.namespaceId,
+      validated.environment.environmentId,
+      () => withTransaction(this.#client, async (tx) => {
+        const row = await this.#selectRow(tx, validated.environment.environmentId);
+        if (row) {
+          const current = this.#snapshotFromRow(row);
+          if (current.environment.namespaceId !== validated.environment.namespaceId)
+            return { ok: false, error: { code: ERROR_CODES.INVALID_TRANSITION } };
+          return JSON.stringify(current.environment) === JSON.stringify(validated.environment) ? { ok: true, changed: false, snapshot: current } : { ok: false, error: { code: ERROR_CODES.INVALID_TRANSITION } };
+        }
+        return this.#write(tx, null, validated.environment);
+      })
+    );
+  }
+  async transition(namespaceId, environmentId, next, options = {}) {
+    this.#assertNamespace(namespaceId);
+    void options.errorCode;
+    return this.#locked(
+      namespaceId,
+      environmentId,
+      () => withTransaction(this.#client, async (tx) => {
+        const current = await this.#read(tx, namespaceId, environmentId);
+        if (!current) return { ok: false, error: { code: ERROR_CODES.NOT_FOUND } };
+        if (options.expectedRevision !== void 0 && options.expectedRevision !== current.revision)
+          return { ok: false, error: { code: ERROR_CODES.REVISION_CONFLICT } };
+        if (JSON.stringify(current.environment) === JSON.stringify(next))
+          return { ok: true, changed: false, snapshot: current };
+        for (const field of IMMUTABLE_FIELDS)
+          if (current.environment[field] !== next[field])
+            return { ok: false, error: { code: ERROR_CODES.INVALID_TRANSITION } };
+        if (current.environment.parentCaseId && next.parentCaseId !== current.environment.parentCaseId)
+          return { ok: false, error: { code: ERROR_CODES.INVALID_TRANSITION } };
+        const from = current.environment.lifecycleState;
+        const to = next.lifecycleState;
+        const allowed = from === "provisioning" && ["provisioning", "active", "error"].includes(to) || from === "active" && ["completed", "abandoned", "error"].includes(to) || ["completed", "abandoned", "error"].includes(from) && to === "removed";
+        if (!allowed) return { ok: false, error: { code: ERROR_CODES.INVALID_TRANSITION } };
+        const validated = validateWorkUnitEnvironment(next);
+        if (!validated.ok) return validated;
+        return this.#write(tx, current, validated.environment);
+      })
+    );
+  }
+};
+function createSqlWorkEnvironmentRepository(client, options = {}) {
+  return new SqlWorkEnvironmentRepository(client, options);
+}
+
+// ../src/adapters/persistence/sql/sql-delivery-repository.ts
+import { createHash as createHash13 } from "node:crypto";
+
+// ../src/domain/delivery/delivery-operation-definition.ts
+import { createHash as createHash10 } from "node:crypto";
+var DELIVERY_OPERATION_KINDS = Object.freeze([
+  "deployment",
+  "production-verification",
+  "rollback",
+  "rollback-verification"
+]);
+var DELIVERY_OPERATION_STATES = Object.freeze(["pending", "running", "succeeded", "failed", "indeterminate"]);
+var DELIVERY_OPERATION_ERROR_CODES = Object.freeze({
+  INVALID_REQUEST: "INVALID_DELIVERY_OPERATION_REQUEST",
+  INVALID_RECORD: "INVALID_DELIVERY_OPERATION_RECORD",
+  INVALID_TRANSITION: "INVALID_DELIVERY_OPERATION_TRANSITION",
+  RECONCILIATION_REQUIRED: "DELIVERY_OPERATION_RECONCILIATION_REQUIRED"
+});
+var SAFE3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SHA2 = /^[0-9a-f]{40}$/i;
+var DIGEST = /^sha256:[0-9a-f]{64}$/i;
+var MEDIA = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i;
+var canonical = (value) => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).sort().map((k) => [k, canonical(value[k])])
+) : value;
+var canonicalDeliveryHash = (value) => `sha256:${createHash10("sha256").update(JSON.stringify(canonical(value))).digest("hex")}`;
+var fail2 = (path, reason = "invalid_value") => ({
+  ok: false,
+  error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_REQUEST, path, reason }
+});
+var exact = (v, fields) => v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).every((k) => fields.includes(k));
+var id = (v) => typeof v === "string" && SAFE3.test(v);
+var digest = (v) => typeof v === "string" && DIGEST.test(v);
+var sha = (v) => typeof v === "string" && SHA2.test(v);
+function artifact(v, path = "artifactRef") {
+  if (!exact(v, ["digest", "mediaType", "producerRef", "buildRef", "sourceCommit"]) || !digest(v.digest) || !MEDIA.test(v.mediaType ?? "") || !id(v.producerRef) || !id(v.buildRef) || !sha(v.sourceCommit))
+    return fail2(path);
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      digest: v.digest.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase()
+    })
+  };
+}
+function release(v, path = "releaseRef") {
+  if (!exact(v, ["releaseId", "artifactDigest", "sourceCommit", "approvedEvidenceId"]) || !id(v.releaseId) || !digest(v.artifactDigest) || !sha(v.sourceCommit) || !id(v.approvedEvidenceId))
+    return fail2(path);
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      artifactDigest: v.artifactDigest.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase()
+    })
+  };
+}
+function operationRef(v, path, kind) {
+  if (!exact(v, ["operationId", "kind", "state", "targetHash", "sourceCommit", "artifactDigest"]) || !id(v.operationId) || v.kind !== kind || v.state !== "succeeded" || !digest(v.targetHash) || !sha(v.sourceCommit) || !digest(v.artifactDigest))
+    return fail2(path);
+  return {
+    ok: true,
+    value: Object.freeze({
+      ...v,
+      targetHash: v.targetHash.toLowerCase(),
+      sourceCommit: v.sourceCommit.toLowerCase(),
+      artifactDigest: v.artifactDigest.toLowerCase()
+    })
+  };
+}
+var BASE = ["kind", "expectedRevision", "idempotencyKey", "targetId"];
+var SPEC = {
+  deployment: ["artifactRef", "releaseRef"],
+  "production-verification": ["deploymentRef"],
+  rollback: ["deploymentRef", "priorArtifactRef", "priorReleaseRef", "rollbackRequestId", "approvedEvidenceId"],
+  "rollback-verification": ["rollbackRef"]
+};
+function normalizeDeliveryOperationRequest(input) {
+  const candidate = input;
+  if (!candidate || !DELIVERY_OPERATION_KINDS.includes(candidate.kind) || !exact(candidate, [...BASE, ...SPEC[candidate.kind]]))
+    return fail2("$", "unknown_or_missing_field");
+  if (!Number.isSafeInteger(candidate.expectedRevision) || candidate.expectedRevision < 1 || !id(candidate.idempotencyKey) || !id(candidate.targetId))
+    return fail2("$");
+  const out = {
+    kind: candidate.kind,
+    expectedRevision: candidate.expectedRevision,
+    idempotencyKey: candidate.idempotencyKey,
+    targetId: candidate.targetId
+  };
+  if (candidate.kind === "deployment") {
+    const a = artifact(candidate.artifactRef), r = release(candidate.releaseRef);
+    if (!a.ok) return a;
+    if (!r.ok) return r;
+    if (a.value.digest !== r.value.artifactDigest || a.value.sourceCommit !== r.value.sourceCommit)
+      return fail2("releaseRef", "artifact_identity_mismatch");
+    Object.assign(out, { artifactRef: a.value, releaseRef: r.value });
+  }
+  if (candidate.kind === "production-verification") {
+    const d = operationRef(candidate.deploymentRef, "deploymentRef", "deployment");
+    if (!d.ok) return d;
+    out.deploymentRef = d.value;
+  }
+  if (candidate.kind === "rollback") {
+    const d = operationRef(candidate.deploymentRef, "deploymentRef", "deployment"), a = artifact(candidate.priorArtifactRef, "priorArtifactRef"), r = release(candidate.priorReleaseRef, "priorReleaseRef");
+    if (!d.ok) return d;
+    if (!a.ok) return a;
+    if (!r.ok) return r;
+    if (!id(candidate.rollbackRequestId) || !id(candidate.approvedEvidenceId) || a.value.digest !== r.value.artifactDigest || a.value.sourceCommit !== r.value.sourceCommit)
+      return fail2("$", "rollback_identity_mismatch");
+    Object.assign(out, {
+      deploymentRef: d.value,
+      priorArtifactRef: a.value,
+      priorReleaseRef: r.value,
+      rollbackRequestId: candidate.rollbackRequestId,
+      approvedEvidenceId: candidate.approvedEvidenceId
+    });
+  }
+  if (candidate.kind === "rollback-verification") {
+    const r = operationRef(candidate.rollbackRef, "rollbackRef", "rollback");
+    if (!r.ok) return r;
+    out.rollbackRef = r.value;
+  }
+  return { ok: true, value: Object.freeze(out) };
+}
+function deriveDeliveryOperationIdentity({ namespaceId, workflowId, deliveryId, caseId, runtimeId }, request, targetHash) {
+  for (const v of [namespaceId, workflowId, deliveryId, caseId, runtimeId]) if (!id(v)) return fail2("scope");
+  if (!digest(targetHash)) return fail2("targetHash");
+  const scopeHash = canonicalDeliveryHash({
+    namespaceId,
+    workflowId,
+    deliveryId,
+    caseId,
+    runtimeId,
+    idempotencyKey: request.idempotencyKey
+  });
+  const semanticHash2 = canonicalDeliveryHash({
+    kind: request.kind,
+    expectedRevision: request.expectedRevision,
+    targetHash,
+    ...Object.fromEntries(
+      Object.entries(request).filter(([k]) => /Ref$/.test(k) || ["rollbackRequestId", "approvedEvidenceId"].includes(k))
+    )
+  });
+  return { ok: true, value: { operationId: `dop_${scopeHash.slice(7, 39)}`, scopeHash, semanticHash: semanticHash2 } };
+}
+var ALLOWED = {
+  pending: ["running", "failed"],
+  running: ["succeeded", "failed", "indeterminate"],
+  indeterminate: ["succeeded", "failed"],
+  succeeded: [],
+  failed: []
+};
+function validateDeliveryOperationTransition(previous, next, { inspectedObservation } = {}) {
+  if (!previous || !next || previous.operationId !== next.operationId || !DELIVERY_OPERATION_STATES.includes(previous.state) || !ALLOWED[previous.state]?.includes(next.state))
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_TRANSITION } };
+  if (previous.state === "indeterminate" && (!inspectedObservation || inspectedObservation.operationId !== previous.operationId || inspectedObservation.state !== next.state || !["succeeded", "failed"].includes(next.state) || next.resolvedOperationId !== previous.operationId))
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.RECONCILIATION_REQUIRED } };
+  return { ok: true };
+}
+function validateDeliveryOperationRecord(v) {
+  const fields = [
+    "recordType",
+    "operationId",
+    "kind",
+    "expectedRevision",
+    "targetRef",
+    "artifactRef",
+    "releaseRef",
+    "deploymentRef",
+    "rollbackRef",
+    "state",
+    "attempt",
+    "requestedAt",
+    "startedAt",
+    "completedAt",
+    "execution",
+    "adapterCorrelation",
+    "scopeHash",
+    "semanticHash",
+    "result",
+    "error",
+    "resolvedOperationId",
+    "sourceCommit",
+    "artifactDigest",
+    "rollbackRequestId",
+    "approvedEvidenceId"
+  ];
+  if (!exact(v, fields) || v.recordType !== "delivery-operation" || !id(v.operationId) || !DELIVERY_OPERATION_KINDS.includes(v.kind) || !DELIVERY_OPERATION_STATES.includes(v.state) || !Number.isSafeInteger(v.expectedRevision) || !Number.isSafeInteger(v.attempt) || v.attempt < 0 || !digest(v.scopeHash) || !digest(v.semanticHash))
+    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD } };
+  for (const key of ["requestedAt", "startedAt", "completedAt"])
+    if (v[key] !== void 0 && (!Number.isFinite(Date.parse(v[key])) || new Date(Date.parse(v[key])).toISOString() !== v[key]))
+      return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD, path: key } };
+  return { ok: true, value: Object.freeze({ ...v }) };
+}
+
+// ../src/domain/delivery/delivery-policy.ts
+import { createHash as createHash12, randomUUID as randomUUID7 } from "node:crypto";
+
+// ../src/domain/delivery/delivery-definition.ts
+import { createHash as createHash11 } from "node:crypto";
+var DELIVERY_DEFINITION_SCHEMA_VERSION = "1";
+var DELIVERY_STAGES = Object.freeze([
+  "implementation-ready",
+  "artifact-ready",
+  "release-approved",
+  "deployed",
+  "production-verified"
+]);
+var DELIVERY_EVIDENCE_KINDS = Object.freeze([
+  "implementation-result",
+  "artifact",
+  "oracle-result",
+  "human-decision",
+  "deployment-result",
+  "smoke-result",
+  "rollback-result"
+]);
+var SAFE4 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SEMVER2 = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+var TOP = /* @__PURE__ */ new Set([
+  "schemaVersion",
+  "deliveryType",
+  "version",
+  "title",
+  "checkpoints",
+  "artifactPolicy",
+  "promotionPolicy",
+  "deploymentPolicy",
+  "retentionPolicy"
+]);
+var CHECKPOINT = /* @__PURE__ */ new Set(["stage", "responsibility", "requiredEvidence"]);
+var RESPONSIBILITY = /* @__PURE__ */ new Set(["kind", "name"]);
+var EVIDENCE = /* @__PURE__ */ new Set(["kind", "outcome", "oracleId"]);
+var fail3 = (path, reason = "invalid_value") => ({
+  ok: false,
+  error: { code: "INVALID_DELIVERY_DEFINITION", path, reason }
+});
+var canonical2 = (value) => Array.isArray(value) ? value.map(canonical2) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).sort().map((key) => [key, canonical2(value[key])])
+) : value;
+function validateDeliveryDefinition(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !TOP.has(key)))
+    return fail3("$");
+  const candidate = input;
+  if (candidate.schemaVersion !== DELIVERY_DEFINITION_SCHEMA_VERSION) return fail3("schemaVersion");
+  if (!SAFE4.test(candidate.deliveryType ?? "") || !SEMVER2.test(candidate.version ?? "") || typeof candidate.title !== "string" || !candidate.title.trim() || candidate.title.length > 256)
+    return fail3("$");
+  if (!Array.isArray(candidate.checkpoints) || candidate.checkpoints.length !== DELIVERY_STAGES.length)
+    return fail3("checkpoints");
+  const checkpoints = [];
+  for (let index = 0; index < candidate.checkpoints.length; index++) {
+    const raw = candidate.checkpoints[index];
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((key) => !CHECKPOINT.has(key)) || raw.stage !== DELIVERY_STAGES[index])
+      return fail3(`checkpoints[${index}]`);
+    const responsibility = raw.responsibility;
+    if (!responsibility || Object.keys(responsibility).some((key) => !RESPONSIBILITY.has(key)) || !["code", "human"].includes(responsibility.kind) || !SAFE4.test(responsibility.name ?? ""))
+      return fail3(`checkpoints[${index}].responsibility`);
+    if (raw.stage === "release-approved" && responsibility.kind !== "human")
+      return fail3(`checkpoints[${index}].responsibility`, "release_requires_human");
+    if (raw.stage !== "release-approved" && responsibility.kind !== "code")
+      return fail3(`checkpoints[${index}].responsibility`, "factory_code_required");
+    if (!Array.isArray(raw.requiredEvidence) || raw.requiredEvidence.length === 0 || raw.requiredEvidence.length > 16)
+      return fail3(`checkpoints[${index}].requiredEvidence`);
+    const requiredEvidence = [];
+    for (let evidenceIndex = 0; evidenceIndex < raw.requiredEvidence.length; evidenceIndex++) {
+      const item = raw.requiredEvidence[evidenceIndex];
+      if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some((key) => !EVIDENCE.has(key)) || !DELIVERY_EVIDENCE_KINDS.includes(item.kind) || !["pass", "fail", "indeterminate", "approved", "rejected"].includes(item.outcome))
+        return fail3(`checkpoints[${index}].requiredEvidence[${evidenceIndex}]`);
+      if (item.oracleId !== void 0 && !SAFE4.test(item.oracleId))
+        return fail3(`checkpoints[${index}].requiredEvidence[${evidenceIndex}].oracleId`);
+      requiredEvidence.push({
+        kind: item.kind,
+        outcome: item.outcome,
+        ...item.oracleId ? { oracleId: item.oracleId } : {}
+      });
+    }
+    checkpoints.push({
+      stage: raw.stage,
+      responsibility: { ...responsibility },
+      requiredEvidence
+    });
+  }
+  for (const [field, maximum] of [
+    ["artifactPolicy", 32],
+    ["promotionPolicy", 32],
+    ["deploymentPolicy", 32],
+    ["retentionPolicy", 16]
+  ]) {
+    const value = candidate[field];
+    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length === 0 || Object.keys(value).length > maximum)
+      return fail3(field);
+  }
+  return { ok: true, definition: canonical2({ ...candidate, checkpoints }) };
+}
+function hashDeliveryDefinition(definition) {
+  return createHash11("sha256").update(JSON.stringify(canonical2(definition))).digest("hex");
+}
+function defaultDeliveryDefinition() {
+  return {
+    schemaVersion: "1",
+    deliveryType: "factory-delivery",
+    version: "1.0.0",
+    title: "Governed Factory delivery",
+    checkpoints: [
+      {
+        stage: "implementation-ready",
+        responsibility: { kind: "code", name: "implementation-policy" },
+        requiredEvidence: [{ kind: "implementation-result", outcome: "pass" }]
+      },
+      {
+        stage: "artifact-ready",
+        responsibility: { kind: "code", name: "artifact-oracle" },
+        requiredEvidence: [
+          { kind: "artifact", outcome: "pass" },
+          { kind: "oracle-result", outcome: "pass" }
+        ]
+      },
+      {
+        stage: "release-approved",
+        responsibility: { kind: "human", name: "release-approver" },
+        requiredEvidence: [{ kind: "human-decision", outcome: "approved" }]
+      },
+      {
+        stage: "deployed",
+        responsibility: { kind: "code", name: "deployment-control-plane" },
+        requiredEvidence: [{ kind: "deployment-result", outcome: "pass" }]
+      },
+      {
+        stage: "production-verified",
+        responsibility: { kind: "code", name: "production-smoke" },
+        requiredEvidence: [{ kind: "smoke-result", outcome: "pass" }]
+      }
+    ],
+    artifactPolicy: { requireBuildAndTests: true, extensibleChecks: "sast sca secrets sbom signature provenance" },
+    promotionPolicy: { ordered: true, automaticMerge: false, requireFactoryEvidence: true },
+    deploymentPolicy: { environmentsFromTrustedConfiguration: true, requireRollbackCapability: true },
+    retentionPolicy: { deleteWorktreeBeforeProductionVerified: false }
+  };
+}
+
+// ../src/domain/delivery/delivery-policy.ts
+var DELIVERY_INITIAL_STAGE = "implementation-ready";
+var SAFE5 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var FIELDS3 = /* @__PURE__ */ new Set(["deliveryId", "expectedRevision", "requestedStage", "evidenceIds", "idempotencyKey"]);
+var deny2 = (code, reason) => ({ allowed: false, code, reason });
+var hash = (value) => createHash12("sha256").update(JSON.stringify(value)).digest("hex");
+function validateDeliveryPromotionRequest(input, expectedDeliveryId) {
+  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !FIELDS3.has(key)))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  const candidate = input;
+  if (candidate.deliveryId !== expectedDeliveryId || !SAFE5.test(candidate.deliveryId ?? "") || !Number.isSafeInteger(candidate.expectedRevision) || candidate.expectedRevision < 1 || !DELIVERY_STAGES.includes(candidate.requestedStage))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  if (!Array.isArray(candidate.evidenceIds) || candidate.evidenceIds.length > 100 || new Set(candidate.evidenceIds).size !== candidate.evidenceIds.length || candidate.evidenceIds.some((id2) => !SAFE5.test(id2 ?? "")))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  if (typeof candidate.idempotencyKey !== "string" || !candidate.idempotencyKey || candidate.idempotencyKey.length > 128 || /[\r\n]/.test(candidate.idempotencyKey))
+    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
+  return {
+    ok: true,
+    value: {
+      requestId: randomUUID7(),
+      deliveryId: candidate.deliveryId,
+      expectedRevision: candidate.expectedRevision,
+      requestedStage: candidate.requestedStage,
+      evidenceIds: [...candidate.evidenceIds],
+      idempotencyKey: candidate.idempotencyKey
+    }
+  };
+}
+var deliveryScopeHash = (namespaceId, request, execution2) => hash({
+  namespaceId,
+  deliveryId: request.deliveryId,
+  caseId: execution2.caseId,
+  runtimeId: execution2.runtimeId,
+  idempotencyKey: request.idempotencyKey
+});
+var deliverySemanticHash = (request) => hash({
+  deliveryId: request.deliveryId,
+  expectedRevision: request.expectedRevision,
+  requestedStage: request.requestedStage,
+  evidenceIds: [...request.evidenceIds].sort()
+});
+function evaluateDeliveryPromotion({
+  request,
+  snapshot,
+  definition,
+  evidence,
+  execution: execution2
+}) {
+  if (!snapshot) return deny2("DELIVERY_NOT_FOUND", "delivery_not_found");
+  if (snapshot.revision !== request.expectedRevision) return deny2("REVISION_CONFLICT", "stale_delivery_revision");
+  if (snapshot.namespaceId !== execution2.namespaceId || snapshot.workflowId !== execution2.workflowId || snapshot.parentCaseId !== execution2.caseId)
+    return deny2("DELIVERY_SCOPE_MISMATCH", "controlling_execution_mismatch");
+  if (snapshot.definitionHash !== definition.definitionHash)
+    return deny2("DELIVERY_DEFINITION_MISMATCH", "definition_identity_mismatch");
+  const currentIndex = DELIVERY_STAGES.indexOf(snapshot.stage), requestedIndex = DELIVERY_STAGES.indexOf(request.requestedStage);
+  if (requestedIndex !== currentIndex + 1) return deny2("ILLEGAL_PROMOTION", "ordered_promotion_required");
+  const checkpoint = definition.checkpoints.find((item) => item.stage === request.requestedStage);
+  if (!checkpoint) return deny2("DELIVERY_DEFINITION_MISMATCH", "checkpoint_missing");
+  const isHuman = checkpoint.responsibility.kind === "human";
+  if (isHuman ? !(execution2.kind === "factory-human" && execution2.actorId && execution2.runtimeId === "factory-dashboard") : !(execution2.kind === "factory-control-plane" && execution2.runtimeId === "factory-dashboard"))
+    return deny2("ACTOR_NOT_AUTHORIZED", "factory_responsibility_required");
+  const selected = [];
+  for (const id2 of request.evidenceIds) {
+    const item = evidence.find((candidate) => candidate.evidenceId === id2);
+    if (!item) return deny2("EVIDENCE_NOT_FOUND", "evidence_not_found");
+    if (item.namespaceId !== snapshot.namespaceId || item.workflowId !== snapshot.workflowId || item.deliveryId !== snapshot.deliveryId || item.environmentHash !== snapshot.environmentHash || item.caseId !== snapshot.parentCaseId || item.headCommit !== snapshot.headCommit)
+      return deny2("EVIDENCE_SCOPE_MISMATCH", "bounded_fact_mismatch");
+    selected.push(item);
+  }
+  for (const requirement of checkpoint.requiredEvidence) {
+    const match2 = selected.find(
+      (item) => item.kind === requirement.kind && item.outcome === requirement.outcome && (!requirement.oracleId || item.oracleId === requirement.oracleId) && item.source?.kind !== "agent"
+    );
+    if (!match2) return deny2("PASS_EVIDENCE_REQUIRED", `${requirement.kind}:${requirement.outcome}`);
+  }
+  if (request.requestedStage === "release-approved" && !selected.some(
+    (item) => item.kind === "human-decision" && item.outcome === "approved" && item.source?.kind === "factory-human"
+  ))
+    return deny2("HUMAN_APPROVAL_REQUIRED", "release_approval_missing");
+  if (request.requestedStage === "deployed" && currentIndex < DELIVERY_STAGES.indexOf("release-approved"))
+    return deny2("RELEASE_NOT_APPROVED", "release_approval_missing");
+  if (request.requestedStage === "production-verified" && !selected.some((item) => item.kind === "smoke-result" && item.outcome === "pass"))
+    return deny2("SMOKE_PASS_REQUIRED", "production_smoke_missing");
+  return { allowed: true };
+}
+function applyDeliveryPromotion(snapshot, request, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+  return {
+    ...snapshot,
+    stage: request.requestedStage,
+    revision: snapshot.revision + 1,
+    updatedAt: observedAt,
+    evidenceIds: [.../* @__PURE__ */ new Set([...snapshot.evidenceIds ?? [], ...request.evidenceIds])]
+  };
+}
+
+// ../src/adapters/persistence/sql/sql-delivery-repository.ts
+var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE6 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SHA3 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var HASH2 = /^sha256:[0-9a-f]{64}$/;
+var canonical3 = (value) => Array.isArray(value) ? value.map(canonical3) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).filter((key) => value[key] !== void 0).sort().map((key) => [key, canonical3(value[key])])
+) : value;
+var hash2 = (value) => createHash13("sha256").update(JSON.stringify(canonical3(value))).digest("hex");
+var validSnapshot = (value) => value !== null && typeof value === "object" && value.schemaVersion === "1" && UUID2.test(value.namespaceId ?? "") && SAFE6.test(value.deliveryId ?? "") && SAFE6.test(value.workflowId ?? "") && UUID2.test(value.environmentId ?? "") && HASH2.test(value.environmentHash ?? "") && UUID2.test(value.parentCaseId ?? "") && SAFE6.test(value.runtimeId ?? "") && SHA3.test(value.baseCommit ?? "") && SHA3.test(value.headCommit ?? "") && Number.isSafeInteger(value.revision) && value.revision > 0;
+var SqlDeliveryRepositoryError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "SqlDeliveryRepositoryError";
+    this.code = code;
+    this.details = details;
+  }
+};
+var OPERATION_TERMINAL_STATES = ["succeeded", "failed"];
+var SqlDeliveryRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  #locks;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+    this.#locks = /* @__PURE__ */ new Map();
+  }
+  #assertScope(namespaceId, deliveryId) {
+    if (!UUID2.test(namespaceId ?? "") || !SAFE6.test(deliveryId ?? ""))
+      throw new SqlDeliveryRepositoryError("INVALID_DELIVERY_SCOPE");
+  }
+  #locked(namespaceId, deliveryId, action) {
+    const key = `${namespaceId}\0${deliveryId}`;
+    const prior = this.#locks.get(key) ?? Promise.resolve();
+    const operation = prior.then(action);
+    const tail = operation.catch(() => {
+    });
+    this.#locks.set(key, tail);
+    return operation.finally(() => {
+      if (this.#locks.get(key) === tail) this.#locks.delete(key);
+    });
+  }
+  async #read(client, namespaceId, deliveryId) {
+    this.#assertScope(namespaceId, deliveryId);
+    const { rows } = await client.query(
+      `SELECT * FROM deliveries
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND delivery_id = $4`,
+      [this.#organizationId, this.#workstreamId, namespaceId, deliveryId]
+    );
+    const row = rows[0];
+    if (!row) return null;
+    const snapshot = parseJsonColumn(row.payload);
+    if (!validSnapshot(snapshot) || snapshot.snapshotHash !== hash2({ ...snapshot, snapshotHash: void 0 }))
+      throw new SqlDeliveryRepositoryError("CORRUPT_DELIVERY_STORAGE");
+    return snapshot;
+  }
+  async #journal(client, namespaceId, deliveryId) {
+    this.#assertScope(namespaceId, deliveryId);
+    const { rows } = await client.query(
+      `SELECT * FROM delivery_journal
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND delivery_id = $4`,
+      [this.#organizationId, this.#workstreamId, namespaceId, deliveryId]
+    );
+    return rows.sort((left, right) => (left.record_sequence ?? 0) - (right.record_sequence ?? 0)).map((row) => parseJsonColumn(row.payload));
+  }
+  async #append(client, namespaceId, deliveryId, records) {
+    const { rows } = await client.query(
+      `SELECT record_sequence FROM delivery_journal
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND delivery_id = $4`,
+      [this.#organizationId, this.#workstreamId, namespaceId, deliveryId]
+    );
+    let sequence = rows.reduce((maximum, row) => Math.max(maximum, Number(row.record_sequence) || 0), 0) + 1;
+    for (const record2 of records) {
+      await client.query(
+        `INSERT INTO delivery_journal
+           (organization_id, workstream_id, namespace_id, delivery_id, record_sequence, record_id, record_type, payload, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          namespaceId,
+          deliveryId,
+          sequence,
+          `${deliveryId}:${sequence}`,
+          record2.recordType ?? null,
+          JSON.stringify(record2),
+          (/* @__PURE__ */ new Date()).toISOString()
+        ]
+      );
+      sequence++;
+    }
+  }
+  #projection(records) {
+    const history = records.filter((record2) => record2.recordType === "delivery-operation");
+    const current = /* @__PURE__ */ new Map();
+    const resolved = new Set(
+      history.filter((record2) => record2.resolvedOperationId && OPERATION_TERMINAL_STATES.includes(record2.state)).map((record2) => record2.resolvedOperationId)
+    );
+    for (const record2 of history) current.set(record2.operationId, record2);
+    const rollbackHistory = records.filter((record2) => record2.recordType === "rollback-request");
+    const rollbackCurrent = /* @__PURE__ */ new Map();
+    for (const record2 of rollbackHistory) rollbackCurrent.set(record2.rollbackRequestId, record2);
+    return {
+      history,
+      operations: [...current.values()],
+      rollbackRequests: [...rollbackCurrent.values()],
+      rollbackRequestHistory: rollbackHistory,
+      unresolvedIndeterminate: [...current.values()].filter(
+        (record2) => record2.state === "indeterminate" && !resolved.has(record2.operationId)
+      )
+    };
+  }
+  async #write(client, current, value, operationInput) {
+    const namespaceId = value.namespaceId;
+    const deliveryId = value.deliveryId;
+    const operationId = createHash13("sha256").update(`${namespaceId}:${deliveryId}:${operationInput.idempotencyKey}`).digest("hex");
+    const operation = {
+      schemaVersion: "1",
+      operationId,
+      deliveryId,
+      revision: (current?.revision ?? 0) + (current ? 1 : 0),
+      kind: operationInput.kind,
+      state: "pending",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ...operationInput.scopeHash ? { scopeHash: operationInput.scopeHash, semanticHash: operationInput.semanticHash } : {},
+      ...operationInput.evidenceIds ? { evidenceIds: [...operationInput.evidenceIds].sort() } : {}
+    };
+    const clean = { ...value };
+    delete clean.snapshotHash;
+    const snapshot = { ...clean, snapshotHash: hash2(clean) };
+    const running = { ...operation, state: "running", timestamp: (/* @__PURE__ */ new Date()).toISOString() };
+    const succeeded = {
+      ...operation,
+      state: "succeeded",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      resultHash: snapshot.snapshotHash
+    };
+    await this.#append(client, namespaceId, deliveryId, [
+      operation,
+      running,
+      succeeded
+    ]);
+    const observedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const payload = JSON.stringify(snapshot);
+    const updatedAt = typeof snapshot.updatedAt === "string" ? snapshot.updatedAt : observedAt;
+    if (current) {
+      const { rowCount } = await client.query(
+        `UPDATE deliveries
+           SET revision = $1, stage = $2, payload = $3::jsonb, updated_at = $4
+         WHERE organization_id = $5 AND workstream_id = $6 AND namespace_id = $7 AND delivery_id = $8`,
+        [
+          snapshot.revision,
+          snapshot.stage,
+          payload,
+          updatedAt,
+          this.#organizationId,
+          this.#workstreamId,
+          namespaceId,
+          deliveryId
+        ]
+      );
+      if (!rowCount) return { ok: false, error: { code: "REVISION_CONFLICT" } };
+    } else {
+      const createdAt = typeof snapshot.createdAt === "string" ? snapshot.createdAt : observedAt;
+      await client.query(
+        `INSERT INTO deliveries
+           (organization_id, workstream_id, namespace_id, delivery_id, revision, stage, payload, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)`,
+        [
+          this.#organizationId,
+          this.#workstreamId,
+          namespaceId,
+          deliveryId,
+          snapshot.revision,
+          snapshot.stage,
+          payload,
+          createdAt,
+          updatedAt
+        ]
+      );
+    }
+    return { ok: true, changed: true, idempotent: false, snapshot };
+  }
+  async read(namespaceId, deliveryId) {
+    return this.#read(this.#client, namespaceId, deliveryId);
+  }
+  async create(input) {
+    const namespaceId = input.namespaceId;
+    const deliveryId = input.deliveryId;
+    return this.#locked(
+      namespaceId,
+      deliveryId,
+      () => withTransaction(this.#client, async (tx) => {
+        const current = await this.#read(tx, namespaceId, deliveryId);
+        if (current)
+          return hash2({ ...current, snapshotHash: void 0 }) === hash2(input) ? { ok: true, changed: false, snapshot: current } : { ok: false, error: { code: "DELIVERY_IDENTITY_CONFLICT" } };
+        if (!validSnapshot(input)) return { ok: false, error: { code: "INVALID_DELIVERY_SNAPSHOT" } };
+        return this.#write(tx, null, input, {
+          kind: "delivery_created",
+          idempotencyKey: `create:${deliveryId}`
+        });
+      })
+    );
+  }
+  async promote({
+    namespaceId,
+    request,
+    definition,
+    evidence,
+    execution: execution2
+  }) {
+    return this.#locked(
+      namespaceId,
+      request.deliveryId,
+      () => withTransaction(this.#client, async (tx) => {
+        const current = await this.#read(tx, namespaceId, request.deliveryId);
+        const records = await this.#journal(tx, namespaceId, request.deliveryId);
+        const scopeHash = deliveryScopeHash(namespaceId, request, execution2);
+        const semanticHash2 = deliverySemanticHash(request);
+        const prior = records.find((item) => item.scopeHash === scopeHash && item.state === "succeeded");
+        if (prior) {
+          if (prior.semanticHash !== semanticHash2)
+            return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+          return { ok: true, changed: false, idempotent: true, snapshot: current };
+        }
+        const decision = evaluateDeliveryPromotion({ request, snapshot: current, definition, evidence, execution: execution2 });
+        if (!decision.allowed) return { ok: false, error: decision };
+        const next = applyDeliveryPromotion(current, request);
+        return this.#write(tx, current, next, {
+          kind: "delivery_promoted",
+          idempotencyKey: request.idempotencyKey,
+          scopeHash,
+          semanticHash: semanticHash2,
+          evidenceIds: request.evidenceIds
+        });
+      })
+    );
+  }
+  async readWithOperations(namespaceId, deliveryId) {
+    const snapshot = await this.#read(this.#client, namespaceId, deliveryId);
+    if (!snapshot) return null;
+    const projection = this.#projection(await this.#journal(this.#client, namespaceId, deliveryId));
+    return { ...snapshot, deliveryOperations: projection.operations, rollbackRequests: projection.rollbackRequests };
+  }
+  async inspectDeliveryOperations(namespaceId, deliveryId) {
+    return this.#projection(await this.#journal(this.#client, namespaceId, deliveryId));
+  }
+  async createRollbackRequest({
+    namespaceId,
+    deliveryId,
+    workflowId,
+    caseId,
+    runtimeId,
+    request,
+    execution: execution2
+  }) {
+    return this.#locked(
+      namespaceId,
+      deliveryId,
+      () => withTransaction(this.#client, async (tx) => {
+        const snapshot = await this.#read(tx, namespaceId, deliveryId);
+        if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+        if (snapshot.workflowId !== workflowId || snapshot.parentCaseId !== caseId || snapshot.runtimeId !== runtimeId)
+          return { ok: false, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
+        const projection = this.#projection(await this.#journal(tx, namespaceId, deliveryId));
+        const prior = projection.rollbackRequestHistory.find((record3) => record3.scopeHash === request.scopeHash);
+        if (prior)
+          return prior.semanticHash === request.semanticHash ? {
+            ok: true,
+            changed: false,
+            idempotent: true,
+            request: projection.rollbackRequests.find((item) => item.rollbackRequestId === prior.rollbackRequestId) ?? prior
+          } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        if (snapshot.revision !== request.expectedRevision)
+          return { ok: false, error: { code: "REVISION_CONFLICT" } };
+        const record2 = {
+          recordType: "rollback-request",
+          schemaVersion: "1",
+          rollbackRequestId: request.rollbackRequestId,
+          deliveryId,
+          workflowId,
+          namespaceId,
+          caseId,
+          runtimeId,
+          status: "requested",
+          expectedRevision: request.expectedRevision,
+          idempotencyKey: request.idempotencyKey,
+          scopeHash: request.scopeHash,
+          semanticHash: request.semanticHash,
+          targetId: request.targetId,
+          targetHash: request.targetHash,
+          deploymentRef: canonical3(request.deploymentRef),
+          priorArtifactRef: canonical3(request.priorArtifactRef),
+          priorReleaseRef: canonical3(request.priorReleaseRef),
+          reasonCode: request.reasonCode,
+          ...request.reason ? { reason: request.reason } : {},
+          requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          requestedBy: canonical3(execution2)
+        };
+        await this.#append(tx, namespaceId, deliveryId, [record2]);
+        return { ok: true, changed: true, idempotent: false, request: record2 };
+      })
+    );
+  }
+  async approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
+    return this.#locked(
+      namespaceId,
+      deliveryId,
+      () => withTransaction(this.#client, async (tx) => {
+        const snapshot = await this.#read(tx, namespaceId, deliveryId);
+        if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+        const projection = this.#projection(await this.#journal(tx, namespaceId, deliveryId));
+        const current = projection.rollbackRequests.find((item) => item.rollbackRequestId === rollbackRequestId);
+        if (!current) return { ok: false, error: { code: "ROLLBACK_REQUEST_NOT_FOUND" } };
+        const scopeHash = `sha256:${hash2({ rollbackRequestId, idempotencyKey: approval.idempotencyKey })}`;
+        const semanticHash2 = `sha256:${hash2({
+          rollbackRequestId,
+          expectedRevision: approval.expectedRevision,
+          actorId: approval.execution.actorId
+        })}`;
+        const prior = projection.rollbackRequestHistory.find((item) => item.approvalScopeHash === scopeHash);
+        if (prior)
+          return prior.approvalSemanticHash === semanticHash2 ? { ok: true, changed: false, idempotent: true, request: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        if (snapshot.revision !== approval.expectedRevision || current.expectedRevision !== approval.expectedRevision)
+          return { ok: false, error: { code: "REVISION_CONFLICT" } };
+        if (current.status !== "requested")
+          return { ok: false, error: { code: "ROLLBACK_REQUEST_ALREADY_DECIDED" } };
+        const record2 = {
+          ...current,
+          status: "approved",
+          approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
+          approvedBy: canonical3(approval.execution),
+          approvalScopeHash: scopeHash,
+          approvalSemanticHash: semanticHash2,
+          approvalIdempotencyKey: approval.idempotencyKey
+        };
+        await this.#append(tx, namespaceId, deliveryId, [record2]);
+        return { ok: true, changed: true, idempotent: false, request: record2 };
+      })
+    );
+  }
+  async createDeliveryOperation({
+    namespaceId,
+    workflowId,
+    deliveryId,
+    caseId,
+    runtimeId,
+    request,
+    targetRef,
+    execution: execution2
+  }) {
+    return this.#locked(
+      namespaceId,
+      deliveryId,
+      () => withTransaction(this.#client, async (tx) => {
+        const normalized = normalizeDeliveryOperationRequest(request);
+        if (!normalized.ok) return normalized;
+        const snapshot = await this.#read(tx, namespaceId, deliveryId);
+        if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+        const targetHash = targetRef?.targetHash;
+        const identity = deriveDeliveryOperationIdentity(
+          { namespaceId, workflowId, deliveryId, caseId, runtimeId },
+          normalized.value,
+          targetHash
+        );
+        if (!identity.ok) return identity;
+        const projection = this.#projection(await this.#journal(tx, namespaceId, deliveryId));
+        const existing = projection.history.find((record2) => record2.scopeHash === identity.value.scopeHash);
+        if (existing)
+          return existing.semanticHash === identity.value.semanticHash ? {
+            ok: true,
+            changed: false,
+            idempotent: true,
+            operation: projection.operations.find((record2) => record2.operationId === existing.operationId) ?? existing
+          } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        if (snapshot.revision !== normalized.value.expectedRevision)
+          return { ok: false, error: { code: "REVISION_CONFLICT" } };
+        if (projection.unresolvedIndeterminate.length)
+          return { ok: false, error: { code: "DELIVERY_OPERATION_INDETERMINATE" } };
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const source = normalized.value.artifactRef ?? normalized.value.priorArtifactRef;
+        const operation = {
+          recordType: "delivery-operation",
+          operationId: identity.value.operationId,
+          kind: normalized.value.kind,
+          expectedRevision: normalized.value.expectedRevision,
+          targetRef: canonical3(targetRef),
+          artifactRef: normalized.value.artifactRef ?? normalized.value.priorArtifactRef,
+          releaseRef: normalized.value.releaseRef ?? normalized.value.priorReleaseRef,
+          deploymentRef: normalized.value.deploymentRef,
+          rollbackRef: normalized.value.rollbackRef,
+          state: "pending",
+          attempt: 0,
+          requestedAt: now,
+          startedAt: void 0,
+          completedAt: void 0,
+          execution: canonical3(execution2),
+          adapterCorrelation: void 0,
+          scopeHash: identity.value.scopeHash,
+          semanticHash: identity.value.semanticHash,
+          result: void 0,
+          error: void 0,
+          resolvedOperationId: void 0,
+          sourceCommit: source?.sourceCommit,
+          artifactDigest: source?.digest,
+          rollbackRequestId: normalized.value.rollbackRequestId,
+          approvedEvidenceId: normalized.value.approvedEvidenceId
+        };
+        const persisted = Object.fromEntries(
+          Object.entries(operation).filter(([, value]) => value !== void 0)
+        );
+        const contract = validateDeliveryOperationRecord(persisted);
+        if (!contract.ok) return { ok: false, error: contract.error };
+        await this.#append(tx, namespaceId, deliveryId, [persisted]);
+        return { ok: true, changed: true, idempotent: false, operation: persisted };
+      })
+    );
+  }
+  async recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options = {}) {
+    return this.#locked(
+      namespaceId,
+      deliveryId,
+      () => withTransaction(this.#client, async (tx) => {
+        await this.#read(tx, namespaceId, deliveryId);
+        const projection = this.#projection(await this.#journal(tx, namespaceId, deliveryId));
+        const previous = projection.operations.find((record2) => record2.operationId === operationId);
+        if (!previous) return { ok: false, error: { code: "DELIVERY_OPERATION_NOT_FOUND" } };
+        const now = (/* @__PURE__ */ new Date()).toISOString();
+        const state = transition.state;
+        const next = {
+          ...previous,
+          state,
+          attempt: state === "running" ? previous.attempt + 1 : previous.attempt,
+          startedAt: state === "running" ? now : previous.startedAt,
+          completedAt: OPERATION_TERMINAL_STATES.includes(state) ? now : void 0,
+          adapterCorrelation: transition.adapterCorrelation ?? previous.adapterCorrelation,
+          result: transition.result,
+          error: transition.error,
+          resolvedOperationId: transition.resolvedOperationId
+        };
+        const clean = Object.fromEntries(
+          Object.entries(next).filter(([, value]) => value !== void 0)
+        );
+        const valid = validateDeliveryOperationTransition(previous, clean, options);
+        if (!valid.ok) return valid;
+        const contract = validateDeliveryOperationRecord(clean);
+        if (!contract.ok) return contract;
+        await this.#append(tx, namespaceId, deliveryId, [clean]);
+        return { ok: true, changed: true, operation: clean };
+      })
+    );
+  }
+  async startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation) {
+    return this.recordDeliveryOperation(namespaceId, deliveryId, operationId, {
+      state: "running",
+      adapterCorrelation
+    });
+  }
+  async reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation) {
+    return this.recordDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operationId,
+      {
+        state: observation.state,
+        result: observation.result,
+        error: observation.error,
+        adapterCorrelation: observation.adapterCorrelation,
+        resolvedOperationId: operationId
+      },
+      { inspectedObservation: { ...observation, operationId } }
+    );
+  }
+  /** Only an indeterminate logical operation without a later terminal reconciliation blocks. */
+  async hasIndeterminateOperation(namespaceId, deliveryId) {
+    try {
+      return (await this.inspectDeliveryOperations(namespaceId, deliveryId)).unresolvedIndeterminate.length > 0;
+    } catch {
+      return true;
+    }
+  }
+  /**
+   * Atomically patches specific fields in the delivery snapshot and appends a
+   * journal record. Supports dot-notation keys like `git.checkpoint` to set
+   * nested properties.
+   */
+  async updateSnapshot(namespaceId, deliveryId, patch, operationInput) {
+    return this.#locked(
+      namespaceId,
+      deliveryId,
+      () => withTransaction(this.#client, async (tx) => {
+        const current = await this.#read(tx, namespaceId, deliveryId);
+        if (!current) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+        const updated = { ...current };
+        for (const [key, value] of Object.entries(patch)) {
+          const parts = key.split(".");
+          if (parts.length === 1) {
+            updated[key] = value;
+          } else if (parts.length === 2) {
+            const head = parts[0];
+            const tail = parts[1];
+            updated[head] = { ...updated[head] ?? {}, [tail]: value };
+          } else {
+            updated[key] = value;
+          }
+        }
+        updated.updatedAt = patch.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
+        return this.#write(tx, current, updated, operationInput);
+      })
+    );
+  }
+};
+function createSqlDeliveryRepository(client, options = {}) {
+  return new SqlDeliveryRepository(client, options);
 }
 
 // ../src/application/shutdown.ts
@@ -2997,7 +5362,7 @@ function runAgentTurn(caseId, agentName, brief, options) {
 }
 
 // ../src/application/agent-attempt/factory-agent-step-executor.ts
-import { createHash as createHash7, randomUUID as randomUUID4 } from "node:crypto";
+import { createHash as createHash14, randomUUID as randomUUID8 } from "node:crypto";
 import { mkdir as mkdir2, open as open2, readFile as readFile2, rename as rename2, rm as rm2, stat } from "node:fs/promises";
 import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2 } from "node:path";
 var MAX_INLINE_ARTIFACT_BYTES = 256 * 1024;
@@ -3018,7 +5383,7 @@ function defaultAgentStepOperations() {
     runAgentTurn
   };
 }
-var artifactEvidenceIdempotencyKey = (attemptId, artifactPath) => `${attemptId}:artifact:${createHash7("sha256").update(String(artifactPath).split("\\").join("/")).digest("hex")}`;
+var artifactEvidenceIdempotencyKey = (attemptId, artifactPath) => `${attemptId}:artifact:${createHash14("sha256").update(String(artifactPath).split("\\").join("/")).digest("hex")}`;
 function extractSingleJsonObject(message) {
   const text2 = String(message ?? "").trim();
   const fence = [...text2.matchAll(/```json\s*([\s\S]*?)\s*```/gi)];
@@ -3145,7 +5510,7 @@ async function materializeInlineArtifact({
     if (error2?.code !== "ENOENT")
       return { ok: false, code: "ARTIFACT_MATERIALIZATION_FAILED" };
   }
-  const temporary = join5(directory, `.${stepId}.${randomUUID4()}.tmp`);
+  const temporary = join5(directory, `.${stepId}.${randomUUID8()}.tmp`);
   let handle = null;
   try {
     handle = await open2(temporary, "wx", 384);
@@ -3222,7 +5587,7 @@ async function executeAgentStepAttempt(input) {
       details: diagnostic(workspace.reason, "Workspace capability preflight failed.")
     };
   const attemptNumber = (await attemptStore.list(namespaceId, storageId)).filter((a) => a.stepId === input.stepId).reduce((n, a) => Math.max(n, a.attemptNumber), 0) + 1;
-  const attemptId = randomUUID4();
+  const attemptId = randomUUID8();
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
   const briefHash = sha256(brief);
   let attempt = {
@@ -3566,125 +5931,6 @@ function diffSnapshots(before, after) {
   return { modified, untracked };
 }
 
-// ../src/domain/oracle/oracle-definition.ts
-import { createHash as createHash8 } from "node:crypto";
-var SAFE2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var VERSION = /^\d+\.\d+\.\d+$/;
-var FIELDS2 = /* @__PURE__ */ new Set([
-  "schemaVersion",
-  "id",
-  "version",
-  "domain",
-  "argv",
-  "cwd",
-  "timeoutMs",
-  "success",
-  "applicable"
-]);
-var SUCCESS_FIELDS = /* @__PURE__ */ new Set(["rule", "requireWork"]);
-var APPLICABLE_FIELDS = /* @__PURE__ */ new Set(["workflowTypes", "stepIds"]);
-var SHELL_EXECUTABLES = /* @__PURE__ */ new Set([
-  "sh",
-  "bash",
-  "zsh",
-  "dash",
-  "ksh",
-  "cmd",
-  "cmd.exe",
-  "powershell",
-  "powershell.exe",
-  "pwsh",
-  "pwsh.exe"
-]);
-var SHELL_FLAGS = /* @__PURE__ */ new Set(["-c", "--command", "/c", "-command", "-encodedcommand"]);
-function invalid2() {
-  throw new Error("INVALID_ORACLE_DEFINITION");
-}
-function isRecord(value) {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function canonicalOracleDefinition(value) {
-  if (Array.isArray(value)) return value.map((entry) => canonicalOracleDefinition(entry));
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.keys(value).sort().map((key) => [key, canonicalOracleDefinition(value[key])])
-    );
-  }
-  return value;
-}
-function validateOracleDefinition(value) {
-  if (!isRecord(value)) invalid2();
-  const candidate = value;
-  if (Object.keys(candidate).some((key) => !FIELDS2.has(key))) invalid2();
-  if (candidate.schemaVersion !== "1" || !SAFE2.test(String(candidate.id ?? "")) || !VERSION.test(String(candidate.version ?? "")) || !SAFE2.test(String(candidate.domain ?? "")))
-    invalid2();
-  const argv = candidate.argv;
-  if (!Array.isArray(argv) || argv.length === 0 || argv.length > 32 || argv.some((entry) => typeof entry !== "string" || !entry || entry.length > 512 || /[\r\n\0]/.test(entry)))
-    invalid2();
-  const args = argv;
-  const executableRaw = args[0];
-  if (executableRaw === void 0) invalid2();
-  const executable = executableRaw.replace(/\\/g, "/").split("/").at(-1)?.toLowerCase();
-  if (executable === void 0 || SHELL_EXECUTABLES.has(executable) || args.some((arg, index) => index > 0 && SHELL_FLAGS.has(arg.toLowerCase())))
-    invalid2();
-  if (candidate.cwd !== "repo-root" || !Number.isSafeInteger(candidate.timeoutMs) || candidate.timeoutMs < 1 || candidate.timeoutMs > 36e5)
-    invalid2();
-  const success = candidate.success;
-  if (!isRecord(success) || Object.keys(success).some((key) => !SUCCESS_FIELDS.has(key)) || success.rule !== "exit-code" || typeof success.requireWork !== "boolean")
-    invalid2();
-  const applicable = candidate.applicable;
-  if (!isRecord(applicable) || Object.keys(applicable).some((key) => !APPLICABLE_FIELDS.has(key)) || !Array.isArray(applicable.workflowTypes) || applicable.workflowTypes.length === 0 || applicable.workflowTypes.some((entry) => !SAFE2.test(String(entry))) || !Array.isArray(applicable.stepIds) || applicable.stepIds.length === 0 || applicable.stepIds.some((entry) => !SAFE2.test(String(entry))))
-    invalid2();
-  return Object.freeze({
-    schemaVersion: "1",
-    id: candidate.id,
-    version: candidate.version,
-    domain: candidate.domain,
-    argv: Object.freeze([...args]),
-    cwd: "repo-root",
-    timeoutMs: candidate.timeoutMs,
-    success: Object.freeze({ rule: "exit-code", requireWork: success.requireWork }),
-    applicable: Object.freeze({
-      workflowTypes: Object.freeze([...applicable.workflowTypes]),
-      stepIds: Object.freeze([...applicable.stepIds])
-    })
-  });
-}
-function hashOracleDefinition(definition) {
-  return `sha256:${createHash8("sha256").update(JSON.stringify(canonicalOracleDefinition(definition))).digest("hex")}`;
-}
-function definitionIdentityFromFileName(fileName) {
-  const base = fileName.split(/[\\/]/).at(-1) ?? fileName;
-  return base.endsWith(".json") ? base.slice(0, -".json".length) : base;
-}
-var OracleDefinitionRegistryCore = class {
-  constructor(source) {
-    this.source = source;
-    this.items = /* @__PURE__ */ new Map();
-  }
-  items;
-  async initialize() {
-    const files = [...await this.source.listFiles()].filter((name) => name.endsWith(".json")).sort();
-    const next = /* @__PURE__ */ new Map();
-    for (const file of files) {
-      const definition = validateOracleDefinition(JSON.parse(await this.source.readFile(file)));
-      if (definitionIdentityFromFileName(file) !== `${definition.id}@${definition.version}`)
-        throw new Error("ORACLE_PATH_IDENTITY_MISMATCH");
-      if (next.has(definition.id)) throw new Error("DUPLICATE_ORACLE_ID");
-      next.set(definition.id, definition);
-    }
-    this.items = next;
-    return this;
-  }
-  /** Every loaded definition, in registry insertion order. */
-  list() {
-    return [...this.items.values()];
-  }
-  get(id2) {
-    return this.items.get(id2) ?? null;
-  }
-};
-
 // ../src/application/oracle/oracle-definition-registry.ts
 import { readFile as readFile3, readdir as readdir2 } from "node:fs/promises";
 import { join as join6 } from "node:path";
@@ -3883,7 +6129,7 @@ function buildOracleCommand(oracle, files, repoRoot) {
 
 // ../src/application/oracle/oracle-executor.ts
 import { spawn, spawnSync } from "node:child_process";
-import { createHash as createHash9 } from "node:crypto";
+import { createHash as createHash15 } from "node:crypto";
 import { readFileSync as readFileSync2 } from "node:fs";
 import { realpath } from "node:fs/promises";
 import { isAbsolute as isAbsolute3, join as join8 } from "node:path";
@@ -3917,7 +6163,7 @@ function runCommand(command, { cwd, timeoutMs } = {}) {
 }
 function contentFingerprint(cwd, relPath) {
   try {
-    return createHash9("sha256").update(readFileSync2(join8(cwd, relPath))).digest("hex");
+    return createHash15("sha256").update(readFileSync2(join8(cwd, relPath))).digest("hex");
   } catch {
     return "unreadable";
   }
@@ -3952,7 +6198,7 @@ async function validateOracleRoot(repoRoot) {
   return realpath(repoRoot);
 }
 function oracleRootIdentity(repoRoot) {
-  return `sha256:${createHash9("sha256").update(repoRoot).digest("hex")}`;
+  return `sha256:${createHash15("sha256").update(repoRoot).digest("hex")}`;
 }
 function processEnvironment(source = process.env) {
   const env = {};
@@ -4025,7 +6271,7 @@ ${err.excerpt}`);
 }
 function oracleArtifact(result) {
   const raw = JSON.stringify({ stdout: result.stdout.excerpt, stderr: result.stderr.excerpt });
-  return { raw, hash: `sha256:${createHash9("sha256").update(raw).digest("hex")}` };
+  return { raw, hash: `sha256:${createHash15("sha256").update(raw).digest("hex")}` };
 }
 
 // ../src/application/oracle/oracle-baseline.ts
@@ -4364,7 +6610,7 @@ function buildQuarantineRecord(params) {
 }
 
 // ../src/adapters/persistence/work-unit-environment-store.ts
-import { createHash as createHash10, randomBytes as randomBytes4 } from "node:crypto";
+import { createHash as createHash16, randomBytes as randomBytes5 } from "node:crypto";
 import { appendFile as appendFile2, lstat, mkdir as mkdir3, open as open3, readFile as readFile4, readdir as readdir3, realpath as realpath2, rename as rename3, rm as rm3 } from "node:fs/promises";
 import { dirname as dirname4, isAbsolute as isAbsolute4, join as join9, relative as relative2, sep } from "node:path";
 var ENVIRONMENT_STORE_ERROR_CODES = Object.freeze({
@@ -4385,8 +6631,8 @@ var WorkUnitEnvironmentStoreError = class extends Error {
     this.details = details;
   }
 };
-var digest = (value) => createHash10("sha256").update(value).digest("hex");
-var snapshotHash = (e) => digest(JSON.stringify(e, Object.keys(e).sort()));
+var digest2 = (value) => createHash16("sha256").update(value).digest("hex");
+var snapshotHash2 = (e) => digest2(JSON.stringify(e, Object.keys(e).sort()));
 var contained = (root, path) => {
   const r = relative2(root, path);
   return r !== "" && !r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute4(r);
@@ -4401,7 +6647,7 @@ async function syncDir(p) {
 }
 async function atomic(p, v) {
   await mkdir3(dirname4(p), { recursive: true });
-  const t = `${p}.tmp-${process.pid}-${randomBytes4(6).toString("hex")}`;
+  const t = `${p}.tmp-${process.pid}-${randomBytes5(6).toString("hex")}`;
   const h = await open3(t, "wx", 384);
   try {
     await h.writeFile(`${JSON.stringify(v)}
@@ -4457,8 +6703,8 @@ var WorkUnitEnvironmentStore = class {
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
         artifact: "unsafe_path"
       });
-    const canonical5 = await realpath2(path);
-    if (path !== this.root && !contained(this.root, canonical5))
+    const canonical6 = await realpath2(path);
+    if (path !== this.root && !contained(this.root, canonical6))
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
         artifact: "path_escape"
       });
@@ -4479,7 +6725,7 @@ var WorkUnitEnvironmentStore = class {
     this._namespace(ns);
     if (!this.root || typeof id2 !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id2))
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
-    const directory = join9(this.root, ns, digest(`${ns}:${id2}`));
+    const directory = join9(this.root, ns, digest2(`${ns}:${id2}`));
     if (!contained(this.root, directory))
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
     return {
@@ -4512,7 +6758,7 @@ var WorkUnitEnvironmentStore = class {
   async _recover(p, ns, id2) {
     const q = await this._json(p.pending);
     if (!q) return;
-    const valid = q && Number.isSafeInteger(q.revision) && q.revision > 0 && q.environment?.namespaceId === ns && q.environment?.environmentId === id2 && validateWorkUnitEnvironment(q.environment).ok && q.environmentHash === snapshotHash(q.environment);
+    const valid = q && Number.isSafeInteger(q.revision) && q.revision > 0 && q.environment?.namespaceId === ns && q.environment?.environmentId === id2 && validateWorkUnitEnvironment(q.environment).ok && q.environmentHash === snapshotHash2(q.environment);
     if (!valid)
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "pending" });
     let facts;
@@ -4536,7 +6782,7 @@ var WorkUnitEnvironmentStore = class {
     await this._recover(p, ns, id2);
     const s = await this._json(p.snapshot);
     if (!s) return null;
-    if (!Number.isSafeInteger(s.revision) || s.environmentHash !== snapshotHash(s.environment) || !validateWorkUnitEnvironment(s.environment).ok)
+    if (!Number.isSafeInteger(s.revision) || s.environmentHash !== snapshotHash2(s.environment) || !validateWorkUnitEnvironment(s.environment).ok)
       throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE);
     return s;
   }
@@ -4625,7 +6871,7 @@ var WorkUnitEnvironmentStore = class {
     const p = this.paths(e.namespaceId, e.environmentId);
     await this._guard(p);
     const revision = (c?.revision ?? 0) + 1;
-    const environmentHash = snapshotHash(e);
+    const environmentHash = snapshotHash2(e);
     const s = { revision, environmentHash, environment: e };
     await mkdir3(p.directory, { recursive: true });
     await this._guard(p, { environmentMayBeMissing: false });
@@ -4649,7 +6895,7 @@ var WorkUnitEnvironmentStore = class {
 };
 
 // ../src/application/environment/work-unit-environment-service.ts
-import { randomUUID as randomUUID5 } from "node:crypto";
+import { randomUUID as randomUUID9 } from "node:crypto";
 var machine = (e) => {
   const code = e?.code;
   return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "GIT_FAILED";
@@ -4666,7 +6912,7 @@ var WorkUnitEnvironmentService = class {
     store,
     git,
     clock = () => /* @__PURE__ */ new Date(),
-    idGenerator = () => randomUUID5(),
+    idGenerator = () => randomUUID9(),
     fault = async () => {
     }
   }) {
@@ -4822,9 +7068,9 @@ var WorkUnitEnvironmentService = class {
 };
 
 // ../src/application/environment/work-unit-environment-controller.ts
-var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-var SAFE3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var ALLOWED = /* @__PURE__ */ new Set(["workflowId", "workUnitId", "integrationBranch", "branch"]);
+var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var ALLOWED2 = /* @__PURE__ */ new Set(["workflowId", "workUnitId", "integrationBranch", "branch"]);
 var error = (send, status, code, message) => send(status, { error: { code, message } });
 var publicEnvironment = (result) => {
   const bound = result.snapshot.environment.lifecycleState === "active" && result.reconciliation?.status === "owned";
@@ -4868,10 +7114,10 @@ var WorkUnitEnvironmentController = class {
     createdBy,
     body
   }) {
-    if (!UUID2.test(namespaceId ?? "") || !UUID2.test(caseId ?? "") || !SAFE3.test(createdBy ?? ""))
+    if (!UUID3.test(namespaceId ?? "") || !UUID3.test(caseId ?? "") || !SAFE7.test(createdBy ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_TRUST_CONTEXT" } };
     const requestBody = body ?? {};
-    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(requestBody).some((key) => !ALLOWED.has(key)) || !SAFE3.test(requestBody.workflowId ?? "") || !SAFE3.test(requestBody.workUnitId ?? ""))
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(requestBody).some((key) => !ALLOWED2.has(key)) || !SAFE7.test(requestBody.workflowId ?? "") || !SAFE7.test(requestBody.workUnitId ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_ENVIRONMENT_REQUEST" } };
     const roots = await this.policy.resolve(namespaceId, requestBody);
     if (!roots?.repoRoot || !roots?.worktreePath)
@@ -4906,7 +7152,7 @@ var WorkUnitEnvironmentController = class {
     return { ok: true, status: result.changed ? 201 : 200, data: publicEnvironment(inspected) };
   }
   async get(namespaceId, workflowId) {
-    if (!UUID2.test(namespaceId ?? "") || !SAFE3.test(workflowId ?? ""))
+    if (!UUID3.test(namespaceId ?? "") || !SAFE7.test(workflowId ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_LOOKUP" } };
     const workflow = await this.workflowStore?.read(namespaceId, workflowId);
     const ref2 = workflow?.instance?.environmentRef;
@@ -5020,437 +7266,6 @@ async function handleWorkUnitEnvironmentRequest({
   }
 }
 
-// ../src/domain/delivery/delivery-definition.ts
-import { createHash as createHash11 } from "node:crypto";
-var DELIVERY_DEFINITION_SCHEMA_VERSION = "1";
-var DELIVERY_STAGES = Object.freeze([
-  "implementation-ready",
-  "artifact-ready",
-  "release-approved",
-  "deployed",
-  "production-verified"
-]);
-var DELIVERY_EVIDENCE_KINDS = Object.freeze([
-  "implementation-result",
-  "artifact",
-  "oracle-result",
-  "human-decision",
-  "deployment-result",
-  "smoke-result",
-  "rollback-result"
-]);
-var SAFE4 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var SEMVER2 = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
-var TOP = /* @__PURE__ */ new Set([
-  "schemaVersion",
-  "deliveryType",
-  "version",
-  "title",
-  "checkpoints",
-  "artifactPolicy",
-  "promotionPolicy",
-  "deploymentPolicy",
-  "retentionPolicy"
-]);
-var CHECKPOINT = /* @__PURE__ */ new Set(["stage", "responsibility", "requiredEvidence"]);
-var RESPONSIBILITY = /* @__PURE__ */ new Set(["kind", "name"]);
-var EVIDENCE = /* @__PURE__ */ new Set(["kind", "outcome", "oracleId"]);
-var fail2 = (path, reason = "invalid_value") => ({
-  ok: false,
-  error: { code: "INVALID_DELIVERY_DEFINITION", path, reason }
-});
-var canonical = (value) => Array.isArray(value) ? value.map(canonical) : value && typeof value === "object" ? Object.fromEntries(
-  Object.keys(value).sort().map((key) => [key, canonical(value[key])])
-) : value;
-function validateDeliveryDefinition(input) {
-  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !TOP.has(key)))
-    return fail2("$");
-  const candidate = input;
-  if (candidate.schemaVersion !== DELIVERY_DEFINITION_SCHEMA_VERSION) return fail2("schemaVersion");
-  if (!SAFE4.test(candidate.deliveryType ?? "") || !SEMVER2.test(candidate.version ?? "") || typeof candidate.title !== "string" || !candidate.title.trim() || candidate.title.length > 256)
-    return fail2("$");
-  if (!Array.isArray(candidate.checkpoints) || candidate.checkpoints.length !== DELIVERY_STAGES.length)
-    return fail2("checkpoints");
-  const checkpoints = [];
-  for (let index = 0; index < candidate.checkpoints.length; index++) {
-    const raw = candidate.checkpoints[index];
-    if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((key) => !CHECKPOINT.has(key)) || raw.stage !== DELIVERY_STAGES[index])
-      return fail2(`checkpoints[${index}]`);
-    const responsibility = raw.responsibility;
-    if (!responsibility || Object.keys(responsibility).some((key) => !RESPONSIBILITY.has(key)) || !["code", "human"].includes(responsibility.kind) || !SAFE4.test(responsibility.name ?? ""))
-      return fail2(`checkpoints[${index}].responsibility`);
-    if (raw.stage === "release-approved" && responsibility.kind !== "human")
-      return fail2(`checkpoints[${index}].responsibility`, "release_requires_human");
-    if (raw.stage !== "release-approved" && responsibility.kind !== "code")
-      return fail2(`checkpoints[${index}].responsibility`, "factory_code_required");
-    if (!Array.isArray(raw.requiredEvidence) || raw.requiredEvidence.length === 0 || raw.requiredEvidence.length > 16)
-      return fail2(`checkpoints[${index}].requiredEvidence`);
-    const requiredEvidence = [];
-    for (let evidenceIndex = 0; evidenceIndex < raw.requiredEvidence.length; evidenceIndex++) {
-      const item = raw.requiredEvidence[evidenceIndex];
-      if (!item || typeof item !== "object" || Array.isArray(item) || Object.keys(item).some((key) => !EVIDENCE.has(key)) || !DELIVERY_EVIDENCE_KINDS.includes(item.kind) || !["pass", "fail", "indeterminate", "approved", "rejected"].includes(item.outcome))
-        return fail2(`checkpoints[${index}].requiredEvidence[${evidenceIndex}]`);
-      if (item.oracleId !== void 0 && !SAFE4.test(item.oracleId))
-        return fail2(`checkpoints[${index}].requiredEvidence[${evidenceIndex}].oracleId`);
-      requiredEvidence.push({
-        kind: item.kind,
-        outcome: item.outcome,
-        ...item.oracleId ? { oracleId: item.oracleId } : {}
-      });
-    }
-    checkpoints.push({
-      stage: raw.stage,
-      responsibility: { ...responsibility },
-      requiredEvidence
-    });
-  }
-  for (const [field, maximum] of [
-    ["artifactPolicy", 32],
-    ["promotionPolicy", 32],
-    ["deploymentPolicy", 32],
-    ["retentionPolicy", 16]
-  ]) {
-    const value = candidate[field];
-    if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).length === 0 || Object.keys(value).length > maximum)
-      return fail2(field);
-  }
-  return { ok: true, definition: canonical({ ...candidate, checkpoints }) };
-}
-function hashDeliveryDefinition(definition) {
-  return createHash11("sha256").update(JSON.stringify(canonical(definition))).digest("hex");
-}
-function defaultDeliveryDefinition() {
-  return {
-    schemaVersion: "1",
-    deliveryType: "factory-delivery",
-    version: "1.0.0",
-    title: "Governed Factory delivery",
-    checkpoints: [
-      {
-        stage: "implementation-ready",
-        responsibility: { kind: "code", name: "implementation-policy" },
-        requiredEvidence: [{ kind: "implementation-result", outcome: "pass" }]
-      },
-      {
-        stage: "artifact-ready",
-        responsibility: { kind: "code", name: "artifact-oracle" },
-        requiredEvidence: [
-          { kind: "artifact", outcome: "pass" },
-          { kind: "oracle-result", outcome: "pass" }
-        ]
-      },
-      {
-        stage: "release-approved",
-        responsibility: { kind: "human", name: "release-approver" },
-        requiredEvidence: [{ kind: "human-decision", outcome: "approved" }]
-      },
-      {
-        stage: "deployed",
-        responsibility: { kind: "code", name: "deployment-control-plane" },
-        requiredEvidence: [{ kind: "deployment-result", outcome: "pass" }]
-      },
-      {
-        stage: "production-verified",
-        responsibility: { kind: "code", name: "production-smoke" },
-        requiredEvidence: [{ kind: "smoke-result", outcome: "pass" }]
-      }
-    ],
-    artifactPolicy: { requireBuildAndTests: true, extensibleChecks: "sast sca secrets sbom signature provenance" },
-    promotionPolicy: { ordered: true, automaticMerge: false, requireFactoryEvidence: true },
-    deploymentPolicy: { environmentsFromTrustedConfiguration: true, requireRollbackCapability: true },
-    retentionPolicy: { deleteWorktreeBeforeProductionVerified: false }
-  };
-}
-
-// ../src/domain/delivery/delivery-policy.ts
-import { createHash as createHash12, randomUUID as randomUUID6 } from "node:crypto";
-var DELIVERY_INITIAL_STAGE = "implementation-ready";
-var SAFE5 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var FIELDS3 = /* @__PURE__ */ new Set(["deliveryId", "expectedRevision", "requestedStage", "evidenceIds", "idempotencyKey"]);
-var deny2 = (code, reason) => ({ allowed: false, code, reason });
-var hash = (value) => createHash12("sha256").update(JSON.stringify(value)).digest("hex");
-function validateDeliveryPromotionRequest(input, expectedDeliveryId) {
-  if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).some((key) => !FIELDS3.has(key)))
-    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
-  const candidate = input;
-  if (candidate.deliveryId !== expectedDeliveryId || !SAFE5.test(candidate.deliveryId ?? "") || !Number.isSafeInteger(candidate.expectedRevision) || candidate.expectedRevision < 1 || !DELIVERY_STAGES.includes(candidate.requestedStage))
-    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
-  if (!Array.isArray(candidate.evidenceIds) || candidate.evidenceIds.length > 100 || new Set(candidate.evidenceIds).size !== candidate.evidenceIds.length || candidate.evidenceIds.some((id2) => !SAFE5.test(id2 ?? "")))
-    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
-  if (typeof candidate.idempotencyKey !== "string" || !candidate.idempotencyKey || candidate.idempotencyKey.length > 128 || /[\r\n]/.test(candidate.idempotencyKey))
-    return { ok: false, error: { code: "INVALID_DELIVERY_REQUEST" } };
-  return {
-    ok: true,
-    value: {
-      requestId: randomUUID6(),
-      deliveryId: candidate.deliveryId,
-      expectedRevision: candidate.expectedRevision,
-      requestedStage: candidate.requestedStage,
-      evidenceIds: [...candidate.evidenceIds],
-      idempotencyKey: candidate.idempotencyKey
-    }
-  };
-}
-var deliveryScopeHash = (namespaceId, request, execution2) => hash({
-  namespaceId,
-  deliveryId: request.deliveryId,
-  caseId: execution2.caseId,
-  runtimeId: execution2.runtimeId,
-  idempotencyKey: request.idempotencyKey
-});
-var deliverySemanticHash = (request) => hash({
-  deliveryId: request.deliveryId,
-  expectedRevision: request.expectedRevision,
-  requestedStage: request.requestedStage,
-  evidenceIds: [...request.evidenceIds].sort()
-});
-function evaluateDeliveryPromotion({
-  request,
-  snapshot,
-  definition,
-  evidence,
-  execution: execution2
-}) {
-  if (!snapshot) return deny2("DELIVERY_NOT_FOUND", "delivery_not_found");
-  if (snapshot.revision !== request.expectedRevision) return deny2("REVISION_CONFLICT", "stale_delivery_revision");
-  if (snapshot.namespaceId !== execution2.namespaceId || snapshot.workflowId !== execution2.workflowId || snapshot.parentCaseId !== execution2.caseId)
-    return deny2("DELIVERY_SCOPE_MISMATCH", "controlling_execution_mismatch");
-  if (snapshot.definitionHash !== definition.definitionHash)
-    return deny2("DELIVERY_DEFINITION_MISMATCH", "definition_identity_mismatch");
-  const currentIndex = DELIVERY_STAGES.indexOf(snapshot.stage), requestedIndex = DELIVERY_STAGES.indexOf(request.requestedStage);
-  if (requestedIndex !== currentIndex + 1) return deny2("ILLEGAL_PROMOTION", "ordered_promotion_required");
-  const checkpoint = definition.checkpoints.find((item) => item.stage === request.requestedStage);
-  if (!checkpoint) return deny2("DELIVERY_DEFINITION_MISMATCH", "checkpoint_missing");
-  const isHuman = checkpoint.responsibility.kind === "human";
-  if (isHuman ? !(execution2.kind === "factory-human" && execution2.actorId && execution2.runtimeId === "factory-dashboard") : !(execution2.kind === "factory-control-plane" && execution2.runtimeId === "factory-dashboard"))
-    return deny2("ACTOR_NOT_AUTHORIZED", "factory_responsibility_required");
-  const selected = [];
-  for (const id2 of request.evidenceIds) {
-    const item = evidence.find((candidate) => candidate.evidenceId === id2);
-    if (!item) return deny2("EVIDENCE_NOT_FOUND", "evidence_not_found");
-    if (item.namespaceId !== snapshot.namespaceId || item.workflowId !== snapshot.workflowId || item.deliveryId !== snapshot.deliveryId || item.environmentHash !== snapshot.environmentHash || item.caseId !== snapshot.parentCaseId || item.headCommit !== snapshot.headCommit)
-      return deny2("EVIDENCE_SCOPE_MISMATCH", "bounded_fact_mismatch");
-    selected.push(item);
-  }
-  for (const requirement of checkpoint.requiredEvidence) {
-    const match2 = selected.find(
-      (item) => item.kind === requirement.kind && item.outcome === requirement.outcome && (!requirement.oracleId || item.oracleId === requirement.oracleId) && item.source?.kind !== "agent"
-    );
-    if (!match2) return deny2("PASS_EVIDENCE_REQUIRED", `${requirement.kind}:${requirement.outcome}`);
-  }
-  if (request.requestedStage === "release-approved" && !selected.some(
-    (item) => item.kind === "human-decision" && item.outcome === "approved" && item.source?.kind === "factory-human"
-  ))
-    return deny2("HUMAN_APPROVAL_REQUIRED", "release_approval_missing");
-  if (request.requestedStage === "deployed" && currentIndex < DELIVERY_STAGES.indexOf("release-approved"))
-    return deny2("RELEASE_NOT_APPROVED", "release_approval_missing");
-  if (request.requestedStage === "production-verified" && !selected.some((item) => item.kind === "smoke-result" && item.outcome === "pass"))
-    return deny2("SMOKE_PASS_REQUIRED", "production_smoke_missing");
-  return { allowed: true };
-}
-function applyDeliveryPromotion(snapshot, request, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
-  return {
-    ...snapshot,
-    stage: request.requestedStage,
-    revision: snapshot.revision + 1,
-    updatedAt: observedAt,
-    evidenceIds: [.../* @__PURE__ */ new Set([...snapshot.evidenceIds ?? [], ...request.evidenceIds])]
-  };
-}
-
-// ../src/domain/delivery/delivery-operation-definition.ts
-import { createHash as createHash13 } from "node:crypto";
-var DELIVERY_OPERATION_KINDS = Object.freeze([
-  "deployment",
-  "production-verification",
-  "rollback",
-  "rollback-verification"
-]);
-var DELIVERY_OPERATION_STATES = Object.freeze(["pending", "running", "succeeded", "failed", "indeterminate"]);
-var DELIVERY_OPERATION_ERROR_CODES = Object.freeze({
-  INVALID_REQUEST: "INVALID_DELIVERY_OPERATION_REQUEST",
-  INVALID_RECORD: "INVALID_DELIVERY_OPERATION_RECORD",
-  INVALID_TRANSITION: "INVALID_DELIVERY_OPERATION_TRANSITION",
-  RECONCILIATION_REQUIRED: "DELIVERY_OPERATION_RECONCILIATION_REQUIRED"
-});
-var SAFE6 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var SHA2 = /^[0-9a-f]{40}$/i;
-var DIGEST = /^sha256:[0-9a-f]{64}$/i;
-var MEDIA = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-]{0,63}$/i;
-var canonical2 = (value) => Array.isArray(value) ? value.map(canonical2) : value && typeof value === "object" ? Object.fromEntries(
-  Object.keys(value).sort().map((k) => [k, canonical2(value[k])])
-) : value;
-var canonicalDeliveryHash = (value) => `sha256:${createHash13("sha256").update(JSON.stringify(canonical2(value))).digest("hex")}`;
-var fail3 = (path, reason = "invalid_value") => ({
-  ok: false,
-  error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_REQUEST, path, reason }
-});
-var exact = (v, fields) => v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).every((k) => fields.includes(k));
-var id = (v) => typeof v === "string" && SAFE6.test(v);
-var digest2 = (v) => typeof v === "string" && DIGEST.test(v);
-var sha = (v) => typeof v === "string" && SHA2.test(v);
-function artifact(v, path = "artifactRef") {
-  if (!exact(v, ["digest", "mediaType", "producerRef", "buildRef", "sourceCommit"]) || !digest2(v.digest) || !MEDIA.test(v.mediaType ?? "") || !id(v.producerRef) || !id(v.buildRef) || !sha(v.sourceCommit))
-    return fail3(path);
-  return {
-    ok: true,
-    value: Object.freeze({
-      ...v,
-      digest: v.digest.toLowerCase(),
-      sourceCommit: v.sourceCommit.toLowerCase()
-    })
-  };
-}
-function release(v, path = "releaseRef") {
-  if (!exact(v, ["releaseId", "artifactDigest", "sourceCommit", "approvedEvidenceId"]) || !id(v.releaseId) || !digest2(v.artifactDigest) || !sha(v.sourceCommit) || !id(v.approvedEvidenceId))
-    return fail3(path);
-  return {
-    ok: true,
-    value: Object.freeze({
-      ...v,
-      artifactDigest: v.artifactDigest.toLowerCase(),
-      sourceCommit: v.sourceCommit.toLowerCase()
-    })
-  };
-}
-function operationRef(v, path, kind) {
-  if (!exact(v, ["operationId", "kind", "state", "targetHash", "sourceCommit", "artifactDigest"]) || !id(v.operationId) || v.kind !== kind || v.state !== "succeeded" || !digest2(v.targetHash) || !sha(v.sourceCommit) || !digest2(v.artifactDigest))
-    return fail3(path);
-  return {
-    ok: true,
-    value: Object.freeze({
-      ...v,
-      targetHash: v.targetHash.toLowerCase(),
-      sourceCommit: v.sourceCommit.toLowerCase(),
-      artifactDigest: v.artifactDigest.toLowerCase()
-    })
-  };
-}
-var BASE = ["kind", "expectedRevision", "idempotencyKey", "targetId"];
-var SPEC = {
-  deployment: ["artifactRef", "releaseRef"],
-  "production-verification": ["deploymentRef"],
-  rollback: ["deploymentRef", "priorArtifactRef", "priorReleaseRef", "rollbackRequestId", "approvedEvidenceId"],
-  "rollback-verification": ["rollbackRef"]
-};
-function normalizeDeliveryOperationRequest(input) {
-  const candidate = input;
-  if (!candidate || !DELIVERY_OPERATION_KINDS.includes(candidate.kind) || !exact(candidate, [...BASE, ...SPEC[candidate.kind]]))
-    return fail3("$", "unknown_or_missing_field");
-  if (!Number.isSafeInteger(candidate.expectedRevision) || candidate.expectedRevision < 1 || !id(candidate.idempotencyKey) || !id(candidate.targetId))
-    return fail3("$");
-  const out = {
-    kind: candidate.kind,
-    expectedRevision: candidate.expectedRevision,
-    idempotencyKey: candidate.idempotencyKey,
-    targetId: candidate.targetId
-  };
-  if (candidate.kind === "deployment") {
-    const a = artifact(candidate.artifactRef), r = release(candidate.releaseRef);
-    if (!a.ok) return a;
-    if (!r.ok) return r;
-    if (a.value.digest !== r.value.artifactDigest || a.value.sourceCommit !== r.value.sourceCommit)
-      return fail3("releaseRef", "artifact_identity_mismatch");
-    Object.assign(out, { artifactRef: a.value, releaseRef: r.value });
-  }
-  if (candidate.kind === "production-verification") {
-    const d = operationRef(candidate.deploymentRef, "deploymentRef", "deployment");
-    if (!d.ok) return d;
-    out.deploymentRef = d.value;
-  }
-  if (candidate.kind === "rollback") {
-    const d = operationRef(candidate.deploymentRef, "deploymentRef", "deployment"), a = artifact(candidate.priorArtifactRef, "priorArtifactRef"), r = release(candidate.priorReleaseRef, "priorReleaseRef");
-    if (!d.ok) return d;
-    if (!a.ok) return a;
-    if (!r.ok) return r;
-    if (!id(candidate.rollbackRequestId) || !id(candidate.approvedEvidenceId) || a.value.digest !== r.value.artifactDigest || a.value.sourceCommit !== r.value.sourceCommit)
-      return fail3("$", "rollback_identity_mismatch");
-    Object.assign(out, {
-      deploymentRef: d.value,
-      priorArtifactRef: a.value,
-      priorReleaseRef: r.value,
-      rollbackRequestId: candidate.rollbackRequestId,
-      approvedEvidenceId: candidate.approvedEvidenceId
-    });
-  }
-  if (candidate.kind === "rollback-verification") {
-    const r = operationRef(candidate.rollbackRef, "rollbackRef", "rollback");
-    if (!r.ok) return r;
-    out.rollbackRef = r.value;
-  }
-  return { ok: true, value: Object.freeze(out) };
-}
-function deriveDeliveryOperationIdentity({ namespaceId, workflowId, deliveryId, caseId, runtimeId }, request, targetHash) {
-  for (const v of [namespaceId, workflowId, deliveryId, caseId, runtimeId]) if (!id(v)) return fail3("scope");
-  if (!digest2(targetHash)) return fail3("targetHash");
-  const scopeHash = canonicalDeliveryHash({
-    namespaceId,
-    workflowId,
-    deliveryId,
-    caseId,
-    runtimeId,
-    idempotencyKey: request.idempotencyKey
-  });
-  const semanticHash = canonicalDeliveryHash({
-    kind: request.kind,
-    expectedRevision: request.expectedRevision,
-    targetHash,
-    ...Object.fromEntries(
-      Object.entries(request).filter(([k]) => /Ref$/.test(k) || ["rollbackRequestId", "approvedEvidenceId"].includes(k))
-    )
-  });
-  return { ok: true, value: { operationId: `dop_${scopeHash.slice(7, 39)}`, scopeHash, semanticHash } };
-}
-var ALLOWED2 = {
-  pending: ["running", "failed"],
-  running: ["succeeded", "failed", "indeterminate"],
-  indeterminate: ["succeeded", "failed"],
-  succeeded: [],
-  failed: []
-};
-function validateDeliveryOperationTransition(previous, next, { inspectedObservation } = {}) {
-  if (!previous || !next || previous.operationId !== next.operationId || !DELIVERY_OPERATION_STATES.includes(previous.state) || !ALLOWED2[previous.state]?.includes(next.state))
-    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_TRANSITION } };
-  if (previous.state === "indeterminate" && (!inspectedObservation || inspectedObservation.operationId !== previous.operationId || inspectedObservation.state !== next.state || !["succeeded", "failed"].includes(next.state) || next.resolvedOperationId !== previous.operationId))
-    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.RECONCILIATION_REQUIRED } };
-  return { ok: true };
-}
-function validateDeliveryOperationRecord(v) {
-  const fields = [
-    "recordType",
-    "operationId",
-    "kind",
-    "expectedRevision",
-    "targetRef",
-    "artifactRef",
-    "releaseRef",
-    "deploymentRef",
-    "rollbackRef",
-    "state",
-    "attempt",
-    "requestedAt",
-    "startedAt",
-    "completedAt",
-    "execution",
-    "adapterCorrelation",
-    "scopeHash",
-    "semanticHash",
-    "result",
-    "error",
-    "resolvedOperationId",
-    "sourceCommit",
-    "artifactDigest",
-    "rollbackRequestId",
-    "approvedEvidenceId"
-  ];
-  if (!exact(v, fields) || v.recordType !== "delivery-operation" || !id(v.operationId) || !DELIVERY_OPERATION_KINDS.includes(v.kind) || !DELIVERY_OPERATION_STATES.includes(v.state) || !Number.isSafeInteger(v.expectedRevision) || !Number.isSafeInteger(v.attempt) || v.attempt < 0 || !digest2(v.scopeHash) || !digest2(v.semanticHash))
-    return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD } };
-  for (const key of ["requestedAt", "startedAt", "completedAt"])
-    if (v[key] !== void 0 && (!Number.isFinite(Date.parse(v[key])) || new Date(Date.parse(v[key])).toISOString() !== v[key]))
-      return { ok: false, error: { code: DELIVERY_OPERATION_ERROR_CODES.INVALID_RECORD, path: key } };
-  return { ok: true, value: Object.freeze({ ...v }) };
-}
-
 // ../src/domain/delivery/delivery-operation-policy.ts
 var deny3 = (code, reason) => ({ allowed: false, code, reason });
 var pass = () => ({ allowed: true });
@@ -5519,17 +7334,17 @@ function resolveDeliveryVerificationRequest(request, target) {
 }
 
 // ../src/adapters/persistence/delivery-store.ts
-import { createHash as createHash14, randomBytes as randomBytes5 } from "node:crypto";
+import { createHash as createHash17, randomBytes as randomBytes6 } from "node:crypto";
 import { appendFile as appendFile3, mkdir as mkdir4, open as open4, readFile as readFile5, rename as rename4, rm as rm4 } from "node:fs/promises";
 import { dirname as dirname5, isAbsolute as isAbsolute5, join as join10 } from "node:path";
-var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-var SAFE7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var SHA3 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
-var HASH2 = /^sha256:[0-9a-f]{64}$/;
-var canonical3 = (value) => Array.isArray(value) ? value.map(canonical3) : value && typeof value === "object" ? Object.fromEntries(
-  Object.keys(value).filter((key) => value[key] !== void 0).sort().map((key) => [key, canonical3(value[key])])
+var UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE8 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SHA4 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var HASH3 = /^sha256:[0-9a-f]{64}$/;
+var canonical4 = (value) => Array.isArray(value) ? value.map(canonical4) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).filter((key) => value[key] !== void 0).sort().map((key) => [key, canonical4(value[key])])
 ) : value;
-var hash2 = (value) => createHash14("sha256").update(JSON.stringify(canonical3(value))).digest("hex");
+var hash3 = (value) => createHash17("sha256").update(JSON.stringify(canonical4(value))).digest("hex");
 async function sync(path) {
   const handle = await open4(path, "r");
   try {
@@ -5540,7 +7355,7 @@ async function sync(path) {
 }
 async function atomic2(path, value) {
   await mkdir4(dirname5(path), { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${randomBytes5(6).toString("hex")}`;
+  const temp = `${path}.tmp-${process.pid}-${randomBytes6(6).toString("hex")}`;
   const handle = await open4(temp, "wx", 384);
   try {
     await handle.writeFile(`${JSON.stringify(value)}
@@ -5558,7 +7373,7 @@ async function append2(path, value) {
 `, { mode: 384 });
   await sync(path);
 }
-var validSnapshot = (value) => value !== null && typeof value === "object" && value.schemaVersion === "1" && UUID3.test(value.namespaceId ?? "") && SAFE7.test(value.deliveryId ?? "") && SAFE7.test(value.workflowId ?? "") && UUID3.test(value.environmentId ?? "") && HASH2.test(value.environmentHash ?? "") && UUID3.test(value.parentCaseId ?? "") && SAFE7.test(value.runtimeId ?? "") && SHA3.test(value.baseCommit ?? "") && SHA3.test(value.headCommit ?? "") && Number.isSafeInteger(value.revision) && value.revision > 0;
+var validSnapshot2 = (value) => value !== null && typeof value === "object" && value.schemaVersion === "1" && UUID4.test(value.namespaceId ?? "") && SAFE8.test(value.deliveryId ?? "") && SAFE8.test(value.workflowId ?? "") && UUID4.test(value.environmentId ?? "") && HASH3.test(value.environmentHash ?? "") && UUID4.test(value.parentCaseId ?? "") && SAFE8.test(value.runtimeId ?? "") && SHA4.test(value.baseCommit ?? "") && SHA4.test(value.headCommit ?? "") && Number.isSafeInteger(value.revision) && value.revision > 0;
 var DeliveryStore = class {
   dataRoot;
   fault;
@@ -5574,12 +7389,12 @@ var DeliveryStore = class {
     await mkdir4(join10(this.dataRoot, "deliveries"), { recursive: true });
   }
   paths(namespaceId, deliveryId) {
-    if (!UUID3.test(namespaceId ?? "") || !SAFE7.test(deliveryId ?? "")) throw new Error("INVALID_DELIVERY_SCOPE");
+    if (!UUID4.test(namespaceId ?? "") || !SAFE8.test(deliveryId ?? "")) throw new Error("INVALID_DELIVERY_SCOPE");
     const directory = join10(
       this.dataRoot,
       "deliveries",
       namespaceId,
-      createHash14("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex")
+      createHash17("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex")
     );
     return {
       directory,
@@ -5621,7 +7436,7 @@ var DeliveryStore = class {
     if (!matching.length)
       throw Object.assign(new Error("DELIVERY_OPERATION_INDETERMINATE"), { code: "DELIVERY_OPERATION_INDETERMINATE" });
     const last = matching[matching.length - 1];
-    if (last.state === "succeeded" && pending.snapshotHash === hash2(pendingSnapshot)) {
+    if (last.state === "succeeded" && pending.snapshotHash === hash3(pendingSnapshot)) {
       await atomic2(paths.snapshot, pendingSnapshot);
       await rm4(paths.pending, { force: true });
       return;
@@ -5633,7 +7448,7 @@ var DeliveryStore = class {
     await this._recover(paths);
     const snapshot = await this._json(paths.snapshot);
     if (!snapshot) return null;
-    if (!validSnapshot(snapshot) || snapshot.snapshotHash !== hash2({ ...snapshot, snapshotHash: void 0 }))
+    if (!validSnapshot2(snapshot) || snapshot.snapshotHash !== hash3({ ...snapshot, snapshotHash: void 0 }))
       throw Object.assign(new Error("CORRUPT_DELIVERY_STORAGE"), { code: "CORRUPT_DELIVERY_STORAGE" });
     return snapshot;
   }
@@ -5642,7 +7457,7 @@ var DeliveryStore = class {
       const current = await this.read(input.namespaceId, input.deliveryId);
       if (current)
         return JSON.stringify({ ...current, snapshotHash: void 0 }) === JSON.stringify(input) ? { ok: true, changed: false, snapshot: current } : { ok: false, error: { code: "DELIVERY_IDENTITY_CONFLICT" } };
-      if (!validSnapshot(input)) return { ok: false, error: { code: "INVALID_DELIVERY_SNAPSHOT" } };
+      if (!validSnapshot2(input)) return { ok: false, error: { code: "INVALID_DELIVERY_SNAPSHOT" } };
       return this._write(null, input, { kind: "delivery_created", idempotencyKey: `create:${input.deliveryId}` });
     });
   }
@@ -5656,9 +7471,9 @@ var DeliveryStore = class {
     return this._locked(namespaceId, request.deliveryId, async () => {
       const current = await this.read(namespaceId, request.deliveryId);
       const records = await this.journal(namespaceId, request.deliveryId);
-      const scopeHash = deliveryScopeHash(namespaceId, request, execution2), semanticHash = deliverySemanticHash(request), prior = records.find((item) => item.scopeHash === scopeHash && item.state === "succeeded");
+      const scopeHash = deliveryScopeHash(namespaceId, request, execution2), semanticHash2 = deliverySemanticHash(request), prior = records.find((item) => item.scopeHash === scopeHash && item.state === "succeeded");
       if (prior) {
-        if (prior.semanticHash !== semanticHash) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        if (prior.semanticHash !== semanticHash2) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
         return { ok: true, changed: false, idempotent: true, snapshot: current };
       }
       const decision = evaluateDeliveryPromotion({ request, snapshot: current, definition, evidence, execution: execution2 });
@@ -5668,13 +7483,13 @@ var DeliveryStore = class {
         kind: "delivery_promoted",
         idempotencyKey: request.idempotencyKey,
         scopeHash,
-        semanticHash,
+        semanticHash: semanticHash2,
         evidenceIds: request.evidenceIds
       });
     });
   }
   async _write(current, value, operationInput) {
-    const paths = this.paths(value.namespaceId, value.deliveryId), operationId = createHash14("sha256").update(`${value.namespaceId}:${value.deliveryId}:${operationInput.idempotencyKey}`).digest("hex"), operation = {
+    const paths = this.paths(value.namespaceId, value.deliveryId), operationId = createHash17("sha256").update(`${value.namespaceId}:${value.deliveryId}:${operationInput.idempotencyKey}`).digest("hex"), operation = {
       schemaVersion: "1",
       operationId,
       deliveryId: value.deliveryId,
@@ -5687,8 +7502,8 @@ var DeliveryStore = class {
     };
     const clean = { ...value };
     delete clean.snapshotHash;
-    const snapshot = { ...clean, snapshotHash: hash2(clean) };
-    await atomic2(paths.pending, { operation, snapshot, snapshotHash: hash2(snapshot) });
+    const snapshot = { ...clean, snapshotHash: hash3(clean) };
+    await atomic2(paths.pending, { operation, snapshot, snapshotHash: hash3(snapshot) });
     await append2(paths.journal, operation);
     await this.fault("after-pending-journal");
     const running = { ...operation, state: "running", timestamp: (/* @__PURE__ */ new Date()).toISOString() };
@@ -5709,10 +7524,10 @@ var DeliveryStore = class {
   }
   async recordOperation(namespaceId, deliveryId, input) {
     return this._locked(namespaceId, deliveryId, async () => {
-      const records = await this.journal(namespaceId, deliveryId), operationId = createHash14("sha256").update(`${namespaceId}:${deliveryId}:${input.idempotencyKey}`).digest("hex"), prior = records.filter((item) => item.operationId === operationId).at(-1);
-      const semanticHash = hash2(input.facts);
+      const records = await this.journal(namespaceId, deliveryId), operationId = createHash17("sha256").update(`${namespaceId}:${deliveryId}:${input.idempotencyKey}`).digest("hex"), prior = records.filter((item) => item.operationId === operationId).at(-1);
+      const semanticHash2 = hash3(input.facts);
       if (prior) {
-        if (prior.semanticHash !== semanticHash) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        if (prior.semanticHash !== semanticHash2) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
         return { ok: true, changed: false, operation: prior };
       }
       const operation = {
@@ -5721,7 +7536,7 @@ var DeliveryStore = class {
         deliveryId,
         kind: input.kind,
         state: input.state,
-        semanticHash,
+        semanticHash: semanticHash2,
         facts: input.facts,
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       };
@@ -5797,13 +7612,13 @@ var DeliveryStore = class {
         semanticHash: request.semanticHash,
         targetId: request.targetId,
         targetHash: request.targetHash,
-        deploymentRef: canonical3(request.deploymentRef),
-        priorArtifactRef: canonical3(request.priorArtifactRef),
-        priorReleaseRef: canonical3(request.priorReleaseRef),
+        deploymentRef: canonical4(request.deploymentRef),
+        priorArtifactRef: canonical4(request.priorArtifactRef),
+        priorReleaseRef: canonical4(request.priorReleaseRef),
         reasonCode: request.reasonCode,
         ...request.reason ? { reason: request.reason } : {},
         requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        requestedBy: canonical3(execution2)
+        requestedBy: canonical4(execution2)
       };
       await append2(this.paths(namespaceId, deliveryId).journal, record2);
       return { ok: true, changed: true, idempotent: false, request: record2 };
@@ -5815,9 +7630,9 @@ var DeliveryStore = class {
       if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
       const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), current = projection.rollbackRequests.find((item) => item.rollbackRequestId === rollbackRequestId);
       if (!current) return { ok: false, error: { code: "ROLLBACK_REQUEST_NOT_FOUND" } };
-      const scopeHash = `sha256:${hash2({ rollbackRequestId, idempotencyKey: approval.idempotencyKey })}`, semanticHash = `sha256:${hash2({ rollbackRequestId, expectedRevision: approval.expectedRevision, actorId: approval.execution.actorId })}`, prior = projection.rollbackRequestHistory.find((item) => item.approvalScopeHash === scopeHash);
+      const scopeHash = `sha256:${hash3({ rollbackRequestId, idempotencyKey: approval.idempotencyKey })}`, semanticHash2 = `sha256:${hash3({ rollbackRequestId, expectedRevision: approval.expectedRevision, actorId: approval.execution.actorId })}`, prior = projection.rollbackRequestHistory.find((item) => item.approvalScopeHash === scopeHash);
       if (prior)
-        return prior.approvalSemanticHash === semanticHash ? { ok: true, changed: false, idempotent: true, request: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        return prior.approvalSemanticHash === semanticHash2 ? { ok: true, changed: false, idempotent: true, request: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
       if (snapshot.revision !== approval.expectedRevision || current.expectedRevision !== approval.expectedRevision)
         return { ok: false, error: { code: "REVISION_CONFLICT" } };
       if (current.status !== "requested") return { ok: false, error: { code: "ROLLBACK_REQUEST_ALREADY_DECIDED" } };
@@ -5825,9 +7640,9 @@ var DeliveryStore = class {
         ...current,
         status: "approved",
         approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        approvedBy: canonical3(approval.execution),
+        approvedBy: canonical4(approval.execution),
         approvalScopeHash: scopeHash,
-        approvalSemanticHash: semanticHash,
+        approvalSemanticHash: semanticHash2,
         approvalIdempotencyKey: approval.idempotencyKey
       };
       await append2(this.paths(namespaceId, deliveryId).journal, record2);
@@ -5873,7 +7688,7 @@ var DeliveryStore = class {
         operationId: identity.value.operationId,
         kind: normalized.value.kind,
         expectedRevision: normalized.value.expectedRevision,
-        targetRef: canonical3(targetRef),
+        targetRef: canonical4(targetRef),
         artifactRef: normalized.value.artifactRef ?? normalized.value.priorArtifactRef,
         releaseRef: normalized.value.releaseRef ?? normalized.value.priorReleaseRef,
         deploymentRef: normalized.value.deploymentRef,
@@ -5883,7 +7698,7 @@ var DeliveryStore = class {
         requestedAt: now,
         startedAt: void 0,
         completedAt: void 0,
-        execution: canonical3(execution2),
+        execution: canonical4(execution2),
         adapterCorrelation: void 0,
         scopeHash: identity.value.scopeHash,
         semanticHash: identity.value.semanticHash,
@@ -5982,13 +7797,13 @@ var DeliveryStore = class {
 };
 
 // ../src/adapters/persistence/delivery-evidence-store.ts
-import { createHash as createHash15, randomUUID as randomUUID7 } from "node:crypto";
+import { createHash as createHash18, randomUUID as randomUUID10 } from "node:crypto";
 import { appendFile as appendFile4, mkdir as mkdir5, open as open5, readFile as readFile6 } from "node:fs/promises";
 import { dirname as dirname6, join as join11 } from "node:path";
-var SAFE8 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-var HASH3 = /^sha256:[0-9a-f]{64}$/;
-var SHA4 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var SAFE9 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var UUID5 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var HASH4 = /^sha256:[0-9a-f]{64}$/;
+var SHA5 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 var ALLOWED3 = /* @__PURE__ */ new Set([
   "deliveryId",
   "workflowId",
@@ -6002,10 +7817,10 @@ var ALLOWED3 = /* @__PURE__ */ new Set([
   "facts",
   "idempotencyKey"
 ]);
-var canonical4 = (value) => Array.isArray(value) ? value.map(canonical4) : value && typeof value === "object" ? Object.fromEntries(
-  Object.keys(value).sort().map((key) => [key, canonical4(value[key])])
+var canonical5 = (value) => Array.isArray(value) ? value.map(canonical5) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).sort().map((key) => [key, canonical5(value[key])])
 ) : value;
-var digest3 = (value) => createHash15("sha256").update(JSON.stringify(canonical4(value))).digest("hex");
+var digest3 = (value) => createHash18("sha256").update(JSON.stringify(canonical5(value))).digest("hex");
 async function append3(path, value) {
   await mkdir5(dirname6(path), { recursive: true });
   await appendFile4(path, `${JSON.stringify(value)}
@@ -6028,11 +7843,11 @@ function validateDeliveryEvidence(input) {
     candidate.kind,
     candidate.outcome,
     candidate.idempotencyKey
-  ].every((value) => SAFE8.test(value ?? "")) || !HASH3.test(candidate.environmentHash ?? "") || !UUID4.test(candidate.caseId ?? "") || !SHA4.test(candidate.headCommit ?? ""))
+  ].every((value) => SAFE9.test(value ?? "")) || !HASH4.test(candidate.environmentHash ?? "") || !UUID5.test(candidate.caseId ?? "") || !SHA5.test(candidate.headCommit ?? ""))
     return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
   if (!candidate.facts || typeof candidate.facts !== "object" || Array.isArray(candidate.facts) || Object.keys(candidate.facts).length > 32 || JSON.stringify(candidate.facts).length > 4096)
     return { ok: false, error: { code: "INVALID_DELIVERY_EVIDENCE" } };
-  return { ok: true, value: canonical4(candidate) };
+  return { ok: true, value: canonical5(candidate) };
 }
 var DeliveryEvidenceStore = class {
   dataRoot;
@@ -6043,15 +7858,15 @@ var DeliveryEvidenceStore = class {
     this.locks = /* @__PURE__ */ new Map();
   }
   path(namespaceId, deliveryId) {
-    if (!UUID4.test(namespaceId ?? ""))
+    if (!UUID5.test(namespaceId ?? ""))
       throw Object.assign(new Error("INVALID_NAMESPACE_ID"), { code: "INVALID_NAMESPACE_ID" });
-    if (!SAFE8.test(deliveryId ?? ""))
+    if (!SAFE9.test(deliveryId ?? ""))
       throw Object.assign(new Error("INVALID_DELIVERY_ID"), { code: "INVALID_DELIVERY_ID" });
     return join11(
       this.dataRoot,
       "deliveries",
       namespaceId,
-      createHash15("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex"),
+      createHash18("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex"),
       "evidence.jsonl"
     );
   }
@@ -6083,17 +7898,17 @@ var DeliveryEvidenceStore = class {
         caseId: value.caseId,
         runtimeId: value.runtimeId,
         idempotencyKey: value.idempotencyKey
-      }), semanticHash = digest3({ ...value, idempotencyKey: void 0 });
+      }), semanticHash2 = digest3({ ...value, idempotencyKey: void 0 });
       const prior = existing.find((item) => item.idempotency.scopeHash === scopeHash);
       if (prior)
-        return prior.idempotency.semanticHash === semanticHash ? { ok: true, created: false, evidence: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        return prior.idempotency.semanticHash === semanticHash2 ? { ok: true, created: false, evidence: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
       const evidence = {
-        evidenceId: randomUUID7(),
+        evidenceId: randomUUID10(),
         namespaceId,
         ...value,
         source: { ...source },
         observedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        idempotency: { scopeHash, semanticHash }
+        idempotency: { scopeHash, semanticHash: semanticHash2 }
       };
       await append3(this.path(namespaceId, value.deliveryId), evidence);
       return { ok: true, created: true, evidence };
@@ -6102,7 +7917,7 @@ var DeliveryEvidenceStore = class {
 };
 
 // ../src/adapters/delivery/delivery-target-registry.ts
-var SAFE9 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SAFE10 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var DIGEST2 = /^sha256:[0-9a-f]{64}$/i;
 var FIELDS4 = [
   "targetId",
@@ -6123,7 +7938,7 @@ var DeliveryTargetRegistry = class {
       throw Object.assign(new Error("Invalid target registry"), { code: "INVALID_DELIVERY_TARGET_REGISTRY" });
     const map = /* @__PURE__ */ new Map();
     for (const raw of definitions) {
-      if (!raw || Object.keys(raw).some((k) => !FIELDS4.includes(k)) || !SAFE9.test(raw.targetId ?? "") || !["development", "staging", "production"].includes(raw.environmentKind) || !SAFE9.test(raw.adapterId ?? "") || !SAFE9.test(raw.adapterTargetRef ?? "") || typeof raw.supportsRollback !== "boolean" || raw.verificationSuiteId !== void 0 && !SAFE9.test(raw.verificationSuiteId) || raw.verificationSuiteHash !== void 0 && !DIGEST2.test(raw.verificationSuiteHash))
+      if (!raw || Object.keys(raw).some((k) => !FIELDS4.includes(k)) || !SAFE10.test(raw.targetId ?? "") || !["development", "staging", "production"].includes(raw.environmentKind) || !SAFE10.test(raw.adapterId ?? "") || !SAFE10.test(raw.adapterTargetRef ?? "") || typeof raw.supportsRollback !== "boolean" || raw.verificationSuiteId !== void 0 && !SAFE10.test(raw.verificationSuiteId) || raw.verificationSuiteHash !== void 0 && !DIGEST2.test(raw.verificationSuiteHash))
         throw Object.assign(new Error("Invalid target"), { code: "INVALID_DELIVERY_TARGET" });
       if (map.has(raw.targetId))
         throw Object.assign(new Error("Duplicate target"), { code: "DUPLICATE_DELIVERY_TARGET_ID" });
@@ -6136,7 +7951,7 @@ var DeliveryTargetRegistry = class {
   }
   lookup(targetId) {
     if (!this.#targets) return unavailable();
-    if (!SAFE9.test(targetId ?? "")) return { ok: false, error: { code: "DELIVERY_TARGET_NOT_FOUND" } };
+    if (!SAFE10.test(targetId ?? "")) return { ok: false, error: { code: "DELIVERY_TARGET_NOT_FOUND" } };
     const target = this.#targets.get(targetId);
     return target ? { ok: true, target } : { ok: false, error: { code: "DELIVERY_TARGET_NOT_FOUND" } };
   }
@@ -6145,12 +7960,12 @@ var unavailableDeliveryTargetRegistry = Object.freeze({ lookup: unavailable });
 
 // ../src/adapters/delivery/delivery-git-control-plane.ts
 import { execFile } from "node:child_process";
-import { createHash as createHash16 } from "node:crypto";
+import { createHash as createHash19 } from "node:crypto";
 import { realpath as realpath3 } from "node:fs/promises";
 import { isAbsolute as isAbsolute6 } from "node:path";
 import { promisify } from "node:util";
 var execute = promisify(execFile);
-var SHA5 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var SHA6 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 var SAFE_REMOTE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var SAFE_BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/;
 var fail4 = (code, details = {}) => {
@@ -6228,18 +8043,18 @@ var DeliveryGitControlPlane = class {
     return this.runner("git", args, { cwd });
   }
   async inspect(binding) {
-    const canonical5 = await realpath3(binding.worktreePath).catch(() => fail4("CANONICAL_WORKTREE_REQUIRED"));
-    if (canonical5 !== binding.worktreePath) fail4("CANONICAL_WORKTREE_REQUIRED");
-    const top = await this._run(["rev-parse", "--show-toplevel"], canonical5);
-    if (top.exitCode || await realpath3(top.stdout.trim()).catch(() => null) !== canonical5)
+    const canonical6 = await realpath3(binding.worktreePath).catch(() => fail4("CANONICAL_WORKTREE_REQUIRED"));
+    if (canonical6 !== binding.worktreePath) fail4("CANONICAL_WORKTREE_REQUIRED");
+    const top = await this._run(["rev-parse", "--show-toplevel"], canonical6);
+    if (top.exitCode || await realpath3(top.stdout.trim()).catch(() => null) !== canonical6)
       fail4("CANONICAL_WORKTREE_REQUIRED");
     if (!SAFE_BRANCH.test(binding.branch ?? "")) fail4("INVALID_BRANCH_NAME");
-    const branch = await this._run(["branch", "--show-current"], canonical5), head = await this._run(["rev-parse", "HEAD"], canonical5);
-    if (branch.exitCode || branch.stdout.trim() !== binding.branch || head.exitCode || !SHA5.test(head.stdout.trim()))
+    const branch = await this._run(["branch", "--show-current"], canonical6), head = await this._run(["rev-parse", "HEAD"], canonical6);
+    if (branch.exitCode || branch.stdout.trim() !== binding.branch || head.exitCode || !SHA6.test(head.stdout.trim()))
       fail4("WORKTREE_BINDING_UNCERTAIN");
     if (head.stdout.trim() !== binding.expectedHead)
       fail4("STALE_HEAD", { expected: binding.expectedHead, actual: head.stdout.trim() });
-    const status = await this._run(["status", "--porcelain=v1", "-z", "--untracked-files=all"], canonical5);
+    const status = await this._run(["status", "--porcelain=v1", "-z", "--untracked-files=all"], canonical6);
     if (status.exitCode) fail4("GIT_INSPECTION_FAILED");
     const files = parseStatusZ(status.stdout);
     const protectedHit = files.find(
@@ -6257,18 +8072,18 @@ var DeliveryGitControlPlane = class {
     ].sort();
     const trackedDiff = await this._run(
       ["diff", "--binary", "--no-ext-diff", binding.baseCommit, "--", ...allPaths],
-      canonical5
+      canonical6
     );
     if (trackedDiff.exitCode) fail4("GIT_INSPECTION_FAILED");
     const untracked = files.filter((item) => item.code === "??").map((item) => item.path).sort();
     const diffContent = `${trackedDiff.stdout}
 ${untracked.map((path) => `untracked ${path}`).join("\n")}`;
     return {
-      worktreePath: canonical5,
+      worktreePath: canonical6,
       branch: binding.branch,
       headCommit: head.stdout.trim(),
       files,
-      diffHash: `sha256:${createHash16("sha256").update(diffContent).digest("hex")}`
+      diffHash: `sha256:${createHash19("sha256").update(diffContent).digest("hex")}`
     };
   }
   compareClaims(inspection, claims) {
@@ -6309,7 +8124,7 @@ ${untracked.map((path) => `untracked ${path}`).join("\n")}`;
     );
     if (commit.exitCode) fail4("GIT_COMMIT_FAILED");
     const head = await this._run(["rev-parse", "HEAD"], inspection.worktreePath), identity = await this._run(["show", "-s", "--format=%cn%n%ce", "HEAD"], inspection.worktreePath);
-    if (head.exitCode || !SHA5.test(head.stdout.trim()) || identity.stdout.trim() !== `${this.identity.name}
+    if (head.exitCode || !SHA6.test(head.stdout.trim()) || identity.stdout.trim() !== `${this.identity.name}
 ${this.identity.email}`)
       fail4("GIT_COMMIT_INDETERMINATE");
     return { changed: true, commit: head.stdout.trim(), previousHead: inspection.headCommit, inspection };
@@ -6407,14 +8222,14 @@ var DeliveryPullRequestAdapter = class {
 };
 
 // ../src/adapters/delivery/delivery-deployment-adapter.ts
-var SAFE10 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SAFE11 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var DELIVERY_ADAPTER_OUTCOMES = Object.freeze(["running", "succeeded", "failed", "indeterminate"]);
 function normalizeDeliveryAdapterOutcome(value) {
   if (!value || typeof value !== "object" || Array.isArray(value) || Object.keys(value).some((k) => !["state", "correlationRef", "resultRef", "errorCode", "observedAt"].includes(k)) || !DELIVERY_ADAPTER_OUTCOMES.includes(value.state))
     return { ok: false, error: { code: "INVALID_DELIVERY_ADAPTER_OUTCOME" } };
   const candidate = value;
   for (const key of ["correlationRef", "resultRef", "errorCode"])
-    if (candidate[key] !== void 0 && !SAFE10.test(candidate[key]))
+    if (candidate[key] !== void 0 && !SAFE11.test(candidate[key]))
       return { ok: false, error: { code: "INVALID_DELIVERY_ADAPTER_OUTCOME", path: key } };
   if (candidate.observedAt !== void 0 && (!Number.isFinite(Date.parse(candidate.observedAt)) || new Date(Date.parse(candidate.observedAt)).toISOString() !== candidate.observedAt))
     return { ok: false, error: { code: "INVALID_DELIVERY_ADAPTER_OUTCOME", path: "observedAt" } };
@@ -6458,8 +8273,8 @@ var UnconfiguredDeliveryVerificationAdapter = class {
 };
 
 // ../src/application/delivery/delivery-controller.ts
-var UUID5 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-var SAFE11 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var UUID6 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE12 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var FORBIDDEN = /* @__PURE__ */ new Set([
   "root",
   "repoRoot",
@@ -6510,7 +8325,7 @@ var DeliveryController = class {
     await this.store.initialize();
   }
   async resolve(identity, workflowId) {
-    if (!identity || !UUID5.test(identity.namespaceId ?? "") || !UUID5.test(identity.caseId ?? "") || !SAFE11.test(workflowId ?? ""))
+    if (!identity || !UUID6.test(identity.namespaceId ?? "") || !UUID6.test(identity.caseId ?? "") || !SAFE12.test(workflowId ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_TRUST_CONTEXT" } };
     let workflow = await this.workflowStore.read(identity.namespaceId, workflowId), environmentResult = await this.environmentController.get(identity.namespaceId, workflowId);
     if (!workflow?.instance || !environmentResult.ok)
@@ -6854,7 +8669,7 @@ async function handleDeliveryRequest({
 }
 
 // ../src/application/delivery/delivery-operation-controller.ts
-var SAFE12 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SAFE13 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var REASON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 var FORBIDDEN2 = /* @__PURE__ */ new Set([
   "targetConfig",
@@ -7010,7 +8825,7 @@ var DeliveryOperationController = class {
       "reasonCode",
       "reason"
     ];
-    if (!exact2(body, fields) || !SAFE12.test(body.idempotencyKey ?? "") || !SAFE12.test(body.targetId ?? "") || !REASON.test(body.reasonCode ?? "") || body.reason !== void 0 && (typeof body.reason !== "string" || body.reason.length < 1 || body.reason.length > 512))
+    if (!exact2(body, fields) || !SAFE13.test(body.idempotencyKey ?? "") || !SAFE13.test(body.targetId ?? "") || !REASON.test(body.reasonCode ?? "") || body.reason !== void 0 && (typeof body.reason !== "string" || body.reason.length < 1 || body.reason.length > 512))
       return response({ code: "INVALID_ROLLBACK_REQUEST" }, 400);
     const resolved = await this.resolve(identity, workflowId);
     if (!resolved.ok) return resolved;
@@ -7025,7 +8840,7 @@ var DeliveryOperationController = class {
       runtimeId: "factory-dashboard",
       idempotencyKey: body.idempotencyKey
     });
-    const semanticHash = canonicalDeliveryHash({
+    const semanticHash2 = canonicalDeliveryHash({
       targetHash: targetResult.target.targetHash,
       deploymentRef: body.deploymentRef,
       priorArtifactRef: body.priorArtifactRef,
@@ -7052,14 +8867,14 @@ var DeliveryOperationController = class {
         reasonCode: body.reasonCode,
         reason: body.reason,
         scopeHash,
-        semanticHash
+        semanticHash: semanticHash2
       },
       execution: execution(identity, workflowId)
     });
     return result.ok ? { ok: true, status: result.changed ? 201 : 200, data: result.request } : response(result.error);
   }
   async approveRollback(identity, workflowId, requestIdValue, body) {
-    if (!exact2(body, ["expectedRevision", "idempotencyKey"]) || !SAFE12.test(requestIdValue ?? "") || !SAFE12.test(body.idempotencyKey ?? ""))
+    if (!exact2(body, ["expectedRevision", "idempotencyKey"]) || !SAFE13.test(requestIdValue ?? "") || !SAFE13.test(body.idempotencyKey ?? ""))
       return response({ code: "INVALID_ROLLBACK_APPROVAL" }, 400);
     const resolved = await this.resolve(identity, workflowId);
     if (!resolved.ok) return resolved;
@@ -7076,7 +8891,7 @@ var DeliveryOperationController = class {
     return result.ok ? { ok: true, status: result.changed ? 201 : 200, data: result.request } : response(result.error);
   }
   async executeRollback(identity, workflowId, requestIdValue, body) {
-    if (!exact2(body, ["expectedRevision", "idempotencyKey"]) || !SAFE12.test(requestIdValue ?? ""))
+    if (!exact2(body, ["expectedRevision", "idempotencyKey"]) || !SAFE13.test(requestIdValue ?? ""))
       return response({ code: "UNTRUSTED_DELIVERY_INPUT" }, 400);
     const resolved = await this.resolve(identity, workflowId);
     if (!resolved.ok) return resolved;
@@ -7091,7 +8906,7 @@ var DeliveryOperationController = class {
     return response({ code: "DELIVERY_ADAPTER_EXECUTION_NOT_IMPLEMENTED" }, 503);
   }
   async verifyRollback(identity, workflowId, requestIdValue, body) {
-    if (!exact2(body, ["expectedRevision", "idempotencyKey", "rollbackRef", "targetId"]) || !SAFE12.test(requestIdValue ?? ""))
+    if (!exact2(body, ["expectedRevision", "idempotencyKey", "rollbackRef", "targetId"]) || !SAFE13.test(requestIdValue ?? ""))
       return response({ code: "UNTRUSTED_DELIVERY_INPUT" }, 400);
     const resolved = await this.resolve(identity, workflowId);
     if (!resolved.ok) return resolved;
@@ -7123,7 +8938,7 @@ function defaultRunStoreRoot(repoRoot) {
 }
 
 // ../src/domain/forge-bmad/forge-human-decision.ts
-import { createHash as createHash17 } from "node:crypto";
+import { createHash as createHash20 } from "node:crypto";
 var G1_POLICY_VERSION = "forge-g1-human-v1";
 var G1_OUTCOMES = /* @__PURE__ */ new Set(["approved", "rejected"]);
 var G1_REASON_CODES = /* @__PURE__ */ new Set([
@@ -7142,11 +8957,11 @@ function computeG1EvidenceSetHash(events, runId, attempt = 1, policyVersion = G1
   const evidence = events.filter(
     (event) => event.event === "run_started" && event.runId === runId || event.event === "story_run_created" && event.parentRunId === runId || event.event === "gate_started" && event.runId === runId && event.gate === "G1" && event.attempt === attempt
   );
-  return `sha256:${createHash17("sha256").update(canonicalG1({ policyVersion, evidence })).digest("hex")}`;
+  return `sha256:${createHash20("sha256").update(canonicalG1({ policyVersion, evidence })).digest("hex")}`;
 }
 
 // ../src/domain/forge-bmad/forge-spec.ts
-import { createHash as createHash18 } from "node:crypto";
+import { createHash as createHash21 } from "node:crypto";
 var FORGE_SPEC_SCHEMA_VERSION = 1;
 var G2_POLICY_VERSION = "forge-g2-deterministic-v1";
 var ORACLE_CATALOG = /* @__PURE__ */ new Set(["front.build", "front.tests", "back.build"]);
@@ -7236,12 +9051,12 @@ function validateForgeSpecSchema(data, workItem) {
     fail5("G2_FRONTMATTER_INVALID");
 }
 function computeForgeSpecHash(content) {
-  return `sha256:${createHash18("sha256").update(content).digest("hex")}`;
+  return `sha256:${createHash21("sha256").update(content).digest("hex")}`;
 }
 var FORGE_SPEC_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
 
 // ../src/domain/forge-bmad/forge-story-spec.ts
-import { createHash as createHash19 } from "node:crypto";
+import { createHash as createHash22 } from "node:crypto";
 var FORGE_STORY_SPEC_SCHEMA_VERSION = 1;
 var G2_US_POLICY_VERSION = "forge-g2-us-deterministic-v1";
 var STORY_SPEC_ALLOWED_KEYS = /* @__PURE__ */ new Set([
@@ -7374,7 +9189,7 @@ function validateInheritance(storySpec, epicSpec) {
   return { valid: violations.length === 0, violations };
 }
 function computeStorySpecHash(content) {
-  return `sha256:${createHash19("sha256").update(content).digest("hex")}`;
+  return `sha256:${createHash22("sha256").update(content).digest("hex")}`;
 }
 
 // ../src/domain/forge-bmad/forge-bmad-parser.ts
@@ -7753,7 +9568,7 @@ function projectForgeRun(events) {
 }
 
 // ../lib/workflow-projection.mjs
-import { createHash as createHash20 } from "node:crypto";
+import { createHash as createHash23 } from "node:crypto";
 var WORKFLOW_STATUSES2 = Object.freeze([
   "pending",
   "ready",
@@ -7785,7 +9600,7 @@ var WORKFLOW_PROJECTION_ERROR_CODES = Object.freeze({
   SELF_DEPENDENCY: "SELF_DEPENDENCY",
   DEPENDENCY_CYCLE: "DEPENDENCY_CYCLE"
 });
-var SAFE_ID7 = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
+var SAFE_ID8 = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
 var STATUS_SET = new Set(WORKFLOW_STATUSES2);
 var ACTOR_KIND_SET = new Set(WORKFLOW_RESPONSIBILITY_KINDS);
 var PROJECTION_FIELDS = /* @__PURE__ */ new Set([
@@ -7811,7 +9626,7 @@ function boundedString(value, maximum, path, { safe: safe2 = false, optional = f
       path
     );
   if (value.length > maximum) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.EXCESSIVE_SIZE, path, { maximum });
-  if (safe2 && !SAFE_ID7.test(value)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_ID, path);
+  if (safe2 && !SAFE_ID8.test(value)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_ID, path);
   return { ok: true, value };
 }
 function validateWorkflowProjection(input) {
@@ -8304,7 +10119,7 @@ function hashStorySpec(specPath) {
 // ../src/adapters/forge/forge-ledger-store.ts
 import { appendFileSync as appendFileSync2, readdirSync, readFileSync as readFileSync5 } from "node:fs";
 import { join as join15 } from "node:path";
-import { randomUUID as randomUUID8 } from "node:crypto";
+import { randomUUID as randomUUID11 } from "node:crypto";
 function assertString(value, name) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${name} is required`);
 }
@@ -8321,7 +10136,7 @@ function createEpicRun({
   roots,
   epic,
   stories,
-  runId = `epic_${randomUUID8()}`,
+  runId = `epic_${randomUUID11()}`,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
   assertWorkItem(epic, "epic");
@@ -8344,7 +10159,7 @@ function createEpicRun({
     at
   });
   const storyRuns = stories.map((workItem, index) => {
-    const storyRunId = `story_${randomUUID8()}`;
+    const storyRunId = `story_${randomUUID11()}`;
     appendForgeLedgerEvent(filePath, {
       schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
       event: "story_run_created",
@@ -8516,7 +10331,7 @@ ${formatCommentsSection(included, omitted)}`);
 }
 
 // ../src/application/forge-bmad/forge-human-decision.ts
-import { randomUUID as randomUUID9 } from "node:crypto";
+import { randomUUID as randomUUID12 } from "node:crypto";
 import { join as join16 } from "node:path";
 function currentGate(events, runId) {
   return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === "G1").at(-1);
@@ -8570,7 +10385,7 @@ async function recordHumanDecision({
   const event = {
     schemaVersion: 1,
     event: "human_decision_recorded",
-    decisionId: `decision_${randomUUID9()}`,
+    decisionId: `decision_${randomUUID12()}`,
     runId,
     gate: "G1",
     attempt: gate2.attempt,
@@ -8726,7 +10541,7 @@ function recordUS(filePath, epicRunId, storyRunId, storySpec, prior, status, cod
 
 // ../src/application/forge-bmad/forge-story-analysis.ts
 import { mkdirSync as mkdirSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { createHash as createHash21, randomUUID as randomUUID10 } from "node:crypto";
+import { createHash as createHash24, randomUUID as randomUUID13 } from "node:crypto";
 import { join as join19, relative as relative5, resolve as resolve5 } from "node:path";
 
 // ../lib/plan.mjs
@@ -8805,7 +10620,7 @@ var STORY_ANALYSIS_PLAN_SCHEMA_VERSION = 1;
 var MAX_FILES = 30;
 var MAX_TEXT = 4e3;
 function sha2562(content) {
-  return `sha256:${createHash21("sha256").update(content).digest("hex")}`;
+  return `sha256:${createHash24("sha256").update(content).digest("hex")}`;
 }
 function g1(events, runId) {
   const gate2 = events.filter((e) => e.event === "gate_started" && e.runId === runId && e.gate === "G1").at(-1);
@@ -8876,7 +10691,7 @@ function writeStoryAnalysisArtifact(store, runId, executionId, content) {
   if (!dir.startsWith(`${root}/`) || !finalPath.startsWith(`${dir}/`))
     throw new Error("STORY_ANALYSIS_ARTIFACT_PATH_INVALID");
   mkdirSync3(dir, { recursive: true });
-  const temporary = resolve5(dir, `.${executionId}.${randomUUID10()}.tmp`);
+  const temporary = resolve5(dir, `.${executionId}.${randomUUID13()}.tmp`);
   if (!temporary.startsWith(`${dir}/`)) throw new Error("STORY_ANALYSIS_ARTIFACT_PATH_INVALID");
   writeFileSync2(temporary, content, { encoding: "utf8", mode: 384 });
   renameSync(temporary, finalPath);
@@ -8935,7 +10750,7 @@ async function executeStoryAnalysis({
   if (!agent.ok) throw new Error(`STORY_ANALYSIS_AGENT_PREFLIGHT_FAILED:${agent.reason}`);
   const ro = await runtime.preflightReadOnlyWorkspace(namespaceId, agent.agent, roots.repoRoot);
   if (!ro.ok) throw new Error(`STORY_ANALYSIS_READ_ONLY_PREFLIGHT_FAILED:${ro.reason}`);
-  const executionId = `exec_${randomUUID10()}`;
+  const executionId = `exec_${randomUUID13()}`;
   const created = await runtime.createCase(namespaceId, `Forge analysis ${story.workItem.id}`);
   const caseId = created.id;
   const brief = buildBrief({ epic, story, spec, ...supplement !== void 0 ? { supplement } : {} });
@@ -9031,7 +10846,7 @@ async function executeStoryAnalysis({
 
 // ../src/application/forge-bmad/forge-story-edit.ts
 import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
-import { createHash as createHash22, randomUUID as randomUUID11 } from "node:crypto";
+import { createHash as createHash25, randomUUID as randomUUID14 } from "node:crypto";
 import { join as join20, resolve as resolve6 } from "node:path";
 var STORY_EDIT_SCHEMA_VERSION = 1;
 var STORY_EDIT_POLICY_VERSION = "forge-story-edit-v1";
@@ -9040,7 +10855,7 @@ var fail8 = (code, message = code) => {
   error2.code = code;
   throw error2;
 };
-var hash3 = (value) => `sha256:${createHash22("sha256").update(value).digest("hex")}`;
+var hash4 = (value) => `sha256:${createHash25("sha256").update(value).digest("hex")}`;
 var safeArtifact = (store, descriptor) => {
   if (!descriptor?.path || !descriptor?.sha256)
     fail8("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact descriptor requires path and sha256.");
@@ -9050,7 +10865,7 @@ var safeArtifact = (store, descriptor) => {
     fail8("STORY_EDIT_ANALYSIS_ARTIFACT_PATH_INVALID", "Analysis artifact path escapes the run store.");
   if (!existsSync5(path)) fail8("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact does not exist.");
   const text2 = readFileSync6(path, "utf8");
-  if (hash3(text2) !== descriptor.sha256)
+  if (hash4(text2) !== descriptor.sha256)
     fail8("STORY_EDIT_ANALYSIS_ARTIFACT_HASH_MISMATCH", "Analysis artifact content does not match its SHA-256.");
   return text2;
 };
@@ -9140,7 +10955,7 @@ async function executeStoryEdit({
   if (!agent.ok) fail8("STORY_EDIT_AGENT_PREFLIGHT_FAILED");
   const writable = await runtime.preflightWritableWorkspace(namespaceId, agent.agent, roots.repoRoot);
   if (!writable.ok) fail8("STORY_EDIT_WRITABLE_PREFLIGHT_FAILED", writable.reason);
-  const editId = `edit_${randomUUID11()}`;
+  const editId = `edit_${randomUUID14()}`;
   const brief = [
     `Epic: ${epic.workItem.id}`,
     `Story: ${story.workItem.id}`,
@@ -9204,7 +11019,7 @@ async function executeStoryEdit({
 
 // ../src/application/forge-bmad/forge-story-oracles.ts
 import { existsSync as existsSync7 } from "node:fs";
-import { createHash as createHash24, randomUUID as randomUUID12 } from "node:crypto";
+import { createHash as createHash27, randomUUID as randomUUID15 } from "node:crypto";
 import { join as join23 } from "node:path";
 
 // ../lib/domains.mjs
@@ -9342,7 +11157,7 @@ var domains = {
 // ../src/application/forge-bmad/forge-front-oracle-resolution.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { createHash as createHash23 } from "node:crypto";
+import { createHash as createHash26 } from "node:crypto";
 import { dirname as dirname9, isAbsolute as isAbsolute12, join as join22, relative as relative6, resolve as resolve8 } from "node:path";
 var FRONT_ORACLE_MAP_SCHEMA_VERSION = 1;
 var INSPECT_TIMEOUT_MS = 1e4;
@@ -9352,7 +11167,7 @@ var fail9 = (code, message = code) => {
   error2.code = code;
   throw error2;
 };
-var hash4 = (value) => `sha256:${createHash23("sha256").update(JSON.stringify(value)).digest("hex")}`;
+var hash5 = (value) => `sha256:${createHash26("sha256").update(JSON.stringify(value)).digest("hex")}`;
 var validName = (name) => typeof name === "string" && /^[A-Za-z0-9._-]+$/.test(name);
 var readProject = (path, label) => {
   try {
@@ -9518,7 +11333,7 @@ function resolveFrontOraclePlan({
     ownersWithoutTestTarget,
     build,
     tests,
-    commandHash: hash4({ build, tests })
+    commandHash: hash5({ build, tests })
   };
 }
 
@@ -9530,7 +11345,7 @@ var fail10 = (code, message = code) => {
   throw error2;
 };
 var isAllowedStoryOracleRequestBody = (body) => !!body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).every((key) => ["editId", "expectedSpecHash", "attempt"].includes(key));
-var hash5 = (value) => `sha256:${createHash24("sha256").update(value).digest("hex")}`;
+var hash6 = (value) => `sha256:${createHash27("sha256").update(value).digest("hex")}`;
 var catalog = {
   "front.build": { domain: "front", name: "build" },
   "front.tests": { domain: "front", name: "tests" },
@@ -9613,7 +11428,7 @@ async function executeStoryOracles({
       });
   } catch (error2) {
     const code = error2.code ?? "ORACLE_INFRASTRUCTURE";
-    const campaignId2 = `oracle_${randomUUID12()}`;
+    const campaignId2 = `oracle_${randomUUID15()}`;
     appendForgeLedgerEvent(path, {
       schemaVersion: 1,
       event: "story_oracles_started",
@@ -9662,7 +11477,7 @@ async function executeStoryOracles({
       ]
     };
   }
-  const campaignId = `oracle_${randomUUID12()}`;
+  const campaignId = `oracle_${randomUUID15()}`;
   appendForgeLedgerEvent(path, {
     schemaVersion: 1,
     event: "story_oracles_started",
@@ -9758,7 +11573,7 @@ async function executeStoryOracles({
       code: raw.timedOut ? "ORACLE_TIMEOUT" : raw.crashed ? "ORACLE_CRASH" : raw.exitCode === 0 ? "ORACLE_PASS" : "ORACLE_FAIL",
       exitCode: raw.exitCode,
       durationMs: raw.durationMs ?? 0,
-      commandHash: hash5(command)
+      commandHash: hash6(command)
     };
     appendForgeLedgerEvent(path, {
       schemaVersion: 1,
@@ -9831,13 +11646,13 @@ async function syncForgeWorkflowProjection({
 }
 
 // ../src/adapters/artifact/artifact-hash.ts
-import { createHash as createHash25, randomUUID as randomUUID13 } from "node:crypto";
+import { createHash as createHash28, randomUUID as randomUUID16 } from "node:crypto";
 var ARTIFACT_HASH_PREFIX = "sha256";
 function computeArtifactHash(data) {
-  return `${ARTIFACT_HASH_PREFIX}:${createHash25("sha256").update(data).digest("hex")}`;
+  return `${ARTIFACT_HASH_PREFIX}:${createHash28("sha256").update(data).digest("hex")}`;
 }
 function createArtifactId() {
-  return randomUUID13();
+  return randomUUID16();
 }
 
 // ../src/adapters/artifact/memory-artifact-store.ts
@@ -9970,11 +11785,11 @@ function createMemoryArtifactStore(options) {
 }
 
 // ../src/adapters/artifact/s3-object-client.ts
-import { createHash as createHash26, createHmac } from "node:crypto";
+import { createHash as createHash29, createHmac } from "node:crypto";
 var SIGNING_ALGORITHM = "AWS4-HMAC-SHA256";
 var SERVICE = "s3";
 function sha256Hex(data) {
-  return createHash26("sha256").update(data).digest("hex");
+  return createHash29("sha256").update(data).digest("hex");
 }
 function hmac(key, data) {
   return createHmac("sha256", key).update(data, "utf8").digest();
@@ -10181,7 +11996,7 @@ var S3ArtifactStore = class {
     const now = this.#now();
     const data = toArtifactBytes(params.data);
     const id2 = createArtifactId();
-    const hash6 = computeArtifactHash(data);
+    const hash7 = computeArtifactHash(data);
     const metadata = buildArtifactMetadata({
       id: id2,
       owner: params.owner,
@@ -10191,7 +12006,7 @@ var S3ArtifactStore = class {
       ...params.retentionDays !== void 0 ? { retentionDays: params.retentionDays } : {}
     });
     await this.#client.putObject(this.#stagingKey(id2), Uint8Array.from(data), "application/octet-stream");
-    await this.#client.copyObject(this.#stagingKey(id2), this.#contentKey(hash6));
+    await this.#client.copyObject(this.#stagingKey(id2), this.#contentKey(hash7));
     await this.#client.putObject(this.#metadataKey(id2), encodeJson(metadata), "application/json");
     await this.#bestEffortDelete(this.#stagingKey(id2));
     return metadata;
@@ -10272,8 +12087,8 @@ var S3ArtifactStore = class {
   #stagingKey(id2) {
     return `${this.#uploadPrefix}/${id2}.part`;
   }
-  #contentKey(hash6) {
-    const digest4 = hash6.startsWith(`${ARTIFACT_HASH_PREFIX}:`) ? hash6.slice(ARTIFACT_HASH_PREFIX.length + 1) : hash6;
+  #contentKey(hash7) {
+    const digest4 = hash7.startsWith(`${ARTIFACT_HASH_PREFIX}:`) ? hash7.slice(ARTIFACT_HASH_PREFIX.length + 1) : hash7;
     return `${this.#objectPrefix}/${digest4}`;
   }
   #metadataKey(id2) {
@@ -10358,7 +12173,14 @@ export {
   STORY_EDIT_POLICY_VERSION,
   STORY_EDIT_SCHEMA_VERSION,
   STORY_ORACLE_POLICY_VERSION,
+  SqlAgentStepAttemptRepository,
+  SqlAgentStepResultRepository,
+  SqlDeliveryRepository,
+  SqlOracleExecutionRepository,
+  SqlWorkEnvironmentRepository,
   SqlWorkflowDefinitionRepository,
+  SqlWorkflowEvidenceRepository,
+  SqlWorkflowHumanInteractionRepository,
   SqlWorkflowInstanceRepository,
   StorageKernelError,
   UnconfiguredDeliveryDeploymentAdapter,
@@ -10444,7 +12266,14 @@ export {
   createS3ArtifactStore,
   createS3ObjectClient,
   createShutdownController,
+  createSqlAgentStepAttemptRepository,
+  createSqlAgentStepResultRepository,
+  createSqlDeliveryRepository,
+  createSqlOracleExecutionRepository,
+  createSqlWorkEnvironmentRepository,
   createSqlWorkflowDefinitionRepository,
+  createSqlWorkflowEvidenceRepository,
+  createSqlWorkflowHumanInteractionRepository,
   createSqlWorkflowInstanceRepository,
   createWorkflowEvidence,
   createWorkflowInstance,
