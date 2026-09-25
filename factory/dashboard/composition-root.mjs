@@ -63,6 +63,7 @@ import { AgentStepResultStore } from '../lib/agent-step-result-store.mjs'
 
 // Transport — route modules and their shared utilities.
 import { send, readBody, sendError, extractTrustContext, resolveCorrelationId } from './http-utils.mjs'
+import { DEFAULT_FAKE_IDP_SECRET, LocalDevMembershipResolver } from '../src/domain/identity/index.ts'
 import { createAgentOsProxy } from './agentos-proxy.mjs'
 import { handleWorkflowProjectionRequest } from './workflow-projection-routes.mjs'
 import { WorkflowProjectionSseHub } from './workflow-projection-sse.mjs'
@@ -106,6 +107,42 @@ export function resolveFactoryBindPolicy(env = process.env) {
   return { host, trustMode: LOOPBACK_HOSTS.has(host) ? 'loopback-only' : 'unsafe-remote-unauthenticated' }
 }
 
+/**
+ * Build the identity primitives used once at the HTTP boundary: the
+ * server-side membership resolver and the Fake IdP shared secret.
+ *
+ * The secret is dev-only by default; a deployment is expected to provide
+ * `FACTORY_FAKE_IDP_SECRET` out of band. The resolver is the only place
+ * memberships (`organizationId`, `workstreamId`, `squadId`, `roles`) may come
+ * from — never from client headers.
+ *
+ * @param {Record<string, string|undefined>} [env]
+ * @returns {{ membershipResolver: LocalDevMembershipResolver, fakeIdpSecret: string }}
+ */
+export function createIdentityBoundaryOptions(env = process.env) {
+  return {
+    membershipResolver: new LocalDevMembershipResolver(),
+    fakeIdpSecret: env.FACTORY_FAKE_IDP_SECRET ?? env.FACTORY_IDP_SECRET ?? DEFAULT_FAKE_IDP_SECRET,
+  }
+}
+
+/**
+ * Attach the identity options to the bind policy non-enumerably.
+ *
+ * `extractTrustContext(req, config.bindPolicy)` reads them, while the bind
+ * policy stays deep-equal to `{ host, trustMode }` for every existing caller.
+ */
+function withIdentityBoundaryOptions(bindPolicy, identityOptions) {
+  const enriched = { ...bindPolicy }
+  Object.defineProperty(enriched, 'identity', {
+    value: identityOptions,
+    enumerable: false,
+    writable: false,
+    configurable: true,
+  })
+  return enriched
+}
+
 // ---------------------------------------------------------------------------
 // 1. loadConfig — read + validate the environment once.
 // ---------------------------------------------------------------------------
@@ -115,7 +152,7 @@ export function resolveFactoryBindPolicy(env = process.env) {
  * @returns {object} frozen configuration consumed by every later step
  */
 export function loadConfig(env = process.env) {
-  const bindPolicy = resolveFactoryBindPolicy(env)
+  const bindPolicy = withIdentityBoundaryOptions(resolveFactoryBindPolicy(env), createIdentityBoundaryOptions(env))
 
   // Jira credentials — env vars take priority; Coday user.yaml is the fallback.
   // Discovery diagnostics are reported at startup, never any secret value.
