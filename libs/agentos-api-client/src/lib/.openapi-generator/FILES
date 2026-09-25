@@ -16,6 +16,7 @@ api/feedback-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
+api/namespace-git-controller.service.ts
 api/namespace-membership-controller.service.ts
 api/namespace-permission-endpoints.service.ts
 api/o-auth-callback-controller.service.ts
@@ -75,6 +76,8 @@ model/message-event.ts
 model/model-pricing.ts
 model/models.ts
 model/namespace-agent-deploy-request.ts
+model/namespace-git-request.ts
+model/namespace-git.ts
 model/namespace-list-item.ts
 model/namespace-role-entry.ts
 model/namespace.ts

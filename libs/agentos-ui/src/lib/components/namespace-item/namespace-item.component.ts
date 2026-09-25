@@ -12,6 +12,8 @@ import { ActionCardChipsDirective, ActionCardComponent, ActionCardMenuItem } fro
 })
 export class NamespaceItemComponent {
   readonly namespace = input.required<Namespace>()
+  /** Git settings exist only while the GIT plugin is loaded on the server. */
+  readonly gitAvailable = input(false)
 
   readonly selected = output<Namespace>()
   readonly editRequested = output<Namespace>()
@@ -23,6 +25,7 @@ export class NamespaceItemComponent {
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
+  readonly gitRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
@@ -60,6 +63,9 @@ export class NamespaceItemComponent {
   }
   protected onMembers(): void {
     this.membersRequested.emit(this.namespace())
+  }
+  protected onGit(): void {
+    this.gitRequested.emit(this.namespace())
   }
   protected onAuthSettings(): void {
     this.authSettingsRequested.emit(this.namespace())

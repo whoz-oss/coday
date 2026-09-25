@@ -1,12 +1,13 @@
 plugins {
     id("dev.nx.gradle.project-graph") version ("0.1.10")
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.kapt) // Required for PF4J annotation processing
     `maven-publish`
 }
 
 group = "whoz-oss.agentos"
 version = libs.versions.agentosService.get()
-description = "AgentOS Git core - hardened server-side Git execution shared by the service and the GIT plugin"
+description = "AgentOS Git plugin - Git tools for agents working in a case's Git workspace"
 
 java {
     toolchain {
@@ -22,8 +23,8 @@ publishing {
             from(components["java"])
 
             pom {
-                name.set("AgentOS Git core")
-                description.set("AgentOS Git core - hardened server-side Git execution shared by the service and the GIT plugin")
+                name.set("AgentOS Git Plugin")
+                description.set("AgentOS Git plugin - Git tools for agents working in a case's Git workspace")
                 url.set("https://github.com/whoz-oss/coday")
 
                 licenses {
@@ -67,18 +68,52 @@ publishing {
 dependencies {
     implementation(libs.klogger)
 
-    // Annotation only: the service binds GitExecutionProperties from `agentos.git`, the GIT plugin
-    // builds its own instance. Never bundled, like the annotation-only dependencies of the SDK.
-    compileOnly("org.springframework.boot:spring-boot:${libs.versions.springBoot.get()}")
+    // AgentOS SDK - Contains plugin interfaces
+    compileOnly("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
+    // Shared hardened Git execution. Provided by the service at runtime (PF4J APD class loading),
+    // so the plugin runs exactly the runner the service uses and never bundles its own copy.
+    compileOnly("whoz-oss.agentos:agentos-git:${libs.versions.agentosService.get()}")
+
+    // PF4J - Required for @Extension annotation processing
+    compileOnly(libs.pf4j)
+    kapt(libs.pf4j)
+
+    // Jackson for JSON handling
+    compileOnly(libs.bundles.jackson)
+
+    // Testing
+    testImplementation("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
+    testImplementation("whoz-oss.agentos:agentos-git:${libs.versions.agentosService.get()}")
+    testImplementation(libs.bundles.jackson)
     testImplementation(libs.bundles.testing.common)
+    testImplementation(libs.pf4j)
     testRuntimeOnly(libs.junit.platform.launcher)
+    kaptTest(libs.pf4j)
+}
+
+// Configure kapt for PF4J extension processing
+kapt {
+    arguments {
+        arg("pf4j.storageClassName", "org.pf4j.processor.LegacyExtensionStorage")
+    }
 }
 
 kotlin {
     compilerOptions {
         freeCompilerArgs.addAll("-Xjsr305=strict")
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.fromTarget(libs.versions.kotlinJvmTarget.get()))
+    }
+}
+
+tasks.jar {
+    manifest {
+        attributes(
+            "Plugin-Id" to "agentos-git-plugin",
+            "Plugin-Version" to version,
+            "Plugin-Provider" to "whoz-oss",
+            "Plugin-Class" to "io.whozoss.agentos.plugins.git.GitPlugin",
+        )
     }
 }
 

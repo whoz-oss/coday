@@ -8,6 +8,7 @@ import io.whozoss.agentos.authSetting.BearerTokenAuthSetting
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.git.core.GitCredentials
 import mu.KLogging
+import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Component
 
 /**
@@ -28,17 +29,25 @@ import org.springframework.stereotype.Component
 @Component
 class GitServiceAccountResolver(
     private val authSettingService: AuthSettingService,
+    @param:Lazy private val associations: GitRepositoryAssociationService? = null,
 ) {
     /**
      * @throws BadRequestException when the referenced auth setting is missing, out of scope, or of
      *   a kind that cannot authenticate an HTTPS Git remote.
      */
     fun resolve(settings: GitRepositorySettings): GitCredentials.UsernamePassword {
+        // Existing workspaces keep their base and setup snapshot, but use the namespace's
+        // current service account. Removing the association preserves the historical account.
+        val association = associations?.findSettings(settings.namespaceId)
+        if (association != null && association.repositoryUrl != settings.repositoryUrl) {
+            throw BadRequestException("The workspace repository no longer matches the namespace association")
+        }
+        val authSettingId = association?.serviceAuthSettingId ?: settings.serviceAuthSettingId
         val authSetting =
-            authSettingService.findById(settings.serviceAuthSettingId)
+            authSettingService.findById(authSettingId)
                 ?: throw BadRequestException(
                     "The service account referenced by this namespace's Git association " +
-                        "(${settings.serviceAuthSettingId}) does not exist. A deleted or recreated auth setting " +
+                        "($authSettingId) does not exist. A deleted or recreated auth setting " +
                         "is not the same identity: re-associate the repository explicitly.",
                 )
 
@@ -69,7 +78,7 @@ class GitServiceAccountResolver(
     ) {
         if (authSetting.userId != null || authSetting.namespaceId != settings.namespaceId) {
             throw BadRequestException(
-                "Auth setting ${settings.serviceAuthSettingId} is not shared by namespace ${settings.namespaceId} " +
+                "Auth setting ${authSetting.id} is not shared by namespace ${settings.namespaceId} " +
                     "(namespaceId=${authSetting.namespaceId}, userId=${authSetting.userId}). The Git service " +
                     "account must be a namespace-shared setting of that same namespace.",
             )

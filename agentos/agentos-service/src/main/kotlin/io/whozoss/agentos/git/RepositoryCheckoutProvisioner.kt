@@ -53,11 +53,14 @@ class RepositoryCheckoutProvisioner(
         }
 
         val checkout = existing ?: checkoutService.create(newCheckout(settings))
+        var failureReason = "Cannot access the namespace repository files."
         return try {
             val sharedRoot = exchangeStorageService.namespaceRoot(settings.namespaceId)
+            failureReason = "A legacy namespace checkout exists. Move it to internal storage before provisioning."
             check(!Files.exists(sharedRoot.resolve(".git")) && !Files.exists(sharedRoot.resolve("repo/.git"))) {
                 "A legacy namespace checkout exists. Move it to internal storage before provisioning."
             }
+            failureReason = "Repository preparation failed. Check repository access, the main branch, service account and local Git configuration."
             // Publishing may have succeeded just before a crash. Never clone over that repository.
             if (isGitRepository(namespaceRoot)) {
                 when (checkout.status) {
@@ -68,11 +71,11 @@ class RepositoryCheckoutProvisioner(
                 prepare(settings, checkout, namespaceRoot)
             }
         } catch (e: Exception) {
-            logger.error(e) { "Preparation failed for namespace ${settings.namespaceId}" }
+            logger.error { "Namespace ${settings.namespaceId}: $failureReason (${e.javaClass.simpleName})" }
             checkoutService.markStatus(
                 checkout.id,
                 RepositoryCheckoutStatus.FAILED,
-                failureReason = e.message?.take(MAX_FAILURE_REASON_LENGTH),
+                failureReason = failureReason,
             )
             throw e
         }
@@ -271,6 +274,5 @@ class RepositoryCheckoutProvisioner(
         /** Sibling of the namespace root, so the publish step is a rename on the same volume. */
         private const val STAGING_DIR_NAME = ".repository-staging"
         private const val BACKUP_SUFFIX = ".pre-git-"
-        private const val MAX_FAILURE_REASON_LENGTH = 2_000
     }
 }
