@@ -1821,6 +1821,297 @@ function createFilesystemDeliveryRepository(store) {
   return new FilesystemDeliveryRepository(store);
 }
 
+// ../src/adapters/persistence/sql/db.ts
+var DEFAULT_ORGANIZATION_ID = "default";
+var DEFAULT_WORKSTREAM_ID = "default";
+function resolveSqlDatabaseConfig(env = process.env) {
+  const port = Number.parseInt(env.PGPORT ?? "", 10);
+  const maxConnections = Number.parseInt(env.PGPOOL_MAX ?? "", 10);
+  return {
+    host: env.PGHOST ?? "localhost",
+    port: Number.isFinite(port) ? port : 5432,
+    database: env.PGDATABASE ?? "coday_factory",
+    user: env.PGUSER ?? "factory",
+    password: env.PGPASSWORD ?? "factory_dev_pass",
+    maxConnections: Number.isFinite(maxConnections) && maxConnections > 0 ? maxConnections : 10,
+    ssl: env.PGSSL === "true"
+  };
+}
+async function loadDriver(specifier) {
+  const imported = await import(specifier);
+  const module = imported.default ?? imported;
+  if (typeof module?.Pool !== "function") throw new Error(`SQL_DRIVER_INVALID: ${specifier}`);
+  return module;
+}
+async function createPgPoolClient(config = resolveSqlDatabaseConfig(), driver = "pg") {
+  const pg = await loadDriver(driver);
+  const pool = new pg.Pool({
+    host: config.host,
+    port: config.port,
+    database: config.database,
+    user: config.user,
+    password: config.password,
+    max: config.maxConnections,
+    ssl: config.ssl ? { rejectUnauthorized: false } : false
+  });
+  return {
+    query: (text2, params) => pool.query(text2, params)
+  };
+}
+function parseJsonColumn(value) {
+  if (typeof value === "string") return JSON.parse(value);
+  return value;
+}
+
+// ../src/adapters/persistence/sql/sql-workflow-definition-repository.ts
+var SELECT_COLUMNS = "organization_id, workstream_id, workflow_type, version, definition_hash, definition_json";
+function compareVersions(left, right) {
+  const parse = (value) => value.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const a = parse(left);
+  const b = parse(right);
+  for (let index = 0; index < Math.max(a.length, b.length); index++) {
+    const difference = (a[index] ?? 0) - (b[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return left.localeCompare(right);
+}
+function toDefinition(row) {
+  return {
+    ...parseJsonColumn(row.definition_json),
+    definitionHash: row.definition_hash
+  };
+}
+var SqlWorkflowDefinitionRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? null;
+  }
+  #inScope(row) {
+    return this.#workstreamId === null ? row.workstream_id === null || row.workstream_id === void 0 : row.workstream_id === this.#workstreamId;
+  }
+  async list() {
+    const { rows } = await this.#client.query(
+      `SELECT ${SELECT_COLUMNS} FROM workflow_definitions WHERE organization_id = $1`,
+      [this.#organizationId]
+    );
+    return rows.filter((row) => this.#inScope(row)).map(toDefinition).sort((left, right) => {
+      const byType = left.workflowType.localeCompare(right.workflowType);
+      return byType !== 0 ? byType : compareVersions(left.version, right.version);
+    });
+  }
+  async get(workflowType, version) {
+    const { rows } = await this.#client.query(
+      `SELECT ${SELECT_COLUMNS} FROM workflow_definitions
+       WHERE organization_id = $1 AND workflow_type = $2 AND version = $3`,
+      [this.#organizationId, workflowType, version]
+    );
+    const row = rows.find((candidate) => this.#inScope(candidate));
+    return row ? toDefinition(row) : null;
+  }
+  async resolveUnique(workflowType) {
+    const { rows } = await this.#client.query(
+      `SELECT ${SELECT_COLUMNS} FROM workflow_definitions
+       WHERE organization_id = $1 AND workflow_type = $2`,
+      [this.#organizationId, workflowType]
+    );
+    const scoped = rows.filter((row) => this.#inScope(row)).map(toDefinition);
+    if (scoped.length === 0)
+      throw new WorkflowDefinitionRepositoryError(
+        WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES.WORKFLOW_DEFINITION_NOT_FOUND,
+        { workflowType }
+      );
+    return scoped.reduce(
+      (latest, candidate) => compareVersions(candidate.version, latest.version) > 0 ? candidate : latest
+    );
+  }
+};
+function createSqlWorkflowDefinitionRepository(client, options = {}) {
+  return new SqlWorkflowDefinitionRepository(client, options);
+}
+
+// ../src/adapters/persistence/sql/sql-workflow-instance-repository.ts
+var INSTANCE_COLUMNS = [
+  "organization_id",
+  "workstream_id",
+  "namespace_id",
+  "workflow_id",
+  "revision",
+  "status",
+  "instance_json",
+  "projection_json",
+  "creation_command_hash"
+].join(", ");
+var INSTANCE_INSERT_COLUMNS = `${INSTANCE_COLUMNS}, created_at, updated_at`;
+var ACTIVE_STATUS = "active";
+var REMOVED_STATUS = "removed";
+function readSnapshot(row) {
+  return {
+    instance: parseJsonColumn(row.instance_json),
+    projection: parseJsonColumn(row.projection_json)
+  };
+}
+var SqlWorkflowInstanceRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  }
+  async #select(namespaceId, workflowId) {
+    const { rows } = await this.#client.query(
+      `SELECT ${INSTANCE_COLUMNS} FROM workflow_instances
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND workflow_id = $4`,
+      [this.#organizationId, this.#workstreamId, namespaceId, workflowId]
+    );
+    return rows[0] ?? null;
+  }
+  async list(namespaceId) {
+    const { rows } = await this.#client.query(
+      `SELECT ${INSTANCE_COLUMNS} FROM workflow_instances
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND status = $4`,
+      [this.#organizationId, this.#workstreamId, namespaceId, ACTIVE_STATUS]
+    );
+    return rows.map((row) => parseJsonColumn(row.projection_json)).sort((left, right) => left.workflowId.localeCompare(right.workflowId));
+  }
+  async get(namespaceId, workflowId) {
+    const row = await this.#select(namespaceId, workflowId);
+    if (!row || row.status !== ACTIVE_STATUS) return null;
+    return readSnapshot(row);
+  }
+  async create(namespaceId, command, definition, controllerExecution) {
+    const existing = await this.#select(namespaceId, command.workflowId);
+    if (existing) {
+      const commandHash = workflowStartCommandHash(command, definition);
+      if (existing.status !== ACTIVE_STATUS)
+        throw new WorkflowInstanceRepositoryError("WORKFLOW_REMOVED", { workflowId: command.workflowId });
+      if (existing.creation_command_hash === commandHash) return readSnapshot(existing);
+      throw new WorkflowInstanceRepositoryError("WORKFLOW_IDENTITY_CONFLICT", {
+        workflowId: command.workflowId
+      });
+    }
+    const created = createWorkflowInstance(command, definition, controllerExecution);
+    const observedAt = created.instance.createdAt;
+    await this.#client.query(
+      `INSERT INTO workflow_instances
+         (${INSTANCE_INSERT_COLUMNS})
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb, $9, $10, $11)
+       ON CONFLICT DO NOTHING`,
+      [
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        command.workflowId,
+        1,
+        ACTIVE_STATUS,
+        JSON.stringify(created.instance),
+        JSON.stringify(created.projection),
+        created.creationCommandHash,
+        observedAt,
+        observedAt
+      ]
+    );
+    const stored = await this.#select(namespaceId, command.workflowId);
+    if (!stored) throw new WorkflowInstanceRepositoryError("WORKFLOW_INSTANCE_CREATE_FAILED", {
+      workflowId: command.workflowId
+    });
+    return readSnapshot(stored);
+  }
+  async transition(namespaceId, workflowId, transition) {
+    const input = transition ?? {};
+    const request = input.request;
+    const definition = input.definition;
+    const current = await this.#select(namespaceId, workflowId);
+    if (!current || current.status !== ACTIVE_STATUS)
+      throw new WorkflowInstanceRepositoryError("WORKFLOW_NOT_FOUND", { workflowId });
+    const snapshot = readSnapshot(current);
+    const evaluationSnapshot = {
+      ...snapshot.instance,
+      instance: snapshot.instance,
+      projection: snapshot.projection,
+      revision: snapshot.instance.revision
+    };
+    const execution2 = {
+      ...input.execution ?? {},
+      namespaceId
+    };
+    const evidence = input.evidence ?? [];
+    const policy = typeof input.policy === "function" ? input.policy : evaluateWorkflowTransition;
+    const decision = policy({ request, snapshot: evaluationSnapshot, definition, evidence, execution: execution2 });
+    if (!decision?.allowed)
+      throw new WorkflowInstanceRepositoryError(
+        decision?.code ?? "TRANSITION_REJECTED",
+        decision?.missingEvidence ? { missingEvidence: decision.missingEvidence } : {},
+        decision
+      );
+    const observedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const applied = applyWorkflowTransition(evaluationSnapshot, definition, request, observedAt);
+    const expectedRevision = typeof request?.expectedRevision === "number" ? request.expectedRevision : snapshot.instance.revision;
+    const { rowCount } = await this.#client.query(
+      `UPDATE workflow_instances
+         SET revision = $1, instance_json = $2::jsonb, projection_json = $3::jsonb, updated_at = $4
+       WHERE organization_id = $5 AND workstream_id = $6 AND namespace_id = $7 AND workflow_id = $8
+         AND revision = $9 AND status = $10`,
+      [
+        applied.revision,
+        JSON.stringify(applied.instance),
+        JSON.stringify(applied.projection),
+        observedAt,
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        workflowId,
+        expectedRevision,
+        ACTIVE_STATUS
+      ]
+    );
+    if (!rowCount)
+      throw new WorkflowInstanceRepositoryError("REVISION_CONFLICT", { workflowId, expectedRevision });
+    return {
+      instance: applied.instance,
+      projection: applied.projection
+    };
+  }
+  async #setStatus(namespaceId, workflowId, from, to, actor, failureCode) {
+    const { rowCount } = await this.#client.query(
+      `UPDATE workflow_instances
+         SET status = $1, updated_at = $2
+       WHERE organization_id = $3 AND workstream_id = $4 AND namespace_id = $5 AND workflow_id = $6 AND status = $7`,
+      [
+        to,
+        (/* @__PURE__ */ new Date()).toISOString(),
+        this.#organizationId,
+        this.#workstreamId,
+        namespaceId,
+        workflowId,
+        from
+      ]
+    );
+    if (!rowCount) throw new WorkflowInstanceRepositoryError(failureCode, { workflowId });
+  }
+  async remove(namespaceId, workflowId, actor) {
+    await this.#setStatus(namespaceId, workflowId, ACTIVE_STATUS, REMOVED_STATUS, actor, "WORKFLOW_NOT_FOUND");
+  }
+  async restore(namespaceId, workflowId, actor) {
+    await this.#setStatus(namespaceId, workflowId, REMOVED_STATUS, ACTIVE_STATUS, actor, "WORKFLOW_NOT_FOUND");
+  }
+  async purge(namespaceId, workflowId, actor) {
+    await this.#client.query(
+      `DELETE FROM workflow_instances
+       WHERE organization_id = $1 AND workstream_id = $2 AND namespace_id = $3 AND workflow_id = $4`,
+      [this.#organizationId, this.#workstreamId, namespaceId, workflowId]
+    );
+  }
+};
+function createSqlWorkflowInstanceRepository(client, options = {}) {
+  return new SqlWorkflowInstanceRepository(client, options);
+}
+
 // ../src/application/shutdown.ts
 function createShutdownController(deps) {
   let initiated = false;
@@ -9557,8 +9848,10 @@ export {
   AgentStepAttemptStore,
   AgentStepResultStore,
   COMMENTS_CHAR_BUDGET,
+  DEFAULT_ORGANIZATION_ID,
   DEFAULT_PROCESS_LOCK_FILE,
   DEFAULT_RUN_STORE_POLICY,
+  DEFAULT_WORKSTREAM_ID,
   DELIVERY_ADAPTER_OUTCOMES,
   DELIVERY_DEFINITION_SCHEMA_VERSION,
   DELIVERY_EVIDENCE_KINDS,
@@ -9615,6 +9908,8 @@ export {
   STORY_EDIT_POLICY_VERSION,
   STORY_EDIT_SCHEMA_VERSION,
   STORY_ORACLE_POLICY_VERSION,
+  SqlWorkflowDefinitionRepository,
+  SqlWorkflowInstanceRepository,
   StorageKernelError,
   UnconfiguredDeliveryDeploymentAdapter,
   UnconfiguredDeliveryVerificationAdapter,
@@ -9688,8 +9983,11 @@ export {
   createFilesystemWorkflowHumanInteractionRepository,
   createFilesystemWorkflowInstanceRepository,
   createKeyedLock,
+  createPgPoolClient,
   createRun,
   createShutdownController,
+  createSqlWorkflowDefinitionRepository,
+  createSqlWorkflowInstanceRepository,
   createWorkflowEvidence,
   createWorkflowInstance,
   defaultDeliveryDefinition,
@@ -9767,6 +10065,7 @@ export {
   parseForgeLedgerLines,
   parseForgeSpecFrontmatter,
   parseFrontBuildHostMap,
+  parseJsonColumn,
   parseStorySpecFrontmatter,
   parseYamlMinimal,
   passPhase,
@@ -9792,6 +10091,7 @@ export {
   resolveFrontOraclePlan,
   resolveOwnerProjectConfigs,
   resolveOwnerProjects,
+  resolveSqlDatabaseConfig,
   runAgentTurn,
   runBaselineOracle,
   runCommand,
