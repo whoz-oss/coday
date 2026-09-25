@@ -1,5 +1,6 @@
 package io.whozoss.agentos.git
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.exchange.ExchangeStorageService
@@ -28,6 +29,7 @@ class GitExchangeRootResolver(
     private val caseRepository: CaseRepository,
     private val bindingService: CaseResourceBindingService,
     private val exchangeStorageService: ExchangeStorageService,
+    private val objectMapper: ObjectMapper,
 ) : ExchangeRootResolver {
     override fun resolve(case: Case): ResolvedExchangeRoot = resolveGit(case).exchange
 
@@ -71,8 +73,27 @@ class GitExchangeRootResolver(
                         ),
                     binding = binding,
                     ownerCaseId = rootCase.id,
+                    supportDirectory = exchangeStorageService.workspaceSupportDirectory(rootCase.namespaceId, rootCase.id),
+                    toolParameters = gitToolParameters(rootCase, binding),
                 )
         }
+    }
+
+    /**
+     * What the `GIT` tools need to work in this family's worktree, from the settings recorded when
+     * the family was equipped. The administrative directory is pinned by name, so the tools never
+     * trust the worktree's own `.git` pointer file, which an agent can rewrite.
+     */
+    private fun gitToolParameters(rootCase: Case, binding: CaseResourceBinding): Map<String, String> {
+        val settings = binding.settingsJson?.let { objectMapper.readValue(it, GitRepositorySettings::class.java) }
+            ?: return emptyMap()
+        val common = exchangeStorageService.namespaceGitDirectory(rootCase.namespaceId).toAbsolutePath().normalize()
+        return mapOf(
+            "gitDir" to common.resolve("worktrees").resolve(rootCase.id.toString()).toString(),
+            "commonGitDir" to common.toString(),
+            "repositoryUrl" to settings.repositoryUrl,
+            "mainBranch" to settings.mainBranch,
+        )
     }
 
     /** Convenience for callers holding only an id. */

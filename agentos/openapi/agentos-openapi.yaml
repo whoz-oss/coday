@@ -1336,6 +1336,49 @@ paths:
       summary: Mark case as read
       tags:
       - case-controller
+  /api/cases/{caseId}/workspace:
+    get:
+      operationId: getCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/retry:
+    post:
+      operationId: retryCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceRetryRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/cases/{entityId}/members:
     get:
       description: Returns all users holding a direct ADMIN or MEMBER relation on
@@ -2307,6 +2350,27 @@ paths:
           description: No Content
       tags:
       - namespace-controller
+  /api/namespaces/{namespaceId}/workspaces:
+    get:
+      operationId: listCaseWorkspace
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/oauth/callback:
     post:
       description: "Called by the frontend popup after the OAuth provider redirects\
@@ -3940,6 +4004,22 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseWorkspaceView:
+      type: object
+      properties:
+        cleanupReason:
+          type: string
+        equipped:
+          type: boolean
+        failureReason:
+          type: string
+        rootCaseId:
+          type: string
+          format: uuid
+        status:
+          type: string
+      required:
+      - equipped
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4496,6 +4576,8 @@ components:
       properties:
         associated:
           type: boolean
+        autoWorktreeForRootCases:
+          type: boolean
         checkoutFailureReason:
           type: string
         checkoutStatus:
@@ -4510,11 +4592,16 @@ components:
         serviceAuthSettingId:
           type: string
           format: uuid
+        setupCommand:
+          type: string
       required:
       - associated
+      - autoWorktreeForRootCases
     NamespaceGitRequest:
       type: object
       properties:
+        autoWorktreeForRootCases:
+          type: boolean
         mainBranch:
           type: string
         repositoryUrl:
@@ -4523,7 +4610,10 @@ components:
         serviceAuthSettingId:
           type: string
           format: uuid
+        setupCommand:
+          type: string
       required:
+      - autoWorktreeForRootCases
       - repositoryUrl
       - serviceAuthSettingId
     NamespaceListItem:
@@ -5476,3 +5566,10 @@ components:
       - namespaceId
       - timestamp
       - type
+    WorkspaceRetryRequest:
+      type: object
+      properties:
+        acknowledgeSetupReplay:
+          type: boolean
+      required:
+      - acknowledgeSetupReplay

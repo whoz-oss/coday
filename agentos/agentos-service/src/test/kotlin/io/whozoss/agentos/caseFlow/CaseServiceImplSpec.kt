@@ -255,7 +255,8 @@ class CaseServiceImplSpec :
         fun gitGate(repository: CaseRepository, bindings: InMemoryCaseResourceBindingService): GitCaseLaunchGate =
             GitCaseLaunchGate(
                 GitExchangeRootResolver(repository, bindings,
-                    ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = "/tmp/runtime-exchange-tests"))),
+                    ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = "/tmp/runtime-exchange-tests")),
+                    com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()),
                 repository,
             )
 

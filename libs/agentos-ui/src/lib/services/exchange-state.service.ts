@@ -26,13 +26,15 @@ import {
   tap,
   take,
   throwError,
+  takeWhile,
 } from 'rxjs'
+import { CaseWorkspaceService } from './case-workspace.service'
 
 /** Scope of an exchange (matches the generated `ExchangeFileEntryScopeEnum`). */
 export type ExchangeScope = ExchangeFileEntryScopeEnum
 
 /** Per-scope load status — drives the fail-closed gating (forbidden ≠ error ≠ ready). */
-export type ExchangeScopeStatus = 'loading' | 'ready' | 'forbidden' | 'error'
+export type ExchangeScopeStatus = 'loading' | 'preparing' | 'ready' | 'forbidden' | 'error'
 
 /** Minimal reference to a file, used to address it across components. */
 export interface ExchangeFileRef {
@@ -81,15 +83,17 @@ export function toBreadcrumb(path: string): ExchangePathSegment[] {
  * Source of truth = the server-computed manifest. Capability is **fail-closed**:
  *   - any error maps to capability `NONE`;
  *   - 403/404 → `forbidden` (section hidden, zero disclosure);
+ *   - 409 on case files → check the workspace; pending preparation waits and reloads automatically;
  *   - other errors → `error` (retry banner), still `NONE` (no write affordance).
  * We deliberately DO NOT use `multicastRefreshable` (it fail-opens, swallowing 403/404/5xx),
  * so the forbidden / error / ready distinction the gating depends on is preserved.
  *
- * Listings use the generated `ExchangeControllerService`.
+ * Listings use the generated `ExchangeControllerService`; preparation uses `CaseWorkspaceService`.
  */
 @Injectable({ providedIn: 'root' })
 export class ExchangeStateService {
   private readonly controller = inject(ExchangeControllerService)
+  private readonly workspaces = inject(CaseWorkspaceService)
 
   private namespaceId: string | null = null
   private caseId: string | null = null
@@ -114,7 +118,7 @@ export class ExchangeStateService {
     () => this.caseId,
     () => this.casePath,
     (id) =>
-      this.loadScope(() => this.loadDirectory(ExchangeFileEntryScopeEnum.CASE, id)).pipe(
+      this.loadScope(() => this.loadDirectory(ExchangeFileEntryScopeEnum.CASE, id), id).pipe(
         finalize(() => this.caseLoadingMore.set(false))
       )
   )
@@ -205,7 +209,10 @@ export class ExchangeStateService {
     )
   }
 
-  private loadScope(loader: () => Observable<ExchangeDirectoryListing>): Observable<ExchangeScopeView> {
+  private loadScope(
+    loader: () => Observable<ExchangeDirectoryListing>,
+    caseId?: string
+  ): Observable<ExchangeScopeView> {
     return loader().pipe(
       map((listing) => ({
         status: 'ready' as const,
@@ -217,6 +224,31 @@ export class ExchangeStateService {
         hasMore: listing.hasMore ?? false,
         capability: listing.capability ?? ExchangeDirectoryListingCapabilityEnum.NONE,
       })),
+      catchError((err: { status?: number }) => {
+        // A 409 can also mean failed preparation or cleanup. Only the workspace state
+        // can tell us whether waiting is appropriate; never infer it from the HTTP code alone.
+        return err?.status === 409 && caseId ? this.waitForWorkspace(caseId, loader) : of(this.scopeError(err))
+      })
+    )
+  }
+
+  private waitForWorkspace(
+    caseId: string,
+    loader: () => Observable<ExchangeDirectoryListing>
+  ): Observable<ExchangeScopeView> {
+    return this.workspaces.watch(caseId).pipe(
+      takeWhile(({ view }) => !!view?.equipped && (view.status === 'REQUESTED' || view.status === 'PREPARING'), true),
+      switchMap(({ view: workspace, errorStatus }) => {
+        if (!workspace) return of(this.scopeError({ status: errorStatus }))
+        if (workspace.equipped && (workspace.status === 'REQUESTED' || workspace.status === 'PREPARING')) {
+          return of({ ...NEUTRAL_LOADING, status: 'preparing' as const })
+        }
+        if (!workspace.equipped || workspace.status === 'READY' || workspace.status === 'REMOVED') {
+          // Retry once after the shared state becomes ready; another conflict is a file error.
+          return this.loadScope(loader)
+        }
+        return of(this.scopeError({}))
+      }),
       catchError((err: { status?: number }) => of(this.scopeError(err)))
     )
   }
@@ -384,9 +416,13 @@ export class ExchangeStateService {
 
   /** Maps an upload error response to a user-facing message (disallowed type, conflict, too large). */
   private uploadErrorMessage(err: { status?: number; message?: string; error?: { message?: string } }): string {
+    // 409 carries two different meanings on this endpoint: a name collision, and a case whose Git
+    // workspace is not usable yet. The server says which one in the message, so prefer it over the
+    // hardcoded guess — announcing a duplicate that does not exist sends people looking for a file
+    // they never uploaded.
     const byStatus: Record<number, string | undefined> = {
       400: err?.error?.message ?? 'This file type is not allowed.',
-      409: 'A file with this name already exists.',
+      409: err?.error?.message ?? 'A file with this name already exists.',
       413: 'This file is too large.',
     }
     return (err?.status != null && byStatus[err.status]) || err?.message || 'Upload failed'

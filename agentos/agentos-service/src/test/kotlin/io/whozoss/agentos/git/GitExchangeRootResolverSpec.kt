@@ -1,5 +1,6 @@
 package io.whozoss.agentos.git
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -47,7 +48,7 @@ class GitExchangeRootResolverSpec :
                         }
                 }
             val bindings = InMemoryCaseResourceBindingService()
-            return Fixture(GitExchangeRootResolver(repository, bindings, storage), storage, bindings)
+            return Fixture(GitExchangeRootResolver(repository, bindings, storage, jacksonObjectMapper()), storage, bindings)
         }
 
         fun case(
@@ -194,6 +195,49 @@ class GitExchangeRootResolverSpec :
             shared.requireWorkingDirectory() shouldBe f.storage.caseRoot(namespaceId, root.id, root.metadata.created).resolve("repo")
         }
 
+        "tools of an equipped family receive the Git context recorded when it was equipped" {
+            val root = case("Root")
+            val child = case("Child", root)
+            val f = fixture(root, child)
+            val settings = GitRepositorySettings(
+                configId = UUID.randomUUID(),
+                namespaceId = namespaceId,
+                repositoryUrl = "https://forge.example/org/project.git",
+                mainBranch = "develop",
+                serviceAuthSettingId = UUID.randomUUID(),
+                autoWorktreeForRootCases = true,
+                setupCommand = null,
+            )
+            f.bindings.create(
+                CaseResourceBinding(
+                    rootCaseId = root.id,
+                    namespaceId = namespaceId,
+                    integrationConfigId = settings.configId,
+                    status = CaseResourceStatus.READY,
+                    settingsJson = jacksonObjectMapper().writeValueAsString(settings),
+                ),
+            )
+            val common = f.storage.namespaceGitDirectory(namespaceId).toAbsolutePath().normalize()
+
+            f.resolver.resolve(child).workspace?.toolParameters shouldBe mapOf(
+                "gitDir" to common.resolve("worktrees").resolve(root.id.toString()).toString(),
+                "commonGitDir" to common.toString(),
+                "repositoryUrl" to "https://forge.example/org/project.git",
+                "mainBranch" to "develop",
+            )
+        }
+
+        "tools of an equipped family share the HOME its setup used" {
+            val root = case("Root")
+            val child = case("Child", root)
+            val f = fixture(root, child)
+            f.resolver.resolve(child).workspace shouldBe null
+
+            equip(f, root)
+
+            f.resolver.resolve(child).workspace?.home shouldBe f.storage.workspaceSupportDirectory(namespaceId, root.id)
+        }
+
         "the exchange contract refuses every unavailable Git state without a directory fallback" {
             val root = case("Root")
             val f = fixture(root)
@@ -248,7 +292,7 @@ class GitExchangeRootResolverSpec :
             val repository = mockk<CaseRepository> {
                 every { findByIds(listOf(root.id), withRemoved = true) } returns listOf(root)
             }
-            val resolver = GitExchangeRootResolver(repository, changingBindings, f.storage)
+            val resolver = GitExchangeRootResolver(repository, changingBindings, f.storage, jacksonObjectMapper())
             var mutated = false
 
             shouldThrow<ExchangeUnavailableException> {

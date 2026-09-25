@@ -63,6 +63,7 @@ class BashToolProvider : ToolPlugin, io.whozoss.agentos.sdk.tool.WorkspaceToolLi
                 integrationConfig = integrationConfig,
                 configName = configName,
                 workspaceId = config.get("workspaceId")?.asText(),
+                workspaceHome = config.get("workspaceHome")?.asText()?.takeIf { it.isNotBlank() },
             )
         }
     }

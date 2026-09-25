@@ -1,4 +1,3 @@
-import { HttpClient } from '@angular/common/http'
 import {
   afterNextRender,
   Component,
@@ -14,9 +13,9 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { firstValueFrom } from 'rxjs'
+import { filter, firstValueFrom, Subject, takeUntil, throwError, timeout } from 'rxjs'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, Case, Configuration, Prompt } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, CaseControllerService, CaseStatusEnum, Prompt } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
 import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
@@ -27,6 +26,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
+import { CaseWorkspaceService } from '../../services/case-workspace.service'
 
 /**
  * CaseHomeComponent — landing page for a namespace.
@@ -58,10 +58,10 @@ import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments
   styleUrl: './case-home.component.scss',
 })
 export class CaseHomeComponent implements OnInit {
-  private readonly http = inject(HttpClient)
+  private readonly caseApi = inject(CaseControllerService)
+  private readonly workspaces = inject(CaseWorkspaceService)
   private readonly router = inject(Router)
   private readonly route = inject(ActivatedRoute)
-  private readonly config = inject(Configuration)
   private readonly caseState = inject(CaseStateService)
   private readonly destroyRef = inject(DestroyRef)
   protected readonly preferences = inject(USER_PREFERENCES_PORT)
@@ -78,9 +78,17 @@ export class CaseHomeComponent implements OnInit {
   private readonly agentAutocompleteRef = viewChild(AgentAutocompleteComponent)
 
   protected namespaceId = this.route.snapshot.queryParams['ns'] as string
+  protected readonly parentCaseId = signal<string | null>(this.route.snapshot.queryParams['parentCase'] ?? null)
+  protected readonly parentCaseTitle = computed(() => {
+    const parentId = this.parentCaseId()
+    return parentId ? this.caseState.cases().find((c) => c.id === parentId)?.title || parentId : null
+  })
+  private creationContext = 0
+  private readonly creationChanged = new Subject<void>()
 
   protected readonly inputValue = signal('')
   protected readonly isCreating = signal(false)
+  protected readonly submitError = signal('')
 
   /** Case created by a previous failed submit — reused on retry, never duplicated. */
   private readonly pendingCaseId = signal<string | null>(null)
@@ -98,18 +106,22 @@ export class CaseHomeComponent implements OnInit {
     // (namespace-intent badge and upload target) needs the namespace manifest.
     this.exchangeState.initializeForNamespace(this.namespaceId)
 
-    // React to ?ns query param changes — the component is reused across namespace switches.
-    // The handler skips the initial emission (newNs === this.namespaceId), hence the
-    // explicit init above.
+    // The composer is reused when switching namespaces or the parent of a new sub-case.
     this.route.queryParams.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
       const newNs = params['ns'] as string
-      if (newNs && newNs !== this.namespaceId) {
+      const newParent = (params['parentCase'] as string) || null
+      if (newNs && (newNs !== this.namespaceId || newParent !== this.parentCaseId())) {
+        this.creationContext++
+        this.creationChanged.next()
         this.namespaceId = newNs
+        this.parentCaseId.set(newParent)
         this.autocomplete.init(newNs)
         this.autocomplete.reset()
         this.inputValue.set('')
         this.attachments.reset()
         this.pendingCaseId.set(null)
+        this.submitError.set('')
+        this.isCreating.set(false)
         this.exchangeState.initializeForNamespace(newNs)
       }
     })
@@ -179,14 +191,23 @@ export class CaseHomeComponent implements OnInit {
     this.autocomplete.atSuggestions.set([])
   }
 
+  protected returnToParent(): void {
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId, case: this.parentCaseId() },
+    })
+  }
+
   // NOTE: this file exceeds the ~200-line guideline. The submit orchestration is kept
   // inline for now: extracting a shared case-creation/composer service (which should also
   // deduplicate the slash-autocomplete logic copied from case-chat) is follow-up work.
   protected async submit(): Promise<void> {
     if (!this.canSend) return
     const firstMessage = this.inputValue().trim()
-    // Captured for the whole chain: a namespace switch mid-flight abandons the submit.
+    // Switching namespace or parent abandons this submit, even if the user switches back.
     const namespaceId = this.namespaceId
+    const parentCaseId = this.parentCaseId()
+    const creationContext = this.creationContext
+    this.submitError.set('')
     this.isCreating.set(true)
 
     try {
@@ -195,18 +216,44 @@ export class CaseHomeComponent implements OnInit {
       let caseId = this.pendingCaseId()
       if (!caseId) {
         const createdCase = await firstValueFrom(
-          this.http.post<Case>(`${this.config.basePath}/api/cases`, {
+          this.caseApi.createCase({
             namespaceId,
-            metadata: {},
+            ...(parentCaseId ? { parentCaseId } : {}),
+            status: CaseStatusEnum.PENDING,
+            favorite: false,
+            removed: false,
           })
         )
+        if (this.abandoned(creationContext)) return
         this.caseState.addCase(createdCase)
         caseId = createdCase.id ?? ''
         this.pendingCaseId.set(caseId)
       }
-      if (this.abandoned(namespaceId)) {
-        this.isCreating.set(false)
-        return
+      if (this.abandoned(creationContext)) return
+
+      // Keep the same case and local attachments on retry; never fill the worktree before Git does.
+      if (this.attachments.hasAttachments()) {
+        const state = await firstValueFrom(
+          this.workspaces.watch(caseId).pipe(
+            filter(({ view }) => !view?.equipped || !['REQUESTED', 'PREPARING'].includes(view.status ?? '')),
+            timeout({
+              first: 120_000,
+              with: () =>
+                throwError(
+                  () =>
+                    new Error(
+                      'Workspace preparation is still in progress. Your message and attachments are saved here. Retry shortly to continue with the same case.'
+                    )
+                ),
+            }),
+            takeUntil(this.creationChanged),
+            takeUntilDestroyed(this.destroyRef)
+          )
+        )
+        if (!state.view || (state.view.equipped && state.view.status !== 'READY')) {
+          throw new Error(state.view?.failureReason || 'Workspace is not ready. Retry this submission shortly.')
+        }
+        if (this.abandoned(creationContext)) return
       }
 
       // Step 2: upload the attachments to the fresh case (or the namespace on explicit
@@ -216,11 +263,10 @@ export class CaseHomeComponent implements OnInit {
         this.exchangeState.initializeForCase(namespaceId, caseId)
         const scope = resolveUploadScope(firstMessage, this.exchangeState.canWriteNamespace())
         const mention = await this.attachments.uploadAllAndBuildMention(scope)
-        if (mention === null || this.abandoned(namespaceId)) {
+        if (mention === null || this.abandoned(creationContext)) {
           // Partial failure (or an abandoned submit): stay on home with the failed chips
           // and the intact text; a retry reuses the created case and skips the files
           // already uploaded.
-          this.isCreating.set(false)
           return
         }
         content = content ? `${content}\n\n${mention}` : mention
@@ -228,15 +274,11 @@ export class CaseHomeComponent implements OnInit {
 
       // Step 3: send the first message before navigating.
       await firstValueFrom(
-        this.http.post(`${this.config.basePath}/api/cases/${caseId}/messages`, {
+        this.caseApi.addMessageCase(caseId, {
           content,
-          userId: 'default-user',
         })
       )
-      if (this.abandoned(namespaceId)) {
-        this.isCreating.set(false)
-        return
-      }
+      if (this.abandoned(creationContext)) return
 
       // Step 4: navigate — no firstMessage in state, the message is already posted.
       this.attachments.reset()
@@ -244,13 +286,20 @@ export class CaseHomeComponent implements OnInit {
       this.pendingCaseId.set(null)
       this.router.navigate(['/agentos/home'], { queryParams: { ns: namespaceId, case: caseId } })
     } catch (err) {
+      if (this.abandoned(creationContext)) return
       console.error('[CaseHome] Failed to create case or send first message', err)
-      this.isCreating.set(false)
+      this.submitError.set(
+        (err as { error?: { message?: string }; message?: string })?.error?.message ||
+          (err as Error)?.message ||
+          'Could not send the message. Retry to continue with the same case.'
+      )
+    } finally {
+      if (!this.abandoned(creationContext)) this.isCreating.set(false)
     }
   }
 
-  /** True when the in-flight submit no longer matches the live view (destroyed or ns switch). */
-  private abandoned(namespaceId: string): boolean {
-    return this.destroyed || this.namespaceId !== namespaceId
+  /** True when the in-flight submit no longer belongs to the displayed composer. */
+  private abandoned(creationContext: number): boolean {
+    return this.destroyed || this.creationContext !== creationContext
   }
 }

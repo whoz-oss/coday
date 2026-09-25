@@ -7,7 +7,8 @@ import org.springframework.stereotype.Component
  * Whether this instance offers Git: a tool plugin of type [TOOLS_INTEGRATION_TYPE] is loaded.
  *
  * That plugin gives agents their Git tools, and its presence also enables the namespace
- * association. Without it the namespace Git settings are hidden and refused.
+ * association. Without it the namespace Git settings are hidden and refused, and no new case
+ * family is equipped. Workspaces created earlier keep working and are still cleaned up.
  */
 @Component
 class GitAvailability(

@@ -97,21 +97,21 @@ class GitRepositoryConfigPolicySpec :
         "generic create and update queue preparation from the saved namespace configuration" {
             val service = newService()
             val saved = service.create(config(validParameters()))
-            val replacementAccount = UUID.randomUUID()
             val updated = saved.copy(parameters = objectMapper.valueToTree(validParameters().also {
-                it[GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID] = replacementAccount.toString()
+                it[GitRepositoryIntegration.PARAM_AUTO_WORKTREE] = true
             }))
             service.update(updated)
+
             verify(exactly = 1) { provisioner.requestPreparation(match {
-                it.configId == saved.id && it.namespaceId == namespaceId && it.serviceAuthSettingId == authSettingId
+                it.configId == saved.id && it.namespaceId == namespaceId && !it.autoWorktreeForRootCases
             }) }
             verify(exactly = 1) { provisioner.requestPreparation(match {
-                it.configId == saved.id && it.namespaceId == namespaceId && it.serviceAuthSettingId == replacementAccount
+                it.configId == saved.id && it.namespaceId == namespaceId && it.autoWorktreeForRootCases
             }) }
         }
 
         "dedicated namespace settings and generic config CRUD persist the same preparation intent" {
-            val checkoutStore = InMemoryRepositoryCheckoutService()
+            val checkoutStore = InMemoryRepositoryCheckouts()
             val factory = GitRepositorySettingsFactory(GitRemoteUrlValidator(GitExecutionProperties()))
             val actualProvisioner = RepositoryCheckoutProvisioner(mockk(), GitExecutionProperties(), mockk(), checkoutStore, mockk())
             val service = IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy(),
@@ -127,6 +127,7 @@ class GitRepositoryConfigPolicySpec :
             val generic = service.create(config(validParameters()))
             val dedicated = controller.setAssociation(dedicatedNamespace, request)
             dedicated.checkoutStatus shouldBe RepositoryCheckoutStatus.PREPARING.name
+            dedicated.autoWorktreeForRootCases shouldBe false
             for (namespace in listOf(namespaceId, dedicatedNamespace)) {
                 val queued = checkoutStore.findByNamespaceId(namespace).shouldNotBeNull()
                 val saved = service.findActiveNamespaceSingleton(namespace, GitRepositoryIntegration.TYPE).shouldNotBeNull()
@@ -240,10 +241,10 @@ class GitRepositoryConfigPolicySpec :
                 shouldThrow<ConflictException> { service.update(changed) }
                 service.findById(saved.id)?.parameters shouldBe saved.parameters
             }
-            val accountChange = saved.copy(parameters = objectMapper.valueToTree(validParameters().also {
-                it[GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID] = UUID.randomUUID().toString()
+            val automation = saved.copy(parameters = objectMapper.valueToTree(validParameters().also {
+                it[GitRepositoryIntegration.PARAM_AUTO_WORKTREE] = true
             }))
-            service.update(accountChange).parameters shouldBe accountChange.parameters
+            service.update(automation).parameters shouldBe automation.parameters
         }
 
         "a configuration of another type is untouched by this policy" {
@@ -252,7 +253,7 @@ class GitRepositoryConfigPolicySpec :
             verify(exactly = 0) { provisioner.requestPreparation(any()) }
         }
         "an unused first failed checkout can be corrected through the ordinary config API" {
-            val checkoutStore = InMemoryRepositoryCheckoutService()
+            val checkoutStore = InMemoryRepositoryCheckouts()
             val bindingStore = InMemoryCaseResourceBindingService()
             val root = java.nio.file.Files.createTempDirectory("unused-checkout-policy-")
             val storage = mockk<io.whozoss.agentos.exchange.ExchangeStorageService> {
@@ -278,7 +279,7 @@ class GitRepositoryConfigPolicySpec :
         }
 
         "failed checkout replacement cannot orphan a family or existing files" {
-            val checkoutStore = InMemoryRepositoryCheckoutService()
+            val checkoutStore = InMemoryRepositoryCheckouts()
             val bindingStore = InMemoryCaseResourceBindingService()
             val root = java.nio.file.Files.createTempDirectory("used-checkout-policy-")
             val directory = root.resolve("repository.git")

@@ -93,6 +93,25 @@
   background: var(--color-bg-hover, rgba(0, 0, 0, 0.04));
 }
 
+.exchange-drawer__preparing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 0.75rem;
+  text-align: center;
+  font-size: 0.8125rem;
+
+  p {
+    margin: 0;
+  }
+}
+
+.exchange-drawer__preparing-hint {
+  color: var(--color-text-secondary, #6e6e73);
+  font-size: 0.75rem;
+}
+
 .exchange-drawer__retry {
   appearance: none;
   cursor: pointer;

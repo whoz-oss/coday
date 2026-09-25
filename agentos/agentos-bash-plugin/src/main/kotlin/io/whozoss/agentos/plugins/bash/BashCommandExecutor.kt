@@ -16,6 +16,7 @@ object BashCommandExecutor : KLogging() {
         timeoutSeconds: Long,
         maxOutputChars: Int = DEFAULT_MAX_OUTPUT_CHARS,
         workspaceId: String? = null,
+        home: File? = null,
     ): BashExecutionResult {
         require(maxOutputChars >= 0) { "The process output limit must not be negative" }
         logger.debug { "Running bash command in ${workingDirectory.absolutePath}: $command" }
@@ -24,6 +25,7 @@ object BashCommandExecutor : KLogging() {
             ProcessBuilder("/bin/bash", "-c", command)
                 .directory(workingDirectory)
                 .redirectErrorStream(false)
+                .also { builder -> home?.let { useWorkspaceHome(builder, it) } }
                 .start()
         } catch (e: Exception) {
             logger.error(e) { "Failed to start process for command: $command" }
@@ -73,6 +75,13 @@ object BashCommandExecutor : KLogging() {
             runCatching { process.inputStream.close() }
             runCatching { process.errorStream.close() }
         }
+    }
+
+    /** Workspace shells share the HOME their setup used, so package stores and daemons stay per family. */
+    private fun useWorkspaceHome(builder: ProcessBuilder, home: File) {
+        val cache = home.resolve(".cache").also { it.mkdirs() }
+        builder.environment()["HOME"] = home.absolutePath
+        builder.environment()["XDG_CACHE_HOME"] = cache.absolutePath
     }
 
     /** Drain only bytes already buffered by the pipe; never perform a blocking read for EOF. */

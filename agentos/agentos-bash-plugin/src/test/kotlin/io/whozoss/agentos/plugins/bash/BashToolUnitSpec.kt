@@ -267,6 +267,21 @@ class BashToolUnitSpec : StringSpec({
         }
     }
 
+    "a workspace tool runs with the family HOME" {
+        val home = java.nio.file.Files.createTempDirectory("bash-tool-home-").toFile()
+        try {
+            val tool = BashTool(
+                toolConfig = BashToolConfig(name = "home", description = "Print HOME", command = "printf %s \"\$HOME\""),
+                integrationConfig = baseConfig,
+                workspaceHome = home.absolutePath,
+            )
+
+            tool.execute(BashTool.Input(), ctx).output shouldContain home.absolutePath
+        } finally {
+            home.deleteRecursively()
+        }
+    }
+
     // --- stderr handling ---
 
     "command writing to stderr should include stderr in output" {

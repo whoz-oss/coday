@@ -34,6 +34,24 @@ class BashCommandExecutorSpec : StringSpec({
         }
     }
 
+    "a workspace command runs with the family HOME and cache directory" {
+        val directory = Files.createTempDirectory("workspace-bash-home-").toFile()
+        val home = directory.resolve("support")
+        try {
+            val result = BashCommandExecutor.execute(
+                "printf '%s|%s' \"\$HOME\" \"\$XDG_CACHE_HOME\"",
+                directory,
+                timeoutSeconds = 5,
+                home = home,
+            ).shouldBeInstanceOf<BashExecutionResult.Completed>()
+
+            result.stdout shouldBe "${home.absolutePath}|${home.resolve(".cache").absolutePath}"
+            home.resolve(".cache").isDirectory shouldBe true
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     "both pipes are drained after the output limit without blocking the shell" {
         val directory = Files.createTempDirectory("workspace-bash-volume-").toFile()
         try {

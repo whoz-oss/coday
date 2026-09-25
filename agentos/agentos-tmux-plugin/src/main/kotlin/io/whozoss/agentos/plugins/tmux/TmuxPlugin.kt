@@ -56,7 +56,12 @@ class TmuxToolProvider : ToolPlugin, io.whozoss.agentos.sdk.tool.WorkspaceToolLi
                 ?.asText()
                 ?.takeIf { it.isNotBlank() }
         return listOf(
-            TmuxTool(workingDirectory = workingDirectory, configName = configName, socketName = config?.get("socketName")?.asText()),
+            TmuxTool(
+                workingDirectory = workingDirectory,
+                configName = configName,
+                socketName = config?.get("socketName")?.asText(),
+                home = config?.get("workspaceHome")?.asText()?.takeIf { it.isNotBlank() },
+            ),
             WaitTool(configName = configName),
         )
     }
