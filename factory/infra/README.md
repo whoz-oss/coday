@@ -26,7 +26,8 @@ factory/infra/
     ├── V2__tenant_and_membership.sql        # Jalon B2 tenant & membership schema
     ├── V3__workflow_core.sql                # Jalon B2 workflow core extension (definitions/grants/steps/transitions)
     ├── V4__outbox_and_idempotency.sql       # Jalon B2 support tables (outbox + idempotency)
-    └── V5__evidence_and_interaction.sql     # Jalon B2 evidence & human interaction control plane
+    ├── V5__evidence_and_interaction.sql     # Jalon B2 evidence & human interaction control plane
+    └── V6__artifacts_oracle_agentstep.sql   # Jalon B2 artifacts, oracle, agent-step attempts & worker/environment
 ```
 
 ## Start PostgreSQL + apply migrations
@@ -82,6 +83,12 @@ V<version>__<snake_case_description>.sql
   plane: the append-only `workflow_evidence` log, the mutable
   `human_interactions` aggregate root and the append-only
   `human_interaction_events` log (see below).
+* `V6__artifacts_oracle_agentstep.sql` adds the artifacts aggregate (retention,
+  purge, legal hold), the mutable `oracle_executions` aggregate, the agent-step
+  attempt aggregate (`agent_step_attempts` + `agent_step_attempt_events` +
+  `agent_step_results` + `result_capabilities`) and the worker/environment
+  reservation skeletons (`work_units`, `work_environments`, `workers`,
+  `work_unit_leases`) (see below).
 * Flyway is the only migration authority. Do **not** modify a migration that has
   been applied to a shared database.
 
@@ -420,4 +427,143 @@ CHECK constraints, the append-only guarantees and the `updated_at` trigger:
 
 ```bash
 node factory/tests/test-v5-migration-schema.mjs
+```
+
+---
+
+## Schema overview — V6 artifacts, oracle, agent-step & worker/environment
+
+V6 closes the Jalon B2 persistence surface: artifact metadata with retention &
+legal hold, oracle execution state, the agent-step attempt aggregate, and the
+identifier/relationship skeletons for the worker & environment control plane.
+All ten tables are tenant-scoped (`organization_id NOT NULL DEFAULT 'default'`
+matching V1..V5) and reuse the shared `set_updated_at()` trigger function from
+V2.
+
+| Table | Primary key | Notable constraints |
+|---|---|---|
+| `artifacts` | `(organization_id, workstream_id, namespace_id, workflow_id, artifact_id)` | composite FK → `workflow_instances` (`ON DELETE CASCADE`); 3 orthogonal status columns; `CHECK` anti-purge sous legal hold; `updated_at` trigger |
+| `oracle_executions` | `(organization_id, workstream_id, namespace_id, workflow_id, execution_id)` | composite FK → `workflow_instances` (`ON DELETE CASCADE`); `revision >= 1`; `status CHECK IN ('running','succeeded','failed','cancelled')`; `updated_at` trigger |
+| `agent_step_attempts` | `(organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id)` | composite FK → `workflow_instances` (`ON DELETE CASCADE`); `revision >= 1`; `status CHECK IN ('running','completed','failed','timed_out','cancelled')`; `updated_at` trigger |
+| `agent_step_attempt_events` | `(organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id, event_id)` | composite FK → `agent_step_attempts` (`ON DELETE CASCADE`); append-only (no `updated_at`) |
+| `agent_step_results` | `(organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id, result_id)` | composite FK → `agent_step_attempts` (`ON DELETE CASCADE`); `result_status CHECK IN ('success','failure','collision_detected')`; append-only |
+| `result_capabilities` | `(organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id, result_id, capability_id)` | composite FK → `agent_step_results` (`ON DELETE CASCADE`); append-only |
+| `work_units` | `(organization_id, workstream_id, work_unit_id)` | composite FK → `workstreams` (`ON DELETE CASCADE`); `revision >= 1`; `status CHECK IN ('created','assigned','running','completed','failed','cancelled')`; `updated_at` trigger |
+| `work_environments` | `(organization_id, workstream_id, environment_id)` | composite FK → `workstreams` (`ON DELETE CASCADE`); `revision >= 1`; `status CHECK IN ('provisioning','ready','busy','decommissioned')`; `updated_at` trigger |
+| `workers` | `(organization_id, worker_id)` | composite FK → `organizations` (`ON DELETE CASCADE`); `revision >= 1`; `status CHECK IN ('offline','idle','busy','maintenance')`; `updated_at` trigger |
+| `work_unit_leases` | `(organization_id, workstream_id, work_unit_id, lease_id)` | composite FK → `work_units` (`ON DELETE CASCADE`); `status CHECK IN ('active','released','expired')`; append-only log |
+
+### `artifacts` — three orthogonal status dimensions (Amendments 9 & 5)
+
+The artifact lifecycle is deliberately modelled as three **independent and
+orthogonal** dimensions rather than a single enum, so orthogonal facts never
+overwrite each other:
+
+* `availability_status VARCHAR(64) NOT NULL DEFAULT 'pending'`
+  (`CHECK IN ('pending','uploading','available','unavailable','purged')`) — where
+  the bytes are.
+* `retention_status VARCHAR(64) NOT NULL DEFAULT 'active'`
+  (`CHECK IN ('active','expired')`) — whether the retention window is still open.
+* `legal_hold BOOLEAN NOT NULL DEFAULT FALSE` — an independent compliance lock.
+
+The metadata and storage coordinates are `content_hash` (content-addressed hash,
+e.g. sha-256), `size BIGINT`, `content_type`, `storage_key` (immutable storage
+key) and `payload JSONB` (verbatim domain metadata, kept even after a purge).
+Retention/purge/hold bookkeeping uses the nullable `retention_until`, `purged_at`,
+`purge_reason`, `legal_hold_reason` and `legal_hold_set_at`.
+
+**Golden rule (anti-purge under legal hold):**
+
+```sql
+CONSTRAINT artifacts_legal_hold_purge_check
+  CHECK (NOT (legal_hold = TRUE AND availability_status = 'purged'))
+```
+
+The database therefore rejects any attempt to mark an artifact under legal hold
+as `purged`: purging keeps the row (and its `payload`) and only advances
+`availability_status`. The supporting index
+`idx_artifacts_instance (organization_id, workstream_id, namespace_id,
+workflow_id, availability_status)` serves the per-instance availability listing.
+
+### `oracle_executions` — mutable oracle run
+
+One row per oracle run attached to a workflow instance. `oracle_id` names the
+oracle, `status` tracks `running → succeeded/failed/cancelled`, and `revision` is
+the optimistic-locking column. `evidence_id` and `artifact_id` are optional soft
+references to the evidence / artifact produced by the run (the relational
+models live in `workflow_evidence` and `artifacts`). Supporting index
+`idx_oracle_executions_instance (organization_id, workstream_id, namespace_id,
+workflow_id, status)`.
+
+### `agent_step_attempts` aggregate (Amendment 4)
+
+An attempt is a single aggregate whose parts share one common transactional
+boundary. The full attempt identity `(organization_id, workstream_id,
+namespace_id, workflow_id, step_id, attempt_id)` is carried by every child, and
+the mutable root carries `agent_id`, a lifecycle `status`
+(`running/completed/failed/timed_out/cancelled`), an optimistic-locking
+`revision` and an optional `idempotency_key` soft-link to `idempotency_records`
+(V4). Supporting index `idx_agent_step_attempts_step (organization_id,
+workstream_id, namespace_id, workflow_id, step_id, status)`.
+
+Three physically distinct child tables complete the aggregate:
+
+* `agent_step_attempt_events` — append-only event log (`event_type`, `payload`).
+* `agent_step_results` — append-only results table, with `result_status`
+  (`success/failure/collision_detected`) and `semantic_signature` used for
+  `RESULT_SEMANTIC_COLLISION` detection.
+* `result_capabilities` — append-only declared capabilities/effects of a result
+  (`capability_type`, `payload`).
+
+All three are append-only: **no** `updated_at` column and **no** update trigger.
+
+### Worker / environment reservation skeletons (Amendment 6)
+
+These four tables reserve composite identities and tenant-scoped relationships
+only — **no** scheduler, **no** lease acquisition/renewal/expiry, **no** fencing
+tokens and **no** heartbeats (those belong to Jalon C):
+
+* `work_units` — mutable work unit / compute task skeleton
+  (`unit_type`, `status`, `revision`).
+* `work_environments` — mutable execution environment / sandbox skeleton
+  (`env_type`, `status`, `revision`).
+* `workers` — mutable worker node skeleton, organization-scoped
+  (`worker_type`, `status`, `revision`).
+* `work_unit_leases` — appointment/reservation log linking a work unit to a
+  worker and optionally an environment. It is a plain append log (no `updated_at`,
+  no active lease mechanics).
+
+### Design rationale
+
+* **Amendment 9 (orthogonal status dimensions):** availability, retention and
+  legal hold are three separate columns with separate CHECKs, so a retention
+  expiry can never be confused with a byte-availability change or a compliance
+  hold.
+* **Amendment 5 (retention, purge & legal hold):** `retention_until`,
+  `purged_at` / `purge_reason` and the `legal_hold*` columns make retention
+  auditable, and `artifacts_legal_hold_purge_check` forbids purging under hold at
+  the database level.
+* **Amendment 4 (attempt aggregate & single transactional boundary):** the
+  attempt root plus events, results and capabilities all reference the same
+  attempt identity, so a single PostgreSQL transaction can commit the attempt
+  state, its events, its result(s), the declared capabilities and the outbox
+  event atomically.
+* **Amendment 6 (worker/environment reservation):** identity and relationship
+  skeletons are reserved now (with tenant-scoped composite FKs), while the active
+  scheduling/leasing mechanics are deferred to Jalon C.
+* **Amendment 8 (composite FKs for tenant isolation):** every child references
+  its parent by the full identity key with `ON DELETE CASCADE`, so the database
+  itself rejects an orphan or cross-tenant record and purges children with their
+  parent.
+
+### Validate the V6 migration offline
+
+The V6 schema is validated without PostgreSQL, Docker or the `pg` driver by
+parsing V1 + V2 + V3 + V4 + V5 + V6 and asserting tables, columns, defaults,
+composite PKs and FKs (FK targets matched against the referenced PK), supporting
+indexes, CHECK constraints (the three orthogonal artifact dimensions and the
+anti-purge rule), the append-only guarantees and the `updated_at` triggers:
+
+```bash
+node factory/tests/test-v6-migration-schema.mjs
 ```
