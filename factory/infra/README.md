@@ -24,7 +24,8 @@ factory/infra/
 └── migrations/
     ├── V1__init_workflow_pilot_schema.sql   # pilot schema (definitions + instances)
     ├── V2__tenant_and_membership.sql        # Jalon B2 tenant & membership schema
-    └── V3__workflow_core.sql                # Jalon B2 workflow core extension (definitions/grants/steps/transitions)
+    ├── V3__workflow_core.sql                # Jalon B2 workflow core extension (definitions/grants/steps/transitions)
+    └── V4__outbox_and_idempotency.sql       # Jalon B2 support tables (outbox + idempotency)
 ```
 
 ## Start PostgreSQL + apply migrations
@@ -73,6 +74,9 @@ V<version>__<snake_case_description>.sql
   (`visibility`, `owner_workstream_id`) and adds the workflow core tables
   `workflow_definition_versions`, `workstream_workflow_grants`,
   `workflow_step_states` and `workflow_transitions` (see below).
+* `V4__outbox_and_idempotency.sql` adds the cross-cutting support tables
+  `outbox_events` (transactional outbox for external/async effects) and
+  `idempotency_records` (tenant-scoped idempotent command submission) (see below).
 * Flyway is the only migration authority. Do **not** modify a migration that has
   been applied to a shared database.
 
@@ -209,3 +213,95 @@ against a real database, point `PG*` at the compose instance and pass a
 `pg`-backed client (`createPgPoolClient()` from `src/adapters/persistence/sql/db.ts`);
 the driver is loaded lazily and is intentionally **not** bundled into the runtime
 artifact.
+
+---
+
+## Schema overview — V4 outbox & idempotency
+
+V4 adds the two cross-cutting infrastructure tables the durable Factory needs
+once commands cross the wire: a transactional outbox for effects that leave the
+database, and a tenant-scoped idempotency/dedupe store for command submission.
+Both tables are tenant-scoped (`organization_id NOT NULL DEFAULT 'default'`
+matching V1/V2/V3) and reuse the shared `set_updated_at()` trigger function from
+V2.
+
+| Table | Primary key | Notable constraints |
+|---|---|---|
+| `outbox_events` | `(organization_id, id)` | `status CHECK IN ('pending','dispatched','failed')`; `attempts >= 0`; append-style log (no `updated_at`) |
+| `idempotency_records` | `(organization_id, idempotency_key)` | explicit `UNIQUE (organization_id, idempotency_key)`; `status CHECK IN ('processing','completed','failed')`; `updated_at` trigger |
+
+### `outbox_events`
+
+Transactional outbox for effects that leave the database — webhooks, agent
+calls, any external system. A row is inserted in the **same transaction** as the
+state change it announces; a drain worker later claims and dispatches it, then
+records the outcome.
+
+* Identity: `PRIMARY KEY (organization_id, id)` — the event `id` is only unique
+  per tenant, so a client-generated id can never collide across organizations.
+* `workstream_id` is nullable: the event is not always tied to a workstream.
+* `event_type`, `payload` (JSONB, `DEFAULT '{}'::jsonb`) and `status`
+  (`DEFAULT 'pending'`, `CHECK (status IN ('pending', 'dispatched', 'failed'))`)
+  describe the pending effect.
+* `attempts INTEGER NOT NULL DEFAULT 0` with `CHECK (attempts >= 0)` is the drain
+  retry counter.
+* `created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`; `dispatched_at` is
+  nullable and set on success.
+* Drain index: `idx_outbox_events_drain ON outbox_events (organization_id, status, created_at)`,
+  so the worker can cheaply scan `WHERE organization_id = ? AND status = 'pending'
+  ORDER BY created_at`. It is tenant-scoped and covers the `(status, created_at)`
+  drain ordering.
+* No `updated_at` and no trigger: an event is never edited, only its status is
+  advanced.
+
+### `idempotency_records`
+
+Tenant-scoped dedupe / response cache keyed by the client-supplied idempotency
+key. It blocks duplicate side effects and detects key reuse with a divergent
+body.
+
+* Identity / uniqueness: `PRIMARY KEY (organization_id, idempotency_key)` plus an
+  explicit `UNIQUE (organization_id, idempotency_key)` — the constraint names the
+  collision-detection guarantee (mirroring the `uq_workstreams` convention in
+  V2). A second submission of the same key by the same tenant collides at the
+  database level.
+* `workstream_id VARCHAR(255) NOT NULL DEFAULT 'default'` scopes the record to a
+  workstream.
+* `request_hash VARCHAR(64) NOT NULL` fingerprints the command body so a replayed
+  key with a divergent body is rejected instead of silently re-executed.
+* `resource_ref VARCHAR(255)` is the optional reference of the resource produced,
+  and `response_payload JSONB NOT NULL DEFAULT '{}'::jsonb` caches the first
+  response so an identical replay is answered without re-running the operation.
+* `status VARCHAR(64) NOT NULL DEFAULT 'processing'` with
+  `CHECK (status IN ('processing', 'completed', 'failed'))` tracks the lifecycle.
+* `created_at` / `updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`;
+  `updated_at` is maintained by the `trg_idempotency_records_updated_at`
+  `BEFORE UPDATE` trigger calling `set_updated_at()`.
+* Supporting index `idx_idempotency_records_workstream ON
+  idempotency_records (organization_id, workstream_id)` for the per-workstream
+  operations view.
+
+### Design rationale
+
+* **Amendment 2 (idempotency & request hashing):** `request_hash` alongside the
+  idempotency key lets a replay be distinguished (identical body → cached
+  response) from a collision (divergent body → conflict) without re-executing the
+  command.
+* **Amendment 4 (resource locking & operations):** `resource_ref`, `status` and
+  `workstream_id` track the operation a key is bound to, so clients can poll the
+  produced resource and the record can be reclaimed.
+* **Amendment 7 (outbox for external effects):** `outbox_events` confines
+  non-transactional external calls to a drain worker: state and intent are
+  committed together, and delivery is retried (`attempts`) idempotently from the
+  durable backlog — the database is the single source of truth for pending
+  effects.
+
+### Validate the V4 migration offline
+
+The V4 schema is validated without PostgreSQL, Docker or the `pg` driver by
+parsing V1 + V2 + V3 + V4 and asserting tables, columns, PK/uniqueness, the drain
+index, CHECK constraints, defaults and the `updated_at` trigger:
+
+```bash
+node factory/tests/test-v4-migration-schema.mjs
+```
