@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
-import { Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { IntegrationTypeControllerService, Namespace, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
 import { EntityListComponent, EntityListItem } from '@whoz-oss/design-system'
-import { switchMap, BehaviorSubject, map } from 'rxjs'
+import { switchMap, BehaviorSubject, catchError, map, of } from 'rxjs'
 import { AsyncPipe } from '@angular/common'
 import { NamespaceItemComponent } from '../namespace-item/namespace-item.component'
 
@@ -17,6 +17,8 @@ import { NamespaceItemComponent } from '../namespace-item/namespace-item.compone
  *
  * Create and edit logic live in NamespaceFormComponent.
  */
+const GIT_INTEGRATION_TYPE = 'GIT'
+
 @Component({
   selector: 'agentos-namespace-list',
   imports: [AsyncPipe, NamespaceItemComponent, EntityListComponent],
@@ -28,11 +30,21 @@ export class NamespaceListComponent {
   private readonly router = inject(Router)
   private readonly namespaceController = inject(NamespaceControllerService)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly integrationTypeController = inject(IntegrationTypeControllerService)
 
   /** Trigger to refresh the list (emitting a new value forces re-subscription). */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
   protected readonly isLoading = signal(true)
+
+  /** The GIT plugin registers the `GIT` integration type; without it, Git settings are hidden. */
+  protected readonly gitAvailable = toSignal(
+    this.integrationTypeController.listTypesIntegrationType().pipe(
+      map((types) => types.some((type) => type.type === GIT_INTEGRATION_TYPE)),
+      catchError(() => of(false))
+    ),
+    { initialValue: false }
+  )
 
   /** Raw namespaces, kept for delete lookups. */
   private readonly namespaces$ = this.refresh$.pipe(
@@ -117,6 +129,10 @@ export class NamespaceListComponent {
 
   protected openMembers(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'members'])
+  }
+
+  protected openGit(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'git'])
   }
 
   // --- Delete ---

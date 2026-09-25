@@ -129,7 +129,7 @@ export class CaseStateService {
   }
 
   /** Reload the currently held namespace (no-op before the first load). */
-  private reloadCurrent(): void {
+  reloadCurrent(): void {
     if (this.currentNamespaceId) {
       this.loadCases(this.currentNamespaceId)
     }

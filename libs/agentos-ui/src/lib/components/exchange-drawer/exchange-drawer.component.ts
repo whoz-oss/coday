@@ -6,9 +6,14 @@ import {
   inject,
   input,
   output,
+  signal,
   viewChild,
 } from '@angular/core'
-import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { deletedFilesInDirectory, indexGitChanges } from '../../services/exchange-git-tree.utils'
+import { EnvironmentScope, ExchangeEnvironment } from '../../services/exchange-environment.service'
+import { ExchangeEnvironmentComponent } from '../exchange-environment/exchange-environment.component'
+import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangePathSegment } from '../../services/exchange-state.service'
 import { EmptyStateComponent, IconButtonComponent, SpinnerComponent } from '@whoz-oss/design-system'
 import { ExchangeFileRef, ExchangeScope, ExchangeScopeStatus } from '../../services/exchange-state.service'
 import { ExchangeContentViewerComponent } from '../exchange-content-viewer/exchange-content-viewer.component'
@@ -24,7 +29,7 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
  *
  * Selecting a file swaps the list for the content viewer (narrow drawer); the viewer's back
  * button returns to the lists. A section is hidden entirely when not visible (forbidden →
- * zero disclosure). Per-section states: loading (spinner) / error (retry banner) / empty
+ * zero disclosure). Per-section states: loading / preparing (spinner and explanation) / error (retry banner) / empty
  * (empty-state) / ready (list).
  *
  * Kept presentational, OnPush, I/O in signals (decision #8).
@@ -33,6 +38,7 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
   selector: 'agentos-exchange-drawer',
   standalone: true,
   imports: [
+    ExchangeEnvironmentComponent,
     IconButtonComponent,
     SpinnerComponent,
     EmptyStateComponent,
@@ -44,15 +50,25 @@ import { ExchangeItemComponent } from '../exchange-item/exchange-item.component'
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ExchangeDrawerComponent {
+  readonly caseId = input<string | null>(null)
+  readonly environmentActive = input(false)
   // ── Case scope ──────────────────────────────────────────────────────────────
-  readonly caseFiles = input<ExchangeFileEntry[]>([])
+  readonly caseFiles = input<ExchangeDirectoryEntry[]>([])
+  readonly caseFolders = input<ExchangeDirectoryEntry[]>([])
+  readonly caseBreadcrumb = input<ExchangePathSegment[]>([])
+  readonly caseHasMore = input<boolean>(false)
+  readonly caseLoadingMore = input<boolean>(false)
   readonly caseStatus = input.required<ExchangeScopeStatus>()
   readonly caseSectionVisible = input<boolean>(false)
   readonly canWriteCase = input<boolean>(false)
   readonly caseUploading = input<boolean>(false)
 
   // ── Namespace scope ──────────────────────────────────────────────────────────
-  readonly namespaceFiles = input<ExchangeFileEntry[]>([])
+  readonly namespaceFiles = input<ExchangeDirectoryEntry[]>([])
+  readonly namespaceFolders = input<ExchangeDirectoryEntry[]>([])
+  readonly namespaceBreadcrumb = input<ExchangePathSegment[]>([])
+  readonly namespaceHasMore = input<boolean>(false)
+  readonly namespaceLoadingMore = input<boolean>(false)
   readonly namespaceStatus = input.required<ExchangeScopeStatus>()
   readonly namespaceSectionVisible = input<boolean>(false)
   readonly canWriteNamespace = input<boolean>(false)
@@ -65,6 +81,9 @@ export class ExchangeDrawerComponent {
   readonly canViewSelected = input<boolean>(true)
 
   readonly fileSelected = output<ExchangeFileRef>()
+  /** A directory was opened, or a breadcrumb level was clicked. Empty path means the scope root. */
+  readonly folderOpened = output<{ scope: ExchangeScope; path: string }>()
+  readonly loadMoreRequested = output<ExchangeScope>()
   readonly uploadRequested = output<{ scope: ExchangeScope; files: File[] }>()
   readonly downloadRequested = output<ExchangeFileRef>()
   readonly downloadAllRequested = output<ExchangeScope>()
@@ -81,7 +100,49 @@ export class ExchangeDrawerComponent {
   protected readonly CASE = ExchangeFileEntryScopeEnum.CASE
   protected readonly NAMESPACE = ExchangeFileEntryScopeEnum.NAMESPACE
 
-  protected readonly caseRows = computed(() => this.caseFiles().map(ExchangeItemComponent.toRow))
+  private readonly environmentPanel = viewChild(ExchangeEnvironmentComponent)
+  private readonly environment = signal<{ scope: EnvironmentScope; view: ExchangeEnvironment | null } | null>(null)
+  protected onEnvironmentChanged(snapshot: { scope: EnvironmentScope; view: ExchangeEnvironment | null }): void {
+    this.environment.set(snapshot)
+  }
+  private readonly changes = computed(() => {
+    const snapshot = this.environment()
+    if (snapshot?.scope.id !== this.caseId() || this.caseStatus() !== 'ready') return []
+    const view = snapshot?.view
+    return view?.equipped && view.status === 'READY' && !view.error ? (view.changes?.files ?? []) : []
+  })
+  protected readonly gitTree = computed(() => indexGitChanges(this.changes()))
+  protected readonly caseRows = computed(() => {
+    const rows = this.caseFiles().map((file) => ({
+      ...ExchangeItemComponent.toRow(file),
+      gitStatus: this.gitTree().files.get(file.path)?.status,
+      missing: false,
+    }))
+    const directory = this.caseBreadcrumb().at(-1)?.path ?? ''
+    const deleted = deletedFilesInDirectory(
+      this.changes(),
+      directory,
+      this.caseFiles().map((f) => f.path),
+      this.caseFolders().map((f) => f.path)
+    ).map((file) => ({
+      path: file.path,
+      filename: file.name,
+      meta: 'Deleted · view diff',
+      icon: 'description',
+      gitStatus: file.status,
+      missing: true,
+    }))
+    return [...rows, ...deleted].sort((a, b) => a.filename.localeCompare(b.filename))
+  })
+  protected openFileDiff(ref: ExchangeFileRef): void {
+    if (ref.scope === this.CASE && ref.path.startsWith('repo/')) {
+      this.environmentPanel()?.openDiff(ref.path.slice('repo/'.length))
+    }
+  }
+
+  protected onFolderOpen(scope: ExchangeScope, path: string): void {
+    this.folderOpened.emit({ scope, path })
+  }
   protected readonly namespaceRows = computed(() => this.namespaceFiles().map(ExchangeItemComponent.toRow))
 
   /** Path of the row that opened the viewer — focus returns to it on back (a11y). */

@@ -5,12 +5,15 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.shouldBe
 import io.mockk.every
+import io.mockk.verify
 import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
@@ -33,6 +36,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.nio.file.DirectoryNotEmptyException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.NoSuchFileException
+import java.io.IOException
 import java.time.Instant
 import java.util.UUID
 
@@ -65,6 +69,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var permissionService: PermissionService
 
     @MockkBean(relaxed = true) lateinit var caseService: CaseService
+    @MockkBean(relaxed = true) lateinit var caseRepository: CaseRepository
 
     @MockkBean(relaxed = true) lateinit var exchangeStorageService: ExchangeStorageService
 
@@ -79,8 +84,9 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
     /** Stub the case lookup so the controller can resolve the namespace root. */
     private fun stubCase(caseId: UUID, namespaceId: UUID = UUID.randomUUID()) {
         every { userService.getCurrentUser() } returns user
-        every { caseService.findById(caseId) } returns
-            Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+        val case = Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
+        every { caseService.findById(caseId) } returns case
+        every { caseRepository.findByIds(listOf(caseId), any()) } returns listOf(case)
     }
 
     private fun entry(path: String, scope: ExchangeScope) = ExchangeFileEntry(
@@ -94,6 +100,53 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
     )
 
     init {
+
+        "GET case directory returns a bounded JSON page and the caller capability" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns false
+            every { exchangeStorageService.listDirectory(any(), "docs", 0, 500) } returns
+                (listOf(ExchangeDirectoryEntry(path = "docs/report.txt", name = "report.txt", directory = false)) to 700)
+
+            mockMvc.perform(get("/api/cases/$caseId/files/directory").param("path", "docs").param("page", "-5").param("size", "99999"))
+                .andExpect(status().isOk)
+                .andExpect(header().string("Content-Type", "application/json"))
+                .andExpect(jsonPath("$.entries[0].path").value("docs/report.txt"))
+                .andExpect(jsonPath("$.page").value(0))
+                .andExpect(jsonPath("$.pageSize").value(500))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.capability").value("READ"))
+            verify { exchangeStorageService.listDirectory(any(), "docs", 0, 500) }
+        }
+
+        "GET namespace directory returns no content when READ is denied" {
+            val namespaceId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns user
+            every { permissionService.hasPermission(userId, EntityType.NAMESPACE, namespaceId.toString(), Action.READ) } returns false
+            mockMvc.perform(get("/api/namespaces/$namespaceId/files/directory"))
+                .andExpect(status().isNotFound)
+        }
+
+        "GET case directory maps a vanished subdirectory to 404" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { exchangeStorageService.listDirectory(any(), "vanished", 0, 200) } throws NoSuchFileException("vanished")
+            mockMvc.perform(get("/api/cases/$caseId/files/directory").param("path", "vanished"))
+                .andExpect(status().isNotFound)
+        }
+
+        "GET case directory maps storage failures without exposing server paths" {
+            val caseId = UUID.randomUUID()
+            stubCase(caseId)
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
+            every { exchangeStorageService.listDirectory(any(), "docs", 0, 200) } throws IOException("/srv/private/exchange/docs")
+            val result = mockMvc.perform(get("/api/cases/$caseId/files/directory").param("path", "docs"))
+                .andExpect(status().isBadRequest)
+                .andReturn()
+            result.resolvedException?.message shouldBe "Invalid file operation"
+        }
 
         // -------------------------------------------------------------------------
         // Case manifest — capability is server-computed and fail-closed
@@ -205,6 +258,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.isUploadAllowed(any()) } returns true
             every { exchangeStorageService.writeNew(any(), "report.txt", any(), ExchangeScope.CASE) } returns
                 entry("report.txt", ExchangeScope.CASE)
@@ -221,6 +275,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.isUploadAllowed(any()) } returns true
             every { exchangeStorageService.writeNew(any(), "report.txt", any(), ExchangeScope.CASE) } throws
                 FileExistsException("File already exists: report.txt")
@@ -235,6 +290,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.isUploadAllowed(any()) } returns true
             // e.g. createDirectories on a parent segment that is an existing file: the raw NIO exception's
             // message is the absolute server path, which must not reach the 409 response.
@@ -268,6 +324,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.isUploadAllowed(any()) } returns false
 
             val file = MockMultipartFile("file", "malware.exe", "application/octet-stream", "data".toByteArray())
@@ -284,6 +341,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.delete(any(), "report.txt") } returns Unit
 
             mockMvc.perform(delete("/api/cases/$caseId/files").param("path", "report.txt"))
@@ -295,6 +353,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             every { exchangeStorageService.delete(any(), "gone.txt") } throws NoSuchFileException("gone.txt")
 
             mockMvc.perform(delete("/api/cases/$caseId/files").param("path", "gone.txt"))
@@ -305,6 +364,7 @@ class ExchangeControllerMvcIntegrationSpec : StringSpec() {
             val caseId = UUID.randomUUID()
             stubCase(caseId)
             every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.WRITE) } returns true
+            every { permissionService.hasPermission(userId, EntityType.CASE, caseId.toString(), Action.READ) } returns true
             // deleting a non-empty directory throws DirectoryNotEmptyException, whose message is the
             // absolute server path; it must not reach the 400 body (server.error.include-message=always).
             val leakyPath = "/srv/exchange/$caseId/reports"

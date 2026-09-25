@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.time.Instant
 import java.util.UUID
 
@@ -51,6 +52,23 @@ class ExchangeStorageServiceSpec :
             }
             // original content is preserved
             service.readContent(root, "dup.txt").content shouldBe "one"
+        }
+
+        "reads use the requested path even when a local migration marker exists" {
+            val service = newService()
+            val namespaceId = UUID.randomUUID()
+            val root = service.caseRoot(namespaceId, UUID.randomUUID(), createdAt)
+            service.writeNew(root, "repo/report.txt", "source".toByteArray(), ExchangeScope.CASE)
+            Files.writeString(service.namespaceRoot(namespaceId).parent.resolve(".exchange-repo-migration.json"), "{}")
+
+            shouldThrow<NoSuchFileException> { service.readContent(root, "report.txt") }
+            shouldThrow<NoSuchFileException> { service.readBytes(root, "report.txt") }
+            service.readContent(root, "repo/report.txt").content shouldBe "source"
+            service.readBytes(root, "repo/report.txt").first.toString(Charsets.UTF_8) shouldBe "source"
+
+            service.writeNew(root, "report.txt", "document".toByteArray(), ExchangeScope.CASE)
+            service.readContent(root, "report.txt").content shouldBe "document"
+            service.readContent(root, "repo/report.txt").content shouldBe "source"
         }
 
         "listManifest lists files under a case root with correct relative paths" {

@@ -50,4 +50,18 @@ interface IntegrationConfigRepository : EntityRepository<IntegrationConfig, UUID
         namespaceId: UUID?,
         userId: UUID?,
     ): List<IntegrationConfig>
+
+    /**
+     * Find the one active namespace-shared config of a singleton [integrationType], or null.
+     *
+     * Deliberately *not* overridden by [FilesystemIntegrationConfigRepository]: that decorator
+     * delegates every method it does not augment, so this read reaches persisted rows only. A
+     * namespace capability such as the Git association must be an explicit, audited database row —
+     * a YAML file dropped in the namespace config directory must not be able to point provisioning
+     * at a repository.
+     */
+    fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig?
 }

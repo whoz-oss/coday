@@ -30,7 +30,17 @@ class TmuxPlugin : Plugin() {
  * in which case the tool falls back to the user's home directory).
  */
 @Extension
-class TmuxToolProvider : ToolPlugin {
+class TmuxToolProvider : ToolPlugin, io.whozoss.agentos.sdk.tool.WorkspaceToolLifecycle {
+    override fun releaseWorkspace(workspaceId: String, directory: String) {
+        require(workspaceId.matches(Regex("[a-fA-F0-9-]+")))
+        val process = try { ProcessBuilder("tmux", "-L", "agentos-$workspaceId", "kill-server").redirectErrorStream(true).start() }
+        catch (e: java.io.IOException) {
+            if (e.message?.contains("error=2") == true) return // tmux was never installed on this host
+            throw e
+        }
+        check(process.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) { "Could not stop workspace tmux server" }
+    }
+
     override val integrationType: String = "TMUX"
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
@@ -46,7 +56,12 @@ class TmuxToolProvider : ToolPlugin {
                 ?.asText()
                 ?.takeIf { it.isNotBlank() }
         return listOf(
-            TmuxTool(workingDirectory = workingDirectory, configName = configName),
+            TmuxTool(
+                workingDirectory = workingDirectory,
+                configName = configName,
+                socketName = config?.get("socketName")?.asText(),
+                home = config?.get("workspaceHome")?.asText()?.takeIf { it.isNotBlank() },
+            ),
             WaitTool(configName = configName),
         )
     }
@@ -60,6 +75,12 @@ class TmuxToolProvider : ToolPlugin {
                     "title": "Tmux Configuration",
                     "description": "Configuration for the Tmux integration.",
                     "properties": {
+                    "useCaseExchangeDirectory": {
+                        "type": "boolean",
+                        "title": "Use case workspace directory",
+                        "description": "Run in the shared Case Exchange when this case has a Git workspace. Otherwise use the configured directory.",
+                        "default": true
+                    },
                         "workingDirectory": {
                             "type": "string",
                             "title": "Working Directory",

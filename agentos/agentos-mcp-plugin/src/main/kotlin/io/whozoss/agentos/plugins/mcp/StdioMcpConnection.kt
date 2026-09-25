@@ -182,6 +182,13 @@ class StdioMcpConnection(
         logger.debug { "[MCP] Close completed in ${closeMs}ms (hash ${configHash.take(8)})" }
     }
 
+    override fun awaitTermination(): Boolean {
+        val task = java.util.concurrent.FutureTask { transport.awaitForExit(); true }
+        Thread.ofVirtual().start(task)
+        return try { task.get(10, java.util.concurrent.TimeUnit.SECONDS) }
+        catch (_: Exception) { task.cancel(true); false }
+    }
+
     private fun formatResult(result: McpSchema.CallToolResult): String {
         val content = result.content() ?: return "(no output)"
         val parts =

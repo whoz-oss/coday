@@ -1,7 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, effect, inject, output, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  output,
+  signal,
+} from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
-import { ExchangeFileEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import { ExchangeDirectoryEntry, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ConfirmDialogComponent } from '@whoz-oss/design-system'
 import { canViewFile } from '../../services/exchange-content.utils'
 import { ExchangeFileRef, ExchangeScope, ExchangeStateService } from '../../services/exchange-state.service'
@@ -30,6 +40,7 @@ export class ExchangeShellComponent {
   private readonly destroyRef = inject(DestroyRef)
   protected readonly state = inject(ExchangeStateService)
 
+  readonly active = input(false)
   readonly closeRequested = output<void>()
 
   // ── Current selection / viewer content ────────────────────────────────────────
@@ -50,6 +61,8 @@ export class ExchangeShellComponent {
   })
 
   /** The case currently initialised, so an unrelated query-param change does not re-init. */
+  protected readonly environmentCaseId = signal<string | null>(null)
+
   private activeCaseId: string | null = null
 
   constructor() {
@@ -61,6 +74,7 @@ export class ExchangeShellComponent {
     this.route.queryParams.pipe(takeUntilDestroyed()).subscribe((params) => {
       const namespaceId = params['ns'] as string | undefined
       const caseId = params['case'] as string | undefined
+      this.environmentCaseId.set(caseId ?? null)
       if (namespaceId && caseId) {
         // Guard on the case actually changing (like case-chat): a re-emission for some other query
         // param must not wipe the open file and double-refetch both manifests.
@@ -78,6 +92,15 @@ export class ExchangeShellComponent {
   }
 
   // ── View ──────────────────────────────────────────────────────────────────────
+  /** Navigate the drawer into a folder, or back to a breadcrumb level. */
+  protected onFolderOpened(event: { scope: ExchangeScope; path: string }): void {
+    if (event.scope === ExchangeFileEntryScopeEnum.CASE) {
+      this.state.browseCase(event.path)
+    } else {
+      this.state.browseNamespace(event.path)
+    }
+  }
+
   protected onFileSelected(ref: ExchangeFileRef): void {
     this.selectedFile.set(ref)
     this.selectedContent.set(null)
@@ -136,7 +159,8 @@ export class ExchangeShellComponent {
     const result = await this.state.downloadAll(scope)
     if (result.failedCount > 0) {
       this.actionError.set(
-        result.failedCount === 1 ? 'A file failed to download.' : `${result.failedCount} files failed to download.`
+        result.error ??
+          (result.failedCount === 1 ? 'A file failed to download.' : `${result.failedCount} files failed to download.`)
       )
     }
   }
@@ -190,7 +214,7 @@ export class ExchangeShellComponent {
     this.actionError.set(null)
   }
 
-  private findFile(ref: ExchangeFileRef): ExchangeFileEntry | undefined {
+  private findFile(ref: ExchangeFileRef): ExchangeDirectoryEntry | undefined {
     const files = ref.scope === ExchangeFileEntryScopeEnum.CASE ? this.state.caseFiles() : this.state.namespaceFiles()
     return files.find((f) => f.path === ref.path)
   }

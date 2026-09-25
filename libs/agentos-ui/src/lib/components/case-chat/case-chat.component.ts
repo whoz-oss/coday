@@ -416,17 +416,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // A question is answered when there is a corresponding AnswerEvent in the stream.
         const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
         items.push({ kind: 'question', event: qe, answered })
-      } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
-        // Execution notices and the generic fallback are diagnostics: keep them entirely
-        // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
+      } else if (!this.isEventConsumedElsewhere(e)) {
+        // A notice says why a turn produced nothing, so it belongs in the conversation rather
+        // than behind the technical toggle. Hidden, a case that stops for want of an agent
+        // selection is indistinguishable from an agent that never answers: the warning naming
+        // the cause ("no default agent configured, use @agentName") was dropped by default.
+        // The generic fallback stays a diagnostic, inspectable only in technical mode.
         const notice = this.toExecutionNotice(e)
         if (notice) {
           items.push({ kind: 'notice', notice, eventId: e.id })
-        } else {
-          // Every event not already represented elsewhere remains inspectable in technical mode.
+          lastMessageRole = null
+        } else if (showTechnical) {
           items.push({ kind: 'technical', item: this.toTechnicalItem(e), eventId: e.id })
+          lastMessageRole = null
         }
-        lastMessageRole = null
       }
     }
 
@@ -590,6 +593,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       try {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
+          // Reconnection replays persisted history. The last known status restores the
+          // running indicator after a transport error; older statuses must not undo it.
+          // Timeline rows, file refreshes and streamed text remain deduplicated.
+          if (this.events().some((previous) => previous.id === event.id)) {
+            if (event.type === 'CaseStatusEvent') {
+              const latestStatus = [...this.events()]
+                .reverse()
+                .find((previous) => previous.type === 'CaseStatusEvent' || previous.type === 'AgentFinishedEvent')
+              if (latestStatus?.id === event.id) {
+                this.isRunning.set((event as CaseStatusEvent).status === 'RUNNING')
+              }
+            }
+            return
+          }
           const beforeLen = this.events().length
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
@@ -601,7 +618,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             }
           }
 
-          this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
+          this.events.update((prev) => [...prev, event])
           const afterLen = this.events().length
 
           console.log('[AgentOS SSE] event processed', {

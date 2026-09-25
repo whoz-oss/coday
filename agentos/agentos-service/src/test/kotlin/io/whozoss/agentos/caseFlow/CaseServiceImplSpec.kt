@@ -7,6 +7,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -14,8 +15,19 @@ import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.git.CaseResourceBinding
+import io.whozoss.agentos.git.CaseResourceStatus
+import io.whozoss.agentos.git.GitCaseLaunchGate
+import io.whozoss.agentos.git.GitExchangeRoot
+import io.whozoss.agentos.git.GitExchangeRootResolver
+import io.whozoss.agentos.git.InMemoryCaseResourceBindingService
+import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
+import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.git.WorkspaceLifecycleLocks
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
@@ -38,6 +50,8 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,7 +63,11 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.nio.file.Path
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Suspends until [runtime]'s SSE flow has at least [count] active subscribers.
@@ -197,6 +215,10 @@ class CaseServiceImplSpec :
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
             idleEvictionGraceMs: Long = 5_000L,
+            caseRepository: CaseRepository = InMemoryCaseRepository(),
+            caseLaunchGate: CaseLaunchGate = CaseLaunchGate.ALWAYS,
+            caseEventService: CaseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
+            admissionRetryDelaysMs: List<Long> = listOf(10L, 10L),
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -210,8 +232,6 @@ class CaseServiceImplSpec :
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 }
-            val caseRepository = InMemoryCaseRepository()
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             return CaseServiceImpl(
                 agentService = agentService,
                 agentConfigService = agentConfigService,
@@ -220,11 +240,709 @@ class CaseServiceImplSpec :
                 caseEventService = caseEventService,
                 userService = userService,
                 namespaceService = namespaceService,
-                caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
+                caseConfig =
+                    CaseConfigProperties(
+                        idleEvictionGraceMs = idleEvictionGraceMs,
+                        admissionRetryDelaysMs = admissionRetryDelaysMs,
+                    ),
                 permissionService = permissionService,
                 promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
+                caseLaunchGate = caseLaunchGate,
             )
+        }
+
+        fun gitGate(repository: CaseRepository, bindings: InMemoryCaseResourceBindingService): GitCaseLaunchGate =
+            GitCaseLaunchGate(
+                GitExchangeRootResolver(repository, bindings,
+                    ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = "/tmp/runtime-exchange-tests")),
+                    com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()),
+                repository,
+            )
+
+        fun equip(bindings: InMemoryCaseResourceBindingService, caseId: UUID, status: CaseResourceStatus = CaseResourceStatus.READY) =
+            bindings.create(CaseResourceBinding(rootCaseId = caseId, namespaceId = namespaceId,
+                integrationConfigId = UUID.randomUUID(), status = status))
+
+        /** A gate that holds runs back until [open] is set, as a workspace being prepared does. */
+        class TestLaunchGate : CaseLaunchGate {
+            var open: Boolean = false
+
+            override fun canLaunch(caseId: UUID): Boolean = open
+        }
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { status ->
+            listOf(false, true).forEach { withWorkspace ->
+                "fresh messages to $status cases preserve the optional workspace policy (equipped=$withWorkspace)" {
+                    val repository = InMemoryCaseRepository()
+                    val case = repository.save(Case(namespaceId = namespaceId, status = status))
+                    val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                    val roots = mockk<GitExchangeRootResolver>()
+                    val binding = if (withWorkspace) CaseResourceBinding(
+                        rootCaseId = case.id,
+                        namespaceId = namespaceId,
+                        integrationConfigId = UUID.randomUUID(),
+                        status = CaseResourceStatus.READY,
+                    ) else null
+                    every { roots.resolveGit(case.id) } returns GitExchangeRoot(Path.of("/tmp/case"), binding, case.id)
+                    val agent = finishingAgent()
+                    val service = buildService(
+                        agent = agent,
+                        caseRepository = repository,
+                        caseEventService = events,
+                        caseLaunchGate = GitCaseLaunchGate(roots, repository),
+                    )
+                    try {
+                        if (withWorkspace) {
+                            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do more work")))
+                            }
+                            events.findByParent(case.id) shouldBe emptyList()
+                            service.findActiveRuntime(case.id) shouldBe null
+                            service.activeCoroutineCount shouldBe 0
+                            repository.findByIds(listOf(case.id)).single().status shouldBe status
+                        } else {
+                            service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do more work")))
+                            withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                            verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+                            events.findByParent(case.id).filterIsInstance<MessageEvent>()
+                                .single { it.actor.role == ActorRole.USER }.content shouldBe listOf(MessageContent.Text("Do more work"))
+                        }
+                    } finally { service.shutdown() }
+                }
+            }
+        }
+
+        "a fresh non-Git message after Kill is not lost while the previous agent is still stopping" {
+            val firstEntered = CompletableDeferred<Unit>()
+            val releaseFirst = CompletableDeferred<Unit>()
+            val secondEntered = CompletableDeferred<Unit>()
+            val calls = AtomicInteger()
+            val agent = finishingAgent()
+            every { agent.run(any<List<CaseEvent>>(), any()) } answers {
+                val caseId = firstArg<List<CaseEvent>>().first().caseId
+                val call = calls.incrementAndGet()
+                flow {
+                    if (call == 1) {
+                        firstEntered.complete(Unit)
+                        releaseFirst.await()
+                    } else secondEntered.complete(Unit)
+                    emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                        agentId = agentId, agentName = agentName))
+                }
+            }
+            val repository = InMemoryCaseRepository()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val roots = mockk<GitExchangeRootResolver> {
+                every { resolveGit(any<UUID>()) } answers {
+                    GitExchangeRoot(Path.of("/tmp/case"), null, firstArg())
+                }
+            }
+            val service = buildService(agent = agent, caseRepository = repository, caseEventService = events,
+                caseLaunchGate = GitCaseLaunchGate(roots, repository))
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("First instruction")))
+                withTimeout(2_000) { firstEntered.await() }
+                service.killCase(case.id)
+                service.getById(case.id).status shouldBe CaseStatus.KILLED
+                service.hasRunningExecutions(listOf(case.id)) shouldBe true
+
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Fresh instruction")))
+                service.getById(case.id).status shouldBe CaseStatus.PENDING
+                calls.get() shouldBe 1
+                events.findByParent(case.id).filterIsInstance<MessageEvent>()
+                    .last { it.actor.role == ActorRole.USER }.content shouldBe listOf(MessageContent.Text("Fresh instruction"))
+                releaseFirst.complete(Unit)
+
+                withTimeout(2_000) { secondEntered.await() }
+                withTimeout(2_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                calls.get() shouldBe 2
+                verify(exactly = 1) {
+                    agent.run(match<List<CaseEvent>> { history ->
+                        history.filterIsInstance<MessageEvent>().last { it.actor.role == ActorRole.USER }.content ==
+                            listOf(MessageContent.Text("Fresh instruction"))
+                    }, any())
+                }
+            } finally {
+                releaseFirst.complete(Unit)
+                service.shutdown()
+            }
+        }
+
+        "workspace input is emitted before preparation and survives cancellation in conversation history" {
+            val gate = TestLaunchGate()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val runtime = service.getCaseRuntime(case.id)
+                val receipt = async { runtime.events.filterIsInstance<MessageEvent>().first() }
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+                val displayed = withTimeout(2_000) { receipt.await() }
+                displayed.content shouldBe listOf(MessageContent.Text("Do the work"))
+                events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldBe listOf(displayed)
+                service.interruptCase(case.id)
+                events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldBe listOf(displayed)
+                runtime.isRunning() shouldBe false
+            } finally { service.shutdown() }
+        }
+
+        "a new instruction after Stop while preparing executes when the workspace becomes ready" {
+            val agent = finishingAgent()
+            val gate = TestLaunchGate()
+            val service = buildService(agent = agent, caseLaunchGate = gate, idleEvictionGraceMs = 25L)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Cancelled instruction")))
+                service.interruptCase(case.id)
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("New instruction")))
+                service.getById(case.id).status shouldBe CaseStatus.PENDING
+                delay(100)
+                service.findActiveRuntime(case.id)!!.statusFlow.value shouldBe CaseStatus.PENDING
+                gate.open = true
+                service.resumeIfPending(case.id)
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { service.shutdown() }
+        }
+
+        listOf(false, true).forEach { sendFreshMessage ->
+            "Stop revokes an admitted launch before execution and preserves a later message (fresh=$sendFreshMessage)" {
+                val entered = CountDownLatch(1)
+                val release = CountDownLatch(1)
+                val checks = AtomicInteger()
+                val gate = object : CaseLaunchGate {
+                    override fun canLaunch(caseId: UUID): Boolean {
+                        // The first check admits the job; the second is the job's own check.
+                        if (checks.incrementAndGet() == 2) {
+                            entered.countDown()
+                            check(release.await(5, TimeUnit.SECONDS))
+                        }
+                        return true
+                    }
+                }
+                val agent = finishingAgent()
+                val service = buildService(agent = agent, caseLaunchGate = gate)
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("Cancelled instruction")))
+                    entered.await(5, TimeUnit.SECONDS) shouldBe true
+                    service.findActiveRuntime(case.id)!!.isRunning() shouldBe false
+                    service.hasRunningExecutions(listOf(case.id)) shouldBe true
+
+                    service.interruptCase(case.id)
+                    service.getById(case.id).status shouldBe CaseStatus.IDLE
+                    if (sendFreshMessage) {
+                        service.addMessage(case.id, userActor, listOf(MessageContent.Text("Fresh instruction")))
+                        service.getById(case.id).status shouldBe CaseStatus.PENDING
+                    }
+                    release.countDown()
+                    withTimeout(3_000) {
+                        while (service.hasRunningExecutions(listOf(case.id)) ||
+                            service.getById(case.id).status != CaseStatus.IDLE) delay(10)
+                    }
+                    verify(exactly = if (sendFreshMessage) 1 else 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                    if (sendFreshMessage) verify {
+                        agent.run(match<List<CaseEvent>> { events ->
+                            events.filterIsInstance<MessageEvent>().last { it.actor.role == ActorRole.USER }.content ==
+                                listOf(MessageContent.Text("Fresh instruction"))
+                        }, any())
+                    }
+                } finally {
+                    release.countDown()
+                    service.shutdown()
+                }
+            }
+        }
+
+        "Stop keeps an already running agent cooperative instead of cancelling its coroutine" {
+            val entered = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            val completed = CompletableDeferred<Unit>()
+            val agent = finishingAgent()
+            every { agent.run(any<List<CaseEvent>>(), any()) } answers {
+                val caseId = firstArg<List<CaseEvent>>().first().caseId
+                flow {
+                    entered.complete(Unit)
+                    release.await()
+                    emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId,
+                        agentId = agentId, agentName = agentName))
+                    completed.complete(Unit)
+                }
+            }
+            val service = buildService(agent = agent)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Start agent")))
+                withTimeout(3_000) { entered.await() }
+                service.interruptCase(case.id)
+                service.findActiveRuntime(case.id)!!.isRunning() shouldBe true
+                release.complete(Unit)
+                withTimeout(3_000) { completed.await() }
+                withTimeout(3_000) { while (service.hasRunningExecutions(listOf(case.id))) delay(10) }
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+            } finally {
+                release.complete(Unit)
+                service.shutdown()
+            }
+        }
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminal ->
+            listOf(false, true).forEach { withGit ->
+                "interrupt preserves $terminal without rehydrating a runtime (Git=$withGit)" {
+                    val repository = InMemoryCaseRepository()
+                    val case = repository.save(Case(namespaceId = namespaceId, status = terminal))
+                    val gate = if (withGit) object : CaseLaunchGate {
+                        override fun canLaunch(caseId: UUID) = false
+                    } else CaseLaunchGate.ALWAYS
+                    val service = buildService(caseRepository = repository, caseLaunchGate = gate)
+                    try {
+                        service.interruptCase(case.id)
+                        service.getById(case.id).status shouldBe terminal
+                        service.findActiveRuntime(case.id) shouldBe null
+                        service.activeCoroutineCount shouldBe 0
+                    } finally { service.shutdown() }
+                }
+            }
+        }
+
+        "message admission does not wait on preparation and resumes after a short lock owner too" {
+            val rootId = UUID.randomUUID()
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val holder = Thread {
+                WorkspaceLifecycleLocks.withRoot(rootId) {
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                }
+            }
+            val repository = InMemoryCaseRepository()
+            val roots = mockk<GitExchangeRootResolver>()
+            every { roots.resolveGit(any<UUID>()) } returns GitExchangeRoot(
+                Path.of("/tmp/case"),
+                CaseResourceBinding(rootCaseId = rootId, namespaceId = namespaceId,
+                    integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY),
+                rootId,
+            )
+            val gate = GitCaseLaunchGate(roots, repository)
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gate)
+            try {
+                holder.start()
+                entered.await(5, TimeUnit.SECONDS) shouldBe true
+                val case = service.create(Case(namespaceId = namespaceId))
+                val started = System.nanoTime()
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Wait for workspace")))
+                (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 1_000) shouldBe true
+                release.count shouldBe 1L
+                service.getById(case.id).status shouldBe CaseStatus.PENDING
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                release.countDown()
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                release.countDown()
+                holder.join(5_000)
+                service.shutdown()
+            }
+        }
+
+        "a new service does not automatically replay persisted pending input but accepts a fresh message" {
+            val repository = InMemoryCaseRepository()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val gate = TestLaunchGate()
+            val agent = finishingAgent()
+            val before = buildService(agent = agent, caseRepository = repository, caseEventService = events, caseLaunchGate = gate)
+            val after = buildService(agent = agent, caseRepository = repository, caseEventService = events)
+            try {
+                val case = before.create(Case(namespaceId = namespaceId))
+                before.addMessage(case.id, userActor, listOf(MessageContent.Text("Before restart")))
+                // Simulate another process with the same persisted case/events but no live queue.
+                // Opening the conversation may rehydrate a runtime; it must not imply admission.
+                after.getCaseRuntime(case.id)
+                after.resumeIfPending(case.id)
+                delay(100)
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                events.findByParent(case.id).filterIsInstance<MessageEvent>().single().content shouldBe
+                    listOf(MessageContent.Text("Before restart"))
+                after.addMessage(case.id, userActor, listOf(MessageContent.Text("Continue manually")))
+                withTimeout(3_000) {
+                    while (after.getById(case.id).status != CaseStatus.IDLE) delay(10)
+                }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { before.shutdown(); after.shutdown() }
+        }
+
+        listOf(CaseStatus.IDLE, CaseStatus.PENDING, CaseStatus.RUNNING).forEach { statusBeforeShutdown ->
+            "shutdown leaves a $statusBeforeShutdown Git case open for fresh input without replay" {
+                val repository = InMemoryCaseRepository()
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val bindings = InMemoryCaseResourceBindingService()
+                val gate = gitGate(repository, bindings)
+                val entered = CompletableDeferred<Unit>()
+                val stopped = CompletableDeferred<Unit>()
+                val holdAgent = CompletableDeferred<Unit>()
+                val oldAgent = finishingAgent()
+                every { oldAgent.run(any<List<CaseEvent>>(), any()) } returns flow {
+                    entered.complete(Unit)
+                    try { holdAgent.await() } finally { stopped.complete(Unit) }
+                }
+                val before = buildService(agent = oldAgent, caseRepository = repository,
+                    caseEventService = events, caseLaunchGate = gate)
+                val case = before.create(Case(namespaceId = namespaceId, status = CaseStatus.IDLE))
+                val binding = equip(bindings, case.id, if (statusBeforeShutdown == CaseStatus.PENDING)
+                    CaseResourceStatus.PREPARING else CaseResourceStatus.READY)
+                try {
+                    if (statusBeforeShutdown != CaseStatus.IDLE) {
+                        before.addMessage(case.id, userActor, listOf(MessageContent.Text("Before shutdown")))
+                    }
+                    if (statusBeforeShutdown == CaseStatus.RUNNING) withTimeout(3_000) { entered.await() }
+                    before.getById(case.id).status shouldBe statusBeforeShutdown
+                    before.shutdown()
+                    if (statusBeforeShutdown == CaseStatus.RUNNING) withTimeout(3_000) { stopped.await() }
+                    withTimeout(3_000) { while (before.hasRunningExecutions(listOf(case.id))) delay(10) }
+                    before.getById(case.id).status shouldBe CaseStatus.IDLE
+                    before.findActiveRuntime(case.id) shouldBe null
+                    bindings.markStatus(binding.id, CaseResourceStatus.READY, null)
+
+                    // Construct the replacement only after the old service and execution stopped.
+                    val newAgent = finishingAgent()
+                    val after = buildService(agent = newAgent, caseRepository = repository,
+                        caseEventService = events, caseLaunchGate = gitGate(repository, bindings))
+                    try {
+                        after.getCaseRuntime(case.id)
+                        after.resumeIfPending(case.id)
+                        after.trackedExecutionCount shouldBe 0
+                        verify(exactly = 0) { newAgent.run(any<List<CaseEvent>>(), any()) }
+                        after.addMessage(case.id, userActor, listOf(MessageContent.Text("Continue manually")))
+                        withTimeout(3_000) { while (after.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                        verify(exactly = 1) {
+                            newAgent.run(match<List<CaseEvent>> { history ->
+                                history.filterIsInstance<MessageEvent>().last { it.actor.role == ActorRole.USER }.content ==
+                                    listOf(MessageContent.Text("Continue manually"))
+                            }, any())
+                        }
+                    } finally { after.shutdown() }
+                } finally { before.shutdown() }
+            }
+        }
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminal ->
+            "shutdown preserves an equipped $terminal case even if opening its events rehydrated it" {
+                val repository = InMemoryCaseRepository()
+                val bindings = InMemoryCaseResourceBindingService()
+                val case = repository.save(Case(namespaceId = namespaceId, status = terminal))
+                equip(bindings, case.id)
+                val before = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+                before.getCaseRuntime(case.id)
+                before.shutdown()
+                before.getById(case.id).status shouldBe terminal
+                val after = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+                try {
+                    shouldThrow<ConflictException> {
+                        after.addMessage(case.id, userActor, listOf(MessageContent.Text("Must stay terminal")))
+                    }
+                } finally { after.shutdown() }
+            }
+        }
+
+        "shutdown retains the historical non-Git status and fresh-message behavior" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            val before = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = before.create(Case(namespaceId = namespaceId))
+            before.shutdown()
+            before.getById(case.id).status shouldBe CaseStatus.KILLED
+            val agent = finishingAgent()
+            val after = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            try {
+                after.addMessage(case.id, userActor, listOf(MessageContent.Text("Fresh non-Git instruction")))
+                withTimeout(3_000) { while (after.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { after.shutdown() }
+        }
+
+        "a user Kill during shutdown remains terminal" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            val realGate = gitGate(repository, bindings)
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val gate = object : CaseLaunchGate by realGate {
+                override fun keepOpenOnShutdown(caseId: UUID): Boolean {
+                    val keepOpen = realGate.keepOpenOnShutdown(caseId)
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                    return keepOpen
+                }
+            }
+            val service = buildService(caseRepository = repository, caseLaunchGate = gate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            val stopping = async(Dispatchers.IO) { service.shutdown() }
+            try {
+                entered.await(5, TimeUnit.SECONDS) shouldBe true
+                service.killCase(case.id)
+                release.countDown()
+                withTimeout(3_000) { stopping.await() }
+                service.getById(case.id).status shouldBe CaseStatus.KILLED
+                service.findActiveRuntime(case.id) shouldBe null
+            } finally { release.countDown(); stopping.await() }
+        }
+
+        listOf(1, 2).forEach { barrierCheck ->
+            "Kill wins over an older Git message paused after acceptance check $barrierCheck" {
+                val repository = InMemoryCaseRepository()
+                val bindings = InMemoryCaseResourceBindingService()
+                val realGate = gitGate(repository, bindings)
+                val entered = CountDownLatch(1)
+                val release = CountDownLatch(1)
+                val checks = AtomicInteger()
+                val gate = object : CaseLaunchGate by realGate {
+                    override fun requireAccepting(caseId: UUID) {
+                        realGate.requireAccepting(caseId)
+                        if (checks.incrementAndGet() == barrierCheck) {
+                            entered.countDown()
+                            check(release.await(5, TimeUnit.SECONDS))
+                        }
+                    }
+                }
+                val agent = finishingAgent()
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val service = buildService(agent = agent, caseRepository = repository,
+                    caseEventService = events, caseLaunchGate = gate)
+                val case = service.create(Case(namespaceId = namespaceId))
+                equip(bindings, case.id)
+                val sending = async(Dispatchers.IO) {
+                    runCatching { service.addMessage(case.id, userActor, listOf(MessageContent.Text("Older instruction"))) }
+                }
+                try {
+                    entered.await(5, TimeUnit.SECONDS) shouldBe true
+                    service.killCase(case.id)
+                    val statusesAtKill = events.findByParent(case.id).filterIsInstance<CaseStatusEvent>().size
+                    release.countDown()
+                    val result = withTimeout(3_000) { sending.await() }
+                    if (barrierCheck == 1) result.exceptionOrNull().shouldBeInstanceOf<ConflictException>()
+                    else result.isSuccess shouldBe true
+                    service.getById(case.id).status shouldBe CaseStatus.KILLED
+                    service.findActiveRuntime(case.id) shouldBe null
+                    service.trackedExecutionCount shouldBe 0
+                    events.findByParent(case.id).filterIsInstance<CaseStatusEvent>().drop(statusesAtKill) shouldBe emptyList()
+                    verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                } finally { release.countDown(); sending.await(); service.shutdown() }
+            }
+        }
+
+        "Kill without a runtime serializes its status write with a concurrent hydration" {
+            val storedCases = InMemoryCaseRepository()
+            val writingKill = CountDownLatch(1)
+            val finishKill = CountDownLatch(1)
+            val repository = object : CaseRepository by storedCases {
+                override fun save(entity: Case): Case {
+                    if (entity.status == CaseStatus.KILLED) {
+                        writingKill.countDown()
+                        check(finishKill.await(5, TimeUnit.SECONDS))
+                    }
+                    return storedCases.save(entity)
+                }
+            }
+            val bindings = InMemoryCaseResourceBindingService()
+            val realGate = gitGate(repository, bindings)
+            val accepted = CountDownLatch(1)
+            val hydrated = CountDownLatch(1)
+            val checks = AtomicInteger()
+            val gate = object : CaseLaunchGate by realGate {
+                override fun requireAccepting(caseId: UUID) {
+                    val check = checks.incrementAndGet()
+                    if (check == 2) hydrated.countDown()
+                    realGate.requireAccepting(caseId)
+                    if (check == 1) accepted.countDown()
+                }
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gate)
+            val case = storedCases.save(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            val killing = async(Dispatchers.IO) { service.killCase(case.id) }
+            try {
+                writingKill.await(5, TimeUnit.SECONDS) shouldBe true
+                val sending = async(Dispatchers.IO) {
+                    runCatching { service.addMessage(case.id, userActor, listOf(MessageContent.Text("Concurrent instruction"))) }
+                }
+                try {
+                    accepted.await(5, TimeUnit.SECONDS) shouldBe true
+                    // Hydration cannot return a stale IDLE runtime while the Kill is being saved.
+                    hydrated.await(100, TimeUnit.MILLISECONDS) shouldBe false
+                    finishKill.countDown()
+                    withTimeout(3_000) { killing.await() }
+                    withTimeout(3_000) { sending.await() }.exceptionOrNull().shouldBeInstanceOf<ConflictException>()
+                    service.getById(case.id).status shouldBe CaseStatus.KILLED
+                    service.findActiveRuntime(case.id) shouldBe null
+                    verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                } finally { finishKill.countDown(); sending.await() }
+            } finally { finishKill.countDown(); killing.await(); service.shutdown() }
+        }
+
+        "Kill cancels an admitted Git launch before it can reset the runtime flags" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            val realGate = gitGate(repository, bindings)
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val checks = AtomicInteger()
+            val gate = object : CaseLaunchGate by realGate {
+                override fun canLaunch(caseId: UUID): Boolean {
+                    val canLaunch = realGate.canLaunch(caseId)
+                    if (checks.incrementAndGet() == 2) {
+                        entered.countDown()
+                        check(release.await(5, TimeUnit.SECONDS))
+                    }
+                    return canLaunch
+                }
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            try {
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Admitted instruction")))
+                entered.await(5, TimeUnit.SECONDS) shouldBe true
+                service.findActiveRuntime(case.id)!!.isRunning() shouldBe false
+                service.killCase(case.id)
+                release.countDown()
+                withTimeout(3_000) { while (service.hasRunningExecutions(listOf(case.id))) delay(10) }
+                service.getById(case.id).status shouldBe CaseStatus.KILLED
+                service.findActiveRuntime(case.id) shouldBe null
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { release.countDown(); service.shutdown() }
+        }
+
+        // -------------------------------------------------------------------------
+        // Regression: a held-back run must not revive a case that is no longer PENDING
+        // -------------------------------------------------------------------------
+
+        /**
+         * Reproduces the real sequence: a message arrives while the workspace is preparing, so the
+         * gate holds the run back and the message stays persisted. The case is then left in
+         * [statusWhileWaiting] before the gate opens and the sweep resumes it.
+         *
+         * The message matters: a case with no pending message never reaches the agent anyway, so a
+         * test built on an empty case would pass with or without the guard.
+         */
+        suspend fun resumeAfterDeferral(statusWhileWaiting: CaseStatus): Agent {
+            val agent = finishingAgent()
+            val caseRepository = InMemoryCaseRepository()
+            val gate = TestLaunchGate()
+            val service = buildService(agent = agent, caseRepository = caseRepository, caseLaunchGate = gate)
+            val case = service.create(Case(namespaceId = namespaceId))
+
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            caseRepository.save(case.copy(status = statusWhileWaiting))
+
+            gate.open = true
+            service.resumeIfPending(case.id)
+            // Give a launch, if one happens, the chance to reach the agent before asserting.
+            delay(200)
+            return agent
+        }
+
+        "resumeIfPending does not relaunch a case killed while its workspace was preparing" {
+            // A kill sets its flags on the runtime that was live at the time, and CaseRuntime.run()
+            // clears them on entry. Without a status guard read from the store, the case comes back
+            // as RUNNING the moment preparation ends — the late run the plan forbids.
+            val agent = resumeAfterDeferral(CaseStatus.KILLED)
+
+            coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+        }
+
+        "resumeIfPending does not relaunch a case that already consumed its message" {
+            val agent = resumeAfterDeferral(CaseStatus.IDLE)
+
+            coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+        }
+
+        "resumeIfPending still launches a case that is genuinely pending" {
+            // The guard must not turn into a blanket refusal: this is the case the sweep resumes.
+            val agent = resumeAfterDeferral(CaseStatus.PENDING)
+
+            coVerify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+        }
+
+        "a transient launch check failure is retried and the message still runs" {
+            val checks = AtomicInteger()
+            val gate = object : CaseLaunchGate {
+                override fun canLaunch(caseId: UUID): Boolean {
+                    if (checks.incrementAndGet() == 1) throw IllegalStateException("Neo4j session expired")
+                    return true
+                }
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                coVerify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "a failing admission coordination does not fail the stored message" {
+            val attempts = AtomicInteger()
+            val gate = object : CaseLaunchGate {
+                override fun canLaunch(caseId: UUID): Boolean = true
+
+                override fun withAdmission(caseId: UUID, onAvailable: () -> Unit, action: () -> Unit) {
+                    if (attempts.incrementAndGet() == 1) throw IllegalStateException("Neo4j session expired")
+                    action()
+                }
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                coVerify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "a launch check that keeps failing warns the user and returns the case to IDLE" {
+            val gate = object : CaseLaunchGate {
+                override fun canLaunch(caseId: UUID): Boolean = throw IllegalStateException("Neo4j unavailable")
+            }
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+
+                withTimeout(3_000) { while (events.findByParent(case.id).none { it is WarnEvent }) delay(10) }
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                // Giving up is final for this instruction: a later resume must not run it silently.
+                service.resumeIfPending(case.id)
+                coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -1445,9 +2163,86 @@ class CaseServiceImplSpec :
             service.activeCoroutineCount shouldBe 0
         }
 
-        // -------------------------------------------------------------------------
-        // Kill propagation to sub-cases
-        // -------------------------------------------------------------------------
+        "completed execution jobs are released after idle eviction and a later message still runs" {
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, idleEvictionGraceMs = 25L)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                repeat(2) { index ->
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("message $index")))
+                    withTimeout(3_000) {
+                        while (service.findActiveRuntime(case.id) != null) delay(10)
+                    }
+                    service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                    service.trackedExecutionCount shouldBe 0
+                }
+                verify(exactly = 2) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "an admitted launch blocks cleanup until its gate check completes and can resume afterward" {
+            val enteredGate = CountDownLatch(1)
+            val releaseGate = CountDownLatch(1)
+            val checks = AtomicInteger()
+            val gate = object : CaseLaunchGate {
+                override fun canLaunch(caseId: UUID): Boolean {
+                    if (checks.incrementAndGet() != 2) return true
+                    enteredGate.countDown()
+                    check(releaseGate.await(5, TimeUnit.SECONDS))
+                    return false
+                }
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("pending instruction")))
+                enteredGate.await(5, TimeUnit.SECONDS) shouldBe true
+                // The launch is owned even though the runtime has not started yet.
+                service.findActiveRuntime(case.id)!!.isRunning() shouldBe false
+                service.hasRunningExecutions(listOf(case.id)) shouldBe true
+                service.trackedExecutionCount shouldBe 1
+
+                releaseGate.countDown()
+                withTimeout(3_000) { while (service.trackedExecutionCount != 0) delay(10) }
+                service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+
+                service.resumeIfPending(case.id)
+                withTimeout(3_000) {
+                    while (service.getById(case.id).status != CaseStatus.IDLE || service.trackedExecutionCount != 0) delay(10)
+                }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                releaseGate.countDown()
+                service.shutdown()
+            }
+        }
+
+        "shutdown during admission does not retain a job cancelled before insertion" {
+            lateinit var service: CaseServiceImpl
+            val gate = object : CaseLaunchGate {
+                override fun canLaunch(caseId: UUID): Boolean {
+                    service.shutdown()
+                    return true
+                }
+            }
+            val agent = finishingAgent()
+            service = buildService(agent = agent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                // The scope is cancelled between admission and job creation. launch() returns
+                // an already-completed job, so cleanup must be registered after map insertion.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("pending instruction")))
+                service.trackedExecutionCount shouldBe 0
+                service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
 
         // -------------------------------------------------------------------------
         // startSubCase: delegation depth and linkParentToChild atomicity

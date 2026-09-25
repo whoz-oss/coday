@@ -29,6 +29,12 @@ import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
 import io.whozoss.agentos.feedback.FeedbackRepository
 import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
+import io.whozoss.agentos.git.CaseResourceBindingNodeNeo4jRepository
+import io.whozoss.agentos.git.CaseResourceBindingRepository
+import io.whozoss.agentos.git.Neo4jCaseResourceBindingRepository
+import io.whozoss.agentos.git.Neo4jRepositoryCheckoutRepository
+import io.whozoss.agentos.git.RepositoryCheckoutNodeNeo4jRepository
+import io.whozoss.agentos.git.RepositoryCheckoutRepository
 import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
@@ -115,6 +121,7 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
         "io.whozoss.agentos.feedback",
+        "io.whozoss.agentos.git",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
@@ -146,6 +153,23 @@ class Neo4jPersistenceConfiguration {
     fun neo4jNamespaceRepository(namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository): NamespaceRepository {
         logger.info { "[Persistence] Neo4jNamespaceRepository active" }
         return Neo4jNamespaceRepository(namespaceNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jRepositoryCheckoutRepository(
+        repositoryCheckoutNodeNeo4jRepository: RepositoryCheckoutNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): RepositoryCheckoutRepository {
+        logger.info { "[Persistence] Neo4jRepositoryCheckoutRepository active" }
+        return Neo4jRepositoryCheckoutRepository(repositoryCheckoutNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
+    fun neo4jCaseResourceBindingRepository(
+        caseResourceBindingNodeNeo4jRepository: CaseResourceBindingNodeNeo4jRepository,
+    ): CaseResourceBindingRepository {
+        logger.info { "[Persistence] Neo4jCaseResourceBindingRepository active" }
+        return Neo4jCaseResourceBindingRepository(caseResourceBindingNodeNeo4jRepository)
     }
 
     @Bean

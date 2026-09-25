@@ -29,19 +29,28 @@ import java.util.UUID
 class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
     private val mergeStrategy: IntegrationConfigMergeStrategy,
+    /**
+     * Type-specific policies, collected by Spring. Empty by default so a context without any
+     * — and every unit test building this service directly — behaves as before.
+     */
+    private val policies: List<IntegrationConfigPolicy> = emptyList(),
 ) : IntegrationConfigService {
-    override fun create(entity: IntegrationConfig): IntegrationConfig {
+    override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
                 conflictMessage(entity),
             )
         }
+        assertNamespaceSingletonRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
     }
 
-    override fun update(entity: IntegrationConfig): IntegrationConfig {
+    override fun update(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -50,8 +59,19 @@ class IntegrationConfigServiceImpl(
                     conflictMessage(entity),
                 )
             }
+        assertNamespaceSingletonRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
+    }
+
+    private fun <T> withSavePolicies(entity: IntegrationConfig, action: () -> T): T {
+        val applicable = policies.filter { it.supports(entity.integrationType) }
+        fun proceed(index: Int): T = if (index == applicable.size) action()
+            else applicable[index].aroundSave(entity) { proceed(index + 1) }
+        return proceed(0)
     }
 
     override fun findByIds(
@@ -81,6 +101,11 @@ class IntegrationConfigServiceImpl(
     override fun findPlatform(): List<IntegrationConfig> = repository.findPlatform()
 
     override fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig> = repository.findByParent(namespaceId)
+
+    override fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig? = repository.findActiveNamespaceSingleton(namespaceId, integrationType)
 
     override fun findEffective(
         namespaceId: UUID?,
@@ -222,29 +247,89 @@ class IntegrationConfigServiceImpl(
         }
     }
 
+    /**
+     * Enforce the two rules that apply to a type describing a namespace capability rather than a
+     * tool (see [IntegrationTypeConstraints]): namespace-shared scope only, and one active row.
+     *
+     * The uniqueness check here exists for the message, not for the guarantee — two concurrent
+     * creates both pass it. The guarantee is the `integration_config_singleton_key_unique`
+     * constraint, whose violation [saveOrConflict] translates.
+     */
+    private fun assertNamespaceSingletonRules(entity: IntegrationConfig) {
+        if (!IntegrationTypeConstraints.isNamespaceSingleton(entity.integrationType)) return
+
+        val namespaceId = entity.namespaceId
+        if (namespaceId == null || entity.userId != null) {
+            throw ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "An integration of type '${entity.integrationType}' configures the namespace itself, so it must " +
+                    "be namespace-shared (namespaceId set, userId null). It was requested with " +
+                    "namespaceId=${entity.namespaceId}, userId=${entity.userId}. A personal or platform-level " +
+                    "row of this type would be merged by name into a member's effective configuration and could " +
+                    "redirect the namespace's provisioning.",
+            )
+        }
+
+        repository
+            .findActiveNamespaceSingleton(namespaceId, entity.integrationType)
+            ?.takeIf { it.id != entity.id }
+            ?.let { existing ->
+                throw ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Namespace $namespaceId already has an active '${entity.integrationType}' configuration " +
+                        "('${existing.name}'). Update that one, or remove it first.",
+                )
+            }
+    }
+
+    /**
+     * Apply the validation owned by this configuration's type.
+     *
+     * Without this, the generic CRUD accepts any JSON in `parameters` and a malformed association
+     * is stored with a 201, failing only when something later tries to use it. Validating here
+     * keeps the failure where the mistake was made.
+     */
+    private fun assertTypeSpecificRules(entity: IntegrationConfig) {
+        policies
+            .filter { it.supports(entity.integrationType) }
+            .forEach { it.validate(entity) }
+    }
+
     private fun saveOrConflict(entity: IntegrationConfig): IntegrationConfig =
         try {
             repository.save(entity)
         } catch (e: DataIntegrityViolationException) {
             // Catches the race window: two concurrent creates pass the applicative pre-check,
-            // both reach `save`, the DB unique constraint on `tripleKey` rejects one of them.
-            // We only translate to 409 when the violation is identifiably the triple-uniqueness
-            // constraint — any other integrity error (future constraints, NOT NULL breaches,
+            // both reach `save`, and a DB unique constraint rejects one of them.
+            // We only translate to 409 when the violation is identifiably one of our uniqueness
+            // constraints — any other integrity error (future constraints, NOT NULL breaches,
             // edge-mismatch, …) is rethrown so it surfaces as a 500 with an honest stack trace
-            // rather than a misleading "name already exists" message.
-            if (!isTripleKeyConflict(e)) {
-                throw e
-            }
+            // rather than a misleading "already exists" message.
+            //
             // Do NOT chain `e` to the logger: the Neo4j driver's `DataIntegrityViolationException`
             // message can echo property values (incl. the offending row's `parameters` JSON which
             // may contain credentials, cf. NFR-SEC-4). The exception is preserved as the cause of
             // the rethrown `ResponseStatusException` for stack-trace continuity at the framework
             // boundary.
-            logger.warn {
-                "[IntegrationConfigService] tripleKey unique-constraint violation on save " +
-                    "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
+            when {
+                isSingletonKeyConflict(e) -> {
+                    logger.warn {
+                        "[IntegrationConfigService] singletonKey unique-constraint violation on save " +
+                            "(namespaceId=${entity.namespaceId}, integrationType='${entity.integrationType}')"
+                    }
+                    throw ResponseStatusException(HttpStatus.CONFLICT, singletonConflictMessage(entity), e)
+                }
+
+                isTripleKeyConflict(e) -> {
+                    logger.warn {
+                        "[IntegrationConfigService] tripleKey unique-constraint violation on save " +
+                            "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
+                    }
+                    throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+                }
+
+                else -> throw e
             }
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
         }
 
     /**
@@ -261,13 +346,31 @@ class IntegrationConfigServiceImpl(
         return TRIPLE_KEY_CONSTRAINT_NAME in haystack || TRIPLE_KEY_PROPERTY in haystack
     }
 
+    /**
+     * Same inspection as [isTripleKeyConflict], for the one-per-namespace constraint. Checked
+     * first because a row can, in principle, violate both.
+     */
+    private fun isSingletonKeyConflict(e: DataIntegrityViolationException): Boolean {
+        val haystack =
+            generateSequence<Throwable>(e) { it.cause }
+                .mapNotNull { it.message }
+                .joinToString(separator = " | ")
+        return SINGLETON_KEY_CONSTRAINT_NAME in haystack || SINGLETON_KEY_PROPERTY in haystack
+    }
+
     private fun conflictMessage(entity: IntegrationConfig): String =
         "An integration config named '${entity.name}' already exists for this scope " +
             "(namespaceId=${entity.namespaceId}, userId=${entity.userId})"
 
+    private fun singletonConflictMessage(entity: IntegrationConfig): String =
+        "Namespace ${entity.namespaceId} already has an active '${entity.integrationType}' configuration. " +
+            "Only one is allowed per namespace."
+
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "integration_config_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+        private const val SINGLETON_KEY_CONSTRAINT_NAME = "integration_config_singleton_key_unique"
+        private const val SINGLETON_KEY_PROPERTY = "singletonKey"
 
         /**
          * Comparator defining the 4-tier overlay precedence (lowest → highest priority).

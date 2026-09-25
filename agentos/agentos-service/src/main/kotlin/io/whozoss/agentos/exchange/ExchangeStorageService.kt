@@ -1,5 +1,6 @@
 package io.whozoss.agentos.exchange
 
+import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
@@ -13,7 +14,9 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
+import java.nio.file.NotDirectoryException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardOpenOption
@@ -41,12 +44,22 @@ class ExchangeStorageService(
     companion object : KLogging() {
         private const val MAX_SEGMENT_LENGTH = 255
 
+        /** Git metadata directory (or, in a linked worktree, pointer file). Never exposed via CRUD. */
+        private const val GIT_METADATA_DIR = ".git"
+
         // Cap manifest traversal depth (matches the file-plugin's SearchFilesTool) so a deeply
         // nested exchange tree can't turn a manifest request into an unbounded walk.
         private const val MANIFEST_MAX_DEPTH = 20
     }
 
     private val mountRoot: Path = Path.of(config.mountRoot)
+
+    /** Internal bare repository, outside both browsable Exchange roots. */
+    fun namespaceGitDirectory(namespaceId: UUID): Path = mountRoot.resolve(namespaceId.toString()).resolve("repository.git")
+
+    /** Workspace-owned setup state, outside both browsable Exchange roots and the Git checkout. */
+    fun workspaceSupportDirectory(namespaceId: UUID, rootCaseId: UUID): Path =
+        mountRoot.resolve(namespaceId.toString()).resolve("workspace-support").resolve(rootCaseId.toString())
 
     /**
      * Whether an upload with this relative path passes the configured extension allow-list.
@@ -113,10 +126,28 @@ class ExchangeStorageService(
             emptySet(),
             MANIFEST_MAX_DEPTH,
             object : SimpleFileVisitor<Path>() {
+                /**
+                 * Skip git metadata wholesale. Besides keeping `.git` out of a listing that users
+                 * can act on, this avoids walking the object store of an associated namespace,
+                 * which is where the overwhelming majority of a repository's files live.
+                 */
+                override fun preVisitDirectory(
+                    dir: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult =
+                    when {
+                        dir.fileName?.toString().equals(GIT_METADATA_DIR, ignoreCase = true) -> FileVisitResult.SKIP_SUBTREE
+                        else -> FileVisitResult.CONTINUE
+                    }
+
                 override fun visitFile(
                     file: Path,
                     attrs: BasicFileAttributes,
                 ): FileVisitResult {
+                    // A linked worktree's `.git` is a regular file, not a directory.
+                    if (file.fileName?.toString().equals(GIT_METADATA_DIR, ignoreCase = true)) {
+                        return FileVisitResult.CONTINUE
+                    }
                     if (attrs.isRegularFile) {
                         // A concurrent delete can make the file vanish before toEntry stats it: skip it.
                         // Any other stat failure is unexpected — skip it too, but log it (don't swallow silently).
@@ -282,6 +313,7 @@ class ExchangeStorageService(
         if (relativePath.split('/', '\\').any { it.length > MAX_SEGMENT_LENGTH }) {
             throw InvalidExchangePathException("Invalid path: path segment too long ($relativePath)")
         }
+        assertNotGitMetadata(relativePath.split('/', '\\'), relativePath)
         // Does not create [root]: reads/deletes of a never-written scope surface as
         // NoSuchFileException (→ 404) instead of materialising empty shard directories. Writers
         // create the root before calling this (see writeNew).
@@ -302,10 +334,126 @@ class ExchangeStorageService(
         // still point outside it. Canonicalize the deepest existing ancestor (the file itself for a
         // read/delete, the parent dir for a create) and require it to stay within the canonical root.
         val deepestExisting = generateSequence(resolved) { it.parent }.first(Files::exists)
-        if (!deepestExisting.toRealPath().startsWith(canonicalRoot)) {
+        val canonicalTarget = deepestExisting.toRealPath()
+        if (!canonicalTarget.startsWith(canonicalRoot)) {
             throw InvalidExchangePathException("Invalid path: path traversal not allowed ($relativePath)")
         }
+        // Re-check on the canonical path, not just the requested one: a symlink inside the root
+        // (`docs -> .git`) resolves to a target that is legitimately within the root, so the
+        // lexical check above would not see the git metadata it aliases.
+        assertNotGitMetadata(canonicalRoot.relativize(canonicalTarget).map { it.toString() }, relativePath)
         return resolved
+    }
+
+    /**
+     * Refuse any path that reaches git metadata.
+     *
+     * Equipped case Exchanges contain a linked worktree in `repo/`, so its `.git` pointer
+     * sits inside a browsable scope. Generic CRUD must not reach it: deleting the directory
+     * (or, in a linked worktree, the `.git` pointer file) detaches the worktree, rewriting the
+     * pointer redirects later server-side commands at another worktree, and reading `config`
+     * discloses remote URLs and absolute server paths. Git itself keeps working — this guards the
+     * file-management API, not the commands the provisioner runs.
+     *
+     * Applied to every scope, not only associated ones: nothing legitimately manages a `.git`
+     * entry through this API, so the rule needs no knowledge of whether Git is configured.
+     */
+    private fun assertNotGitMetadata(
+        segments: List<String>,
+        relativePath: String,
+    ) {
+        // Case-insensitive because a case-insensitive filesystem (macOS, Windows) would otherwise
+        // let `.GIT/config` alias the same directory.
+        if (segments.any { it.equals(GIT_METADATA_DIR, ignoreCase = true) }) {
+            throw InvalidExchangePathException("Invalid path: git metadata is not accessible ($relativePath)")
+        }
+    }
+
+    /**
+     * List one directory level under [root], sorted and paginated.
+     *
+     * The companion to [listManifest], and the only listing usable on a repository: a checkout with
+     * its dependencies holds tens of thousands of files, which is neither readable as a flat list
+     * nor cheap to walk on every open. Here the cost is bounded by the size of one directory.
+     *
+     * [relativePath] is the directory to list; empty (or `/`) means the scope root itself. Entries
+     * are sorted with directories first, then by name, which is what a browser shows.
+     *
+     * Symlinks are skipped, matching [listManifest]: attributes are read without following them, so
+     * an entry that is neither a regular file nor a directory is dropped rather than followed out
+     * of the scope. Git metadata is excluded, as everywhere else in this API.
+     *
+     * @return the page of entries and the total number of entries in the directory.
+     * @throws InvalidExchangePathException if the path escapes the scope or reaches git metadata.
+     * @throws java.nio.file.NoSuchFileException if the directory does not exist.
+     * @throws java.nio.file.NotDirectoryException if the path denotes a file.
+     */
+    fun listDirectory(
+        root: Path,
+        relativePath: String,
+        page: Int,
+        pageSize: Int,
+    ): Pair<List<ExchangeDirectoryEntry>, Int> {
+        val normalizedRequest = relativePath.trim().trim('/')
+        val directory =
+            when {
+                normalizedRequest.isEmpty() -> root
+                else -> resolveWithin(root, normalizedRequest)
+            }
+
+        // A scope nobody has written to yet is empty, not an error — same contract as the manifest.
+        if (!Files.exists(root)) return emptyList<ExchangeDirectoryEntry>() to 0
+        if (!Files.exists(directory)) throw NoSuchFileException(normalizedRequest)
+        if (!Files.isDirectory(directory)) throw NotDirectoryException(normalizedRequest)
+
+        // Both sides must be canonical, and the stream must come from the canonical directory:
+        // on macOS `/var` is a symlink to `/private/var`, so relativising entries yielded by a
+        // non-canonical directory against a canonical root produces a path full of `..`.
+        val canonicalRoot = root.toRealPath()
+        val canonicalDirectory = directory.toRealPath()
+        val all =
+            Files.newDirectoryStream(canonicalDirectory).use { stream ->
+                stream.mapNotNull { entry -> toDirectoryEntry(canonicalRoot, entry) }
+            }
+
+        val sorted = all.sortedWith(compareByDescending<ExchangeDirectoryEntry> { it.directory }.thenBy { it.name.lowercase() })
+        val from = (page.coerceAtLeast(0).toLong() * pageSize.coerceAtLeast(1)).coerceAtMost(sorted.size.toLong()).toInt()
+        return sorted.drop(from).take(pageSize.coerceAtLeast(1)) to sorted.size
+    }
+
+    /**
+     * Map one directory child, or null when it must not be listed.
+     *
+     * Attributes are read with [LinkOption.NOFOLLOW_LINKS] so a symlink is recognised as such and
+     * dropped, rather than silently resolved — possibly to a target outside the scope.
+     */
+    private fun toDirectoryEntry(
+        canonicalRoot: Path,
+        entry: Path,
+    ): ExchangeDirectoryEntry? {
+        val name = entry.fileName?.toString() ?: return null
+        if (name.equals(GIT_METADATA_DIR, ignoreCase = true)) return null
+
+        val attributes =
+            runCatching {
+                Files.readAttributes(entry, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            }.getOrElse { e ->
+                // A concurrent delete is expected; anything else is worth a line but not a failure
+                // of the whole listing.
+                if (e !is NoSuchFileException) logger.warn(e) { "Skipping exchange entry: $entry" }
+                return null
+            }
+        if (!attributes.isRegularFile && !attributes.isDirectory) return null
+
+        val relative = canonicalRoot.relativize(entry).joinToString("/") { it.toString() }
+        return ExchangeDirectoryEntry(
+            path = relative,
+            name = name,
+            directory = attributes.isDirectory,
+            size = attributes.size().takeUnless { attributes.isDirectory },
+            lastModified = attributes.lastModifiedTime().toInstant(),
+            mimeType = if (attributes.isDirectory) null else mimeTypeFor(name),
+        )
     }
 
     /** Map a regular file to an [ExchangeFileEntry], with its path relative to [baseRoot]. */

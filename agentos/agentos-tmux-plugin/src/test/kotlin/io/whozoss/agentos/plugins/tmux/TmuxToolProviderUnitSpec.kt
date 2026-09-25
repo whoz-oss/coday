@@ -18,6 +18,27 @@ class TmuxToolProviderUnitSpec :
             result[1].shouldBeInstanceOf<WaitTool>()
         }
 
+        "provideTools passes the workspace HOME to the tmux tool" {
+            val config = objectMapper.readTree("""{"workspaceHome": "/tmp/workspace-support/family"}""")
+            val tool = TmuxToolProvider().provideTools(config).first() as TmuxTool
+            tool.home shouldBe "/tmp/workspace-support/family"
+        }
+
+        "a workspace tmux server runs with the family HOME".config(
+            enabled = listOf("/opt/homebrew/bin/tmux", "/usr/bin/tmux", "/usr/local/bin/tmux").any { java.io.File(it).canExecute() },
+        ) {
+            val home = java.nio.file.Files.createTempDirectory("tmux-home-").toFile()
+            val tool = TmuxTool(socketName = "agentos-test-${java.util.UUID.randomUUID()}", home = home.absolutePath)
+            try {
+                tool.runTmux("new-session", "-d", "-s", "home-check").getOrThrow()
+
+                tool.runTmux("show-environment", "-g", "HOME").getOrThrow().trim() shouldBe "HOME=${home.absolutePath}"
+            } finally {
+                tool.runTmux("kill-server")
+                home.deleteRecursively()
+            }
+        }
+
         "provideTools with null config should produce tool with null workingDirectory" {
             val tool = TmuxToolProvider().provideTools(null).first() as TmuxTool
             tool.name shouldBe "Tmux"

@@ -10,7 +10,10 @@
     />
   } @else {
     <header class="exchange-drawer__header">
-      <span class="exchange-drawer__title">Files</span>
+      <span class="exchange-drawer__title">
+        <span class="material-icons" aria-hidden="true">folder_open</span>
+        Files
+      </span>
       <ds-icon-button icon="close" variant="default" title="Close files panel" (action)="closeRequested.emit()" />
     </header>
 
@@ -28,10 +31,10 @@
                   [disabled]="caseUploading()"
                   (action)="triggerUpload(CASE)"
                 />
-              } @else {
+              } @else if (caseStatus() === 'ready') {
                 <span class="exchange-drawer__readonly-badge">read-only</span>
               }
-              @if (caseFiles().length > 0) {
+              @if (caseFiles().length > 0 || caseFolders().length > 0 || caseBreadcrumb().length > 0) {
                 <ds-icon-button
                   icon="download"
                   variant="default"
@@ -42,6 +45,13 @@
             </div>
           </div>
 
+          @if (environmentActive() && caseId(); as id) {
+            <agentos-exchange-environment
+              [scope]="{ kind: 'cases', id: id }"
+              [canWrite]="canWriteCase()"
+              (environmentChanged)="onEnvironmentChanged($event)"
+            />
+          }
           @if (caseUploading()) {
             <p class="exchange-drawer__inflight">Uploading…</p>
           }
@@ -50,6 +60,15 @@
             @case ('loading') {
               <div class="exchange-drawer__center"><ds-spinner size="md" label="Loading case files" /></div>
             }
+            @case ('preparing') {
+              <div class="exchange-drawer__preparing" role="status" aria-live="polite">
+                <ds-spinner size="sm" label="Preparing workspace" />
+                <p>Preparing workspace…</p>
+                <p class="exchange-drawer__preparing-hint">
+                  Files will appear automatically when the workspace is ready.
+                </p>
+              </div>
+            }
             @case ('error') {
               <div class="exchange-drawer__error" role="alert">
                 <span>Couldn't load case files.</span>
@@ -57,7 +76,46 @@
               </div>
             }
             @default {
-              @if (caseFiles().length === 0) {
+              @if (caseBreadcrumb().length > 0 || caseFolders().length > 0) {
+                <nav class="exchange-drawer__breadcrumb" aria-label="Folder path">
+                  <button type="button" class="exchange-drawer__crumb" (click)="onFolderOpen(CASE, '')">root</button>
+                  @for (segment of caseBreadcrumb(); track segment.path) {
+                    <span class="exchange-drawer__crumb-sep" aria-hidden="true">/</span>
+                    <button type="button" class="exchange-drawer__crumb" (click)="onFolderOpen(CASE, segment.path)">
+                      {{ segment.label }}
+                    </button>
+                  }
+                </nav>
+              }
+
+              @if (caseFolders().length > 0) {
+                <ul class="exchange-drawer__folders" role="list">
+                  @for (folder of caseFolders(); track folder.path) {
+                    <li role="listitem">
+                      <button type="button" class="exchange-drawer__folder" (click)="onFolderOpen(CASE, folder.path)">
+                        <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true">folder_open</span>
+                        <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
+                        @if (gitTree().folders.get(folder.path); as count) {
+                          <span
+                            class="exchange-drawer__git-dot"
+                            role="img"
+                            [attr.aria-label]="count + (count === 1 ? ' changed file' : ' changed files')"
+                            [title]="
+                              count + (count === 1 ? ' changed file' : ' changed files') + ' · branch and local changes'
+                            "
+                            >●</span
+                          >
+                        }
+                        <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
+                          >chevron_right</span
+                        >
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (caseRows().length === 0 && caseFolders().length === 0) {
                 <ds-empty-state
                   icon="folder_open"
                   title="No case files"
@@ -70,9 +128,20 @@
                   [canWrite]="canWriteCase()"
                   [activeFile]="activeFile()"
                   (fileSelected)="onFileSelected($event)"
+                  (diffRequested)="openFileDiff($event)"
                   (downloadRequested)="downloadRequested.emit($event)"
                   (deleteRequested)="deleteRequested.emit($event)"
                 />
+                @if (caseHasMore()) {
+                  <button
+                    type="button"
+                    class="exchange-drawer__retry"
+                    [disabled]="caseLoadingMore()"
+                    (click)="loadMoreRequested.emit(CASE)"
+                  >
+                    {{ caseLoadingMore() ? 'Loading…' : 'Load more files' }}
+                  </button>
+                }
               }
             }
           }
@@ -95,7 +164,7 @@
               } @else {
                 <span class="exchange-drawer__readonly-badge">read-only</span>
               }
-              @if (namespaceFiles().length > 0) {
+              @if (namespaceFiles().length > 0 || namespaceFolders().length > 0 || namespaceBreadcrumb().length > 0) {
                 <ds-icon-button
                   icon="download"
                   variant="default"
@@ -117,7 +186,45 @@
               </div>
             }
             @default {
-              @if (namespaceFiles().length === 0) {
+              @if (namespaceBreadcrumb().length > 0 || namespaceFolders().length > 0) {
+                <nav class="exchange-drawer__breadcrumb" aria-label="Folder path">
+                  <button type="button" class="exchange-drawer__crumb" (click)="onFolderOpen(NAMESPACE, '')">
+                    root
+                  </button>
+                  @for (segment of namespaceBreadcrumb(); track segment.path) {
+                    <span class="exchange-drawer__crumb-sep" aria-hidden="true">/</span>
+                    <button
+                      type="button"
+                      class="exchange-drawer__crumb"
+                      (click)="onFolderOpen(NAMESPACE, segment.path)"
+                    >
+                      {{ segment.label }}
+                    </button>
+                  }
+                </nav>
+              }
+
+              @if (namespaceFolders().length > 0) {
+                <ul class="exchange-drawer__folders" role="list">
+                  @for (folder of namespaceFolders(); track folder.path) {
+                    <li role="listitem">
+                      <button
+                        type="button"
+                        class="exchange-drawer__folder"
+                        (click)="onFolderOpen(NAMESPACE, folder.path)"
+                      >
+                        <span class="exchange-drawer__folder-icon material-icons" aria-hidden="true">folder_open</span>
+                        <span class="exchange-drawer__folder-name">{{ folder.name }}</span>
+                        <span class="exchange-drawer__folder-chevron material-icons" aria-hidden="true"
+                          >chevron_right</span
+                        >
+                      </button>
+                    </li>
+                  }
+                </ul>
+              }
+
+              @if (namespaceFiles().length === 0 && namespaceFolders().length === 0) {
                 <ds-empty-state
                   icon="folder_shared"
                   title="No namespace files"
@@ -133,6 +240,16 @@
                   (downloadRequested)="downloadRequested.emit($event)"
                   (deleteRequested)="deleteRequested.emit($event)"
                 />
+                @if (namespaceHasMore()) {
+                  <button
+                    type="button"
+                    class="exchange-drawer__retry"
+                    [disabled]="namespaceLoadingMore()"
+                    (click)="loadMoreRequested.emit(NAMESPACE)"
+                  >
+                    {{ namespaceLoadingMore() ? 'Loading…' : 'Load more files' }}
+                  </button>
+                }
               }
             }
           }

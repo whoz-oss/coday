@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
-import { ExchangeFileEntry } from '@whoz-oss/agentos-api-client'
+import { ExchangeDirectoryEntry } from '@whoz-oss/agentos-api-client'
 import { EntityCardBadge, IconButtonComponent } from '@whoz-oss/design-system'
+import { GitFileStatus } from '../../services/exchange-environment.service'
+import { GIT_FILE_LABELS } from '../../services/exchange-git-tree.utils'
 import { formatDate, formatSize, getFileIcon } from '../../services/exchange-content.utils'
 
 /** View-model for one dense file row. */
@@ -10,6 +12,8 @@ export interface ExchangeFileRow {
   meta: string
   icon: string
   badges?: EntityCardBadge[]
+  gitStatus?: GitFileStatus
+  missing?: boolean
 }
 
 /**
@@ -36,14 +40,25 @@ export class ExchangeItemComponent {
   readonly viewRequested = output<void>()
   readonly downloadRequested = output<void>()
   readonly deleteRequested = output<void>()
+  readonly diffRequested = output<void>()
+  protected readonly gitLabels = GIT_FILE_LABELS
 
-  /** Build the row view-model from a manifest file entry. */
-  static toRow(file: ExchangeFileEntry): ExchangeFileRow {
+  /**
+   * Build the row view-model from a directory entry.
+   *
+   * Size and timestamp are optional on the wire (a directory reports no size), so a file missing
+   * either still renders rather than showing `NaN`.
+   */
+  static toRow(file: ExchangeDirectoryEntry): ExchangeFileRow {
+    const parts = [
+      file.size !== undefined ? formatSize(file.size) : null,
+      file.lastModified ? formatDate(file.lastModified) : null,
+    ]
     return {
       path: file.path,
-      filename: file.filename,
-      meta: `${formatSize(file.size)} · ${formatDate(file.lastModified)}`,
-      icon: getFileIcon(file.filename),
+      filename: file.name,
+      meta: parts.filter((p) => p !== null).join(' · '),
+      icon: getFileIcon(file.name),
     }
   }
 }

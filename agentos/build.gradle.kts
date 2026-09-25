@@ -34,6 +34,7 @@ val pluginBuilds =
         "agentos-file-plugin",
         "agentos-mcp-plugin",
         "agentos-http-plugin",
+        "agentos-git-plugin",
     )
 
 // Resolve all paths at configuration time into plain File values

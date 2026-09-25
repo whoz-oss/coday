@@ -39,6 +39,40 @@ class McpConnectionPoolUnitSpec : StringSpec({
         return mock
     }
 
+    "workspace cleanup requires confirmed termination even for a previously evicted connection" {
+        val connection = mockConnection()
+        every { connection.lastUsed } returns Instant.now().minusSeconds(600)
+        every { connection.awaitTermination() } returns false
+        val pool = McpConnectionPool { _, _ -> connection }
+        val config = configFor(1, 1).copy(cwd = "/tmp/workspace")
+        pool.start()
+        try {
+            pool.acquire(config)
+            pool.evictIdleConnections()
+            shouldThrow<IllegalStateException> { pool.releaseDirectory(config.cwd!!) }
+            every { connection.awaitTermination() } returns true
+            pool.releaseDirectory(config.cwd!!)
+            verify(exactly = 3) { connection.awaitTermination() }
+            pool.releaseDirectory(config.cwd!!)
+            verify(exactly = 3) { connection.awaitTermination() }
+        } finally { pool.shutdown() }
+    }
+
+    "evicted processes with confirmed termination are not retained for future cleanup" {
+        val connection = mockConnection()
+        every { connection.lastUsed } returns Instant.now().minusSeconds(600)
+        every { connection.awaitTermination() } returns true
+        val pool = McpConnectionPool { _, _ -> connection }
+        val config = configFor(1, 1).copy(cwd = "/tmp/ordinary-fixed-directory")
+        pool.start()
+        try {
+            pool.acquire(config)
+            pool.evictIdleConnections()
+            pool.releaseDirectory(config.cwd!!)
+            verify(exactly = 1) { connection.awaitTermination() }
+        } finally { pool.shutdown() }
+    }
+
     // ── tests ─────────────────────────────────────────────────────────────────
 
     "acquire creates a new connection when pool is empty" {

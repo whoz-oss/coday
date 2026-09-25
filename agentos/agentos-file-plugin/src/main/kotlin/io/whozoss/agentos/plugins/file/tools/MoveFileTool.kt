@@ -9,12 +9,14 @@ import kotlinx.coroutines.TimeoutCancellationException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import kotlin.io.path.pathString
 
 /**
- * Move or rename a file within the configured root directory.
+ * Move or rename a file or directory within the configured root directory.
  *
  * Fails if source doesn't exist or destination already exists.
  */
@@ -31,7 +33,7 @@ class MoveFileTool(
 
     override val description: String =
         """
-        Move or rename a file. Fails if the source does not exist or the destination already exists.
+        Move or rename a file or directory. Fails if the source does not exist, the destination already exists, or any moved entry is protected.
         """.trimIndent()
 
     override val version: String = "1.0.0"
@@ -47,11 +49,11 @@ class MoveFileTool(
             "properties": {
                 "from": {
                     "type": "string",
-                    "description": "Source relative file path (e.g. \"old/path.ts\")"
+                    "description": "Source relative file or directory path (e.g. \"old/path.ts\")"
                 },
                 "to": {
                     "type": "string",
-                    "description": "Destination relative file path (e.g. \"new/path.ts\")"
+                    "description": "Destination relative file or directory path (e.g. \"new/path.ts\")"
                 }
             },
             "required": ["from", "to"],
@@ -94,6 +96,73 @@ class MoveFileTool(
         }
     }
 
+    /** Validate the whole moved tree before creating destination parents or changing any files. */
+    private fun validateDirectoryMove(
+        from: Path,
+        to: Path,
+        resolver: BoundaryPathResolver,
+    ) {
+        val root = resolver.resolve("")
+        require(from != root) { "Cannot move the configured root directory" }
+        require(!to.startsWith(from)) { "Cannot move a directory inside itself" }
+        Files.walk(from).use { entries ->
+            entries.forEach { entry ->
+                // The resolver checks every segment and follows symlinks only within the boundary.
+                resolver.resolve(root.relativize(entry).pathString)
+                val destination = to.resolve(from.relativize(entry))
+                resolver.resolve(root.relativize(destination).pathString, createIntent = true)
+                if (Files.isSymbolicLink(entry)) {
+                    val actualTarget = entry.toRealPath()
+                    require(actualTarget.startsWith(root)) { "Symlink escapes boundary: $entry" }
+                    resolver.resolve(root.relativize(actualTarget).pathString)
+                    validateRelocatedLink(entry, destination, from, to, root, resolver)
+                }
+            }
+        }
+    }
+
+    /** Resolve relative targets in the future tree without collapsing symlink/.. components. */
+    private fun validateRelocatedLink(
+        entry: Path,
+        destination: Path,
+        from: Path,
+        to: Path,
+        root: Path,
+        resolver: BoundaryPathResolver,
+    ) {
+        val target = Files.readSymbolicLink(entry)
+        // Absolute links retain the target already checked above, including filesystem aliases.
+        if (target.isAbsolute) return
+        val pending = java.util.ArrayDeque(target.map { it.pathString })
+        var cursor = destination.parent
+        var linksFollowed = 0
+        while (pending.isNotEmpty()) {
+            val segment = pending.removeFirst()
+            if (segment.isEmpty() || segment == ".") continue
+            cursor = if (segment == "..") cursor.parent else cursor.resolve(segment)
+            require(cursor != null && cursor.startsWith(root)) { "A moved symlink would escape the configured root" }
+            resolver.resolve(root.relativize(cursor).pathString, createIntent = true)
+            val physical =
+                when {
+                    cursor.startsWith(to) -> from.resolve(to.relativize(cursor))
+                    cursor.startsWith(from) -> null // The old location disappears after the move.
+                    else -> cursor
+                }
+            if (physical != null && Files.isSymbolicLink(physical)) {
+                require(++linksFollowed <= 40) { "Too many symlinks in the moved target" }
+                val nextTarget = Files.readSymbolicLink(physical)
+                if (nextTarget.isAbsolute) {
+                    cursor = physical.toRealPath()
+                    require(cursor.startsWith(root)) { "A moved symlink would escape the configured root" }
+                    resolver.resolve(root.relativize(cursor).pathString)
+                } else {
+                    cursor = cursor.parent
+                    nextTarget.map { it.pathString }.asReversed().forEach(pending::addFirst)
+                }
+            }
+        }
+    }
+
     private fun moveFile(
         from: String,
         to: String,
@@ -101,9 +170,12 @@ class MoveFileTool(
         val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
         val resolvedFrom = resolver.resolve(from, createIntent = false)
         val resolvedTo = resolver.resolve(to, createIntent = true)
+        if (Files.isDirectory(resolvedFrom)) {
+            validateDirectoryMove(resolvedFrom, resolvedTo, resolver)
+        }
 
         // Check destination doesn't exist
-        if (Files.exists(resolvedTo)) {
+        if (Files.exists(resolvedTo, LinkOption.NOFOLLOW_LINKS)) {
             return "Destination already exists: $to"
         }
 
@@ -125,5 +197,4 @@ class MoveFileTool(
             "Source file not found: $from"
         }
     }
-
 }

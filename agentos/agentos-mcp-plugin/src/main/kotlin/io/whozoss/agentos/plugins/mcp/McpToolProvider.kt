@@ -20,7 +20,11 @@ import org.pf4j.Extension
  * unique server configuration, regardless of how many agent runs are active.
  */
 @Extension
-class McpToolProvider : ToolPlugin {
+class McpToolProvider : ToolPlugin, io.whozoss.agentos.sdk.tool.WorkspaceToolLifecycle {
+    override fun releaseWorkspace(workspaceId: String, directory: String) {
+        McpConnectionPoolHolder.pool.releaseDirectory(directory)
+    }
+
     override val integrationType: String = "MCP_STDIO"
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
@@ -69,6 +73,12 @@ class McpToolProvider : ToolPlugin {
                     "title": "MCP Stdio Server Configuration",
                     "description": "Connects to a local MCP server launched as a child process (stdio transport).",
                     "properties": {
+                    "useCaseExchangeDirectory": {
+                        "type": "boolean",
+                        "title": "Use case workspace directory",
+                        "description": "Run in the shared Case Exchange when this case has a Git workspace. Otherwise use the configured directory. Off by default: files agents write in the workspace (for example .npmrc) can run code inside this server and read its environment.",
+                        "default": false
+                    },
                         "command": {
                             "type": "string",
                             "title": "Command",

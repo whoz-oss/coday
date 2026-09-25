@@ -16,6 +16,8 @@ import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import java.time.Instant
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -135,9 +137,21 @@ class CaseRuntime(
      * Takes effect after the current [processNextStep] returns. The runtime stays alive
      * and the SSE flow stays open for the next user message.
      */
+    @Synchronized
     fun requestInterrupt() {
         commandQueue.clear()
         interruptRequested.set(true)
+        if (!isRunning() && !_statusFlow.value.isTerminal()) updateStatus(CaseStatus.IDLE)
+    }
+
+    /** Fresh input may reopen an accepted terminal case, but never this instance after a Kill. */
+    @Synchronized
+    fun markPending(): Boolean {
+        if (killRequested.get()) return false
+        if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
+            updateStatus(CaseStatus.PENDING)
+        }
+        return true
     }
 
     /**
@@ -146,6 +160,7 @@ class CaseRuntime(
      * [run] transitions to [CaseStatus.KILLED] rather than [CaseStatus.IDLE]).
      * Also clears the command queue so no orphaned commands are left behind.
      */
+    @Synchronized
     fun requestKill() {
         killRequested.set(true)
         interruptRequested.set(true)
@@ -268,14 +283,24 @@ class CaseRuntime(
      * - Max iterations reached: transitions to [CaseStatus.ERROR]. Terminal.
      */
     suspend fun run() {
-        if (!runInFlight.compareAndSet(false, true)) {
+        val context = currentCoroutineContext()
+        val claimed = synchronized(this) {
+            // Stop can cancel an admitted coroutine while its launch gate is still being read.
+            // Claiming the runtime and clearing the interrupt flag must be atomic with Stop.
+            context.ensureActive()
+            if (!runInFlight.compareAndSet(false, true)) false
+            else {
+                interruptRequested.set(false)
+                killRequested.set(false)
+                true
+            }
+        }
+        if (!claimed) {
             logger.debug { "[CaseRuntime $id] run() already in-flight, skipping" }
             return
         }
 
         logger.info { "[CaseRuntime $id] run() started" }
-        interruptRequested.set(false)
-        killRequested.set(false)
         updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 

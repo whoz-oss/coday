@@ -1,0 +1,128 @@
+@if (view(); as env) {
+  @if (env.equipped || env.agents.length) {
+    <div class="environment">
+      @if (env.equipped) {
+        @if (env.changes; as changes) {
+          <button
+            class="environment__row environment__interactive"
+            type="button"
+            (click)="openDiff()"
+            aria-label="View changes file by file"
+            [title]="
+              changes.files.length +
+              (changes.files.length === 1 ? ' changed file' : ' changed files') +
+              ' · branch and local changes'
+            "
+          >
+            <span class="material-icons environment__icon" aria-hidden="true">difference</span>
+            <span class="environment__label">Changes</span>
+            <span class="environment__counts">
+              <span class="environment__added">+{{ changes.additions }}</span>
+              <span class="environment__removed">−{{ changes.deletions }}</span>
+            </span>
+            <span class="material-icons environment__chevron" aria-hidden="true">chevron_right</span>
+          </button>
+        }
+        <details class="environment__details">
+          <summary class="environment__row environment__interactive">
+            <span class="material-icons environment__icon" aria-hidden="true"> account_tree </span>
+            <span class="environment__label">Worktree</span>
+            <span
+              class="environment__status"
+              [class.environment__status--error]="env.status === 'FAILED'"
+              [class.environment__status--pending]="env.status === 'REQUESTED' || env.status === 'PREPARING'"
+              >{{ env.status }}</span
+            >
+            <span class="material-icons environment__chevron" aria-hidden="true">chevron_right</span>
+          </summary>
+          @if (env.path) {
+            <code class="environment__path">{{ env.path }}</code>
+          }
+          @if (env.git; as git) {
+            @if (git.branchState === 'LOCAL_ONLY') {
+              <p class="environment__path">Not pushed</p>
+            }
+            @if (git.branchState === 'PUSHED') {
+              <p class="environment__path">Pushed</p>
+            }
+            @if (git.observedAt) {
+              <p class="environment__path">Last checked: {{ git.observedAt | date: 'medium' }}</p>
+            }
+            @if (git.dirty) {
+              <p class="environment__path">Uncommitted changes</p>
+            }
+            @if (git.unpushedCommits) {
+              <p class="environment__path">{{ git.unpushedCommits }} unpushed commit(s)</p>
+            }
+            @if (git.error) {
+              <p class="environment__error" role="status">Git status unavailable.</p>
+            }
+          }
+          @if (canWrite()) {
+            <button
+              class="environment__row environment__interactive"
+              type="button"
+              [disabled]="refreshing()"
+              (click)="refreshGit()"
+            >
+              Refresh Git status
+            </button>
+          }
+          @if (actionError()) {
+            <p class="environment__error" role="alert">{{ actionError() }}</p>
+          }
+        </details>
+        @if (env.status === 'READY') {
+          <div class="environment__row" [title]="env.branch || 'No branch created yet'">
+            <span class="material-icons environment__icon" aria-hidden="true">call_split</span>
+            <span class="environment__branch" [class.environment__muted]="!env.branch">
+              {{ env.branch || 'No branch yet' }}
+            </span>
+          </div>
+        }
+        @if (env.git?.prUrl && !env.git.error) {
+          <a
+            class="environment__row environment__interactive"
+            [href]="env.git!.prUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span class="material-icons environment__icon" aria-hidden="true">
+              {{ env.git!.prState === 'MERGED' ? 'merge_type' : 'alt_route' }}
+            </span>
+            <span class="environment__label">PR #{{ env.git!.prNumber }}</span>
+            <span class="environment__status">{{ env.git!.prState }}</span>
+            <span class="material-icons environment__chevron" aria-hidden="true">north_east</span>
+          </a>
+        }
+        @if (env.error) {
+          <p class="environment__error" role="status">{{ env.error }}</p>
+        }
+      }
+      @if (env.agents.length) {
+        <details class="environment__details environment__agents" [class.environment__agents--separated]="env.equipped">
+          <summary
+            class="environment__row environment__interactive"
+            title="Distinct agents across this case and its sub-cases"
+          >
+            <span class="material-icons environment__icon" aria-hidden="true">group</span>
+            <span class="environment__label">Agents</span>
+            <span class="environment__count">{{ env.agents.length }}</span>
+            <span class="material-icons environment__chevron" aria-hidden="true">chevron_right</span>
+          </summary>
+          <ul class="environment__agent-list">
+            @for (agent of env.agents; track agent.id) {
+              <li class="environment__agent">
+                <span class="environment__avatar" aria-hidden="true">{{ agent.name.slice(0, 2) }}</span>
+                <span>{{ agent.name }}</span>
+              </li>
+            }
+          </ul>
+        </details>
+      }
+    </div>
+  }
+}
+@if (error()) {
+  <p class="environment__error" role="status">Environment unavailable. Retrying…</p>
+}

@@ -79,6 +79,9 @@ dependencies {
     // Coordinates are substituted by composite build (see settings.gradle.kts)
     api("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
 
+    // Hardened server-side Git execution, kept outside the service so plugins can share it
+    implementation("whoz-oss.agentos:agentos-git:${libs.versions.agentosService.get()}")
+
     // PF4J Spring Integration (for service only, not SDK)
     implementation(libs.pf4j.spring) {
         exclude(group = "org.slf4j", module = "slf4j-reload4j")

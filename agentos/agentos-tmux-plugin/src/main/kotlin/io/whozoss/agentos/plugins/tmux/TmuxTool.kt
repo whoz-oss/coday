@@ -15,6 +15,16 @@ private val VALID_WINDOW_NAME = Regex("^[a-zA-Z0-9_.+-]+$")
 private const val TMUX_TIMEOUT_SECONDS = 30L
 
 /**
+ * A workspace tmux server shares the HOME its family's setup used. The server keeps the
+ * environment of the client that started it, so every session and shell inherits it.
+ */
+private fun useWorkspaceHome(builder: ProcessBuilder, home: String) {
+    val cache = java.io.File(home, ".cache").also { it.mkdirs() }
+    builder.environment()["HOME"] = home
+    builder.environment()["XDG_CACHE_HOME"] = cache.absolutePath
+}
+
+/**
  * Tool that manages long-running processes in persistent tmux sessions.
  *
  * Sessions survive across agent interactions and can be inspected at any time.
@@ -25,6 +35,8 @@ private const val TMUX_TIMEOUT_SECONDS = 30L
 class TmuxTool(
     internal val workingDirectory: String? = null,
     configName: String? = null,
+    internal val socketName: String? = null,
+    internal val home: String? = null,
 ) : StandardTool<TmuxTool.Input> {
     override val name: String =
         when (configName) {
@@ -333,8 +345,9 @@ class TmuxTool(
     internal fun runTmux(vararg args: String): Result<String> =
         runCatching {
             val process =
-                ProcessBuilder("tmux", *args)
+                ProcessBuilder(listOf("tmux") + (socketName?.let { listOf("-L", it) } ?: emptyList()) + args)
                     .redirectErrorStream(true)
+                    .also { builder -> home?.let { useWorkspaceHome(builder, it) } }
                     .start()
             val timedOut = !process.waitFor(TMUX_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             if (timedOut) {

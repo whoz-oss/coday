@@ -69,7 +69,10 @@ describe('CaseChatComponent — submit with attachments', () => {
           useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
         },
         { provide: ExchangeStateService, useValue: exchangeState },
-        { provide: CaseStateService, useValue: { addCase: jest.fn(), updateCaseTitle: jest.fn() } },
+        {
+          provide: CaseStateService,
+          useValue: { addCase: jest.fn(), updateCaseTitle: jest.fn(), updateCaseStatus: jest.fn() },
+        },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         {
           provide: USER_PREFERENCES_PORT,
@@ -80,6 +83,85 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   afterEach(() => TestBed.resetTestingModule())
+
+  it('does not refresh Files again when a reconnection replays tool and completion events', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-1')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      for (let reconnect = 0; reconnect < 3; reconnect++) {
+        emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+        emit('AgentFinishedEvent', 'finished-1')
+      }
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      // Fresh activity still updates Files after the replay.
+      emit('ToolResponseEvent', 'tool-2', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-2')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(2)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(2)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('restores RUNNING after a transport error without replaying chunks, files or older statuses', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      source.onerror!(new Event('error'))
+      expect(ref.instance['isRunning']()).toBe(false)
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      expect(ref.instance['streamingText']()).toBe('Hello')
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['streamingText']()).toBe('Hello')
+      expect(ref.instance['events']()).toHaveLength(4)
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+
+      emit('AgentFinishedEvent', 'finished-1')
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
+    }
+  })
 
   it('uploads the attachments before sending, and appends the mention to the message', async () => {
     const ref = makeComponent()
@@ -153,7 +235,10 @@ describe('CaseChatComponent — submit with attachments', () => {
 
     await ref.instance['submit']()
 
-    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'hello', userId: 'default-user' })
+    expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', {
+      content: 'hello',
+      userId: 'default-user',
+    })
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
   })
 
@@ -223,5 +308,80 @@ describe('CaseChatComponent — submit with attachments', () => {
     attachments(ref).isUploading.set(false)
     ref.instance['isTerminal'].set(true)
     expect(ref.instance['canSend']).toBe(false)
+  })
+})
+
+/**
+ * A notice is the only thing the user sees when a turn produces no message. It used to be
+ * rendered only under the technical toggle, so a case that stopped for want of an agent
+ * selection looked exactly like an agent that never answered.
+ */
+describe('CaseChatComponent — timeline notices', () => {
+  function makeComponent(): ComponentRef<CaseChatComponent> {
+    return createComponent(CaseChatComponent, { environmentInjector: TestBed.inject(EnvironmentInjector) })
+  }
+
+  function warn(message: string) {
+    return { id: 'w-1', type: 'WarnEvent', message, timestamp: '2026-09-21T18:41:13Z' }
+  }
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: HttpClient, useValue: { post: jest.fn().mockReturnValue(of({})) } },
+        { provide: Configuration, useValue: { basePath: '' } },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
+        },
+        {
+          provide: ExchangeStateService,
+          useValue: {
+            uploadFile: jest.fn(),
+            canWriteCase: signal(true),
+            canWriteNamespace: signal(false),
+            fileCount: signal(0),
+            refreshManifest: jest.fn(),
+            refreshCase: jest.fn(),
+            refreshNamespace: jest.fn(),
+          },
+        },
+        {
+          provide: CaseStateService,
+          useValue: { addCase: jest.fn(), updateCaseTitle: jest.fn(), updateCaseStatus: jest.fn() },
+        },
+        { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
+        {
+          provide: USER_PREFERENCES_PORT,
+          useValue: { shouldSend: jest.fn().mockReturnValue(false), composerHint: () => 'hint' },
+        },
+      ],
+    })
+  })
+
+  afterEach(() => TestBed.resetTestingModule())
+
+  it('shows a warning in the conversation even when technical details are hidden', () => {
+    const ref = makeComponent()
+    ref.setInput('showTechnicalOverride', false)
+    ref.instance['events'].set([warn('No default agent configured for this namespace.')] as never)
+
+    const notices = ref.instance['timeline']().filter((i: { kind: string }) => i.kind === 'notice')
+
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toMatchObject({
+      notice: { severity: 'warning', detail: 'No default agent configured for this namespace.' },
+    })
+  })
+
+  it('keeps an unrecognised event behind the technical toggle', () => {
+    const ref = makeComponent()
+    ref.setInput('showTechnicalOverride', false)
+    ref.instance['events'].set([{ id: 'x-1', type: 'SomeInternalEvent' }] as never)
+
+    expect(ref.instance['timeline']()).toHaveLength(0)
+
+    ref.setInput('showTechnicalOverride', true)
+    expect(ref.instance['timeline']()).toHaveLength(1)
   })
 })

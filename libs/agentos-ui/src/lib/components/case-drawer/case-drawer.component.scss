@@ -203,7 +203,7 @@
   width: 100%;
 
   &__row {
-    position: relative; // positioning context for absolute __actions
+    position: relative;
     display: flex;
     align-items: center;
     margin: 1px 8px;
@@ -281,41 +281,35 @@
     font-weight: 400;
   }
 
-  // Status tag — bordered, visible by default, hidden on hover to give room to actions
-  &__status-label {
-    @include ds.status-tag;
-
-    flex: none;
-    transition: opacity 0.12s;
-  }
-
-  // Hide label on hover / focus / active — actions take over
-  &__row:hover &__status-label,
-  &__row:focus-within &__status-label,
-  &__row--active &__status-label {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  // Inline actions: star + delete — revealed on hover / active
-  &__actions {
-    flex: none;
+  // Case and PR statuses are shown together, including on the selected case.
+  &__statuses {
     display: flex;
     align-items: center;
+    gap: 6px;
+    flex: none;
+  }
+
+  &__status-label {
+    @include ds.status-tag;
+  }
+
+  // Swap both status indicators for actions while the row is hovered or focused.
+  &__row:hover &__statuses,
+  &__row:focus-within &__statuses {
+    display: none;
+  }
+
+  &__actions {
+    flex: none;
+    display: none;
+    align-items: center;
     gap: 1px;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.12s;
-    // Positioned to overlap the status label slot
-    position: absolute;
-    right: 9px;
+    height: 20px;
   }
 
   &__row:hover &__actions,
-  &__row:focus-within &__actions,
-  &__row--active &__actions {
-    opacity: 1;
-    pointer-events: auto;
+  &__row:focus-within &__actions {
+    display: flex;
   }
 
   // Action buttons (star, rename, delete)
@@ -325,17 +319,12 @@
 
   // ── Inline rename editor ──────────────────────────────────────────────
   //
-  // The actions and the status label are absolutely positioned over the right end of the row,
-  // so they must be hidden while the editor is open or they would sit on top of the input.
-  // The reveal rules above carry a :hover / :focus-within pseudo-class, so these selectors need
-  // one of their own to win on specificity: source order alone would not be enough, and the
-  // focused input trips :focus-within for the whole duration of the edit.
+  // Give the rename input the full row width. Match the hover/focus reveal rules above.
   &__row--editing:hover &__actions,
   &__row--editing:focus-within &__actions,
-  &__row--editing:hover &__status-label,
-  &__row--editing:focus-within &__status-label {
-    opacity: 0;
-    pointer-events: none;
+  &__row--editing:hover &__statuses,
+  &__row--editing:focus-within &__statuses {
+    display: none;
   }
 
   // Takes the place, and the flex share, of __select so the row keeps its layout.
