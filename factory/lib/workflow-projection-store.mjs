@@ -1,6 +1,13 @@
-import { createHash, randomBytes } from 'node:crypto'
-import { appendFile, mkdir, open, readFile, readdir, rename, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, readdir, rename, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import {
+  appendDurableJson,
+  atomicWriteJson,
+  createFilesystemWorkflowInstanceRepository,
+  createKeyedLock,
+  syncDirectory,
+} from '../runtime/factory-operational.mjs'
 import {
   hashWorkflowProjection,
   validateWorkflowProjection,
@@ -48,35 +55,11 @@ export class WorkflowProjectionStoreError extends Error {
 function storageId(namespaceId, workflowId) {
   return createHash('sha256').update(`${namespaceId}:${workflowId}`, 'utf8').digest('hex')
 }
-async function syncDirectory(path) {
-  const directory = await open(path, 'r')
-  try {
-    await directory.sync()
-  } finally {
-    await directory.close()
-  }
+function atomicJsonWrite(filePath, value) {
+  return atomicWriteJson(filePath, value)
 }
-async function atomicJsonWrite(filePath, value) {
-  await mkdir(dirname(filePath), { recursive: true })
-  const temporary = `${filePath}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`
-  const handle = await open(temporary, 'wx', 0o600)
-  try {
-    await handle.writeFile(`${JSON.stringify(value)}\n`, 'utf8')
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
-  await rename(temporary, filePath)
-  await syncDirectory(dirname(filePath))
-}
-async function appendDurable(filePath, fact) {
-  await appendFile(filePath, `${JSON.stringify(fact)}\n`, { encoding: 'utf8', mode: 0o600 })
-  const handle = await open(filePath, 'r')
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
+function appendDurable(filePath, fact) {
+  return appendDurableJson(filePath, fact)
 }
 function changedStepIds(previous, next) {
   const before = new Map((previous?.steps ?? []).map((step) => [step.id, JSON.stringify(step)]))
@@ -122,7 +105,7 @@ export class WorkflowProjectionStore {
     if (typeof dataRoot !== 'string' || dataRoot.length === 0)
       throw new WorkflowProjectionStoreError(WORKFLOW_STORE_ERROR_CODES.INVALID_DATA_ROOT)
     this.dataRoot = dataRoot
-    this.locks = new Map()
+    this.locks = createKeyedLock()
     this.lifecycleFault = lifecycleFault
   }
 
@@ -155,13 +138,7 @@ export class WorkflowProjectionStore {
   }
   _locked(namespaceId, workflowId, action) {
     const key = `${namespaceId}\u0000${workflowId}`
-    const prior = this.locks.get(key) ?? Promise.resolve()
-    const operation = prior.then(action)
-    const tail = operation.catch(() => {})
-    this.locks.set(key, tail)
-    return operation.finally(() => {
-      if (this.locks.get(key) === tail) this.locks.delete(key)
-    })
+    return this.locks.run(key, action)
   }
   async _readJson(path, missing = null) {
     try {
@@ -902,4 +879,14 @@ export class WorkflowProjectionStore {
 
 export function workflowProjectionStorageId(namespaceId, workflowId) {
   return storageId(namespaceId, workflowId)
+}
+
+/**
+ * Wires the TypeScript filesystem instance-repository adapter around a concrete
+ * projection store. The adapter implements `WorkflowInstanceRepository` from
+ * `factory/src/ports/persistence`; the store remains the `.mjs` runtime
+ * authority during the migration.
+ */
+export function createWorkflowInstanceRepository(dataRoot, options = {}) {
+  return createFilesystemWorkflowInstanceRepository(new WorkflowProjectionStore(dataRoot, options))
 }

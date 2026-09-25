@@ -23,6 +23,18 @@ export * from '../domain/workflow/workflow-instance.js'
 export * from '../domain/workflow/workflow-transition-policy.js'
 export * from '../domain/evidence/workflow-evidence.js'
 export * from '../domain/interaction/workflow-human-interaction.js'
+
+// --------------------------------------------------------------------------
+// Persistence: storage kernel, repository ports and filesystem adapters
+//
+// The kernel primitives are the physical authority shared by the legacy `.mjs`
+// stores (which import them from this bundle) and the TypeScript adapters. The
+// ports are pure types; the adapters are wired by the `.mjs` facades.
+// --------------------------------------------------------------------------
+export * from '../infrastructure/storage/storage-kernel.js'
+export * from '../ports/persistence/index.js'
+export * from '../adapters/persistence/index.js'
+
 export { createShutdownController } from '../application/shutdown.js'
 export { createAgentOsHttpCaseTerminator } from '../adapters/agentos/agentos-http-case-terminator.js'
 export { installSigtermHandler, processExit } from '../adapters/process-shutdown.js'
