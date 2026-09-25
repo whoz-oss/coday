@@ -8,6 +8,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  FilesystemAgentStepAttemptRepository,
+  FilesystemAgentStepResultRepository,
+  FilesystemOracleExecutionRepository,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
   FilesystemWorkflowHumanInteractionRepository,
@@ -15,6 +18,9 @@ import {
   WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES,
   WorkflowInstanceRepositoryError,
 } from '../runtime/factory-operational.mjs'
+import { createAgentStepAttemptRepository } from '../lib/agent-step-attempt-store.mjs'
+import { createAgentStepResultRepository } from '../lib/agent-step-result-store.mjs'
+import { createOracleDefinitionRepository } from '../lib/oracle-definition.mjs'
 import { createWorkflowDefinitionRepository } from '../lib/workflow-definition-registry.mjs'
 import { createWorkflowEvidenceRepository } from '../lib/workflow-evidence-store.mjs'
 import { createWorkflowHumanInteractionRepository } from '../lib/workflow-human-interaction-store.mjs'
@@ -221,6 +227,127 @@ try {
     )
     assert.equal(replied.status, 'replied')
     assert.equal((await repository.list(namespaceId, storageId, { openOnly: true })).length, 0)
+  })
+
+  await scenario('agent-step-attempt adapter appends transitions and lists the journal', async () => {
+    const repository = createAgentStepAttemptRepository(root)
+    assert.ok(repository instanceof FilesystemAgentStepAttemptRepository)
+    const storageId = 'attempt-storage'
+    const base = {
+      attemptId: 'attempt-adapter-1',
+      workflowId: 'wf-attempt',
+      workflowRevisionAtStart: 1,
+      stepId: 'build',
+      attemptNumber: 1,
+      namespaceId,
+      runtimeId: 'factory-runner',
+      caseId: null,
+      agentName: 'Worker',
+      briefHash: `sha256:${'a'.repeat(64)}`,
+      status: 'starting',
+      startedAt: new Date().toISOString(),
+      finishedAt: null,
+      evidenceId: null,
+      failureCode: null,
+    }
+    assert.deepEqual(await repository.list(namespaceId, storageId), [])
+    await repository.append(namespaceId, storageId, base)
+    await repository.append(namespaceId, storageId, { ...base, caseId: 'case-1', status: 'running' })
+    const succeeded = await repository.append(namespaceId, storageId, {
+      ...base,
+      caseId: 'case-1',
+      status: 'succeeded',
+      finishedAt: new Date().toISOString(),
+      evidenceId: 'evidence-1',
+    })
+    assert.equal(succeeded.status, 'succeeded')
+    assert.deepEqual(
+      (await repository.list(namespaceId, storageId)).map((attempt) => attempt.status),
+      ['starting', 'running', 'succeeded']
+    )
+    await assert.rejects(
+      () =>
+        repository.append(namespaceId, storageId, {
+          ...base,
+          caseId: 'case-1',
+          agentName: 'Other',
+          status: 'succeeded',
+          finishedAt: new Date().toISOString(),
+        }),
+      /AGENT_STEP_ATTEMPT_IDENTITY_CONFLICT/
+    )
+    await assert.rejects(
+      () => repository.append(namespaceId, storageId, { ...base, caseId: 'case-1', status: 'running' }),
+      /INVALID_AGENT_STEP_ATTEMPT_TRANSITION/
+    )
+  })
+
+  await scenario('agent-step-result adapter issues, submits and projects results', async () => {
+    const repository = createAgentStepResultRepository(root)
+    assert.ok(repository instanceof FilesystemAgentStepResultRepository)
+    const storageId = 'result-storage'
+    const identity = {
+      attemptId: 'attempt-result-1',
+      workflowId: 'wf-result',
+      stepId: 'build',
+      namespaceId,
+      caseId: 'case-result',
+      agentName: 'Worker',
+      briefHash: `sha256:${'b'.repeat(64)}`,
+    }
+    const observed = { attemptId: identity.attemptId, caseId: identity.caseId, agentName: identity.agentName }
+    const business = { status: 'PASS', summary: 'all good', claims: { modifiedFiles: [] } }
+    assert.deepEqual(await repository.list(namespaceId, storageId), [])
+    const issued = await repository.issue(namespaceId, storageId, identity)
+    assert.equal(typeof issued.token, 'string')
+    assert.ok(issued.token.length >= 32)
+    assert.ok(!Number.isNaN(Date.parse(issued.expiresAt)))
+    const submitted = await repository.submit(issued.token, business, observed)
+    assert.equal(submitted.ok, true)
+    assert.equal(submitted.idempotent, false)
+    const replay = await repository.submit(issued.token, business, observed)
+    assert.equal(replay.ok, true)
+    assert.equal(replay.idempotent, true)
+    assert.equal((await repository.getByAttempt(namespaceId, storageId, identity.attemptId))?.summary, 'all good')
+    assert.equal(await repository.getByAttempt(namespaceId, storageId, 'missing'), null)
+    assert.deepEqual(
+      (await repository.list(namespaceId, storageId)).map((event) => event.type),
+      ['capability-issued', 'result-submitted']
+    )
+    assert.deepEqual(await repository.submit('not-a-token', business, observed), {
+      ok: false,
+      code: 'RESULT_CAPABILITY_INVALID',
+    })
+  })
+
+  await scenario('oracle-definition adapter lists and resolves definitions', async () => {
+    const definitionsRoot = join(root, 'oracle-definitions')
+    await mkdir(definitionsRoot, { recursive: true })
+    await writeFile(
+      join(definitionsRoot, 'adapter-smoke@1.0.0.json'),
+      `${JSON.stringify({
+        schemaVersion: '1',
+        id: 'adapter-smoke',
+        version: '1.0.0',
+        domain: 'factory',
+        argv: ['node', 'fixture.mjs'],
+        cwd: 'repo-root',
+        timeoutMs: 1000,
+        success: { rule: 'exit-code', requireWork: true },
+        applicable: { workflowTypes: ['oracle-smoke'], stepIds: ['verify-code'] },
+      })}\n`
+    )
+    const repository = await createOracleDefinitionRepository(definitionsRoot)
+    assert.ok(repository instanceof FilesystemOracleExecutionRepository)
+    const list = await repository.list()
+    assert.deepEqual(
+      list.map((definition) => definition.id),
+      ['adapter-smoke']
+    )
+    assert.equal(list[0].version, '1.0.0')
+    const found = await repository.get('adapter-smoke')
+    assert.equal(found.domain, 'factory')
+    assert.equal(await repository.get('missing'), null)
   })
 } finally {
   await rm(root, { recursive: true, force: true })

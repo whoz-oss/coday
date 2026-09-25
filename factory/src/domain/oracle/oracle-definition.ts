@@ -230,6 +230,11 @@ export class OracleDefinitionRegistryCore {
     return this
   }
 
+  /** Every loaded definition, in registry insertion order. */
+  list(): OracleDefinition[] {
+    return [...this.items.values()]
+  }
+
   get(id: string): OracleDefinition | null {
     return this.items.get(id) ?? null
   }

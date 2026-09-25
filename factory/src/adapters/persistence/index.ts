@@ -40,9 +40,26 @@ export {
 
 export { AgentStepAttemptStore } from './agent-step-attempt-store.js'
 
+// The `AgentStepAttemptStoreLike` / `AgentStepResultStoreLike` structural
+// dependency interfaces are exported by their adapter modules. They are not
+// re-exported here: the application layer already exposes identically named
+// injection ports (`application/agent-attempt/factory-agent-step-executor.ts`),
+// and the operational entrypoint re-exports both barrels, so a second export
+// would be an ambiguous `export *`.
+
 export {
-  AgentStepResultStore,
-  type AgentStepResultIssueResult,
-  type AgentStepResultStoreOptions,
-  type AgentStepResultSubmitResult,
-} from './agent-step-result-store.js'
+  FilesystemAgentStepAttemptRepository,
+  createFilesystemAgentStepAttemptRepository,
+} from './filesystem-agent-step-attempt-repository.js'
+
+export { AgentStepResultStore, type AgentStepResultStoreOptions } from './agent-step-result-store.js'
+
+export {
+  FilesystemAgentStepResultRepository,
+  createFilesystemAgentStepResultRepository,
+} from './filesystem-agent-step-result-repository.js'
+
+export {
+  FilesystemOracleExecutionRepository,
+  createFilesystemOracleExecutionRepository,
+} from './filesystem-oracle-execution-repository.js'
