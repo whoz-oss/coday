@@ -361,6 +361,17 @@ export class CodayService implements OnDestroy {
     console.log('[CODAY] DelegationEvent received:', event.subThreadId, event.agentName)
     const currentMessages = this.messagesSubject.value
 
+    // IDEMPOTENCE FIRST: a re-delivered event (same timestamp) must be a strict no-op.
+    // The history transits through two channels on thread open (REST + SSE replay, debt #343),
+    // so the same DelegationEvent can arrive twice. Any mutation that runs before the
+    // duplicate check — such as closing the previous block's window — would corrupt state:
+    // the second delivery would find the first block (same subThreadId) and set its
+    // windowEnd = its own windowStart, collapsing the window to [ts, ts) and hiding all content.
+    // Rule: an event re-delivered must never trigger recalculation of derived state.
+    if (currentMessages.some((m) => m.id === event.timestamp)) {
+      return
+    }
+
     // Find the last existing delegation block for this subThreadId (if any).
     // When a sub-thread is resumed, a new DelegationEvent is emitted for the same subThreadId.
     // We close the previous block's temporal window and create a new block at the current position.
@@ -395,11 +406,7 @@ export class CodayService implements OnDestroy {
       windowEnd: undefined,
     }
 
-    // Append the new block; deduplication by id is handled by addMessage
-    const deduplicated = updatedMessages.some((m) => m.id === message.id)
-      ? updatedMessages
-      : [...updatedMessages, message]
-    this.messagesSubject.next(deduplicated)
+    this.messagesSubject.next([...updatedMessages, message])
   }
 
   private handleThreadUpdateEvent(event: ThreadUpdateEvent): void {
@@ -407,15 +414,6 @@ export class CodayService implements OnDestroy {
   }
 
   private handleMessageEvent(event: MessageEvent): void {
-    // Silent messages belong to the AI context but must not be rendered in the UI.
-    // This covers both live SSE events and REST history replay (loadHistoryFromRest
-    // routes through handleEvent, so this single guard is sufficient for both paths).
-    // Note: (event as any).silent is used because TypeScript's strict DOM lib may shadow
-    // the @coday/model MessageEvent type in the instanceof check context.
-    if ((event as any).silent) {
-      return
-    }
-
     // Reset streaming state if assistant message (final message replaces streaming)
     if (event.role === 'assistant' && this.accumulatedChunks) {
       this.accumulatedChunks = ''

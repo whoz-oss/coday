@@ -237,6 +237,12 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
         this._status = event.status
       }
     } else if (event instanceof DelegationEvent) {
+      // IDEMPOTENCE FIRST: same dual-channel delivery risk as in CodayService (debt #343).
+      // A re-delivered nested DelegationEvent must be a strict no-op.
+      if (this.messageIds.has(event.timestamp)) {
+        return
+      }
+
       // Nested delegation: apply the same windowing logic recursively.
       // Find the last existing nested block for this subThreadId and close its window.
       const lastExistingIndex = this.subMessages.reduce(
