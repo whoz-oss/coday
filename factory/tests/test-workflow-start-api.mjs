@@ -37,11 +37,11 @@ try {
  assert.equal(response.status, 201)
  assert.equal(response.body.data.created, true)
  assert.equal(response.body.data.governanceMode, 'governed')
- assert.equal(response.body.data.definitionVersion, '1.0.0')
+ assert.equal(response.body.data.definitionVersion, '1.1.0')
  assert.deepEqual(response.body.data.relations, { rootWorkflowId: 'WZ-1' })
  assert.equal(
    response.body.data.projection.steps.find((step) => step.id === 'implementation').responsibility.name,
-   'BmadBuilder',
+   'ProductEngineer',
  )
 
  response = await request(store, '/api/factory/workflows/WZ-1/start', { workflow, execution })
