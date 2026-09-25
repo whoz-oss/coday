@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto'
-import { appendFile, mkdir, open, readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { createWorkflowEvidence } from './workflow-evidence.mjs'
+import {
+  appendDurableJson,
+  createFilesystemWorkflowEvidenceRepository,
+  createKeyedLock,
+} from '../runtime/factory-operational.mjs'
 
 export class WorkflowEvidenceStoreError extends Error {
   constructor(code, details = {}, cause) {
@@ -11,34 +16,21 @@ export class WorkflowEvidenceStoreError extends Error {
   }
 }
 const semanticHash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
-async function durableAppend(path, value) {
-  await mkdir(dirname(path), { recursive: true })
-  await appendFile(path, `${JSON.stringify(value)}\n`, { encoding: 'utf8', mode: 0o600 })
-  const handle = await open(path, 'r')
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
+function durableAppend(path, value) {
+  return appendDurableJson(path, value, { ensureDirectory: true })
 }
 
 /** Append-only evidence journal. Locks serialize writers only inside this Node process. */
 export class WorkflowEvidenceStore {
   constructor(dataRoot) {
     this.dataRoot = dataRoot
-    this.locks = new Map()
+    this.locks = createKeyedLock()
   }
   path(namespaceId, storageId) {
     return join(this.dataRoot, 'workflows', namespaceId, storageId, 'evidence.jsonl')
   }
   _locked(key, action) {
-    const prior = this.locks.get(key) ?? Promise.resolve()
-    const operation = prior.then(action)
-    const tail = operation.catch(() => {})
-    this.locks.set(key, tail)
-    return operation.finally(() => {
-      if (this.locks.get(key) === tail) this.locks.delete(key)
-    })
+    return this.locks.run(key, action)
   }
   async list(namespaceId, storageId, { stepId } = {}) {
     let text = ''
@@ -88,4 +80,14 @@ export class WorkflowEvidenceStore {
       return { created: true, idempotent: false, evidence: stored }
     })
   }
+}
+
+/**
+ * Wires the TypeScript filesystem evidence-repository adapter around a concrete
+ * store. The adapter implements `WorkflowEvidenceRepository` from
+ * `factory/src/ports/persistence`; the store remains the `.mjs` runtime
+ * authority during the migration.
+ */
+export function createWorkflowEvidenceRepository(dataRoot) {
+  return createFilesystemWorkflowEvidenceRepository(new WorkflowEvidenceStore(dataRoot))
 }

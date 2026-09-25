@@ -1563,6 +1563,7 @@ function validateWorkflowEvidenceInput(input, expectedWorkflowId) {
 }
 function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/* @__PURE__ */ new Date()).toISOString(), evidenceId = randomUUID2()) {
   const { idempotencyKey, ...rest } = validated;
+  void idempotencyKey;
   const record = {
     evidenceId,
     namespaceId,
@@ -1635,6 +1636,376 @@ function validateHumanInteractionOpenInput(input) {
 }
 function openedInteractionRevision(event) {
   return event.interaction?.revision ?? event.revision;
+}
+
+// ../src/infrastructure/storage/storage-kernel.ts
+import { createHash as createHash5, randomBytes as randomBytes2 } from "node:crypto";
+import { appendFile, mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { dirname as dirname2, join as join2 } from "node:path";
+var STORAGE_FORMAT_VERSION = 1;
+var STORAGE_KERNEL_ERROR_CODES = Object.freeze({
+  INVALID_PATH: "INVALID_PATH",
+  LOCK_HELD: "LOCK_HELD",
+  READ_FAILED: "READ_FAILED",
+  WRITE_FAILED: "WRITE_FAILED",
+  CORRUPT_RECORD: "CORRUPT_RECORD",
+  UNSUPPORTED_FORMAT_VERSION: "UNSUPPORTED_FORMAT_VERSION"
+});
+var StorageKernelError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "StorageKernelError";
+    this.code = code;
+    this.details = details;
+  }
+};
+function storageErrorCode(error) {
+  const code = error?.code;
+  return typeof code === "string" ? code : void 0;
+}
+function isNotFoundError(error) {
+  return storageErrorCode(error) === "ENOENT";
+}
+function wrapStorageError(code, details = {}) {
+  return (cause) => cause instanceof StorageKernelError ? cause : new StorageKernelError(code, details, cause);
+}
+async function syncDirectory(directoryPath) {
+  const directory = await open(directoryPath, "r");
+  try {
+    await directory.sync();
+  } finally {
+    await directory.close();
+  }
+}
+function atomicTemporaryPath(filePath) {
+  return `${filePath}.tmp-${process.pid}-${randomBytes2(6).toString("hex")}`;
+}
+async function atomicWriteJson(filePath, value) {
+  await mkdir(dirname2(filePath), { recursive: true });
+  const temporary = atomicTemporaryPath(filePath);
+  const handle = await open(temporary, "wx", 384);
+  try {
+    await handle.writeFile(`${JSON.stringify(value)}
+`, "utf8");
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename(temporary, filePath);
+  await syncDirectory(dirname2(filePath));
+}
+async function appendDurableJson(filePath, value, options = {}) {
+  if (options.ensureDirectory) await mkdir(dirname2(filePath), { recursive: true });
+  await appendFile(filePath, `${JSON.stringify(value)}
+`, { encoding: "utf8", mode: 384 });
+  const handle = await open(filePath, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function readJsonLines(filePath) {
+  let text2;
+  try {
+    text2 = await readFile(filePath, "utf8");
+  } catch (error) {
+    if (isNotFoundError(error)) return [];
+    throw error;
+  }
+  return text2.split("\n").filter(Boolean).map((line) => JSON.parse(line));
+}
+function canonicalize2(value) {
+  if (Array.isArray(value)) return value.map((entry) => canonicalize2(entry));
+  if (value !== null && typeof value === "object") {
+    const record = value;
+    return Object.fromEntries(
+      Object.keys(record).sort().map((key) => [key, canonicalize2(record[key])])
+    );
+  }
+  return value;
+}
+function canonicalJson(value) {
+  return JSON.stringify(canonicalize2(value));
+}
+function computeCanonicalHash(value) {
+  return createHash5("sha256").update(canonicalJson(value), "utf8").digest("hex");
+}
+var KeyedLock = class {
+  locks = /* @__PURE__ */ new Map();
+  run(key, action) {
+    const prior = this.locks.get(key) ?? Promise.resolve();
+    const operation = prior.then(() => action());
+    const tail = operation.then(
+      () => void 0,
+      () => void 0
+    );
+    this.locks.set(key, tail);
+    return operation.finally(() => {
+      if (this.locks.get(key) === tail) this.locks.delete(key);
+    });
+  }
+  /** Number of keys with an in-flight or queued action (diagnostics only). */
+  get size() {
+    return this.locks.size;
+  }
+};
+function createKeyedLock() {
+  return new KeyedLock();
+}
+var DEFAULT_PROCESS_LOCK_FILE = ".process.lock";
+async function acquireProcessLock(dataRoot, options = {}) {
+  if (typeof dataRoot !== "string" || dataRoot.length === 0)
+    throw new StorageKernelError(STORAGE_KERNEL_ERROR_CODES.INVALID_PATH, { dataRoot });
+  const lockPath = join2(dataRoot, options.lockFileName ?? DEFAULT_PROCESS_LOCK_FILE);
+  await mkdir(dataRoot, { recursive: true });
+  let handle;
+  try {
+    handle = await open(lockPath, "wx", 384);
+  } catch (error) {
+    if (storageErrorCode(error) === "EEXIST")
+      throw new StorageKernelError(STORAGE_KERNEL_ERROR_CODES.LOCK_HELD, { path: lockPath }, error);
+    throw error;
+  }
+  try {
+    await handle.writeFile(`${JSON.stringify({ pid: process.pid, acquiredAt: (/* @__PURE__ */ new Date()).toISOString() })}
+`, "utf8");
+    await handle.sync();
+  } catch (error) {
+    await handle.close();
+    await rm(lockPath, { force: true });
+    throw error;
+  }
+  let released = false;
+  return {
+    path: lockPath,
+    pid: process.pid,
+    async release() {
+      if (released) return;
+      released = true;
+      try {
+        await handle.close();
+      } finally {
+        await rm(lockPath, { force: true });
+      }
+    }
+  };
+}
+async function withProcessLock(dataRoot, action, options = {}) {
+  const lock = await acquireProcessLock(dataRoot, options);
+  try {
+    return await action(lock);
+  } finally {
+    await lock.release();
+  }
+}
+function withFormatVersion(value, formatVersion = STORAGE_FORMAT_VERSION) {
+  return { ...value, formatVersion };
+}
+function readFormatVersion(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value.formatVersion;
+  return typeof raw === "number" && Number.isSafeInteger(raw) ? raw : null;
+}
+function assertSupportedFormatVersion(value, supported = STORAGE_FORMAT_VERSION) {
+  const version = readFormatVersion(value);
+  if (version !== null && version > supported)
+    throw new StorageKernelError(STORAGE_KERNEL_ERROR_CODES.UNSUPPORTED_FORMAT_VERSION, { version, supported });
+  return version;
+}
+
+// ../src/ports/persistence/workflow-definition-repository.ts
+var WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES = Object.freeze({
+  WORKFLOW_DEFINITION_NOT_FOUND: "WORKFLOW_DEFINITION_NOT_FOUND",
+  INVALID_DEFINITION_FILE: "INVALID_DEFINITION_FILE",
+  DEFINITION_PATH_MISMATCH: "DEFINITION_PATH_MISMATCH",
+  DEFINITION_COLLISION: "DEFINITION_COLLISION"
+});
+
+// ../src/adapters/persistence/filesystem-workflow-definition-repository.ts
+var WorkflowDefinitionRepositoryError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "WorkflowDefinitionRepositoryError";
+    this.code = code;
+    this.details = details;
+  }
+};
+var FilesystemWorkflowDefinitionRepository = class {
+  constructor(registry2) {
+    this.registry = registry2;
+  }
+  list() {
+    return this.registry.list();
+  }
+  get(workflowType, version) {
+    return this.registry.get(workflowType, version);
+  }
+  resolveUnique(workflowType) {
+    return this.registry.resolveUnique(workflowType);
+  }
+};
+function createFilesystemWorkflowDefinitionRepository(registry2) {
+  return new FilesystemWorkflowDefinitionRepository(registry2);
+}
+
+// ../src/adapters/persistence/filesystem-workflow-instance-repository.ts
+var WorkflowInstanceRepositoryError = class extends Error {
+  code;
+  details;
+  decision;
+  constructor(code, details = {}, decision) {
+    super(code);
+    this.name = "WorkflowInstanceRepositoryError";
+    this.code = code;
+    this.details = details;
+    this.decision = decision;
+  }
+};
+var FilesystemWorkflowInstanceRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  #initialized = null;
+  /** Ensures the store's root directories exist before a mutating operation. */
+  async #ensureInitialized() {
+    if (!this.store.initialize) return;
+    this.#initialized ??= Promise.resolve(this.store.initialize()).then(() => void 0);
+    await this.#initialized;
+  }
+  async list(namespaceId) {
+    const snapshots = await this.store.list(namespaceId);
+    return snapshots.map((snapshot) => snapshot.projection);
+  }
+  async get(namespaceId, workflowId) {
+    const snapshot = await this.store.read(namespaceId, workflowId);
+    return snapshot ? { instance: snapshot.instance, projection: snapshot.projection } : null;
+  }
+  async create(namespaceId, command, definition, controllerExecution) {
+    await this.#ensureInitialized();
+    const result = await this.store.start(namespaceId, command, definition, controllerExecution);
+    return this.#requireSnapshot(result, "WORKFLOW_INSTANCE_CREATE_FAILED");
+  }
+  async transition(namespaceId, workflowId, transition) {
+    await this.#ensureInitialized();
+    const input = transition ?? {};
+    const options = input.fault || input.policy ? { fault: input.fault, policy: input.policy } : void 0;
+    const result = await this.store.transition(
+      namespaceId,
+      input.request,
+      input.definition,
+      input.evidence ?? [],
+      input.execution,
+      options
+    );
+    const snapshot = this.#requireSnapshot(result, "WORKFLOW_INSTANCE_TRANSITION_FAILED");
+    void workflowId;
+    return snapshot;
+  }
+  async remove(namespaceId, workflowId, actor) {
+    await this.#ensureInitialized();
+    this.#requireOk(await this.store.remove(namespaceId, workflowId, actor), "WORKFLOW_INSTANCE_REMOVE_FAILED");
+  }
+  async restore(namespaceId, workflowId, actor) {
+    await this.#ensureInitialized();
+    this.#requireOk(await this.store.restore(namespaceId, workflowId, actor), "WORKFLOW_INSTANCE_RESTORE_FAILED");
+  }
+  async purge(namespaceId, workflowId, actor) {
+    await this.#ensureInitialized();
+    this.#requireOk(await this.store.purge(namespaceId, workflowId, actor), "WORKFLOW_INSTANCE_PURGE_FAILED");
+  }
+  #requireSnapshot(result, fallbackCode) {
+    this.#requireOk(result, fallbackCode);
+    const snapshot = result.snapshot;
+    if (!snapshot) throw new WorkflowInstanceRepositoryError(fallbackCode, {}, result.decision);
+    return { instance: snapshot.instance, projection: snapshot.projection };
+  }
+  #requireOk(result, fallbackCode) {
+    if (result?.ok) return;
+    const code = result?.error?.code ?? fallbackCode;
+    throw new WorkflowInstanceRepositoryError(code, result?.error?.details ?? {}, result?.decision);
+  }
+};
+function createFilesystemWorkflowInstanceRepository(store) {
+  return new FilesystemWorkflowInstanceRepository(store);
+}
+
+// ../src/adapters/persistence/filesystem-workflow-evidence-repository.ts
+var FilesystemWorkflowEvidenceRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  list(namespaceId, storageId, filter) {
+    return this.store.list(namespaceId, storageId, filter);
+  }
+  record(namespaceId, storageId, input, source) {
+    return this.store.record(namespaceId, storageId, input, source);
+  }
+};
+function createFilesystemWorkflowEvidenceRepository(store) {
+  return new FilesystemWorkflowEvidenceRepository(store);
+}
+
+// ../src/adapters/persistence/filesystem-workflow-human-interaction-repository.ts
+var WorkflowHumanInteractionRepositoryError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "WorkflowHumanInteractionRepositoryError";
+    this.code = code;
+    this.details = details;
+  }
+};
+var FilesystemWorkflowHumanInteractionRepository = class {
+  constructor(store) {
+    this.store = store;
+  }
+  list(namespaceId, storageId, options) {
+    return this.store.list(namespaceId, storageId, options);
+  }
+  events(namespaceId, storageId) {
+    return this.store.events(namespaceId, storageId);
+  }
+  async reconcileOpen(namespaceId, storageId, input, snapshot, options) {
+    const result = await this.store.reconcileOpen(namespaceId, storageId, input, snapshot, options);
+    if (!result?.interaction)
+      throw new WorkflowHumanInteractionRepositoryError("INTERACTION_RECOVERY_NOT_FOUND", { namespaceId, storageId });
+    return result.interaction;
+  }
+  async recordOpen(namespaceId, storageId, input, options) {
+    const transition = options?.transition;
+    if (!transition)
+      throw new WorkflowHumanInteractionRepositoryError("HUMAN_INTERACTION_TRANSITION_REQUIRED", {
+        namespaceId,
+        storageId
+      });
+    const result = await this.store.open(namespaceId, storageId, input, transition);
+    const idempotent = Boolean(result.transition?.idempotent);
+    return { created: !idempotent, idempotent, interaction: result.interaction };
+  }
+  async recordTransition(namespaceId, storageId, interactionId, reply, actorId, evidenceId, transitionRequestId, options) {
+    const action = options?.action;
+    if (!action)
+      throw new WorkflowHumanInteractionRepositoryError("HUMAN_INTERACTION_ACTION_REQUIRED", {
+        namespaceId,
+        storageId,
+        interactionId
+      });
+    const result = await this.store.transact(namespaceId, storageId, interactionId, action);
+    void reply;
+    void actorId;
+    void evidenceId;
+    void transitionRequestId;
+    return result.interaction;
+  }
+};
+function createFilesystemWorkflowHumanInteractionRepository(store) {
+  return new FilesystemWorkflowHumanInteractionRepository(store);
 }
 
 // ../src/application/shutdown.ts
@@ -1747,8 +2118,18 @@ function runAgentTurn(caseId, agentName, brief, options) {
   return getAgentOsRuntimeAdapter().runAgentTurn(caseId, agentName, brief, options);
 }
 export {
+  DEFAULT_PROCESS_LOCK_FILE,
+  FilesystemWorkflowDefinitionRepository,
+  FilesystemWorkflowEvidenceRepository,
+  FilesystemWorkflowHumanInteractionRepository,
+  FilesystemWorkflowInstanceRepository,
   HUMAN_INTERACTION_KINDS,
+  KeyedLock,
+  STORAGE_FORMAT_VERSION,
+  STORAGE_KERNEL_ERROR_CODES,
+  StorageKernelError,
   WORKFLOW_DEFINITION_ERROR_CODES,
+  WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES,
   WORKFLOW_DEFINITION_RESPONSIBILITIES,
   WORKFLOW_DEFINITION_SCHEMA_VERSION,
   WORKFLOW_EVIDENCE_KINDS,
@@ -1758,17 +2139,33 @@ export {
   WORKFLOW_HUMAN_INTERACTION_STATUSES,
   WORKFLOW_STATUSES,
   WORKFLOW_TRANSITIONS,
+  WorkflowDefinitionRepositoryError,
+  WorkflowHumanInteractionRepositoryError,
+  WorkflowInstanceRepositoryError,
+  acquireProcessLock,
+  appendDurableJson,
   applyHumanCheckpointOpen,
   applyWorkflowTransition,
   asRuntimeExecutionId,
+  assertSupportedFormatVersion,
+  atomicTemporaryPath,
+  atomicWriteJson,
   bindFactoryStepResult,
   canonicalHumanInteractionInput,
+  canonicalJson,
+  canonicalize2 as canonicalize,
   canonicalizeWorkflowDefinition,
   clearActiveCaseId,
+  computeCanonicalHash,
   createAgentOsHttpCaseTerminator,
   createAgentOsHttpClient,
   createAgentOsRuntimeAdapter,
   createCase,
+  createFilesystemWorkflowDefinitionRepository,
+  createFilesystemWorkflowEvidenceRepository,
+  createFilesystemWorkflowHumanInteractionRepository,
+  createFilesystemWorkflowInstanceRepository,
+  createKeyedLock,
   createRun,
   createShutdownController,
   createWorkflowEvidence,
@@ -1787,6 +2184,7 @@ export {
   hashWorkflowDefinition,
   humanInteractionSemanticHash,
   installSigtermHandler,
+  isNotFoundError,
   killCase,
   listAgents,
   listEvents,
@@ -1799,10 +2197,14 @@ export {
   preflightWorkspace,
   preflightWritableWorkspace,
   processExit,
+  readFormatVersion,
+  readJsonLines,
   registerActiveCase,
   runAgentTurn,
   setActiveCaseId,
   startPhase,
+  storageErrorCode,
+  syncDirectory,
   transitionScopeHash,
   transitionSemanticHash,
   unregisterActiveCase,
@@ -1810,5 +2212,8 @@ export {
   validateWorkflowDefinition,
   validateWorkflowEvidenceInput,
   validateWorkflowTransitionRequest,
-  workflowStartCommandHash
+  withFormatVersion,
+  withProcessLock,
+  workflowStartCommandHash,
+  wrapStorageError
 };

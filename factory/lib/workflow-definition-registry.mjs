@@ -1,6 +1,7 @@
 import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { hashWorkflowDefinition, validateWorkflowDefinition } from './workflow-definition.mjs'
+import { createFilesystemWorkflowDefinitionRepository } from '../runtime/factory-operational.mjs'
 
 export class WorkflowDefinitionRegistryError extends Error {
   constructor(code, details = {}) {
@@ -81,4 +82,14 @@ export class WorkflowDefinitionRegistry {
     this.loaded = definitions
     return definitions
   }
+}
+
+/**
+ * Wires the TypeScript filesystem definition-repository adapter around a
+ * concrete registry. The adapter implements `WorkflowDefinitionRepository` from
+ * `factory/src/ports/persistence`; the registry remains the `.mjs` runtime
+ * authority during the migration.
+ */
+export function createWorkflowDefinitionRepository(root) {
+  return createFilesystemWorkflowDefinitionRepository(new WorkflowDefinitionRegistry(root))
 }

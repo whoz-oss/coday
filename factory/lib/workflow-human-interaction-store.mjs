@@ -1,21 +1,17 @@
 import { randomUUID } from 'node:crypto'
-import { appendFile, mkdir, open, readFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
+  appendDurableJson,
+  createFilesystemWorkflowHumanInteractionRepository,
+  createKeyedLock,
   humanInteractionSemanticHash,
   openedInteractionRevision,
   validateHumanInteractionOpenInput,
 } from '../runtime/factory-operational.mjs'
 
-async function append(path, value) {
-  await mkdir(dirname(path), { recursive: true })
-  await appendFile(path, `${JSON.stringify(value)}\n`, { encoding: 'utf8', mode: 0o600 })
-  const handle = await open(path, 'r')
-  try {
-    await handle.sync()
-  } finally {
-    await handle.close()
-  }
+function append(path, value) {
+  return appendDurableJson(path, value, { ensureDirectory: true })
 }
 export class WorkflowHumanInteractionError extends Error {
   constructor(code, cause) {
@@ -26,20 +22,14 @@ export class WorkflowHumanInteractionError extends Error {
 export class WorkflowHumanInteractionStore {
   constructor(dataRoot, { fault = async () => {} } = {}) {
     this.dataRoot = dataRoot
-    this.locks = new Map()
+    this.locks = createKeyedLock()
     this.fault = fault
   }
   path(namespaceId, storageId) {
     return join(this.dataRoot, 'workflows', namespaceId, storageId, 'human-interactions.jsonl')
   }
   _locked(key, action) {
-    const prior = this.locks.get(key) ?? Promise.resolve()
-    const operation = prior.then(action)
-    const tail = operation.catch(() => {})
-    this.locks.set(key, tail)
-    return operation.finally(() => {
-      if (this.locks.get(key) === tail) this.locks.delete(key)
-    })
+    return this.locks.run(key, action)
   }
   async events(namespaceId, storageId) {
     try {
@@ -262,4 +252,14 @@ export class WorkflowHumanInteractionStore {
       }
     })
   }
+}
+
+/**
+ * Wires the TypeScript filesystem human-interaction-repository adapter around a
+ * concrete store. The adapter implements `WorkflowHumanInteractionRepository`
+ * from `factory/src/ports/persistence`; the store remains the `.mjs` runtime
+ * authority during the migration.
+ */
+export function createWorkflowHumanInteractionRepository(dataRoot, options = {}) {
+  return createFilesystemWorkflowHumanInteractionRepository(new WorkflowHumanInteractionStore(dataRoot, options))
 }
