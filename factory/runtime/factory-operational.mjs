@@ -143,8 +143,8 @@ function failure(code, path, details = {}) {
   return { ok: false, error: { code, path, details } };
 }
 function text(value, path, options = {}) {
-  const { safe = false, maximum = 256 } = options;
-  if (typeof value !== "string" || !value.trim() || value.length > maximum || safe && !SAFE_ID.test(value))
+  const { safe: safe2 = false, maximum = 256 } = options;
+  if (typeof value !== "string" || !value.trim() || value.length > maximum || safe2 && !SAFE_ID.test(value))
     return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, path);
   return { ok: true, value };
 }
@@ -1022,6 +1022,121 @@ function validateAgentStepResultBusiness(value) {
   return true;
 }
 
+// ../src/domain/environment/work-unit-environment.ts
+import { isAbsolute, normalize, resolve } from "node:path";
+var WORK_UNIT_ENVIRONMENT_STATES = Object.freeze([
+  "provisioning",
+  "active",
+  "completed",
+  "abandoned",
+  "error",
+  "removed"
+]);
+var WORK_UNIT_ENVIRONMENT_ERROR_CODES = Object.freeze({
+  INVALID_ENVIRONMENT: "INVALID_ENVIRONMENT",
+  INVALID_SCHEMA_VERSION: "INVALID_SCHEMA_VERSION",
+  INVALID_ID: "INVALID_ID",
+  INVALID_UUID: "INVALID_UUID",
+  INVALID_PATH: "INVALID_PATH",
+  INVALID_REF: "INVALID_REF",
+  INVALID_SHA: "INVALID_SHA",
+  INVALID_INSTANT: "INVALID_INSTANT",
+  INVALID_STATE: "INVALID_STATE"
+});
+var SAFE = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
+var UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SHA = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var REF = /^(?!\/|.*(?:\.\.|@\{|\\|[ ~^:?*\[]|\/\/|\.$|\.lock(?:\/|$)))(?!.*\/$)[A-Za-z0-9._\/-]+$/;
+var STATES = new Set(WORK_UNIT_ENVIRONMENT_STATES);
+function fail(code, path) {
+  return { ok: false, error: { code, path } };
+}
+function safe(value, path, optional = false) {
+  if (optional && value === void 0) return { ok: true };
+  return typeof value === "string" && SAFE.test(value) ? { ok: true } : fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_ID, path);
+}
+function validateNamespaceId(value, path = "namespaceId") {
+  return typeof value === "string" && UUID.test(value) ? { ok: true } : fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_UUID, path);
+}
+function validateCanonicalAbsolutePath(value, path = "path") {
+  if (typeof value !== "string" || !isAbsolute(value) || normalize(value) !== value || resolve(value) !== value)
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_PATH, path);
+  return { ok: true };
+}
+function validateGitRef(value, path = "ref") {
+  return typeof value === "string" && value.length <= 255 && REF.test(value) ? { ok: true } : fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_REF, path);
+}
+function validateIsoInstant(value, path = "instant") {
+  if (typeof value !== "string") return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_INSTANT, path);
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds)) return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_INSTANT, path);
+  if (new Date(milliseconds).toISOString() !== value)
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_INSTANT, path);
+  return { ok: true };
+}
+function validateWorkUnitEnvironment(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_ENVIRONMENT, "$");
+  const record = input;
+  if (record.schemaVersion !== "1")
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_SCHEMA_VERSION, "schemaVersion");
+  for (const field of ["environmentId", "workUnitId", "createdBy"]) {
+    const result = safe(record[field], field);
+    if (!result.ok) return result;
+  }
+  const workflow = safe(record.workflowId, "workflowId", true);
+  if (!workflow.ok) return workflow;
+  for (const field of ["businessRef", "businessType"]) {
+    const result = safe(record[field], field, true);
+    if (!result.ok) return result;
+  }
+  const namespace = validateNamespaceId(record.namespaceId);
+  if (!namespace.ok) return namespace;
+  if (record.parentCaseId !== void 0 && !UUID.test(record.parentCaseId))
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_UUID, "parentCaseId");
+  for (const field of ["repoRoot", "worktreePath"]) {
+    const result = validateCanonicalAbsolutePath(record[field], field);
+    if (!result.ok) return result;
+  }
+  if (record.repoRoot === record.worktreePath)
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_PATH, "worktreePath");
+  for (const field of ["integrationBranch", "branch"]) {
+    const result = validateGitRef(record[field], field);
+    if (!result.ok) return result;
+  }
+  if (record.baseCommit !== null && !SHA.test(record.baseCommit ?? ""))
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_SHA, "baseCommit");
+  if (record.baseCommit === null && record.lifecycleState !== "provisioning")
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_SHA, "baseCommit");
+  const createdAt = validateIsoInstant(record.createdAt, "createdAt");
+  if (!createdAt.ok) return createdAt;
+  if (!STATES.has(record.lifecycleState))
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, "lifecycleState");
+  if (record.lifecycleState === "active" && !record.parentCaseId)
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, "parentCaseId");
+  if (record.lifecycleState === "provisioning" && record.parentCaseId)
+    return fail(WORK_UNIT_ENVIRONMENT_ERROR_CODES.INVALID_STATE, "parentCaseId");
+  const environment = {
+    schemaVersion: "1",
+    environmentId: record.environmentId,
+    workUnitId: record.workUnitId,
+    ...record.workflowId ? { workflowId: record.workflowId } : {},
+    namespaceId: record.namespaceId,
+    ...record.parentCaseId ? { parentCaseId: record.parentCaseId } : {},
+    ...record.businessRef ? { businessRef: record.businessRef } : {},
+    ...record.businessType ? { businessType: record.businessType } : {},
+    repoRoot: record.repoRoot,
+    integrationBranch: record.integrationBranch,
+    branch: record.branch,
+    worktreePath: record.worktreePath,
+    baseCommit: record.baseCommit,
+    createdAt: record.createdAt,
+    createdBy: record.createdBy,
+    lifecycleState: record.lifecycleState
+  };
+  return { ok: true, environment };
+}
+
 // ../src/infrastructure/storage/storage-kernel.ts
 import { createHash as createHash6, randomBytes as randomBytes2 } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm } from "node:fs/promises";
@@ -1045,12 +1160,12 @@ var StorageKernelError = class extends Error {
     this.details = details;
   }
 };
-function storageErrorCode(error) {
-  const code = error?.code;
+function storageErrorCode(error2) {
+  const code = error2?.code;
   return typeof code === "string" ? code : void 0;
 }
-function isNotFoundError(error) {
-  return storageErrorCode(error) === "ENOENT";
+function isNotFoundError(error2) {
+  return storageErrorCode(error2) === "ENOENT";
 }
 function wrapStorageError(code, details = {}) {
   return (cause) => cause instanceof StorageKernelError ? cause : new StorageKernelError(code, details, cause);
@@ -1095,9 +1210,9 @@ async function readJsonLines(filePath) {
   let text2;
   try {
     text2 = await readFile(filePath, "utf8");
-  } catch (error) {
-    if (isNotFoundError(error)) return [];
-    throw error;
+  } catch (error2) {
+    if (isNotFoundError(error2)) return [];
+    throw error2;
   }
   return text2.split("\n").filter(Boolean).map((line) => JSON.parse(line));
 }
@@ -1148,19 +1263,19 @@ async function acquireProcessLock(dataRoot, options = {}) {
   let handle;
   try {
     handle = await open(lockPath, "wx", 384);
-  } catch (error) {
-    if (storageErrorCode(error) === "EEXIST")
-      throw new StorageKernelError(STORAGE_KERNEL_ERROR_CODES.LOCK_HELD, { path: lockPath }, error);
-    throw error;
+  } catch (error2) {
+    if (storageErrorCode(error2) === "EEXIST")
+      throw new StorageKernelError(STORAGE_KERNEL_ERROR_CODES.LOCK_HELD, { path: lockPath }, error2);
+    throw error2;
   }
   try {
     await handle.writeFile(`${JSON.stringify({ pid: process.pid, acquiredAt: (/* @__PURE__ */ new Date()).toISOString() })}
 `, "utf8");
     await handle.sync();
-  } catch (error) {
+  } catch (error2) {
     await handle.close();
     await rm(lockPath, { force: true });
-    throw error;
+    throw error2;
   }
   let released = false;
   return {
@@ -1472,12 +1587,12 @@ var AgentStepResultStore = class {
       let namespaces;
       try {
         namespaces = await readdir(workflows, { withFileTypes: true });
-      } catch (error) {
-        if (error?.code === "ENOENT") {
+      } catch (error2) {
+        if (error2?.code === "ENOENT") {
           this.indexLoaded = true;
           return;
         }
-        throw error;
+        throw error2;
       }
       for (const ns of namespaces.filter((entry) => entry.isDirectory())) {
         let stores;
@@ -1530,9 +1645,9 @@ var AgentStepResultStore = class {
   async resolve(token) {
     if (typeof token !== "string" || token.length < 32 || token.length > 256) return null;
     await this.initialize();
-    const digest = sha256(token);
-    const located = this.capabilityIndex.get(digest);
-    return located && safeEqual(located.event.tokenHash, digest) ? located : null;
+    const digest2 = sha256(token);
+    const located = this.capabilityIndex.get(digest2);
+    return located && safeEqual(located.event.tokenHash, digest2) ? located : null;
   }
   async submit(token, business, observed = {}) {
     if (!validateAgentStepResultBusiness(business)) return { ok: false, code: "RESULT_SCHEMA_INVALID" };
@@ -1599,16 +1714,16 @@ function createShutdownController(deps) {
           try {
             await deps.caseTerminator.terminate(caseId);
             deps.warn(`[shutdown] Case ${caseId} tu\xE9.`);
-          } catch (error) {
-            deps.warn(`[shutdown] Erreur lors du kill du case ${caseId} : ${String(error)}`);
+          } catch (error2) {
+            deps.warn(`[shutdown] Erreur lors du kill du case ${caseId} : ${String(error2)}`);
           }
         })
       );
       if (!completed) {
         try {
           deps.endCurrentRunOnce("fail", { checkoutMayBeIntermediate: hadActiveCases, terminatedBySignal: signal });
-        } catch (error) {
-          deps.warn(`[shutdown] Erreur lors de la finalisation du run : ${String(error)}`);
+        } catch (error2) {
+          deps.warn(`[shutdown] Erreur lors de la finalisation du run : ${String(error2)}`);
         }
       }
       deps.warn("[shutdown] Sortie.");
@@ -1765,7 +1880,7 @@ function formatAgentInventory(agents) {
   ].join("\n");
 }
 function createAgentOsCapabilityInspector(deps) {
-  const realpath2 = deps.realpath ?? realpathSync;
+  const realpath3 = deps.realpath ?? realpathSync;
   async function inspectWorker(namespaceId, workerName) {
     let agents;
     try {
@@ -1912,8 +2027,8 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     let configs;
     try {
       configs = await deps.listIntegrationConfigs(namespaceId);
-    } catch (error) {
-      return { ok: false, reason: `Unable to list integrations: ${error}`, rootPath: null, integration: null };
+    } catch (error2) {
+      return { ok: false, reason: `Unable to list integrations: ${error2}`, rootPath: null, integration: null };
     }
     const target = names[0];
     const integration = configs.find((config) => config.name === target);
@@ -1921,7 +2036,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     const declaredRoot = integration?.parameters?.rootPath;
     if (declaredRoot) {
       try {
-        actual = realpath2(declaredRoot);
+        actual = realpath3(declaredRoot);
       } catch {
         actual = null;
       }
@@ -1961,8 +2076,8 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     let configs;
     try {
       configs = await deps.listIntegrationConfigs(namespaceId);
-    } catch (error) {
-      return { ok: false, reason: `Unable to list integrations: ${error}`, rootPath: null, integration: null };
+    } catch (error2) {
+      return { ok: false, reason: `Unable to list integrations: ${error2}`, rootPath: null, integration: null };
     }
     const target = nonReserved[0];
     const integration = configs.find((config) => config.name === target);
@@ -1978,7 +2093,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     let canonicalRoot = null;
     if (rootPath) {
       try {
-        canonicalRoot = realpath2(rootPath);
+        canonicalRoot = realpath3(rootPath);
       } catch {
         canonicalRoot = null;
       }
@@ -2138,7 +2253,7 @@ var DEFAULT_POLL_INTERVAL_MS = 2e3;
 var DEFAULT_START_TIMEOUT_MS = 3e4;
 var DEFAULT_WORK_TIMEOUT_MS = 10 * 60 * 1e3;
 function defaultSleep(ms) {
-  return new Promise((resolve2) => setTimeout(resolve2, ms));
+  return new Promise((resolve3) => setTimeout(resolve3, ms));
 }
 function executionFailure(status, message, extra = {}) {
   return {
@@ -2457,14 +2572,14 @@ function runAgentTurn(caseId, agentName, brief, options) {
 // ../src/application/agent-attempt/factory-agent-step-executor.ts
 import { createHash as createHash7, randomUUID as randomUUID4 } from "node:crypto";
 import { mkdir as mkdir2, open as open2, readFile as readFile2, rename as rename2, rm as rm2, stat } from "node:fs/promises";
-import { isAbsolute, join as join5, relative, resolve } from "node:path";
+import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2 } from "node:path";
 var MAX_INLINE_ARTIFACT_BYTES = 256 * 1024;
 var STRUCTURED_RESULT_FINALIZATION_BRIEF = "Do no new analysis or work. Perform no reads, writes, delegation, queryUser, or oracle calls. Using only the work already completed in this case, call FACTORY__submit_step_result exactly once. Your normal assistant message is non-authoritative.";
 var diagnostic = (value, fallback) => String(value ?? fallback).replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").slice(0, 1e3);
 var safeSegment = (value) => typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value) && value !== "." && value !== "..";
 var inside = (root, target) => {
   const rel = relative(root, target);
-  return rel === "" || !rel.startsWith("..") && !isAbsolute(rel);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute2(rel);
 };
 function defaultAgentStepOperations() {
   return {
@@ -2545,8 +2660,8 @@ async function verifyArtifacts(result, repoRoot, expectedKind) {
     return { ok: false, code: "EXPECTED_ARTIFACT_MISSING" };
   const verified = [];
   for (const artifact of artifacts) {
-    if (isAbsolute(artifact.path)) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
-    const absolute = resolve(repoRoot, artifact.path);
+    if (isAbsolute2(artifact.path)) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
+    const absolute = resolve2(repoRoot, artifact.path);
     if (relative(repoRoot, absolute).startsWith("..")) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
     try {
       if (!(await stat(absolute)).isFile()) return { ok: false, code: "ARTIFACT_NOT_FILE" };
@@ -2587,11 +2702,11 @@ async function materializeInlineArtifact({
   if (content.byteLength > maxBytes) return { ok: false, code: "ARTIFACT_CONTENT_TOO_LARGE" };
   if (!safeSegment(workflowId) || !safeSegment(stepId) || !safeSegment(attemptId))
     return { ok: false, code: "ARTIFACT_PATH_INVALID" };
-  const root = resolve(repoRoot);
-  const zone = resolve(root, "forge", "factory-artifacts");
-  const workflowDirectory = resolve(zone, workflowId);
-  const directory = resolve(workflowDirectory, stepId);
-  const finalPath = resolve(directory, `${attemptId}.md`);
+  const root = resolve2(repoRoot);
+  const zone = resolve2(root, "forge", "factory-artifacts");
+  const workflowDirectory = resolve2(zone, workflowId);
+  const directory = resolve2(workflowDirectory, stepId);
+  const finalPath = resolve2(directory, `${attemptId}.md`);
   if (!inside(root, zone) || !inside(zone, workflowDirectory) || !inside(workflowDirectory, directory) || !inside(directory, finalPath))
     return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
   await mkdir2(directory, { recursive: true });
@@ -2599,8 +2714,8 @@ async function materializeInlineArtifact({
   const verified = (persisted) => persisted.equals(content) ? { ok: true, artifacts: [{ kind: expectedKind, path: artifactPath, hash: sha256(persisted) }] } : { ok: false, code: "ARTIFACT_SEMANTIC_COLLISION" };
   try {
     return verified(await readFile2(finalPath));
-  } catch (error) {
-    if (error?.code !== "ENOENT")
+  } catch (error2) {
+    if (error2?.code !== "ENOENT")
       return { ok: false, code: "ARTIFACT_MATERIALIZATION_FAILED" };
   }
   const temporary = join5(directory, `.${stepId}.${randomUUID4()}.tmp`);
@@ -2613,8 +2728,8 @@ async function materializeInlineArtifact({
     handle = null;
     try {
       await rename2(temporary, finalPath);
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
+    } catch (error2) {
+      if (error2?.code !== "EEXIST") throw error2;
       return verified(await readFile2(finalPath));
     }
     const persisted = await readFile2(finalPath);
@@ -3026,7 +3141,7 @@ function diffSnapshots(before, after) {
 
 // ../src/domain/oracle/oracle-definition.ts
 import { createHash as createHash8 } from "node:crypto";
-var SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SAFE2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var VERSION = /^\d+\.\d+\.\d+$/;
 var FIELDS2 = /* @__PURE__ */ new Set([
   "schemaVersion",
@@ -3074,7 +3189,7 @@ function validateOracleDefinition(value) {
   if (!isRecord(value)) invalid2();
   const candidate = value;
   if (Object.keys(candidate).some((key) => !FIELDS2.has(key))) invalid2();
-  if (candidate.schemaVersion !== "1" || !SAFE.test(String(candidate.id ?? "")) || !VERSION.test(String(candidate.version ?? "")) || !SAFE.test(String(candidate.domain ?? "")))
+  if (candidate.schemaVersion !== "1" || !SAFE2.test(String(candidate.id ?? "")) || !VERSION.test(String(candidate.version ?? "")) || !SAFE2.test(String(candidate.domain ?? "")))
     invalid2();
   const argv = candidate.argv;
   if (!Array.isArray(argv) || argv.length === 0 || argv.length > 32 || argv.some((entry) => typeof entry !== "string" || !entry || entry.length > 512 || /[\r\n\0]/.test(entry)))
@@ -3091,7 +3206,7 @@ function validateOracleDefinition(value) {
   if (!isRecord(success) || Object.keys(success).some((key) => !SUCCESS_FIELDS.has(key)) || success.rule !== "exit-code" || typeof success.requireWork !== "boolean")
     invalid2();
   const applicable = candidate.applicable;
-  if (!isRecord(applicable) || Object.keys(applicable).some((key) => !APPLICABLE_FIELDS.has(key)) || !Array.isArray(applicable.workflowTypes) || applicable.workflowTypes.length === 0 || applicable.workflowTypes.some((entry) => !SAFE.test(String(entry))) || !Array.isArray(applicable.stepIds) || applicable.stepIds.length === 0 || applicable.stepIds.some((entry) => !SAFE.test(String(entry))))
+  if (!isRecord(applicable) || Object.keys(applicable).some((key) => !APPLICABLE_FIELDS.has(key)) || !Array.isArray(applicable.workflowTypes) || applicable.workflowTypes.length === 0 || applicable.workflowTypes.some((entry) => !SAFE2.test(String(entry))) || !Array.isArray(applicable.stepIds) || applicable.stepIds.length === 0 || applicable.stepIds.some((entry) => !SAFE2.test(String(entry))))
     invalid2();
   return Object.freeze({
     schemaVersion: "1",
@@ -3340,7 +3455,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash as createHash9 } from "node:crypto";
 import { readFileSync as readFileSync2 } from "node:fs";
 import { realpath } from "node:fs/promises";
-import { isAbsolute as isAbsolute2, join as join8 } from "node:path";
+import { isAbsolute as isAbsolute3, join as join8 } from "node:path";
 var MAX_OUTPUT_CHARS = 1e5;
 var LIMIT = 16384;
 function truncate(s) {
@@ -3401,7 +3516,7 @@ function classifyOracleExecution(definition, result) {
   return { classification: "CLEAN", outcome: "pass" };
 }
 async function validateOracleRoot(repoRoot) {
-  if (typeof repoRoot !== "string" || !isAbsolute2(repoRoot))
+  if (typeof repoRoot !== "string" || !isAbsolute3(repoRoot))
     throw Object.assign(new Error("INVALID_ORACLE_ROOT"), { code: "INVALID_ORACLE_ROOT" });
   return realpath(repoRoot);
 }
@@ -3424,7 +3539,7 @@ function executeOracle(definition, {
   spawnImpl = spawn,
   environment = process.env
 }) {
-  return new Promise((resolve2) => {
+  return new Promise((resolve3) => {
     const started = Date.now();
     const stdout = [];
     const stderr = [];
@@ -3473,7 +3588,7 @@ ${err.excerpt}`);
         stdout: out,
         stderr: err
       };
-      resolve2({ ...base, ...classifyOracleExecution(definition, base) });
+      resolve3({ ...base, ...classifyOracleExecution(definition, base) });
     });
   });
 }
@@ -3816,6 +3931,673 @@ function buildQuarantineRecord(params) {
     }
   };
 }
+
+// ../src/adapters/persistence/work-unit-environment-store.ts
+import { createHash as createHash10, randomBytes as randomBytes4 } from "node:crypto";
+import { appendFile as appendFile2, lstat, mkdir as mkdir3, open as open3, readFile as readFile4, readdir as readdir3, realpath as realpath2, rename as rename3, rm as rm3 } from "node:fs/promises";
+import { dirname as dirname4, isAbsolute as isAbsolute4, join as join9, relative as relative2, sep } from "node:path";
+var ENVIRONMENT_STORE_ERROR_CODES = Object.freeze({
+  INVALID_DATA_ROOT: "INVALID_DATA_ROOT",
+  INVALID_ENVIRONMENT: "INVALID_ENVIRONMENT",
+  INVALID_NAMESPACE: "INVALID_NAMESPACE",
+  NOT_FOUND: "NOT_FOUND",
+  REVISION_CONFLICT: "REVISION_CONFLICT",
+  INVALID_TRANSITION: "INVALID_TRANSITION",
+  CORRUPT_STORAGE: "CORRUPT_STORAGE"
+});
+var WorkUnitEnvironmentStoreError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause ? { cause } : void 0);
+    this.code = code;
+    this.details = details;
+  }
+};
+var digest = (value) => createHash10("sha256").update(value).digest("hex");
+var snapshotHash = (e) => digest(JSON.stringify(e, Object.keys(e).sort()));
+var contained = (root, path) => {
+  const r = relative2(root, path);
+  return r !== "" && !r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute4(r);
+};
+async function syncDir(p) {
+  const h = await open3(p, "r");
+  try {
+    await h.sync();
+  } finally {
+    await h.close();
+  }
+}
+async function atomic(p, v) {
+  await mkdir3(dirname4(p), { recursive: true });
+  const t = `${p}.tmp-${process.pid}-${randomBytes4(6).toString("hex")}`;
+  const h = await open3(t, "wx", 384);
+  try {
+    await h.writeFile(`${JSON.stringify(v)}
+`);
+    await h.sync();
+  } finally {
+    await h.close();
+  }
+  await rename3(t, p);
+  await syncDir(dirname4(p));
+}
+async function append(p, v) {
+  await appendFile2(p, `${JSON.stringify(v)}
+`, { encoding: "utf8", mode: 384 });
+  const h = await open3(p, "r");
+  try {
+    await h.sync();
+  } finally {
+    await h.close();
+  }
+}
+var WorkUnitEnvironmentStore = class {
+  dataRoot;
+  fault;
+  locks;
+  root;
+  constructor(dataRoot, { fault = async () => {
+  } } = {}) {
+    if (typeof dataRoot !== "string" || !isAbsolute4(dataRoot))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_DATA_ROOT);
+    this.dataRoot = dataRoot;
+    this.fault = fault;
+    this.locks = /* @__PURE__ */ new Map();
+    this.root = null;
+  }
+  async initialize() {
+    await mkdir3(join9(this.dataRoot, "environments"), { recursive: true });
+    this.root = await realpath2(join9(this.dataRoot, "environments"));
+  }
+  async _safeDirectory(path, { missing = true } = {}) {
+    let stat2;
+    try {
+      stat2 = await lstat(path);
+    } catch (error2) {
+      if (error2?.code === "ENOENT" && missing) return false;
+      throw new WorkUnitEnvironmentStoreError(
+        ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,
+        { artifact: "path" },
+        error2
+      );
+    }
+    if (stat2.isSymbolicLink() || !stat2.isDirectory())
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: "unsafe_path"
+      });
+    const canonical = await realpath2(path);
+    if (path !== this.root && !contained(this.root, canonical))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: "path_escape"
+      });
+    return true;
+  }
+  async _guard(p, { environmentMayBeMissing = true } = {}) {
+    await this._safeDirectory(this.root, { missing: false });
+    const namespaceDirectory = dirname4(p.directory);
+    const namespaceExists = await this._safeDirectory(namespaceDirectory, { missing: true });
+    if (!namespaceExists) return;
+    await this._safeDirectory(p.directory, { missing: environmentMayBeMissing });
+  }
+  _namespace(ns) {
+    if (!validateNamespaceId(ns).ok)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_NAMESPACE);
+  }
+  paths(ns, id) {
+    this._namespace(ns);
+    if (!this.root || typeof id !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
+    const directory = join9(this.root, ns, digest(`${ns}:${id}`));
+    if (!contained(this.root, directory))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
+    return {
+      directory,
+      snapshot: join9(directory, "environment.json"),
+      events: join9(directory, "events.jsonl"),
+      pending: join9(directory, "pending.json")
+    };
+  }
+  _locked(ns, id, fn) {
+    this._namespace(ns);
+    const k = `${ns}\0${id}`;
+    const p = this.locks.get(k) ?? Promise.resolve();
+    const o = p.then(fn);
+    const t = o.catch(() => {
+    });
+    this.locks.set(k, t);
+    return o.finally(() => {
+      if (this.locks.get(k) === t) this.locks.delete(k);
+    });
+  }
+  async _json(p, missing = null) {
+    try {
+      return JSON.parse(await readFile4(p, "utf8"));
+    } catch (e) {
+      if (e?.code === "ENOENT") return missing;
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, e);
+    }
+  }
+  async _recover(p, ns, id) {
+    const q = await this._json(p.pending);
+    if (!q) return;
+    const valid = q && Number.isSafeInteger(q.revision) && q.revision > 0 && q.environment?.namespaceId === ns && q.environment?.environmentId === id && validateWorkUnitEnvironment(q.environment).ok && q.environmentHash === snapshotHash(q.environment);
+    if (!valid)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "pending" });
+    let facts;
+    try {
+      facts = (await readFile4(p.events, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    } catch (e) {
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "journal" }, e);
+    }
+    if (!facts.some(
+      (f) => f.revision === q.revision && f.environmentId === id && f.environmentHash === q.environmentHash
+    ))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: "recovery_binding"
+      });
+    await atomic(p.snapshot, q);
+    await rm3(p.pending);
+    await syncDir(p.directory);
+  }
+  async read(ns, id) {
+    this._namespace(ns);
+    const p = this.paths(ns, id);
+    await this._guard(p);
+    await this._recover(p, ns, id);
+    const s = await this._json(p.snapshot);
+    if (!s) return null;
+    if (!Number.isSafeInteger(s.revision) || s.environmentHash !== snapshotHash(s.environment) || !validateWorkUnitEnvironment(s.environment).ok)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE);
+    return s;
+  }
+  async list(ns, { states } = {}) {
+    this._namespace(ns);
+    let es;
+    const root = join9(this.root, ns);
+    const probe = this.paths(ns, "list-probe");
+    await this._guard(probe);
+    try {
+      es = await readdir3(root, { withFileTypes: true });
+    } catch (e) {
+      if (e?.code === "ENOENT") return [];
+      throw e;
+    }
+    const out = [];
+    for (const x of es) {
+      const d = join9(root, x.name);
+      const p = {
+        directory: d,
+        snapshot: join9(d, "environment.json"),
+        events: join9(d, "events.jsonl"),
+        pending: join9(d, "pending.json")
+      };
+      await this._guard(p, { environmentMayBeMissing: false });
+      const pending = await this._json(p.pending);
+      if (pending) await this._recover(p, ns, pending.environment?.environmentId);
+      const s = await this._json(p.snapshot);
+      if (s && s.environment.namespaceId === ns && (!states || states.includes(s.environment.lifecycleState)))
+        out.push(s);
+    }
+    return out;
+  }
+  async reserve(e) {
+    const v = validateWorkUnitEnvironment(e);
+    if (!v.ok) return v;
+    this._namespace(v.environment.namespaceId);
+    return this._locked(v.environment.namespaceId, v.environment.environmentId, async () => {
+      const c = await this.read(v.environment.namespaceId, v.environment.environmentId);
+      if (c)
+        return JSON.stringify(c.environment) === JSON.stringify(v.environment) ? { ok: true, changed: false, snapshot: c } : { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      return this._write(null, v.environment, "provisioning_reserved");
+    });
+  }
+  async transition(ns, id, next, { expectedRevision, errorCode } = {}) {
+    this._namespace(ns);
+    return this._locked(ns, id, async () => {
+      const c = await this.read(ns, id);
+      if (!c) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.NOT_FOUND } };
+      if (expectedRevision !== void 0 && expectedRevision !== c.revision)
+        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.REVISION_CONFLICT } };
+      if (JSON.stringify(c.environment) === JSON.stringify(next)) return { ok: true, changed: false, snapshot: c };
+      for (const field of [
+        "schemaVersion",
+        "environmentId",
+        "workUnitId",
+        "workflowId",
+        "namespaceId",
+        "repoRoot",
+        "integrationBranch",
+        "branch",
+        "worktreePath",
+        "baseCommit",
+        "createdAt",
+        "createdBy"
+      ])
+        if (c.environment[field] !== next[field])
+          return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      if (c.environment.parentCaseId && next.parentCaseId !== c.environment.parentCaseId)
+        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      const f = c.environment.lifecycleState;
+      const t = next.lifecycleState;
+      const allowed = f === "provisioning" && ["provisioning", "active", "error"].includes(t) || f === "active" && ["completed", "abandoned", "error"].includes(t) || ["completed", "abandoned", "error"].includes(f) && t === "removed";
+      if (!allowed) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      const v = validateWorkUnitEnvironment(next);
+      if (!v.ok) return v;
+      return this._write(
+        c,
+        v.environment,
+        t === "active" ? "parent_case_bound" : t === "removed" ? "environment_removed" : f === t ? "environment_provisioned" : "environment_state_changed",
+        errorCode
+      );
+    });
+  }
+  async _write(c, e, kind, errorCode) {
+    const p = this.paths(e.namespaceId, e.environmentId);
+    await this._guard(p);
+    const revision = (c?.revision ?? 0) + 1;
+    const environmentHash = snapshotHash(e);
+    const s = { revision, environmentHash, environment: e };
+    await mkdir3(p.directory, { recursive: true });
+    await this._guard(p, { environmentMayBeMissing: false });
+    await atomic(p.pending, s);
+    await this.fault("after-pending");
+    await append(p.events, {
+      kind,
+      revision,
+      environmentId: e.environmentId,
+      environmentHash,
+      lifecycleState: e.lifecycleState,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ...errorCode ? { errorCode } : {}
+    });
+    await this.fault("after-journal");
+    await atomic(p.snapshot, s);
+    await this.fault("after-snapshot");
+    await rm3(p.pending, { force: true });
+    return { ok: true, changed: true, snapshot: s };
+  }
+};
+
+// ../src/application/environment/work-unit-environment-service.ts
+import { randomUUID as randomUUID5 } from "node:crypto";
+var machine = (e) => {
+  const code = e?.code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "GIT_FAILED";
+};
+var sameIdentity = (environment, input, id) => environment.environmentId === id && environment.workflowId === (input.workflowId ?? environment.workflowId) && environment.workUnitId === input.workUnitId && environment.namespaceId === input.namespaceId && environment.repoRoot === input.repoRoot && environment.integrationBranch === input.integrationBranch && environment.branch === input.branch && environment.worktreePath === input.worktreePath && environment.createdBy === input.createdBy;
+var WorkUnitEnvironmentService = class {
+  store;
+  git;
+  clock;
+  idGenerator;
+  fault;
+  locks;
+  constructor({
+    store,
+    git,
+    clock = () => /* @__PURE__ */ new Date(),
+    idGenerator = () => randomUUID5(),
+    fault = async () => {
+    }
+  }) {
+    this.store = store;
+    this.git = git;
+    this.clock = clock;
+    this.idGenerator = idGenerator;
+    this.fault = fault;
+    this.locks = /* @__PURE__ */ new Map();
+  }
+  _locked(ns, id, fn) {
+    const k = `${ns}\0${id}`;
+    const p = this.locks.get(k) ?? Promise.resolve();
+    const o = p.then(fn);
+    const t = o.catch(() => {
+    });
+    this.locks.set(k, t);
+    return o.finally(() => {
+      if (this.locks.get(k) === t) this.locks.delete(k);
+    });
+  }
+  async provision(input) {
+    const id = input.environmentId ?? this.idGenerator();
+    return this._locked(input.namespaceId, id, () => this._provision(input, id));
+  }
+  async _provision(input, id) {
+    let current = await this.store.read(input.namespaceId, id);
+    if (current) {
+      const e = current.environment;
+      if (!sameIdentity(e, input, id)) return { ok: false, error: { code: "ENVIRONMENT_IDENTITY_CONFLICT" } };
+      if (e.lifecycleState !== "provisioning")
+        return e.lifecycleState === "error" ? { ok: false, error: { code: "ENVIRONMENT_ERROR" } } : { ok: false, error: { code: "INVALID_PROVISION" } };
+      const reconciliation = await this.git.reconcile(e);
+      if (reconciliation.status === "owned") {
+        if (!e.baseCommit) return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" } };
+        return { ok: true, changed: false, snapshot: current, headCommit: reconciliation.headCommit ?? null };
+      }
+      if (reconciliation.status === "uncertain") return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" } };
+    }
+    let reserved = current;
+    try {
+      const facts = await this.git.provisionWorktree(input, async (inspected) => {
+        if (!reserved) {
+          const descriptor = {
+            schemaVersion: "1",
+            environmentId: id,
+            workUnitId: input.workUnitId,
+            ...input.workflowId ? { workflowId: input.workflowId } : {},
+            namespaceId: input.namespaceId,
+            ...input.businessRef ? { businessRef: input.businessRef } : {},
+            ...input.businessType ? { businessType: input.businessType } : {},
+            repoRoot: inspected.repoRoot,
+            integrationBranch: inspected.integrationBranch,
+            branch: input.branch,
+            worktreePath: inspected.worktreePath,
+            baseCommit: inspected.baseCommit,
+            createdAt: this.clock().toISOString(),
+            createdBy: input.createdBy,
+            lifecycleState: "provisioning"
+          };
+          const r = await this.store.reserve(descriptor);
+          if (!r.ok) throw Object.assign(new Error("STORE_REJECTED"), { code: "STORE_REJECTED" });
+          reserved = r.snapshot;
+        }
+      });
+      await this.fault("after-git-add", { namespaceId: input.namespaceId, environmentId: id });
+      current = await this.store.read(input.namespaceId, id);
+      if (current.environment.baseCommit !== facts.baseCommit)
+        return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" } };
+      return { ok: true, changed: false, snapshot: current, headCommit: facts.headCommit };
+    } catch (error2) {
+      current = await this.store.read(input.namespaceId, id);
+      if (current?.environment.lifecycleState === "provisioning") {
+        let reconciliation;
+        try {
+          reconciliation = await this.git.reconcile(current.environment);
+        } catch {
+          return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" } };
+        }
+        if (reconciliation.status === "owned") return { ok: false, error: { code: "POST_ADD_RECOVERY_REQUIRED" } };
+        if (reconciliation.status === "uncertain") return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" } };
+        await this.store.transition(
+          input.namespaceId,
+          id,
+          { ...current.environment, lifecycleState: "error" },
+          { expectedRevision: current.revision, errorCode: machine(error2) }
+        );
+      }
+      throw error2;
+    }
+  }
+  async bindParentCase(ns, id, caseId) {
+    return this._locked(ns, id, async () => {
+      const c = await this.store.read(ns, id);
+      if (c?.environment.lifecycleState === "active" && c.environment.parentCaseId === caseId)
+        return { ok: true, changed: false, snapshot: c };
+      if (!c || c.environment.lifecycleState !== "provisioning" || !c.environment.baseCommit)
+        return { ok: false, error: { code: "INVALID_BIND" } };
+      const existing = await this.store.list(ns, { states: ["active"] });
+      if (existing.some(
+        (snapshot) => snapshot.environment.environmentId !== id && snapshot.environment.parentCaseId === caseId
+      ))
+        return { ok: false, error: { code: "WRITER_ALREADY_ACTIVE" } };
+      if (existing.some(
+        (snapshot) => snapshot.environment.environmentId !== id && snapshot.environment.worktreePath === c.environment.worktreePath
+      ))
+        return { ok: false, error: { code: "WORKTREE_ALREADY_ACTIVE" } };
+      return this.store.transition(
+        ns,
+        id,
+        { ...c.environment, parentCaseId: caseId, lifecycleState: "active" },
+        { expectedRevision: c.revision }
+      );
+    });
+  }
+  async inspect(ns, id) {
+    return this._locked(ns, id, async () => {
+      const snapshot = await this.store.read(ns, id);
+      if (!snapshot) return { ok: false, error: { code: "NOT_FOUND" } };
+      if (snapshot.environment.lifecycleState === "removed")
+        return { ok: true, snapshot, reconciliation: { status: "absent" } };
+      const reconciliation = await this.git.reconcile(snapshot.environment);
+      if (reconciliation.status !== "owned")
+        return { ok: false, error: { code: "OWNERSHIP_UNCERTAIN" }, snapshot, reconciliation };
+      return { ok: true, snapshot, reconciliation };
+    });
+  }
+  async setState(ns, id, state) {
+    return this._locked(ns, id, async () => {
+      const c = await this.store.read(ns, id);
+      return c ? this.store.transition(ns, id, { ...c.environment, lifecycleState: state }, { expectedRevision: c.revision }) : { ok: false, error: { code: "NOT_FOUND" } };
+    });
+  }
+  async remove(ns, id) {
+    return this._locked(ns, id, async () => {
+      const c = await this.store.read(ns, id);
+      if (!c) return { ok: false, error: { code: "NOT_FOUND" } };
+      if (c.environment.lifecycleState === "removed") return { ok: true, changed: false, snapshot: c };
+      if (!["completed", "abandoned", "error"].includes(c.environment.lifecycleState))
+        return { ok: false, error: { code: "INVALID_REMOVE" } };
+      await this.git.removeWorktree(c.environment);
+      return this.store.transition(
+        ns,
+        id,
+        { ...c.environment, lifecycleState: "removed" },
+        { expectedRevision: c.revision }
+      );
+    });
+  }
+  async listRecoveryCandidates(ns) {
+    return this.store.list(ns, { states: ["provisioning", "error"] });
+  }
+};
+
+// ../src/application/environment/work-unit-environment-controller.ts
+var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var ALLOWED = /* @__PURE__ */ new Set(["workflowId", "workUnitId", "integrationBranch", "branch"]);
+var error = (send, status, code, message) => send(status, { error: { code, message } });
+var publicEnvironment = (result) => {
+  const bound = result.snapshot.environment.lifecycleState === "active" && result.reconciliation?.status === "owned";
+  return {
+    revision: result.snapshot.revision,
+    environment: result.snapshot.environment,
+    reconciliation: result.reconciliation ?? null,
+    headCommit: (result.reconciliation?.status === "owned" ? result.reconciliation.headCommit : void 0) ?? result.headCommit ?? null,
+    fileAccess: {
+      status: bound ? "bound" : "blocked",
+      code: bound ? null : "ENVIRONMENT_NOT_BOUND",
+      rootPath: result.snapshot.environment.worktreePath
+    }
+  };
+};
+var WorkUnitEnvironmentController = class {
+  store;
+  git;
+  policy;
+  workflowStore;
+  service;
+  constructor({
+    store,
+    git,
+    policy,
+    workflowStore,
+    clock,
+    idGenerator,
+    fault
+  }) {
+    this.store = store;
+    this.git = git;
+    this.policy = policy;
+    this.workflowStore = workflowStore;
+    this.service = new WorkUnitEnvironmentService({
+      store,
+      git,
+      ...clock ? { clock } : {},
+      ...idGenerator ? { idGenerator } : {},
+      ...fault ? { fault } : {}
+    });
+  }
+  async initialize() {
+    await this.store.initialize();
+  }
+  async provision({
+    namespaceId,
+    caseId,
+    createdBy,
+    body
+  }) {
+    if (!UUID2.test(namespaceId ?? "") || !UUID2.test(caseId ?? "") || !SAFE3.test(createdBy ?? ""))
+      return { ok: false, status: 400, error: { code: "INVALID_TRUST_CONTEXT" } };
+    const requestBody = body ?? {};
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(requestBody).some((key) => !ALLOWED.has(key)) || !SAFE3.test(requestBody.workflowId ?? "") || !SAFE3.test(requestBody.workUnitId ?? ""))
+      return { ok: false, status: 400, error: { code: "INVALID_ENVIRONMENT_REQUEST" } };
+    const roots = await this.policy.resolve(namespaceId, requestBody);
+    if (!roots?.repoRoot || !roots?.worktreePath)
+      return { ok: false, status: 422, error: { code: "ENVIRONMENT_POLICY_UNAVAILABLE" } };
+    const workflow = await this.workflowStore?.read(namespaceId, requestBody.workflowId);
+    if (!workflow?.instance || workflow.instance.controllerExecution?.kind !== "agentos" || workflow.instance.controllerExecution.caseId !== caseId)
+      return { ok: false, status: 409, error: { code: "WORKFLOW_ENVIRONMENT_CONTEXT_MISMATCH" } };
+    const environmentId = `${requestBody.workflowId}-${requestBody.workUnitId}`;
+    const result = await this.service.provision({
+      ...requestBody,
+      environmentId,
+      namespaceId,
+      repoRoot: roots.repoRoot,
+      worktreePath: roots.worktreePath,
+      createdBy
+    });
+    if (!result.ok)
+      return {
+        ok: false,
+        status: result.error.code === "ENVIRONMENT_IDENTITY_CONFLICT" ? 409 : 422,
+        error: result.error
+      };
+    const bound = await this.service.bindParentCase(namespaceId, environmentId, caseId);
+    if (!bound.ok) return { ok: false, status: 409, error: bound.error };
+    const inspected = await this.service.inspect(namespaceId, environmentId);
+    if (!inspected.ok) return { ok: false, status: 409, error: { code: "ENVIRONMENT_NOT_BOUND" } };
+    const linked = await this.workflowStore?.bindEnvironment(namespaceId, requestBody.workflowId, {
+      environmentId,
+      environmentHash: inspected.snapshot.environmentHash
+    });
+    if (!linked?.ok) return { ok: false, status: 409, error: linked?.error ?? { code: "ENVIRONMENT_NOT_BOUND" } };
+    return { ok: true, status: result.changed ? 201 : 200, data: publicEnvironment(inspected) };
+  }
+  async get(namespaceId, workflowId) {
+    if (!UUID2.test(namespaceId ?? "") || !SAFE3.test(workflowId ?? ""))
+      return { ok: false, status: 400, error: { code: "INVALID_LOOKUP" } };
+    const workflow = await this.workflowStore?.read(namespaceId, workflowId);
+    const ref = workflow?.instance?.environmentRef;
+    if (!ref) return { ok: false, status: 404, error: { code: "ENVIRONMENT_NOT_FOUND" } };
+    const snapshot = await this.store.read(namespaceId, ref.environmentId);
+    if (!snapshot || snapshot.environmentHash !== ref.environmentHash)
+      return { ok: false, status: 409, error: { code: "ENVIRONMENT_BINDING_UNCERTAIN" } };
+    const result = await this.service.inspect(namespaceId, ref.environmentId);
+    if (!result.ok) return { ok: false, status: 409, error: { code: result.error.code } };
+    return { ok: true, status: 200, data: publicEnvironment(result) };
+  }
+  async reconcile(namespaceId, workflowId) {
+    return this.get(namespaceId, workflowId);
+  }
+  async release(namespaceId, workflowId, state) {
+    if (!["completed", "abandoned"].includes(state))
+      return { ok: false, status: 400, error: { code: "INVALID_RELEASE_STATE" } };
+    const found = await this.get(namespaceId, workflowId);
+    if (!found.ok) return found;
+    const environmentId = found.data.environment.environmentId;
+    const transitioned = await this.service.setState(
+      namespaceId,
+      environmentId,
+      state
+    );
+    if (!transitioned.ok) return { ok: false, status: 409, error: transitioned.error };
+    return {
+      ok: true,
+      status: 200,
+      data: publicEnvironment({ snapshot: transitioned.snapshot, reconciliation: found.data.reconciliation })
+    };
+  }
+};
+async function handleWorkUnitEnvironmentRequest({
+  method,
+  path,
+  url,
+  readBody,
+  send,
+  controller,
+  identity,
+  log = console
+}) {
+  const provision = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment\/provision$/);
+  const reconcile = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment\/reconcile$/);
+  const release = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment\/release$/);
+  const detail = path.match(/^\/api\/factory\/workflows\/([^/]+)\/environment$/);
+  if (!provision && !reconcile && !release && !detail) return false;
+  try {
+    if (provision && method === "POST") {
+      const trust2 = await identity();
+      if (!trust2) {
+        error(send, 401, "TRUST_CONTEXT_UNAVAILABLE", "Trusted AgentOS execution context is required.");
+        return true;
+      }
+      const result = await controller.provision({
+        namespaceId: trust2.namespaceId,
+        caseId: trust2.caseId,
+        createdBy: trust2.actorId,
+        body: await readBody()
+      });
+      if (result.ok) send(result.status, { data: result.data });
+      else error(send, result.status, result.error.code, "Environment provisioning was rejected.");
+      return true;
+    }
+    const trust = await identity();
+    if (!trust) {
+      error(send, 401, "TRUST_CONTEXT_UNAVAILABLE", "Trusted AgentOS execution context is required.");
+      return true;
+    }
+    const namespaceId = trust.namespaceId;
+    const workflowId = decodeURIComponent((reconcile ?? release ?? detail)[1]);
+    if (reconcile && method === "POST") {
+      const result = await controller.reconcile(namespaceId, workflowId);
+      if (result.ok && result.data.environment.parentCaseId !== trust.caseId) {
+        error(send, 409, "ENVIRONMENT_NOT_BOUND", "Environment is not bound to the controlling case.");
+        return true;
+      }
+      if (result.ok) send(200, { data: result.data });
+      else error(send, result.status, result.error.code, "Environment reconciliation failed closed.");
+      return true;
+    }
+    if (release && method === "POST") {
+      const current = await controller.get(namespaceId, workflowId);
+      if (current.ok && current.data.environment.parentCaseId !== trust.caseId) {
+        error(send, 409, "ENVIRONMENT_NOT_BOUND", "Environment is not bound to the controlling case.");
+        return true;
+      }
+      const body = current.ok ? await readBody() : null;
+      const result = current.ok ? await controller.release(namespaceId, workflowId, body.state) : current;
+      if (result.ok) send(200, { data: result.data });
+      else error(send, result.status, result.error.code, "Environment release was rejected.");
+      return true;
+    }
+    if (detail && method === "GET") {
+      const result = await controller.get(namespaceId, workflowId);
+      if (result.ok && result.data.environment.parentCaseId !== trust.caseId) {
+        error(send, 409, "ENVIRONMENT_NOT_BOUND", "Environment is not bound to the controlling case.");
+        return true;
+      }
+      if (result.ok) send(200, { data: result.data });
+      else error(send, result.status, result.error.code, "Environment is unavailable.");
+      return true;
+    }
+    error(send, 405, "METHOD_NOT_ALLOWED", "Method not allowed.");
+    return true;
+  } catch (cause) {
+    log.error("Work unit environment failure", { code: cause?.code ?? "UNEXPECTED" });
+    error(send, 500, "ENVIRONMENT_STORAGE_FAILURE", "Environment control-plane is unavailable.");
+    return true;
+  }
+}
 export {
   AGENT_STEP_ATTEMPT_IMMUTABLE_FIELDS,
   AGENT_STEP_ATTEMPT_STATUSES,
@@ -3826,6 +4608,7 @@ export {
   AgentStepAttemptStore,
   AgentStepResultStore,
   DEFAULT_PROCESS_LOCK_FILE,
+  ENVIRONMENT_STORE_ERROR_CODES,
   FilesystemWorkflowDefinitionRepository,
   FilesystemWorkflowEvidenceRepository,
   FilesystemWorkflowHumanInteractionRepository,
@@ -3848,6 +4631,12 @@ export {
   WORKFLOW_HUMAN_INTERACTION_STATUSES,
   WORKFLOW_STATUSES,
   WORKFLOW_TRANSITIONS,
+  WORK_UNIT_ENVIRONMENT_ERROR_CODES,
+  WORK_UNIT_ENVIRONMENT_STATES,
+  WorkUnitEnvironmentController,
+  WorkUnitEnvironmentService,
+  WorkUnitEnvironmentStore,
+  WorkUnitEnvironmentStoreError,
   WorkflowDefinitionRepositoryError,
   WorkflowHumanInteractionRepositoryError,
   WorkflowInstanceRepositoryError,
@@ -3906,6 +4695,7 @@ export {
   getAgentOsRuntimeAdapter,
   getCase,
   getCurrentRun,
+  handleWorkUnitEnvironmentRequest,
   hashAgentBrief,
   hashAgentStepResult,
   hashOracleDefinition,
@@ -3957,9 +4747,14 @@ export {
   unregisterActiveCase,
   validateAgentStepAttempt,
   validateAgentStepResultBusiness,
+  validateCanonicalAbsolutePath,
+  validateGitRef,
   validateHumanInteractionOpenInput,
+  validateIsoInstant,
+  validateNamespaceId,
   validateOracleDefinition,
   validateOracleRoot,
+  validateWorkUnitEnvironment,
   validateWorkflowDefinition,
   validateWorkflowEvidenceInput,
   validateWorkflowTransitionRequest,
