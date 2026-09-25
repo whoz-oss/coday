@@ -75,3 +75,34 @@ export {
   createFilesystemDeliveryRepository,
   type DeliveryStoreLike,
 } from './filesystem-delivery-repository.js'
+
+// --------------------------------------------------------------------------
+// SQL adapters (PostgreSQL skeleton for the pilot aggregates).
+//
+// Driver-agnostic: they depend on the structural `SqlClient` port and are
+// exercised by the shared repository contract tests. The `pg` driver itself is
+// loaded lazily at the composition edge, never bundled into the runtime
+// artifact.
+// --------------------------------------------------------------------------
+export {
+  DEFAULT_ORGANIZATION_ID,
+  DEFAULT_WORKSTREAM_ID,
+  createPgPoolClient,
+  parseJsonColumn,
+  resolveSqlDatabaseConfig,
+  type SqlClient,
+  type SqlDatabaseConfig,
+  type SqlQueryResult,
+} from './sql/db.js'
+
+export {
+  SqlWorkflowDefinitionRepository,
+  createSqlWorkflowDefinitionRepository,
+  type SqlWorkflowDefinitionRepositoryOptions,
+} from './sql/sql-workflow-definition-repository.js'
+
+export {
+  SqlWorkflowInstanceRepository,
+  createSqlWorkflowInstanceRepository,
+  type SqlWorkflowInstanceRepositoryOptions,
+} from './sql/sql-workflow-instance-repository.js'
