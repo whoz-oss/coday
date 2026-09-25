@@ -192,6 +192,26 @@ node factory/tests/test-us-loop.mjs
 
 ---
 
+### `test-artifact-store.mjs`
+
+**Catégorie** : unité (fakes injectés, sans réseau ni Docker)
+
+Vérifie le port `ArtifactStore` et ses adaptateurs réexportés par le bundle :
+- `computeArtifactHash` (adresse de contenu SHA-256) et `createArtifactId`.
+- `MemoryArtifactStore` : `putArtifact`, `getArtifactMetadata`, `openArtifact`
+  (streaming par morceaux), rétention (`retentionStatus`, `retentionUntil`),
+  legal hold et transitions `deleteArtifact` / `purgeArtifact` vers
+  `availabilityStatus: 'purged'`.
+- `S3ArtifactStore` : protocole *upload-then-commit* (`uploads/` → `objects/` →
+  `metadata/`) et `collectOrphanedUploads()`, exercés contre un client S3 factice
+  en mémoire (aucun appel réseau).
+
+```bash
+node factory/tests/test-artifact-store.mjs
+```
+
+---
+
 ### `typescript-factory-operational.mjs`
 
 **Catégorie** : contrat de l'unique bundle runtime généré (hors-ligne, build préalable requis)
