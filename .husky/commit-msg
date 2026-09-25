@@ -1,1 +1,15 @@
-npx --no -- commitlint --edit $1
+#!/usr/bin/env sh
+
+# Skip commitlint for SSSF Factory automated commits, agent-generated commits and
+# any commit explicitly opting out via environment variables.
+if [ -n "$SSSF_AUTOMATED_COMMIT" ] || [ -n "$SSSF_RUN_ID" ] || [ -n "$SSSF_PHASE" ] || [ -n "$COMMITLINT_SKIP" ] || [ -n "$SKIP_COMMITLINT" ]; then
+  exit 0
+fi
+
+# Skip commitlint when the git identity looks like the factory or a bot.
+identity="$(printf '%s %s' "${GIT_AUTHOR_NAME:-}" "${GIT_COMMITTER_NAME:-}" | tr '[:upper:]' '[:lower:]')"
+case "$identity" in
+  *sssf* | *factory* | *bot*) exit 0 ;;
+esac
+
+npx --no -- commitlint --edit "$1"
