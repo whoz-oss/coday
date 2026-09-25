@@ -2017,9 +2017,10 @@ var SqlWorkflowInstanceRepository = class {
       ]
     );
     const stored = await this.#select(namespaceId, command.workflowId);
-    if (!stored) throw new WorkflowInstanceRepositoryError("WORKFLOW_INSTANCE_CREATE_FAILED", {
-      workflowId: command.workflowId
-    });
+    if (!stored)
+      throw new WorkflowInstanceRepositoryError("WORKFLOW_INSTANCE_CREATE_FAILED", {
+        workflowId: command.workflowId
+      });
     return readSnapshot(stored);
   }
   async transition(namespaceId, workflowId, transition) {
@@ -2070,8 +2071,7 @@ var SqlWorkflowInstanceRepository = class {
         ACTIVE_STATUS
       ]
     );
-    if (!rowCount)
-      throw new WorkflowInstanceRepositoryError("REVISION_CONFLICT", { workflowId, expectedRevision });
+    if (!rowCount) throw new WorkflowInstanceRepositoryError("REVISION_CONFLICT", { workflowId, expectedRevision });
     return {
       instance: applied.instance,
       projection: applied.projection
@@ -2082,15 +2082,7 @@ var SqlWorkflowInstanceRepository = class {
       `UPDATE workflow_instances
          SET status = $1, updated_at = $2
        WHERE organization_id = $3 AND workstream_id = $4 AND namespace_id = $5 AND workflow_id = $6 AND status = $7`,
-      [
-        to,
-        (/* @__PURE__ */ new Date()).toISOString(),
-        this.#organizationId,
-        this.#workstreamId,
-        namespaceId,
-        workflowId,
-        from
-      ]
+      [to, (/* @__PURE__ */ new Date()).toISOString(), this.#organizationId, this.#workstreamId, namespaceId, workflowId, from]
     );
     if (!rowCount) throw new WorkflowInstanceRepositoryError(failureCode, { workflowId });
   }
@@ -9837,6 +9829,460 @@ async function syncForgeWorkflowProjection({
     projectionHash: published.snapshot.projectionHash
   };
 }
+
+// ../src/adapters/artifact/artifact-hash.ts
+import { createHash as createHash25, randomUUID as randomUUID13 } from "node:crypto";
+var ARTIFACT_HASH_PREFIX = "sha256";
+function computeArtifactHash(data) {
+  return `${ARTIFACT_HASH_PREFIX}:${createHash25("sha256").update(data).digest("hex")}`;
+}
+function createArtifactId() {
+  return randomUUID13();
+}
+
+// ../src/adapters/artifact/memory-artifact-store.ts
+var MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1e3;
+function toArtifactBytes(data) {
+  return data instanceof Uint8Array ? data : new Uint8Array(data);
+}
+function artifactTimestamp(value) {
+  return value instanceof Date ? value.getTime() : Date.parse(value);
+}
+function computeRetentionUntil(createdAt, retentionDays) {
+  if (retentionDays === void 0) return void 0;
+  return new Date(createdAt.getTime() + retentionDays * MILLISECONDS_PER_DAY).toISOString();
+}
+function isRetentionActive(metadata, now) {
+  if (metadata.retentionUntil === void 0) return false;
+  return artifactTimestamp(metadata.retentionUntil) > now.getTime();
+}
+function computeRetentionStatus(metadata, now) {
+  return isRetentionActive(metadata, now) ? "active" : "expired";
+}
+function refreshArtifactMetadata(metadata, now) {
+  return { ...metadata, retentionStatus: computeRetentionStatus(metadata, now) };
+}
+function isArtifactDestroyable(metadata, now) {
+  if (metadata.availabilityStatus === "purged") return false;
+  if (metadata.legalHold) return false;
+  return !isRetentionActive(metadata, now);
+}
+function buildArtifactMetadata(params) {
+  const retentionUntil = computeRetentionUntil(params.now, params.retentionDays);
+  const metadata = {
+    id: params.id,
+    owner: params.owner,
+    hash: computeArtifactHash(params.data),
+    size: params.data.byteLength,
+    contentType: params.contentType,
+    availabilityStatus: "available",
+    retentionStatus: retentionUntil !== void 0 ? "active" : "expired",
+    legalHold: false,
+    createdAt: params.now.toISOString(),
+    ...params.retentionDays !== void 0 ? { retentionDays: params.retentionDays } : {},
+    ...retentionUntil !== void 0 ? { retentionUntil } : {}
+  };
+  return refreshArtifactMetadata(metadata, params.now);
+}
+async function* streamArtifactBytes(data, chunkSize) {
+  const size = Math.max(1, chunkSize);
+  for (let offset = 0; offset < data.byteLength; offset += size) {
+    yield data.subarray(offset, Math.min(offset + size, data.byteLength));
+  }
+}
+var MemoryArtifactStore = class {
+  #entries = /* @__PURE__ */ new Map();
+  #chunkSize;
+  #now;
+  constructor(options = {}) {
+    this.#chunkSize = options.chunkSize ?? 64 * 1024;
+    this.#now = options.now ?? (() => /* @__PURE__ */ new Date());
+  }
+  async putArtifact(params) {
+    const now = this.#now();
+    const data = toArtifactBytes(params.data);
+    const metadata = buildArtifactMetadata({
+      id: createArtifactId(),
+      owner: params.owner,
+      contentType: params.contentType,
+      data,
+      now,
+      ...params.retentionDays !== void 0 ? { retentionDays: params.retentionDays } : {}
+    });
+    this.#entries.set(metadata.id, { metadata, data: Uint8Array.from(data) });
+    return metadata;
+  }
+  async getArtifactMetadata(artifactId) {
+    const entry = this.#entries.get(artifactId);
+    if (!entry) return null;
+    return refreshArtifactMetadata(entry.metadata, this.#now());
+  }
+  async openArtifact(artifactId) {
+    const entry = this.#entries.get(artifactId);
+    if (!entry) return null;
+    if (entry.metadata.availabilityStatus === "purged") return null;
+    return {
+      stream: streamArtifactBytes(entry.data, this.#chunkSize),
+      metadata: refreshArtifactMetadata(entry.metadata, this.#now())
+    };
+  }
+  async deleteArtifact(artifactId, reason) {
+    return this.#destroy(artifactId, reason ?? "deleted");
+  }
+  async purgeArtifact(artifactId, reason) {
+    return this.#destroy(artifactId, reason ?? "retention-expired");
+  }
+  async setLegalHold(artifactId, legalHold, reason) {
+    const entry = this.#entries.get(artifactId);
+    if (!entry) return null;
+    const now = this.#now();
+    const { legalHoldReason: _previousReason, legalHoldSetAt: _previousSetAt, ...rest } = entry.metadata;
+    const updated = legalHold ? {
+      ...rest,
+      legalHold: true,
+      ...reason !== void 0 ? { legalHoldReason: reason } : {},
+      legalHoldSetAt: now.toISOString()
+    } : { ...rest, legalHold: false };
+    const refreshed = refreshArtifactMetadata(updated, now);
+    entry.metadata = refreshed;
+    return refreshed;
+  }
+  #destroy(artifactId, reason) {
+    const entry = this.#entries.get(artifactId);
+    if (!entry) return Promise.resolve(false);
+    const now = this.#now();
+    if (!isArtifactDestroyable(entry.metadata, now)) return Promise.resolve(false);
+    entry.metadata = refreshArtifactMetadata(
+      {
+        ...entry.metadata,
+        availabilityStatus: "purged",
+        purgedAt: now.toISOString(),
+        purgeReason: reason
+      },
+      now
+    );
+    entry.data = new Uint8Array(0);
+    return Promise.resolve(true);
+  }
+};
+function createMemoryArtifactStore(options) {
+  return new MemoryArtifactStore(options);
+}
+
+// ../src/adapters/artifact/s3-object-client.ts
+import { createHash as createHash26, createHmac } from "node:crypto";
+var SIGNING_ALGORITHM = "AWS4-HMAC-SHA256";
+var SERVICE = "s3";
+function sha256Hex(data) {
+  return createHash26("sha256").update(data).digest("hex");
+}
+function hmac(key, data) {
+  return createHmac("sha256", key).update(data, "utf8").digest();
+}
+function formatAmzDate(date) {
+  const amzDate = date.toISOString().replace(/[:-]|\.\d{3}/g, "");
+  return { amzDate, dateStamp: amzDate.slice(0, 8) };
+}
+function encodeS3Component(value) {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+function encodeS3KeyPath(key) {
+  return key.split("/").map(encodeS3Component).join("/");
+}
+function decodeXmlEntities(value) {
+  return value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+}
+async function* iterateWebStream(body) {
+  const reader = body.getReader();
+  try {
+    for (; ; ) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) yield value;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+async function* emptyStream() {
+}
+var S3ObjectClient = class {
+  #config;
+  #base;
+  #host;
+  #fetch;
+  constructor(config) {
+    if (!config.endpoint) throw new Error("S3ObjectClient requires an endpoint");
+    if (!config.bucket) throw new Error("S3ObjectClient requires a bucket");
+    this.#config = config;
+    this.#base = config.endpoint.replace(/\/+$/, "");
+    this.#host = new URL(this.#base).host;
+    this.#fetch = config.fetchImpl ?? fetch;
+  }
+  /** Stores an object at `key`. */
+  async putObject(key, body, contentType) {
+    const response2 = await this.#send("PUT", key, {
+      body,
+      ...contentType !== void 0 ? { contentType } : {}
+    });
+    if (!response2.ok) throw await this.#failure("PUT", key, response2);
+    await response2.arrayBuffer();
+  }
+  /** Server-side copies `sourceKey` to `destinationKey`. */
+  async copyObject(sourceKey, destinationKey) {
+    const response2 = await this.#send("PUT", destinationKey, {
+      copySource: `/${this.#config.bucket}/${encodeS3KeyPath(sourceKey)}`
+    });
+    if (!response2.ok) throw await this.#failure("COPY", destinationKey, response2);
+    await response2.arrayBuffer();
+  }
+  /** Reads an object, or returns `null` when it does not exist. */
+  async getObject(key) {
+    const response2 = await this.#send("GET", key);
+    if (response2.status === 404) return null;
+    if (!response2.ok) throw await this.#failure("GET", key, response2);
+    const body = response2.body;
+    return { stream: body ? iterateWebStream(body) : emptyStream() };
+  }
+  /** Deletes an object. Returns `true` when a deletion happened. */
+  async deleteObject(key) {
+    const response2 = await this.#send("DELETE", key);
+    if (response2.status === 404) return false;
+    if (!response2.ok && response2.status !== 204) throw await this.#failure("DELETE", key, response2);
+    await response2.arrayBuffer();
+    return true;
+  }
+  /** Returns whether an object exists. */
+  async headObject(key) {
+    const response2 = await this.#send("HEAD", key);
+    if (response2.status === 404) return false;
+    if (!response2.ok) throw await this.#failure("HEAD", key, response2);
+    return true;
+  }
+  /** Lists every object key under `prefix`, following continuation tokens. */
+  async listObjectKeys(prefix) {
+    const keys = [];
+    let continuationToken;
+    for (; ; ) {
+      const query = { "list-type": "2", prefix };
+      if (continuationToken !== void 0) query["continuation-token"] = continuationToken;
+      const response2 = await this.#send("GET", "", { query });
+      if (!response2.ok) throw await this.#failure("LIST", prefix, response2);
+      const xml = await response2.text();
+      for (const match2 of xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)) {
+        const key = match2[1];
+        if (key !== void 0) keys.push(decodeXmlEntities(key));
+      }
+      if (!/<IsTruncated>true<\/IsTruncated>/.test(xml)) break;
+      const token = xml.match(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/)?.[1];
+      if (token === void 0) break;
+      continuationToken = decodeXmlEntities(token);
+    }
+    return keys;
+  }
+  async #failure(operation, key, response2) {
+    let detail = "";
+    try {
+      detail = (await response2.text()).slice(0, 512);
+    } catch {
+      detail = "";
+    }
+    return new Error(
+      `S3 ${operation} ${key || "<bucket>"} failed with status ${response2.status}${detail ? `: ${detail}` : ""}`
+    );
+  }
+  #canonicalQuery(query) {
+    if (!query) return "";
+    return Object.keys(query).sort().map((name) => `${encodeS3Component(name)}=${encodeS3Component(query[name] ?? "")}`).join("&");
+  }
+  async #send(method, key, options = {}) {
+    const canonicalQuery = this.#canonicalQuery(options.query);
+    const canonicalUri = `/${encodeS3Component(this.#config.bucket)}${key ? `/${encodeS3KeyPath(key)}` : ""}`;
+    const url = `${this.#base}${canonicalUri}${canonicalQuery ? `?${canonicalQuery}` : ""}`;
+    const payload = options.body ?? new Uint8Array();
+    const payloadHash = sha256Hex(payload);
+    const headers = {
+      host: this.#host,
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": ""
+    };
+    const { amzDate, dateStamp } = formatAmzDate(/* @__PURE__ */ new Date());
+    headers["x-amz-date"] = amzDate;
+    if (this.#config.sessionToken !== void 0) headers["x-amz-security-token"] = this.#config.sessionToken;
+    if (options.contentType !== void 0) headers["content-type"] = options.contentType;
+    if (options.copySource !== void 0) headers["x-amz-copy-source"] = options.copySource;
+    const signedHeaderNames = Object.keys(headers).filter((name) => name === "host" || name.startsWith("x-amz-")).sort();
+    const canonicalHeaders = signedHeaderNames.map((name) => `${name}:${(headers[name] ?? "").trim()}
+`).join("");
+    const signedHeaders = signedHeaderNames.join(";");
+    const canonicalRequest = [method, canonicalUri, canonicalQuery, canonicalHeaders, signedHeaders, payloadHash].join(
+      "\n"
+    );
+    const scope = `${dateStamp}/${this.#config.region}/${SERVICE}/aws4_request`;
+    const stringToSign = [SIGNING_ALGORITHM, amzDate, scope, sha256Hex(canonicalRequest)].join("\n");
+    const signingKey = hmac(
+      hmac(hmac(hmac(`AWS4${this.#config.secretAccessKey}`, dateStamp), this.#config.region), SERVICE),
+      "aws4_request"
+    );
+    const signature = createHmac("sha256", signingKey).update(stringToSign, "utf8").digest("hex");
+    const requestHeaders = {
+      authorization: `${SIGNING_ALGORITHM} Credential=${this.#config.accessKeyId}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+      "x-amz-content-sha256": payloadHash,
+      "x-amz-date": amzDate
+    };
+    if (this.#config.sessionToken !== void 0) requestHeaders["x-amz-security-token"] = this.#config.sessionToken;
+    if (options.contentType !== void 0) requestHeaders["content-type"] = options.contentType;
+    if (options.copySource !== void 0) requestHeaders["x-amz-copy-source"] = options.copySource;
+    const init = { method, headers: requestHeaders };
+    if (method !== "GET" && method !== "HEAD") init.body = Buffer.from(payload);
+    return this.#fetch(url, init);
+  }
+};
+function createS3ObjectClient(config) {
+  return new S3ObjectClient(config);
+}
+
+// ../src/adapters/artifact/s3-artifact-store.ts
+var DEFAULT_UPLOAD_PREFIX = "uploads";
+var DEFAULT_OBJECT_PREFIX = "objects";
+var DEFAULT_METADATA_PREFIX = "metadata";
+async function readAllBytes(stream) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of stream) {
+    chunks.push(chunk);
+    total += chunk.byteLength;
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+function encodeJson(value) {
+  return Buffer.from(JSON.stringify(value), "utf8");
+}
+var S3ArtifactStore = class {
+  #client;
+  #uploadPrefix;
+  #objectPrefix;
+  #metadataPrefix;
+  #now;
+  constructor(config) {
+    this.#client = config.client ?? new S3ObjectClient(config);
+    this.#uploadPrefix = config.uploadPrefix ?? DEFAULT_UPLOAD_PREFIX;
+    this.#objectPrefix = config.objectPrefix ?? DEFAULT_OBJECT_PREFIX;
+    this.#metadataPrefix = config.metadataPrefix ?? DEFAULT_METADATA_PREFIX;
+    this.#now = config.now ?? (() => /* @__PURE__ */ new Date());
+  }
+  async putArtifact(params) {
+    const now = this.#now();
+    const data = toArtifactBytes(params.data);
+    const id2 = createArtifactId();
+    const hash6 = computeArtifactHash(data);
+    const metadata = buildArtifactMetadata({
+      id: id2,
+      owner: params.owner,
+      contentType: params.contentType,
+      data,
+      now,
+      ...params.retentionDays !== void 0 ? { retentionDays: params.retentionDays } : {}
+    });
+    await this.#client.putObject(this.#stagingKey(id2), Uint8Array.from(data), "application/octet-stream");
+    await this.#client.copyObject(this.#stagingKey(id2), this.#contentKey(hash6));
+    await this.#client.putObject(this.#metadataKey(id2), encodeJson(metadata), "application/json");
+    await this.#bestEffortDelete(this.#stagingKey(id2));
+    return metadata;
+  }
+  async getArtifactMetadata(artifactId) {
+    const response2 = await this.#client.getObject(this.#metadataKey(artifactId));
+    if (!response2) return null;
+    const bytes = await readAllBytes(response2.stream);
+    const metadata = JSON.parse(Buffer.from(bytes).toString("utf8"));
+    return refreshArtifactMetadata(metadata, this.#now());
+  }
+  async openArtifact(artifactId) {
+    const metadata = await this.getArtifactMetadata(artifactId);
+    if (!metadata) return null;
+    if (metadata.availabilityStatus === "purged") return null;
+    const object = await this.#client.getObject(this.#contentKey(metadata.hash));
+    if (!object) return null;
+    return { stream: object.stream, metadata };
+  }
+  async deleteArtifact(artifactId, reason) {
+    return this.#destroy(artifactId, reason ?? "deleted");
+  }
+  async purgeArtifact(artifactId, reason) {
+    return this.#destroy(artifactId, reason ?? "retention-expired");
+  }
+  async setLegalHold(artifactId, legalHold, reason) {
+    const metadata = await this.getArtifactMetadata(artifactId);
+    if (!metadata) return null;
+    const now = this.#now();
+    const { legalHoldReason: _previousReason, legalHoldSetAt: _previousSetAt, ...rest } = metadata;
+    const updated = legalHold ? {
+      ...rest,
+      legalHold: true,
+      ...reason !== void 0 ? { legalHoldReason: reason } : {},
+      legalHoldSetAt: now.toISOString()
+    } : { ...rest, legalHold: false };
+    const refreshed = refreshArtifactMetadata(updated, now);
+    await this.#client.putObject(this.#metadataKey(artifactId), encodeJson(refreshed), "application/json");
+    return refreshed;
+  }
+  /**
+   * Deletes staging objects left behind by interrupted uploads. Returns the
+   * keys that were reclaimed.
+   */
+  async collectOrphanedUploads() {
+    const keys = await this.#client.listObjectKeys(`${this.#uploadPrefix}/`);
+    const reclaimed = [];
+    for (const key of keys) {
+      if (await this.#bestEffortDelete(key)) reclaimed.push(key);
+    }
+    return reclaimed;
+  }
+  async #destroy(artifactId, reason) {
+    const metadata = await this.getArtifactMetadata(artifactId);
+    if (!metadata) return false;
+    const now = this.#now();
+    if (!isArtifactDestroyable(metadata, now)) return false;
+    const purged = refreshArtifactMetadata(
+      {
+        ...metadata,
+        availabilityStatus: "purged",
+        purgedAt: now.toISOString(),
+        purgeReason: reason
+      },
+      now
+    );
+    await this.#client.putObject(this.#metadataKey(artifactId), encodeJson(purged), "application/json");
+    await this.#bestEffortDelete(this.#contentKey(metadata.hash));
+    return true;
+  }
+  async #bestEffortDelete(key) {
+    try {
+      return await this.#client.deleteObject(key);
+    } catch {
+      return false;
+    }
+  }
+  #stagingKey(id2) {
+    return `${this.#uploadPrefix}/${id2}.part`;
+  }
+  #contentKey(hash6) {
+    const digest4 = hash6.startsWith(`${ARTIFACT_HASH_PREFIX}:`) ? hash6.slice(ARTIFACT_HASH_PREFIX.length + 1) : hash6;
+    return `${this.#objectPrefix}/${digest4}`;
+  }
+  #metadataKey(id2) {
+    return `${this.#metadataPrefix}/${id2}.json`;
+  }
+};
+function createS3ArtifactStore(config) {
+  return new S3ArtifactStore(config);
+}
 export {
   AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION,
   AGENT_STEP_ATTEMPT_IMMUTABLE_FIELDS,
@@ -9845,6 +10291,7 @@ export {
   AGENT_STEP_ATTEMPT_TRANSITIONS,
   AGENT_STEP_RESULT_LIMITS,
   AGENT_STEP_RESULT_STATUSES,
+  ARTIFACT_HASH_PREFIX,
   AgentStepAttemptStore,
   AgentStepResultStore,
   COMMENTS_CHAR_BUDGET,
@@ -9896,10 +10343,13 @@ export {
   G2_US_POLICY_VERSION,
   HUMAN_INTERACTION_KINDS,
   KeyedLock,
+  MemoryArtifactStore,
   ORACLE_CATALOG,
   OracleDefinitionRegistry,
   OracleDefinitionRegistryCore,
   REPO_RUN_STORE_POLICY,
+  S3ArtifactStore,
+  S3ObjectClient,
   SAFE_FORGE_TICKET_ID,
   STORAGE_FORMAT_VERSION,
   STORAGE_KERNEL_ERROR_CODES,
@@ -9948,6 +10398,7 @@ export {
   atomicTemporaryPath,
   atomicWriteJson,
   bindFactoryStepResult,
+  buildArtifactMetadata,
   buildOracleCommand,
   buildQuarantineRecord,
   canonicalAgentStepResultJson,
@@ -9962,14 +10413,18 @@ export {
   classifyOracleExecution,
   classifyOracleResult,
   clearActiveCaseId,
+  computeArtifactHash,
   computeCanonicalHash,
   computeForgeSpecHash,
   computeG1EvidenceSetHash,
+  computeRetentionStatus,
+  computeRetentionUntil,
   computeStorySpecHash,
   countTaskOutcomes,
   createAgentOsHttpCaseTerminator,
   createAgentOsHttpClient,
   createAgentOsRuntimeAdapter,
+  createArtifactId,
   createCase,
   createEpicRun,
   createFilesystemAgentStepAttemptRepository,
@@ -9983,8 +10438,11 @@ export {
   createFilesystemWorkflowHumanInteractionRepository,
   createFilesystemWorkflowInstanceRepository,
   createKeyedLock,
+  createMemoryArtifactStore,
   createPgPoolClient,
   createRun,
+  createS3ArtifactStore,
+  createS3ObjectClient,
   createShutdownController,
   createSqlWorkflowDefinitionRepository,
   createSqlWorkflowInstanceRepository,
@@ -10039,8 +10497,10 @@ export {
   isAgentStepAttemptStatus,
   isAgentStepAttemptTerminal,
   isAllowedStoryOracleRequestBody,
+  isArtifactDestroyable,
   isInfrastructureIdentity,
   isNotFoundError,
+  isRetentionActive,
   isSafeAgentStepResultId,
   isValidAgentStepAttemptInstant,
   isWithin,
@@ -10084,6 +10544,7 @@ export {
   readStoryFrontmatter,
   readStorySpec,
   recordHumanDecision,
+  refreshArtifactMetadata,
   registerActiveCase,
   resolveBuildHosts,
   resolveDeliveryVerificationRequest,
@@ -10105,6 +10566,7 @@ export {
   stripAnsi,
   syncDirectory,
   syncForgeWorkflowProjection,
+  toArtifactBytes,
   transitionScopeHash,
   transitionSemanticHash,
   unavailableDeliveryTargetRegistry,

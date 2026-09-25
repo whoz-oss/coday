@@ -1,0 +1,56 @@
+# Local MinIO (S3-compatible object storage) for the Factory ArtifactStore.
+#
+# Usage:
+#   docker compose -f factory/docker-compose.minio.yml up -d
+#   docker compose -f factory/docker-compose.minio.yml ps
+#
+# The one-shot `mc` service waits for MinIO to become healthy, then creates the
+# `coday-artifacts` bucket. Point the S3 adapter at:
+#
+#   endpoint:          http://localhost:9000
+#   region:            us-east-1
+#   bucket:            coday-artifacts
+#   accessKeyId:       factory
+#   secretAccessKey:   factory_dev_pass
+#
+# The Factory runtime itself never needs Docker: the S3/MinIO adapter is only
+# exercised against this local stack, while the offline tests use
+# `MemoryArtifactStore` (see `factory/tests/test-artifact-store.mjs`).
+name: coday-factory-minio
+
+services:
+  coday-minio:
+    image: minio/minio:latest
+    container_name: coday-minio
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: factory
+      MINIO_ROOT_PASSWORD: factory_dev_pass
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # MinIO console
+    volumes:
+      - coday_minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot bucket initialisation. Exits 0 once the bucket exists.
+  coday-minio-init:
+    image: minio/mc:latest
+    container_name: coday-minio-init
+    depends_on:
+      coday-minio:
+        condition: service_healthy
+    entrypoint: >-
+      /bin/sh -c "
+      mc alias set local http://coday-minio:9000 factory factory_dev_pass &&
+      mc mb --ignore-existing local/coday-artifacts &&
+      mc anonymous set none local/coday-artifacts
+      "
+
+volumes:
+  coday_minio_data:

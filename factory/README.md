@@ -225,6 +225,39 @@ FACTORY_SCOPE="libs/model, apps/server/src" \
 node factory/run.mjs us-loop
 ```
 
+## ArtifactStore (stockage d'artefacts)
+
+Un port `ArtifactStore` (`src/ports/artifact/artifact-store.ts`) décrit le
+stockage des artefacts binaires produits par la Factory (briefs d'agents,
+résultats structurés, dumps d'oracle, preuves…). Le domaine sépare trois états
+**orthogonaux** : disponibilité physique (`availabilityStatus`), fenêtre de
+rétention (`retentionStatus`) et blocage légal (`legalHold`).
+
+Deux implémentations sont fournies dans `src/adapters/artifact/` :
+
+| Adaptateur | Usage | Dépendances |
+|---|---|---|
+| `MemoryArtifactStore` | tests hors-ligne, mocking local | aucune (pur JS) |
+| `S3ArtifactStore` | S3 / MinIO, protocole *upload-then-commit* | `node:crypto`, `fetch` global (SigV4) |
+
+Le hachage adressé par contenu (`computeArtifactHash`, SHA-256 `sha256:<hex>`) et
+le client objet bas niveau (`S3ObjectClient`) sont partagés ; l'adaptateur S3
+expose `collectOrphanedUploads()` pour récupérer les *staging* laissés par un
+commit interrompu. Ces modules sont réexportés par le bundle opérationnel
+`runtime/factory-operational.mjs` (généré par `node factory/toolchain/build.mjs`).
+
+Un MinIO local est fourni pour l'intégration :
+
+```bash
+docker compose -f factory/docker-compose.minio.yml up -d   # S3 sur :9000, console sur :9001
+```
+
+Les tests hors-ligne de l'adaptateur mémoire et du hachage :
+
+```bash
+node factory/tests/test-artifact-store.mjs
+```
+
 ## Structure
 
 ```
@@ -253,6 +286,7 @@ factory/
     test-review-adapter.mjs  makeReviewAgentOps câblage (unité)
     test-run-dispatch.mjs    Table de dispatch de run.mjs (statique)
     test-shutdown.mjs        Terminaison gracieuse SIGTERM (unité)
+    test-artifact-store.mjs  ArtifactStore : mémoire, rétention, legal hold, S3 (unité)
     test-us-loop.mjs         parsePlan, compareClaims, buildOracleCommand (unité)
     test-shutdown-operational.sh  Test intégration SIGTERM live (opérationnel, AgentOS requis)
   runs/                Registre des runs (git-ignoré)

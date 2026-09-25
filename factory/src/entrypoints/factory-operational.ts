@@ -184,3 +184,14 @@ export * from '../application/forge-bmad/forge-story-edit.js'
 export * from '../application/forge-bmad/forge-story-oracles.js'
 export * from '../application/forge-bmad/forge-workflow-sync.js'
 export * from '../application/forge-bmad/forge-front-oracle-resolution.js'
+
+// --------------------------------------------------------------------------
+// ArtifactStore: port, in-memory adapter and S3/MinIO adapters.
+//
+// Le port (`ports/artifact/`) est purement typé ; les implémentations vivent
+// dans `adapters/artifact/` et ne dépendent que de `node:*` (hachage SHA-256,
+// `fetch` global, AWS SigV4). L'adaptateur S3 suit un protocole
+// upload-then-commit et expose une collecte des staging orphelins.
+// --------------------------------------------------------------------------
+export * from '../ports/artifact/index.js'
+export * from '../adapters/artifact/index.js'
