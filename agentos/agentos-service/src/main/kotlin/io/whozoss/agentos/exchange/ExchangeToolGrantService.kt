@@ -175,12 +175,28 @@ class ExchangeToolGrantService(
                 // negative count, which throws; zero is a legal (if drastic) truncation.
                 .put("documentMaxCellChars", properties.documentMaxCellChars.coerceAtLeast(0))
         // The plugin reads this key with `takeIf { it.isArray }`, so it must be a real ArrayNode —
-        // an empty one when nothing is configured, never a missing key or a scalar. putArray returns
-        // the ArrayNode, hence the separate statement.
+        // never a missing key or a scalar. putArray returns the ArrayNode, hence the separate
+        // statement.
+        //
+        // GIT_METADATA_DENY_PATTERN leads and is not configurable: an exchange scope can be a Git
+        // worktree, where `.git` is a *file* holding the shared checkout's path, and the agent has
+        // write access to its own case scope — left reachable, `editFiles` could repoint the
+        // worktree at another case's checkout. It is prepended here rather than defaulted on
+        // [ExchangeToolsConfigProperties.extraDenyPatterns] because a configured list replaces a
+        // default instead of extending it, which would silently reopen git metadata on any instance
+        // that sets patterns of its own. The plugin matches every path segment, so this also covers
+        // everything under `.git`. The REST path refuses the same names
+        // ([ExchangeStorageService.assertNotGitMetadata]), so both views of a scope agree.
         val denyPatterns = node.putArray("extraDenyPatterns")
-        properties.extraDenyPatterns.forEach { denyPatterns.add(it) }
+        denyPatterns.add(GIT_METADATA_DENY_PATTERN)
+        properties.extraDenyPatterns
+            .filterNot { it == GIT_METADATA_DENY_PATTERN }
+            .forEach { denyPatterns.add(it) }
         return node
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Git metadata is never reachable through an exchange scope, whatever the instance configures. */
+        const val GIT_METADATA_DENY_PATTERN = ".git"
+    }
 }

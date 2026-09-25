@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
@@ -203,16 +204,27 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             val patterns = captureConfig(service(properties)).get("extraDenyPatterns")
 
             patterns.isArray shouldBe true
-            patterns.map { it.asText() } shouldBe listOf("*.bak", "internal-*")
+            patterns.map { it.asText() } shouldBe listOf(".git", "*.bak", "internal-*")
         }
 
-        "extraDenyPatterns is an empty array when nothing is configured" {
+        "extraDenyPatterns denies git metadata by default" {
             // The plugin reads the key with `takeIf { it.isArray }`: a missing key or a scalar would
             // silently mean "no extra pattern", so the array itself is the contract.
+            // `.git` is in it out of the box because a case scope can be a Git worktree that the
+            // agent holds write access to, and `.git` there is a file that repoints the worktree.
             val patterns = captureConfig(service()).get("extraDenyPatterns")
 
             patterns.isArray shouldBe true
-            patterns.size() shouldBe 0
+            patterns.map { it.asText() } shouldBe listOf(".git")
+        }
+
+        "a configured deny-list adds to the built-in git protection rather than replacing it" {
+            // An instance hardening the list for its own conventions must not silently reopen `.git`.
+            val properties = ExchangeToolsConfigProperties(extraDenyPatterns = listOf("*.bak"))
+
+            val patterns = captureConfig(service(properties)).get("extraDenyPatterns").map { it.asText() }
+
+            patterns shouldContain ".git"
         }
 
         "an out-of-range jpeg quality is clamped rather than handed to the JPEG writer" {

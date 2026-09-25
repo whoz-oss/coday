@@ -1168,6 +1168,45 @@ paths:
       summary: Read case exchange file content
       tags:
       - exchange-controller
+  /api/cases/{caseId}/files/directory:
+    get:
+      operationId: browseCaseFilesExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
+      tags:
+      - exchange-controller
   /api/cases/{caseId}/files/download:
     get:
       operationId: downloadCaseFileExchange
@@ -2057,6 +2096,45 @@ paths:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
       summary: Read namespace exchange file content
+      tags:
+      - exchange-controller
+  /api/namespaces/{namespaceId}/files/directory:
+    get:
+      operationId: browseNamespaceFilesExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/download:
@@ -3954,6 +4032,79 @@ components:
       required:
       - message
       - success
+    ExchangeDirectoryEntry:
+      type: object
+      description: A file or sub-directory at one level of an exchange scope.
+      properties:
+        directory:
+          type: boolean
+          description: "True for a sub-directory, false for a file."
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp.
+        mimeType:
+          type: string
+          description: "Detected MIME type for a file, null otherwise."
+        name:
+          type: string
+          description: Entry name (last path segment).
+        path:
+          type: string
+          description: "Path relative to the exchange root, using forward slashes."
+        size:
+          type: integer
+          format: int64
+          description: "File size in bytes; null for a directory, whose size is not\
+            \ computed."
+      required:
+      - directory
+      - name
+      - path
+    ExchangeDirectoryListing:
+      type: object
+      description: "A page of one directory level, plus the caller's capability."
+      properties:
+        capability:
+          type: string
+          description: Capability the caller has over this scope.
+          enum:
+          - NONE
+          - READ
+          - READ_WRITE
+        entries:
+          type: array
+          description: "Entries in this page: sub-directories first, then files, each\
+            \ alphabetically."
+          items:
+            $ref: "#/components/schemas/ExchangeDirectoryEntry"
+        hasMore:
+          type: boolean
+          description: Whether further pages exist for this directory.
+        page:
+          type: integer
+          format: int32
+          description: Zero-based index of the page returned.
+        pageSize:
+          type: integer
+          format: int32
+          description: Maximum number of entries per page.
+        path:
+          type: string
+          description: "Directory being listed, relative to the exchange root. Empty\
+            \ string for the root itself."
+        totalEntries:
+          type: integer
+          format: int32
+          description: "Total number of entries in this directory, across all pages."
+      required:
+      - capability
+      - entries
+      - hasMore
+      - page
+      - pageSize
+      - path
+      - totalEntries
     ExchangeFileContent:
       type: object
       description: Text content and metadata of a single exchange file.
