@@ -16,6 +16,7 @@ export * from '../domain/evidence/workflow-evidence.js'
 export * from '../domain/interaction/workflow-human-interaction.js'
 export * from '../domain/agent-attempt/agent-step-attempt.js'
 export * from '../domain/agent-attempt/agent-step-result.js'
+export * from '../domain/environment/work-unit-environment.js'
 
 // --------------------------------------------------------------------------
 // Persistence: storage kernel, repository ports and filesystem adapters
@@ -114,3 +115,17 @@ export * from '../application/oracle/oracle-definition-registry.js'
 export * from '../application/oracle/oracle-command.js'
 export * from '../application/oracle/oracle-executor.js'
 export * from '../application/oracle/oracle-baseline.js'
+
+// --------------------------------------------------------------------------
+// Work-unit environment: pure domain, file-backed store, provisioning service
+// and trusted control-plane controller.
+//
+// Le domaine (`domain/environment/work-unit-environment.ts`) ne porte aucune
+// dépendance `node:fs`/Git/AgentOS ; le store, le service et le contrôleur
+// vivent dans `adapters/persistence/` et `application/environment/`. Les
+// façades `factory/lib/work-unit-environment*.mjs` réexportent la surface
+// ci-dessous sans dupliquer d'état.
+// --------------------------------------------------------------------------
+export * from '../adapters/persistence/work-unit-environment-store.js'
+export * from '../application/environment/work-unit-environment-service.js'
+export * from '../application/environment/work-unit-environment-controller.js'
