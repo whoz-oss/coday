@@ -360,22 +360,46 @@ export class CodayService implements OnDestroy {
   private handleDelegationEvent(event: DelegationEvent): void {
     console.log('[CODAY] DelegationEvent received:', event.subThreadId, event.agentName)
     const currentMessages = this.messagesSubject.value
-    const existingIndex = currentMessages.findIndex((m) => m.subThreadId === event.subThreadId)
 
-    // DelegationEvent is now an immutable branch marker — only add once
-    if (existingIndex === -1) {
-      const message: ChatMessage = {
-        id: event.timestamp,
-        role: 'system',
-        speaker: event.agentName,
-        content: [{ type: 'text', content: '' }],
-        timestamp: new Date(),
-        type: 'delegation',
-        subThreadId: event.subThreadId,
-        delegationAgentName: event.agentName,
-      }
-      this.addMessage(message)
+    // Find the last existing delegation block for this subThreadId (if any).
+    // When a sub-thread is resumed, a new DelegationEvent is emitted for the same subThreadId.
+    // We close the previous block's temporal window and create a new block at the current position.
+    const lastExistingIndex = currentMessages.reduce(
+      (lastIdx, m, i) => (m.subThreadId === event.subThreadId ? i : lastIdx),
+      -1
+    )
+
+    let updatedMessages = currentMessages
+    if (lastExistingIndex !== -1) {
+      // Close the previous block's window: its upper bound is this new event's timestamp
+      const previous = currentMessages[lastExistingIndex]
+      const closedPrevious: ChatMessage = { ...previous, windowEnd: event.timestamp } as ChatMessage
+      updatedMessages = [
+        ...currentMessages.slice(0, lastExistingIndex),
+        closedPrevious,
+        ...currentMessages.slice(lastExistingIndex + 1),
+      ]
     }
+
+    // Create a new delegation block for this occurrence, with an open upper window
+    const message: ChatMessage = {
+      id: event.timestamp,
+      role: 'system',
+      speaker: event.agentName,
+      content: [{ type: 'text', content: '' }],
+      timestamp: new Date(),
+      type: 'delegation',
+      subThreadId: event.subThreadId,
+      delegationAgentName: event.agentName,
+      windowStart: event.timestamp,
+      windowEnd: undefined,
+    }
+
+    // Append the new block; deduplication by id is handled by addMessage
+    const deduplicated = updatedMessages.some((m) => m.id === message.id)
+      ? updatedMessages
+      : [...updatedMessages, message]
+    this.messagesSubject.next(deduplicated)
   }
 
   private handleThreadUpdateEvent(event: ThreadUpdateEvent): void {
@@ -383,6 +407,15 @@ export class CodayService implements OnDestroy {
   }
 
   private handleMessageEvent(event: MessageEvent): void {
+    // Silent messages belong to the AI context but must not be rendered in the UI.
+    // This covers both live SSE events and REST history replay (loadHistoryFromRest
+    // routes through handleEvent, so this single guard is sufficient for both paths).
+    // Note: (event as any).silent is used because TypeScript's strict DOM lib may shadow
+    // the @coday/model MessageEvent type in the instanceof check context.
+    if ((event as any).silent) {
+      return
+    }
+
     // Reset streaming state if assistant message (final message replaces streaming)
     if (event.role === 'assistant' && this.accumulatedChunks) {
       this.accumulatedChunks = ''
