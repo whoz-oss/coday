@@ -1,37 +1,12 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, open, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { WORKFLOW_STATUSES } from './workflow-transition-policy.mjs'
+import {
+  humanInteractionSemanticHash,
+  openedInteractionRevision,
+  validateHumanInteractionOpenInput,
+} from '../runtime/factory-operational.mjs'
 
-const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
-const KINDS = new Set(['approval', 'choice', 'text'])
-const canonical = (value) =>
-  Array.isArray(value)
-    ? value.map(canonical)
-    : value && typeof value === 'object'
-      ? Object.fromEntries(
-          Object.keys(value)
-            .sort()
-            .map((key) => [key, canonical(value[key])])
-        )
-      : value
-const semanticHash = (input) =>
-  createHash('sha256')
-    .update(
-      JSON.stringify(
-        canonical({
-          workflowId: input.workflowId,
-          stepId: input.stepId,
-          expectedRevision: input.expectedRevision,
-          kind: input.kind,
-          prompt: input.prompt,
-          actions: input.actions,
-          interactionType: input.interactionType,
-          reasonCode: input.reasonCode,
-        })
-      )
-    )
-    .digest('hex')
 async function append(path, value) {
   await mkdir(dirname(path), { recursive: true })
   await appendFile(path, `${JSON.stringify(value)}\n`, { encoding: 'utf8', mode: 0o600 })
@@ -42,7 +17,6 @@ async function append(path, value) {
     await handle.close()
   }
 }
-const openedRevision = (event) => event.interaction?.revision ?? event.revision
 export class WorkflowHumanInteractionError extends Error {
   constructor(code, cause) {
     super(code, cause ? { cause } : undefined)
@@ -85,7 +59,7 @@ export class WorkflowHumanInteractionStore {
       } else if (event.event === 'interaction_opened') {
         const current = projected.get(event.interaction?.interactionId)
         if (current?.status === 'opening') {
-          const revision = openedRevision(event)
+          const revision = openedInteractionRevision(event)
           const validRevision =
             current.interactionType === 'retry'
               ? revision === current.expectedRevision
@@ -94,7 +68,7 @@ export class WorkflowHumanInteractionStore {
             throw new WorkflowHumanInteractionError('CORRUPT_INTERACTION_STORAGE')
           projected.set(event.interaction.interactionId, { ...current, status: 'open', revision })
         } else if (!current) {
-          const revision = openedRevision(event)
+          const revision = openedInteractionRevision(event)
           if (!Number.isSafeInteger(revision) || revision < 1)
             throw new WorkflowHumanInteractionError('CORRUPT_INTERACTION_STORAGE')
           projected.set(event.interaction.interactionId, { ...event.interaction, status: 'open', revision })
@@ -136,7 +110,7 @@ export class WorkflowHumanInteractionStore {
       if (candidates.length === 0) throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_NOT_FOUND')
       if (candidates.length !== 1) throw new WorkflowHumanInteractionError('INTERACTION_RECOVERY_AMBIGUOUS')
       const opening = candidates[0]
-      if (opening.semanticHash !== semanticHash(input))
+      if (opening.semanticHash !== humanInteractionSemanticHash(input))
         throw new WorkflowHumanInteractionError('IDEMPOTENCY_KEY_COLLISION')
       const step = snapshot?.instance?.steps?.find((candidate) => candidate.id === opening.stepId)
       if (!Number.isSafeInteger(snapshot?.revision) || !step)
@@ -186,44 +160,12 @@ export class WorkflowHumanInteractionStore {
     })
   }
   async open(namespaceId, storageId, input, transition) {
-    const actionsValid =
-      Array.isArray(input?.actions) &&
-      input.actions.length === 2 &&
-      new Set(input.actions.map((action) => action?.id)).size === 2 &&
-      input.actions.every(
-        (action) =>
-          SAFE_ID.test(action?.id ?? '') &&
-          typeof action.label === 'string' &&
-          !!action.label &&
-          action.label.length <= 128 &&
-          WORKFLOW_STATUSES.includes(action.requestedStatus)
-      )
-    if (
-      !input ||
-      !SAFE_ID.test(input.workflowId ?? '') ||
-      !SAFE_ID.test(input.stepId ?? '') ||
-      !KINDS.has(input.kind) ||
-      !Number.isSafeInteger(input.expectedRevision) ||
-      input.expectedRevision < 1 ||
-      typeof input.prompt !== 'string' ||
-      !input.prompt ||
-      input.prompt.length > 2000 ||
-      !actionsValid ||
-      typeof input.idempotencyKey !== 'string' ||
-      !input.idempotencyKey ||
-      input.idempotencyKey.length > 128 ||
-      /[\r\n]/.test(input.idempotencyKey) ||
-      (input.interactionId !== undefined && !SAFE_ID.test(input.interactionId))
-    )
-      throw new WorkflowHumanInteractionError('INVALID_INTERACTION')
-    const normalized = {
-        ...input,
-        actions: input.actions.map(({ id, label, requestedStatus }) => ({ id, label, requestedStatus })),
-      },
-      hash = semanticHash(normalized)
+    const normalized = validateHumanInteractionOpenInput(input)
+    if (!normalized) throw new WorkflowHumanInteractionError('INVALID_INTERACTION')
+    const hash = humanInteractionSemanticHash(normalized)
     return this._locked(`${namespaceId}\0${storageId}`, async () => {
       const items = await this.list(namespaceId, storageId)
-      const prior = items.find((item) => item.idempotencyKey === input.idempotencyKey)
+      const prior = items.find((item) => item.idempotencyKey === normalized.idempotencyKey)
       if (prior) {
         if (prior.semanticHash !== hash) throw new WorkflowHumanInteractionError('IDEMPOTENCY_KEY_COLLISION')
         if (prior.status === 'open')
@@ -236,23 +178,23 @@ export class WorkflowHumanInteractionStore {
       if (
         items.some(
           (item) =>
-            item.workflowId === input.workflowId &&
-            item.stepId === input.stepId &&
+            item.workflowId === normalized.workflowId &&
+            item.stepId === normalized.stepId &&
             ['opening', 'open'].includes(item.status)
         )
       )
         throw new WorkflowHumanInteractionError('INTERACTION_ALREADY_OPEN')
       const interaction = {
-        interactionId: input.interactionId ?? randomUUID(),
-        workflowId: input.workflowId,
-        stepId: input.stepId,
-        expectedRevision: input.expectedRevision,
-        kind: input.kind,
-        prompt: input.prompt,
+        interactionId: normalized.interactionId ?? randomUUID(),
+        workflowId: normalized.workflowId,
+        stepId: normalized.stepId,
+        expectedRevision: normalized.expectedRevision,
+        kind: normalized.kind,
+        prompt: normalized.prompt,
         actions: normalized.actions,
-        ...(input.interactionType ? { interactionType: input.interactionType } : {}),
-        ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
-        idempotencyKey: input.idempotencyKey,
+        ...(normalized.interactionType ? { interactionType: normalized.interactionType } : {}),
+        ...(normalized.reasonCode ? { reasonCode: normalized.reasonCode } : {}),
+        idempotencyKey: normalized.idempotencyKey,
         semanticHash: hash,
         openedAt: new Date().toISOString(),
       }

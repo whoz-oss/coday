@@ -46,12 +46,7 @@ function asRuntimeExecutionId(value) {
 
 // ../src/adapters/agentos/agentos-capability-inspector.ts
 import { realpathSync } from "node:fs";
-var RESERVED_INTEGRATIONS = /* @__PURE__ */ new Set([
-  "QUERY_USER",
-  "CASE_FILE_EXCHANGE",
-  "NAMESPACE_FILE_EXCHANGE",
-  "FACTORY"
-]);
+var RESERVED_INTEGRATIONS = /* @__PURE__ */ new Set(["QUERY_USER", "CASE_FILE_EXCHANGE", "NAMESPACE_FILE_EXCHANGE", "FACTORY"]);
 function normalizeRoot(p) {
   return p.replace(/\/+$/, "");
 }
@@ -164,7 +159,12 @@ L'orchestrateur refuse de partir sans pouvoir garantir que l'agent \xE9crit dans
     for (const cfg of fileAccess) {
       const rootPath = cfg.parameters?.rootPath;
       if (!rootPath) {
-        return { ok: false, reason: `L'int\xE9gration "${cfg.name}" n'a pas de rootPath.`, rootPath: null, integration: null };
+        return {
+          ok: false,
+          reason: `L'int\xE9gration "${cfg.name}" n'a pas de rootPath.`,
+          rootPath: null,
+          integration: null
+        };
       }
       if (normalizeRoot(rootPath) !== expected) {
         return {
@@ -883,6 +883,760 @@ function endCurrentRunOnce(status, facts = {}) {
   return true;
 }
 
+// ../src/domain/workflow/workflow-definition.ts
+import { createHash } from "node:crypto";
+var WORKFLOW_DEFINITION_SCHEMA_VERSION = "1";
+var WORKFLOW_DEFINITION_RESPONSIBILITIES = Object.freeze(["human", "agent", "code"]);
+var WORKFLOW_DEFINITION_ERROR_CODES = Object.freeze({
+  INVALID_DEFINITION: "INVALID_DEFINITION",
+  INVALID_SCHEMA_VERSION: "INVALID_SCHEMA_VERSION",
+  INVALID_VALUE: "INVALID_VALUE",
+  DUPLICATE_STEP_ID: "DUPLICATE_STEP_ID",
+  MISSING_DEPENDENCY: "MISSING_DEPENDENCY",
+  SELF_DEPENDENCY: "SELF_DEPENDENCY",
+  DEPENDENCY_CYCLE: "DEPENDENCY_CYCLE",
+  INVALID_RESPONSIBILITY: "INVALID_RESPONSIBILITY"
+});
+var SAFE_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
+var SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+var DEFINITION_FIELDS = /* @__PURE__ */ new Set(["schemaVersion", "workflowType", "version", "title", "trustedExecution", "steps"]);
+var TRUSTED_EXECUTION_FIELDS = /* @__PURE__ */ new Set(["allowedPaths"]);
+var STEP_FIELDS = /* @__PURE__ */ new Set(["id", "name", "responsibility", "dependsOn"]);
+var RESPONSIBILITY_FIELDS = /* @__PURE__ */ new Set(["kind", "name"]);
+var KINDS = new Set(WORKFLOW_DEFINITION_RESPONSIBILITIES);
+function failure(code, path, details = {}) {
+  return { ok: false, error: { code, path, details } };
+}
+function text(value, path, options = {}) {
+  const { safe = false, maximum = 256 } = options;
+  if (typeof value !== "string" || !value.trim() || value.length > maximum || safe && !SAFE_ID.test(value))
+    return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, path);
+  return { ok: true, value };
+}
+function validateWorkflowDefinition(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input))
+    return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_DEFINITION, "$");
+  const record = input;
+  if (Object.keys(record).some((field) => !DEFINITION_FIELDS.has(field)))
+    return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "$", { reason: "unknown_field" });
+  if (record.schemaVersion !== WORKFLOW_DEFINITION_SCHEMA_VERSION)
+    return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_SCHEMA_VERSION, "schemaVersion");
+  const type = text(record.workflowType, "workflowType", { safe: true });
+  if (!type.ok) return type;
+  const version = record.version;
+  if (typeof version !== "string" || !SEMVER.test(version))
+    return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "version");
+  const title = text(record.title, "title");
+  if (!title.ok) return title;
+  let trustedExecution;
+  if (record.trustedExecution !== void 0) {
+    const rawTrusted = record.trustedExecution;
+    if (!rawTrusted || typeof rawTrusted !== "object" || Array.isArray(rawTrusted) || Object.keys(rawTrusted).some((field) => !TRUSTED_EXECUTION_FIELDS.has(field)) || !Array.isArray(rawTrusted.allowedPaths) || rawTrusted.allowedPaths.length === 0)
+      return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "trustedExecution");
+    const allowedPaths = [];
+    const rawAllowedPaths = rawTrusted.allowedPaths;
+    for (let index = 0; index < rawAllowedPaths.length; index++) {
+      const path = rawAllowedPaths[index];
+      if (typeof path !== "string" || !path || path.startsWith("/") || path.includes("\\") || path.split("/").includes("..") || path.includes("\0"))
+        return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, `trustedExecution.allowedPaths[${index}]`);
+      allowedPaths.push(path);
+    }
+    trustedExecution = { allowedPaths };
+  }
+  if (!Array.isArray(record.steps) || record.steps.length === 0 || record.steps.length > 500)
+    return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, "steps");
+  const ids = /* @__PURE__ */ new Set();
+  const steps = [];
+  const rawSteps = record.steps;
+  for (let index = 0; index < rawSteps.length; index++) {
+    const raw = rawSteps[index];
+    const base = `steps[${index}]`;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((field) => !STEP_FIELDS.has(field)))
+      return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, base);
+    const step = raw;
+    const id = text(step.id, `${base}.id`, { safe: true });
+    if (!id.ok) return id;
+    if (ids.has(id.value))
+      return failure(WORKFLOW_DEFINITION_ERROR_CODES.DUPLICATE_STEP_ID, `${base}.id`, { stepId: id.value });
+    ids.add(id.value);
+    const name = text(step.name, `${base}.name`);
+    if (!name.ok) return name;
+    const responsibility = step.responsibility;
+    if (!responsibility || typeof responsibility !== "object" || Array.isArray(responsibility) || Object.keys(responsibility).some((field) => !RESPONSIBILITY_FIELDS.has(field)) || !KINDS.has(responsibility.kind))
+      return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_RESPONSIBILITY, `${base}.responsibility`);
+    const responsibilityRecord = responsibility;
+    const responsibilityName = text(responsibilityRecord.name, `${base}.responsibility.name`);
+    if (!responsibilityName.ok) return responsibilityName;
+    if (!Array.isArray(step.dependsOn))
+      return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, `${base}.dependsOn`);
+    const dependencies = [];
+    const seen = /* @__PURE__ */ new Set();
+    const rawDependencies = step.dependsOn;
+    for (let dependencyIndex = 0; dependencyIndex < rawDependencies.length; dependencyIndex++) {
+      const dependency = text(rawDependencies[dependencyIndex], `${base}.dependsOn[${dependencyIndex}]`, {
+        safe: true
+      });
+      if (!dependency.ok) return dependency;
+      if (seen.has(dependency.value))
+        return failure(WORKFLOW_DEFINITION_ERROR_CODES.INVALID_VALUE, `${base}.dependsOn[${dependencyIndex}]`, {
+          reason: "duplicate_dependency"
+        });
+      seen.add(dependency.value);
+      dependencies.push(dependency.value);
+    }
+    steps.push({
+      id: id.value,
+      name: name.value,
+      responsibility: { kind: responsibilityRecord.kind, name: responsibilityName.value },
+      dependsOn: dependencies
+    });
+  }
+  for (const step of steps)
+    for (const dependency of step.dependsOn) {
+      if (dependency === step.id)
+        return failure(WORKFLOW_DEFINITION_ERROR_CODES.SELF_DEPENDENCY, `steps.${step.id}.dependsOn`);
+      if (!ids.has(dependency))
+        return failure(WORKFLOW_DEFINITION_ERROR_CODES.MISSING_DEPENDENCY, `steps.${step.id}.dependsOn`, {
+          target: dependency
+        });
+    }
+  const graph = new Map(steps.map((step) => [step.id, step.dependsOn]));
+  const visiting = /* @__PURE__ */ new Set();
+  const visited = /* @__PURE__ */ new Set();
+  function cyclic(id) {
+    if (visiting.has(id)) return true;
+    if (visited.has(id)) return false;
+    visiting.add(id);
+    for (const dependency of graph.get(id) ?? []) if (cyclic(dependency)) return true;
+    visiting.delete(id);
+    visited.add(id);
+    return false;
+  }
+  for (const step of steps)
+    if (cyclic(step.id)) return failure(WORKFLOW_DEFINITION_ERROR_CODES.DEPENDENCY_CYCLE, "steps");
+  return {
+    ok: true,
+    definition: {
+      schemaVersion: WORKFLOW_DEFINITION_SCHEMA_VERSION,
+      workflowType: type.value,
+      version,
+      title: title.value,
+      ...trustedExecution ? { trustedExecution } : {},
+      steps
+    }
+  };
+}
+function canonicalizeValue(value) {
+  if (Array.isArray(value)) return value.map((entry) => canonicalizeValue(entry));
+  if (value !== null && typeof value === "object") {
+    const record = value;
+    return Object.fromEntries(
+      Object.keys(record).sort().map((key) => [key, canonicalizeValue(record[key])])
+    );
+  }
+  return value;
+}
+function canonicalizeWorkflowDefinition(definition) {
+  return JSON.stringify(canonicalizeValue(definition));
+}
+function hashWorkflowDefinition(definition) {
+  return createHash("sha256").update(canonicalizeWorkflowDefinition(definition), "utf8").digest("hex");
+}
+
+// ../src/domain/workflow/workflow-instance.ts
+import { createHash as createHash2 } from "node:crypto";
+var WORKFLOW_GOVERNANCE_MODE = "governed";
+function independentWorkflowRelations(workflowId) {
+  return { rootWorkflowId: workflowId };
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value !== null && typeof value === "object") {
+    const record = value;
+    return Object.fromEntries(
+      Object.keys(record).sort().map((key) => [key, canonicalize(record[key])])
+    );
+  }
+  return value;
+}
+function workflowStartCommandHash(command, definition) {
+  const relations = command.relations ?? independentWorkflowRelations(command.workflowId);
+  return createHash2("sha256").update(
+    JSON.stringify(
+      canonicalize({
+        workflowId: command.workflowId,
+        workflowType: command.workflowType,
+        title: command.title,
+        relations: { ...relations },
+        definitionVersion: definition.version,
+        definitionHash: definition.definitionHash
+      })
+    )
+  ).digest("hex");
+}
+function createWorkflowInstance(command, definition, controllerExecution, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+  const steps = definition.steps.map((step) => ({
+    id: step.id,
+    name: step.name,
+    status: step.dependsOn.length === 0 ? "ready" : "pending",
+    dependsOn: [...step.dependsOn],
+    responsibility: { ...step.responsibility }
+  }));
+  const instance = {
+    governanceMode: WORKFLOW_GOVERNANCE_MODE,
+    workflowId: command.workflowId,
+    workflowType: definition.workflowType,
+    definitionVersion: definition.version,
+    definitionHash: definition.definitionHash,
+    revision: 1,
+    title: command.title,
+    status: "ready",
+    steps: steps.map(({ id, status }) => ({ id, status })),
+    relations: { ...command.relations ?? independentWorkflowRelations(command.workflowId) },
+    controllerExecution: { ...controllerExecution, observedAt },
+    environmentRef: null,
+    deliveryRef: null,
+    createdAt: observedAt,
+    updatedAt: observedAt
+  };
+  const projection = {
+    schemaVersion: "2",
+    workflowId: instance.workflowId,
+    workflowType: instance.workflowType,
+    title: instance.title,
+    status: instance.status,
+    steps
+  };
+  return { instance, projection, creationCommandHash: workflowStartCommandHash(command, definition) };
+}
+
+// ../src/domain/workflow/workflow-transition-policy.ts
+import { createHash as createHash3, randomUUID } from "node:crypto";
+var WORKFLOW_STATUSES = Object.freeze([
+  "pending",
+  "ready",
+  "running",
+  "waiting_human",
+  "blocked",
+  "completed",
+  "failed",
+  "cancelled"
+]);
+var WORKFLOW_TRANSITIONS = Object.freeze({
+  pending: Object.freeze(["ready"]),
+  ready: Object.freeze(["running", "blocked", "failed", "cancelled"]),
+  running: Object.freeze(["waiting_human", "blocked", "completed", "failed", "cancelled"]),
+  waiting_human: Object.freeze(["running", "blocked", "failed", "cancelled"]),
+  blocked: Object.freeze(["ready", "running", "failed", "cancelled"]),
+  completed: Object.freeze([]),
+  failed: Object.freeze([]),
+  cancelled: Object.freeze([])
+});
+var SAFE_ID2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var FIELDS = /* @__PURE__ */ new Set([
+  "requestId",
+  "workflowId",
+  "stepId",
+  "expectedRevision",
+  "requestedStatus",
+  "evidenceIds",
+  "idempotencyKey"
+]);
+function deny(code, reason, extra = {}) {
+  return { allowed: false, code, reason, ...extra };
+}
+function invalidTransitionRequest() {
+  return { ok: false, error: { code: "INVALID_TRANSITION_REQUEST" } };
+}
+function isWorkflowStatus(value) {
+  return typeof value === "string" && WORKFLOW_STATUSES.includes(value);
+}
+function validateWorkflowTransitionRequest(input, expectedWorkflowId) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return invalidTransitionRequest();
+  const record = input;
+  if (Object.keys(record).some((key) => !FIELDS.has(key))) return invalidTransitionRequest();
+  if (record.requestId !== void 0) return { ok: false, error: { code: "UNTRUSTED_REQUEST_ID" } };
+  const workflowId = record.workflowId;
+  const stepId = record.stepId;
+  const expectedRevision = record.expectedRevision;
+  const requestedStatus = record.requestedStatus;
+  const evidenceIds = record.evidenceIds;
+  const idempotencyKey = record.idempotencyKey;
+  if (workflowId !== expectedWorkflowId || !SAFE_ID2.test(String(workflowId ?? "")) || !SAFE_ID2.test(String(stepId ?? "")))
+    return invalidTransitionRequest();
+  if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 1 || !isWorkflowStatus(requestedStatus))
+    return invalidTransitionRequest();
+  if (!Array.isArray(evidenceIds) || evidenceIds.length > 100 || new Set(evidenceIds).size !== evidenceIds.length || evidenceIds.some((id) => typeof id !== "string" || !SAFE_ID2.test(id)))
+    return invalidTransitionRequest();
+  if (idempotencyKey !== void 0 && (typeof idempotencyKey !== "string" || !idempotencyKey || idempotencyKey.length > 128 || /[\r\n]/.test(idempotencyKey)))
+    return invalidTransitionRequest();
+  return {
+    ok: true,
+    value: {
+      requestId: randomUUID(),
+      workflowId,
+      stepId,
+      expectedRevision,
+      requestedStatus,
+      evidenceIds: [...evidenceIds],
+      ...idempotencyKey ? { idempotencyKey } : {}
+    }
+  };
+}
+function transitionSemanticHash(request) {
+  return createHash3("sha256").update(
+    JSON.stringify({
+      workflowId: request.workflowId,
+      stepId: request.stepId,
+      expectedRevision: request.expectedRevision,
+      requestedStatus: request.requestedStatus,
+      evidenceIds: [...request.evidenceIds].sort()
+    })
+  ).digest("hex");
+}
+function transitionScopeHash(namespaceId, request, execution) {
+  return createHash3("sha256").update(
+    JSON.stringify({
+      namespaceId,
+      workflowId: request.workflowId,
+      stepId: request.stepId,
+      source: {
+        kind: execution.kind,
+        runtimeId: execution.runtimeId,
+        agentId: execution.agentId,
+        actorId: execution.actorId,
+        caseId: execution.caseId,
+        threadId: execution.threadId
+      },
+      idempotencyKey: request.idempotencyKey
+    })
+  ).digest("hex");
+}
+function evaluateHumanCheckpointOpen({
+  request,
+  snapshot,
+  definition,
+  execution
+}) {
+  if (!snapshot) return deny("WORKFLOW_NOT_FOUND", "workflow_not_found");
+  if (snapshot.governanceMode !== "governed" || snapshot.instance?.governanceMode !== "governed")
+    return deny("WORKFLOW_NOT_GOVERNED", "workflow_not_governed");
+  if (!definition) return deny("WORKFLOW_DEFINITION_NOT_FOUND", "definition_not_found");
+  const instance = snapshot.instance;
+  if (instance.workflowType !== definition.workflowType || instance.definitionVersion !== definition.version || instance.definitionHash !== definition.definitionHash || snapshot.definitionVersion !== definition.version || snapshot.definitionHash !== definition.definitionHash)
+    return deny("WORKFLOW_DEFINITION_MISMATCH", "definition_identity_mismatch");
+  const declared = definition.steps.find((step) => step.id === request.stepId);
+  const current = instance.steps.find((step) => step.id === request.stepId);
+  if (!declared || !current) return deny("STEP_NOT_FOUND", "step_not_found");
+  if (request.expectedRevision !== snapshot.revision || instance.revision !== snapshot.revision)
+    return deny("REVISION_CONFLICT", "revision_mismatch");
+  if (declared.responsibility?.kind !== "human") return deny("ACTOR_NOT_AUTHORIZED", "step_is_not_human_owned");
+  if (current.status !== "ready") return deny("ILLEGAL_TRANSITION", "human_step_is_not_ready");
+  const missing = declared.dependsOn.filter(
+    (id) => instance.steps.find((step) => step.id === id)?.status !== "completed"
+  );
+  if (missing.length)
+    return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", { missingEvidence: missing });
+  if (request.requestedStatus !== "waiting_human" || request.evidenceIds.length !== 0)
+    return deny("ACTOR_NOT_AUTHORIZED", "human_gate_opener_can_only_open_checkpoint");
+  const factoryHumanGate = execution.kind === "factory-human-gate" && execution.runtimeId === "factory-dashboard" && execution.agentId === "factory-runner" && execution.actorId === void 0;
+  const controller = instance.controllerExecution ?? snapshot.controllerExecution;
+  const originalController = controller && controller.kind === execution.kind && controller.runtimeId === execution.runtimeId && controller.agentId === execution.agentId && controller.caseId === execution.caseId && controller.threadId === execution.threadId;
+  if (!factoryHumanGate && !originalController) return deny("ACTOR_NOT_AUTHORIZED", "execution_cannot_open_human_gate");
+  return { allowed: true };
+}
+function evaluateHumanResolutionTransition({
+  request,
+  snapshot,
+  definition,
+  evidence,
+  execution
+}) {
+  if (execution.kind === "factory-human-gate" || execution.kind !== "factory-human" || execution.runtimeId !== "factory-dashboard" || typeof execution.actorId !== "string" || execution.actorId.length === 0)
+    return deny("ACTOR_NOT_AUTHORIZED", "human_resolution_requires_authenticated_human");
+  const current = snapshot?.instance?.steps?.find((step) => step.id === request.stepId);
+  if (current?.status !== "waiting_human") return deny("INTERACTION_STALE", "human_step_is_not_waiting");
+  if (!["completed", "failed"].includes(request.requestedStatus))
+    return deny("ILLEGAL_TRANSITION", "human_resolution_target_not_allowed");
+  if (request.requestedStatus === "completed") {
+    const present = snapshot;
+    const bridged = {
+      ...present,
+      instance: {
+        ...present.instance,
+        steps: present.instance.steps.map(
+          (step) => step.id === request.stepId ? { ...step, status: "running" } : step
+        )
+      }
+    };
+    const decision = evidence.find(
+      (item) => request.evidenceIds.includes(item.evidenceId) && item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && item.source?.actorId === execution.actorId
+    );
+    if (!decision)
+      return deny("PASS_EVIDENCE_REQUIRED", "matching_human_decision_required", {
+        missingEvidence: ["human-decision:pass"]
+      });
+    const evaluated = evaluateWorkflowTransition({
+      request: { ...request, requestedStatus: "completed" },
+      snapshot: bridged,
+      definition,
+      evidence,
+      execution: { ...execution, kind: "factory-human-resolution" }
+    });
+    return !evaluated.allowed && evaluated.code === "ACTOR_NOT_AUTHORIZED" && evaluated.reason === "runtime_cannot_transition_step_responsibility" ? { allowed: true } : evaluated;
+  }
+  const completion = evaluateWorkflowTransition({
+    request: { ...request, requestedStatus: "failed" },
+    snapshot,
+    definition,
+    evidence,
+    execution
+  });
+  if (!completion.allowed) return completion;
+  const selected = request.evidenceIds.map((id) => evidence.find((item) => item.evidenceId === id)).filter((item) => Boolean(item));
+  return selected.some(
+    (item) => item.kind === "human-decision" && item.outcome === "fail" && item.source?.kind === "factory-human" && item.source?.actorId === execution.actorId
+  ) ? { allowed: true } : deny("FAIL_EVIDENCE_REQUIRED", "matching_human_decision_fail_required", {
+    missingEvidence: ["human-decision:fail"]
+  });
+}
+function evaluateWorkflowTransition({
+  request,
+  snapshot,
+  definition,
+  evidence,
+  execution
+}) {
+  if (!snapshot) return deny("WORKFLOW_NOT_FOUND", "workflow_not_found");
+  if (snapshot.governanceMode !== "governed" || snapshot.instance?.governanceMode !== "governed")
+    return deny("WORKFLOW_NOT_GOVERNED", "workflow_not_governed");
+  if (!definition) return deny("WORKFLOW_DEFINITION_NOT_FOUND", "definition_not_found");
+  const instance = snapshot.instance;
+  if (instance.workflowType !== definition.workflowType || instance.definitionVersion !== definition.version || instance.definitionHash !== definition.definitionHash || snapshot.definitionVersion !== definition.version || snapshot.definitionHash !== definition.definitionHash)
+    return deny("WORKFLOW_DEFINITION_MISMATCH", "definition_identity_mismatch");
+  const declared = definition.steps.find((step) => step.id === request.stepId);
+  const current = instance.steps.find((step) => step.id === request.stepId);
+  if (!declared || !current) return deny("STEP_NOT_FOUND", "step_not_found");
+  if (request.expectedRevision !== snapshot.revision || instance.revision !== snapshot.revision)
+    return deny("REVISION_CONFLICT", "revision_mismatch");
+  if (!WORKFLOW_TRANSITIONS[current.status]?.includes(request.requestedStatus))
+    return deny("ILLEGAL_TRANSITION", "transition_not_allowed");
+  if (["ready", "running", "completed"].includes(request.requestedStatus)) {
+    const missing = declared.dependsOn.filter(
+      (id) => instance.steps.find((step) => step.id === id)?.status !== "completed"
+    );
+    if (missing.length)
+      return deny("DEPENDENCIES_NOT_SATISFIED", "dependencies_not_completed", { missingEvidence: missing });
+  }
+  const factoryOracle = declared.responsibility.kind === "code" && execution.kind === "factory-oracle" && execution.runtimeId === "factory-dashboard";
+  const factoryHuman = declared.responsibility.kind === "human" && execution.kind === "factory-human" && execution.runtimeId === "factory-dashboard" && typeof execution.actorId === "string" && execution.actorId.length > 0;
+  const factoryRetry = declared.responsibility.kind === "agent" && current.status === "blocked" && request.requestedStatus === "ready" && execution.kind === "factory-control-plane" && execution.runtimeId === "factory-dashboard" && execution.agentId === "factory-runner" && typeof execution.actorId === "string" && execution.actorId.length > 0;
+  if (declared.responsibility.kind !== "agent" && !factoryOracle && !factoryHuman)
+    return deny("ACTOR_NOT_AUTHORIZED", "runtime_cannot_transition_step_responsibility");
+  if (declared.responsibility.kind === "agent" && !factoryRetry && declared.responsibility.name && declared.responsibility.name !== execution.agentId)
+    return deny("ACTOR_NOT_AUTHORIZED", "agent_responsibility_mismatch");
+  if (factoryHuman && current.status !== "waiting_human") return deny("INTERACTION_STALE", "human_step_is_not_waiting");
+  const selected = [];
+  for (const id of request.evidenceIds) {
+    const item = evidence.find((candidate) => candidate.evidenceId === id);
+    if (!item) return deny("EVIDENCE_NOT_FOUND", "evidence_not_found", { missingEvidence: [id] });
+    if (item.namespaceId !== execution.namespaceId || item.workflowId !== request.workflowId || item.stepId !== request.stepId)
+      return deny("EVIDENCE_SCOPE_MISMATCH", "evidence_scope_mismatch");
+    selected.push(item);
+  }
+  if (request.requestedStatus === "blocked" && declared.responsibility.kind === "agent") {
+    const negative = selected.find(
+      (item) => item.kind === "agent-result" && ["fail", "indeterminate"].includes(item.outcome ?? "") && item.source?.kind === execution.kind && item.source?.runtimeId === execution.runtimeId && item.source?.agentId === execution.agentId && item.source?.caseId === execution.caseId && item.source?.threadId === execution.threadId
+    );
+    if (!negative)
+      return deny("NEGATIVE_EVIDENCE_REQUIRED", "matching_agent_result_negative_required", {
+        missingEvidence: ["agent-result:fail-or-indeterminate"]
+      });
+  }
+  if (request.requestedStatus === "ready" && current.status === "blocked") {
+    const controller = instance.controllerExecution ?? snapshot.controllerExecution;
+    if (execution.kind !== "factory-control-plane" || execution.runtimeId !== "factory-dashboard" || execution.agentId !== "factory-runner" || typeof execution.actorId !== "string" || execution.actorId.length === 0 || !controller || controller.caseId !== execution.caseId)
+      return deny("ACTOR_NOT_AUTHORIZED", "manual_retry_requires_factory_controller_and_human_actor");
+    const retry = selected.find(
+      (item) => item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && typeof item.source?.actorId === "string" && item.source.actorId.length > 0
+    );
+    if (!retry)
+      return deny("RETRY_EVIDENCE_REQUIRED", "trusted_manual_retry_evidence_required", {
+        missingEvidence: ["human-decision:pass"]
+      });
+  }
+  if (request.requestedStatus === "completed") {
+    if (factoryHuman) {
+      const decision = selected.find(
+        (item) => item.kind === "human-decision" && item.outcome === "pass" && item.source?.kind === "factory-human" && item.source?.actorId === execution.actorId
+      );
+      if (!decision)
+        return deny("PASS_EVIDENCE_REQUIRED", "matching_human_decision_required", {
+          missingEvidence: ["human-decision:pass"]
+        });
+    } else if (factoryOracle) {
+      const pass = selected.find(
+        (item) => item.kind === "oracle-result" && item.outcome === "pass" && item.source?.kind === "factory-oracle" && item.facts?.oracleId === declared.responsibility.name
+      );
+      if (!pass)
+        return deny("PASS_EVIDENCE_REQUIRED", "matching_oracle_result_pass_required", {
+          missingEvidence: ["oracle-result:pass"]
+        });
+    } else {
+      if (selected.some((item) => item.kind === "agent-result" && ["fail", "indeterminate"].includes(item.outcome ?? "")))
+        return deny("EVIDENCE_NEGATIVE", "agent_result_not_pass");
+      const pass = selected.find(
+        (item) => item.kind === "agent-result" && item.outcome === "pass" && item.source?.kind === execution.kind && item.source?.runtimeId === execution.runtimeId && item.source?.agentId === execution.agentId && item.source?.caseId === execution.caseId && item.source?.threadId === execution.threadId
+      );
+      if (!pass)
+        return deny("PASS_EVIDENCE_REQUIRED", "matching_agent_result_pass_required", {
+          missingEvidence: ["agent-result:pass"]
+        });
+    }
+  }
+  return { allowed: true };
+}
+function applyWorkflowTransition(snapshot, definition, request, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+  const previous = new Map(snapshot.instance.steps.map((step) => [step.id, step.status]));
+  previous.set(request.stepId, request.requestedStatus);
+  if (request.requestedStatus === "completed") {
+    for (const step of definition.steps)
+      if (previous.get(step.id) === "pending" && step.dependsOn.every((id) => previous.get(id) === "completed"))
+        previous.set(step.id, "ready");
+  }
+  const statuses = [...previous.values()];
+  const status = statuses.every((status2) => status2 === "completed") ? "completed" : statuses.some((status2) => status2 === "failed") ? "failed" : statuses.some((status2) => status2 === "waiting_human") ? "waiting_human" : statuses.some((status2) => status2 === "blocked") ? "blocked" : statuses.some((status2) => status2 === "running") ? "running" : statuses.some((status2) => status2 === "ready") ? "ready" : "pending";
+  const revision = snapshot.revision + 1;
+  const instance = {
+    ...snapshot.instance,
+    revision,
+    status,
+    steps: snapshot.instance.steps.map((step) => ({ ...step, status: previous.get(step.id) })),
+    updatedAt: observedAt
+  };
+  const projection = {
+    ...snapshot.projection,
+    status,
+    steps: snapshot.projection.steps.map((step) => ({ ...step, status: previous.get(step.id) }))
+  };
+  return { ...snapshot, instance, projection, revision };
+}
+function applyHumanCheckpointOpen(snapshot, definition, request, observedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+  const statuses = new Map(snapshot.instance.steps.map((step) => [step.id, step.status]));
+  statuses.set(request.stepId, "waiting_human");
+  const revision = snapshot.revision + 1;
+  const instance = {
+    ...snapshot.instance,
+    revision,
+    status: "waiting_human",
+    steps: snapshot.instance.steps.map((step) => ({ ...step, status: statuses.get(step.id) })),
+    updatedAt: observedAt
+  };
+  const projection = {
+    ...snapshot.projection,
+    status: "waiting_human",
+    steps: snapshot.projection.steps.map((step) => ({ ...step, status: statuses.get(step.id) }))
+  };
+  return { ...snapshot, instance, projection, revision };
+}
+
+// ../src/domain/evidence/workflow-evidence.ts
+import { randomUUID as randomUUID2 } from "node:crypto";
+var WORKFLOW_EVIDENCE_KINDS = Object.freeze([
+  "agent-result",
+  "artifact",
+  "oracle-result",
+  "human-decision"
+]);
+var WORKFLOW_EVIDENCE_OUTCOMES = Object.freeze(["pass", "fail", "indeterminate"]);
+var WORKFLOW_EVIDENCE_LIMITS = Object.freeze({
+  idempotencyKey: 128,
+  artifactRef: 1024,
+  facts: 32,
+  factKey: 64,
+  factValue: 256
+});
+var SAFE_ID3 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var HASH = /^sha256:[0-9a-f]{64}$/;
+var INPUT_FIELDS = /* @__PURE__ */ new Set([
+  "workflowId",
+  "stepId",
+  "kind",
+  "outcome",
+  "artifactRef",
+  "artifactHash",
+  "facts",
+  "idempotencyKey"
+]);
+var FACT_KEYS = /* @__PURE__ */ new Set([
+  "resultCode",
+  "category",
+  "attempt",
+  "durationMs",
+  "itemCount",
+  "oracleId",
+  "oracleVersion",
+  "oracleHash",
+  "commandId",
+  "cwdId",
+  "exitCode",
+  "signal",
+  "timedOut",
+  "classification",
+  "executed",
+  "fromCache",
+  "upToDate",
+  "skipped",
+  "outputHash",
+  "outputTruncated",
+  "interactionId",
+  "actionId",
+  "decisionTextHash",
+  "briefHash",
+  "claimsHash",
+  "diffHash",
+  "reviewPackageHash",
+  "finalizationTurns"
+]);
+function invalid(path, reason = "invalid_value") {
+  return { ok: false, error: { code: "INVALID_EVIDENCE", path, reason } };
+}
+function boundedText(value, maximum) {
+  return typeof value === "string" && value.length > 0 && value.length <= maximum && !/[\r\n]/.test(value);
+}
+function isEvidenceKind(value) {
+  return typeof value === "string" && WORKFLOW_EVIDENCE_KINDS.includes(value);
+}
+function isEvidenceOutcome(value) {
+  return typeof value === "string" && WORKFLOW_EVIDENCE_OUTCOMES.includes(value);
+}
+function validateWorkflowEvidenceInput(input, expectedWorkflowId) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return invalid("$", "not_object");
+  const record = input;
+  if (Object.keys(record).some((field) => !INPUT_FIELDS.has(field))) return invalid("$", "unknown_field");
+  if (record.workflowId !== expectedWorkflowId || !SAFE_ID3.test(String(record.workflowId ?? "")))
+    return invalid("workflowId");
+  if (!SAFE_ID3.test(String(record.stepId ?? ""))) return invalid("stepId");
+  if (!isEvidenceKind(record.kind)) return invalid("kind");
+  if (record.idempotencyKey !== void 0 && !boundedText(record.idempotencyKey, WORKFLOW_EVIDENCE_LIMITS.idempotencyKey))
+    return invalid("idempotencyKey");
+  if (record.kind === "artifact") {
+    if (record.outcome !== void 0 || record.facts !== void 0) return invalid("$", "artifact_fields");
+    if (!boundedText(record.artifactRef, WORKFLOW_EVIDENCE_LIMITS.artifactRef)) return invalid("artifactRef");
+    if (!HASH.test(String(record.artifactHash ?? ""))) return invalid("artifactHash");
+    return {
+      ok: true,
+      value: {
+        workflowId: record.workflowId,
+        stepId: record.stepId,
+        kind: "artifact",
+        artifactRef: record.artifactRef,
+        artifactHash: record.artifactHash,
+        ...record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}
+      }
+    };
+  }
+  if (["oracle-result", "human-decision"].includes(record.kind) && record.outcome === void 0)
+    return invalid("outcome");
+  if (record.artifactRef !== void 0 || record.artifactHash !== void 0) return invalid("$", "agent_result_fields");
+  if (record.outcome !== void 0 && !isEvidenceOutcome(record.outcome)) return invalid("outcome");
+  if (!record.facts || typeof record.facts !== "object" || Array.isArray(record.facts)) return invalid("facts");
+  const entries = Object.entries(record.facts);
+  if (entries.length === 0 || entries.length > WORKFLOW_EVIDENCE_LIMITS.facts) return invalid("facts");
+  for (const [key, value] of entries) {
+    if (!FACT_KEYS.has(key) || key.length > WORKFLOW_EVIDENCE_LIMITS.factKey)
+      return invalid(`facts.${key}`, "unsupported_fact");
+    if (!(typeof value === "boolean" || typeof value === "number" && Number.isSafeInteger(value) || boundedText(value, WORKFLOW_EVIDENCE_LIMITS.factValue)))
+      return invalid(`facts.${key}`);
+  }
+  return {
+    ok: true,
+    value: {
+      workflowId: record.workflowId,
+      stepId: record.stepId,
+      kind: record.kind,
+      ...record.outcome ? { outcome: record.outcome } : {},
+      facts: { ...record.facts },
+      ...record.idempotencyKey ? { idempotencyKey: record.idempotencyKey } : {}
+    }
+  };
+}
+function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/* @__PURE__ */ new Date()).toISOString(), evidenceId = randomUUID2()) {
+  const { idempotencyKey, ...rest } = validated;
+  const record = {
+    evidenceId,
+    namespaceId,
+    ...rest,
+    source: Object.freeze({ ...source }),
+    observedAt
+  };
+  return Object.freeze(record);
+}
+
+// ../src/domain/interaction/workflow-human-interaction.ts
+import { createHash as createHash4 } from "node:crypto";
+var HUMAN_INTERACTION_KINDS = Object.freeze(["approval", "choice", "text"]);
+var WORKFLOW_HUMAN_INTERACTION_STATUSES = Object.freeze(["opening", "open", "replied", "aborted"]);
+var SAFE_ID4 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var KINDS2 = new Set(HUMAN_INTERACTION_KINDS);
+function canonicalHumanInteractionInput(value) {
+  if (Array.isArray(value)) return value.map((entry) => canonicalHumanInteractionInput(entry));
+  if (value && typeof value === "object") {
+    const record = value;
+    return Object.fromEntries(
+      Object.keys(record).sort().map((key) => [key, canonicalHumanInteractionInput(record[key])])
+    );
+  }
+  return value;
+}
+function humanInteractionSemanticHash(input) {
+  return createHash4("sha256").update(
+    JSON.stringify(
+      canonicalHumanInteractionInput({
+        workflowId: input.workflowId,
+        stepId: input.stepId,
+        expectedRevision: input.expectedRevision,
+        kind: input.kind,
+        prompt: input.prompt,
+        actions: input.actions,
+        interactionType: input.interactionType,
+        reasonCode: input.reasonCode
+      })
+    )
+  ).digest("hex");
+}
+function validateHumanInteractionOpenInput(input) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input;
+  const rawActions = record.actions;
+  const actionsValid = Array.isArray(rawActions) && rawActions.length === 2 && new Set(rawActions.map((action) => action?.id)).size === 2 && rawActions.every((action) => {
+    if (!action || typeof action !== "object" || Array.isArray(action)) return false;
+    const candidate = action;
+    return SAFE_ID4.test(typeof candidate.id === "string" ? candidate.id : "") && typeof candidate.label === "string" && !!candidate.label && candidate.label.length <= 128 && WORKFLOW_STATUSES.includes(candidate.requestedStatus);
+  });
+  if (!SAFE_ID4.test(String(record.workflowId ?? "")) || !SAFE_ID4.test(String(record.stepId ?? "")) || !KINDS2.has(record.kind) || !Number.isSafeInteger(record.expectedRevision) || record.expectedRevision < 1 || typeof record.prompt !== "string" || !record.prompt || record.prompt.length > 2e3 || !actionsValid || typeof record.idempotencyKey !== "string" || !record.idempotencyKey || record.idempotencyKey.length > 128 || /[\r\n]/.test(record.idempotencyKey) || record.interactionId !== void 0 && !SAFE_ID4.test(String(record.interactionId)))
+    return null;
+  return {
+    workflowId: record.workflowId,
+    stepId: record.stepId,
+    expectedRevision: record.expectedRevision,
+    kind: record.kind,
+    prompt: record.prompt,
+    actions: rawActions.map((action) => ({
+      id: action.id,
+      label: action.label,
+      requestedStatus: action.requestedStatus
+    })),
+    idempotencyKey: record.idempotencyKey,
+    ...record.interactionId ? { interactionId: record.interactionId } : {},
+    ...record.interactionType ? { interactionType: record.interactionType } : {},
+    ...record.reasonCode ? { reasonCode: record.reasonCode } : {}
+  };
+}
+function openedInteractionRevision(event) {
+  return event.interaction?.revision ?? event.revision;
+}
+
 // ../src/application/shutdown.ts
 function createShutdownController(deps) {
   let initiated = false;
@@ -993,8 +1747,23 @@ function runAgentTurn(caseId, agentName, brief, options) {
   return getAgentOsRuntimeAdapter().runAgentTurn(caseId, agentName, brief, options);
 }
 export {
+  HUMAN_INTERACTION_KINDS,
+  WORKFLOW_DEFINITION_ERROR_CODES,
+  WORKFLOW_DEFINITION_RESPONSIBILITIES,
+  WORKFLOW_DEFINITION_SCHEMA_VERSION,
+  WORKFLOW_EVIDENCE_KINDS,
+  WORKFLOW_EVIDENCE_LIMITS,
+  WORKFLOW_EVIDENCE_OUTCOMES,
+  WORKFLOW_GOVERNANCE_MODE,
+  WORKFLOW_HUMAN_INTERACTION_STATUSES,
+  WORKFLOW_STATUSES,
+  WORKFLOW_TRANSITIONS,
+  applyHumanCheckpointOpen,
+  applyWorkflowTransition,
   asRuntimeExecutionId,
   bindFactoryStepResult,
+  canonicalHumanInteractionInput,
+  canonicalizeWorkflowDefinition,
   clearActiveCaseId,
   createAgentOsHttpCaseTerminator,
   createAgentOsHttpClient,
@@ -1002,19 +1771,27 @@ export {
   createCase,
   createRun,
   createShutdownController,
+  createWorkflowEvidence,
+  createWorkflowInstance,
   endCurrentRunOnce,
   endRun,
+  evaluateHumanCheckpointOpen,
+  evaluateHumanResolutionTransition,
+  evaluateWorkflowTransition,
   failPhase,
   getActiveCaseId,
   getActiveCaseIds,
   getAgentOsRuntimeAdapter,
   getCase,
   getCurrentRun,
+  hashWorkflowDefinition,
+  humanInteractionSemanticHash,
   installSigtermHandler,
   killCase,
   listAgents,
   listEvents,
   listIntegrations,
+  openedInteractionRevision,
   passPhase,
   postMessage,
   preflightAgent,
@@ -1026,5 +1803,12 @@ export {
   runAgentTurn,
   setActiveCaseId,
   startPhase,
-  unregisterActiveCase
+  transitionScopeHash,
+  transitionSemanticHash,
+  unregisterActiveCase,
+  validateHumanInteractionOpenInput,
+  validateWorkflowDefinition,
+  validateWorkflowEvidenceInput,
+  validateWorkflowTransitionRequest,
+  workflowStartCommandHash
 };
