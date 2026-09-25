@@ -22,7 +22,8 @@ factory/infra/
 ├── docker-compose.yml                       # PostgreSQL 16 + one-shot Flyway runner
 ├── README.md                                # this file
 └── migrations/
-    └── V1__init_workflow_pilot_schema.sql   # pilot schema (definitions + instances)
+    ├── V1__init_workflow_pilot_schema.sql   # pilot schema (definitions + instances)
+    └── V2__tenant_and_membership.sql        # Jalon B2 tenant & membership schema
 ```
 
 ## Start PostgreSQL + apply migrations
@@ -60,8 +61,13 @@ V<version>__<snake_case_description>.sql
 * Versions are strictly increasing and never edited once applied; a fix is a new
   `V<n+1>__…sql` file.
 * `V1__init_workflow_pilot_schema.sql` creates `workflow_definitions` and
-  `workflow_instances`. Full business schemas for the remaining aggregates are
-  deliberately deferred to B2, and data migration/cutover to B3/B4.
+  `workflow_instances` (the two pilot aggregates).
+* `V2__tenant_and_membership.sql` creates the authoritative Jalon B2 tenant and
+  membership schema: `organizations`, `workstreams`, `squads`, `principals`,
+  `service_identities`, `roles`, `organization_memberships`,
+  `workstream_memberships`, `squad_memberships`, `repositories` and
+  `workstream_repositories` (see the schema overview below). Data
+  migration/cutover of the remaining aggregates is deferred to B3/B4.
 * Flyway is the only migration authority. Do **not** modify a migration that has
   been applied to a shared database.
 
@@ -110,6 +116,31 @@ Mutable governed workflow state, tenant-scoped and versioned.
   replayed start command returns the existing snapshot and a divergent command
   fails with `WORKFLOW_IDENTITY_CONFLICT`.
 
+## Schema overview — V2 tenant & membership
+
+All V2 tables are tenant-scoped: `organization_id` is `NOT NULL` (with
+`DEFAULT 'default'` matching V1). Composite foreign keys carry `organization_id`
+so the database itself prevents a cross-tenant reference.
+
+| Table | Primary key | Notable constraints |
+|---|---|---|
+| `organizations` | `(organization_id)` | tenant root; `revision >= 1` |
+| `workstreams` | `(organization_id, workstream_id)` | FK → `organizations`; explicit `UNIQUE` |
+| `squads` | `(organization_id, workstream_id, squad_id)` | composite FK → `workstreams`; explicit `UNIQUE` |
+| `principals` | `(organization_id, principal_id)` | FK → `organizations`; `email` optional |
+| `service_identities` | `(organization_id, service_identity_id)` | FK → `organizations` |
+| `roles` | `(organization_id, role_id, version)` | `permissions` JSONB; FK → `organizations` |
+| `organization_memberships` | `(organization_id, subject_type, subject_id, role_id)` | composite FK → `roles`; `subject_type` check |
+| `workstream_memberships` | `(organization_id, workstream_id, subject_type, subject_id, role_id)` | composite FK → `workstreams` and `roles` |
+| `squad_memberships` | `(organization_id, workstream_id, squad_id, subject_type, subject_id, role_id)` | composite FK → `squads` and `roles` |
+| `repositories` | `(organization_id, repository_id)` | FK → `organizations`; `url` optional |
+| `workstream_repositories` | `(organization_id, workstream_id, repository_id)` | composite FK → `workstreams` and `repositories` |
+
+Mutable tables (`organizations`, `workstreams`, `squads`, `principals`,
+`service_identities`, `roles`, `repositories`) carry `revision INTEGER NOT NULL
+DEFAULT 1 CHECK (revision >= 1)` and an `updated_at` maintained by a
+`BEFORE UPDATE` trigger calling the shared `set_updated_at()` function.
+
 ## Contract tests
 
 The shared contract suite runs the exact same assertions against the filesystem
@@ -118,6 +149,14 @@ and SQL adapters, using an in-memory SQL client:
 ```bash
 node factory/tests/test-repository-ports-adapters.mjs        # existing filesystem suite
 node factory/tests/test-sql-repository-ports-adapters.mjs    # shared contract: filesystem + SQL
+```
+
+The V2 migration itself is validated offline (no PostgreSQL, Docker or `pg`
+driver required) by parsing the SQL and asserting tables, composite foreign keys,
+uniqueness of FK targets, CHECK constraints and `updated_at` triggers:
+
+```bash
+node factory/tests/test-v2-migration-schema.mjs
 ```
 
 A live PostgreSQL is never required for these tests. To validate the adapters
