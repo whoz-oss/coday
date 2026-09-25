@@ -430,8 +430,10 @@ export class OAuthRequestEvent extends CodayEvent {
 }
 
 /**
- * Marks the point in a thread's conversation where a sub-thread branches off.
- * This is an immutable marker event — it is emitted once and never updated.
+ * Marks the point in a thread's conversation where a delegation occurrence starts.
+ * One DelegationEvent is emitted per delegation call — a sub-thread that is resumed
+ * via its threadId produces a second DelegationEvent, allowing the parent thread to
+ * display one block per occurrence rather than one block per sub-thread identity.
  * Status and result are available on the sub-thread itself (fetched on demand by the frontend).
  */
 export class DelegationEvent extends CodayEvent {
