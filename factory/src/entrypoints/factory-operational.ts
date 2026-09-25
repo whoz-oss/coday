@@ -99,3 +99,18 @@ export * from '../application/agentos-operations.js'
 // Agent step attempt / result stores and step executor
 // --------------------------------------------------------------------------
 export * from '../application/agent-attempt/factory-agent-step-executor.js'
+
+// --------------------------------------------------------------------------
+// Oracle measurement: pure domain plus application execution.
+//
+// Le domaine oracle ne dépend d'aucun accès `node:fs`, process ou Git ; les
+// commandes, l'exécution, le baseline et la classification vivent dans
+// `application/oracle/`. Les façades `factory/lib/oracle*.mjs` réexportent la
+// surface ci-dessous sans dupliquer d'état.
+// --------------------------------------------------------------------------
+export * from '../domain/oracle/oracle.js'
+export * from '../domain/oracle/oracle-definition.js'
+export * from '../application/oracle/oracle-definition-registry.js'
+export * from '../application/oracle/oracle-command.js'
+export * from '../application/oracle/oracle-executor.js'
+export * from '../application/oracle/oracle-baseline.js'

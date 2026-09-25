@@ -798,6 +798,7 @@ function validateWorkflowEvidenceInput(input, expectedWorkflowId) {
 }
 function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/* @__PURE__ */ new Date()).toISOString(), evidenceId = randomUUID2()) {
   const { idempotencyKey, ...rest } = validated;
+  void idempotencyKey;
   const record = {
     evidenceId,
     namespaceId,
@@ -1286,6 +1287,7 @@ var FilesystemWorkflowInstanceRepository = class {
       options
     );
     const snapshot = this.#requireSnapshot(result, "WORKFLOW_INSTANCE_TRANSITION_FAILED");
+    void workflowId;
     return snapshot;
   }
   async remove(namespaceId, workflowId, actor) {
@@ -1379,6 +1381,10 @@ var FilesystemWorkflowHumanInteractionRepository = class {
         interactionId
       });
     const result = await this.store.transact(namespaceId, storageId, interactionId, action);
+    void reply;
+    void actorId;
+    void evidenceId;
+    void transitionRequestId;
     return result.interaction;
   }
 };
@@ -1759,7 +1765,7 @@ function formatAgentInventory(agents) {
   ].join("\n");
 }
 function createAgentOsCapabilityInspector(deps) {
-  const realpath = deps.realpath ?? realpathSync;
+  const realpath2 = deps.realpath ?? realpathSync;
   async function inspectWorker(namespaceId, workerName) {
     let agents;
     try {
@@ -1915,7 +1921,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     const declaredRoot = integration?.parameters?.rootPath;
     if (declaredRoot) {
       try {
-        actual = realpath(declaredRoot);
+        actual = realpath2(declaredRoot);
       } catch {
         actual = null;
       }
@@ -1972,7 +1978,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
     let canonicalRoot = null;
     if (rootPath) {
       try {
-        canonicalRoot = realpath(rootPath);
+        canonicalRoot = realpath2(rootPath);
       } catch {
         canonicalRoot = null;
       }
@@ -2940,6 +2946,876 @@ async function executeAgentStepAttempt(input) {
     snapshot: transition.snapshot
   } : { ok: false, code: transition.error.code, attempt: finished };
 }
+
+// ../src/domain/oracle/oracle.ts
+function countTaskOutcomes(output) {
+  const plain = output.replace(/\u001b\[[0-9;]*m/g, "");
+  const lines = plain.split("\n");
+  let upToDate = 0;
+  let fromCache = 0;
+  let skipped = 0;
+  let executed = 0;
+  let nxTaskLines = 0;
+  let cacheSummaryFound = false;
+  let cacheSummaryFromCache = null;
+  let cacheSummaryTotal = null;
+  let successSummaryFound = false;
+  let successSummaryTotal = null;
+  for (const line of lines) {
+    if (line.startsWith("> Task ")) {
+      if (line.includes("UP-TO-DATE")) upToDate++;
+      else if (line.includes("FROM-CACHE")) fromCache++;
+      else if (line.includes("SKIPPED") || line.includes("NO-SOURCE")) skipped++;
+      else executed++;
+      continue;
+    }
+    if (line.startsWith("> nx run ")) {
+      nxTaskLines++;
+      if (line.includes("existing outputs match the cache")) fromCache++;
+      else executed++;
+      continue;
+    }
+    const cacheSummaryMatch = line.match(
+      /Nx\s+read\s+the\s+output\s+from\s+the\s+cache\s+instead\s+of\s+running\s+the\s+command\s+for\s+(\d+)\s+out\s+of\s+(\d+)\s+tasks/
+    );
+    if (cacheSummaryMatch) {
+      cacheSummaryFound = true;
+      cacheSummaryFromCache = parseInt(cacheSummaryMatch[1] ?? "0", 10);
+      cacheSummaryTotal = parseInt(cacheSummaryMatch[2] ?? "0", 10);
+      continue;
+    }
+    const successMatch = line.match(/NX\s+Successfully\s+ran\s+target\s+\S+\s+for\s+(\d+)\s+projects?/);
+    if (successMatch) {
+      successSummaryFound = true;
+      successSummaryTotal = parseInt(successMatch[1] ?? "0", 10);
+      continue;
+    }
+  }
+  const summaryFound = cacheSummaryFound || successSummaryFound;
+  const summaryFromCache = cacheSummaryFound ? cacheSummaryFromCache : null;
+  const summaryTotal = cacheSummaryFound ? cacheSummaryTotal : successSummaryFound ? successSummaryTotal : null;
+  let summaryAbsenceReason = null;
+  if (!summaryFound) summaryAbsenceReason = nxTaskLines === 0 ? "no-nx-tasks" : "fresh-run";
+  let countMismatch = false;
+  const lineTotal = upToDate + fromCache + skipped + executed;
+  if (cacheSummaryFound) countMismatch = fromCache !== cacheSummaryFromCache || lineTotal !== cacheSummaryTotal;
+  if (successSummaryFound) countMismatch = countMismatch || lineTotal !== successSummaryTotal;
+  return {
+    upToDate,
+    fromCache,
+    skipped,
+    executed,
+    summaryFound,
+    summaryAbsenceReason,
+    summaryFromCache,
+    summaryTotal,
+    countMismatch
+  };
+}
+function diffSnapshots(before, after) {
+  const modified = [];
+  for (const [path, fingerprint] of after.modified) {
+    if (before.modified.get(path) !== fingerprint) modified.push(path);
+  }
+  const untracked = [];
+  for (const [path, fingerprint] of after.untracked) {
+    if (before.untracked.get(path) !== fingerprint) untracked.push(path);
+  }
+  return { modified, untracked };
+}
+
+// ../src/domain/oracle/oracle-definition.ts
+import { createHash as createHash8 } from "node:crypto";
+var SAFE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var VERSION = /^\d+\.\d+\.\d+$/;
+var FIELDS2 = /* @__PURE__ */ new Set([
+  "schemaVersion",
+  "id",
+  "version",
+  "domain",
+  "argv",
+  "cwd",
+  "timeoutMs",
+  "success",
+  "applicable"
+]);
+var SUCCESS_FIELDS = /* @__PURE__ */ new Set(["rule", "requireWork"]);
+var APPLICABLE_FIELDS = /* @__PURE__ */ new Set(["workflowTypes", "stepIds"]);
+var SHELL_EXECUTABLES = /* @__PURE__ */ new Set([
+  "sh",
+  "bash",
+  "zsh",
+  "dash",
+  "ksh",
+  "cmd",
+  "cmd.exe",
+  "powershell",
+  "powershell.exe",
+  "pwsh",
+  "pwsh.exe"
+]);
+var SHELL_FLAGS = /* @__PURE__ */ new Set(["-c", "--command", "/c", "-command", "-encodedcommand"]);
+function invalid2() {
+  throw new Error("INVALID_ORACLE_DEFINITION");
+}
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function canonicalOracleDefinition(value) {
+  if (Array.isArray(value)) return value.map((entry) => canonicalOracleDefinition(entry));
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.keys(value).sort().map((key) => [key, canonicalOracleDefinition(value[key])])
+    );
+  }
+  return value;
+}
+function validateOracleDefinition(value) {
+  if (!isRecord(value)) invalid2();
+  const candidate = value;
+  if (Object.keys(candidate).some((key) => !FIELDS2.has(key))) invalid2();
+  if (candidate.schemaVersion !== "1" || !SAFE.test(String(candidate.id ?? "")) || !VERSION.test(String(candidate.version ?? "")) || !SAFE.test(String(candidate.domain ?? "")))
+    invalid2();
+  const argv = candidate.argv;
+  if (!Array.isArray(argv) || argv.length === 0 || argv.length > 32 || argv.some((entry) => typeof entry !== "string" || !entry || entry.length > 512 || /[\r\n\0]/.test(entry)))
+    invalid2();
+  const args = argv;
+  const executableRaw = args[0];
+  if (executableRaw === void 0) invalid2();
+  const executable = executableRaw.replace(/\\/g, "/").split("/").at(-1)?.toLowerCase();
+  if (executable === void 0 || SHELL_EXECUTABLES.has(executable) || args.some((arg, index) => index > 0 && SHELL_FLAGS.has(arg.toLowerCase())))
+    invalid2();
+  if (candidate.cwd !== "repo-root" || !Number.isSafeInteger(candidate.timeoutMs) || candidate.timeoutMs < 1 || candidate.timeoutMs > 36e5)
+    invalid2();
+  const success = candidate.success;
+  if (!isRecord(success) || Object.keys(success).some((key) => !SUCCESS_FIELDS.has(key)) || success.rule !== "exit-code" || typeof success.requireWork !== "boolean")
+    invalid2();
+  const applicable = candidate.applicable;
+  if (!isRecord(applicable) || Object.keys(applicable).some((key) => !APPLICABLE_FIELDS.has(key)) || !Array.isArray(applicable.workflowTypes) || applicable.workflowTypes.length === 0 || applicable.workflowTypes.some((entry) => !SAFE.test(String(entry))) || !Array.isArray(applicable.stepIds) || applicable.stepIds.length === 0 || applicable.stepIds.some((entry) => !SAFE.test(String(entry))))
+    invalid2();
+  return Object.freeze({
+    schemaVersion: "1",
+    id: candidate.id,
+    version: candidate.version,
+    domain: candidate.domain,
+    argv: Object.freeze([...args]),
+    cwd: "repo-root",
+    timeoutMs: candidate.timeoutMs,
+    success: Object.freeze({ rule: "exit-code", requireWork: success.requireWork }),
+    applicable: Object.freeze({
+      workflowTypes: Object.freeze([...applicable.workflowTypes]),
+      stepIds: Object.freeze([...applicable.stepIds])
+    })
+  });
+}
+function hashOracleDefinition(definition) {
+  return `sha256:${createHash8("sha256").update(JSON.stringify(canonicalOracleDefinition(definition))).digest("hex")}`;
+}
+function definitionIdentityFromFileName(fileName) {
+  const base = fileName.split(/[\\/]/).at(-1) ?? fileName;
+  return base.endsWith(".json") ? base.slice(0, -".json".length) : base;
+}
+var OracleDefinitionRegistryCore = class {
+  constructor(source) {
+    this.source = source;
+    this.items = /* @__PURE__ */ new Map();
+  }
+  items;
+  async initialize() {
+    const files = [...await this.source.listFiles()].filter((name) => name.endsWith(".json")).sort();
+    const next = /* @__PURE__ */ new Map();
+    for (const file of files) {
+      const definition = validateOracleDefinition(JSON.parse(await this.source.readFile(file)));
+      if (definitionIdentityFromFileName(file) !== `${definition.id}@${definition.version}`)
+        throw new Error("ORACLE_PATH_IDENTITY_MISMATCH");
+      if (next.has(definition.id)) throw new Error("DUPLICATE_ORACLE_ID");
+      next.set(definition.id, definition);
+    }
+    this.items = next;
+    return this;
+  }
+  get(id) {
+    return this.items.get(id) ?? null;
+  }
+};
+
+// ../src/application/oracle/oracle-definition-registry.ts
+import { readFile as readFile3, readdir as readdir2 } from "node:fs/promises";
+import { join as join6 } from "node:path";
+function createFilesystemOracleDefinitionSource(root) {
+  return {
+    listFiles: () => readdir2(root),
+    readFile: (fileName) => readFile3(join6(root, fileName), "utf8")
+  };
+}
+var OracleDefinitionRegistry = class extends OracleDefinitionRegistryCore {
+  constructor(root) {
+    super(createFilesystemOracleDefinitionSource(root));
+  }
+};
+
+// ../src/application/oracle/oracle-command.ts
+import { existsSync, readFileSync } from "node:fs";
+import { dirname as dirname3, join as join7 } from "node:path";
+function resolveBuildHosts(ownerProjects, repoRoot) {
+  const mapRaw = process.env.FACTORY_FRONT_BUILD_HOST_MAP;
+  if (!mapRaw) {
+    return {
+      noHost: true,
+      reason: "FACTORY_FRONT_BUILD_HOST_MAP is not set. Cannot resolve buildable host applications for owner projects: " + ownerProjects.join(", ") + `. Set this env var to a JSON map of owner project \u2192 host app(s). Example: '{"*":["aphrodite","admin","agentic-studio","copilot-chat"]}'. See factory/lib/domains.mjs for documentation.`,
+      ownerProjects: [...ownerProjects]
+    };
+  }
+  let hostMap;
+  try {
+    hostMap = JSON.parse(mapRaw);
+  } catch (err) {
+    return {
+      noHost: true,
+      reason: "FACTORY_FRONT_BUILD_HOST_MAP is not valid JSON: " + String(err) + ". Raw value: " + mapRaw.slice(0, 200),
+      ownerProjects: [...ownerProjects]
+    };
+  }
+  if (typeof hostMap !== "object" || hostMap === null || Array.isArray(hostMap)) {
+    return {
+      noHost: true,
+      reason: "FACTORY_FRONT_BUILD_HOST_MAP must be a JSON object, got: " + typeof hostMap,
+      ownerProjects: [...ownerProjects]
+    };
+  }
+  const record = hostMap;
+  const fallbackHosts = Array.isArray(record["*"]) ? record["*"] : [];
+  const seen = /* @__PURE__ */ new Set();
+  const hosts = [];
+  for (const owner of ownerProjects) {
+    const mapped = Array.isArray(record[owner]) ? record[owner] : fallbackHosts;
+    for (const host of mapped) {
+      if (typeof host === "string" && !seen.has(host)) {
+        seen.add(host);
+        hosts.push(host);
+      }
+    }
+  }
+  if (hosts.length === 0) {
+    return {
+      noHost: true,
+      reason: "No buildable host found for owner projects: " + ownerProjects.join(", ") + '. The host map has no entry for these projects and no fallback ("*") is defined. Add entries to FACTORY_FRONT_BUILD_HOST_MAP.',
+      ownerProjects: [...ownerProjects]
+    };
+  }
+  const validHosts = [];
+  const invalidHosts = [];
+  for (const host of hosts) {
+    const candidatePaths = [
+      join7(repoRoot, "apps", host, "project.json"),
+      join7(repoRoot, "frontend", "apps", host, "project.json"),
+      join7(repoRoot, host, "project.json")
+    ];
+    let hasBuildTarget = false;
+    let found = false;
+    for (const candidate of candidatePaths) {
+      if (existsSync(candidate)) {
+        found = true;
+        try {
+          const json = JSON.parse(readFileSync(candidate, "utf8"));
+          if (json.targets && (json.targets["build"] !== void 0 || json.targets["build-angular"] !== void 0)) {
+            hasBuildTarget = true;
+          }
+        } catch {
+        }
+        break;
+      }
+    }
+    if (!found) {
+      console.warn(
+        '[oracle-command] resolveBuildHosts: project.json not found for host "' + host + '" in conventional paths (' + candidatePaths.map((p) => p.replace(repoRoot, "<root>")).join(", ") + "). Accepting host tentatively \u2014 verify that it has a build target."
+      );
+      validHosts.push(host);
+      continue;
+    }
+    if (hasBuildTarget) {
+      validHosts.push(host);
+    } else {
+      invalidHosts.push(host);
+      console.warn(
+        '[oracle-command] resolveBuildHosts: host "' + host + '" has no `build` or `build-angular` target in its project.json. Excluding from build oracle scope. Update FACTORY_FRONT_BUILD_HOST_MAP to use a host with a real build target.'
+      );
+    }
+  }
+  if (validHosts.length === 0) {
+    return {
+      noHost: true,
+      reason: "All resolved hosts (" + hosts.join(", ") + ") lack a `build` or `build-angular` target in their project.json. Owner projects: " + ownerProjects.join(", ") + ". Excluded hosts: " + invalidHosts.join(", ") + ". Update FACTORY_FRONT_BUILD_HOST_MAP to reference apps with real build targets.",
+      ownerProjects: [...ownerProjects]
+    };
+  }
+  return validHosts;
+}
+function resolveOwnerProjects(files, repoRoot) {
+  const seen = /* @__PURE__ */ new Set();
+  const projects = [];
+  for (const file of files) {
+    const absoluteFile = join7(repoRoot, file);
+    let dir = dirname3(absoluteFile);
+    while (dir.length >= repoRoot.length) {
+      const candidate = join7(dir, "project.json");
+      if (existsSync(candidate)) {
+        try {
+          const json = JSON.parse(readFileSync(candidate, "utf8"));
+          if (json.name && typeof json.name === "string") {
+            if (!seen.has(json.name)) {
+              seen.add(json.name);
+              projects.push(json.name);
+            }
+          }
+        } catch {
+        }
+        break;
+      }
+      const parent = dirname3(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return projects;
+}
+function extractTarget(command) {
+  const shortMatch = command.match(/(?:^|\s)-t\s+(\S+)/);
+  if (shortMatch) return shortMatch[1] ?? null;
+  const longMatch = command.match(/(?:^|\s)--target=(\S+)/);
+  if (longMatch) return longMatch[1] ?? null;
+  return null;
+}
+function buildOracleCommand(oracle, files, repoRoot) {
+  if (oracle.buildHostArg) {
+    const ownerProjects = files.length > 0 ? resolveOwnerProjects(files, repoRoot) : [];
+    if (ownerProjects.length === 0 && files.length > 0) {
+      return {
+        noHost: true,
+        reason: "No Nx owner project found for modified files: " + files.join(", ") + ". Modified files may be in root-level directories without a project.json.",
+        ownerProjects: []
+      };
+    }
+    if (ownerProjects.length === 0) {
+      return {
+        noHost: true,
+        reason: "No files provided to build oracle. Cannot resolve build host applications.",
+        ownerProjects: []
+      };
+    }
+    const hostsResult = resolveBuildHosts(ownerProjects, repoRoot);
+    if (!Array.isArray(hostsResult)) {
+      return hostsResult;
+    }
+    if (oracle.command.includes("--projects=")) {
+      return oracle.command;
+    }
+    return oracle.command + " --projects=" + hostsResult.join(",");
+  }
+  if (!oracle.filesArg) {
+    return oracle.command;
+  }
+  if (files.length === 0) {
+    return oracle.command;
+  }
+  const target = extractTarget(oracle.command);
+  if (!target) {
+    console.warn(
+      "[oracle-command] Impossible d'extraire la cible Nx depuis la commande template : " + oracle.command + ". La commande template est retourn\xE9e sans modification. V\xE9rifier que FACTORY_COMMAND_FRONT contient `-t <cible>` ou `--target=<cible>`."
+    );
+    return oracle.command;
+  }
+  const projects = resolveOwnerProjects(files, repoRoot);
+  if (projects.length === 0) {
+    console.warn(
+      "[oracle-command] Aucun projet Nx trouv\xE9 pour les fichiers modifi\xE9s : " + files.join(", ") + ". La commande template est retourn\xE9e sans modification."
+    );
+    return oracle.command;
+  }
+  return "pnpm nx run-many --target=" + target + " --projects=" + projects.join(",") + " --skip-nx-cache";
+}
+
+// ../src/application/oracle/oracle-executor.ts
+import { spawn, spawnSync } from "node:child_process";
+import { createHash as createHash9 } from "node:crypto";
+import { readFileSync as readFileSync2 } from "node:fs";
+import { realpath } from "node:fs/promises";
+import { isAbsolute as isAbsolute2, join as join8 } from "node:path";
+var MAX_OUTPUT_CHARS = 1e5;
+var LIMIT = 16384;
+function truncate(s) {
+  if (s.length <= MAX_OUTPUT_CHARS) return s;
+  return s.slice(0, MAX_OUTPUT_CHARS) + `
+[... tronqu\xE9 \xE0 ${MAX_OUTPUT_CHARS} caract\xE8res]`;
+}
+function runCommand(command, { cwd, timeoutMs } = {}) {
+  const start = Date.now();
+  const result = spawnSync(command, {
+    shell: true,
+    ...cwd === void 0 ? {} : { cwd },
+    ...timeoutMs === void 0 ? {} : { timeout: timeoutMs },
+    encoding: "utf8",
+    maxBuffer: 200 * 1024 * 1024
+    // 200 MB pour éviter les troncatures internes
+  });
+  const durationMs = Date.now() - start;
+  const errorCode = result.error?.code;
+  const timedOut = result.signal === "SIGTERM" || errorCode === "ETIMEDOUT";
+  return {
+    exitCode: timedOut ? -1 : result.status ?? -1,
+    stdout: truncate(result.stdout ?? ""),
+    stderr: truncate(result.stderr ?? ""),
+    durationMs,
+    timedOut
+  };
+}
+function contentFingerprint(cwd, relPath) {
+  try {
+    return createHash9("sha256").update(readFileSync2(join8(cwd, relPath))).digest("hex");
+  } catch {
+    return "unreadable";
+  }
+}
+function snapshotDiff(cwd) {
+  const diffResult = runCommand("git diff HEAD --name-only", { cwd });
+  const untrackedResult = runCommand("git ls-files --others --exclude-standard", { cwd });
+  const modified = /* @__PURE__ */ new Map();
+  for (const path of diffResult.stdout.split("\n").filter(Boolean)) {
+    modified.set(path, contentFingerprint(cwd, path));
+  }
+  const untracked = /* @__PURE__ */ new Map();
+  for (const path of untrackedResult.stdout.split("\n").filter(Boolean)) {
+    untracked.set(path, contentFingerprint(cwd, path));
+  }
+  return { modified, untracked };
+}
+function diffSince(before, cwd) {
+  return diffSnapshots(before, snapshotDiff(cwd));
+}
+function classifyOracleExecution(definition, result) {
+  if (result.spawnError || result.timedOut || result.signal)
+    return { classification: "ORACLE_INFRASTRUCTURE", outcome: "indeterminate" };
+  if (result.exitCode !== 0) return { classification: "PRODUCT_REGRESSION", outcome: "fail" };
+  if (definition.success.requireWork && result.counts.executed === 0)
+    return { classification: "EMPTY_SUCCESS", outcome: "indeterminate" };
+  return { classification: "CLEAN", outcome: "pass" };
+}
+async function validateOracleRoot(repoRoot) {
+  if (typeof repoRoot !== "string" || !isAbsolute2(repoRoot))
+    throw Object.assign(new Error("INVALID_ORACLE_ROOT"), { code: "INVALID_ORACLE_ROOT" });
+  return realpath(repoRoot);
+}
+function oracleRootIdentity(repoRoot) {
+  return `sha256:${createHash9("sha256").update(repoRoot).digest("hex")}`;
+}
+function processEnvironment(source = process.env) {
+  const env = {};
+  for (const key of ["PATH", "HOME", "TMPDIR", "TMP", "TEMP", "SystemRoot", "WINDIR", "PATHEXT"])
+    if (typeof source[key] === "string") env[key] = source[key];
+  return env;
+}
+function bounded(chunks) {
+  const value = Buffer.concat(chunks).toString("utf8");
+  return { excerpt: value.slice(0, LIMIT), truncated: value.length > LIMIT };
+}
+function executeOracle(definition, {
+  repoRoot,
+  countTaskOutcomes: countTaskOutcomes2 = countTaskOutcomes,
+  spawnImpl = spawn,
+  environment = process.env
+}) {
+  return new Promise((resolve2) => {
+    const started = Date.now();
+    const stdout = [];
+    const stderr = [];
+    let timedOut = false;
+    let spawnError = null;
+    let settled = false;
+    const child = spawnImpl(definition.argv[0] ?? "", definition.argv.slice(1), {
+      cwd: repoRoot,
+      env: processEnvironment(environment),
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: false,
+      detached: process.platform !== "win32"
+    });
+    child.stdout?.on("data", (x) => stdout.push(Buffer.from(x)));
+    child.stderr?.on("data", (x) => stderr.push(Buffer.from(x)));
+    child.on("error", (e) => {
+      spawnError = e.code ?? "SPAWN_FAILURE";
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        if (process.platform === "win32" || child.pid === void 0) child.kill("SIGKILL");
+        else process.kill(-child.pid, "SIGKILL");
+      } catch {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+        }
+      }
+    }, definition.timeoutMs);
+    child.on("close", (code, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const out = bounded(stdout);
+      const err = bounded(stderr);
+      const counts = countTaskOutcomes2(`${out.excerpt}
+${err.excerpt}`);
+      const base = {
+        exitCode: code,
+        signal,
+        timedOut,
+        durationMs: Date.now() - started,
+        spawnError,
+        counts,
+        stdout: out,
+        stderr: err
+      };
+      resolve2({ ...base, ...classifyOracleExecution(definition, base) });
+    });
+  });
+}
+function oracleArtifact(result) {
+  const raw = JSON.stringify({ stdout: result.stdout.excerpt, stderr: result.stderr.excerpt });
+  return { raw, hash: `sha256:${createHash9("sha256").update(raw).digest("hex")}` };
+}
+
+// ../src/application/oracle/oracle-baseline.ts
+var TS_INFRASTRUCTURE_CODES = /* @__PURE__ */ new Set(["TS5090", "TS6059", "TS18003", "TS6305", "TS6307"]);
+var BASELINE_TAIL_LINES = 40;
+function stripAnsi(s) {
+  return s.replace(/\u001b\[[0-9;]*m/g, "");
+}
+function isNoiseLine(line) {
+  const t = line.trim();
+  if (!t) return true;
+  if (t.startsWith("NX") || t.startsWith("> NX") || t.includes("Running target")) return true;
+  if (t.includes("Successfully ran target")) return true;
+  if (t.includes("Nx read the output from the cache")) return true;
+  if (t.includes("existing outputs match the cache")) return true;
+  if (t.startsWith("> nx run ")) return true;
+  if (t.startsWith("> Task ")) return true;
+  if (t.includes("Failed tasks:") || t.includes("Hint: ")) return true;
+  if (t.startsWith("PASS ") && !t.includes(".spec.") && !t.includes(".test.")) return true;
+  return false;
+}
+function normalizeDiagnosticLine(rawLine) {
+  const line = stripAnsi(rawLine).trim();
+  if (!line || isNoiseLine(line)) return null;
+  const tsMatch = line.match(/([^\s(]+(?:\.tsx?|\.json))(\(\d+,\d+\))?:\s*error\s+(TS\d+):/) ?? line.match(/([^\s(]+)(\(\d+,\d+\))?:\s*error\s+(TS\d+):/);
+  if (tsMatch) {
+    const filePath = tsMatch[1] ?? "";
+    const location = tsMatch[2] ?? "";
+    const code = tsMatch[3] ?? "";
+    const locMatch = location.match(/(\d+),(\d+)/);
+    const locStr = locMatch ? `:${locMatch[1]}:${locMatch[2]}` : "";
+    return `TS:${code}:${filePath}${locStr}`;
+  }
+  const jestMatch = line.match(/^\u25cf\s+(.+?)\s+[›>]\s+(.+)$/);
+  if (jestMatch) {
+    const suite = (jestMatch[1] ?? "").trim();
+    const testName = (jestMatch[2] ?? "").trim();
+    return `TEST:${suite}:${testName}`;
+  }
+  return `RAW:${line.slice(0, 120)}`;
+}
+function tailLines(text2, n) {
+  return text2.split("\n").filter((line) => line.trim().length > 0).slice(-n);
+}
+function extractTypeDiagnostics(stdout, stderr, maxLines) {
+  const stdoutLines = stdout.split("\n");
+  const diagnosticIndices = /* @__PURE__ */ new Set();
+  for (let i = 0; i < stdoutLines.length; i++) {
+    if ((stdoutLines[i] ?? "").includes("error TS")) {
+      if (i > 0 && (stdoutLines[i - 1] ?? "").trim().length > 0) diagnosticIndices.add(i - 1);
+      diagnosticIndices.add(i);
+      if (i + 1 < stdoutLines.length && (stdoutLines[i + 1] ?? "").trim().length > 0) diagnosticIndices.add(i + 1);
+      if (i + 2 < stdoutLines.length && (stdoutLines[i + 2] ?? "").trim().includes("~")) diagnosticIndices.add(i + 2);
+    }
+  }
+  if (diagnosticIndices.size === 0) {
+    const source = stderr.trim().length > 0 ? stderr : stdout;
+    return tailLines(source, maxLines);
+  }
+  const sorted = [...diagnosticIndices].sort((a, b) => a - b);
+  return sorted.map((i) => stdoutLines[i] ?? "").filter((line) => line.trim().length > 0).slice(-maxLines);
+}
+function extractTestDiagnostics(stdout, stderr, maxLines) {
+  const plain = stripAnsi(stdout);
+  const lines = plain.split("\n");
+  const diagnosticIndices = /* @__PURE__ */ new Set();
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = (lines[i] ?? "").trim();
+    if (trimmed.startsWith("\u25CF ") || trimmed.startsWith("\u25CF\u25CF")) {
+      diagnosticIndices.add(i);
+      let j = i + 1;
+      while (j < lines.length) {
+        const next = (lines[j] ?? "").trim();
+        if (next.startsWith("\u25CF ") || next.includes("Running target") || next.includes("Failed tasks")) break;
+        diagnosticIndices.add(j);
+        j++;
+      }
+      continue;
+    }
+    if (trimmed.startsWith("FAIL ") && (trimmed.includes(".spec.") || trimmed.includes(".test."))) {
+      diagnosticIndices.add(i);
+      continue;
+    }
+    if (trimmed.startsWith("at ") && trimmed.includes(".spec.") || trimmed.startsWith("at ") && trimmed.includes(".test.")) {
+      diagnosticIndices.add(i);
+      continue;
+    }
+    if (trimmed.startsWith("Expected:") || trimmed.startsWith("Received:") || trimmed.startsWith("Expected value") || trimmed.startsWith("Received value") || trimmed.startsWith("expect(") || trimmed.startsWith("- Expected") || trimmed.startsWith("+ Received")) {
+      if (i > 0) diagnosticIndices.add(i - 1);
+      diagnosticIndices.add(i);
+      if (i + 1 < lines.length) diagnosticIndices.add(i + 1);
+      continue;
+    }
+  }
+  if (diagnosticIndices.size === 0) {
+    const source = stderr.trim().length > 0 ? stderr : stdout;
+    return tailLines(source, maxLines);
+  }
+  const sorted = [...diagnosticIndices].sort((a, b) => a - b);
+  return sorted.map((i) => lines[i] ?? "").filter((line) => line.trim().length > 0).slice(-maxLines);
+}
+function extractOracleDiagnostics(oracleName, stdout, stderr, maxLines = 200) {
+  let rawLines;
+  if (oracleName === "types") {
+    rawLines = extractTypeDiagnostics(stdout, stderr, maxLines);
+  } else if (oracleName === "tests") {
+    rawLines = extractTestDiagnostics(stdout, stderr, maxLines);
+  } else {
+    const source = stderr.trim().length > 0 ? stderr : stdout;
+    rawLines = source.split("\n").map((l) => stripAnsi(l)).filter((l) => l.trim().length > 0 && !isNoiseLine(l)).slice(-maxLines);
+  }
+  const identities = [];
+  for (const line of rawLines) {
+    const id = normalizeDiagnosticLine(line);
+    if (id !== null) identities.push(id);
+  }
+  const seen = /* @__PURE__ */ new Set();
+  const uniqueIdentities = [];
+  for (const id of identities) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      uniqueIdentities.push(id);
+    }
+  }
+  return { identities: uniqueIdentities, rawLines };
+}
+function isInfrastructureIdentity(identity) {
+  if (!identity.startsWith("TS:")) return false;
+  const parts = identity.split(":");
+  return TS_INFRASTRUCTURE_CODES.has(parts[1] ?? "");
+}
+function runBaselineOracle(params) {
+  const { oracle, planFiles, repoRoot, timeoutMs } = params;
+  const builtCommand = buildOracleCommand(oracle, planFiles, repoRoot);
+  const command = typeof builtCommand === "string" ? builtCommand : builtCommand;
+  const cwd = oracle.cwd;
+  const projects = oracle.filesArg ? resolveOwnerProjects(planFiles, repoRoot) : [];
+  const result = runCommand(command, { cwd, timeoutMs });
+  const tasks = countTaskOutcomes(result.stdout + "\n" + result.stderr);
+  const timedOut = result.timedOut;
+  const emptySuccess = result.exitCode === 0 && tasks.executed === 0;
+  const { identities, rawLines } = result.exitCode !== 0 && !timedOut && !emptySuccess ? extractOracleDiagnostics(oracle.name, result.stdout, result.stderr) : { identities: [], rawLines: [] };
+  const evidenceParts = [
+    `exitCode=${result.exitCode}`,
+    `durationMs=${result.durationMs}`,
+    timedOut ? "TIMED_OUT" : null,
+    emptySuccess ? "EMPTY_SUCCESS" : null,
+    `tasks.executed=${tasks.executed}`,
+    `tasks.fromCache=${tasks.fromCache}`,
+    projects.length > 0 ? `projects=${projects.join(",")}` : null
+  ].filter((part) => part !== null);
+  return {
+    command,
+    cwd,
+    projects,
+    exitCode: result.exitCode,
+    timedOut,
+    emptySuccess,
+    durationMs: result.durationMs,
+    tasks,
+    diagnosticIdentities: identities,
+    rawDiagnosticLines: rawLines.slice(0, BASELINE_TAIL_LINES),
+    executionEvidence: evidenceParts.join(", "),
+    ranAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+}
+function classifyOracleResult(params) {
+  const { oracle, baseline, postEdit, changedFiles, plannedFiles } = params;
+  const baselinePassed = baseline !== null && baseline.exitCode === 0 && !baseline.timedOut && !baseline.emptySuccess;
+  const postEditPassed = postEdit.exitCode === 0 && !postEdit.timedOut && !postEdit.emptySuccess;
+  if (postEditPassed) {
+    return {
+      classification: "CLEAN",
+      reason: "Post-edit oracle passed.",
+      baselineIdentities: baseline?.diagnosticIdentities ?? [],
+      postEditIdentities: [],
+      newDiagnostics: [],
+      preExistingDiagnostics: [],
+      newDiagnosticLines: [],
+      baselinePassed,
+      postEditPassed: true
+    };
+  }
+  const { identities: postEditIdentities, rawLines: postEditRawLines } = !postEdit.timedOut && !postEdit.emptySuccess ? extractOracleDiagnostics(oracle.name, postEdit.stdout, postEdit.stderr) : { identities: [], rawLines: [] };
+  const baselineIdentities = baseline?.diagnosticIdentities ?? [];
+  const baselineSet = new Set(baselineIdentities);
+  if (postEdit.timedOut || postEdit.emptySuccess) {
+    const reason = postEdit.timedOut ? `Oracle timed out (no verdict on code).` : `Oracle empty success (tasks.executed === 0, no verdict on code).`;
+    return {
+      classification: "ORACLE_INFRASTRUCTURE",
+      reason,
+      baselineIdentities,
+      postEditIdentities: [],
+      newDiagnostics: [],
+      preExistingDiagnostics: [],
+      newDiagnosticLines: [],
+      baselinePassed,
+      postEditPassed: false
+    };
+  }
+  if (baseline !== null && (baseline.timedOut || baseline.emptySuccess)) {
+    return {
+      classification: "ORACLE_INFRASTRUCTURE",
+      reason: baseline.timedOut ? "Baseline oracle timed out \u2014 cannot compare post-edit diagnostics." : "Baseline oracle had empty success \u2014 cannot compare post-edit diagnostics.",
+      baselineIdentities: [],
+      postEditIdentities,
+      newDiagnostics: postEditIdentities,
+      preExistingDiagnostics: [],
+      newDiagnosticLines: postEditRawLines,
+      baselinePassed: false,
+      postEditPassed: false
+    };
+  }
+  const infraIdentities = postEditIdentities.filter(isInfrastructureIdentity);
+  const productIdentities = postEditIdentities.filter((id) => !isInfrastructureIdentity(id));
+  if (infraIdentities.length > 0 && productIdentities.length === 0) {
+    return {
+      classification: "ORACLE_INFRASTRUCTURE",
+      reason: `Only TypeScript infrastructure/config error codes found: ${infraIdentities.map((id) => id.split(":")[1]).join(", ")}. Not a product regression.`,
+      baselineIdentities,
+      postEditIdentities,
+      newDiagnostics: infraIdentities,
+      preExistingDiagnostics: [],
+      newDiagnosticLines: postEditRawLines,
+      baselinePassed,
+      postEditPassed: false
+    };
+  }
+  const newProductDiagnostics = productIdentities.filter((id) => !baselineSet.has(id));
+  const preExistingProductDiagnostics = productIdentities.filter((id) => baselineSet.has(id));
+  const newInfraDiagnostics = infraIdentities.filter((id) => !baselineSet.has(id));
+  const newDiagnostics = [...newProductDiagnostics, ...newInfraDiagnostics];
+  const preExistingDiagnostics = [
+    ...preExistingProductDiagnostics,
+    ...infraIdentities.filter((id) => baselineSet.has(id))
+  ];
+  const newDiagnosticLines = postEditRawLines.filter((line) => {
+    const id = normalizeDiagnosticLine(line);
+    return id !== null && newDiagnostics.includes(id);
+  });
+  if (newProductDiagnostics.length === 0 && preExistingProductDiagnostics.length > 0) {
+    return {
+      classification: "BASELINE_FAILURE",
+      reason: `All ${preExistingProductDiagnostics.length} post-edit diagnostic(s) were already present at baseline. The edit did not introduce new failures.`,
+      baselineIdentities,
+      postEditIdentities,
+      newDiagnostics: [],
+      preExistingDiagnostics,
+      newDiagnosticLines: [],
+      baselinePassed,
+      postEditPassed: false
+    };
+  }
+  if (newProductDiagnostics.length > 0) {
+    const scopeFiles = /* @__PURE__ */ new Set([...changedFiles, ...plannedFiles]);
+    const allNewInScope = newProductDiagnostics.every((id) => {
+      if (id.startsWith("TS:")) {
+        const parts = id.split(":");
+        const filePath = parts[2] ?? "";
+        if (!filePath) return false;
+        return [...scopeFiles].some((sf) => filePath.includes(sf) || sf.includes(filePath) || filePath === sf);
+      }
+      return true;
+    });
+    if (!allNewInScope) {
+      return {
+        classification: "INDETERMINATE_OUT_OF_SCOPE",
+        reason: `New diagnostics reference files outside the union of planned and changed files. Cannot confidently attribute to this edit.`,
+        baselineIdentities,
+        postEditIdentities,
+        newDiagnostics,
+        preExistingDiagnostics,
+        newDiagnosticLines,
+        baselinePassed,
+        postEditPassed: false
+      };
+    }
+  }
+  if (newProductDiagnostics.length > 0) {
+    const reason = baselinePassed ? `Baseline passed; post-edit introduced ${newProductDiagnostics.length} new diagnostic(s).` : `Baseline failed; post-edit introduced ${newProductDiagnostics.length} new diagnostic(s) beyond baseline.`;
+    return {
+      classification: "PRODUCT_REGRESSION",
+      reason,
+      baselineIdentities,
+      postEditIdentities,
+      newDiagnostics,
+      preExistingDiagnostics,
+      newDiagnosticLines,
+      baselinePassed,
+      postEditPassed: false
+    };
+  }
+  return {
+    classification: "ORACLE_INFRASTRUCTURE",
+    reason: "No classifiable diagnostics found in post-edit output.",
+    baselineIdentities,
+    postEditIdentities,
+    newDiagnostics: [],
+    preExistingDiagnostics: [],
+    newDiagnosticLines: [],
+    baselinePassed,
+    postEditPassed: false
+  };
+}
+function buildQuarantineRecord(params) {
+  const { oracleName, classification, reason, baseline, postEdit, classificationResult, humanDecision, humanMessage } = params;
+  return {
+    quarantinedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    oracleName,
+    classification,
+    reason,
+    humanDecision,
+    humanMessage: humanMessage || null,
+    // The oracle remains visibly failed — never rewritten as passed.
+    oracleFailed: true,
+    baseline: baseline ? {
+      exitCode: baseline.exitCode,
+      timedOut: baseline.timedOut,
+      emptySuccess: baseline.emptySuccess,
+      executionEvidence: baseline.executionEvidence,
+      diagnosticCount: baseline.diagnosticIdentities.length
+    } : null,
+    postEdit: {
+      exitCode: postEdit.exitCode,
+      timedOut: postEdit.timedOut,
+      emptySuccess: postEdit.emptySuccess,
+      durationMs: postEdit.durationMs
+    },
+    diagnostics: {
+      baseline: classificationResult.baselineIdentities,
+      postEdit: classificationResult.postEditIdentities,
+      new: classificationResult.newDiagnostics,
+      preExisting: classificationResult.preExistingDiagnostics
+    }
+  };
+}
 export {
   AGENT_STEP_ATTEMPT_IMMUTABLE_FIELDS,
   AGENT_STEP_ATTEMPT_STATUSES,
@@ -2956,6 +3832,8 @@ export {
   FilesystemWorkflowInstanceRepository,
   HUMAN_INTERACTION_KINDS,
   KeyedLock,
+  OracleDefinitionRegistry,
+  OracleDefinitionRegistryCore,
   STORAGE_FORMAT_VERSION,
   STORAGE_KERNEL_ERROR_CODES,
   StorageKernelError,
@@ -2984,18 +3862,25 @@ export {
   atomicTemporaryPath,
   atomicWriteJson,
   bindFactoryStepResult,
+  buildOracleCommand,
+  buildQuarantineRecord,
   canonicalAgentStepResultJson,
   canonicalHumanInteractionInput,
   canonicalJson,
+  canonicalOracleDefinition,
   canonicalize2 as canonicalize,
   canonicalizeAgentStepResult,
   canonicalizeWorkflowDefinition,
+  classifyOracleExecution,
+  classifyOracleResult,
   clearActiveCaseId,
   computeCanonicalHash,
+  countTaskOutcomes,
   createAgentOsHttpCaseTerminator,
   createAgentOsHttpClient,
   createAgentOsRuntimeAdapter,
   createCase,
+  createFilesystemOracleDefinitionSource,
   createFilesystemWorkflowDefinitionRepository,
   createFilesystemWorkflowEvidenceRepository,
   createFilesystemWorkflowHumanInteractionRepository,
@@ -3005,12 +3890,16 @@ export {
   createShutdownController,
   createWorkflowEvidence,
   createWorkflowInstance,
+  diffSince,
+  diffSnapshots,
   endCurrentRunOnce,
   endRun,
   evaluateHumanCheckpointOpen,
   evaluateHumanResolutionTransition,
   evaluateWorkflowTransition,
   executeAgentStepAttempt,
+  executeOracle,
+  extractOracleDiagnostics,
   failPhase,
   getActiveCaseId,
   getActiveCaseIds,
@@ -3019,12 +3908,14 @@ export {
   getCurrentRun,
   hashAgentBrief,
   hashAgentStepResult,
+  hashOracleDefinition,
   hashStructuredAgentResult,
   hashWorkflowDefinition,
   humanInteractionSemanticHash,
   installSigtermHandler,
   isAgentStepAttemptStatus,
   isAgentStepAttemptTerminal,
+  isInfrastructureIdentity,
   isNotFoundError,
   isSafeAgentStepResultId,
   isValidAgentStepAttemptInstant,
@@ -3033,7 +3924,10 @@ export {
   listEvents,
   listIntegrations,
   materializeInlineArtifact,
+  normalizeDiagnosticLine,
   openedInteractionRevision,
+  oracleArtifact,
+  oracleRootIdentity,
   parseAgentStepResult,
   passPhase,
   postMessage,
@@ -3045,12 +3939,18 @@ export {
   readFormatVersion,
   readJsonLines,
   registerActiveCase,
+  resolveBuildHosts,
+  resolveOwnerProjects,
   runAgentTurn,
+  runBaselineOracle,
+  runCommand,
   safeEqual,
   setActiveCaseId,
   sha256,
+  snapshotDiff,
   startPhase,
   storageErrorCode,
+  stripAnsi,
   syncDirectory,
   transitionScopeHash,
   transitionSemanticHash,
@@ -3058,6 +3958,8 @@ export {
   validateAgentStepAttempt,
   validateAgentStepResultBusiness,
   validateHumanInteractionOpenInput,
+  validateOracleDefinition,
+  validateOracleRoot,
   validateWorkflowDefinition,
   validateWorkflowEvidenceInput,
   validateWorkflowTransitionRequest,
