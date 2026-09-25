@@ -113,6 +113,64 @@ try {
   assert.equal(adapterInputs.length, 6, 'AgentOS adapter sources must be included exactly once each in the operational bundle')
   const gatewayPortInputs = Object.keys(metafile.inputs).filter((input) => input.endsWith('src/ports/agent-runtime-gateway.ts'))
   assert.equal(gatewayPortInputs.length, 1, 'agent-runtime-gateway port must be included exactly once in the operational bundle')
+
+  // Tranche 5: agent-step attempts, structured results and the step executor.
+  const expectedAgentAttemptExports = [
+    'AGENT_STEP_ATTEMPT_STATUSES', 'AgentStepAttemptStore', 'AgentStepResultStore',
+    'hashAgentStepResult', 'artifactEvidenceIdempotencyKey', 'parseAgentStepResult',
+    'materializeInlineArtifact', 'executeAgentStepAttempt', 'hashAgentBrief', 'hashStructuredAgentResult',
+  ]
+  for (const name of expectedAgentAttemptExports) assert.ok(name in module, `missing ${name}`)
+  assert.equal(typeof module.AgentStepAttemptStore, 'function', 'missing AgentStepAttemptStore')
+  assert.equal(typeof module.AgentStepResultStore, 'function', 'missing AgentStepResultStore')
+  assert.equal(typeof module.executeAgentStepAttempt, 'function', 'missing executeAgentStepAttempt')
+
+  const attemptStoreFacade = await import('../lib/agent-step-attempt-store.mjs')
+  assert.equal(attemptStoreFacade.AGENT_STEP_ATTEMPT_STATUSES, module.AGENT_STEP_ATTEMPT_STATUSES, 'statuses facade identity mismatch')
+  assert.equal(attemptStoreFacade.AgentStepAttemptStore, module.AgentStepAttemptStore, 'attempt store facade identity mismatch')
+  const resultStoreFacade = await import('../lib/agent-step-result-store.mjs')
+  assert.equal(resultStoreFacade.AgentStepResultStore, module.AgentStepResultStore, 'result store facade identity mismatch')
+  assert.equal(resultStoreFacade.hashAgentStepResult, module.hashAgentStepResult, 'hash facade identity mismatch')
+  const executorFacade = await import('../lib/factory-agent-step-executor.mjs')
+  for (const name of ['artifactEvidenceIdempotencyKey', 'parseAgentStepResult', 'materializeInlineArtifact', 'executeAgentStepAttempt', 'hashAgentBrief', 'hashStructuredAgentResult'])
+    assert.equal(executorFacade[name], module[name], `${name} executor facade identity mismatch`)
+
+  const attemptStore = new module.AgentStepAttemptStore(join(temporaryDirectory, 'attempts'))
+  const baseAttempt = {
+    attemptId: 'attempt-a', workflowId: 'wf', workflowRevisionAtStart: 1, stepId: 'ticket-analysis',
+    attemptNumber: 1, namespaceId: 'ns', runtimeId: 'factory-runner', caseId: null,
+    agentName: 'Worker', briefHash: `sha256:${'a'.repeat(64)}`, status: 'starting',
+    startedAt: new Date().toISOString(), finishedAt: null, evidenceId: null, failureCode: null,
+  }
+  await attemptStore.append('ns', 'storage', baseAttempt)
+  await attemptStore.append('ns', 'storage', { ...baseAttempt, caseId: 'case', status: 'running' })
+  await attemptStore.append('ns', 'storage', { ...baseAttempt, caseId: 'case', status: 'succeeded', finishedAt: new Date().toISOString(), evidenceId: 'e' })
+  assert.deepEqual((await attemptStore.list('ns', 'storage')).map((x) => x.status), ['starting', 'running', 'succeeded'])
+
+  const resultStore = new module.AgentStepResultStore(join(temporaryDirectory, 'results'))
+  const identity = { attemptId: 'attempt-a', workflowId: 'wf', stepId: 'ticket-analysis', namespaceId: 'ns', caseId: 'case', agentName: 'Worker', briefHash: `sha256:${'a'.repeat(64)}` }
+  const business = { status: 'PASS', summary: 'done', claims: { modifiedFiles: [] } }
+  const capability = await resultStore.issue('ns', 'storage', identity)
+  const submitted = await resultStore.submit(capability.token, business, { attemptId: 'attempt-a', caseId: 'case', agentName: 'Worker' })
+  assert.equal(submitted.ok, true)
+  assert.equal(submitted.idempotent, false)
+  assert.equal((await resultStore.getByAttempt('ns', 'storage', 'attempt-a'))?.summary, 'done')
+  assert.equal(module.hashAgentStepResult(business), (await resultStore.getByAttempt('ns', 'storage', 'attempt-a'))?.resultHash)
+  assert.equal(module.parseAgentStepResult('{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]}}').ok, true)
+  assert.equal(module.parseAgentStepResult('not json').code, 'RESULT_NOT_JSON')
+
+  const agentAttemptSources = [
+    'src/domain/agent-attempt/agent-step-attempt.ts',
+    'src/domain/agent-attempt/agent-step-result.ts',
+    'src/adapters/persistence/agent-step-attempt-store.ts',
+    'src/adapters/persistence/agent-step-result-store.ts',
+    'src/application/agent-attempt/factory-agent-step-executor.ts',
+    'src/application/agentos-operations.ts',
+  ]
+  for (const source of agentAttemptSources) {
+    const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
+    assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
+  }
 } finally {
   if (previousObservabilityFile === undefined) delete process.env.FACTORY_ACTIVE_CASE_FILE
   else process.env.FACTORY_ACTIVE_CASE_FILE = previousObservabilityFile
