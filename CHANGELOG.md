@@ -1,3 +1,14 @@
+## 3.10.1 (2026-09-25)
+
+### 🩹 Fixes
+
+- restore clean input state on thread resume ([9a9a4052](https://github.com/whoz-oss/coday/commit/9a9a4052))
+- restore clean input state on thread resume ([#1384](https://github.com/whoz-oss/coday/pull/1384))
+
+### ❤️ Thank You
+
+- Romain Petit
+
 ## 3.10.0 (2026-09-25)
 
 ### 🚀 Features
