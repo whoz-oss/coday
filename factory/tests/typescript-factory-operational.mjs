@@ -424,6 +424,202 @@ try {
     const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
     assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
   }
+
+  // Tranche 8: delivery domain, stores, control-plane adapters and controllers.
+  const expectedDeliveryExports = [
+    // domain/delivery/delivery-definition.ts
+    'DELIVERY_DEFINITION_SCHEMA_VERSION', 'DELIVERY_STAGES', 'DELIVERY_EVIDENCE_KINDS',
+    'validateDeliveryDefinition', 'hashDeliveryDefinition', 'defaultDeliveryDefinition',
+    // domain/delivery/delivery-policy.ts
+    'DELIVERY_INITIAL_STAGE', 'validateDeliveryPromotionRequest', 'deliveryScopeHash',
+    'deliverySemanticHash', 'evaluateDeliveryPromotion', 'applyDeliveryPromotion',
+    // domain/delivery/delivery-operation-definition.ts
+    'DELIVERY_OPERATION_KINDS', 'DELIVERY_OPERATION_STATES', 'DELIVERY_OPERATION_ERROR_CODES',
+    'canonicalDeliveryHash', 'normalizeDeliveryOperationRequest', 'deriveDeliveryOperationIdentity',
+    'validateDeliveryOperationTransition', 'validateDeliveryOperationRecord',
+    // domain/delivery/delivery-operation-policy.ts
+    'evaluateDeliveryOperationPolicy', 'resolveDeliveryVerificationRequest',
+    // adapters/persistence/delivery-store.ts
+    'DeliveryStore',
+    // adapters/persistence/delivery-evidence-store.ts
+    'validateDeliveryEvidence', 'DeliveryEvidenceStore',
+    // adapters/delivery/delivery-target-registry.ts
+    'DeliveryTargetRegistry', 'unavailableDeliveryTargetRegistry',
+    // adapters/delivery/delivery-git-control-plane.ts
+    'DeliveryGitControlPlane',
+    // adapters/delivery/delivery-pr-adapter.ts
+    'DeliveryPullRequestAdapter',
+    // adapters/delivery/delivery-deployment-adapter.ts
+    'DELIVERY_ADAPTER_OUTCOMES', 'normalizeDeliveryAdapterOutcome', 'DeliveryDeploymentAdapter',
+    'DeliveryVerificationAdapter', 'UnconfiguredDeliveryDeploymentAdapter', 'UnconfiguredDeliveryVerificationAdapter',
+    // application/delivery/delivery-controller.ts
+    'DeliveryController', 'handleDeliveryRequest',
+    // application/delivery/delivery-operation-controller.ts
+    'DeliveryOperationController',
+  ]
+  for (const name of expectedDeliveryExports)
+    assert.ok(name in module, `missing delivery export ${name}`)
+  for (const name of [
+    'validateDeliveryDefinition', 'hashDeliveryDefinition', 'defaultDeliveryDefinition',
+    'validateDeliveryPromotionRequest', 'deliveryScopeHash', 'deliverySemanticHash',
+    'evaluateDeliveryPromotion', 'applyDeliveryPromotion', 'canonicalDeliveryHash',
+    'normalizeDeliveryOperationRequest', 'deriveDeliveryOperationIdentity',
+    'validateDeliveryOperationTransition', 'validateDeliveryOperationRecord',
+    'evaluateDeliveryOperationPolicy', 'resolveDeliveryVerificationRequest',
+    'DeliveryStore', 'validateDeliveryEvidence', 'DeliveryEvidenceStore',
+    'DeliveryTargetRegistry', 'DeliveryGitControlPlane', 'DeliveryPullRequestAdapter',
+    'normalizeDeliveryAdapterOutcome', 'DeliveryDeploymentAdapter', 'DeliveryVerificationAdapter',
+    'UnconfiguredDeliveryDeploymentAdapter', 'UnconfiguredDeliveryVerificationAdapter',
+    'DeliveryController', 'handleDeliveryRequest', 'DeliveryOperationController',
+  ])
+    assert.equal(typeof module[name], 'function', `missing delivery function ${name}`)
+
+  const deliveryFacades = {
+    '../lib/delivery-definition.mjs': [
+      'DELIVERY_DEFINITION_SCHEMA_VERSION', 'DELIVERY_STAGES', 'DELIVERY_EVIDENCE_KINDS',
+      'validateDeliveryDefinition', 'hashDeliveryDefinition', 'defaultDeliveryDefinition',
+    ],
+    '../lib/delivery-policy.mjs': [
+      'DELIVERY_INITIAL_STAGE', 'validateDeliveryPromotionRequest', 'deliveryScopeHash',
+      'deliverySemanticHash', 'evaluateDeliveryPromotion', 'applyDeliveryPromotion',
+    ],
+    '../lib/delivery-operation-definition.mjs': [
+      'DELIVERY_OPERATION_KINDS', 'DELIVERY_OPERATION_STATES', 'DELIVERY_OPERATION_ERROR_CODES',
+      'canonicalDeliveryHash', 'normalizeDeliveryOperationRequest', 'deriveDeliveryOperationIdentity',
+      'validateDeliveryOperationTransition', 'validateDeliveryOperationRecord',
+    ],
+    '../lib/delivery-operation-policy.mjs': [
+      'evaluateDeliveryOperationPolicy', 'resolveDeliveryVerificationRequest',
+    ],
+    '../lib/delivery-store.mjs': ['DeliveryStore'],
+    '../lib/delivery-evidence-store.mjs': ['validateDeliveryEvidence', 'DeliveryEvidenceStore'],
+    '../lib/delivery-target-registry.mjs': ['DeliveryTargetRegistry', 'unavailableDeliveryTargetRegistry'],
+    '../lib/delivery-git-control-plane.mjs': ['DeliveryGitControlPlane'],
+    '../lib/delivery-pr-adapter.mjs': ['DeliveryPullRequestAdapter'],
+    '../lib/delivery-deployment-adapter.mjs': [
+      'DELIVERY_ADAPTER_OUTCOMES', 'normalizeDeliveryAdapterOutcome', 'DeliveryDeploymentAdapter',
+      'DeliveryVerificationAdapter', 'UnconfiguredDeliveryDeploymentAdapter', 'UnconfiguredDeliveryVerificationAdapter',
+    ],
+    '../lib/delivery-controller.mjs': ['DeliveryController', 'handleDeliveryRequest'],
+    '../lib/delivery-operation-controller.mjs': ['DeliveryOperationController'],
+  }
+  for (const [facadePath, names] of Object.entries(deliveryFacades)) {
+    const facade = await import(facadePath)
+    for (const name of names)
+      assert.equal(facade[name], module[name], `${name} facade identity mismatch in ${facadePath}`)
+  }
+
+  // Exercise the migrated delivery surface for real behaviour.
+  assert.deepEqual(module.DELIVERY_STAGES, [
+    'implementation-ready', 'artifact-ready', 'release-approved', 'deployed', 'production-verified',
+  ])
+  assert.equal(module.DELIVERY_INITIAL_STAGE, 'implementation-ready')
+  assert.equal(module.DELIVERY_DEFINITION_SCHEMA_VERSION, '1')
+  const deliveryDefinition = module.defaultDeliveryDefinition()
+  assert.equal(module.validateDeliveryDefinition(deliveryDefinition).ok, true)
+  assert.equal(module.validateDeliveryDefinition({ ...deliveryDefinition, title: '' }).ok, false)
+  assert.match(module.hashDeliveryDefinition(deliveryDefinition), /^[0-9a-f]{64}$/)
+  assert.match(module.canonicalDeliveryHash({ b: 1, a: 2 }), /^sha256:[0-9a-f]{64}$/)
+  assert.equal(module.canonicalDeliveryHash({ b: 1, a: 2 }), module.canonicalDeliveryHash({ a: 2, b: 1 }))
+  assert.deepEqual(module.DELIVERY_OPERATION_KINDS, [
+    'deployment', 'production-verification', 'rollback', 'rollback-verification',
+  ])
+  assert.equal(
+    module.normalizeDeliveryOperationRequest({ kind: 'deployment', expectedRevision: 1, idempotencyKey: 'k', targetId: 't' }).ok,
+    false,
+    'deployment without refs must be rejected'
+  )
+  const deliveryCommit = 'b'.repeat(40)
+  const deliveryDigest = `sha256:${'c'.repeat(64)}`
+  const normalizedDeployment = module.normalizeDeliveryOperationRequest({
+    kind: 'deployment', expectedRevision: 1, idempotencyKey: 'k', targetId: 't',
+    artifactRef: { digest: deliveryDigest, mediaType: 'application/vnd.oci.image', producerRef: 'build', buildRef: 'b1', sourceCommit: deliveryCommit },
+    releaseRef: { releaseId: 'r1', artifactDigest: deliveryDigest, sourceCommit: deliveryCommit, approvedEvidenceId: 'e1' },
+  })
+  assert.equal(normalizedDeployment.ok, true)
+  const deliveryIdentity = module.deriveDeliveryOperationIdentity(
+    { namespaceId: environmentNamespace, workflowId: 'wf-1', deliveryId: 'wf-1-delivery', caseId: environmentCase, runtimeId: 'factory-dashboard' },
+    normalizedDeployment.value,
+    deliveryDigest
+  )
+  assert.equal(deliveryIdentity.ok, true)
+  assert.match(deliveryIdentity.value.operationId, /^dop_[0-9a-f]{32}$/)
+  assert.equal(
+    module.validateDeliveryOperationTransition({ operationId: 'op', state: 'pending' }, { operationId: 'op', state: 'running' }).ok,
+    true
+  )
+  assert.equal(
+    module.validateDeliveryOperationTransition({ operationId: 'op', state: 'succeeded' }, { operationId: 'op', state: 'running' }).ok,
+    false
+  )
+  assert.equal(module.evaluateDeliveryOperationPolicy({ request: normalizedDeployment.value, snapshot: null, target: null }).code, 'DELIVERY_NOT_FOUND')
+
+  const deliveryNamespace = '423e4567-e89b-42d3-a456-426614174000'
+  const deliveryStore = new module.DeliveryStore(join(temporaryDirectory, 'delivery-store'))
+  await deliveryStore.initialize()
+  const deliverySnapshotInput = {
+    schemaVersion: '1',
+    deliveryId: 'wf-d-delivery',
+    namespaceId: deliveryNamespace,
+    workflowId: 'wf-d',
+    environmentId: '123e4567-e89b-42d3-a456-426614174000',
+    environmentHash: `sha256:${'d'.repeat(64)}`,
+    parentCaseId: '223e4567-e89b-42d3-a456-426614174000',
+    runtimeId: 'agentos',
+    baseCommit: deliveryCommit,
+    headCommit: deliveryCommit,
+    stage: 'implementation-ready',
+    revision: 1,
+    evidenceIds: [],
+  }
+  const createdDelivery = await deliveryStore.create(deliverySnapshotInput)
+  assert.equal(createdDelivery.ok, true)
+  assert.equal(createdDelivery.changed, true)
+  assert.equal((await deliveryStore.create(deliverySnapshotInput)).changed, false)
+  const readDelivery = await deliveryStore.read(deliveryNamespace, 'wf-d-delivery')
+  assert.equal(readDelivery.deliveryId, 'wf-d-delivery')
+  assert.equal(readDelivery.stage, 'implementation-ready')
+  assert.equal(readDelivery.snapshotHash, createdDelivery.snapshot.snapshotHash)
+  assert.equal((await deliveryStore.inspectDeliveryOperations(deliveryNamespace, 'wf-d-delivery')).operations.length, 0)
+  assert.equal(await deliveryStore.hasIndeterminateOperation(deliveryNamespace, 'wf-d-delivery'), false)
+  assert.equal(module.validateDeliveryEvidence({ deliveryId: 'wf-d-delivery' }).ok, false)
+  const deliveryEvidenceStore = new module.DeliveryEvidenceStore(join(temporaryDirectory, 'delivery-evidence-store'))
+  assert.deepEqual(await deliveryEvidenceStore.list(deliveryNamespace, 'wf-d-delivery'), [])
+
+  const deliveryTargetRegistry = new module.DeliveryTargetRegistry([
+    {
+      targetId: 'prod', environmentKind: 'production', adapterId: 'deploy', adapterTargetRef: 'cluster',
+      supportsRollback: true, verificationSuiteId: 'smoke', verificationSuiteHash: deliveryDigest,
+    },
+  ])
+  assert.equal(deliveryTargetRegistry.lookup('prod').ok, true)
+  assert.equal(deliveryTargetRegistry.lookup('missing').error.code, 'DELIVERY_TARGET_NOT_FOUND')
+  assert.equal(module.unavailableDeliveryTargetRegistry.lookup('prod').error.code, 'DELIVERY_TARGET_REGISTRY_UNAVAILABLE')
+  assert.equal(
+    module.normalizeDeliveryAdapterOutcome({ state: 'succeeded', correlationRef: 'c1' }).ok,
+    true
+  )
+  assert.equal(module.normalizeDeliveryAdapterOutcome({ state: 'exploded' }).ok, false)
+  assert.equal((await new module.UnconfiguredDeliveryDeploymentAdapter().deploy()).error.code, 'DELIVERY_ADAPTER_NOT_CONFIGURED')
+
+  const deliverySources = [
+    'src/domain/delivery/delivery-definition.ts',
+    'src/domain/delivery/delivery-policy.ts',
+    'src/domain/delivery/delivery-operation-definition.ts',
+    'src/domain/delivery/delivery-operation-policy.ts',
+    'src/adapters/persistence/delivery-store.ts',
+    'src/adapters/persistence/delivery-evidence-store.ts',
+    'src/adapters/delivery/delivery-target-registry.ts',
+    'src/adapters/delivery/delivery-git-control-plane.ts',
+    'src/adapters/delivery/delivery-pr-adapter.ts',
+    'src/adapters/delivery/delivery-deployment-adapter.ts',
+    'src/application/delivery/delivery-controller.ts',
+    'src/application/delivery/delivery-operation-controller.ts',
+  ]
+  for (const source of deliverySources) {
+    const inputs = Object.keys(metafile.inputs).filter((input) => input.endsWith(source))
+    assert.equal(inputs.length, 1, `${source} must be included exactly once in the operational bundle`)
+  }
 } finally {
   if (previousObservabilityFile === undefined) delete process.env.FACTORY_ACTIVE_CASE_FILE
   else process.env.FACTORY_ACTIVE_CASE_FILE = previousObservabilityFile
