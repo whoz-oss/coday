@@ -1,3 +1,14 @@
+## 3.9.0 (2026-09-25)
+
+### 🚀 Features
+
+- status icone on delegate thread chat box ([138d2f74](https://github.com/whoz-oss/coday/commit/138d2f74))
+- delegation status event and inline status icon ([#1226](https://github.com/whoz-oss/coday/pull/1226))
+
+### ❤️ Thank You
+
+- Romain Petit
+
 ## 3.8.0 (2026-09-24)
 
 ### 🚀 Features
