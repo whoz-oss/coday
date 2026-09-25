@@ -25,7 +25,8 @@ factory/infra/
     ├── V1__init_workflow_pilot_schema.sql   # pilot schema (definitions + instances)
     ├── V2__tenant_and_membership.sql        # Jalon B2 tenant & membership schema
     ├── V3__workflow_core.sql                # Jalon B2 workflow core extension (definitions/grants/steps/transitions)
-    └── V4__outbox_and_idempotency.sql       # Jalon B2 support tables (outbox + idempotency)
+    ├── V4__outbox_and_idempotency.sql       # Jalon B2 support tables (outbox + idempotency)
+    └── V5__evidence_and_interaction.sql     # Jalon B2 evidence & human interaction control plane
 ```
 
 ## Start PostgreSQL + apply migrations
@@ -77,6 +78,10 @@ V<version>__<snake_case_description>.sql
 * `V4__outbox_and_idempotency.sql` adds the cross-cutting support tables
   `outbox_events` (transactional outbox for external/async effects) and
   `idempotency_records` (tenant-scoped idempotent command submission) (see below).
+* `V5__evidence_and_interaction.sql` adds the evidence & human interaction control
+  plane: the append-only `workflow_evidence` log, the mutable
+  `human_interactions` aggregate root and the append-only
+  `human_interaction_events` log (see below).
 * Flyway is the only migration authority. Do **not** modify a migration that has
   been applied to a shared database.
 
@@ -304,4 +309,115 @@ index, CHECK constraints, defaults and the `updated_at` trigger:
 
 ```bash
 node factory/tests/test-v4-migration-schema.mjs
+```
+
+---
+
+## Schema overview — V5 evidence & human interaction
+
+V5 adds the control plane persistence for cross-cutting evidence and for human
+decision nodes in a workflow. It is built so the whole decision — human answer,
+its evidence, the workflow step/instance state transition, the interaction
+closure and the outbox event — can be committed in **one** PostgreSQL
+transaction. All three tables are tenant-scoped (`organization_id NOT NULL
+DEFAULT 'default'` matching V1/V2/V3/V4) and reuse the shared `set_updated_at()`
+trigger function from V2.
+
+| Table | Primary key | Notable constraints |
+|---|---|---|
+| `workflow_evidence` | `(organization_id, workstream_id, namespace_id, workflow_id, evidence_id)` | composite FK → `workflow_instances` (`ON DELETE CASCADE`); append-only (no `updated_at`) |
+| `human_interactions` | `(organization_id, workstream_id, namespace_id, workflow_id, interaction_id)` | composite FK → `workflow_instances` (`ON DELETE CASCADE`); `revision >= 1`; `status CHECK IN ('waiting','answered','closed')`; `updated_at` trigger |
+| `human_interaction_events` | `(organization_id, workstream_id, namespace_id, workflow_id, interaction_id, event_id)` | composite FK → `human_interactions` (`ON DELETE CASCADE`); append-only (no `updated_at`) |
+
+### `workflow_evidence`
+
+Append-only cross-cutting evidence log. One immutable row per evidence item
+attached to a workflow instance (Jalon B Amendment 3: evidence is captured as an
+attributable record and never edited in place).
+
+* Identity: `PRIMARY KEY (organization_id, workstream_id, namespace_id, workflow_id, evidence_id)`.
+* Composite FK `(organization_id, workstream_id, namespace_id, workflow_id)` →
+  `workflow_instances` (`ON DELETE CASCADE`): the database rejects an orphan or
+  cross-tenant / cross-workstream / cross-namespace evidence row and purges the
+  evidence with its instance (Amendment 8).
+* `evidence_type`, `source` and `producer` are `VARCHAR(255) NOT NULL` and
+  describe what the evidence is, where it came from and who produced it.
+* `payload JSONB NOT NULL DEFAULT '{}'::jsonb` holds the evidence body verbatim.
+* `created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`.
+* **Append-only:** there is deliberately **no** `updated_at` column and **no**
+  update trigger — a correction is a new evidence row with its own `evidence_id`.
+* Supporting index `idx_workflow_evidence_instance ON workflow_evidence
+  (organization_id, workstream_id, namespace_id, workflow_id, created_at)` for
+  the chronological per-instance listing.
+
+### `human_interactions`
+
+Mutable aggregate root of a human decision node (a question awaiting an answer).
+Unlike the evidence log it is updated in place as the human answers.
+
+* Identity: `PRIMARY KEY (organization_id, workstream_id, namespace_id, workflow_id, interaction_id)`.
+* Composite FK `(organization_id, workstream_id, namespace_id, workflow_id)` →
+  `workflow_instances` (`ON DELETE CASCADE`) — the interaction always belongs to
+  the workflow instance that raised it (Amendment 8).
+* `interaction_type VARCHAR(255) NOT NULL` classifies the decision node.
+* `status VARCHAR(64) NOT NULL DEFAULT 'waiting'` with
+  `CHECK (status IN ('waiting', 'answered', 'closed'))` tracks the lifecycle.
+* `revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1)` is the
+  optimistic-locking column: writers `UPDATE … WHERE revision = $expected` and
+  surface a conflict when zero rows match.
+* `payload JSONB NOT NULL DEFAULT '{}'::jsonb` holds the question/answer body.
+* `created_at` / `updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`;
+  `updated_at` is maintained by the `trg_human_interactions_updated_at`
+  `BEFORE UPDATE` trigger calling `set_updated_at()`.
+* Supporting index `idx_human_interactions_instance ON human_interactions
+  (organization_id, workstream_id, namespace_id, workflow_id, status)` for the
+  pending queue (`… AND status = 'waiting'`).
+
+### `human_interaction_events`
+
+Append-only event log recording the lifecycle of a human interaction (creation,
+response, closure). One immutable row per event.
+
+* Identity: `PRIMARY KEY (organization_id, workstream_id, namespace_id, workflow_id, interaction_id, event_id)`.
+* Composite FK `(organization_id, workstream_id, namespace_id, workflow_id,
+  interaction_id)` → `human_interactions` (`ON DELETE CASCADE`): an event can
+  never be attached to an interaction of another tenant / workstream / namespace,
+  and is removed with its interaction (Amendment 8).
+* `event_type VARCHAR(255) NOT NULL` and `actor_id VARCHAR(255) NOT NULL` record
+  what happened and who did it.
+* `payload JSONB NOT NULL DEFAULT '{}'::jsonb` holds the event body verbatim.
+* `created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP`.
+* **Append-only:** **no** `updated_at` column and **no** update trigger.
+* Supporting index `idx_human_interaction_events_interaction ON
+  human_interaction_events (organization_id, workstream_id, namespace_id,
+  workflow_id, interaction_id, created_at)` for the chronological audit trail.
+
+### Design rationale
+
+* **Amendment 3 (append-only evidence log):** `workflow_evidence` and
+  `human_interaction_events` carry no `updated_at` and no update trigger, so a
+  record can only be appended, never rewritten — the audit trail is immutable by
+  construction and a correction is a new row.
+* **Amendment 8 (composite FKs for tenant isolation):** every child references
+  its parent by the full `(organization_id, workstream_id, namespace_id,
+  workflow_id[, interaction_id])` key with `ON DELETE CASCADE`, so the database
+  itself rejects an orphan or cross-tenant record and purges children with their
+  parent.
+* **Amendment 2 (atomic multi-table transactions):** the schema intentionally
+  contains no blocking trigger, deferred constraint or locking hook that would
+  prevent a single PostgreSQL transaction from combining the human decision, its
+  evidence row, the workflow step/instance state transition (revision increment),
+  the interaction closure and the outbox event. `trg_human_interactions_updated_at`
+  only touches the row being updated (`NEW.updated_at = CURRENT_TIMESTAMP`) — no
+  extra lock, no side effect — so the commit stays atomic.
+
+### Validate the V5 migration offline
+
+The V5 schema is validated without PostgreSQL, Docker or the `pg` driver by
+parsing V1 + V2 + V3 + V4 + V5 and asserting tables, columns, defaults, composite
+PKs and FKs (FK targets matched against the referenced PK), supporting indexes,
+CHECK constraints, the append-only guarantees and the `updated_at` trigger:
+
+```bash
+node factory/tests/test-v5-migration-schema.mjs
 ```
