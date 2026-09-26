@@ -15,13 +15,24 @@
 
 import { SseClient } from './services/sse-client.mjs'
 import { ApiClient } from './services/api-client.mjs'
+import { mountRunLaunchView } from './views/run-launch.mjs'
 
 export const ROUTES = Object.freeze({
   '/runs': { id: 'view-runs', label: 'Runs' },
+  '/launch': { id: 'view-launch', label: 'Lancer' },
   '/detail': { id: 'view-detail', label: 'Détail' },
   '/projection': { id: 'view-projection', label: 'Projection' },
   '/forge': { id: 'view-forge', label: 'Forge' },
   '/admin': { id: 'view-admin', label: 'Admin' },
+})
+
+/**
+ * Route → view mounter registry. Only routes with a real view are listed; the
+ * remaining routes keep their static placeholder sections. Strictly additive:
+ * a missing mounter is a no-op so existing routes keep working unchanged.
+ */
+export const VIEW_MOUNTERS = Object.freeze({
+  '/launch': mountRunLaunchView,
 })
 
 export const DEFAULT_ROUTE = '/runs'
@@ -67,9 +78,10 @@ export function closeModal(doc = globalThis.document) {
  * Create the router bound to a window/document pair. Returns handles used by
  * the auto-bootstrap and by tests.
  */
-export function createRouter(win = globalThis.window, doc = globalThis.document) {
+export function createRouter(win = globalThis.window, doc = globalThis.document, options = {}) {
   let currentRoute = null
   let teardownHooks = []
+  let viewGeneration = 0
 
   const registerTeardown = (fn) => {
     if (typeof fn === 'function') teardownHooks.push(fn)
@@ -77,6 +89,7 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
   }
 
   const runTeardowns = () => {
+    viewGeneration++
     const hooks = teardownHooks
     teardownHooks = []
     for (const hook of hooks) {
@@ -85,6 +98,45 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
       } catch {
         // A broken teardown must not block the next view from mounting.
       }
+    }
+  }
+
+  const mounters = options.mounters ?? VIEW_MOUNTERS
+
+  // Default navigation: canonicalize into a hash so the browser router picks it
+  // up. Callers may inject `onNavigate` (tests, embedded hosts).
+  const defaultNavigate = (route, params) => {
+    const query = params && Object.keys(params).length > 0 ? `?${new URLSearchParams(params).toString()}` : ''
+    if (win?.location) win.location.hash = `#${route}${query}`
+  }
+
+  const mountView = (route) => {
+    const mounter = mounters[route]
+    if (typeof mounter !== 'function') return
+    const host = doc?.getElementById?.(ROUTES[route].id)
+    if (!host) return
+    const generation = viewGeneration
+    const adopt = (handle) => {
+      const unmount = typeof handle === 'function' ? handle : handle?.unmount
+      if (generation !== viewGeneration) {
+        // The user navigated away before the view finished mounting.
+        if (typeof unmount === 'function') unmount()
+        return
+      }
+      if (typeof unmount === 'function') registerTeardown(unmount)
+    }
+    try {
+      const handle = mounter(host, {
+        apiClient: options.apiClient,
+        sseClient: options.sseClient,
+        namespaceId: options.namespaceId,
+        onNavigate: options.onNavigate ?? defaultNavigate,
+        registerTeardown,
+      })
+      if (handle && typeof handle.then === 'function') handle.then(adopt, () => {})
+      else adopt(handle)
+    } catch {
+      // A failing view must never break navigation to the next route.
     }
   }
 
@@ -105,6 +157,7 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
     }
     updateNav(route)
     setLiveIndicator(doc, 'online')
+    mountView(route)
   }
 
   const applyHash = () => {
@@ -140,7 +193,7 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
 export function bootstrapCockpit(win = globalThis.window, doc = globalThis.document) {
   if (!win || !doc) return null
   const api = new ApiClient({ baseUrl: '' })
-  const router = createRouter(win, doc)
+  const router = createRouter(win, doc, { apiClient: api, mounters: VIEW_MOUNTERS })
   const start = () => router.start()
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true })
   else start()
