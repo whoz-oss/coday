@@ -6529,7 +6529,15 @@ function agentStepResultPlan(options) {
   return {
     context: "agent-step-result",
     table: "agent_step_results",
-    primaryKey: ["organization_id", "workstream_id", "namespace_id", "workflow_id", "step_id", "attempt_id", "result_id"],
+    primaryKey: [
+      "organization_id",
+      "workstream_id",
+      "namespace_id",
+      "workflow_id",
+      "step_id",
+      "attempt_id",
+      "result_id"
+    ],
     selectColumns: ["namespace_id", "workflow_id", "step_id", "result_id", "payload"],
     filterWorkstream: true,
     async load() {
@@ -6773,11 +6781,11 @@ async function verifyImport(options) {
         continue;
       }
       const sqlHash = computeCanonicalHash(sqlByKey.get(key));
-      if (sqlHash !== filesystemHash)
-        discrepancies.push({ key, reason: "HASH_MISMATCH", filesystemHash, sqlHash });
+      if (sqlHash !== filesystemHash) discrepancies.push({ key, reason: "HASH_MISMATCH", filesystemHash, sqlHash });
     }
     for (const [key, aggregate] of sqlByKey) {
-      if (!filesystemByKey.has(key)) discrepancies.push({ key, reason: "MISSING_IN_FILESYSTEM", sqlHash: computeCanonicalHash(aggregate) });
+      if (!filesystemByKey.has(key))
+        discrepancies.push({ key, reason: "MISSING_IN_FILESYSTEM", sqlHash: computeCanonicalHash(aggregate) });
     }
     if (filesystem.length !== sql.length && discrepancies.length === 0)
       discrepancies.push({
@@ -13671,6 +13679,398 @@ function createS3ArtifactStore(config) {
   return new S3ArtifactStore(config);
 }
 
+// ../src/adapters/persistence/sql/sql-artifact-metadata-repository.ts
+var DEFAULT_NAMESPACE_ID = "default";
+var DEFAULT_WORKFLOW_ID = "default";
+var ARTIFACT_COLUMNS = [
+  "organization_id",
+  "workstream_id",
+  "namespace_id",
+  "workflow_id",
+  "artifact_id",
+  "availability_status",
+  "retention_status",
+  "legal_hold",
+  "retention_until",
+  "purged_at",
+  "purge_reason",
+  "legal_hold_reason",
+  "legal_hold_set_at",
+  "content_hash",
+  "size",
+  "content_type",
+  "storage_key",
+  "payload",
+  "created_at",
+  "updated_at"
+].join(", ");
+var ARTIFACT_INSERT_COLUMNS = ARTIFACT_COLUMNS;
+function toIsoTimestamp(value) {
+  if (value === null || value === void 0) return void 0;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+function isoFromInput(value) {
+  if (value === void 0) return void 0;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+function toAvailabilityStatus(value) {
+  if (value === "purged") return "purged";
+  if (value === "available") return "available";
+  return "archived";
+}
+function toRetentionStatus(value) {
+  return value === "expired" ? "expired" : "active";
+}
+function parseArtifactPayload(value) {
+  try {
+    const parsed = parseJsonColumn(value);
+    return parsed ?? {};
+  } catch {
+    return {};
+  }
+}
+function parseOwnerScope(owner) {
+  if (!owner) return {};
+  const separator = owner.indexOf("/");
+  if (separator > 0 && separator < owner.length - 1) {
+    return { namespaceId: owner.slice(0, separator), workflowId: owner.slice(separator + 1) };
+  }
+  return { namespaceId: owner };
+}
+var SqlArtifactMetadataRepository = class {
+  #client;
+  #options;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#options = options;
+  }
+  /** Resolves an effective scope from an optional per-call override. */
+  #resolveScope(scope) {
+    return {
+      organizationId: scope?.organizationId ?? this.#options.organizationId ?? DEFAULT_ORGANIZATION_ID,
+      workstreamId: scope?.workstreamId ?? this.#options.workstreamId ?? DEFAULT_WORKSTREAM_ID,
+      namespaceId: scope?.namespaceId ?? this.#options.namespaceId ?? DEFAULT_NAMESPACE_ID,
+      workflowId: scope?.workflowId ?? this.#options.workflowId ?? DEFAULT_WORKFLOW_ID
+    };
+  }
+  /** Resolves the scope used when persisting, defaulting from the owner. */
+  #resolveSaveScope(owner, scope) {
+    const resolved = this.#resolveScope(scope);
+    if (scope?.namespaceId === void 0 && this.#options.namespaceId === void 0) {
+      const parsed = parseOwnerScope(owner);
+      if (parsed.namespaceId !== void 0) resolved.namespaceId = parsed.namespaceId;
+    }
+    if (scope?.workflowId === void 0 && this.#options.workflowId === void 0) {
+      const parsed = parseOwnerScope(owner);
+      if (parsed.workflowId !== void 0) resolved.workflowId = parsed.workflowId;
+    }
+    return resolved;
+  }
+  /** Builds the optional hierarchy narrowing of a lookup query. */
+  #scopeFilter(sql, params, scope) {
+    let clause = sql;
+    const filters = [...params];
+    if (scope?.namespaceId !== void 0) {
+      filters.push(scope.namespaceId);
+      clause += ` AND namespace_id = $${filters.length}`;
+    }
+    if (scope?.workflowId !== void 0) {
+      filters.push(scope.workflowId);
+      clause += ` AND workflow_id = $${filters.length}`;
+    }
+    return { sql: clause, params: filters };
+  }
+  /** Maps a durable row into the domain {@link ArtifactMetadata}. */
+  #toMetadata(row) {
+    const payload = parseArtifactPayload(row.payload);
+    const createdAt = toIsoTimestamp(row.created_at) ?? (/* @__PURE__ */ new Date()).toISOString();
+    const retentionUntil = toIsoTimestamp(row.retention_until);
+    const purgedAt = toIsoTimestamp(row.purged_at);
+    const legalHoldSetAt = toIsoTimestamp(row.legal_hold_set_at);
+    return {
+      id: row.artifact_id,
+      owner: payload.owner ?? row.namespace_id,
+      hash: row.content_hash,
+      size: Number(row.size),
+      contentType: row.content_type,
+      availabilityStatus: toAvailabilityStatus(row.availability_status),
+      retentionStatus: toRetentionStatus(row.retention_status),
+      legalHold: row.legal_hold === true,
+      createdAt,
+      ...payload.retentionDays !== void 0 ? { retentionDays: payload.retentionDays } : {},
+      ...retentionUntil !== void 0 ? { retentionUntil } : {},
+      ...purgedAt !== void 0 ? { purgedAt } : {},
+      ...row.purge_reason != null ? { purgeReason: row.purge_reason } : {},
+      ...row.legal_hold_reason != null ? { legalHoldReason: row.legal_hold_reason } : {},
+      ...legalHoldSetAt !== void 0 ? { legalHoldSetAt } : {}
+    };
+  }
+  async #selectRow(artifactId, scope) {
+    const resolved = this.#resolveScope(scope);
+    const filter = this.#scopeFilter(
+      `SELECT ${ARTIFACT_COLUMNS} FROM artifacts
+       WHERE organization_id = $1 AND workstream_id = $2 AND artifact_id = $3`,
+      [resolved.organizationId, resolved.workstreamId, artifactId],
+      scope
+    );
+    const { rows } = await this.#client.query(filter.sql, filter.params);
+    return rows[0] ?? null;
+  }
+  /**
+   * Inserts (or upserts) the authoritative metadata row for an artifact,
+   * returning the persisted metadata.
+   */
+  async saveMetadata(metadata, storageKey, scope) {
+    const resolved = this.#resolveSaveScope(metadata.owner, scope);
+    const createdAt = isoFromInput(metadata.createdAt) ?? (/* @__PURE__ */ new Date()).toISOString();
+    const payload = JSON.stringify({
+      owner: metadata.owner,
+      ...metadata.retentionDays !== void 0 ? { retentionDays: metadata.retentionDays } : {}
+    });
+    const retentionUntil = isoFromInput(metadata.retentionUntil) ?? null;
+    const purgedAt = isoFromInput(metadata.purgedAt) ?? null;
+    const legalHoldSetAt = isoFromInput(metadata.legalHoldSetAt) ?? null;
+    const values = [
+      resolved.organizationId,
+      resolved.workstreamId,
+      resolved.namespaceId,
+      resolved.workflowId,
+      metadata.id,
+      metadata.availabilityStatus,
+      metadata.retentionStatus,
+      metadata.legalHold,
+      retentionUntil,
+      purgedAt,
+      metadata.purgeReason ?? null,
+      metadata.legalHoldReason ?? null,
+      legalHoldSetAt,
+      metadata.hash,
+      metadata.size,
+      metadata.contentType,
+      storageKey,
+      payload,
+      createdAt,
+      createdAt
+    ];
+    await withTransaction(this.#client, async (tx) => {
+      await tx.query(
+        `INSERT INTO artifacts (${ARTIFACT_INSERT_COLUMNS}) VALUES (${values.map((_, index) => `$${index + 1}`).join(", ")})
+         ON CONFLICT (organization_id, workstream_id, namespace_id, workflow_id, artifact_id)
+         DO UPDATE SET
+           availability_status = EXCLUDED.availability_status,
+           retention_status = EXCLUDED.retention_status,
+           legal_hold = EXCLUDED.legal_hold,
+           retention_until = EXCLUDED.retention_until,
+           purged_at = EXCLUDED.purged_at,
+           purge_reason = EXCLUDED.purge_reason,
+           legal_hold_reason = EXCLUDED.legal_hold_reason,
+           legal_hold_set_at = EXCLUDED.legal_hold_set_at,
+           content_hash = EXCLUDED.content_hash,
+           size = EXCLUDED.size,
+           content_type = EXCLUDED.content_type,
+           storage_key = EXCLUDED.storage_key,
+           payload = EXCLUDED.payload,
+           updated_at = EXCLUDED.updated_at`,
+        values
+      );
+    });
+    return metadata;
+  }
+  /** Returns the artifact metadata, or `null` when no row exists. */
+  async getMetadata(artifactId, scope) {
+    const row = await this.#selectRow(artifactId, scope);
+    return row ? this.#toMetadata(row) : null;
+  }
+  /** Returns the metadata together with its object-storage key. */
+  async getMetadataAndStorageKey(artifactId, scope) {
+    const row = await this.#selectRow(artifactId, scope);
+    if (!row) return null;
+    return { metadata: this.#toMetadata(row), storageKey: row.storage_key };
+  }
+  /**
+   * Sets or releases the legal hold of an artifact, returning the refreshed
+   * metadata (or `null` when the artifact is unknown).
+   */
+  async updateLegalHold(artifactId, legalHold, reason, now = /* @__PURE__ */ new Date(), scope) {
+    const resolved = this.#resolveScope(scope);
+    const nowIso = now.toISOString();
+    const result = await this.#client.query(
+      `UPDATE artifacts
+         SET legal_hold = $1, legal_hold_reason = $2, legal_hold_set_at = $3, updated_at = $4
+       WHERE organization_id = $5 AND workstream_id = $6 AND artifact_id = $7`,
+      [
+        legalHold,
+        legalHold ? reason ?? null : null,
+        legalHold ? nowIso : null,
+        nowIso,
+        resolved.organizationId,
+        resolved.workstreamId,
+        artifactId
+      ]
+    );
+    if (!result.rowCount) return null;
+    const row = await this.#selectRow(artifactId, scope);
+    return row ? this.#toMetadata(row) : null;
+  }
+  /**
+   * Purges an artifact: flips `availability_status` to `'purged'` and records
+   * the reason and timestamp. The SQL guard (`legal_hold = FALSE` and
+   * `availability_status <> 'purged'`) enforces the golden rule: a held
+   * artifact can never be purged. Returns `true` when a row was updated.
+   */
+  async purgeArtifact(artifactId, reason, now = /* @__PURE__ */ new Date(), scope) {
+    const resolved = this.#resolveScope(scope);
+    const nowIso = now.toISOString();
+    const result = await this.#client.query(
+      `UPDATE artifacts
+         SET availability_status = 'purged', purged_at = $1, purge_reason = $2, updated_at = $3
+       WHERE organization_id = $4 AND workstream_id = $5 AND artifact_id = $6
+         AND legal_hold = $7 AND availability_status <> 'purged'`,
+      [nowIso, reason, nowIso, resolved.organizationId, resolved.workstreamId, artifactId, false]
+    );
+    return (result.rowCount ?? 0) > 0;
+  }
+};
+function createSqlArtifactMetadataRepository(client, options = {}) {
+  return new SqlArtifactMetadataRepository(client, options);
+}
+
+// ../src/adapters/artifact/postgres-artifact-store.ts
+var DEFAULT_UPLOAD_PREFIX2 = "uploads";
+var DEFAULT_OBJECT_PREFIX2 = "objects";
+var DEFAULT_ARTIFACT_RETENTION_DAYS = 90;
+var ARTIFACT_RETENTION_DAYS_ENV = "ARTIFACT_RETENTION_DAYS";
+var PostgresArtifactStore = class {
+  #client;
+  #repository;
+  #uploadPrefix;
+  #objectPrefix;
+  #retentionDays;
+  #env;
+  #now;
+  constructor(config) {
+    this.#client = config.client;
+    if (config.repository) {
+      this.#repository = config.repository;
+    } else if (config.sqlClient) {
+      const options = {
+        ...config.organizationId !== void 0 ? { organizationId: config.organizationId } : {},
+        ...config.workstreamId !== void 0 ? { workstreamId: config.workstreamId } : {},
+        ...config.namespaceId !== void 0 ? { namespaceId: config.namespaceId } : {},
+        ...config.workflowId !== void 0 ? { workflowId: config.workflowId } : {}
+      };
+      this.#repository = createSqlArtifactMetadataRepository(config.sqlClient, options);
+    } else {
+      throw new Error("PostgresArtifactStore requires a `repository` or a `sqlClient`");
+    }
+    this.#uploadPrefix = config.uploadPrefix ?? DEFAULT_UPLOAD_PREFIX2;
+    this.#objectPrefix = config.objectPrefix ?? DEFAULT_OBJECT_PREFIX2;
+    this.#retentionDays = config.retentionDays;
+    this.#env = config.env ?? process.env;
+    this.#now = config.now ?? (() => /* @__PURE__ */ new Date());
+  }
+  async putArtifact(params) {
+    const now = this.#now();
+    const data = toArtifactBytes(params.data);
+    const id2 = createArtifactId();
+    const hash7 = computeArtifactHash(data);
+    const retentionDays = params.retentionDays ?? this.#defaultRetentionDays();
+    const metadata = buildArtifactMetadata({
+      id: id2,
+      owner: params.owner,
+      contentType: params.contentType,
+      data,
+      retentionDays,
+      now
+    });
+    const stagingKey = this.#stagingKey(id2);
+    const contentKey = this.#contentKey(hash7);
+    await this.#client.putObject(stagingKey, Uint8Array.from(data), "application/octet-stream");
+    await this.#client.copyObject(stagingKey, contentKey);
+    if (!await this.#objectExists(contentKey)) {
+      throw new Error("ARTIFACT_OBJECT_VERIFICATION_FAILED");
+    }
+    await this.#repository.saveMetadata(metadata, contentKey);
+    await this.#bestEffortDelete(stagingKey);
+    return metadata;
+  }
+  async getArtifactMetadata(artifactId) {
+    const metadata = await this.#repository.getMetadata(artifactId);
+    if (!metadata) return null;
+    return refreshArtifactMetadata(metadata, this.#now());
+  }
+  async openArtifact(artifactId) {
+    const record2 = await this.#repository.getMetadataAndStorageKey(artifactId);
+    if (!record2) return null;
+    const metadata = refreshArtifactMetadata(record2.metadata, this.#now());
+    if (metadata.availabilityStatus === "purged") return null;
+    const object = await this.#client.getObject(record2.storageKey);
+    if (!object) return null;
+    return { stream: object.stream, metadata };
+  }
+  async deleteArtifact(artifactId, reason) {
+    return this.#destroy(artifactId, reason ?? "deleted");
+  }
+  async purgeArtifact(artifactId, reason) {
+    return this.#destroy(artifactId, reason ?? "retention-expired");
+  }
+  async setLegalHold(artifactId, legalHold, reason) {
+    const now = this.#now();
+    return this.#repository.updateLegalHold(artifactId, legalHold, reason, now);
+  }
+  /**
+   * Deletes staging objects left behind by interrupted uploads. Returns the
+   * reclaimed keys. Mirrors {@link S3ArtifactStore.collectOrphanedUploads}.
+   */
+  async collectOrphanedUploads() {
+    if (typeof this.#client.listObjectKeys !== "function") return [];
+    const keys = await this.#client.listObjectKeys(`${this.#uploadPrefix}/`);
+    const reclaimed = [];
+    for (const key of keys) {
+      if (await this.#bestEffortDelete(key)) reclaimed.push(key);
+    }
+    return reclaimed;
+  }
+  async #destroy(artifactId, reason) {
+    const record2 = await this.#repository.getMetadataAndStorageKey(artifactId);
+    if (!record2) return false;
+    const now = this.#now();
+    const metadata = refreshArtifactMetadata(record2.metadata, now);
+    if (!isArtifactDestroyable(metadata, now)) return false;
+    const purged = await this.#repository.purgeArtifact(artifactId, reason, now);
+    if (!purged) return false;
+    await this.#bestEffortDelete(record2.storageKey);
+    return true;
+  }
+  #defaultRetentionDays() {
+    if (this.#retentionDays !== void 0) return this.#retentionDays;
+    const parsed = Number.parseInt(this.#env[ARTIFACT_RETENTION_DAYS_ENV] ?? "", 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_ARTIFACT_RETENTION_DAYS;
+  }
+  async #objectExists(key) {
+    if (typeof this.#client.headObject === "function") return this.#client.headObject(key);
+    const object = await this.#client.getObject(key);
+    return object !== null;
+  }
+  async #bestEffortDelete(key) {
+    try {
+      return await this.#client.deleteObject(key);
+    } catch {
+      return false;
+    }
+  }
+  #stagingKey(id2) {
+    return `${this.#uploadPrefix}/${id2}.part`;
+  }
+  #contentKey(hash7) {
+    const digest4 = hash7.startsWith(`${ARTIFACT_HASH_PREFIX}:`) ? hash7.slice(ARTIFACT_HASH_PREFIX.length + 1) : hash7;
+    return `${this.#objectPrefix}/${digest4}`;
+  }
+};
+function createPostgresArtifactStore(config) {
+  return new PostgresArtifactStore(config);
+}
+
 // ../src/domain/worker-runtime/worker-runtime.ts
 var FENCING_ERROR_CODES = /* @__PURE__ */ new Set([
   LEASE_ERROR_CODES.LEASE_FENCED,
@@ -14249,12 +14649,16 @@ export {
   AGENT_STEP_RESULT_LIMITS,
   AGENT_STEP_RESULT_STATUSES,
   ARTIFACT_HASH_PREFIX,
+  ARTIFACT_RETENTION_DAYS_ENV,
   AgentStepAttemptStore,
   AgentStepResultStore,
   COMMENTS_CHAR_BUDGET,
+  DEFAULT_ARTIFACT_RETENTION_DAYS,
+  DEFAULT_NAMESPACE_ID,
   DEFAULT_ORGANIZATION_ID,
   DEFAULT_PROCESS_LOCK_FILE,
   DEFAULT_RUN_STORE_POLICY,
+  DEFAULT_WORKFLOW_ID,
   DEFAULT_WORKSTREAM_ID,
   DELIVERY_ADAPTER_OUTCOMES,
   DELIVERY_DEFINITION_SCHEMA_VERSION,
@@ -14304,6 +14708,7 @@ export {
   ORACLE_CATALOG,
   OracleDefinitionRegistry,
   OracleDefinitionRegistryCore,
+  PostgresArtifactStore,
   REPO_RUN_STORE_POLICY,
   S3ArtifactStore,
   S3ObjectClient,
@@ -14317,6 +14722,7 @@ export {
   STORY_ORACLE_POLICY_VERSION,
   SqlAgentStepAttemptRepository,
   SqlAgentStepResultRepository,
+  SqlArtifactMetadataRepository,
   SqlDeliveryRepository,
   SqlLeaseRepository,
   SqlOracleExecutionRepository,
@@ -14413,12 +14819,14 @@ export {
   createLocalWorkerRuntime,
   createMemoryArtifactStore,
   createPgPoolClient,
+  createPostgresArtifactStore,
   createRun,
   createS3ArtifactStore,
   createS3ObjectClient,
   createShutdownController,
   createSqlAgentStepAttemptRepository,
   createSqlAgentStepResultRepository,
+  createSqlArtifactMetadataRepository,
   createSqlDeliveryRepository,
   createSqlLeaseRepository,
   createSqlOracleExecutionRepository,

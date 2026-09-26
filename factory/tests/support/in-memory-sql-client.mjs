@@ -41,6 +41,7 @@ const PRIMARY_KEYS = {
   oracle_executions: ['organization_id', 'workstream_id', 'namespace_id', 'workflow_id', 'execution_id'],
   work_environments: ['organization_id', 'workstream_id', 'environment_id'],
   deliveries: ['organization_id', 'workstream_id', 'namespace_id', 'delivery_id'],
+  artifacts: ['organization_id', 'workstream_id', 'namespace_id', 'workflow_id', 'artifact_id'],
 }
 
 function stripCast(token) {
