@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Coday Factory Cockpit</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/dockyard.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>%F0%9F%9B%A0</text></svg>"
+    />
+  </head>
+  <body>
+    <header class="cockpit-topbar">
+      <a class="cockpit-brand" href="#/runs" aria-label="Coday Dockyard home">
+        <span class="cockpit-brand-bars" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+        <span class="cockpit-brand-text">Coday Dockyard</span>
+      </a>
+
+      <nav class="cockpit-nav" aria-label="Cockpit sections">
+        <a href="#/runs" data-route="/runs">Runs</a>
+        <a href="#/detail" data-route="/detail">Détail</a>
+        <a href="#/projection" data-route="/projection">Projection</a>
+        <a href="#/forge" data-route="/forge">Forge</a>
+        <a href="#/admin" data-route="/admin">Admin</a>
+      </nav>
+
+      <div id="cockpit-live-indicator" class="cockpit-live" data-state="connecting" role="status" aria-live="polite">
+        <span class="cockpit-live-dot" aria-hidden="true"></span>
+        <span class="cockpit-live-label">connecting</span>
+      </div>
+    </header>
+
+    <main id="cockpit-view-container" class="cockpit-main">
+      <section id="view-runs" class="cockpit-view" aria-label="Runs">
+        <div class="panel">
+          <h2 class="panel-title">Runs</h2>
+          <p class="placeholder">Run list view — wired in a later wave.</p>
+        </div>
+      </section>
+
+      <section id="view-detail" class="cockpit-view" aria-label="Détail">
+        <div class="panel">
+          <h2 class="panel-title">Détail</h2>
+          <p class="placeholder">Run detail view — wired in a later wave.</p>
+        </div>
+      </section>
+
+      <section id="view-projection" class="cockpit-view" aria-label="Projection">
+        <div class="panel">
+          <h2 class="panel-title">Projection</h2>
+          <p class="placeholder">Workflow projection view — wired in a later wave.</p>
+        </div>
+      </section>
+
+      <section id="view-forge" class="cockpit-view" aria-label="Forge">
+        <div class="panel">
+          <h2 class="panel-title">Forge</h2>
+          <p class="placeholder">Forge view — wired in a later wave.</p>
+        </div>
+      </section>
+
+      <section id="view-admin" class="cockpit-view" aria-label="Admin">
+        <div class="panel">
+          <h2 class="panel-title">Admin</h2>
+          <p class="placeholder">Admin view — wired in a later wave.</p>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="cockpit-dialog">
+      <div id="cockpit-dialog-content"></div>
+    </dialog>
+
+    <script type="module" src="/js/app.mjs"></script>
+  </body>
+</html>
