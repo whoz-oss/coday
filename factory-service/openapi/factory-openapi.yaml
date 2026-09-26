@@ -6,7 +6,51 @@ info:
 servers:
 - url: http://localhost:18141
   description: Generated server url
+tags:
+- name: oracles
+  description: Oracle definitions and execution runs
 paths:
+  /api/factory/workflows/{workflowId}/steps/{stepId}/oracles/{oracleId}/runs:
+    post:
+      tags:
+      - oracles
+      summary: Run an oracle against a workflow step
+      description: Starts (or idempotently replays) one oracle execution for the given
+        step.
+      operationId: runOracle
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: stepId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: oracleId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OracleRunRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeOracleRunResponse"
   /api/factory/admin/artifacts/{artifactId}/purge:
     post:
       tags:
@@ -70,4 +114,55 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
-components: {}
+components:
+  schemas:
+    OracleRunRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+        idempotencyKey:
+          type: string
+    DataEnvelopeOracleRunResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/OracleRunResponse"
+      required:
+      - data
+    OracleRunResponse:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        oracleId:
+          type: string
+        executionId:
+          type: string
+        status:
+          type: string
+        revision:
+          type: integer
+          format: int32
+        outcome:
+          type: string
+        evidenceId:
+          type: string
+        artifactId:
+          type: string
+        created:
+          type: boolean
+        idempotent:
+          type: boolean
+      required:
+      - created
+      - executionId
+      - idempotent
+      - oracleId
+      - outcome
+      - revision
+      - status
+      - stepId
+      - workflowId
