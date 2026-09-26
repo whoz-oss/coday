@@ -33,6 +33,14 @@ abstract class DomainIntegrationTest : PostgresContainerSpec() {
 
     @BeforeEach
     fun resetControlPlane() {
+        jdbcTemplate.update("DELETE FROM human_interaction_events WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM human_interactions WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM workflow_evidence WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM workflow_code_transitions WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM workflow_transitions WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM workflow_projections WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM workflow_instances WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM workflow_definitions WHERE organization_id = ?", ORGANIZATION_ID)
         jdbcTemplate.update("DELETE FROM work_unit_leases WHERE organization_id = ?", ORGANIZATION_ID)
         jdbcTemplate.update("DELETE FROM work_units WHERE organization_id = ?", ORGANIZATION_ID)
         jdbcTemplate.update("DELETE FROM work_environments WHERE organization_id = ?", ORGANIZATION_ID)

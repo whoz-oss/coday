@@ -9,13 +9,90 @@ servers:
 tags:
 - name: work-environments
   description: Work-unit environment provisioning control plane
+- name: workflows
+  description: "Workflow projections, transitions and interactions"
 - name: delivery
   description: Governed delivery control plane
 - name: delivery-operations
   description: "Delivery deployment, verification and rollback control plane"
+- name: workflows
+  description: Workflow definitions
 - name: oracles
   description: Oracle definitions and execution runs
 paths:
+  /api/factory/workflows/{workflowId}/projection:
+    get:
+      tags:
+      - workflows
+      summary: Read the current workflow projection.
+      operationId: projectionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    put:
+      tags:
+      - workflows
+      summary: Publish a declarative workflow projection.
+      operationId: publishProjectionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a revision-safe workflow transition.
+      operationId: transitionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
   /api/factory/workflows/{workflowId}/steps/{stepId}/oracles/{oracleId}/runs:
     post:
       tags:
@@ -57,6 +134,311 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataEnvelopeOracleRunResponse"
+  /api/factory/workflows/{workflowId}/start:
+    post:
+      tags:
+      - workflows
+      summary: Start a governed workflow instance from a definition.
+      operationId: startWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/run:
+    post:
+      tags:
+      - workflows
+      summary: Run the frontend-controlled workflow.
+      operationId: runWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/retries:
+    get:
+      tags:
+      - workflows
+      summary: Read workflow retry aggregates.
+      operationId: retriesMetricsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - workflows
+      summary: Open a retry for a blocked step.
+      operationId: retriesWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/restore:
+    post:
+      tags:
+      - workflows
+      summary: Restore a removed workflow projection.
+      operationId: restoreWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/purge:
+    post:
+      tags:
+      - workflows
+      summary: Purge a removed workflow projection.
+      operationId: purgePostWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    delete:
+      tags:
+      - workflows
+      summary: Purge a removed workflow projection (DELETE form).
+      operationId: purgeDeleteWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/interactions:
+    get:
+      tags:
+      - workflows
+      summary: List human interactions for a workflow.
+      operationId: listInteractionsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+    post:
+      tags:
+      - workflows
+      summary: Open a human interaction at an exact workflow revision.
+      operationId: openInteractionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/interactions/{interactionId}/reply:
+    post:
+      tags:
+      - workflows
+      summary: Reply to a human interaction atomically.
+      operationId: replyInteractionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/evidence:
+    get:
+      tags:
+      - workflows
+      summary: List workflow evidence.
+      operationId: listEvidenceWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: stepId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+    post:
+      tags:
+      - workflows
+      summary: Append an audited workflow evidence fact.
+      operationId: appendEvidenceWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
   /api/factory/workflows/{workflowId}/environment/release:
     post:
       tags:
@@ -439,6 +821,144 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/continue:
+    post:
+      tags:
+      - workflows
+      summary: Continue a paused workflow.
+      operationId: continueWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/code-transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a deterministic code transition.
+      operationId: codeTransitionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a revision-safe workflow transition (collection form).
+      operationId: transitionCollectionWorkflow
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/start:
+    post:
+      tags:
+      - workflows
+      summary: Start a governed workflow instance (collection form).
+      operationId: startCollectionWorkflow
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/code-transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a deterministic code transition (collection form).
+      operationId: codeTransitionCollectionWorkflow
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflow-definitions:
+    get:
+      tags:
+      - workflows
+      summary: List registered workflow definitions.
+      operationId: listWorkflowDefinition
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - workflows
+      summary: Register or update a workflow definition.
+      operationId: registerWorkflowDefinition
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/admin/artifacts/{artifactId}/purge:
     post:
       tags:
@@ -502,6 +1022,130 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+  /api/factory/workflows:
+    get:
+      tags:
+      - workflows
+      summary: List workflow projections for a namespace.
+      operationId: listWorkflow
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}:
+    get:
+      tags:
+      - workflows
+      summary: Read a workflow projection or its lifecycle state.
+      operationId: detailWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    delete:
+      tags:
+      - workflows
+      summary: Remove a workflow projection (recoverable).
+      operationId: removeWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/timing:
+    get:
+      tags:
+      - workflows
+      summary: Read workflow timing aggregates.
+      operationId: timingWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/metrics:
+    get:
+      tags:
+      - workflows
+      summary: Per-workflow operational metrics.
+      operationId: metricsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: scope
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows/{workflowId}/environment:
     get:
       tags:
@@ -540,8 +1184,38 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflow-definitions/{workflowType}/{version}:
+    get:
+      tags:
+      - workflows
+      summary: Get one workflow definition by type and version.
+      operationId: detailWorkflowDefinition
+      parameters:
+      - name: workflowType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
 components:
   schemas:
+    WorkflowDataEnvelopeObject:
+      type: object
+      properties:
+        data: {}
+      required:
+      - data
     OracleRunRequest:
       type: object
       properties:
@@ -592,6 +1266,14 @@ components:
       - status
       - stepId
       - workflowId
+    WorkflowDataEnvelopeMapStringObject:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties: {}
+      required:
+      - data
     ReleaseEnvironmentRequest:
       type: object
       properties:

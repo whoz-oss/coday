@@ -1,0 +1,599 @@
+package io.whozoss.factory.workflow.web
+
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.factory.persistence.TenantScopeProvider
+import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.workflow.domain.ControllerExecutionInput
+import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
+import io.whozoss.factory.workflow.domain.WorkflowExecution
+import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.workflowException
+import io.whozoss.factory.workflow.service.WorkflowHttpResult
+import io.whozoss.factory.workflow.service.WorkflowService
+import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.annotation.DeleteMapping
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
+import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
+import java.util.UUID
+
+/**
+ * Canonical HTTP surface of the workflow aggregate.
+ *
+ * Port of the Node dashboard route handlers
+ * (`workflow-projection-routes.mjs`, `workflow-transition-routes.mjs`,
+ * `workflow-code-transition-routes.mjs`, `workflow-evidence-routes.mjs`,
+ * `workflow-human-interaction-routes.mjs`,
+ * `workflow-operational-metrics-routes.mjs`, `factory-frontend-run-routes.mjs`).
+ *
+ * Success responses use the `{ "data": ... }` envelope; failures are rendered by
+ * the shared `FactoryExceptionHandler` as `{ "error": { code, message } }`.
+ * Identity is resolved from the verified [TrustContext]; a missing one fails
+ * closed with `401 TRUST_CONTEXT_UNAVAILABLE`.
+ */
+@RestController
+@RequestMapping("/api/factory/workflows")
+@Tag(name = "workflows", description = "Workflow projections, transitions and interactions")
+class WorkflowController(
+    private val service: WorkflowService,
+    private val tenantScopeProvider: TenantScopeProvider,
+) {
+
+    // ----- collection / detail ------------------------------------------
+
+    @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "List workflow projections for a namespace.")
+    fun list(
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "state", required = false) state: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.listProjections(caller.scope, caller.namespaceId, state ?: "active"))
+    }
+
+    @GetMapping(path = ["/{workflowId}"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Read a workflow projection or its lifecycle state.")
+    fun detail(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.getProjection(caller.scope, caller.namespaceId, workflowId))
+    }
+
+    @DeleteMapping(path = ["/{workflowId}"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Remove a workflow projection (recoverable).")
+    fun remove(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.remove(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
+    }
+
+    // ----- projection ----------------------------------------------------
+
+    @GetMapping(path = ["/{workflowId}/projection"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Read the current workflow projection.")
+    fun projection(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.getProjection(caller.scope, caller.namespaceId, workflowId))
+    }
+
+    @PutMapping(path = ["/{workflowId}/projection"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Publish a declarative workflow projection.")
+    fun publishProjection(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        val allowed = setOf("projection", "execution", "expectedRevision")
+        if (request.keys.any { it !in allowed }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain projection and execution.")
+        }
+        val execution = requireExecution(request["execution"] as? Map<*, *>)
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, execution.namespaceId)
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+        return respond(
+            service.publishProjection(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                request["projection"],
+                expectedRevision,
+                execution.toJson(),
+            ),
+        )
+    }
+
+    // ----- start ---------------------------------------------------------
+
+    @PostMapping(path = ["/{workflowId}/start"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Start a governed workflow instance from a definition.")
+    fun start(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> = startInternal(workflowId, body, trustContext)
+
+    @PostMapping(path = ["/start"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Start a governed workflow instance (collection form).")
+    fun startCollection(
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        val workflow = request["workflow"] as? Map<*, *>
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        val workflowId = workflow["workflowId"] as? String
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        return startInternal(workflowId, body, trustContext)
+    }
+
+    private fun startInternal(
+        workflowId: String,
+        body: Map<String, Any?>?,
+        trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("workflow", "execution") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain workflow and execution.")
+        }
+        val workflow = (request["workflow"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        if (workflow.keys.any { it !in setOf("workflowId", "workflowType", "title", "relations") } ||
+            workflow["workflowId"] != workflowId ||
+            workflow["workflowType"] !is String ||
+            (workflow["title"] as? String).isNullOrBlank()
+        ) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        }
+        val execution = requireExecution(request["execution"] as? Map<*, *>)
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, execution.namespaceId)
+        val command = WorkflowStartCommand(
+            workflowId = workflowId,
+            workflowType = workflow["workflowType"] as String,
+            title = workflow["title"] as String,
+            relations = (workflow["relations"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value },
+        )
+        return respond(service.start(caller.scope, caller.namespaceId, command, execution))
+    }
+
+    // ----- transitions ---------------------------------------------------
+
+    @PostMapping(path = ["/{workflowId}/transitions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Apply a revision-safe workflow transition.")
+    fun transition(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> = transitionInternal(workflowId, body, trustContext, code = false)
+
+    @PostMapping(path = ["/transitions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Apply a revision-safe workflow transition (collection form).")
+    fun transitionCollection(
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> {
+        val request = requireBody(body)
+        val workflowId = transitionWorkflowId(request)
+        return transitionInternal(workflowId, body, trustContext, code = false)
+    }
+
+    @PostMapping(path = ["/{workflowId}/code-transitions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Apply a deterministic code transition.")
+    fun codeTransition(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> = transitionInternal(workflowId, body, trustContext, code = true)
+
+    @PostMapping(path = ["/code-transitions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Apply a deterministic code transition (collection form).")
+    fun codeTransitionCollection(
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> {
+        val request = requireBody(body)
+        val workflowId = transitionWorkflowId(request)
+        return transitionInternal(workflowId, body, trustContext, code = true)
+    }
+
+    private fun transitionInternal(
+        workflowId: String,
+        body: Map<String, Any?>?,
+        trustContext: TrustContext?,
+        code: Boolean,
+    ): WorkflowDataEnvelope<Any?> {
+        val request = requireBody(body)
+        if (code) {
+            if (request.keys.any { it != "transition" }) {
+                throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only transition is accepted.")
+            }
+        } else if (request.keys.any { it !in setOf("transition", "execution") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain transition and execution.")
+        }
+        val caller = resolveWorkflowCaller(
+            trustContext,
+            tenantScopeProvider,
+            (request["execution"] as? Map<*, *>)?.get("namespaceId") as? String,
+        )
+        val result = if (code) {
+            service.codeTransition(caller.scope, caller.namespaceId, workflowId, request["transition"])
+        } else {
+            val execution = executionFrom(request["execution"] as? Map<*, *>, caller.namespaceId)
+            service.transition(caller.scope, caller.namespaceId, workflowId, request["transition"], execution)
+        }
+        return WorkflowDataEnvelope(result.data)
+    }
+
+    private fun transitionWorkflowId(request: Map<String, Any?>): String {
+        val transition = request["transition"] as? Map<*, *>
+        return transition?.get("workflowId") as? String
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_TRANSITION_REQUEST)
+    }
+
+    // ----- run / continue / retries --------------------------------------
+
+    @PostMapping(path = ["/{workflowId}/run"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Run the frontend-controlled workflow.")
+    fun run(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> = runInternal(workflowId, body, trustContext, "run")
+
+    @PostMapping(path = ["/{workflowId}/continue"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Continue a paused workflow.")
+    fun continueWorkflow(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> = runInternal(workflowId, body, trustContext, "continue")
+
+    private fun runInternal(
+        workflowId: String,
+        body: Map<String, Any?>?,
+        trustContext: TrustContext?,
+        operation: String,
+    ): WorkflowDataEnvelope<Any?> {
+        val request = requireBody(body)
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
+        val projection = service.getProjection(caller.scope, caller.namespaceId, workflowId)
+        if (projection["state"] != "existing") {
+            throw workflowException(
+                if (projection["state"] == "absent") WorkflowErrorCodes.WORKFLOW_NOT_FOUND else WorkflowErrorCodes.WORKFLOW_REMOVED,
+            )
+        }
+        return WorkflowDataEnvelope(
+            mapOf(
+                "workflowId" to workflowId,
+                "namespaceId" to caller.namespaceId,
+                "operation" to operation,
+                "status" to "ACCEPTED",
+                "runtimeNotification" to "not-configured",
+            ),
+        )
+    }
+
+    @PostMapping(path = ["/{workflowId}/retries"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Open a retry for a blocked step.")
+    fun retries(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        val allowed = setOf("namespaceId", "stepId", "expectedRevision", "reasonCode")
+        val stepId = request["stepId"] as? String
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+        val reasonCode = request["reasonCode"] as? String
+        if (request.keys.any { it !in allowed } || stepId == null || expectedRevision == null || reasonCode == null) {
+            throw workflowException("INVALID_RETRY_REQUEST", "Retry request is invalid.")
+        }
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
+        return respond(service.openRetry(caller.scope, caller.namespaceId, workflowId, stepId, expectedRevision, reasonCode))
+    }
+
+    // ----- lifecycle -----------------------------------------------------
+
+    @PostMapping(path = ["/{workflowId}/restore"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Restore a removed workflow projection.")
+    fun restore(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.restore(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
+    }
+
+    @PostMapping(path = ["/{workflowId}/purge"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Purge a removed workflow projection.")
+    fun purgePost(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> = purgeInternal(workflowId, namespaceId, trustContext)
+
+    @DeleteMapping(path = ["/{workflowId}/purge"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Purge a removed workflow projection (DELETE form).")
+    fun purgeDelete(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> = purgeInternal(workflowId, namespaceId, trustContext)
+
+    private fun purgeInternal(
+        workflowId: String,
+        namespaceId: String?,
+        trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.purge(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
+    }
+
+    // ----- metrics -------------------------------------------------------
+
+    @GetMapping(path = ["/{workflowId}/timing"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Read workflow timing aggregates.")
+    fun timing(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.timing(caller.scope, caller.namespaceId, workflowId))
+    }
+
+    @GetMapping(path = ["/{workflowId}/retries"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Read workflow retry aggregates.")
+    fun retriesMetrics(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.retries(caller.scope, caller.namespaceId, workflowId))
+    }
+
+    @GetMapping(path = ["/{workflowId}/metrics"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Per-workflow operational metrics.")
+    fun metrics(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "scope", required = false) scope: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        val resolvedScope = scope ?: "self"
+        if (resolvedScope !in setOf("self", "descendants")) {
+            throw workflowException("INVALID_METRICS_SCOPE", "scope must be self or descendants.")
+        }
+        return WorkflowDataEnvelope(service.metrics(caller.scope, caller.namespaceId, workflowId, resolvedScope))
+    }
+
+    // ----- evidence ------------------------------------------------------
+
+    @GetMapping(path = ["/{workflowId}/evidence"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "List workflow evidence.")
+    fun listEvidence(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "stepId", required = false) stepId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.listEvidence(caller.scope, caller.namespaceId, workflowId, stepId).data)
+    }
+
+    @PostMapping(path = ["/{workflowId}/evidence"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Append an audited workflow evidence fact.")
+    fun appendEvidence(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("evidence", "execution") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain evidence and execution.")
+        }
+        val execution = requireExecution(request["execution"] as? Map<*, *>)
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, execution.namespaceId)
+        val evidence = parseEvidence(request["evidence"], workflowId, execution.namespaceId!!)
+        return respond(service.appendEvidence(caller.scope, caller.namespaceId, workflowId, evidence))
+    }
+
+    // ----- interactions --------------------------------------------------
+
+    @GetMapping(path = ["/{workflowId}/interactions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "List human interactions for a workflow.")
+    fun listInteractions(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "state", required = false) state: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(
+            service.listInteractions(caller.scope, caller.namespaceId, workflowId, openOnly = state != "all").data,
+        )
+    }
+
+    @PostMapping(path = ["/{workflowId}/interactions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Open a human interaction at an exact workflow revision.")
+    fun openInteraction(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        val allowed = setOf("stepId", "expectedRevision", "prompt", "actions", "idempotencyKey")
+        val stepId = request["stepId"] as? String
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+        val prompt = request["prompt"] as? String
+        val idempotencyKey = request["idempotencyKey"] as? String
+        val actions = request["actions"] as? List<*>
+        if (request.keys.any { it !in allowed } || stepId == null || expectedRevision == null ||
+            prompt == null || prompt.isEmpty() || prompt.length > 2000 ||
+            idempotencyKey == null || idempotencyKey.isEmpty() || idempotencyKey.length > 128 ||
+            actions == null || actions.size != 2
+        ) {
+            throw workflowException(WorkflowErrorCodes.INVALID_INTERACTION)
+        }
+        val normalizedActions = actions.mapNotNull { entry ->
+            val action = (entry as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: return@mapNotNull null
+            if (action.keys.any { it !in setOf("id", "label") } ||
+                action["id"] !in setOf("approve", "reject") ||
+                (action["label"] as? String).isNullOrBlank()
+            ) {
+                throw workflowException(WorkflowErrorCodes.INVALID_INTERACTION)
+            }
+            action
+        }
+        if (normalizedActions.size != 2 || normalizedActions.map { it["id"] }.distinct().size != 2) {
+            throw workflowException(WorkflowErrorCodes.INVALID_INTERACTION)
+        }
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider)
+        return respond(
+            service.openInteraction(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                stepId,
+                expectedRevision,
+                prompt,
+                normalizedActions,
+                idempotencyKey,
+            ),
+        )
+    }
+
+    @PostMapping(path = ["/{workflowId}/interactions/{interactionId}/reply"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Reply to a human interaction atomically.")
+    fun replyInteraction(
+        @PathVariable workflowId: String,
+        @PathVariable interactionId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Any?> {
+        val request = requireBody(body)
+        val allowed = setOf("expectedRevision", "actionId", "text")
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+        val actionId = request["actionId"] as? String
+        val text = request["text"] as? String
+        if (request.keys.any { it !in allowed } || expectedRevision == null || actionId.isNullOrEmpty() ||
+            (text != null && text.length > 2000)
+        ) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REPLY)
+        }
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider)
+        if (!isSafeActor(caller.actorId)) throw workflowException(WorkflowErrorCodes.UNAUTHENTICATED_ACTOR)
+        return WorkflowDataEnvelope(
+            service.replyInteraction(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                interactionId,
+                expectedRevision,
+                actionId,
+                text,
+                caller.actorId,
+            ).data,
+        )
+    }
+
+    // ----- helpers -------------------------------------------------------
+
+    private fun requireBody(body: Map<String, Any?>?): Map<String, Any?> =
+        body ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST)
+
+    private fun requireExecution(raw: Map<*, *>?): ControllerExecutionInput {
+        val execution = raw?.entries?.associate { it.key.toString() to it.value }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_EXECUTION)
+        val namespaceId = execution["namespaceId"] as? String
+        if (!isValidNamespaceId(namespaceId)) {
+            throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID)
+        }
+        val runtimeId = execution["runtimeId"] as? String
+        val kind = execution["kind"] as? String
+        val agentId = execution["agentId"] as? String
+        if (runtimeId.isNullOrBlank() || agentId.isNullOrBlank() || kind == null ||
+            kind !in setOf("agentos", "coday-express")
+        ) {
+            throw workflowException(WorkflowErrorCodes.INVALID_EXECUTION)
+        }
+        return ControllerExecutionInput(
+            runtimeId = runtimeId,
+            kind = kind,
+            agentId = agentId,
+            caseId = execution["caseId"] as? String,
+            actorId = execution["actorId"] as? String,
+            threadId = execution["threadId"] as? String,
+            namespaceId = namespaceId,
+        )
+    }
+
+    private fun executionFrom(raw: Map<*, *>?, namespaceId: String): WorkflowExecution {
+        val execution = raw?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+        return WorkflowExecution(
+            kind = execution["kind"] as? String ?: "factory-control-plane",
+            runtimeId = execution["runtimeId"] as? String ?: "factory-dashboard",
+            agentId = execution["agentId"] as? String,
+            actorId = execution["actorId"] as? String,
+            caseId = execution["caseId"] as? String,
+            threadId = execution["threadId"] as? String,
+            namespaceId = namespaceId,
+        )
+    }
+
+    private fun parseEvidence(raw: Any?, workflowId: String, namespaceId: String): io.whozoss.factory.workflow.domain.WorkflowEvidenceItem {
+        val evidence = (raw as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_EVIDENCE)
+        val allowed = setOf("workflowId", "stepId", "kind", "outcome", "facts", "idempotencyKey")
+        if (evidence.keys.any { it !in allowed } || evidence["workflowId"] != workflowId) {
+            throw workflowException(WorkflowErrorCodes.INVALID_EVIDENCE)
+        }
+        val kind = evidence["kind"] as? String
+        if (kind.isNullOrBlank()) throw workflowException(WorkflowErrorCodes.INVALID_EVIDENCE)
+        if (kind in setOf("oracle-result", "human-decision")) {
+            throw workflowException(
+                WorkflowErrorCodes.FACTORY_ONLY_EVIDENCE,
+                "$kind evidence is produced only by a trusted Factory control-plane route.",
+            )
+        }
+        val stepId = evidence["stepId"] as? String
+        val outcome = evidence["outcome"] as? String
+        return io.whozoss.factory.workflow.domain.WorkflowEvidenceItem(
+            evidenceId = UUID.randomUUID().toString(),
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            stepId = stepId,
+            kind = kind,
+            outcome = outcome,
+            source = mapOf("kind" to "factory-control-plane", "runtimeId" to "factory-dashboard"),
+            facts = (evidence["facts"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap(),
+            idempotencyKey = evidence["idempotencyKey"] as? String,
+            createdAt = null,
+        )
+    }
+
+    private fun respond(result: WorkflowHttpResult): ResponseEntity<WorkflowDataEnvelope<Any?>> =
+        ResponseEntity.status(result.status).body(WorkflowDataEnvelope(result.data))
+}
