@@ -1,12 +1,14 @@
 package io.whozoss.factory
 
+import io.whozoss.factory.delivery.port.DeliveryEvidenceStore
+import io.whozoss.factory.delivery.port.DeliveryTargetRegistry
 import io.whozoss.factory.persistence.TenantScope
 import org.junit.jupiter.api.BeforeEach
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.jdbc.core.JdbcTemplate
 
 /**
- * Base class for the workunit/lease/worker/environment integration tests.
+ * Base class for the workunit/lease/worker/environment/delivery integration tests.
  *
  * Seeds the tenant rows the V6 composite foreign keys require
  * (`organizations` -> `workstreams`) and truncates the control-plane tables
@@ -20,6 +22,12 @@ abstract class DomainIntegrationTest : PostgresContainerSpec() {
     @Autowired
     protected lateinit var jdbcTemplate: JdbcTemplate
 
+    @Autowired
+    protected lateinit var deliveryEvidenceStore: DeliveryEvidenceStore
+
+    @Autowired
+    protected lateinit var deliveryTargetRegistry: DeliveryTargetRegistry
+
     protected val scope: TenantScope
         get() = TenantScope(ORGANIZATION_ID, WORKSTREAM_ID)
 
@@ -29,6 +37,10 @@ abstract class DomainIntegrationTest : PostgresContainerSpec() {
         jdbcTemplate.update("DELETE FROM work_units WHERE organization_id = ?", ORGANIZATION_ID)
         jdbcTemplate.update("DELETE FROM work_environments WHERE organization_id = ?", ORGANIZATION_ID)
         jdbcTemplate.update("DELETE FROM workers WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM delivery_journal WHERE organization_id = ?", ORGANIZATION_ID)
+        jdbcTemplate.update("DELETE FROM deliveries WHERE organization_id = ?", ORGANIZATION_ID)
+        deliveryEvidenceStore.clear()
+        deliveryTargetRegistry.clear()
         jdbcTemplate.update(
             "INSERT INTO organizations (organization_id, name) VALUES (?, ?) ON CONFLICT DO NOTHING",
             ORGANIZATION_ID,

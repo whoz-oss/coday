@@ -9,6 +9,10 @@ servers:
 tags:
 - name: work-environments
   description: Work-unit environment provisioning control plane
+- name: delivery
+  description: Governed delivery control plane
+- name: delivery-operations
+  description: "Delivery deployment, verification and rollback control plane"
 - name: oracles
   description: Oracle definitions and execution runs
 paths:
@@ -120,6 +124,321 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/delivery/verify:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a production-verification operation
+      operationId: verifyDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create a rollback request bound to a trusted target
+      operationId: requestRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks/{rollbackRequestId}/verify:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a rollback-verification operation
+      operationId: verifyRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: rollbackRequestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks/{rollbackRequestId}/execute:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a rollback operation
+      operationId: executeRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: rollbackRequestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks/{rollbackRequestId}/approve:
+    post:
+      tags:
+      - delivery-operations
+      summary: Approve a pending rollback request
+      operationId: approveRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: rollbackRequestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/push:
+    post:
+      tags:
+      - delivery
+      summary: Push the delivery branch to the configured remote
+      operationId: pushDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/pull-request:
+    post:
+      tags:
+      - delivery
+      summary: Create a draft pull request for the delivery
+      operationId: pullRequestDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/promote:
+    post:
+      tags:
+      - delivery
+      summary: "Evaluate and apply an ordered, evidence-gated promotion"
+      operationId: promoteDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/evidence:
+    post:
+      tags:
+      - delivery
+      summary: Record a Factory delivery evidence fact
+      operationId: recordEvidenceDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/deployment/reconcile:
+    post:
+      tags:
+      - delivery-operations
+      summary: Reconcile a running or indeterminate delivery operation
+      operationId: reconcileDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/deploy:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a deployment operation
+      operationId: deployDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/checkpoint:
+    post:
+      tags:
+      - delivery
+      summary: Create a git checkpoint commit for the delivery
+      operationId: checkpointDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
   /api/factory/admin/artifacts/{artifactId}/purge:
     post:
       tags:
@@ -202,6 +521,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/delivery:
+    get:
+      tags:
+      - delivery
+      summary: Get the current delivery status of a workflow
+      operationId: statusDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
 components:
   schemas:
     OracleRunRequest:
@@ -382,3 +720,9 @@ components:
           type: string
         repoRoot:
           type: string
+    DeliveryDataEnvelopeObject:
+      type: object
+      properties:
+        data: {}
+      required:
+      - data
