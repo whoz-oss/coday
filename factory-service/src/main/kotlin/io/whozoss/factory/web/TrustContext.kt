@@ -20,6 +20,10 @@ data class TrustContext(
     val authenticationMethod: String = AUTH_ANONYMOUS,
     val serviceIdentityId: String? = null,
     val loopback: Boolean = false,
+    /** AgentOS namespace the trusted execution context belongs to, when supplied. */
+    val namespaceId: String? = null,
+    /** Controlling case id of the trusted AgentOS execution context, when supplied. */
+    val caseId: String? = null,
 ) {
     /** `false` only for an explicit `anonymous` context. */
     val authenticated: Boolean

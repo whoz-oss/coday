@@ -7,7 +7,6 @@ import io.whozoss.factory.oracle.domain.OracleExecution
 import io.whozoss.factory.oracle.domain.OracleExecutionKey
 import io.whozoss.factory.oracle.domain.OracleExecutionStatus
 import io.whozoss.factory.oracle.persistence.OracleExecutionRepository
-import io.whozoss.factory.oracle.publisher.OracleArtifactPublisher
 import io.whozoss.factory.oracle.service.OracleExecutionService
 import io.whozoss.factory.oracle.service.OracleRunCommand
 import io.whozoss.factory.persistence.TenantScope
@@ -16,16 +15,7 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
-import org.springframework.boot.test.context.TestConfiguration
-import org.springframework.context.annotation.Bean
-import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.junit.jupiter.Testcontainers
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * Testcontainers integration tests of the oracle execution repository and
@@ -33,9 +23,6 @@ import java.nio.file.Path
  *
  * Skipped gracefully when no Docker daemon is available.
  */
-@SpringBootTest
-@Import(OracleArtifactPublisherTestConfiguration::class)
-@Testcontainers(disabledWithoutDocker = true)
 class OracleExecutionRepositoryTest : PostgresContainerSpec() {
 
     @Autowired
@@ -235,61 +222,5 @@ class OracleExecutionRepositoryTest : PostgresContainerSpec() {
         private const val WS = "ws-oracle-test"
         private const val NAMESPACE = "ns-oracle-test"
         private const val WORKFLOW = "wf-oracle-test"
-
-        private val smokeDefinition = """
-            {
-              "schemaVersion": "1",
-              "id": "smoke",
-              "version": "1.0.0",
-              "domain": "factory",
-              "argv": ["node", "script.mjs"],
-              "cwd": "repo-root",
-              "timeoutMs": 10000,
-              "success": { "rule": "exit-code", "requireWork": true },
-              "applicable": { "workflowTypes": ["oracle-smoke"], "stepIds": ["verify-code"] }
-            }
-        """.trimIndent()
-
-        private val oracleDefinitionsRoot: Path = Files.createTempDirectory("oracle-repo-definitions").also { root ->
-            Files.writeString(root.resolve("smoke@1.0.0.json"), smokeDefinition)
-        }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun registerOracleDefinitions(registry: DynamicPropertyRegistry) {
-            registry.add("factory.oracle.definitions-root") { oracleDefinitionsRoot.toAbsolutePath().toString() }
-        }
     }
-}
-
-/** Test-only artifact publisher: flips `availability_status` to `available`. */
-@TestConfiguration
-class OracleArtifactPublisherTestConfiguration {
-    @Bean
-    fun oracleArtifactPublisher(jdbcTemplate: JdbcTemplate): OracleArtifactPublisher =
-        object : OracleArtifactPublisher {
-            override fun publishArtifact(
-                scope: TenantScope,
-                namespaceId: String,
-                workflowId: String,
-                artifactId: String,
-            ) {
-                jdbcTemplate.update(
-                    """
-                    UPDATE artifacts
-                       SET availability_status = 'available'
-                     WHERE organization_id = ?
-                       AND workstream_id = ?
-                       AND namespace_id = ?
-                       AND workflow_id = ?
-                       AND artifact_id = ?
-                    """.trimIndent(),
-                    scope.organizationId,
-                    scope.workstreamId,
-                    namespaceId,
-                    workflowId,
-                    artifactId,
-                )
-            }
-        }
 }

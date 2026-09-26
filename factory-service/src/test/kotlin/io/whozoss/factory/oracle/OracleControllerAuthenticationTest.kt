@@ -4,7 +4,6 @@ import io.whozoss.factory.PostgresContainerSpec
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.HttpEntity
@@ -12,17 +11,19 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
- * Fail-closed HTTP boundary test: with loopback-dev disabled and no credential,
- * the oracle run endpoint must refuse the caller before any domain work.
+ * Fail-closed HTTP boundary test: with no credential, the oracle run endpoint
+ * must refuse the caller before any domain work.
+ *
+ * The suite runs with `factory.security.allow-loopback-dev` enabled (the shared
+ * integration configuration), so a genuine localhost request would be promoted
+ * to the loopback-dev wildcard. To exercise the anonymous path without splitting
+ * the Spring context with a per-class property override, the request carries an
+ * `X-Forwarded-For` header: `server.forward-headers-strategy=framework` installs
+ * the [org.springframework.web.filter.ForwardedHeaderFilter], which rewrites
+ * `request.remoteAddr` to the forwarded (non-loopback) address.
  */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["factory.security.allow-loopback-dev=false"],
-)
-@Testcontainers(disabledWithoutDocker = true)
 class OracleControllerAuthenticationTest : PostgresContainerSpec() {
 
     @Autowired
@@ -36,6 +37,8 @@ class OracleControllerAuthenticationTest : PostgresContainerSpec() {
     fun `anonymous caller is refused with 401`() {
         val headers = HttpHeaders()
         headers.contentType = MediaType.APPLICATION_JSON
+        // Force a non-loopback remote address so loopback-dev does not apply.
+        headers.set("X-Forwarded-For", "203.0.113.195")
         val response = restTemplate.exchange(
             "/api/factory/workflows/wf/steps/step/oracles/smoke/runs",
             HttpMethod.POST,

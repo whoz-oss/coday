@@ -5,7 +5,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.HttpEntity
@@ -15,11 +14,6 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.junit.jupiter.Testcontainers
-import java.nio.file.Files
-import java.nio.file.Path
 
 /**
  * HTTP integration tests of [io.whozoss.factory.oracle.web.OracleController]
@@ -29,8 +23,6 @@ import java.nio.file.Path
  * `LocalDevMembershipResolver` (`org-local-dev` / `ws-default`). Skipped
  * gracefully when no Docker daemon is available.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers(disabledWithoutDocker = true)
 class OracleControllerIntegrationTest : PostgresContainerSpec() {
 
     @Autowired
@@ -128,28 +120,5 @@ class OracleControllerIntegrationTest : PostgresContainerSpec() {
         private const val WS = "ws-default"
         private const val NAMESPACE = "ns-controller-test"
         private const val WORKFLOW = "wf-controller-test"
-
-        private val smokeDefinition = """
-            {
-              "schemaVersion": "1",
-              "id": "smoke",
-              "version": "1.0.0",
-              "domain": "factory",
-              "argv": ["node", "script.mjs"],
-              "cwd": "repo-root",
-              "timeoutMs": 10000,
-              "success": { "rule": "exit-code", "requireWork": true },
-              "applicable": { "workflowTypes": ["oracle-smoke"], "stepIds": ["verify-code"] }
-            }
-        """.trimIndent()
-
-        private val oracleDefinitionsRoot: Path = Files.createTempDirectory("oracle-controller-definitions")
-            .also { root -> Files.writeString(root.resolve("smoke@1.0.0.json"), smokeDefinition) }
-
-        @JvmStatic
-        @DynamicPropertySource
-        fun registerOracleDefinitions(registry: DynamicPropertyRegistry) {
-            registry.add("factory.oracle.definitions-root") { oracleDefinitionsRoot.toAbsolutePath().toString() }
-        }
     }
 }
