@@ -10,7 +10,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -28,7 +27,6 @@ import java.util.concurrent.TimeUnit
  * matches the token persisted in `work_unit_leases`.
  */
 @SpringBootTest
-@Testcontainers(disabledWithoutDocker = true)
 class WorkUnitLeaseConcurrencyTest : DomainIntegrationTest() {
 
     @Autowired

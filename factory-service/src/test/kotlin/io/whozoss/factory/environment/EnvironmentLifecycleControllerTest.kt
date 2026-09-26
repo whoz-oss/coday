@@ -13,7 +13,6 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
  * HTTP integration tests of
@@ -26,7 +25,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
  * control plane. The trust context is the loopback-dev principal.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers(disabledWithoutDocker = true)
 class EnvironmentLifecycleControllerTest : DomainIntegrationTest() {
 
     @Autowired

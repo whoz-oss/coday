@@ -23,7 +23,6 @@ import org.springframework.context.annotation.Import
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -35,7 +34,6 @@ import java.nio.file.Path
  */
 @SpringBootTest
 @Import(OracleArtifactPublisherTestConfiguration::class)
-@Testcontainers(disabledWithoutDocker = true)
 class OracleExecutionRepositoryTest : PostgresContainerSpec() {
 
     @Autowired

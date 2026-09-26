@@ -17,7 +17,6 @@ import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -30,7 +29,6 @@ import java.nio.file.Path
  * gracefully when no Docker daemon is available.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@Testcontainers(disabledWithoutDocker = true)
 class OracleControllerIntegrationTest : PostgresContainerSpec() {
 
     @Autowired

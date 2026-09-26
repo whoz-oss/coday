@@ -20,7 +20,6 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.jdbc.core.JdbcTemplate
-import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
  * Integration tests for the admin artifact governance HTTP boundary.
@@ -35,7 +34,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["factory.security.fake-idp-secret=artifact-admin-test-secret"],
 )
-@Testcontainers(disabledWithoutDocker = true)
 class ArtifactAdminControllerIntegrationTest : PostgresContainerSpec() {
 
     @Autowired

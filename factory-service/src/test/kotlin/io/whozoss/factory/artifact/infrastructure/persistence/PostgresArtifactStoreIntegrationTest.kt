@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.JdbcTemplate
-import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.Instant
 
 /**
@@ -28,7 +27,6 @@ import java.time.Instant
  * protocol, the purge lifecycle, legal holds and the triggered GC audit.
  */
 @SpringBootTest
-@Testcontainers(disabledWithoutDocker = true)
 class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
 
     @Autowired

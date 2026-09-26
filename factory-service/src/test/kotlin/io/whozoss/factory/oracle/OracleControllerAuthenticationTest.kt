@@ -12,7 +12,6 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
-import org.testcontainers.junit.jupiter.Testcontainers
 
 /**
  * Fail-closed HTTP boundary test: with loopback-dev disabled and no credential,
@@ -22,7 +21,6 @@ import org.testcontainers.junit.jupiter.Testcontainers
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = ["factory.security.allow-loopback-dev=false"],
 )
-@Testcontainers(disabledWithoutDocker = true)
 class OracleControllerAuthenticationTest : PostgresContainerSpec() {
 
     @Autowired
