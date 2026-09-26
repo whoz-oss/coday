@@ -20,6 +20,10 @@ client — no Docker required to run the tests.
 ```
 factory/infra/
 ├── docker-compose.yml                       # PostgreSQL 16 + one-shot Flyway runner
+├── backup.sh                                # B4-T3 parameterized pg_dump (custom .dump)
+├── restore.sh                               # B4-T3 parameterized pg_restore / psql
+├── verify-restore.sh                        # B4-T3 end-to-end backup/restore drill
+├── dumps/                                   # local dump output (git-ignored)
 ├── README.md                                # this file
 └── migrations/
     ├── V1__init_workflow_pilot_schema.sql   # pilot schema (definitions + instances)
@@ -883,4 +887,145 @@ driver by driving the real SQL adapters through the in-memory `SqlClient`:
 ```bash
 node factory/tests/test-worker-runtime-entrypoint.mjs   # demo executor, wiring, lifecycle, facade
 node factory/tests/test-worker-runtime-core.mjs         # frozen C2-T1 loop (fencing, drain, failure)
+```
+
+## Backup & Restore (Jalon B4-T3)
+
+The shared Factory stores its aggregates in the containerized PostgreSQL
+database (`coday_factory` by default). The three scripts below implement the
+**backup**, **restore** and **automated verification** procedures. They are
+plain bash, require no build step, and are parameterized exclusively through the
+standard `PG*` environment variables — **no host or credential is hardcoded**.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PGHOST` | `localhost` | PostgreSQL host |
+| `PGPORT` | `5432` | PostgreSQL port |
+| `PGDATABASE` | `coday_factory` | Source / active database |
+| `PGUSER` | `factory` | Role used for the operation |
+| `PGPASSWORD` | `factory_dev_pass` | Password (host mode only) |
+
+Each script auto-detects how to reach PostgreSQL:
+
+* **`host`** — the PostgreSQL client tools (`pg_dump`, `pg_restore`, `psql`) are
+  on `PATH`; the script connects directly using `PGHOST`/`PGPORT`/`PGUSER`/`PGPASSWORD`.
+* **`docker`** — the client tools are not on the host, but the container
+  (`PG_CONTAINER`, default `coday-postgres`) is running; the script runs the
+  tools via `docker exec`.
+
+Force one mode with `PG_MECHANISM=host|docker` (default `auto`). In `docker`
+mode the `PGPASSWORD`/`PGHOST`/`PGPORT` variables are not needed: authentication
+happens inside the container.
+
+### `backup.sh`
+
+```bash
+# Default: factory/infra/dumps/factory_backup_<db>_<UTC-stamp>.dump
+./factory/infra/backup.sh
+
+# Explicit file name, resolved inside DUMP_DIR
+./factory/infra/backup.sh before-vm-migration.dump
+
+# Explicit absolute path
+./factory/infra/backup.sh /tmp/factory.dump
+
+# Against a remote/VM database
+PGHOST=vm.internal PGPORT=5432 PGDATABASE=coday_factory \
+  PGUSER=factory PGPASSWORD=... ./factory/infra/backup.sh
+```
+
+* Produces a **custom-format** `.dump` (`pg_dump -Fc`), restorable with
+  `restore.sh` or a plain `pg_restore`.
+* Writes the absolute path of the created dump **on stdout** (all logs go to
+  stderr), so it composes: `DUMP="$(./factory/infra/backup.sh)"`.
+* `DUMP_DIR` overrides the output directory (default `factory/infra/dumps`,
+  git-ignored).
+* Exits non-zero with an explicit message when no mechanism is available, when
+  `pg_dump` fails, or when the produced file is empty.
+
+### `restore.sh`
+
+```bash
+# Restore into the default PGDATABASE (coday_factory)
+./factory/infra/restore.sh factory/infra/dumps/factory_backup_coday_factory_20260101T000000Z.dump
+
+# Restore into an explicit target database (must already exist)
+./factory/infra/restore.sh factory/infra/dumps/my.dump coday_factory_restore
+
+# Plain-SQL dumps are supported too
+./factory/infra/restore.sh /tmp/dump.sql coday_factory_restore
+```
+
+* `.dump` files (custom format) are restored with
+  `pg_restore --clean --if-exists --no-owner --no-privileges --exit-on-error`.
+* `.sql` files are restored with `psql -v ON_ERROR_STOP=1`.
+* The target database is `$2`, else `TARGET_DATABASE`, else `PGDATABASE`. It
+  **must already exist** — `restore.sh` restores objects, it does not create the
+  database.
+* Validates the dump path (exists, is a regular file, readable, non-empty) and
+  reports a clear error otherwise.
+
+### `verify-restore.sh` — automated drill
+
+Fully automated, container-agnostic exercise proving a backup can be restored
+faithfully. It:
+
+1. dumps the active database through `backup.sh`;
+2. creates a disposable database (`coday_factory_test_restore_<pid>` by default,
+   override with `VERIFY_RESTORE_DATABASE`);
+3. restores the dump into it through `restore.sh`;
+4. compares, per key table, the row **count** and a canonical content **hash**
+   between source and restored databases (key tables: `workflow_definitions`,
+   `workflow_instances`, `workflow_evidence`, `human_interactions`,
+   `agent_step_attempts`, `agent_step_results`, `oracle_executions`,
+   `work_environments`, `deliveries`);
+5. optionally invokes the B4-T1 `verifyImport` against the restored database
+   when `FACTORY_DATA_ROOT` is set and the `pg` driver is installed;
+6. always drops the disposable database and removes the temporary dump (bash
+   `trap` on `EXIT`/`INT`/`TERM`), even on failure.
+
+```bash
+# Pre-requisite: PostgreSQL reachable (compose up -d + migrations applied)
+./factory/infra/verify-restore.sh
+
+# Same against the VM / a non-default maintenance database
+PGHOST=vm.internal PGUSER=factory PGPASSWORD=... \
+  PG_MAINTENANCE_DATABASE=postgres ./factory/infra/verify-restore.sh
+
+# Enable the optional B4-T1 filesystem <-> restored-database hash check
+FACTORY_DATA_ROOT=~/.coday/factory ./factory/infra/verify-restore.sh
+```
+
+Exit status is `0` only when every checked table matches (count **and** hash) and
+the optional node verification passes; it is non-zero on any mismatch, restore
+failure or unreachable database.
+
+> **Note on `deliveries`.** The key-table list includes `deliveries` for
+> completeness, but Flyway `V1..V7` does not create that table yet (the SQL
+> delivery adapter is not migrated by these versions). When a key table is
+> absent from the source database the drill logs a `skip …` line instead of
+> failing; every *present* key table is still compared.
+
+## Checklist avant d'importer / placer des données partagées sur la VM
+
+À valider **avant** toute importation ou dépôt de données partagées sur la VM
+(migration filesystem → PostgreSQL, copie d'une base locale vers la VM, etc.) :
+
+- [ ] Backup testé (`backup.sh` validé)
+- [ ] Restore testé (`restore.sh` / `verify-restore.sh` validé, drill au vert)
+- [ ] Procédure et rollback `FACTORY_PERSISTENCE=fs|sql` connus et documentés
+      (voir `PERSISTENCE_SWITCH_ROLLBACK.md`, B4-T2)
+- [ ] Migrations Flyway à jour et vérifiées (V1..V7 jouées)
+
+Commandes de vérification associées :
+
+```bash
+# 1. Un backup est produit et lisible
+PGHOST=<vm> ./factory/infra/backup.sh /tmp/check.dump
+
+# 2. Le drill backup -> restore -> vérification est au vert
+PGHOST=<vm> ./factory/infra/verify-restore.sh
+
+# 3. L'état des migrations Flyway est à jour (V1..V7 appliquées)
+docker compose -f factory/infra/docker-compose.yml logs flyway | tail
 ```
