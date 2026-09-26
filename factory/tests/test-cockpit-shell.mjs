@@ -8,8 +8,9 @@
  *   B. `sse-client.mjs`     — event bus, named-event dispatch, idempotent
  *                             teardown and zero-leak guarantees.
  *   C. Server routes        — `/cockpit`, `/css/*`, `/js/*` Content-Type
- *                             enforcement, 404 (never HTML) and coexistence
- *                             with the legacy `index.html` monolith.
+ *                             enforcement, 404 (never HTML) and the `/` →
+ *                             `/cockpit` 302 redirect for the retired
+ *                             monolithic `index.html`.
  *
  * No external dependency, no network beyond loopback. Exit code 0 = all pass.
  *
@@ -401,15 +402,13 @@ await scenario('composition root serves the cockpit and static assets', async ()
   const missingJsText = await missingJs.text()
   assert.equal(JSON.parse(missingJsText).error.code, 'NOT_FOUND')
 
-  const root = await fetch(`${base}/`)
-  assert.equal(root.status, 200)
-  assert.equal(root.headers.get('content-type'), 'text/html; charset=utf-8')
-  assert.ok((await root.text()).includes('<title>Factory</title>'))
+  const root = await fetch(`${base}/`, { redirect: 'manual' })
+  assert.equal(root.status, 302)
+  assert.equal(root.headers.get('location'), '/cockpit')
 
-  const indexHtml = await fetch(`${base}/index.html`)
-  assert.equal(indexHtml.status, 200)
-  assert.equal(indexHtml.headers.get('content-type'), 'text/html; charset=utf-8')
-  assert.ok((await indexHtml.text()).includes('<title>Factory</title>'))
+  const indexHtml = await fetch(`${base}/index.html`, { redirect: 'manual' })
+  assert.equal(indexHtml.status, 302)
+  assert.equal(indexHtml.headers.get('location'), '/cockpit')
 })
 
 if (cockpitServer) await closeServer(cockpitServer)
