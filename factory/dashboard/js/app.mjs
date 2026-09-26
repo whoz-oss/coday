@@ -16,6 +16,7 @@
 import { SseClient } from './services/sse-client.mjs'
 import { ApiClient } from './services/api-client.mjs'
 import { mountRunLaunchView } from './views/run-launch.mjs'
+import { mount as mountForgeCockpit } from './views/forge-cockpit.mjs'
 
 export const ROUTES = Object.freeze({
   '/runs': { id: 'view-runs', label: 'Runs' },
@@ -36,6 +37,28 @@ export const VIEW_MOUNTERS = Object.freeze({
 })
 
 export const DEFAULT_ROUTE = '/runs'
+
+/**
+ * Resolve the active namespace from the URL (`?ns=` / `?namespaceId=`), read
+ * either from the querystring or from the hash route. Returns `null` when the
+ * caller has not supplied one. Pure and import-safe in Node.
+ */
+export function resolveNamespaceId(win = globalThis.window) {
+  if (!win?.location) return null
+  const hash = typeof win.location.hash === 'string' ? win.location.hash : ''
+  const sources = [win.location.search ?? '', hash.includes('?') ? hash.slice(hash.indexOf('?')) : '']
+  for (const source of sources) {
+    let params
+    try {
+      params = new URLSearchParams(source)
+    } catch {
+      continue
+    }
+    const value = params.get('ns') ?? params.get('namespaceId')
+    if (value) return value
+  }
+  return null
+}
 
 /** Normalize any hash (`#/x`, `#x`, ``, `#/unknown`) into a known route. */
 export function parseHash(hash) {
@@ -77,6 +100,10 @@ export function closeModal(doc = globalThis.document) {
 /**
  * Create the router bound to a window/document pair. Returns handles used by
  * the auto-bootstrap and by tests.
+ *
+ * `options.onMount(route, { registerTeardown, doc, win })` is the additive,
+ * optional view-mount hook: it runs after the section classes are toggled so a
+ * view can register its own teardown. It never changes the route table.
  */
 export function createRouter(win = globalThis.window, doc = globalThis.document, options = {}) {
   let currentRoute = null
@@ -158,6 +185,13 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
     updateNav(route)
     setLiveIndicator(doc, 'online')
     mountView(route)
+    if (typeof options.onMount === 'function') {
+      try {
+        options.onMount(route, { registerTeardown, doc, win })
+      } catch {
+        // A failing view mount must never break the shell navigation.
+      }
+    }
   }
 
   const applyHash = () => {
@@ -193,7 +227,23 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
 export function bootstrapCockpit(win = globalThis.window, doc = globalThis.document) {
   if (!win || !doc) return null
   const api = new ApiClient({ baseUrl: '' })
-  const router = createRouter(win, doc, { apiClient: api, mounters: VIEW_MOUNTERS })
+  const router = createRouter(win, doc, {
+    apiClient: api,
+    mounters: VIEW_MOUNTERS,
+    onMount: (route, ctx) => {
+      if (route !== '/forge') return
+      const container = doc.getElementById('view-forge')
+      if (!container) return
+      const namespaceId = resolveNamespaceId(win)
+      if (!namespaceId) return
+      mountForgeCockpit(container, {
+        namespaceId,
+        apiClient: api,
+        SseClient,
+        registerTeardown: ctx.registerTeardown,
+      })
+    },
+  })
   const start = () => router.start()
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true })
   else start()
