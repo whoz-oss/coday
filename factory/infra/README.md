@@ -702,3 +702,185 @@ that tenant isolation and previous tables are preserved:
 ```bash
 node factory/tests/test-v7-migration-schema.mjs
 ```
+
+---
+
+## Local worker runtime (Jalon C2)
+
+The C2 worker runtime is a thin loop that claims a work unit through the C1
+lease protocol, runs an injected `WorkExecutor` and releases the lease (which
+commits the terminal work-unit status atomically). The domain lives in
+`factory/src/domain/worker-runtime/` (frozen, C2-T1); the local entrypoint
+`factory/src/entrypoints/worker-runtime.ts` (C2-T2) wires it against the **real**
+SQL persistence adapters:
+
+| Piece | Source |
+|---|---|
+| Loop + vocabulary | `factory/src/domain/worker-runtime/{worker-runtime,types}.ts` |
+| Local entrypoint / wiring | `factory/src/entrypoints/worker-runtime.ts` |
+| SQL client (`pg` pool) | `createPgPoolClient` in `factory/src/adapters/persistence/sql/db.ts` |
+| SQL repositories | `createSqlLeaseRepository`, `createSqlWorkUnitRepository`, `createSqlWorkerRepository` in `factory/src/adapters/persistence/sql/index.ts` |
+| Bundle surface | `factory/runtime/factory-operational.mjs` (generated) |
+| Stateless JS facade | `factory/lib/worker-runtime.mjs` |
+
+`createLocalWorkerRuntime()` builds the three SQL repositories on top of a
+`createPgPoolClient()` pool and returns a handle
+`{ runtime, client, executor, config, start, stop }`. `runLocalWorker()` does the
+same and starts the loop immediately. Both default to a **deterministic demo
+executor** (`createDemoWorkExecutor`): it logs the work unit, waits a few
+milliseconds and reports `completed` with an `executor: 'demo-echo'` payload
+patch. It performs **no** ADW dispatch, no network and no filesystem I/O — it is
+a scaffold for local runs only.
+
+### Prerequisites
+
+1. Start the disposable PostgreSQL (see the top of this file):
+
+   ```bash
+   docker compose -f factory/infra/docker-compose.yml up -d
+   docker compose -f factory/infra/docker-compose.yml logs -f flyway   # wait for "Successfully applied"
+   ```
+
+2. Provide the `pg` driver in the runtime environment. The runtime artifact
+   deliberately does **not** bundle a SQL driver (`createPgPoolClient` loads it
+   lazily), so install it where the worker process resolves modules:
+
+   ```bash
+   npm install pg          # or: pnpm add -w pg
+   ```
+
+### Environment variables
+
+| Variable | Used by | Default |
+|---|---|---|
+| `PGHOST` | `createPgPoolClient` / `resolveSqlDatabaseConfig` | `localhost` |
+| `PGPORT` | idem | `5432` |
+| `PGDATABASE` | idem | `coday_factory` |
+| `PGUSER` | idem | `factory` |
+| `PGPASSWORD` | idem | `factory_dev_pass` |
+| `PGPOOL_MAX` | idem (pool size) | `10` |
+| `PGSSL` | idem (`true` enables TLS) | `false` |
+| `WORKER_ID` | `createLocalWorkerRuntime` (`config.workerId`) | `local-worker-1` |
+| `LEASE_TTL_MS` | `createLocalWorkerRuntime` (`config.leaseTtlMs`) | `30000` |
+
+`organizationId` / `workstreamId` default to `'default'` (the tenant the SQL
+adapters are scoped to); override them with the corresponding
+`createLocalWorkerRuntime({ organizationId, workstreamId })` options.
+
+### Launch the worker
+
+Run this from the repository root (it resolves `factory/lib/worker-runtime.mjs`
+relative to the current directory):
+
+```bash
+node --input-type=module <<'EOF'
+import { createDemoWorkExecutor, createLocalWorkerRuntime } from './factory/lib/worker-runtime.mjs'
+
+const worker = await createLocalWorkerRuntime({
+  workerId: process.env.WORKER_ID ?? 'local-worker-1',
+  // Deterministic demo executor — no real ADW task is ever dispatched.
+  // Raise delayMs temporarily if you want to observe the `running` state.
+  executor: createDemoWorkExecutor({ delayMs: 50 }),
+})
+
+await worker.start()
+console.log(`worker ${worker.config.workerId} running (org=${worker.config.organizationId}, ws=${worker.config.workstreamId})`)
+
+const shutdown = async () => {
+  await worker.stop({ drainTimeoutMs: 5000 })
+  process.exit(0)
+}
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
+EOF
+```
+
+### Enqueue a demo work unit
+
+The worker polls `work_units` rows in status `created` (or retryable `failed`).
+`work_units` has a composite FK onto `workstreams`, so create the default tenant
+first (both statements are idempotent):
+
+```sql
+-- Tenant prerequisites (once).
+INSERT INTO organizations (organization_id, name)
+  VALUES ('default', 'Default') ON CONFLICT (organization_id) DO NOTHING;
+INSERT INTO workstreams (organization_id, workstream_id, name)
+  VALUES ('default', 'default', 'Default') ON CONFLICT (organization_id, workstream_id) DO NOTHING;
+
+-- The demo work unit the worker will claim.
+INSERT INTO work_units (organization_id, workstream_id, work_unit_id, unit_type, status, priority, payload)
+  VALUES ('default', 'default', 'wu-demo-1', 'demo-echo', 'created', 10, '{"message":"Hello Worker"}'::jsonb)
+  ON CONFLICT (organization_id, workstream_id, work_unit_id) DO NOTHING;
+```
+
+Run it against the compose instance:
+
+```bash
+docker compose -f factory/infra/docker-compose.yml exec coday-postgres \
+  psql -U factory -d coday_factory -c "<the SQL above>"
+```
+
+Alternatively, enqueue it from JavaScript with the same pool factory:
+
+```bash
+node --input-type=module <<'EOF'
+import { createPgPoolClient } from './factory/runtime/factory-operational.mjs'
+
+const client = await createPgPoolClient()
+await client.query(`INSERT INTO organizations (organization_id, name)
+  VALUES ('default', 'Default') ON CONFLICT (organization_id) DO NOTHING`)
+await client.query(`INSERT INTO workstreams (organization_id, workstream_id, name)
+  VALUES ('default', 'default', 'Default') ON CONFLICT (organization_id, workstream_id) DO NOTHING`)
+await client.query(`INSERT INTO work_units
+  (organization_id, workstream_id, work_unit_id, unit_type, status, priority, payload)
+  VALUES ($1, $2, $3, $4, 'created', $5, $6::jsonb)`,
+  ['default', 'default', 'wu-demo-1', 'demo-echo', 10, JSON.stringify({ message: 'Hello Worker' })])
+console.log('enqueued wu-demo-1')
+EOF
+```
+
+### Observe the lifecycle
+
+Poll the work unit and its lease (from another terminal):
+
+```sql
+SELECT work_unit_id, status, attempt_count, payload, updated_at
+  FROM work_units WHERE work_unit_id = 'wu-demo-1';
+
+SELECT lease_id, status, fencing_token, lease_expires_at, released_at
+  FROM work_unit_leases WHERE work_unit_id = 'wu-demo-1' ORDER BY fencing_token;
+```
+
+The expected lifecycle is:
+
+1. **`created`** — right after the `INSERT` above.
+2. **`running`** — the worker's `acquire` claims the unit and inserts an `active`
+   row in `work_unit_leases` with the next monotone `fencing_token`; the worker
+   row flips to `busy`. With the default demo delay (~50ms) this state is brief —
+   pass a larger `delayMs` to `createDemoWorkExecutor` to observe it.
+3. **`completed`** — the demo executor reports success, the payload is patched
+   with `{"executor":"demo-echo","executedAt":"…"}`, and the lease `release`
+   commits the terminal status; the lease row becomes `released` and the worker
+   returns to `idle`.
+
+You can also watch the worker's own log lines, e.g.
+`demo executor: start (no real ADW dispatch)` then `demo executor: completed`.
+
+### Stop cleanly
+
+Send `SIGINT`/`SIGTERM` to the worker process (the snippet above drains with
+`worker.stop({ drainTimeoutMs: 5000 })`), or call `await worker.stop()` yourself.
+`stop()` stops claiming new work, lets in-flight executions finish (or aborts
+them past the drain timeout, releasing their lease back to `created`) and marks
+the worker `offline`.
+
+### Offline verification
+
+The whole C2-T2 surface is covered **without** PostgreSQL, Docker or the `pg`
+driver by driving the real SQL adapters through the in-memory `SqlClient`:
+
+```bash
+node factory/tests/test-worker-runtime-entrypoint.mjs   # demo executor, wiring, lifecycle, facade
+node factory/tests/test-worker-runtime-core.mjs         # frozen C2-T1 loop (fencing, drain, failure)
+```

@@ -28,6 +28,11 @@ try {
     sourcesContent: false,
     metafile: true,
     legalComments: 'none',
+    // Emit metafile input paths relative to the toolchain directory
+    // (`../src/...`) independently of the invocation cwd, so the documented
+    // `node factory/toolchain/build.mjs` (from the repo root) and `node
+    // build.mjs` (from the toolchain) produce identical diagnostic metadata.
+    absWorkingDir: toolchainDirectory,
     banner: { js: '// GENERATED FILE — DO NOT EDIT. Source: factory/src/entrypoints/factory-operational.ts' },
   })
   await rename(`${temporaryRuntimeFile}.map`, sourcemapPath)
