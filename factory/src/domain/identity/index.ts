@@ -10,3 +10,4 @@
 export * from './trust-context.ts'
 export * from './fake-idp.ts'
 export * from './membership-resolver.ts'
+export * from './agentos-membership-resolver.ts'
