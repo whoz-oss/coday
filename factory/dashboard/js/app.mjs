@@ -16,6 +16,7 @@
 import { SseClient } from './services/sse-client.mjs'
 import { ApiClient } from './services/api-client.mjs'
 import { mountRunLaunchView } from './views/run-launch.mjs'
+import { mountArtifactAdminView } from './views/artifact-admin.mjs'
 import { mount as mountForgeCockpit } from './views/forge-cockpit.mjs'
 
 export const ROUTES = Object.freeze({
@@ -34,6 +35,7 @@ export const ROUTES = Object.freeze({
  */
 export const VIEW_MOUNTERS = Object.freeze({
   '/launch': mountRunLaunchView,
+  '/admin': mountArtifactAdminView,
 })
 
 export const DEFAULT_ROUTE = '/runs'

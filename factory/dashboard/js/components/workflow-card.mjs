@@ -7,68 +7,26 @@
  * lifecycle action triggers (`restore`, `remove`, `purge`).
  *
  * STRICT SSRF INVARIANT — the AgentOS deep link is NEVER composed from
- * user-controlled input without a trusted base URL. `buildAgentosCaseUrl`
- * parses `agentosUrl` with the WHATWG URL parser, refuses anything that is not
- * an absolute `http(s)` origin without credentials, and only then joins an
- * encoded case id. A `coday-express` thread is ALWAYS rendered as unclickable
- * text — never as an `<a>`.
+ * user-controlled input without a trusted base URL. Identity rendering is
+ * delegated to `case-link.mjs`: its `buildAgentosCaseUrl` parses `agentosUrl`
+ * with the WHATWG URL parser, refuses anything that is not an absolute
+ * `http(s)` origin without credentials, and only then joins an encoded case id.
+ * A `coday-express` thread stays unclickable unless a trusted server-configured
+ * `codayExpressUrl` base is supplied — never a URL built from thread input.
  */
 
 import { buildBlueprintLayout } from './temporal-lanes.mjs'
+import { buildCaseLinkHtml, buildAgentosCaseUrl, escapeHtml, escapeAttr } from './case-link.mjs'
 
-const ALLOWED_PROTOCOLS = Object.freeze(['http:', 'https:'])
+// Re-exported for backwards compatibility: `case-link.mjs` now owns the single
+// SSRF choke point, but existing callers keep importing it from here.
+export { buildAgentosCaseUrl, escapeHtml, escapeAttr }
 
 export const LIFECYCLE_ACTIONS = Object.freeze([
   { action: 'restore', label: 'Restaurer', variant: 'btn-primary' },
   { action: 'remove', label: 'Supprimer', variant: 'btn-danger' },
   { action: 'purge', label: 'Purger', variant: 'btn-danger' },
 ])
-
-/** Escape a value for safe HTML text interpolation. */
-export function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-/** Escape a value for safe HTML attribute interpolation. */
-export function escapeAttr(value) {
-  return escapeHtml(value)
-}
-
-/**
- * Build a safe absolute AgentOS case URL, or `null` when the base URL is
- * missing, malformed or untrusted. This is the single choke point enforcing the
- * SSRF invariant for clickable case links.
- *
- * @param {string} caseId
- * @param {string} agentosUrl trusted base URL (e.g. from GET /api/config)
- * @returns {string|null}
- */
-export function buildAgentosCaseUrl(caseId, agentosUrl) {
-  if (typeof caseId !== 'string' || !caseId.trim()) return null
-  if (typeof agentosUrl !== 'string' || !agentosUrl.trim()) return null
-  let base
-  try {
-    base = new URL(agentosUrl)
-  } catch {
-    return null
-  }
-  if (!ALLOWED_PROTOCOLS.includes(base.protocol)) return null
-  if (!base.hostname) return null
-  // Credentials in the base origin are untrusted and must never be forwarded.
-  if (base.username || base.password) return null
-  try {
-    // A leading `/` guarantees same-origin resolution; encodeURIComponent makes
-    // any path/authority injection in `caseId` inert.
-    return new URL(`/case/${encodeURIComponent(caseId)}`, base).href
-  } catch {
-    return null
-  }
-}
 
 /** Human-readable duration for a millisecond count. */
 export function formatDuration(ms) {
@@ -108,39 +66,20 @@ function resolveLifecycle(snapshot, options) {
 }
 
 /**
- * Render the Coday case/thread identity. AgentOS cases may be linkable; Coday
- * Express threads are always unclickable text.
+ * Render the Coday case/thread identity via the shared `case-link.mjs`
+ * component. AgentOS cases may be linkable against the trusted `agentosUrl`;
+ * Coday Express threads are clickable only against the trusted
+ * `codayExpressUrl` (never otherwise).
  *
+ * @param {{ kind?: string, caseId?: string, threadId?: string }} execution
+ * @param {{ agentosUrl?: string, codayExpressUrl?: string }} [options]
  * @returns {string}
  */
-function renderCaseIdentity(execution, agentosUrl) {
-  const kind = execution?.kind
-  const caseId = execution?.caseId
-  const threadId = execution?.threadId
-
-  if (kind === 'agentos' && typeof caseId === 'string' && caseId) {
-    const label = escapeHtml(`Case ${caseId}`)
-    const href = buildAgentosCaseUrl(caseId, agentosUrl)
-    if (href) {
-      return (
-        `<a class="case-link" href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer" ` +
-        `title="Ouvrir le case dans AgentOS">${label}</a>`
-      )
-    }
-    // Fallback: no clickable link when the base URL is missing/untrusted.
-    return `<span class="case-id cockpit-id" title="Lien AgentOS indisponible">${label}</span>`
-  }
-
-  if (typeof threadId === 'string' && threadId) {
-    // coday-express (or a thread with no URL factory) is NEVER a link.
-    return `<span class="thread-id cockpit-id" title="Identifiant de thread Coday">Thread ${escapeHtml(threadId)}</span>`
-  }
-
-  if (typeof caseId === 'string' && caseId) {
-    return `<span class="case-id cockpit-id">Case ${escapeHtml(caseId)}</span>`
-  }
-
-  return ''
+function renderCaseIdentity(execution, options = {}) {
+  return buildCaseLinkHtml(execution, {
+    agentosUrl: options?.agentosUrl,
+    codayExpressUrl: options?.codayExpressUrl,
+  })
 }
 
 /** Resolve timing metadata from the many shapes a snapshot may carry. */
@@ -160,7 +99,7 @@ function resolveTiming(snapshot, projection) {
  * (and tests can assert the triggers without a browser).
  *
  * @param {object} snapshot workflow projection snapshot/item DTO
- * @param {{ agentosUrl?: string, mode?: 'active'|'removed', onAction?: Function }} [options]
+ * @param {{ agentosUrl?: string, codayExpressUrl?: string, mode?: 'active'|'removed', onAction?: Function }} [options]
  * @returns {string}
  */
 export function renderWorkflowCard(snapshot = {}, options = {}) {
@@ -184,7 +123,7 @@ export function renderWorkflowCard(snapshot = {}, options = {}) {
     null
   const durationLabel = formatDuration(durationMs)
 
-  const identity = renderCaseIdentity(execution, options?.agentosUrl)
+  const identity = renderCaseIdentity(execution, options)
   const revision = snapshot?.revision
 
   const laneChips = ['human', 'agent', 'code']

@@ -166,11 +166,17 @@ export class ProjectionController {
     this.namespaceId = options.namespaceId ?? null
     this.mode = options.mode === 'removed' ? 'removed' : 'active'
     this.agentosUrl = typeof options.agentosUrl === 'string' && options.agentosUrl ? options.agentosUrl : null
-    this.getAgentosUrl =
-      typeof options.getAgentosUrl === 'function'
-        ? options.getAgentosUrl
-        : this.api?.get
-          ? () => this.api.get('/api/config').then((config) => config?.agentosUrl ?? null)
+    this.codayExpressUrl =
+      typeof options.codayExpressUrl === 'string' && options.codayExpressUrl ? options.codayExpressUrl : null
+    // Explicit per-base getters keep their historical contract; when none is
+    // supplied, both trusted bases are resolved from ONE `/api/config` fetch.
+    this.getAgentosUrl = typeof options.getAgentosUrl === 'function' ? options.getAgentosUrl : null
+    this.getCodayExpressUrl = typeof options.getCodayExpressUrl === 'function' ? options.getCodayExpressUrl : null
+    this.getConfig =
+      typeof options.getConfig === 'function'
+        ? options.getConfig
+        : this.api?.get && !this.getAgentosUrl && !this.getCodayExpressUrl
+          ? () => this.api.get('/api/config')
           : null
     this.onChange = typeof options.onChange === 'function' ? options.onChange : () => {}
     this.onError = typeof options.onError === 'function' ? options.onError : () => {}
@@ -211,6 +217,7 @@ export class ProjectionController {
       mode: this.mode,
       loading: this.loading,
       agentosUrl: this.agentosUrl,
+      codayExpressUrl: this.codayExpressUrl,
       active: [...this.active.values()],
       removed: [...this.removed.values()],
       groups: this.getGroups(),
@@ -254,14 +261,38 @@ export class ProjectionController {
     return task
   }
 
-  /** Resolve the trusted AgentOS base URL, caching the first success. */
+  /** Resolve the trusted AgentOS/Coday Express bases, caching the first success. */
   async resolveAgentosUrl() {
-    if (this.agentosUrl || !this.getAgentosUrl) return this.agentosUrl
-    try {
-      const value = await this.getAgentosUrl()
-      if (typeof value === 'string' && value.trim()) this.agentosUrl = value
-    } catch {
-      // A missing config must never break the view; links simply stay plain text.
+    if (this.agentosUrl && this.codayExpressUrl) return this.agentosUrl
+
+    if (this.getConfig) {
+      try {
+        const config = await this.getConfig()
+        const agentos = config?.agentosUrl
+        if (!this.agentosUrl && typeof agentos === 'string' && agentos.trim()) this.agentosUrl = agentos
+        const express = config?.codayExpressUrl
+        if (!this.codayExpressUrl && typeof express === 'string' && express.trim()) this.codayExpressUrl = express
+        if (this.agentosUrl || this.codayExpressUrl) return this.agentosUrl
+      } catch {
+        // A missing config must never break the view; links simply stay plain text.
+      }
+    }
+
+    if (!this.agentosUrl && this.getAgentosUrl) {
+      try {
+        const value = await this.getAgentosUrl()
+        if (typeof value === 'string' && value.trim()) this.agentosUrl = value
+      } catch {
+        // A missing config must never break the view; links simply stay plain text.
+      }
+    }
+    if (!this.codayExpressUrl && this.getCodayExpressUrl) {
+      try {
+        const value = await this.getCodayExpressUrl()
+        if (typeof value === 'string' && value.trim()) this.codayExpressUrl = value
+      } catch {
+        // A missing Coday Express base keeps threads unclickable.
+      }
     }
     return this.agentosUrl
   }
@@ -484,7 +515,11 @@ export function createProjectionController(options = {}) {
 function renderNode(node, state, visited, depth = 0) {
   if (!node?.workflowId || visited.has(node.workflowId)) return ''
   visited.add(node.workflowId)
-  const card = renderWorkflowCard(node.snapshot, { agentosUrl: state.agentosUrl, mode: state.mode })
+  const card = renderWorkflowCard(node.snapshot, {
+    agentosUrl: state.agentosUrl,
+    codayExpressUrl: state.codayExpressUrl,
+    mode: state.mode,
+  })
   const children = (node.children ?? [])
     .map((child) => renderNode(child, state, visited, depth + 1))
     .filter(Boolean)
@@ -590,6 +625,7 @@ export function createDialogConfirm({ doc, showModal, closeModal } = {}) {
  *
  * @param {object} container DOM element (or a compatible double)
  * @param {object} [options] `{ api, sse, SseClient, namespaceId, getAgentosUrl,
+ *   getCodayExpressUrl, getConfig, agentosUrl, codayExpressUrl,
  *   registerTeardown, confirm, document, showModal, closeModal, onChange, onError }`
  * @returns {{ controller: ProjectionController, teardown: Function, ready: Promise<void>, render: Function }}
  */
