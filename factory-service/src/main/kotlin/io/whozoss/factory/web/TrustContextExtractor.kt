@@ -44,6 +44,8 @@ class TrustContextExtractor(
         var principalType = TrustContext.PRINCIPAL_TYPE_HUMAN
         var serviceIdentityId: String? = null
         var scopes: List<String> = emptyList()
+        var namespaceId: String? = null
+        var caseId: String? = null
 
         // 1. JWT — `Authorization: Bearer <token>` verified against the Fake IdP.
         val jwt = bearerToken(header("authorization"))
@@ -55,6 +57,8 @@ class TrustContextExtractor(
                 principalType = pickPrincipalType(verification.claims["principalType"])
                 serviceIdentityId = stringClaim(verification.claims["serviceIdentityId"])
                 scopes = stringListClaim(verification.claims["scopes"])
+                namespaceId = stringClaim(verification.claims["namespaceId"])
+                caseId = stringClaim(verification.claims["caseId"])
             }
         }
 
@@ -80,6 +84,8 @@ class TrustContextExtractor(
                 principalType = TrustContext.PRINCIPAL_TYPE_HUMAN
                 serviceIdentityId = null
                 scopes = listOf(TrustContext.ADMIN_WILDCARD_SCOPE)
+                namespaceId = header("x-factory-namespace-id")
+                caseId = header("x-factory-case-id")
             } else {
                 authenticationMethod = TrustContext.AUTH_ANONYMOUS
                 principalId = null
@@ -109,6 +115,8 @@ class TrustContextExtractor(
             authenticationMethod = authenticationMethod,
             serviceIdentityId = serviceIdentityId,
             loopback = loopback,
+            namespaceId = namespaceId,
+            caseId = caseId,
         )
     }
 

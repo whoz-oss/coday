@@ -7,6 +7,8 @@ servers:
 - url: http://localhost:18141
   description: Generated server url
 tags:
+- name: work-environments
+  description: Work-unit environment provisioning control plane
 - name: oracles
   description: Oracle definitions and execution runs
 paths:
@@ -51,6 +53,73 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DataEnvelopeOracleRunResponse"
+  /api/factory/workflows/{workflowId}/environment/release:
+    post:
+      tags:
+      - work-environments
+      summary: Release (decommission) the workflow environment
+      operationId: releaseWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReleaseEnvironmentRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/environment/reconcile:
+    post:
+      tags:
+      - work-environments
+      summary: Reconcile the workflow environment against its Git worktree
+      operationId: reconcileWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/environment/provision:
+    post:
+      tags:
+      - work-environments
+      summary: Provision (or idempotently reuse) the workflow environment
+      operationId: provisionWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProvisionEnvironmentRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
   /api/factory/admin/artifacts/{artifactId}/purge:
     post:
       tags:
@@ -114,6 +183,25 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+  /api/factory/workflows/{workflowId}/environment:
+    get:
+      tags:
+      - work-environments
+      summary: Get the current environment of a workflow
+      operationId: getEnvironmentWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
 components:
   schemas:
     OracleRunRequest:
@@ -166,3 +254,131 @@ components:
       - status
       - stepId
       - workflowId
+    ReleaseEnvironmentRequest:
+      type: object
+      properties:
+        state:
+          type: string
+    EnvironmentDataEnvelopeEnvironmentResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/EnvironmentResponse"
+      required:
+      - data
+    EnvironmentResponse:
+      type: object
+      properties:
+        revision:
+          type: integer
+          format: int32
+        environment:
+          $ref: "#/components/schemas/WorkEnvironment"
+        reconciliation:
+          $ref: "#/components/schemas/ReconciliationResponse"
+        headCommit:
+          type: string
+        fileAccess:
+          $ref: "#/components/schemas/FileAccessResponse"
+      required:
+      - environment
+      - fileAccess
+      - revision
+    FileAccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        code:
+          type: string
+        rootPath:
+          type: string
+      required:
+      - rootPath
+      - status
+    ReconciliationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        headCommit:
+          type: string
+        baseCommit:
+          type: string
+      required:
+      - status
+    WorkEnvironment:
+      type: object
+      properties:
+        organizationId:
+          type: string
+        workstreamId:
+          type: string
+        environmentId:
+          type: string
+        workUnitId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        parentCaseId:
+          type: string
+        repoRoot:
+          type: string
+        integrationBranch:
+          type: string
+        branch:
+          type: string
+        worktreePath:
+          type: string
+        baseCommit:
+          type: string
+        lifecycleState:
+          type: string
+          enum:
+          - provisioning
+          - ready
+          - busy
+          - decommissioned
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        revision:
+          type: integer
+          format: int32
+        envType:
+          type: string
+      required:
+      - branch
+      - createdAt
+      - createdBy
+      - envType
+      - environmentId
+      - integrationBranch
+      - lifecycleState
+      - namespaceId
+      - organizationId
+      - repoRoot
+      - revision
+      - workUnitId
+      - workflowId
+      - workstreamId
+      - worktreePath
+    ProvisionEnvironmentRequest:
+      type: object
+      properties:
+        workUnitId:
+          type: string
+        integrationBranch:
+          type: string
+        branch:
+          type: string
+        namespaceId:
+          type: string
+        parentCaseId:
+          type: string
+        repoRoot:
+          type: string
