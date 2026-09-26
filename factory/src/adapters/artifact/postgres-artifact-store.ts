@@ -66,6 +66,8 @@ export interface ArtifactBlobClient {
   headObject?(key: string): Promise<boolean>
   /** Optional listing used to reclaim orphaned staging uploads. */
   listObjectKeys?(prefix: string): Promise<string[]>
+  /** Optional SigV4 presigner for readable payloads. */
+  getSignedUrl?(key: string, options?: { expiresInSeconds?: number; now?: Date }): string
 }
 
 /** Configuration of {@link PostgresArtifactStore}. */
@@ -175,6 +177,24 @@ export class PostgresArtifactStore implements ArtifactStore {
 
   async deleteArtifact(artifactId: string, reason?: string): Promise<boolean> {
     return this.#destroy(artifactId, reason ?? 'deleted')
+  }
+
+  /**
+   * Returns a pre-signed URL granting temporary read access to an artifact's
+   * payload, or `null` when the artifact is unknown, no longer readable
+   * (`availabilityStatus !== 'available'`) or when the underlying blob client
+   * cannot presign.
+   *
+   * PostgreSQL metadata stays authoritative: the storage key and availability
+   * are read from the repository row, never inferred from the caller.
+   */
+  async getSignedUrl(artifactId: string, options?: { expiresInSeconds?: number; now?: Date }): Promise<string | null> {
+    if (typeof this.#client.getSignedUrl !== 'function') return null
+    const record = await this.#repository.getMetadataAndStorageKey(artifactId)
+    if (!record) return null
+    const metadata = refreshArtifactMetadata(record.metadata, options?.now ?? this.#now())
+    if (metadata.availabilityStatus !== 'available') return null
+    return this.#client.getSignedUrl(record.storageKey, options)
   }
 
   async purgeArtifact(artifactId: string, reason?: string): Promise<boolean> {

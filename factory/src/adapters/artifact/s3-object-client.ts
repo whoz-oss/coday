@@ -47,6 +47,12 @@ interface S3RequestOptions {
 const SIGNING_ALGORITHM = 'AWS4-HMAC-SHA256'
 const SERVICE = 's3'
 
+/** Environment variable overriding the presigned URL time-to-live, in seconds. */
+export const ARTIFACT_SIGNED_URL_TTL_ENV = 'ARTIFACT_SIGNED_URL_TTL'
+
+/** Default presigned URL time-to-live, in seconds, when none is configured. */
+export const DEFAULT_SIGNED_URL_TTL_SECONDS = 900
+
 function sha256Hex(data: string | Uint8Array): string {
   return createHash('sha256').update(data).digest('hex')
 }
@@ -66,6 +72,14 @@ function encodeS3Component(value: string): string {
 
 function encodeS3KeyPath(key: string): string {
   return key.split('/').map(encodeS3Component).join('/')
+}
+
+/** Resolves the presigned URL TTL: explicit option, then env, then default. */
+function resolveSignedUrlTtl(explicit: number | undefined): number {
+  if (explicit !== undefined && Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit)
+  const parsed = Number.parseInt(process.env[ARTIFACT_SIGNED_URL_TTL_ENV] ?? '', 10)
+  if (Number.isFinite(parsed) && parsed > 0) return parsed
+  return DEFAULT_SIGNED_URL_TTL_SECONDS
 }
 
 function decodeXmlEntities(value: string): string {
@@ -153,6 +167,47 @@ export class S3ObjectClient {
     if (response.status === 404) return false
     if (!response.ok) throw await this.#failure('HEAD', key, response)
     return true
+  }
+
+  /**
+   * Computes a SigV4 pre-signed GET URL for `key` using query-parameter
+   * authentication (no network round-trip).
+   *
+   * The TTL is resolved from `options.expiresInSeconds`, then the
+   * {@link ARTIFACT_SIGNED_URL_TTL_ENV} environment variable, then
+   * {@link DEFAULT_SIGNED_URL_TTL_SECONDS}. The optional `now` makes the
+   * produced signature deterministic for tests.
+   */
+  getSignedUrl(key: string, options?: { expiresInSeconds?: number; now?: Date }): string {
+    const ttl = resolveSignedUrlTtl(options?.expiresInSeconds)
+    const { amzDate, dateStamp } = formatAmzDate(options?.now ?? new Date())
+    const canonicalUri = `/${encodeS3Component(this.#config.bucket)}${key ? `/${encodeS3KeyPath(key)}` : ''}`
+    const scope = `${dateStamp}/${this.#config.region}/${SERVICE}/aws4_request`
+
+    const query: Record<string, string> = {
+      'X-Amz-Algorithm': SIGNING_ALGORITHM,
+      'X-Amz-Credential': `${this.#config.accessKeyId}/${scope}`,
+      'X-Amz-Date': amzDate,
+      'X-Amz-Expires': String(ttl),
+      'X-Amz-SignedHeaders': 'host',
+    }
+    if (this.#config.sessionToken !== undefined) query['X-Amz-Security-Token'] = this.#config.sessionToken
+
+    const canonicalQuery = this.#canonicalQuery(query)
+    const canonicalHeaders = `host:${this.#host}\n`
+    // Presigned GET requests sign the literal `UNSIGNED-PAYLOAD` payload marker.
+    const canonicalRequest = ['GET', canonicalUri, canonicalQuery, canonicalHeaders, 'host', 'UNSIGNED-PAYLOAD'].join(
+      '\n'
+    )
+
+    const stringToSign = [SIGNING_ALGORITHM, amzDate, scope, sha256Hex(canonicalRequest)].join('\n')
+    const signingKey = hmac(
+      hmac(hmac(hmac(`AWS4${this.#config.secretAccessKey}`, dateStamp), this.#config.region), SERVICE),
+      'aws4_request'
+    )
+    const signature = createHmac('sha256', signingKey).update(stringToSign, 'utf8').digest('hex')
+
+    return `${this.#base}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`
   }
 
   /** Lists every object key under `prefix`, following continuation tokens. */
