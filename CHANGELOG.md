@@ -1,3 +1,13 @@
+## 3.11.0 (2026-09-26)
+
+### 🚀 Features
+
+- #1290 add delegation lifecycle events ([#1324](https://github.com/whoz-oss/coday/pull/1324), [#1290](https://github.com/whoz-oss/coday/issues/1290))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+
 ## 3.10.1 (2026-09-25)
 
 ### 🩹 Fixes
