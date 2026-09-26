@@ -25,6 +25,8 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -760,6 +762,14 @@ class CaseServiceImpl(
         handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
+    override fun emitParentEvent(event: CaseEvent) {
+        require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {
+            "emitParentEvent is reserved for sub-case observation events; got ${event.type}."
+        }
+        val saved = storeEvent(event)
+        activeRuntimes[event.caseId]?.emitEvent(saved)
+    }
+
     override fun killCase(caseId: UUID) {
         logger.info { "Killing sub-case and its descendants: $caseId" }
         val descendants = caseRepository.findActiveDescendants(caseId)
@@ -772,25 +782,52 @@ class CaseServiceImpl(
 
     override fun resumeSubCase(
         subCaseId: UUID,
+        parentCaseId: UUID,
         agentName: String,
         task: String,
         userId: UUID,
         allowedAgents: List<String>,
     ): CaseRuntime {
+        // 1. Existence check (neutral message: does not confirm or deny ownership)
         val subCase =
             findById(subCaseId)
-                ?: throw ResourceNotFoundException("Sub-case not found: $subCaseId")
+                ?: throw IllegalStateException(
+                    "Cannot resume sub-case $subCaseId: not found or not resumable from this context.",
+                )
+
+        // 2. Ownership check: the sub-case must be a direct child of the calling parent.
+        //    Message reveals nothing about the actual parent to avoid leaking foreign state.
+        check(subCase.parentCaseId == parentCaseId) {
+            "Cannot resume sub-case $subCaseId: it does not belong to the current delegation context."
+        }
+
+        // 3. Namespace isolation: parent and sub-case must share the same namespace.
+        //    We derive the parent's namespace from the persisted parent case rather than
+        //    trusting a caller-supplied value, so a compromised caller cannot forge it.
+        val parentCase =
+            findById(parentCaseId)
+                ?: throw IllegalStateException(
+                    "Cannot resume sub-case $subCaseId: parent case context is unavailable.",
+                )
+        check(subCase.namespaceId == parentCase.namespaceId) {
+            "Cannot resume sub-case $subCaseId: namespace mismatch detected."
+        }
+
+        // 4. Status check (after confinement: do not reveal IDLE/non-IDLE to unauthorised callers)
         check(subCase.status == CaseStatus.IDLE) {
-            "Sub-case $subCaseId is in status ${subCase.status}, expected IDLE to resume."
+            "Cannot resume sub-case $subCaseId: it is not currently awaiting input."
         }
+
+        // 5. Allowlist check: secondary consistency guard (ownership already established above)
         check(agentName in allowedAgents) {
-            "Agent '$agentName' is not in the delegation allowlist for sub-case $subCaseId."
+            "Agent '$agentName' is not available for delegation in this context."
         }
+
         val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
         scope.launch { runtime.run() }
-        logger.info { "Sub-case $subCaseId resumed, agent=$agentName" }
+        logger.info { "Sub-case $subCaseId resumed under parent $parentCaseId, agent=$agentName" }
         return runtime
     }
 

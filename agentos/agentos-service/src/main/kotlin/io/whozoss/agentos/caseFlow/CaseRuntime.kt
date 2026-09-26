@@ -165,6 +165,9 @@ class CaseRuntime(
     /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
     val subscriptionCount get() = emitter.subscriptionCount
 
+    /** Monotonic count of non-blocking live emissions rejected by the runtime buffer. */
+    val deliveryFailureCount get() = emitter.deliveryFailureCount
+
     fun pushEvents(events: Collection<CaseEvent>) {
         events.forEach { eventList.add(it) }
     }
