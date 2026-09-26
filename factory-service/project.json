@@ -1,0 +1,64 @@
+{
+  "name": "factory-service",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "factory-service/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew build",
+        "cwd": "factory-service"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew test",
+        "cwd": "factory-service"
+      }
+    },
+    "bootRun": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew bootRun",
+        "cwd": "factory-service"
+      }
+    },
+    "bootJar": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew bootJar",
+        "cwd": "factory-service"
+      }
+    },
+    "generate-openapi-spec": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/factory-service/openapi/factory-openapi.yaml"],
+      "options": {
+        "command": "./gradlew generateOpenApiDocs --no-configuration-cache",
+        "cwd": "factory-service"
+      }
+    },
+    "check-openapi-spec": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "inputs": [
+        "{projectRoot}/src/main/kotlin/**/*.kt",
+        "{workspaceRoot}/factory-service/openapi/factory-openapi.yaml"
+      ],
+      "options": {
+        "command": "./check-openapi-spec.sh",
+        "cwd": "factory-service"
+      }
+    }
+  },
+  "tags": ["type:app", "platform:jvm", "scope:service"]
+}

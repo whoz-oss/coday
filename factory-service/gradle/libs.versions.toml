@@ -1,0 +1,69 @@
+# Version catalog for the Factory Service (Kotlin / Spring Boot).
+#
+# Versions are aligned with agentos/gradle/libs.versions.toml so the JVM
+# toolchain, Kotlin, Spring Boot and the test stack stay consistent across the
+# repository. This is an *independent* catalog: factory-service does not
+# inherit from agentos and has no includeBuild relationship with it.
+
+[versions]
+# JDK toolchain used to compile and run.
+java = "25"
+# Kotlin bytecode target.
+kotlinJvmTarget = "25"
+kotlin = "2.3.20"
+springBoot = "3.5.9"
+springDependencyManagement = "1.1.7"
+springdoc = "2.8.9"
+springdocPlugin = "1.9.0"
+klogger = "2.0.4"
+testcontainers = "1.20.4"
+mockk = "1.13.5"
+mockk-spring = "3.1.2"
+jackson = "2.19.4"
+
+[libraries]
+# Kotlin
+kotlin-stdlib = { module = "org.jetbrains.kotlin:kotlin-stdlib" }
+kotlin-reflect = { module = "org.jetbrains.kotlin:kotlin-reflect" }
+kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
+
+# Spring Boot
+spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-data-jdbc = { module = "org.springframework.boot:spring-boot-starter-data-jdbc" }
+spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+
+# Persistence
+flyway-core = { module = "org.flywaydb:flyway-core" }
+flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
+postgresql = { module = "org.postgresql:postgresql" }
+# Embedded database used only by the `openapi` profile so the spec can be
+# generated without a running PostgreSQL instance (see application-openapi.yml).
+h2 = { module = "com.h2database:h2" }
+
+# OpenAPI
+springdoc-openapi-starter = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+
+# Logging
+klogger = { module = "io.github.microutils:kotlin-logging-jvm", version.ref = "klogger" }
+
+# Jackson
+jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
+jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
+
+# Test
+testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
+mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
+mockk-spring = { module = "com.ninja-squad:springmockk", version.ref = "mockk-spring" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "springBoot" }
+spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "springDependencyManagement" }
+springdoc-openapi = { id = "org.springdoc.openapi-gradle-plugin", version.ref = "springdocPlugin" }
+
+[bundles]
+kotlin-common = ["kotlin-stdlib", "kotlin-reflect"]

@@ -1,0 +1,43 @@
+server:
+  port: 8141
+
+spring:
+  application:
+    name: factory-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/factory}
+    username: ${SPRING_DATASOURCE_USERNAME:factory}
+    password: ${SPRING_DATASOURCE_PASSWORD:factory}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    validate-on-migrate: true
+    baseline-on-migrate: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+factory:
+  bind:
+    host: ${FACTORY_BIND_HOST:127.0.0.1}
+    unsafe-allow-remote-bind: ${FACTORY_UNSAFE_ALLOW_REMOTE_BIND:false}
+  tenant:
+    organization-id: ${FACTORY_ORGANIZATION_ID:default}
+    workstream-id: ${FACTORY_WORKSTREAM_ID:default}
+  security:
+    allow-loopback-dev: ${FACTORY_ALLOW_LOOPBACK_DEV:true}
+    fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}

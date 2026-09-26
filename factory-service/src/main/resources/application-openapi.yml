@@ -1,0 +1,18 @@
+# Profile used by the springdoc `generateOpenApiDocs` task.
+#
+# Spec generation must not require a running PostgreSQL instance, so the
+# `openapi` profile boots on an in-memory H2 database with Flyway disabled
+# (the migrations are PostgreSQL-specific). The generated OpenAPI document is a
+# pure function of the controllers/annotations, so the datasource is irrelevant.
+spring:
+  datasource:
+    url: jdbc:h2:mem:factory-openapi;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: false
+
+factory:
+  security:
+    allow-loopback-dev: true
