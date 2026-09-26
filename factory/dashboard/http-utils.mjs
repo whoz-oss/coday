@@ -19,6 +19,7 @@ import {
   DEFAULT_FAKE_IDP_SECRET,
   LocalDevMembershipResolver,
   LOOPBACK_DEV_PRINCIPAL_ID,
+  authorizeAdminAccess,
   hasProxySignature,
   isPrincipalType,
   resolveMembershipSync,
@@ -56,14 +57,18 @@ export function generateCorrelationId() {
  * Explicit admin authorization guard for factory-artifact governance commands.
  *
  * This is the single, named authorization point every admin use case must pass
- * through: purge, legal-hold management and garbage collection. It inspects the
- * already-resolved `TrustContext` (never client headers) and grants access when
- * the principal carries the `admin` role, the `admin:*` scope, or the wildcard
- * `*` scope (loopback-dev).
+ * through: purge, legal-hold management and garbage collection. Since B6-T3 it
+ * performs *real entitlement resolution* — delegating to
+ * `authorizeAdminAccess` in `src/domain/identity/entitlements.ts` — against the
+ * already-resolved, verified `TrustContext` (never client headers, never
+ * defaults).
  *
- * B5-T2b intentionally does NOT implement a real IdP / role model — that is
- * reserved for B6. This function is the explicit, replaceable seam: B6 will
- * swap the body for an entitlement lookup while every call site stays put.
+ * The principal passes only when it carries the AgentOS-derived `admin` role
+ * (directory `ADMIN` -> Factory `admin`), the explicit `admin:*` scope, or the
+ * loopback-dev wildcard `*` scope. An anonymous context, a missing context and
+ * a member-only principal all fail closed. The signature is unchanged from the
+ * B5 seam so every call site stays put; namespace-scoped checks additionally
+ * reject an admin acting outside their own organization/workstream.
  *
  * Pure and never throws: returns a structured decision so callers can either
  * branch on it or translate it through {@link requireAdminRole}.
@@ -72,15 +77,7 @@ export function generateCorrelationId() {
  * @returns {{ authorized: boolean, reason: string|null }}
  */
 export function checkAdminAuthorization(trustContext) {
-  if (!trustContext || typeof trustContext !== 'object') {
-    return { authorized: false, reason: 'MISSING_TRUST_CONTEXT' }
-  }
-  const roles = Array.isArray(trustContext.roles) ? trustContext.roles : []
-  const scopes = Array.isArray(trustContext.scopes) ? trustContext.scopes : []
-  const isAdmin = roles.includes('admin') || scopes.includes('admin:*') || scopes.includes('*')
-  return isAdmin
-    ? { authorized: true, reason: null }
-    : { authorized: false, reason: 'INSUFFICIENT_ADMIN_PERMISSIONS' }
+  return authorizeAdminAccess(trustContext)
 }
 
 /**
