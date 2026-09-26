@@ -13368,6 +13368,8 @@ function createMemoryArtifactStore(options) {
 import { createHash as createHash30, createHmac } from "node:crypto";
 var SIGNING_ALGORITHM = "AWS4-HMAC-SHA256";
 var SERVICE = "s3";
+var ARTIFACT_SIGNED_URL_TTL_ENV = "ARTIFACT_SIGNED_URL_TTL";
+var DEFAULT_SIGNED_URL_TTL_SECONDS = 900;
 function sha256Hex(data) {
   return createHash30("sha256").update(data).digest("hex");
 }
@@ -13383,6 +13385,12 @@ function encodeS3Component(value) {
 }
 function encodeS3KeyPath(key) {
   return key.split("/").map(encodeS3Component).join("/");
+}
+function resolveSignedUrlTtl(explicit) {
+  if (explicit !== void 0 && Number.isFinite(explicit) && explicit > 0) return Math.floor(explicit);
+  const parsed = Number.parseInt(process.env[ARTIFACT_SIGNED_URL_TTL_ENV] ?? "", 10);
+  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  return DEFAULT_SIGNED_URL_TTL_SECONDS;
 }
 function decodeXmlEntities(value) {
   return value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
@@ -13453,6 +13461,42 @@ var S3ObjectClient = class {
     if (response2.status === 404) return false;
     if (!response2.ok) throw await this.#failure("HEAD", key, response2);
     return true;
+  }
+  /**
+   * Computes a SigV4 pre-signed GET URL for `key` using query-parameter
+   * authentication (no network round-trip).
+   *
+   * The TTL is resolved from `options.expiresInSeconds`, then the
+   * {@link ARTIFACT_SIGNED_URL_TTL_ENV} environment variable, then
+   * {@link DEFAULT_SIGNED_URL_TTL_SECONDS}. The optional `now` makes the
+   * produced signature deterministic for tests.
+   */
+  getSignedUrl(key, options) {
+    const ttl = resolveSignedUrlTtl(options?.expiresInSeconds);
+    const { amzDate, dateStamp } = formatAmzDate(options?.now ?? /* @__PURE__ */ new Date());
+    const canonicalUri = `/${encodeS3Component(this.#config.bucket)}${key ? `/${encodeS3KeyPath(key)}` : ""}`;
+    const scope = `${dateStamp}/${this.#config.region}/${SERVICE}/aws4_request`;
+    const query = {
+      "X-Amz-Algorithm": SIGNING_ALGORITHM,
+      "X-Amz-Credential": `${this.#config.accessKeyId}/${scope}`,
+      "X-Amz-Date": amzDate,
+      "X-Amz-Expires": String(ttl),
+      "X-Amz-SignedHeaders": "host"
+    };
+    if (this.#config.sessionToken !== void 0) query["X-Amz-Security-Token"] = this.#config.sessionToken;
+    const canonicalQuery = this.#canonicalQuery(query);
+    const canonicalHeaders = `host:${this.#host}
+`;
+    const canonicalRequest = ["GET", canonicalUri, canonicalQuery, canonicalHeaders, "host", "UNSIGNED-PAYLOAD"].join(
+      "\n"
+    );
+    const stringToSign = [SIGNING_ALGORITHM, amzDate, scope, sha256Hex(canonicalRequest)].join("\n");
+    const signingKey = hmac(
+      hmac(hmac(hmac(`AWS4${this.#config.secretAccessKey}`, dateStamp), this.#config.region), SERVICE),
+      "aws4_request"
+    );
+    const signature = createHmac("sha256", signingKey).update(stringToSign, "utf8").digest("hex");
+    return `${this.#base}${canonicalUri}?${canonicalQuery}&X-Amz-Signature=${signature}`;
   }
   /** Lists every object key under `prefix`, following continuation tokens. */
   async listObjectKeys(prefix) {
@@ -14010,6 +14054,23 @@ var PostgresArtifactStore = class {
   }
   async deleteArtifact(artifactId, reason) {
     return this.#destroy(artifactId, reason ?? "deleted");
+  }
+  /**
+   * Returns a pre-signed URL granting temporary read access to an artifact's
+   * payload, or `null` when the artifact is unknown, no longer readable
+   * (`availabilityStatus !== 'available'`) or when the underlying blob client
+   * cannot presign.
+   *
+   * PostgreSQL metadata stays authoritative: the storage key and availability
+   * are read from the repository row, never inferred from the caller.
+   */
+  async getSignedUrl(artifactId, options) {
+    if (typeof this.#client.getSignedUrl !== "function") return null;
+    const record2 = await this.#repository.getMetadataAndStorageKey(artifactId);
+    if (!record2) return null;
+    const metadata = refreshArtifactMetadata(record2.metadata, options?.now ?? this.#now());
+    if (metadata.availabilityStatus !== "available") return null;
+    return this.#client.getSignedUrl(record2.storageKey, options);
   }
   async purgeArtifact(artifactId, reason) {
     return this.#destroy(artifactId, reason ?? "retention-expired");
