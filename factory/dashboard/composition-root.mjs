@@ -72,6 +72,18 @@ import {
   resolvePersistenceSettings,
 } from './persistence-authority.mjs'
 
+// Artifact storage: the port implementations are frozen adapters; the
+// composition root only *selects and composes* them from configuration.
+import {
+  MemoryArtifactStore,
+  collectAndAuditGarbage,
+  createPostgresArtifactStore,
+  createS3ObjectClient,
+  createSqlArtifactMetadataRepository,
+  purgeArtifactAdmin,
+  setLegalHoldAdmin,
+} from '../runtime/factory-operational.mjs'
+
 // Transport — route modules and their shared utilities.
 import { send, readBody, sendError, extractTrustContext, resolveCorrelationId } from './http-utils.mjs'
 import { DEFAULT_FAKE_IDP_SECRET, LocalDevMembershipResolver } from '../src/domain/identity/index.ts'
@@ -90,6 +102,7 @@ import { handleWorkflowOperationalMetricsRequest } from './workflow-operational-
 import { handleFactoryFrontendRunRequest } from './factory-frontend-run-routes.mjs'
 import { handleAgentStepResultRequest } from './agent-step-result-routes.mjs'
 import { handleActiveRunRequest } from './active-run-routes.mjs'
+import { handleArtifactAdminRequest } from './artifact-admin-routes.mjs'
 import { handleWorkstreamRequest } from './workstream-routes.mjs'
 import { handleForgeRunRequest } from './forge-routes.mjs'
 import { createRunRouter } from './run-routes.mjs'
@@ -157,6 +170,13 @@ function withIdentityBoundaryOptions(bindPolicy, identityOptions) {
 // ---------------------------------------------------------------------------
 // 1. loadConfig — read + validate the environment once.
 // ---------------------------------------------------------------------------
+
+/** Parse a non-negative integer from an env value, or `undefined`. */
+function parseOptionalPositiveInt(value) {
+  if (value === undefined || value === null || value === '') return undefined
+  const parsed = Number.parseInt(String(value), 10)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined
+}
 
 /**
  * @param {Record<string, string|undefined>} [env]
@@ -234,6 +254,21 @@ export function loadConfig(env = process.env) {
       organizationId: env.FACTORY_ORGANIZATION_ID ?? 'default',
       workstreamId: env.FACTORY_WORKSTREAM_ID ?? 'default',
     },
+    // Artifact object storage (S3 / MinIO) and retention / presigning policy.
+    // Selecting the store implementation is the composition root's job; the
+    // adapters themselves are frozen. `useMemoryBlobClient` is the explicit
+    // opt-in for running the PostgreSQL authority without an object store.
+    artifact: {
+      s3Endpoint: env.S3_ENDPOINT ?? null,
+      s3Region: env.S3_REGION ?? 'us-east-1',
+      s3Bucket: env.S3_BUCKET ?? 'coday-artifacts',
+      s3AccessKeyId: env.S3_ACCESS_KEY_ID ?? env.AWS_ACCESS_KEY_ID ?? null,
+      s3SecretAccessKey: env.S3_SECRET_ACCESS_KEY ?? env.AWS_SECRET_ACCESS_KEY ?? null,
+      s3SessionToken: env.S3_SESSION_TOKEN ?? env.AWS_SESSION_TOKEN ?? null,
+      artifactSignedUrlTtl: parseOptionalPositiveInt(env.ARTIFACT_SIGNED_URL_TTL),
+      artifactRetentionDays: parseOptionalPositiveInt(env.ARTIFACT_RETENTION_DAYS),
+      useMemoryBlobClient: String(env.ARTIFACT_MEMORY_BLOB_CLIENT ?? 'false').toLowerCase() === 'true',
+    },
   }
 }
 
@@ -253,13 +288,152 @@ export function resolveFactoryUser(config) {
  * lazily-connected `pg` pool so the composition root stays synchronous and the
  * driver is only loaded when the first shadow/SQL query actually runs.
  */
-function resolveSqlRepositories(config, options) {
-  const client = options.sqlClient ?? createLazySqlClient(options.env ?? process.env)
+function resolveSqlRepositories(config, client) {
   return createSqlRepositories({
     client,
     organizationId: config.persistence?.organizationId,
     workstreamId: config.persistence?.workstreamId,
   })
+}
+
+/**
+ * Resolve the SQL client once for the whole store bundle: an injected test
+ * client, else a lazily-connected `pg` pool when a SQL-backed authority is
+ * selected, else `undefined`.
+ */
+function resolveSqlClient(config, options) {
+  if (options.sqlClient) return options.sqlClient
+  const needsSql = config.persistenceMode === PERSISTENCE_MODES.SQL || config.shadowReadEnabled
+  return needsSql ? createLazySqlClient(options.env ?? process.env) : undefined
+}
+
+/** True when an S3 / MinIO endpoint and credentials are configured. */
+function hasS3ArtifactConfig(artifact) {
+  return Boolean(artifact?.s3Endpoint && artifact?.s3AccessKeyId && artifact?.s3SecretAccessKey)
+}
+
+/**
+ * Minimal in-memory object-storage client, shaped like the frozen
+ * `ArtifactBlobClient` contract. It is the *explicit* fallback used when the
+ * PostgreSQL artifact authority is selected without an S3/MinIO endpoint (for
+ * local / offline operation); it is not durable and cannot presign.
+ */
+export function createInMemoryArtifactBlobClient() {
+  const objects = new Map()
+  return {
+    async putObject(key, body) {
+      objects.set(key, Uint8Array.from(body))
+    },
+    async copyObject(sourceKey, destinationKey) {
+      const source = objects.get(sourceKey)
+      if (!source) throw new Error(`missing source ${sourceKey}`)
+      objects.set(destinationKey, Uint8Array.from(source))
+    },
+    async getObject(key) {
+      const body = objects.get(key)
+      if (!body) return null
+      return {
+        stream: (async function* () {
+          yield body
+        })(),
+      }
+    },
+    async headObject(key) {
+      return objects.has(key)
+    },
+    async deleteObject(key) {
+      return objects.delete(key)
+    },
+    async listObjectKeys(prefix) {
+      return [...objects.keys()].filter((key) => key.startsWith(prefix))
+    },
+  }
+}
+
+/**
+ * Select and compose the artifact store from configuration.
+ *
+ * - PostgreSQL authority (`FACTORY_PERSISTENCE=sql`), or an explicit offline
+ *   composition (`options.sqlClient` together with a blob client), selects the
+ *   composed {@link PostgresArtifactStore}: immutable payloads live in object
+ *   storage (S3/MinIO, the in-memory fallback, or an injected fake) and the
+ *   authoritative metadata lives in PostgreSQL.
+ * - Filesystem authority (default) selects the pure in-memory
+ *   {@link MemoryArtifactStore}; no database nor object store is required.
+ *
+ * The adapters themselves are frozen: this function only chooses between them
+ * and injects their dependencies.
+ *
+ * @param {ReturnType<typeof loadConfig>} config
+ * @param {{ sqlClient?: object, artifactBlobClient?: object, memoryArtifactBlobClient?: object, artifactMetadataRepository?: object, artifactListMetadata?: Function, env?: Record<string, string|undefined> }} [options]
+ * @returns {{ artifactStore: object, artifactBlobClient: object|null, artifactMetadataRepository: object|null, artifactListMetadata: Function|undefined }}
+ */
+export function resolveArtifactStore(config, options = {}) {
+  const artifact = config.artifact ?? {}
+  const configuredBlobClient =
+    options.artifactBlobClient ??
+    (artifact.useMemoryBlobClient
+      ? options.memoryArtifactBlobClient ?? createInMemoryArtifactBlobClient()
+      : hasS3ArtifactConfig(artifact)
+        ? createS3ObjectClient({
+            endpoint: artifact.s3Endpoint,
+            region: artifact.s3Region,
+            bucket: artifact.s3Bucket,
+            accessKeyId: artifact.s3AccessKeyId,
+            secretAccessKey: artifact.s3SecretAccessKey,
+            ...(artifact.s3SessionToken ? { sessionToken: artifact.s3SessionToken } : {}),
+          })
+        : null)
+
+  const sqlAuthority =
+    config.persistenceMode === PERSISTENCE_MODES.SQL || Boolean(options.sqlClient && configuredBlobClient)
+
+  if (!sqlAuthority) {
+    return {
+      artifactStore: new MemoryArtifactStore(),
+      // The pure in-memory store carries its own payloads, but the admin GC use
+      // case still needs a blob-client shape: expose the in-memory fallback so
+      // the triggered garbage collection is always callable (it will scan an
+      // empty object space).
+      artifactBlobClient: options.artifactBlobClient ?? options.memoryArtifactBlobClient ?? createInMemoryArtifactBlobClient(),
+      artifactMetadataRepository: null,
+      artifactListMetadata: options.artifactListMetadata,
+    }
+  }
+
+  const artifactBlobClient =
+    configuredBlobClient ?? options.memoryArtifactBlobClient ?? createInMemoryArtifactBlobClient()
+
+  const artifactMetadataRepository =
+    options.artifactMetadataRepository ??
+    createSqlArtifactMetadataRepository(options.sqlClient, {
+      organizationId: config.persistence?.organizationId,
+      workstreamId: config.persistence?.workstreamId,
+    })
+
+  const artifactStore = createPostgresArtifactStore({
+    client: artifactBlobClient,
+    repository: artifactMetadataRepository,
+    ...(artifact.artifactRetentionDays !== undefined ? { retentionDays: artifact.artifactRetentionDays } : {}),
+    env: options.env ?? process.env,
+  })
+
+  const artifactListMetadata =
+    options.artifactListMetadata ??
+    (typeof artifactMetadataRepository.listMetadata === 'function'
+      ? () => artifactMetadataRepository.listMetadata()
+      : undefined)
+
+  return { artifactStore, artifactBlobClient, artifactMetadataRepository, artifactListMetadata }
+}
+
+/** Attach the resolved artifact capabilities to a store bundle. */
+function attachArtifactCapabilities(stores, artifact) {
+  stores.artifactStore = artifact.artifactStore
+  stores.artifactBlobClient = artifact.artifactBlobClient
+  stores.artifactMetadataRepository = artifact.artifactMetadataRepository ?? null
+  stores.artifactListMetadata = artifact.artifactListMetadata
+  return stores
 }
 
 /**
@@ -277,6 +451,8 @@ function resolveSqlRepositories(config, options) {
  */
 export function createStores(config, options = {}) {
   const log = options.logger ?? console
+  const sqlClient = resolveSqlClient(config, options)
+  const artifact = resolveArtifactStore(config, { ...options, sqlClient })
   const filesystemStores = {
     workflowProjectionStore: new WorkflowProjectionStore(config.factoryDataRoot),
     workflowEvidenceStore: new WorkflowEvidenceStore(config.factoryDataRoot),
@@ -289,16 +465,16 @@ export function createStores(config, options = {}) {
   }
 
   if (config.persistenceMode === PERSISTENCE_MODES.SQL) {
-    const repositories = resolveSqlRepositories(config, options)
-    return createSqlAuthorityStores({ repositories })
+    const repositories = resolveSqlRepositories(config, sqlClient)
+    return attachArtifactCapabilities(createSqlAuthorityStores({ repositories }), artifact)
   }
 
   if (config.shadowReadEnabled) {
-    const repositories = resolveSqlRepositories(config, options)
-    return createShadowReadStores({ stores: filesystemStores, repositories, log })
+    const repositories = resolveSqlRepositories(config, sqlClient)
+    return attachArtifactCapabilities(createShadowReadStores({ stores: filesystemStores, repositories, log }), artifact)
   }
 
-  return filesystemStores
+  return attachArtifactCapabilities(filesystemStores, artifact)
 }
 
 // ---------------------------------------------------------------------------
@@ -366,6 +542,23 @@ function buildWorkUnitEnvironmentPolicy(config) {
 function buildDeliveryTrustedConfiguration(config) {
   const { owner, repo, baseBranch } = config.delivery.github
   return owner && repo && baseBranch ? { pullRequest: { owner, repo, baseBranch } } : {}
+}
+
+/**
+ * Build the explicit admin-governance capability over the wired artifact
+ * store. Every operation is *operator-triggered*: nothing here is scheduled,
+ * and no background timer runs the purge / legal-hold / GC use cases.
+ */
+function createArtifactAdminCapability({ store, blobClient, listMetadata }) {
+  return {
+    purgeArtifact: (artifactId, reason) => purgeArtifactAdmin(store, artifactId, reason),
+    setLegalHold: (artifactId, legalHold, reason) => setLegalHoldAdmin(store, artifactId, legalHold, reason),
+    collectAndAuditGarbage: (options = {}) =>
+      collectAndAuditGarbage(store, blobClient, {
+        ...options,
+        ...(listMetadata && !options.listMetadata ? { listMetadata } : {}),
+      }),
+  }
 }
 
 /**
@@ -455,6 +648,15 @@ export function createApplication(config, stores, adapters) {
 
   const dispatchExpressWorkflowResume = createExpressWorkflowResumeDispatcher(config, workflowResumeDispatchStore)
 
+  // Explicit artifact-governance capability: over the store composed in
+  // `createStores`, never a fresh instance. No schedule, no timer — only the
+  // operator-triggered admin commands reach these use cases.
+  const artifactAdmin = createArtifactAdminCapability({
+    store: stores.artifactStore,
+    blobClient: stores.artifactBlobClient,
+    listMetadata: stores.artifactListMetadata,
+  })
+
   // The application object is the assembled runtime: controllers/services plus
   // the stores and adapters they were wired with, so the HTTP layer can be
   // built from `(application, config)` alone.
@@ -468,6 +670,7 @@ export function createApplication(config, stores, adapters) {
     factoryFrontendRunner,
     runRouter,
     dispatchExpressWorkflowResume,
+    artifactAdmin,
   }
 }
 
@@ -537,6 +740,9 @@ export function createHttpServer(application, config) {
     workflowEvidenceStore,
     agentStepResultStore,
     workflowHumanInteractionStore,
+    artifactStore,
+    artifactBlobClient,
+    artifactListMetadata,
   } = application.stores
   const { workflowDefinitionRegistry, oracleDefinitionRegistry, workflowProjectionSseHub, agentOsProxy } = application.adapters
   const {
@@ -599,6 +805,19 @@ export function createHttpServer(application, config) {
         : null
 
     if (deliveryOperationController && await handleDeliveryOperationRequest({ method, path, readBody: readBodyFn, send: sendFn, controller: deliveryOperationController, identity: deliveryIdentity, log: console })) return
+
+    // Artifact governance: explicit admin commands only. The store, blob client
+    // and metadata lister are the exact instances composed in `createStores`.
+    if (await handleArtifactAdminRequest({
+      method, path,
+      trustContext: trust,
+      readBody: readBodyFn,
+      send: sendFn,
+      store: artifactStore,
+      blobClient: artifactBlobClient,
+      listMetadata: artifactListMetadata,
+      log: console,
+    })) return
 
     if (deliveryController && await handleDeliveryRequest({ method, path, readBody: readBodyFn, send: sendFn, controller: deliveryController, identity: deliveryIdentity, log: console })) return
 

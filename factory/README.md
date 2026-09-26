@@ -234,12 +234,13 @@ résultats structurés, dumps d'oracle, preuves…). Le domaine sépare trois é
 **orthogonaux** : disponibilité physique (`availabilityStatus`), fenêtre de
 rétention (`retentionStatus`) et blocage légal (`legalHold`).
 
-Deux implémentations sont fournies dans `src/adapters/artifact/` :
+Deux implémentations directes du port sont fournies dans `src/adapters/artifact/`, plus un adaptateur composé :
 
 | Adaptateur | Usage | Dépendances |
 |---|---|---|
 | `MemoryArtifactStore` | tests hors-ligne, mocking local | aucune (pur JS) |
 | `S3ArtifactStore` | S3 / MinIO, protocole *upload-then-commit* | `node:crypto`, `fetch` global (SigV4) |
+| `PostgresArtifactStore` | objet (S3/MinIO) + métadonnée autoritaire PostgreSQL | `node:*` + repositories SQL |
 
 Le hachage adressé par contenu (`computeArtifactHash`, SHA-256 `sha256:<hex>`) et
 le client objet bas niveau (`S3ObjectClient`) sont partagés ; l'adaptateur S3
@@ -247,16 +248,36 @@ expose `collectOrphanedUploads()` pour récupérer les *staging* laissés par un
 commit interrompu. Ces modules sont réexportés par le bundle opérationnel
 `runtime/factory-operational.mjs` (généré par `node factory/toolchain/build.mjs`).
 
+Un troisième adaptateur compose les deux : `PostgresArtifactStore`
+(`src/adapters/artifact/postgres-artifact-store.ts`) garde les octets en objet
+(S3/MinIO) et la métadonnée autoritaire en PostgreSQL. Le composition root du
+dashboard (`dashboard/composition-root.mjs`) **sélectionne** l'adaptateur selon
+la configuration : `FACTORY_PERSISTENCE=sql` (ou un `sqlClient` injecté avec une
+configuration S3) compose `PostgresArtifactStore` ; le mode `fs` par défaut
+utilise `MemoryArtifactStore` hors-ligne.
+
+Les commandes d'administration (purge explicite `purgeArtifactAdmin`,
+pose/retrait de *legal hold* `setLegalHoldAdmin`, GC auditée
+`collectAndAuditGarbage`) sont exposées sous `/api/factory/admin/artifacts/*`.
+**Rien n'est automatique** : aucune purge, aucun GC n'est planifié — tout doit
+être déclenché explicitement par un opérateur. Voir le détail (MinIO,
+variables d'environnement, procédures) dans `factory/infra/README.md`.
+
 Un MinIO local est fourni pour l'intégration :
 
 ```bash
 docker compose -f factory/docker-compose.minio.yml up -d   # S3 sur :9000, console sur :9001
 ```
 
-Les tests hors-ligne de l'adaptateur mémoire et du hachage :
+Les tests hors-ligne des adaptateurs, du presigning, de la métadonnée SQL, des
+commandes d'admin et du câblage global :
 
 ```bash
 node factory/tests/test-artifact-store.mjs
+node factory/tests/test-artifact-signed-urls.mjs
+node factory/tests/test-artifact-metadata-postgres.mjs
+node factory/tests/test-artifact-admin-commands.mjs
+node factory/tests/test-artifact-global-wiring.mjs
 ```
 
 ## Structure
