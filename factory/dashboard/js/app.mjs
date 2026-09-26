@@ -15,16 +15,50 @@
 
 import { SseClient } from './services/sse-client.mjs'
 import { ApiClient } from './services/api-client.mjs'
+import { mountRunLaunchView } from './views/run-launch.mjs'
+import { mount as mountForgeCockpit } from './views/forge-cockpit.mjs'
 
 export const ROUTES = Object.freeze({
   '/runs': { id: 'view-runs', label: 'Runs' },
+  '/launch': { id: 'view-launch', label: 'Lancer' },
   '/detail': { id: 'view-detail', label: 'Détail' },
   '/projection': { id: 'view-projection', label: 'Projection' },
   '/forge': { id: 'view-forge', label: 'Forge' },
   '/admin': { id: 'view-admin', label: 'Admin' },
 })
 
+/**
+ * Route → view mounter registry. Only routes with a real view are listed; the
+ * remaining routes keep their static placeholder sections. Strictly additive:
+ * a missing mounter is a no-op so existing routes keep working unchanged.
+ */
+export const VIEW_MOUNTERS = Object.freeze({
+  '/launch': mountRunLaunchView,
+})
+
 export const DEFAULT_ROUTE = '/runs'
+
+/**
+ * Resolve the active namespace from the URL (`?ns=` / `?namespaceId=`), read
+ * either from the querystring or from the hash route. Returns `null` when the
+ * caller has not supplied one. Pure and import-safe in Node.
+ */
+export function resolveNamespaceId(win = globalThis.window) {
+  if (!win?.location) return null
+  const hash = typeof win.location.hash === 'string' ? win.location.hash : ''
+  const sources = [win.location.search ?? '', hash.includes('?') ? hash.slice(hash.indexOf('?')) : '']
+  for (const source of sources) {
+    let params
+    try {
+      params = new URLSearchParams(source)
+    } catch {
+      continue
+    }
+    const value = params.get('ns') ?? params.get('namespaceId')
+    if (value) return value
+  }
+  return null
+}
 
 /** Normalize any hash (`#/x`, `#x`, ``, `#/unknown`) into a known route. */
 export function parseHash(hash) {
@@ -66,10 +100,17 @@ export function closeModal(doc = globalThis.document) {
 /**
  * Create the router bound to a window/document pair. Returns handles used by
  * the auto-bootstrap and by tests.
+ *
+ * `options.mounters` maps a route to its view mounter (defaults to
+ * {@link VIEW_MOUNTERS}); `options.onMount(route, { registerTeardown, doc, win })`
+ * is an additive, optional view-mount hook that runs after the section classes
+ * are toggled so a view can register its own teardown. Both are optional and
+ * neither changes the route table.
  */
-export function createRouter(win = globalThis.window, doc = globalThis.document) {
+export function createRouter(win = globalThis.window, doc = globalThis.document, options = {}) {
   let currentRoute = null
   let teardownHooks = []
+  let viewGeneration = 0
 
   const registerTeardown = (fn) => {
     if (typeof fn === 'function') teardownHooks.push(fn)
@@ -77,6 +118,7 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
   }
 
   const runTeardowns = () => {
+    viewGeneration++
     const hooks = teardownHooks
     teardownHooks = []
     for (const hook of hooks) {
@@ -85,6 +127,45 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
       } catch {
         // A broken teardown must not block the next view from mounting.
       }
+    }
+  }
+
+  const mounters = options.mounters ?? VIEW_MOUNTERS
+
+  // Default navigation: canonicalize into a hash so the browser router picks it
+  // up. Callers may inject `onNavigate` (tests, embedded hosts).
+  const defaultNavigate = (route, params) => {
+    const query = params && Object.keys(params).length > 0 ? `?${new URLSearchParams(params).toString()}` : ''
+    if (win?.location) win.location.hash = `#${route}${query}`
+  }
+
+  const mountView = (route) => {
+    const mounter = mounters[route]
+    if (typeof mounter !== 'function') return
+    const host = doc?.getElementById?.(ROUTES[route].id)
+    if (!host) return
+    const generation = viewGeneration
+    const adopt = (handle) => {
+      const unmount = typeof handle === 'function' ? handle : handle?.unmount
+      if (generation !== viewGeneration) {
+        // The user navigated away before the view finished mounting.
+        if (typeof unmount === 'function') unmount()
+        return
+      }
+      if (typeof unmount === 'function') registerTeardown(unmount)
+    }
+    try {
+      const handle = mounter(host, {
+        apiClient: options.apiClient,
+        sseClient: options.sseClient,
+        namespaceId: options.namespaceId,
+        onNavigate: options.onNavigate ?? defaultNavigate,
+        registerTeardown,
+      })
+      if (handle && typeof handle.then === 'function') handle.then(adopt, () => {})
+      else adopt(handle)
+    } catch {
+      // A failing view must never break navigation to the next route.
     }
   }
 
@@ -105,6 +186,14 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
     }
     updateNav(route)
     setLiveIndicator(doc, 'online')
+    mountView(route)
+    if (typeof options.onMount === 'function') {
+      try {
+        options.onMount(route, { registerTeardown, doc, win })
+      } catch {
+        // A failing view mount must never break the shell navigation.
+      }
+    }
   }
 
   const applyHash = () => {
@@ -140,7 +229,23 @@ export function createRouter(win = globalThis.window, doc = globalThis.document)
 export function bootstrapCockpit(win = globalThis.window, doc = globalThis.document) {
   if (!win || !doc) return null
   const api = new ApiClient({ baseUrl: '' })
-  const router = createRouter(win, doc)
+  const router = createRouter(win, doc, {
+    apiClient: api,
+    mounters: VIEW_MOUNTERS,
+    onMount: (route, ctx) => {
+      if (route !== '/forge') return
+      const container = doc.getElementById('view-forge')
+      if (!container) return
+      const namespaceId = resolveNamespaceId(win)
+      if (!namespaceId) return
+      mountForgeCockpit(container, {
+        namespaceId,
+        apiClient: api,
+        SseClient,
+        registerTeardown: ctx.registerTeardown,
+      })
+    },
+  })
   const start = () => router.start()
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true })
   else start()
