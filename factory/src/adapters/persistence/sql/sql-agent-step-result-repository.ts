@@ -133,9 +133,12 @@ export class SqlAgentStepResultRepository implements AgentStepResultRepository {
   ): Promise<{ storageId: string; record: AgentStepResultCapabilityIssued } | null> {
     // The token digest lives inside the JSONB payload (no dedicated column), so
     // the lookup scans the submission capabilities and compares constant-time.
+    // The scan is tenant-scoped: a capability issued in another
+    // organization/workstream must never be redeemable from this repository.
     const { rows } = await this.#client.query<CapabilityRow>(
-      `SELECT step_id, payload FROM result_capabilities WHERE capability_type = $1`,
-      [CAPABILITY_TYPE]
+      `SELECT step_id, payload FROM result_capabilities
+       WHERE organization_id = $1 AND workstream_id = $2 AND capability_type = $3`,
+      [this.#organizationId, this.#workstreamId, CAPABILITY_TYPE]
     )
     for (const row of rows) {
       const record = parseJsonColumn<Partial<AgentStepResultCapabilityIssued> | null>(row.payload)

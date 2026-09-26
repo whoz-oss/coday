@@ -2871,8 +2871,9 @@ var SqlAgentStepResultRepository = class {
   }
   async #findByToken(tokenHash) {
     const { rows } = await this.#client.query(
-      `SELECT step_id, payload FROM result_capabilities WHERE capability_type = $1`,
-      [CAPABILITY_TYPE]
+      `SELECT step_id, payload FROM result_capabilities
+       WHERE organization_id = $1 AND workstream_id = $2 AND capability_type = $3`,
+      [this.#organizationId, this.#workstreamId, CAPABILITY_TYPE]
     );
     for (const row of rows) {
       const record2 = parseJsonColumn(row.payload);
