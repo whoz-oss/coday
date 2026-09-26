@@ -14071,6 +14071,115 @@ function createPostgresArtifactStore(config) {
   return new PostgresArtifactStore(config);
 }
 
+// ../src/application/artifact/artifact-admin-use-cases.ts
+var ARTIFACT_ADMIN_UPLOAD_PREFIX = "uploads";
+var ARTIFACT_ADMIN_OBJECT_PREFIX = "objects";
+var ArtifactAdminError = class extends Error {
+  /** Stable machine-readable error code. */
+  code;
+  /** Transport-agnostic HTTP status suggestion. */
+  statusCode;
+  constructor(code, message, statusCode) {
+    super(message);
+    this.name = "ArtifactAdminError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+};
+function isOrphanUploadCollector(store) {
+  return !!store && typeof store === "object" && typeof store.collectOrphanedUploads === "function";
+}
+async function purgeArtifactAdmin(store, artifactId, reason) {
+  const metadata = await store.getArtifactMetadata(artifactId);
+  if (!metadata) {
+    return { success: false, artifactId, reason, status: "NOT_FOUND" };
+  }
+  if (metadata.legalHold) {
+    return { success: false, artifactId, reason, status: "LEGAL_HOLD_ACTIVE" };
+  }
+  if (metadata.retentionStatus === "active") {
+    return { success: false, artifactId, reason, status: "RETENTION_ACTIVE" };
+  }
+  const purged = await store.purgeArtifact(artifactId, reason);
+  if (!purged) {
+    const latest = await store.getArtifactMetadata(artifactId);
+    if (!latest) return { success: false, artifactId, reason, status: "NOT_FOUND" };
+    if (latest.legalHold) return { success: false, artifactId, reason, status: "LEGAL_HOLD_ACTIVE" };
+    return { success: false, artifactId, reason, status: "RETENTION_ACTIVE" };
+  }
+  const refreshed = await store.getArtifactMetadata(artifactId);
+  const metadataAfterPurge = refreshed ?? { ...metadata, availabilityStatus: "purged" };
+  return { success: true, artifactId, reason, status: "purged", metadata: metadataAfterPurge };
+}
+async function setLegalHoldAdmin(store, artifactId, legalHold, reason) {
+  const updated = await store.setLegalHold(artifactId, legalHold, reason);
+  if (!updated) {
+    throw new ArtifactAdminError("ARTIFACT_NOT_FOUND", `Artifact ${artifactId} not found`, 404);
+  }
+  return updated;
+}
+async function reclaimOrphanedUploads(store, blobClient, uploadPrefix) {
+  if (isOrphanUploadCollector(store)) {
+    return store.collectOrphanedUploads();
+  }
+  if (typeof blobClient.listObjectKeys !== "function") return [];
+  const keys = await blobClient.listObjectKeys(`${uploadPrefix}/`);
+  const reclaimed = [];
+  for (const key of keys) {
+    const deleted = await blobClient.deleteObject(key);
+    if (deleted) reclaimed.push(key);
+  }
+  return reclaimed;
+}
+async function listObjectKeys(blobClient, prefix) {
+  if (typeof blobClient.listObjectKeys !== "function") return [];
+  return blobClient.listObjectKeys(prefix);
+}
+async function collectAndAuditGarbage(store, blobClient, options = {}) {
+  const uploadPrefix = options.uploadPrefix ?? ARTIFACT_ADMIN_UPLOAD_PREFIX;
+  const objectPrefix = options.objectPrefix ?? ARTIFACT_ADMIN_OBJECT_PREFIX;
+  const now = options.now ?? (() => /* @__PURE__ */ new Date());
+  const reclaimedStagingKeys = await reclaimOrphanedUploads(store, blobClient, uploadPrefix);
+  const scannedBlobKeys = await listObjectKeys(blobClient, `${objectPrefix}/`);
+  const metadataRows = options.listMetadata ? await options.listMetadata() : [];
+  const blobKeySet = new Set(scannedBlobKeys);
+  const referencedKeys = new Set(metadataRows.map((row) => row.storageKey));
+  const anomalies = [];
+  for (const storageKey of scannedBlobKeys) {
+    if (!referencedKeys.has(storageKey)) {
+      anomalies.push({
+        type: "blob_without_pg_row",
+        storageKey,
+        details: `Blob ${storageKey} has no authoritative metadata row`
+      });
+    }
+  }
+  for (const row of metadataRows) {
+    if (row.availabilityStatus === "purged") {
+      anomalies.push({
+        type: "pg_purged_or_missing_blob",
+        artifactId: row.artifactId,
+        storageKey: row.storageKey,
+        details: `Metadata row ${row.artifactId} is marked purged`
+      });
+    } else if (!blobKeySet.has(row.storageKey)) {
+      anomalies.push({
+        type: "pg_purged_or_missing_blob",
+        artifactId: row.artifactId,
+        storageKey: row.storageKey,
+        details: `Blob ${row.storageKey} for artifact ${row.artifactId} is missing from object storage`
+      });
+    }
+  }
+  return {
+    reclaimedStagingKeys,
+    anomalies,
+    scannedBlobKeys,
+    scannedMetadataRows: metadataRows.length,
+    timestamp: now().toISOString()
+  };
+}
+
 // ../src/domain/worker-runtime/worker-runtime.ts
 var FENCING_ERROR_CODES = /* @__PURE__ */ new Set([
   LEASE_ERROR_CODES.LEASE_FENCED,
@@ -14648,10 +14757,13 @@ export {
   AGENT_STEP_ATTEMPT_TRANSITIONS,
   AGENT_STEP_RESULT_LIMITS,
   AGENT_STEP_RESULT_STATUSES,
+  ARTIFACT_ADMIN_OBJECT_PREFIX,
+  ARTIFACT_ADMIN_UPLOAD_PREFIX,
   ARTIFACT_HASH_PREFIX,
   ARTIFACT_RETENTION_DAYS_ENV,
   AgentStepAttemptStore,
   AgentStepResultStore,
+  ArtifactAdminError,
   COMMENTS_CHAR_BUDGET,
   DEFAULT_ARTIFACT_RETENTION_DAYS,
   DEFAULT_NAMESPACE_ID,
@@ -14789,6 +14901,7 @@ export {
   classifyOracleExecution,
   classifyOracleResult,
   clearActiveCaseId,
+  collectAndAuditGarbage,
   computeArtifactHash,
   computeCanonicalHash,
   computeForgeSpecHash,
@@ -14928,6 +15041,7 @@ export {
   preflightWritableWorkspace,
   processExit,
   projectForgeRun,
+  purgeArtifactAdmin,
   readForgeRunYaml,
   readForgeRunYamlStrict,
   readFormatVersion,
@@ -14953,6 +15067,7 @@ export {
   safeEqual,
   sanitizeForgeSyncAttribution,
   setActiveCaseId,
+  setLegalHoldAdmin,
   sha256,
   snapshotDiff,
   startPhase,

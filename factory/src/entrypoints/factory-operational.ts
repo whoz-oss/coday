@@ -203,6 +203,13 @@ export * from '../adapters/artifact/index.js'
 export * from '../adapters/artifact/postgres-artifact-store.js'
 export * from '../adapters/persistence/sql/sql-artifact-metadata-repository.js'
 
+// Admin governance use cases (B5-T2b): explicit purge, legal-hold management
+// and triggered garbage collection with anomaly audit. Exported directly (not
+// through an `application/artifact` barrel, owned by a separate wiring task)
+// so the dashboard admin routes and the offline conformance test can reach
+// them from the bundle.
+export * from '../application/artifact/artifact-admin-use-cases.js'
+
 // --------------------------------------------------------------------------
 // Worker runtime (Jalon C2): frozen C2-T1 loop vocabulary + the local
 // entrypoint that wires it against the C1 SQL lease/work-unit/worker adapters.
