@@ -3,17 +3,23 @@ package io.whozoss.factory
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
 import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
 
 /**
  * Shared PostgreSQL Testcontainers fixture for integration tests.
  *
- * The container is a static singleton: it is started once for the whole JVM and
- * reused across Spring contexts. Its coordinates are injected into the Spring
+ * The container is a static singleton: it is started explicitly once when the
+ * companion object is initialized (i.e. before Spring's `@DynamicPropertySource`
+ * reads its coordinates) and reused across Spring contexts. We deliberately do
+ * not rely on the JUnit `@Testcontainers` / `@Container` extension lifecycle,
+ * which does not manage `@Container` fields declared in the companion object of
+ * an abstract base class. Its coordinates are injected into the Spring
  * `Environment` through `@DynamicPropertySource`, so every `@SpringBootTest`
  * subclass runs Flyway V1..V7 against a real PostgreSQL 16 instance.
  *
- * Tests that extend this class must also be annotated
+ * The container is never stopped manually: the Testcontainers Ryuk sidecar
+ * reaps it at JVM shutdown.
+ *
+ * Tests that extend this class should also be annotated
  * `@Testcontainers(disabledWithoutDocker = true)` so they are gracefully skipped
  * (rather than failing) on machines without a Docker daemon.
  */
@@ -23,13 +29,13 @@ abstract class PostgresContainerSpec {
     class FactoryPostgresContainer : PostgreSQLContainer<FactoryPostgresContainer>("postgres:16-alpine")
 
     companion object {
-        @Container
         @JvmStatic
         protected val postgres: FactoryPostgresContainer =
             FactoryPostgresContainer()
                 .withDatabaseName("factory_test")
                 .withUsername("factory")
                 .withPassword("factory")
+                .apply { start() }
 
         @JvmStatic
         @DynamicPropertySource
