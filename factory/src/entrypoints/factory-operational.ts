@@ -191,24 +191,27 @@ export * from '../application/forge-bmad/forge-front-oracle-resolution.js'
 // Le port (`ports/artifact/`) est purement typé ; les implémentations vivent
 // dans `adapters/artifact/` et ne dépendent que de `node:*` (hachage SHA-256,
 // `fetch` global, AWS SigV4). L'adaptateur S3 suit un protocole
-// upload-then-commit et expose une collecte des staging orphelins.
+// upload-then-commit et expose une collecte des staging orphelins. Le barrel
+// `adapters/artifact` réexporte aussi l'adaptateur composé PostgreSQL + objet
+// (`PostgresArtifactStore`) et la configuration de rétention.
 // --------------------------------------------------------------------------
 export * from '../ports/artifact/index.js'
 export * from '../adapters/artifact/index.js'
 
-// SQL artifact metadata repository and the composed PostgreSQL ArtifactStore.
-// Exported directly (rather than through the `adapters/artifact` and
-// `adapters/persistence/sql` barrels, which are owned by a separate wiring
-// task) so the standalone conformance test can reach them from the bundle.
-export * from '../adapters/artifact/postgres-artifact-store.js'
+// SQL artifact metadata repository: the authoritative metadata rows behind the
+// composed PostgreSQL ArtifactStore. Exported directly (the SQL barrel is
+// owned by the persistence wiring) so the standalone conformance test and the
+// dashboard admin routes can reach it from the bundle.
 export * from '../adapters/persistence/sql/sql-artifact-metadata-repository.js'
 
+// --------------------------------------------------------------------------
 // Admin governance use cases (B5-T2b): explicit purge, legal-hold management
-// and triggered garbage collection with anomaly audit. Exported directly (not
-// through an `application/artifact` barrel, owned by a separate wiring task)
-// so the dashboard admin routes and the offline conformance test can reach
-// them from the bundle.
-export * from '../application/artifact/artifact-admin-use-cases.js'
+// and triggered garbage collection with anomaly audit. Exposed through the
+// `application/artifact` barrel so the dashboard admin routes and the offline
+// conformance tests share a single, stable surface. NOTHING is scheduled here:
+// every command is explicitly triggered by an operator.
+// --------------------------------------------------------------------------
+export * from '../application/artifact/index.js'
 
 // --------------------------------------------------------------------------
 // Worker runtime (Jalon C2): frozen C2-T1 loop vocabulary + the local

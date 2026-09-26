@@ -1006,6 +1006,116 @@ failure or unreachable database.
 > absent from the source database the drill logs a `skip …` line instead of
 > failing; every *present* key table is still compared.
 
+## Artifact object storage (MinIO / S3) & administration
+
+Factory artifacts (`ArtifactStore`, `src/ports/artifact/`) split their storage
+in two:
+
+- the **immutable binary payload** lives in S3-compatible object storage
+  (`objects/<sha256-hex>`, staged under `uploads/<id>.part` during the
+  *upload-then-commit* protocol);
+- the **authoritative metadata** (availability, retention window, legal hold,
+  purge record) lives in the PostgreSQL `artifacts` table (`V6`).
+
+The composed `PostgresArtifactStore` is selected by the dashboard composition
+root from configuration — never instantiated by a route:
+
+| `FACTORY_PERSISTENCE` | S3 configured | `createStores(...)` artifact store |
+|---|---|---|
+| `fs` (default) | no | `MemoryArtifactStore` (offline, no Docker) |
+| `fs` | yes + injected `sqlClient` | `PostgresArtifactStore` (`S3ObjectClient` + SQL repository) |
+| `sql` | yes | `PostgresArtifactStore` (`S3ObjectClient` + SQL repository) |
+| `sql` | no | `PostgresArtifactStore` over the in-memory blob fallback |
+
+### Start MinIO locally
+
+```bash
+docker compose -f factory/docker-compose.minio.yml up -d   # S3 API on :9000, console on :9001
+docker compose -f factory/docker-compose.minio.yml ps
+```
+
+The one-shot `coday-minio-init` service waits for MinIO to be healthy and
+creates the `coday-artifacts` bucket. The MinIO console is served on
+<http://localhost:9001> with the local development credentials
+(`factory` / `factory_dev_pass`).
+
+### Environment variables
+
+```bash
+# Object storage (S3 / MinIO). AWS_* names are accepted as fallbacks.
+S3_ENDPOINT=http://localhost:9000
+S3_REGION=us-east-1
+S3_BUCKET=coday-artifacts
+S3_ACCESS_KEY_ID=factory
+S3_SECRET_ACCESS_KEY=factory_dev_pass
+# S3_SESSION_TOKEN=...            # optional temporary session token
+
+# Retention & presigning policy.
+ARTIFACT_RETENTION_DAYS=90        # default compliance window, in days
+ARTIFACT_SIGNED_URL_TTL=900       # presigned URL TTL, in seconds
+
+# Optional: run the PostgreSQL artifact authority with an in-memory blob fallback
+# instead of S3/MinIO (local / offline).
+# ARTIFACT_MEMORY_BLOB_CLIENT=true
+
+# PostgreSQL authority for the artifact metadata (see 'Start PostgreSQL').
+FACTORY_PERSISTENCE=sql
+```
+
+The retention window is enforced by the store: an artifact whose window is still
+*active* refuses `purgeArtifact` / `deleteArtifact`. Presigned URLs
+(`PostgresArtifactStore.getSignedUrl`) are only produced for artifacts whose
+`availabilityStatus` is `available`; unknown or purged artifacts return `null`.
+
+### Admin procedures (explicit, operator-triggered)
+
+Every governance command is a deliberate admin action under
+`/api/factory/admin/artifacts/*` (guarded by `requireAdminRole`, B5-T2b; a real
+IdP/entitlement model arrives in B6). The store, blob client and metadata lister
+are the *exact* instances composed by the dashboard composition root.
+
+| Command | HTTP route | Use case |
+|---|---|---|
+| Explicit purge | `POST /api/factory/admin/artifacts/:id/purge` | `purgeArtifactAdmin(store, id, reason)` |
+| Pose / release legal hold | `POST /api/factory/admin/artifacts/:id/legal-hold` (`{ "legalHold": true \| false, "reason": "…" }`) | `setLegalHoldAdmin(store, id, legalHold, reason)` |
+| Triggered GC & audit | `POST /api/factory/admin/artifacts/gc` | `collectAndAuditGarbage(store, blobClient, { listMetadata })` |
+
+- **Explicit purge** — destroys an artifact whose compliance retention window
+  has *expired*. An active retention window (`RETENTION_ACTIVE`) or an active
+  legal hold (`LEGAL_HOLD_ACTIVE`) refuses the destruction; an unknown artifact
+  returns `NOT_FOUND`.
+- **Pose / release legal hold** — the authoritative « do not destroy » switch.
+  Releasing it is required before a held artifact can ever be purged.
+- **Triggered GC & audit** — reclaims orphaned `uploads/` staging objects, then
+  reconciles the `objects/` blobs against the authoritative metadata rows
+  (`listMetadata`), reporting `blob_without_pg_row` and
+  `pg_purged_or_missing_blob` anomalies.
+
+> **⚠️ NOTHING IS AUTOMATIC.** There is **no background timer, no scheduler and
+> no auto-purge**. Retention expiry, legal-hold changes and garbage collection
+> only happen when an operator (or an explicitly invoked admin request) triggers
+> them. `ARTIFACT_RETENTION_DAYS` sets the *window*, not an automated job.
+
+### Manual validation
+
+```bash
+# 1. Object storage is up and the bucket exists
+docker compose -f factory/docker-compose.minio.yml ps
+
+# 2. The composition root selects the right store (no Docker needed)
+node factory/tests/test-artifact-global-wiring.mjs
+
+# 3. Trigger the GC/audit explicitly (loopback-dev is admin)
+curl -sS -X POST http://127.0.0.1:3141/api/factory/admin/artifacts/gc | jq
+
+# 4. Offline adapter suites (memory, S3, presigning, SQL, admin)
+node factory/tests/test-artifact-store.mjs
+node factory/tests/test-artifact-signed-urls.mjs
+node factory/tests/test-artifact-metadata-postgres.mjs
+node factory/tests/test-artifact-admin-commands.mjs
+node factory/tests/test-artifact-global-wiring.mjs
+```
+
 ## Checklist avant d'importer / placer des données partagées sur la VM
 
 À valider **avant** toute importation ou dépôt de données partagées sur la VM

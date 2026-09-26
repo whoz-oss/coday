@@ -36,3 +36,12 @@ export {
   type S3ArtifactStoreConfig,
   type S3ArtifactStoreOptions,
 } from './s3-artifact-store.js'
+
+export {
+  ARTIFACT_RETENTION_DAYS_ENV,
+  DEFAULT_ARTIFACT_RETENTION_DAYS,
+  PostgresArtifactStore,
+  createPostgresArtifactStore,
+  type ArtifactBlobClient,
+  type PostgresArtifactStoreConfig,
+} from './postgres-artifact-store.js'
