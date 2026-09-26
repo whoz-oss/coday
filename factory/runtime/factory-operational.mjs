@@ -5315,6 +5315,1495 @@ function createSqlLeaseRepository(client, options = {}) {
   return new SqlLeaseRepository(client, options);
 }
 
+// ../src/adapters/persistence/migration/one-shot-import.ts
+import { createHash as createHash16 } from "node:crypto";
+import { readFile as readFile5, readdir as readdir4 } from "node:fs/promises";
+import { join as join8 } from "node:path";
+
+// ../src/adapters/persistence/delivery-store.ts
+import { createHash as createHash14, randomBytes as randomBytes5 } from "node:crypto";
+import { appendFile as appendFile2, mkdir as mkdir2, open as open2, readFile as readFile2, rename as rename2, rm as rm2 } from "node:fs/promises";
+import { dirname as dirname3, isAbsolute as isAbsolute2, join as join5 } from "node:path";
+var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var SHA4 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
+var HASH3 = /^sha256:[0-9a-f]{64}$/;
+var canonical4 = (value) => Array.isArray(value) ? value.map(canonical4) : value && typeof value === "object" ? Object.fromEntries(
+  Object.keys(value).filter((key) => value[key] !== void 0).sort().map((key) => [key, canonical4(value[key])])
+) : value;
+var hash3 = (value) => createHash14("sha256").update(JSON.stringify(canonical4(value))).digest("hex");
+async function sync(path) {
+  const handle = await open2(path, "r");
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+async function atomic(path, value) {
+  await mkdir2(dirname3(path), { recursive: true });
+  const temp = `${path}.tmp-${process.pid}-${randomBytes5(6).toString("hex")}`;
+  const handle = await open2(temp, "wx", 384);
+  try {
+    await handle.writeFile(`${JSON.stringify(value)}
+`);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await rename2(temp, path);
+  await sync(dirname3(path));
+}
+async function append(path, value) {
+  await mkdir2(dirname3(path), { recursive: true });
+  await appendFile2(path, `${JSON.stringify(value)}
+`, { mode: 384 });
+  await sync(path);
+}
+var validSnapshot2 = (value) => value !== null && typeof value === "object" && value.schemaVersion === "1" && UUID3.test(value.namespaceId ?? "") && SAFE7.test(value.deliveryId ?? "") && SAFE7.test(value.workflowId ?? "") && UUID3.test(value.environmentId ?? "") && HASH3.test(value.environmentHash ?? "") && UUID3.test(value.parentCaseId ?? "") && SAFE7.test(value.runtimeId ?? "") && SHA4.test(value.baseCommit ?? "") && SHA4.test(value.headCommit ?? "") && Number.isSafeInteger(value.revision) && value.revision > 0;
+var DeliveryStore = class {
+  dataRoot;
+  fault;
+  locks;
+  constructor(dataRoot, { fault = async () => {
+  } } = {}) {
+    if (!isAbsolute2(dataRoot)) throw new Error("INVALID_DATA_ROOT");
+    this.dataRoot = dataRoot;
+    this.fault = fault;
+    this.locks = /* @__PURE__ */ new Map();
+  }
+  async initialize() {
+    await mkdir2(join5(this.dataRoot, "deliveries"), { recursive: true });
+  }
+  paths(namespaceId, deliveryId) {
+    if (!UUID3.test(namespaceId ?? "") || !SAFE7.test(deliveryId ?? "")) throw new Error("INVALID_DELIVERY_SCOPE");
+    const directory = join5(
+      this.dataRoot,
+      "deliveries",
+      namespaceId,
+      createHash14("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex")
+    );
+    return {
+      directory,
+      snapshot: join5(directory, "delivery.json"),
+      journal: join5(directory, "operations.jsonl"),
+      pending: join5(directory, "pending.json")
+    };
+  }
+  _locked(namespaceId, deliveryId, action) {
+    const key = `${namespaceId}\0${deliveryId}`, prior = this.locks.get(key) ?? Promise.resolve(), operation = prior.then(action), tail = operation.catch(() => {
+    });
+    this.locks.set(key, tail);
+    return operation.finally(() => {
+      if (this.locks.get(key) === tail) this.locks.delete(key);
+    });
+  }
+  async _json(path) {
+    try {
+      return JSON.parse(await readFile2(path, "utf8"));
+    } catch (error2) {
+      if (error2?.code === "ENOENT") return null;
+      throw Object.assign(new Error("CORRUPT_DELIVERY_STORAGE"), { code: "CORRUPT_DELIVERY_STORAGE" });
+    }
+  }
+  async journal(namespaceId, deliveryId) {
+    try {
+      return (await readFile2(this.paths(namespaceId, deliveryId).journal, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    } catch (error2) {
+      if (error2?.code === "ENOENT") return [];
+      throw Object.assign(new Error("CORRUPT_DELIVERY_JOURNAL"), { code: "CORRUPT_DELIVERY_JOURNAL" });
+    }
+  }
+  async _recover(paths) {
+    const pending = await this._json(paths.pending);
+    if (!pending) return;
+    const pendingSnapshot = pending.snapshot, pendingOperation = pending.operation;
+    const records = await this.journal(pendingSnapshot.namespaceId, pendingSnapshot.deliveryId);
+    const matching = records.filter((item) => item.operationId === pendingOperation.operationId);
+    if (!matching.length)
+      throw Object.assign(new Error("DELIVERY_OPERATION_INDETERMINATE"), { code: "DELIVERY_OPERATION_INDETERMINATE" });
+    const last = matching[matching.length - 1];
+    if (last.state === "succeeded" && pending.snapshotHash === hash3(pendingSnapshot)) {
+      await atomic(paths.snapshot, pendingSnapshot);
+      await rm2(paths.pending, { force: true });
+      return;
+    }
+    throw Object.assign(new Error("DELIVERY_OPERATION_INDETERMINATE"), { code: "DELIVERY_OPERATION_INDETERMINATE" });
+  }
+  async read(namespaceId, deliveryId) {
+    const paths = this.paths(namespaceId, deliveryId);
+    await this._recover(paths);
+    const snapshot = await this._json(paths.snapshot);
+    if (!snapshot) return null;
+    if (!validSnapshot2(snapshot) || snapshot.snapshotHash !== hash3({ ...snapshot, snapshotHash: void 0 }))
+      throw Object.assign(new Error("CORRUPT_DELIVERY_STORAGE"), { code: "CORRUPT_DELIVERY_STORAGE" });
+    return snapshot;
+  }
+  async create(input) {
+    return this._locked(input.namespaceId, input.deliveryId, async () => {
+      const current = await this.read(input.namespaceId, input.deliveryId);
+      if (current)
+        return JSON.stringify({ ...current, snapshotHash: void 0 }) === JSON.stringify(input) ? { ok: true, changed: false, snapshot: current } : { ok: false, error: { code: "DELIVERY_IDENTITY_CONFLICT" } };
+      if (!validSnapshot2(input)) return { ok: false, error: { code: "INVALID_DELIVERY_SNAPSHOT" } };
+      return this._write(null, input, { kind: "delivery_created", idempotencyKey: `create:${input.deliveryId}` });
+    });
+  }
+  async promote({
+    namespaceId,
+    request,
+    definition,
+    evidence,
+    execution: execution2
+  }) {
+    return this._locked(namespaceId, request.deliveryId, async () => {
+      const current = await this.read(namespaceId, request.deliveryId);
+      const records = await this.journal(namespaceId, request.deliveryId);
+      const scopeHash = deliveryScopeHash(namespaceId, request, execution2), semanticHash2 = deliverySemanticHash(request), prior = records.find((item) => item.scopeHash === scopeHash && item.state === "succeeded");
+      if (prior) {
+        if (prior.semanticHash !== semanticHash2) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        return { ok: true, changed: false, idempotent: true, snapshot: current };
+      }
+      const decision = evaluateDeliveryPromotion({ request, snapshot: current, definition, evidence, execution: execution2 });
+      if (!decision.allowed) return { ok: false, error: decision };
+      const next = applyDeliveryPromotion(current, request);
+      return this._write(current, next, {
+        kind: "delivery_promoted",
+        idempotencyKey: request.idempotencyKey,
+        scopeHash,
+        semanticHash: semanticHash2,
+        evidenceIds: request.evidenceIds
+      });
+    });
+  }
+  async _write(current, value, operationInput) {
+    const paths = this.paths(value.namespaceId, value.deliveryId), operationId = createHash14("sha256").update(`${value.namespaceId}:${value.deliveryId}:${operationInput.idempotencyKey}`).digest("hex"), operation = {
+      schemaVersion: "1",
+      operationId,
+      deliveryId: value.deliveryId,
+      revision: (current?.revision ?? 0) + (current ? 1 : 0),
+      kind: operationInput.kind,
+      state: "pending",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ...operationInput.scopeHash ? { scopeHash: operationInput.scopeHash, semanticHash: operationInput.semanticHash } : {},
+      ...operationInput.evidenceIds ? { evidenceIds: [...operationInput.evidenceIds].sort() } : {}
+    };
+    const clean = { ...value };
+    delete clean.snapshotHash;
+    const snapshot = { ...clean, snapshotHash: hash3(clean) };
+    await atomic(paths.pending, { operation, snapshot, snapshotHash: hash3(snapshot) });
+    await append(paths.journal, operation);
+    await this.fault("after-pending-journal");
+    const running = { ...operation, state: "running", timestamp: (/* @__PURE__ */ new Date()).toISOString() };
+    await append(paths.journal, running);
+    await this.fault("after-running");
+    const succeeded = {
+      ...operation,
+      state: "succeeded",
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      resultHash: snapshot.snapshotHash
+    };
+    await append(paths.journal, succeeded);
+    await this.fault("after-success");
+    await atomic(paths.snapshot, snapshot);
+    await this.fault("after-snapshot");
+    await rm2(paths.pending, { force: true });
+    return { ok: true, changed: true, idempotent: false, snapshot };
+  }
+  async recordOperation(namespaceId, deliveryId, input) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const records = await this.journal(namespaceId, deliveryId), operationId = createHash14("sha256").update(`${namespaceId}:${deliveryId}:${input.idempotencyKey}`).digest("hex"), prior = records.filter((item) => item.operationId === operationId).at(-1);
+      const semanticHash2 = hash3(input.facts);
+      if (prior) {
+        if (prior.semanticHash !== semanticHash2) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+        return { ok: true, changed: false, operation: prior };
+      }
+      const operation = {
+        schemaVersion: "1",
+        operationId,
+        deliveryId,
+        kind: input.kind,
+        state: input.state,
+        semanticHash: semanticHash2,
+        facts: input.facts,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      await append(this.paths(namespaceId, deliveryId).journal, operation);
+      return { ok: true, changed: true, operation };
+    });
+  }
+  _deliveryOperationProjection(records) {
+    const history = records.filter((record2) => record2.recordType === "delivery-operation");
+    const current = /* @__PURE__ */ new Map();
+    const resolved = new Set(
+      history.filter((record2) => record2.resolvedOperationId && ["succeeded", "failed"].includes(record2.state)).map((record2) => record2.resolvedOperationId)
+    );
+    for (const record2 of history) current.set(record2.operationId, record2);
+    const rollbackHistory = records.filter((record2) => record2.recordType === "rollback-request");
+    const rollbackCurrent = /* @__PURE__ */ new Map();
+    for (const record2 of rollbackHistory) rollbackCurrent.set(record2.rollbackRequestId, record2);
+    return {
+      history,
+      operations: [...current.values()],
+      rollbackRequests: [...rollbackCurrent.values()],
+      rollbackRequestHistory: rollbackHistory,
+      unresolvedIndeterminate: [...current.values()].filter(
+        (record2) => record2.state === "indeterminate" && !resolved.has(record2.operationId)
+      )
+    };
+  }
+  async readWithOperations(namespaceId, deliveryId) {
+    const snapshot = await this.read(namespaceId, deliveryId);
+    if (!snapshot) return null;
+    const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId));
+    return { ...snapshot, deliveryOperations: projection.operations, rollbackRequests: projection.rollbackRequests };
+  }
+  async inspectDeliveryOperations(namespaceId, deliveryId) {
+    return this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId));
+  }
+  async createRollbackRequest({
+    namespaceId,
+    deliveryId,
+    workflowId,
+    caseId,
+    runtimeId,
+    request,
+    execution: execution2
+  }) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const snapshot = await this.read(namespaceId, deliveryId);
+      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      if (snapshot.workflowId !== workflowId || snapshot.parentCaseId !== caseId || snapshot.runtimeId !== runtimeId)
+        return { ok: false, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), prior = projection.rollbackRequestHistory.find((record3) => record3.scopeHash === request.scopeHash);
+      if (prior)
+        return prior.semanticHash === request.semanticHash ? {
+          ok: true,
+          changed: false,
+          idempotent: true,
+          request: projection.rollbackRequests.find((item) => item.rollbackRequestId === prior.rollbackRequestId) ?? prior
+        } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+      if (snapshot.revision !== request.expectedRevision) return { ok: false, error: { code: "REVISION_CONFLICT" } };
+      const record2 = {
+        recordType: "rollback-request",
+        schemaVersion: "1",
+        rollbackRequestId: request.rollbackRequestId,
+        deliveryId,
+        workflowId,
+        namespaceId,
+        caseId,
+        runtimeId,
+        status: "requested",
+        expectedRevision: request.expectedRevision,
+        idempotencyKey: request.idempotencyKey,
+        scopeHash: request.scopeHash,
+        semanticHash: request.semanticHash,
+        targetId: request.targetId,
+        targetHash: request.targetHash,
+        deploymentRef: canonical4(request.deploymentRef),
+        priorArtifactRef: canonical4(request.priorArtifactRef),
+        priorReleaseRef: canonical4(request.priorReleaseRef),
+        reasonCode: request.reasonCode,
+        ...request.reason ? { reason: request.reason } : {},
+        requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        requestedBy: canonical4(execution2)
+      };
+      await append(this.paths(namespaceId, deliveryId).journal, record2);
+      return { ok: true, changed: true, idempotent: false, request: record2 };
+    });
+  }
+  async approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const snapshot = await this.read(namespaceId, deliveryId);
+      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), current = projection.rollbackRequests.find((item) => item.rollbackRequestId === rollbackRequestId);
+      if (!current) return { ok: false, error: { code: "ROLLBACK_REQUEST_NOT_FOUND" } };
+      const scopeHash = `sha256:${hash3({ rollbackRequestId, idempotencyKey: approval.idempotencyKey })}`, semanticHash2 = `sha256:${hash3({ rollbackRequestId, expectedRevision: approval.expectedRevision, actorId: approval.execution.actorId })}`, prior = projection.rollbackRequestHistory.find((item) => item.approvalScopeHash === scopeHash);
+      if (prior)
+        return prior.approvalSemanticHash === semanticHash2 ? { ok: true, changed: false, idempotent: true, request: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+      if (snapshot.revision !== approval.expectedRevision || current.expectedRevision !== approval.expectedRevision)
+        return { ok: false, error: { code: "REVISION_CONFLICT" } };
+      if (current.status !== "requested") return { ok: false, error: { code: "ROLLBACK_REQUEST_ALREADY_DECIDED" } };
+      const record2 = {
+        ...current,
+        status: "approved",
+        approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        approvedBy: canonical4(approval.execution),
+        approvalScopeHash: scopeHash,
+        approvalSemanticHash: semanticHash2,
+        approvalIdempotencyKey: approval.idempotencyKey
+      };
+      await append(this.paths(namespaceId, deliveryId).journal, record2);
+      return { ok: true, changed: true, idempotent: false, request: record2 };
+    });
+  }
+  async createDeliveryOperation({
+    namespaceId,
+    workflowId,
+    deliveryId,
+    caseId,
+    runtimeId,
+    request,
+    targetRef,
+    execution: execution2
+  }) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const normalized = normalizeDeliveryOperationRequest(request);
+      if (!normalized.ok) return normalized;
+      const snapshot = await this.read(namespaceId, deliveryId);
+      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      const targetHash = targetRef?.targetHash;
+      const identity = deriveDeliveryOperationIdentity(
+        { namespaceId, workflowId, deliveryId, caseId, runtimeId },
+        normalized.value,
+        targetHash
+      );
+      if (!identity.ok) return identity;
+      const records = await this.journal(namespaceId, deliveryId), projection = this._deliveryOperationProjection(records), existing = projection.history.find((record2) => record2.scopeHash === identity.value.scopeHash);
+      if (existing)
+        return existing.semanticHash === identity.value.semanticHash ? {
+          ok: true,
+          changed: false,
+          idempotent: true,
+          operation: projection.operations.find((record2) => record2.operationId === existing.operationId) ?? existing
+        } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
+      if (snapshot.revision !== normalized.value.expectedRevision)
+        return { ok: false, error: { code: "REVISION_CONFLICT" } };
+      if (projection.unresolvedIndeterminate.length)
+        return { ok: false, error: { code: "DELIVERY_OPERATION_INDETERMINATE" } };
+      const now = (/* @__PURE__ */ new Date()).toISOString(), source = normalized.value.artifactRef ?? normalized.value.priorArtifactRef, operation = {
+        recordType: "delivery-operation",
+        operationId: identity.value.operationId,
+        kind: normalized.value.kind,
+        expectedRevision: normalized.value.expectedRevision,
+        targetRef: canonical4(targetRef),
+        artifactRef: normalized.value.artifactRef ?? normalized.value.priorArtifactRef,
+        releaseRef: normalized.value.releaseRef ?? normalized.value.priorReleaseRef,
+        deploymentRef: normalized.value.deploymentRef,
+        rollbackRef: normalized.value.rollbackRef,
+        state: "pending",
+        attempt: 0,
+        requestedAt: now,
+        startedAt: void 0,
+        completedAt: void 0,
+        execution: canonical4(execution2),
+        adapterCorrelation: void 0,
+        scopeHash: identity.value.scopeHash,
+        semanticHash: identity.value.semanticHash,
+        result: void 0,
+        error: void 0,
+        resolvedOperationId: void 0,
+        sourceCommit: source?.sourceCommit,
+        artifactDigest: source?.digest,
+        rollbackRequestId: normalized.value.rollbackRequestId,
+        approvedEvidenceId: normalized.value.approvedEvidenceId
+      };
+      const persisted = Object.fromEntries(Object.entries(operation).filter(([, value]) => value !== void 0));
+      const contract = validateDeliveryOperationRecord(persisted);
+      if (!contract.ok) return { ok: false, error: contract.error };
+      await append(this.paths(namespaceId, deliveryId).journal, persisted);
+      await this.fault("after-delivery-operation-write");
+      return { ok: true, changed: true, idempotent: false, operation: persisted };
+    });
+  }
+  async recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options = {}) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      await this.read(namespaceId, deliveryId);
+      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), previous = projection.operations.find((record2) => record2.operationId === operationId);
+      if (!previous) return { ok: false, error: { code: "DELIVERY_OPERATION_NOT_FOUND" } };
+      const now = (/* @__PURE__ */ new Date()).toISOString(), state = transition.state, next = {
+        ...previous,
+        state,
+        attempt: state === "running" ? previous.attempt + 1 : previous.attempt,
+        startedAt: state === "running" ? now : previous.startedAt,
+        completedAt: ["succeeded", "failed"].includes(state) ? now : void 0,
+        adapterCorrelation: transition.adapterCorrelation ?? previous.adapterCorrelation,
+        result: transition.result,
+        error: transition.error,
+        resolvedOperationId: transition.resolvedOperationId
+      };
+      const clean = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== void 0)), valid = validateDeliveryOperationTransition(previous, clean, options);
+      if (!valid.ok) return valid;
+      const contract = validateDeliveryOperationRecord(clean);
+      if (!contract.ok) return contract;
+      await append(this.paths(namespaceId, deliveryId).journal, clean);
+      await this.fault(`after-delivery-operation-${state}`);
+      return { ok: true, changed: true, operation: clean };
+    });
+  }
+  async startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation) {
+    return this.recordDeliveryOperation(namespaceId, deliveryId, operationId, { state: "running", adapterCorrelation });
+  }
+  async reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation) {
+    return this.recordDeliveryOperation(
+      namespaceId,
+      deliveryId,
+      operationId,
+      {
+        state: observation.state,
+        result: observation.result,
+        error: observation.error,
+        adapterCorrelation: observation.adapterCorrelation,
+        resolvedOperationId: operationId
+      },
+      { inspectedObservation: { ...observation, operationId } }
+    );
+  }
+  /** Only an indeterminate logical operation without a later terminal reconciliation blocks. */
+  async hasIndeterminateOperation(namespaceId, deliveryId) {
+    try {
+      return (await this.inspectDeliveryOperations(namespaceId, deliveryId)).unresolvedIndeterminate.length > 0;
+    } catch {
+      return true;
+    }
+  }
+  /**
+   * Atomically patch specific fields in the delivery snapshot and append a journal record.
+   * Supports dot-notation keys like 'git.checkpoint' to set nested properties.
+   * Used after checkpoint/push/PR to persist the new state without a full promote cycle.
+   */
+  async updateSnapshot(namespaceId, deliveryId, patch, operationInput) {
+    return this._locked(namespaceId, deliveryId, async () => {
+      const current = await this.read(namespaceId, deliveryId);
+      if (!current) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
+      const updated = { ...current };
+      for (const [key, value] of Object.entries(patch)) {
+        const parts = key.split(".");
+        if (parts.length === 1) {
+          updated[key] = value;
+        } else if (parts.length === 2) {
+          const head = parts[0], tail = parts[1];
+          updated[head] = { ...updated[head] ?? {}, [tail]: value };
+        } else {
+          updated[key] = value;
+        }
+      }
+      updated.updatedAt = patch.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
+      return this._write(current, updated, operationInput);
+    });
+  }
+};
+
+// ../src/adapters/persistence/work-unit-environment-store.ts
+import { createHash as createHash15, randomBytes as randomBytes6 } from "node:crypto";
+import { appendFile as appendFile3, lstat, mkdir as mkdir3, open as open3, readFile as readFile3, readdir as readdir2, realpath, rename as rename3, rm as rm3 } from "node:fs/promises";
+import { dirname as dirname4, isAbsolute as isAbsolute3, join as join6, relative, sep } from "node:path";
+var ENVIRONMENT_STORE_ERROR_CODES = Object.freeze({
+  INVALID_DATA_ROOT: "INVALID_DATA_ROOT",
+  INVALID_ENVIRONMENT: "INVALID_ENVIRONMENT",
+  INVALID_NAMESPACE: "INVALID_NAMESPACE",
+  NOT_FOUND: "NOT_FOUND",
+  REVISION_CONFLICT: "REVISION_CONFLICT",
+  INVALID_TRANSITION: "INVALID_TRANSITION",
+  CORRUPT_STORAGE: "CORRUPT_STORAGE"
+});
+var WorkUnitEnvironmentStoreError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause ? { cause } : void 0);
+    this.code = code;
+    this.details = details;
+  }
+};
+var digest2 = (value) => createHash15("sha256").update(value).digest("hex");
+var snapshotHash2 = (e) => digest2(JSON.stringify(e, Object.keys(e).sort()));
+var contained = (root, path) => {
+  const r = relative(root, path);
+  return r !== "" && !r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute3(r);
+};
+async function syncDir(p) {
+  const h = await open3(p, "r");
+  try {
+    await h.sync();
+  } finally {
+    await h.close();
+  }
+}
+async function atomic2(p, v) {
+  await mkdir3(dirname4(p), { recursive: true });
+  const t = `${p}.tmp-${process.pid}-${randomBytes6(6).toString("hex")}`;
+  const h = await open3(t, "wx", 384);
+  try {
+    await h.writeFile(`${JSON.stringify(v)}
+`);
+    await h.sync();
+  } finally {
+    await h.close();
+  }
+  await rename3(t, p);
+  await syncDir(dirname4(p));
+}
+async function append2(p, v) {
+  await appendFile3(p, `${JSON.stringify(v)}
+`, { encoding: "utf8", mode: 384 });
+  const h = await open3(p, "r");
+  try {
+    await h.sync();
+  } finally {
+    await h.close();
+  }
+}
+var WorkUnitEnvironmentStore = class {
+  dataRoot;
+  fault;
+  locks;
+  root;
+  constructor(dataRoot, { fault = async () => {
+  } } = {}) {
+    if (typeof dataRoot !== "string" || !isAbsolute3(dataRoot))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_DATA_ROOT);
+    this.dataRoot = dataRoot;
+    this.fault = fault;
+    this.locks = /* @__PURE__ */ new Map();
+    this.root = null;
+  }
+  async initialize() {
+    await mkdir3(join6(this.dataRoot, "environments"), { recursive: true });
+    this.root = await realpath(join6(this.dataRoot, "environments"));
+  }
+  async _safeDirectory(path, { missing = true } = {}) {
+    let stat2;
+    try {
+      stat2 = await lstat(path);
+    } catch (error2) {
+      if (error2?.code === "ENOENT" && missing) return false;
+      throw new WorkUnitEnvironmentStoreError(
+        ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,
+        { artifact: "path" },
+        error2
+      );
+    }
+    if (stat2.isSymbolicLink() || !stat2.isDirectory())
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: "unsafe_path"
+      });
+    const canonical6 = await realpath(path);
+    if (path !== this.root && !contained(this.root, canonical6))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: "path_escape"
+      });
+    return true;
+  }
+  async _guard(p, { environmentMayBeMissing = true } = {}) {
+    await this._safeDirectory(this.root, { missing: false });
+    const namespaceDirectory = dirname4(p.directory);
+    const namespaceExists = await this._safeDirectory(namespaceDirectory, { missing: true });
+    if (!namespaceExists) return;
+    await this._safeDirectory(p.directory, { missing: environmentMayBeMissing });
+  }
+  _namespace(ns) {
+    if (!validateNamespaceId(ns).ok)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_NAMESPACE);
+  }
+  paths(ns, id2) {
+    this._namespace(ns);
+    if (!this.root || typeof id2 !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id2))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
+    const directory = join6(this.root, ns, digest2(`${ns}:${id2}`));
+    if (!contained(this.root, directory))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
+    return {
+      directory,
+      snapshot: join6(directory, "environment.json"),
+      events: join6(directory, "events.jsonl"),
+      pending: join6(directory, "pending.json")
+    };
+  }
+  _locked(ns, id2, fn) {
+    this._namespace(ns);
+    const k = `${ns}\0${id2}`;
+    const p = this.locks.get(k) ?? Promise.resolve();
+    const o = p.then(fn);
+    const t = o.catch(() => {
+    });
+    this.locks.set(k, t);
+    return o.finally(() => {
+      if (this.locks.get(k) === t) this.locks.delete(k);
+    });
+  }
+  async _json(p, missing = null) {
+    try {
+      return JSON.parse(await readFile3(p, "utf8"));
+    } catch (e) {
+      if (e?.code === "ENOENT") return missing;
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, e);
+    }
+  }
+  async _recover(p, ns, id2) {
+    const q = await this._json(p.pending);
+    if (!q) return;
+    const valid = q && Number.isSafeInteger(q.revision) && q.revision > 0 && q.environment?.namespaceId === ns && q.environment?.environmentId === id2 && validateWorkUnitEnvironment(q.environment).ok && q.environmentHash === snapshotHash2(q.environment);
+    if (!valid)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "pending" });
+    let facts;
+    try {
+      facts = (await readFile3(p.events, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+    } catch (e) {
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "journal" }, e);
+    }
+    if (!facts.some((f) => f.revision === q.revision && f.environmentId === id2 && f.environmentHash === q.environmentHash))
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
+        artifact: "recovery_binding"
+      });
+    await atomic2(p.snapshot, q);
+    await rm3(p.pending);
+    await syncDir(p.directory);
+  }
+  async read(ns, id2) {
+    this._namespace(ns);
+    const p = this.paths(ns, id2);
+    await this._guard(p);
+    await this._recover(p, ns, id2);
+    const s = await this._json(p.snapshot);
+    if (!s) return null;
+    if (!Number.isSafeInteger(s.revision) || s.environmentHash !== snapshotHash2(s.environment) || !validateWorkUnitEnvironment(s.environment).ok)
+      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE);
+    return s;
+  }
+  async list(ns, { states } = {}) {
+    this._namespace(ns);
+    let es;
+    const root = join6(this.root, ns);
+    const probe = this.paths(ns, "list-probe");
+    await this._guard(probe);
+    try {
+      es = await readdir2(root, { withFileTypes: true });
+    } catch (e) {
+      if (e?.code === "ENOENT") return [];
+      throw e;
+    }
+    const out = [];
+    for (const x of es) {
+      const d = join6(root, x.name);
+      const p = {
+        directory: d,
+        snapshot: join6(d, "environment.json"),
+        events: join6(d, "events.jsonl"),
+        pending: join6(d, "pending.json")
+      };
+      await this._guard(p, { environmentMayBeMissing: false });
+      const pending = await this._json(p.pending);
+      if (pending) await this._recover(p, ns, pending.environment?.environmentId);
+      const s = await this._json(p.snapshot);
+      if (s && s.environment.namespaceId === ns && (!states || states.includes(s.environment.lifecycleState)))
+        out.push(s);
+    }
+    return out;
+  }
+  async reserve(e) {
+    const v = validateWorkUnitEnvironment(e);
+    if (!v.ok) return v;
+    this._namespace(v.environment.namespaceId);
+    return this._locked(v.environment.namespaceId, v.environment.environmentId, async () => {
+      const c = await this.read(v.environment.namespaceId, v.environment.environmentId);
+      if (c)
+        return JSON.stringify(c.environment) === JSON.stringify(v.environment) ? { ok: true, changed: false, snapshot: c } : { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      return this._write(null, v.environment, "provisioning_reserved");
+    });
+  }
+  async transition(ns, id2, next, { expectedRevision, errorCode: errorCode2 } = {}) {
+    this._namespace(ns);
+    return this._locked(ns, id2, async () => {
+      const c = await this.read(ns, id2);
+      if (!c) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.NOT_FOUND } };
+      if (expectedRevision !== void 0 && expectedRevision !== c.revision)
+        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.REVISION_CONFLICT } };
+      if (JSON.stringify(c.environment) === JSON.stringify(next)) return { ok: true, changed: false, snapshot: c };
+      for (const field of [
+        "schemaVersion",
+        "environmentId",
+        "workUnitId",
+        "workflowId",
+        "namespaceId",
+        "repoRoot",
+        "integrationBranch",
+        "branch",
+        "worktreePath",
+        "baseCommit",
+        "createdAt",
+        "createdBy"
+      ])
+        if (c.environment[field] !== next[field])
+          return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      if (c.environment.parentCaseId && next.parentCaseId !== c.environment.parentCaseId)
+        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      const f = c.environment.lifecycleState;
+      const t = next.lifecycleState;
+      const allowed = f === "provisioning" && ["provisioning", "active", "error"].includes(t) || f === "active" && ["completed", "abandoned", "error"].includes(t) || ["completed", "abandoned", "error"].includes(f) && t === "removed";
+      if (!allowed) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
+      const v = validateWorkUnitEnvironment(next);
+      if (!v.ok) return v;
+      return this._write(
+        c,
+        v.environment,
+        t === "active" ? "parent_case_bound" : t === "removed" ? "environment_removed" : f === t ? "environment_provisioned" : "environment_state_changed",
+        errorCode2
+      );
+    });
+  }
+  async _write(c, e, kind, errorCode2) {
+    const p = this.paths(e.namespaceId, e.environmentId);
+    await this._guard(p);
+    const revision = (c?.revision ?? 0) + 1;
+    const environmentHash = snapshotHash2(e);
+    const s = { revision, environmentHash, environment: e };
+    await mkdir3(p.directory, { recursive: true });
+    await this._guard(p, { environmentMayBeMissing: false });
+    await atomic2(p.pending, s);
+    await this.fault("after-pending");
+    await append2(p.events, {
+      kind,
+      revision,
+      environmentId: e.environmentId,
+      environmentHash,
+      lifecycleState: e.lifecycleState,
+      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+      ...errorCode2 ? { errorCode: errorCode2 } : {}
+    });
+    await this.fault("after-journal");
+    await atomic2(p.snapshot, s);
+    await this.fault("after-snapshot");
+    await rm3(p.pending, { force: true });
+    return { ok: true, changed: true, snapshot: s };
+  }
+};
+
+// ../src/application/oracle/oracle-definition-registry.ts
+import { readFile as readFile4, readdir as readdir3 } from "node:fs/promises";
+import { join as join7 } from "node:path";
+function createFilesystemOracleDefinitionSource(root) {
+  return {
+    listFiles: () => readdir3(root),
+    readFile: (fileName) => readFile4(join7(root, fileName), "utf8")
+  };
+}
+var OracleDefinitionRegistry = class extends OracleDefinitionRegistryCore {
+  constructor(root) {
+    super(createFilesystemOracleDefinitionSource(root));
+  }
+};
+
+// ../src/adapters/persistence/migration/one-shot-import.ts
+async function listDirectoryNames(path) {
+  try {
+    const entries = await readdir4(path, { withFileTypes: true });
+    return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort((left, right) => left.localeCompare(right));
+  } catch (error2) {
+    if (error2?.code === "ENOENT") return [];
+    throw error2;
+  }
+}
+async function readJsonIfExists(path) {
+  try {
+    return JSON.parse(await readFile5(path, "utf8"));
+  } catch (error2) {
+    if (error2?.code === "ENOENT") return null;
+    throw error2;
+  }
+}
+var FilesystemDefinitionRegistry = class {
+  constructor(root) {
+    this.root = root;
+  }
+  loaded = null;
+  async load() {
+    if (this.loaded) return this.loaded;
+    const definitions = /* @__PURE__ */ new Map();
+    for (const type of await listDirectoryNames(this.root)) {
+      const typeRoot = join8(this.root, type);
+      const files = (await readdir4(typeRoot, { withFileTypes: true })).filter(
+        (entry) => entry.isFile() && entry.name.endsWith(".json")
+      );
+      for (const file of files) {
+        const parsed = JSON.parse(await readFile5(join8(typeRoot, file.name), "utf8"));
+        const validated = validateWorkflowDefinition(parsed);
+        if (!validated.ok) throw new Error(`INVALID_DEFINITION_FILE:${file.name}`);
+        const expectedVersion = file.name.slice(0, -".json".length);
+        if (validated.definition.workflowType !== type || validated.definition.version !== expectedVersion)
+          throw new Error(`DEFINITION_PATH_MISMATCH:${file.name}`);
+        const definitionHash = hashWorkflowDefinition(validated.definition);
+        definitions.set(
+          `${validated.definition.workflowType}@${validated.definition.version}`,
+          Object.freeze({ ...validated.definition, definitionHash })
+        );
+      }
+    }
+    this.loaded = definitions;
+    return definitions;
+  }
+  async list() {
+    return [...(await this.load()).values()];
+  }
+  async get(workflowType, version) {
+    return (await this.load()).get(`${workflowType}@${version}`) ?? null;
+  }
+  async resolveUnique(workflowType) {
+    const matches2 = [...(await this.load()).values()].filter((item) => item.workflowType === workflowType);
+    if (matches2.length === 0) throw new Error("WORKFLOW_DEFINITION_NOT_FOUND");
+    return matches2[0];
+  }
+};
+var FilesystemProjectionReader = class {
+  constructor(dataRoot) {
+    this.dataRoot = dataRoot;
+  }
+  async initialize() {
+    return void 0;
+  }
+  directory(namespaceId, workflowId) {
+    const digest4 = createHash16("sha256").update(`${namespaceId}:${workflowId}`, "utf8").digest("hex");
+    return join8(this.dataRoot, "workflows", namespaceId, digest4);
+  }
+  async read(namespaceId, workflowId) {
+    const snapshot = await readJsonIfExists(join8(this.directory(namespaceId, workflowId), "projection.json"));
+    if (!snapshot) return null;
+    return { instance: snapshot.instance, projection: snapshot.projection };
+  }
+  async list(namespaceId) {
+    const out = [];
+    const namespaceRoot = join8(this.dataRoot, "workflows", namespaceId);
+    for (const directory of await listDirectoryNames(namespaceRoot)) {
+      const snapshot = await readJsonIfExists(join8(namespaceRoot, directory, "projection.json"));
+      if (snapshot) out.push({ instance: snapshot.instance, projection: snapshot.projection });
+    }
+    return out;
+  }
+  async start() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+  async transition() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+  async remove() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+  async restore() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+  async purge() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+};
+var FilesystemEvidenceReader = class {
+  constructor(dataRoot) {
+    this.dataRoot = dataRoot;
+  }
+  async list(namespaceId, storageId) {
+    return readJsonLines(join8(this.dataRoot, "workflows", namespaceId, storageId, "evidence.jsonl"));
+  }
+  async record() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+};
+var FilesystemInteractionReader = class {
+  constructor(dataRoot) {
+    this.dataRoot = dataRoot;
+  }
+  path(namespaceId, storageId) {
+    return join8(this.dataRoot, "workflows", namespaceId, storageId, "human-interactions.jsonl");
+  }
+  async events(namespaceId, storageId) {
+    return readJsonLines(join8(this.path(namespaceId, storageId)));
+  }
+  async list(namespaceId, storageId) {
+    return projectInteractionEvents(await this.events(namespaceId, storageId));
+  }
+  async reconcileOpen() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+  async open() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+  async transact() {
+    throw new Error("IMPORT_READ_ONLY");
+  }
+};
+function projectInteractionEvents(events) {
+  const projected = /* @__PURE__ */ new Map();
+  for (const event of events) {
+    if (event.event === "interaction_opening") {
+      const interactionId = event.interaction?.interactionId;
+      if (!interactionId || projected.has(interactionId)) throw new Error("CORRUPT_INTERACTION_STORAGE");
+      projected.set(interactionId, { ...event.interaction, status: "opening" });
+    } else if (event.event === "interaction_opened") {
+      const interactionId = event.interaction?.interactionId;
+      const current = interactionId ? projected.get(interactionId) : void 0;
+      const revision = openedInteractionRevision(event);
+      if (current?.status === "opening") {
+        const validRevision = current.interactionType === "retry" ? revision === current.expectedRevision : revision > current.expectedRevision;
+        if (!Number.isSafeInteger(revision) || !validRevision) throw new Error("CORRUPT_INTERACTION_STORAGE");
+        projected.set(interactionId, { ...current, status: "open", revision });
+      } else if (!current) {
+        if (!interactionId || !Number.isSafeInteger(revision) || revision < 1)
+          throw new Error("CORRUPT_INTERACTION_STORAGE");
+        projected.set(interactionId, { ...event.interaction, status: "open", revision });
+      } else {
+        throw new Error("CORRUPT_INTERACTION_STORAGE");
+      }
+    } else if (event.event === "interaction_open_aborted") {
+      const current = projected.get(event.interactionId);
+      if (!current || current.status !== "opening") throw new Error("CORRUPT_INTERACTION_STORAGE");
+      projected.set(event.interactionId, { ...current, status: "aborted", errorCode: event.errorCode });
+    } else if (event.event === "interaction_transitioned") {
+      const current = projected.get(event.interactionId);
+      if (!current || current.status !== "open") throw new Error("CORRUPT_INTERACTION_STORAGE");
+      projected.set(event.interactionId, {
+        ...current,
+        status: "replied",
+        reply: event.reply,
+        actorId: event.actorId,
+        repliedAt: event.repliedAt,
+        evidenceId: event.evidenceId,
+        transitionRequestId: event.transitionRequestId,
+        revision: event.revision
+      });
+    } else {
+      throw new Error("CORRUPT_INTERACTION_STORAGE");
+    }
+  }
+  return [...projected.values()].sort(
+    (left, right) => String(left.openedAt).localeCompare(String(right.openedAt)) || String(left.interactionId).localeCompare(String(right.interactionId))
+  );
+}
+var ATTEMPT_DB_STATUS2 = Object.freeze({
+  starting: "running",
+  running: "running",
+  succeeded: "completed",
+  failed: "failed",
+  indeterminate: "timed_out",
+  interrupted: "cancelled"
+});
+var RESULT_DB_STATUS2 = Object.freeze({
+  PASS: "success",
+  FAIL: "failure"
+});
+var ENVIRONMENT_DB_STATUS = Object.freeze({
+  provisioning: "busy",
+  active: "ready",
+  completed: "busy",
+  abandoned: "busy",
+  error: "busy",
+  removed: "decommissioned"
+});
+function interactionDbStatus(status) {
+  return status === "replied" ? "answered" : "waiting";
+}
+function evidenceSourceOf(record2) {
+  const source = record2?.source;
+  if (typeof source === "string") return source;
+  return source?.kind ?? source?.runtimeId ?? "unknown";
+}
+function evidenceProducerOf(record2) {
+  const source = record2?.source;
+  return source?.agentId ?? source?.actorId ?? "system";
+}
+function workflowDefinitionPlan(options) {
+  const repository = new FilesystemWorkflowDefinitionRepository(
+    new FilesystemDefinitionRegistry(options.definitionsRoot)
+  );
+  return {
+    context: "workflow-definition",
+    table: "workflow_definitions",
+    primaryKey: ["organization_id", "workflow_type", "version"],
+    selectColumns: ["workflow_type", "version", "definition_hash", "definition_json"],
+    filterWorkstream: false,
+    async load() {
+      const list = await repository.list();
+      return list.map((item) => {
+        const { definitionHash, ...definition } = item;
+        return {
+          key: `${item.workflowType}@${item.version}`,
+          columns: {
+            organization_id: options.organizationId,
+            workstream_id: null,
+            workflow_type: item.workflowType,
+            version: item.version,
+            definition_hash: definitionHash,
+            definition_json: definition
+          },
+          jsonColumns: ["definition_json"],
+          aggregate: { ...definition, definitionHash }
+        };
+      });
+    },
+    fromRow(row) {
+      const definition = parseJsonColumn(row.definition_json);
+      return {
+        key: `${row.workflow_type}@${row.version}`,
+        aggregate: { ...definition, definitionHash: row.definition_hash }
+      };
+    }
+  };
+}
+function workflowInstancePlan(options) {
+  const repository = new FilesystemWorkflowInstanceRepository(new FilesystemProjectionReader(options.dataRoot));
+  return {
+    context: "workflow-instance",
+    table: "workflow_instances",
+    primaryKey: ["organization_id", "workstream_id", "namespace_id", "workflow_id"],
+    selectColumns: ["namespace_id", "workflow_id", "instance_json", "projection_json"],
+    filterWorkstream: true,
+    async load() {
+      const records = [];
+      for (const namespaceId of await listDirectoryNames(join8(options.dataRoot, "workflows"))) {
+        const snapshots = await repository.list(namespaceId);
+        for (const projection of snapshots) {
+          const snapshot = await repository.get(namespaceId, projection.workflowId);
+          if (!snapshot) continue;
+          const createdAt = snapshot.instance?.createdAt ?? (/* @__PURE__ */ new Date(0)).toISOString();
+          records.push({
+            key: `${namespaceId}/${projection.workflowId}`,
+            columns: {
+              organization_id: options.organizationId,
+              workstream_id: options.workstreamId,
+              namespace_id: namespaceId,
+              workflow_id: projection.workflowId,
+              revision: Number.isSafeInteger(snapshot.instance?.revision) ? snapshot.instance.revision : 1,
+              status: "active",
+              instance_json: snapshot.instance,
+              projection_json: snapshot.projection,
+              creation_command_hash: snapshot.instance?.creationCommandHash ?? null,
+              created_at: createdAt,
+              updated_at: createdAt
+            },
+            jsonColumns: ["instance_json", "projection_json"],
+            aggregate: { instance: snapshot.instance, projection: snapshot.projection }
+          });
+        }
+      }
+      return records;
+    },
+    fromRow(row) {
+      return {
+        key: `${row.namespace_id}/${row.workflow_id}`,
+        aggregate: {
+          instance: parseJsonColumn(row.instance_json),
+          projection: parseJsonColumn(row.projection_json)
+        }
+      };
+    }
+  };
+}
+function workflowEvidencePlan(options) {
+  const repository = new FilesystemWorkflowEvidenceRepository(new FilesystemEvidenceReader(options.dataRoot));
+  return {
+    context: "workflow-evidence",
+    table: "workflow_evidence",
+    primaryKey: ["organization_id", "workstream_id", "namespace_id", "workflow_id", "evidence_id"],
+    selectColumns: ["namespace_id", "workflow_id", "evidence_id", "payload"],
+    filterWorkstream: true,
+    async load() {
+      const records = [];
+      for (const namespaceId of await listDirectoryNames(join8(options.dataRoot, "workflows"))) {
+        for (const storageId of await listDirectoryNames(join8(options.dataRoot, "workflows", namespaceId))) {
+          const list = await repository.list(namespaceId, storageId);
+          for (const record2 of list) {
+            records.push({
+              key: `${namespaceId}/${record2.workflowId}/${record2.evidenceId}`,
+              columns: {
+                organization_id: options.organizationId,
+                workstream_id: options.workstreamId,
+                namespace_id: namespaceId,
+                workflow_id: record2.workflowId,
+                evidence_id: record2.evidenceId,
+                evidence_type: record2.kind ?? "unknown",
+                source: evidenceSourceOf(record2),
+                producer: evidenceProducerOf(record2),
+                payload: record2,
+                created_at: record2.observedAt ?? (/* @__PURE__ */ new Date(0)).toISOString()
+              },
+              jsonColumns: ["payload"],
+              aggregate: record2
+            });
+          }
+        }
+      }
+      return records;
+    },
+    fromRow(row) {
+      return {
+        key: `${row.namespace_id}/${row.workflow_id}/${row.evidence_id}`,
+        aggregate: parseJsonColumn(row.payload)
+      };
+    }
+  };
+}
+function workflowHumanInteractionPlan(options) {
+  const repository = new FilesystemWorkflowHumanInteractionRepository(
+    new FilesystemInteractionReader(options.dataRoot)
+  );
+  return {
+    context: "workflow-human-interaction",
+    table: "human_interactions",
+    primaryKey: ["organization_id", "workstream_id", "namespace_id", "workflow_id", "interaction_id"],
+    selectColumns: ["namespace_id", "workflow_id", "interaction_id", "payload"],
+    filterWorkstream: true,
+    async load() {
+      const records = [];
+      for (const namespaceId of await listDirectoryNames(join8(options.dataRoot, "workflows"))) {
+        for (const storageId of await listDirectoryNames(join8(options.dataRoot, "workflows", namespaceId))) {
+          const list = await repository.list(namespaceId, storageId);
+          for (const record2 of list) {
+            records.push({
+              key: `${namespaceId}/${record2.workflowId}/${record2.interactionId}`,
+              columns: {
+                organization_id: options.organizationId,
+                workstream_id: options.workstreamId,
+                namespace_id: namespaceId,
+                workflow_id: record2.workflowId,
+                interaction_id: record2.interactionId,
+                interaction_type: record2.interactionType ?? record2.kind ?? "unknown",
+                status: interactionDbStatus(record2.status),
+                revision: Number.isSafeInteger(record2.revision) && record2.revision >= 1 ? record2.revision : 1,
+                payload: record2
+              },
+              jsonColumns: ["payload"],
+              aggregate: record2
+            });
+          }
+        }
+      }
+      return records;
+    },
+    fromRow(row) {
+      return {
+        key: `${row.namespace_id}/${row.workflow_id}/${row.interaction_id}`,
+        aggregate: parseJsonColumn(row.payload)
+      };
+    }
+  };
+}
+function agentStepAttemptPlan(options) {
+  const repository = new FilesystemAgentStepAttemptRepository(new AgentStepAttemptStore(options.dataRoot));
+  return {
+    context: "agent-step-attempt",
+    table: "agent_step_attempts",
+    primaryKey: ["organization_id", "workstream_id", "namespace_id", "workflow_id", "step_id", "attempt_id"],
+    selectColumns: ["namespace_id", "workflow_id", "step_id", "attempt_id", "payload"],
+    filterWorkstream: true,
+    async load() {
+      const records = [];
+      for (const namespaceId of await listDirectoryNames(join8(options.dataRoot, "workflows"))) {
+        for (const storageId of await listDirectoryNames(join8(options.dataRoot, "workflows", namespaceId))) {
+          const events = await repository.list(namespaceId, storageId);
+          if (events.length === 0) continue;
+          const latest = /* @__PURE__ */ new Map();
+          for (const attempt of events) {
+            const previous = latest.get(attempt.attemptId);
+            latest.set(attempt.attemptId, { attempt, revision: (previous?.revision ?? 0) + 1 });
+          }
+          for (const { attempt, revision } of latest.values()) {
+            records.push({
+              key: `${namespaceId}/${attempt.workflowId}/${storageId}/${attempt.attemptId}`,
+              columns: {
+                organization_id: options.organizationId,
+                workstream_id: options.workstreamId,
+                namespace_id: namespaceId,
+                workflow_id: attempt.workflowId,
+                step_id: storageId,
+                attempt_id: attempt.attemptId,
+                agent_id: attempt.agentName ?? "unknown",
+                status: ATTEMPT_DB_STATUS2[attempt.status] ?? "running",
+                revision,
+                idempotency_key: null,
+                payload: attempt
+              },
+              jsonColumns: ["payload"],
+              aggregate: attempt
+            });
+          }
+        }
+      }
+      return records;
+    },
+    fromRow(row) {
+      return {
+        key: `${row.namespace_id}/${row.workflow_id}/${row.step_id}/${row.attempt_id}`,
+        aggregate: parseJsonColumn(row.payload)
+      };
+    }
+  };
+}
+function agentStepResultPlan(options) {
+  const repository = new FilesystemAgentStepResultRepository(new AgentStepResultStore(options.dataRoot));
+  return {
+    context: "agent-step-result",
+    table: "agent_step_results",
+    primaryKey: ["organization_id", "workstream_id", "namespace_id", "workflow_id", "step_id", "attempt_id", "result_id"],
+    selectColumns: ["namespace_id", "workflow_id", "step_id", "result_id", "payload"],
+    filterWorkstream: true,
+    async load() {
+      const records = [];
+      for (const namespaceId of await listDirectoryNames(join8(options.dataRoot, "workflows"))) {
+        for (const storageId of await listDirectoryNames(join8(options.dataRoot, "workflows", namespaceId))) {
+          const events = await repository.list(namespaceId, storageId);
+          for (const event of events) {
+            if (event.type !== "result-submitted") continue;
+            records.push({
+              key: `${namespaceId}/${event.workflowId}/${storageId}/${event.resultId}`,
+              columns: {
+                organization_id: options.organizationId,
+                workstream_id: options.workstreamId,
+                namespace_id: namespaceId,
+                workflow_id: event.workflowId,
+                step_id: storageId,
+                attempt_id: event.attemptId,
+                result_id: event.resultId,
+                result_status: RESULT_DB_STATUS2[event.status] ?? "success",
+                semantic_signature: event.resultHash ?? null,
+                payload: event,
+                created_at: event.submittedAt ?? (/* @__PURE__ */ new Date(0)).toISOString()
+              },
+              jsonColumns: ["payload"],
+              aggregate: event
+            });
+          }
+        }
+      }
+      return records;
+    },
+    fromRow(row) {
+      return {
+        key: `${row.namespace_id}/${row.workflow_id}/${row.step_id}/${row.result_id}`,
+        aggregate: parseJsonColumn(row.payload)
+      };
+    }
+  };
+}
+function oracleExecutionPlan(options) {
+  const registry2 = new OracleDefinitionRegistry(options.oraclesRoot);
+  return {
+    context: "oracle-execution",
+    table: "oracle_executions",
+    primaryKey: ["organization_id", "workstream_id", "namespace_id", "workflow_id", "execution_id"],
+    selectColumns: ["execution_id", "payload"],
+    filterWorkstream: true,
+    async load() {
+      try {
+        await registry2.initialize();
+      } catch (error2) {
+        if (error2?.code === "ENOENT") return [];
+        throw error2;
+      }
+      const repository = new FilesystemOracleExecutionRepository(registry2);
+      const list = await repository.list();
+      return list.map((definition) => ({
+        key: `${definition.id}@${definition.version}`,
+        columns: {
+          organization_id: options.organizationId,
+          workstream_id: options.workstreamId,
+          namespace_id: "oracle-registry",
+          workflow_id: definition.id,
+          execution_id: `${definition.id}@${definition.version}`,
+          oracle_id: definition.id,
+          status: "succeeded",
+          revision: 1,
+          evidence_id: null,
+          artifact_id: null,
+          payload: definition
+        },
+        jsonColumns: ["payload"],
+        aggregate: definition
+      }));
+    },
+    fromRow(row) {
+      return { key: String(row.execution_id), aggregate: parseJsonColumn(row.payload) };
+    }
+  };
+}
+function workEnvironmentPlan(options) {
+  const store = new WorkUnitEnvironmentStore(options.dataRoot);
+  return {
+    context: "work-environment",
+    table: "work_environments",
+    primaryKey: ["organization_id", "workstream_id", "environment_id"],
+    selectColumns: ["environment_id", "payload"],
+    filterWorkstream: true,
+    async load() {
+      await store.initialize();
+      const repository = new FilesystemWorkEnvironmentRepository(store);
+      const records = [];
+      for (const namespaceId of await listDirectoryNames(join8(options.dataRoot, "environments"))) {
+        const snapshots = await repository.list(namespaceId);
+        for (const snapshot of snapshots) {
+          const environment = snapshot.environment;
+          records.push({
+            key: `${environment.namespaceId}/${environment.environmentId}`,
+            columns: {
+              organization_id: options.organizationId,
+              workstream_id: options.workstreamId,
+              environment_id: environment.environmentId,
+              env_type: "work-unit-environment",
+              status: ENVIRONMENT_DB_STATUS[environment.lifecycleState] ?? "busy",
+              revision: snapshot.revision,
+              payload: environment
+            },
+            jsonColumns: ["payload"],
+            aggregate: environment
+          });
+        }
+      }
+      return records;
+    },
+    fromRow(row) {
+      const environment = parseJsonColumn(row.payload);
+      return { key: `${environment.namespaceId}/${row.environment_id}`, aggregate: environment };
+    }
+  };
+}
+function deliveryPlan(options) {
+  const store = new DeliveryStore(options.dataRoot);
+  const repository = new FilesystemDeliveryRepository(store);
+  return {
+    context: "delivery",
+    table: "deliveries",
+    primaryKey: ["organization_id", "workstream_id", "namespace_id", "delivery_id"],
+    selectColumns: ["namespace_id", "delivery_id", "payload"],
+    filterWorkstream: true,
+    async load() {
+      const records = [];
+      const deliveriesRoot = join8(options.dataRoot, "deliveries");
+      for (const namespaceId of await listDirectoryNames(deliveriesRoot)) {
+        for (const directory of await listDirectoryNames(join8(deliveriesRoot, namespaceId))) {
+          const raw = await readJsonIfExists(join8(deliveriesRoot, namespaceId, directory, "delivery.json"));
+          if (!raw?.deliveryId) continue;
+          const snapshot = await repository.read(namespaceId, raw.deliveryId);
+          if (!snapshot) continue;
+          records.push({
+            key: `${namespaceId}/${snapshot.deliveryId}`,
+            columns: {
+              organization_id: options.organizationId,
+              workstream_id: options.workstreamId,
+              namespace_id: namespaceId,
+              delivery_id: snapshot.deliveryId,
+              revision: Number.isSafeInteger(snapshot.revision) ? snapshot.revision : 1,
+              stage: snapshot.stage ?? "unknown",
+              payload: snapshot
+            },
+            jsonColumns: ["payload"],
+            aggregate: snapshot
+          });
+        }
+      }
+      return records;
+    },
+    fromRow(row) {
+      return {
+        key: `${row.namespace_id}/${row.delivery_id}`,
+        aggregate: parseJsonColumn(row.payload)
+      };
+    }
+  };
+}
+function buildPlans(options) {
+  return [
+    workflowDefinitionPlan(options),
+    workflowInstancePlan(options),
+    workflowEvidencePlan(options),
+    workflowHumanInteractionPlan(options),
+    agentStepAttemptPlan(options),
+    agentStepResultPlan(options),
+    oracleExecutionPlan(options),
+    workEnvironmentPlan(options),
+    deliveryPlan(options)
+  ];
+}
+function resolveOptions(options) {
+  const dataRoot = options.dataRoot;
+  if (typeof dataRoot !== "string" || dataRoot.length === 0) throw new Error("ONE_SHOT_IMPORT_INVALID_DATA_ROOT");
+  return {
+    dataRoot,
+    organizationId: options.organizationId ?? DEFAULT_ORGANIZATION_ID,
+    workstreamId: options.workstreamId ?? DEFAULT_WORKSTREAM_ID,
+    definitionsRoot: options.definitionsRoot ?? join8(dataRoot, "definitions"),
+    oraclesRoot: options.oraclesRoot ?? join8(dataRoot, "oracles")
+  };
+}
+async function writeRecord(tx, plan, record2) {
+  const columns = Object.keys(record2.columns);
+  const placeholders = columns.map(
+    (column, index) => record2.jsonColumns.includes(column) ? `$${index + 1}::jsonb` : `$${index + 1}`
+  );
+  const params = columns.map(
+    (column) => record2.jsonColumns.includes(column) ? JSON.stringify(record2.columns[column]) : record2.columns[column]
+  );
+  const updates = columns.filter((column) => !plan.primaryKey.includes(column));
+  const conflict = updates.length ? `ON CONFLICT (${plan.primaryKey.join(", ")}) DO UPDATE SET ${updates.map((column) => `${column} = EXCLUDED.${column}`).join(", ")}` : "ON CONFLICT DO NOTHING";
+  await tx.query(
+    `INSERT INTO ${plan.table} (${columns.join(", ")}) VALUES (${placeholders.join(", ")}) ${conflict}`,
+    params
+  );
+}
+async function readSql(client, plan, options) {
+  const where = plan.filterWorkstream ? "WHERE organization_id = $1 AND workstream_id = $2" : "WHERE organization_id = $1";
+  const params = plan.filterWorkstream ? [options.organizationId, options.workstreamId] : [options.organizationId];
+  const { rows } = await client.query(
+    `SELECT ${plan.selectColumns.join(", ")} FROM ${plan.table} ${where}`,
+    params
+  );
+  return rows.map((row) => plan.fromRow(row));
+}
+async function runOneShotImport(options) {
+  const resolved = resolveOptions(options);
+  for (const plan of buildPlans(resolved)) {
+    const records = await plan.load(resolved);
+    if (records.length === 0) continue;
+    await withTransaction(options.sqlClient, async (tx) => {
+      for (const record2 of records) await writeRecord(tx, plan, record2);
+    });
+  }
+  return verifyImport(options);
+}
+async function verifyImport(options) {
+  const resolved = resolveOptions(options);
+  const contexts = {};
+  let totalFilesystemAggregates = 0;
+  let totalSqlAggregates = 0;
+  let ok = true;
+  for (const plan of buildPlans(resolved)) {
+    const filesystem = await plan.load(resolved);
+    const sql = await readSql(options.sqlClient, plan, resolved);
+    const filesystemByKey = new Map(filesystem.map((record2) => [record2.key, record2.aggregate]));
+    const sqlByKey = new Map(sql.map((record2) => [record2.key, record2.aggregate]));
+    const discrepancies = [];
+    for (const [key, aggregate] of filesystemByKey) {
+      const filesystemHash = computeCanonicalHash(aggregate);
+      if (!sqlByKey.has(key)) {
+        discrepancies.push({ key, reason: "MISSING_IN_SQL", filesystemHash });
+        continue;
+      }
+      const sqlHash = computeCanonicalHash(sqlByKey.get(key));
+      if (sqlHash !== filesystemHash)
+        discrepancies.push({ key, reason: "HASH_MISMATCH", filesystemHash, sqlHash });
+    }
+    for (const [key, aggregate] of sqlByKey) {
+      if (!filesystemByKey.has(key)) discrepancies.push({ key, reason: "MISSING_IN_FILESYSTEM", sqlHash: computeCanonicalHash(aggregate) });
+    }
+    if (filesystem.length !== sql.length && discrepancies.length === 0)
+      discrepancies.push({
+        key: plan.context,
+        reason: "COUNT_MISMATCH",
+        filesystemHash: `count:${filesystem.length}`,
+        sqlHash: `count:${sql.length}`
+      });
+    const contextOk = filesystem.length === sql.length && discrepancies.length === 0;
+    contexts[plan.context] = {
+      context: plan.context,
+      filesystemCount: filesystem.length,
+      sqlCount: sql.length,
+      ok: contextOk,
+      discrepancies
+    };
+    totalFilesystemAggregates += filesystem.length;
+    totalSqlAggregates += sql.length;
+    if (!contextOk) ok = false;
+  }
+  return { ok, contexts, totalFilesystemAggregates, totalSqlAggregates };
+}
+function hashVerificationReport(report) {
+  return createHash16("sha256").update(JSON.stringify(report)).digest("hex");
+}
+
 // ../src/application/shutdown.ts
 function createShutdownController(deps) {
   let initiated = false;
@@ -6208,16 +7697,16 @@ function runAgentTurn(caseId, agentName, brief, options) {
 }
 
 // ../src/application/agent-attempt/factory-agent-step-executor.ts
-import { createHash as createHash14, randomUUID as randomUUID9 } from "node:crypto";
-import { mkdir as mkdir2, open as open2, readFile as readFile2, rename as rename2, rm as rm2, stat } from "node:fs/promises";
-import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2 } from "node:path";
+import { createHash as createHash17, randomUUID as randomUUID9 } from "node:crypto";
+import { mkdir as mkdir4, open as open4, readFile as readFile6, rename as rename4, rm as rm4, stat } from "node:fs/promises";
+import { isAbsolute as isAbsolute4, join as join9, relative as relative2, resolve as resolve2 } from "node:path";
 var MAX_INLINE_ARTIFACT_BYTES = 256 * 1024;
 var STRUCTURED_RESULT_FINALIZATION_BRIEF = "Do no new analysis or work. Perform no reads, writes, delegation, queryUser, or oracle calls. Using only the work already completed in this case, call FACTORY__submit_step_result exactly once. Your normal assistant message is non-authoritative.";
 var diagnostic = (value, fallback) => String(value ?? fallback).replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").slice(0, 1e3);
 var safeSegment = (value) => typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value) && value !== "." && value !== "..";
 var inside = (root, target) => {
-  const rel = relative(root, target);
-  return rel === "" || !rel.startsWith("..") && !isAbsolute2(rel);
+  const rel = relative2(root, target);
+  return rel === "" || !rel.startsWith("..") && !isAbsolute4(rel);
 };
 function defaultAgentStepOperations() {
   return {
@@ -6229,7 +7718,7 @@ function defaultAgentStepOperations() {
     runAgentTurn
   };
 }
-var artifactEvidenceIdempotencyKey = (attemptId, artifactPath) => `${attemptId}:artifact:${createHash14("sha256").update(String(artifactPath).split("\\").join("/")).digest("hex")}`;
+var artifactEvidenceIdempotencyKey = (attemptId, artifactPath) => `${attemptId}:artifact:${createHash17("sha256").update(String(artifactPath).split("\\").join("/")).digest("hex")}`;
 function extractSingleJsonObject(message) {
   const text2 = String(message ?? "").trim();
   const fence = [...text2.matchAll(/```json\s*([\s\S]*?)\s*```/gi)];
@@ -6298,12 +7787,12 @@ async function verifyArtifacts(result, repoRoot, expectedKind) {
     return { ok: false, code: "EXPECTED_ARTIFACT_MISSING" };
   const verified = [];
   for (const artifact2 of artifacts) {
-    if (isAbsolute2(artifact2.path)) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
+    if (isAbsolute4(artifact2.path)) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
     const absolute = resolve2(repoRoot, artifact2.path);
-    if (relative(repoRoot, absolute).startsWith("..")) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
+    if (relative2(repoRoot, absolute).startsWith("..")) return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
     try {
       if (!(await stat(absolute)).isFile()) return { ok: false, code: "ARTIFACT_NOT_FILE" };
-      const content = await readFile2(absolute);
+      const content = await readFile6(absolute);
       verified.push({ ...artifact2, hash: sha256(content) });
     } catch {
       return { ok: false, code: "ARTIFACT_MISSING" };
@@ -6347,30 +7836,30 @@ async function materializeInlineArtifact({
   const finalPath = resolve2(directory, `${attemptId}.md`);
   if (!inside(root, zone) || !inside(zone, workflowDirectory) || !inside(workflowDirectory, directory) || !inside(directory, finalPath))
     return { ok: false, code: "ARTIFACT_OUT_OF_SCOPE" };
-  await mkdir2(directory, { recursive: true });
-  const artifactPath = relative(root, finalPath).split("\\").join("/");
+  await mkdir4(directory, { recursive: true });
+  const artifactPath = relative2(root, finalPath).split("\\").join("/");
   const verified = (persisted) => persisted.equals(content) ? { ok: true, artifacts: [{ kind: expectedKind, path: artifactPath, hash: sha256(persisted) }] } : { ok: false, code: "ARTIFACT_SEMANTIC_COLLISION" };
   try {
-    return verified(await readFile2(finalPath));
+    return verified(await readFile6(finalPath));
   } catch (error2) {
     if (error2?.code !== "ENOENT")
       return { ok: false, code: "ARTIFACT_MATERIALIZATION_FAILED" };
   }
-  const temporary = join5(directory, `.${stepId}.${randomUUID9()}.tmp`);
+  const temporary = join9(directory, `.${stepId}.${randomUUID9()}.tmp`);
   let handle = null;
   try {
-    handle = await open2(temporary, "wx", 384);
+    handle = await open4(temporary, "wx", 384);
     await handle.writeFile(content);
     await handle.sync();
     await handle.close();
     handle = null;
     try {
-      await rename2(temporary, finalPath);
+      await rename4(temporary, finalPath);
     } catch (error2) {
       if (error2?.code !== "EEXIST") throw error2;
-      return verified(await readFile2(finalPath));
+      return verified(await readFile6(finalPath));
     }
-    const persisted = await readFile2(finalPath);
+    const persisted = await readFile6(finalPath);
     if (!persisted.equals(content)) return { ok: false, code: "ARTIFACT_WRITE_MISMATCH" };
     return verified(persisted);
   } catch {
@@ -6378,7 +7867,7 @@ async function materializeInlineArtifact({
   } finally {
     if (handle) await handle.close().catch(() => {
     });
-    await rm2(temporary, { force: true }).catch(() => {
+    await rm4(temporary, { force: true }).catch(() => {
     });
   }
 }
@@ -6777,24 +8266,9 @@ function diffSnapshots(before, after) {
   return { modified, untracked };
 }
 
-// ../src/application/oracle/oracle-definition-registry.ts
-import { readFile as readFile3, readdir as readdir2 } from "node:fs/promises";
-import { join as join6 } from "node:path";
-function createFilesystemOracleDefinitionSource(root) {
-  return {
-    listFiles: () => readdir2(root),
-    readFile: (fileName) => readFile3(join6(root, fileName), "utf8")
-  };
-}
-var OracleDefinitionRegistry = class extends OracleDefinitionRegistryCore {
-  constructor(root) {
-    super(createFilesystemOracleDefinitionSource(root));
-  }
-};
-
 // ../src/application/oracle/oracle-command.ts
 import { existsSync, readFileSync } from "node:fs";
-import { dirname as dirname3, join as join7 } from "node:path";
+import { dirname as dirname5, join as join10 } from "node:path";
 function resolveBuildHosts(ownerProjects, repoRoot) {
   const mapRaw = process.env.FACTORY_FRONT_BUILD_HOST_MAP;
   if (!mapRaw) {
@@ -6845,9 +8319,9 @@ function resolveBuildHosts(ownerProjects, repoRoot) {
   const invalidHosts = [];
   for (const host of hosts) {
     const candidatePaths = [
-      join7(repoRoot, "apps", host, "project.json"),
-      join7(repoRoot, "frontend", "apps", host, "project.json"),
-      join7(repoRoot, host, "project.json")
+      join10(repoRoot, "apps", host, "project.json"),
+      join10(repoRoot, "frontend", "apps", host, "project.json"),
+      join10(repoRoot, host, "project.json")
     ];
     let hasBuildTarget = false;
     let found = false;
@@ -6893,10 +8367,10 @@ function resolveOwnerProjects(files, repoRoot) {
   const seen = /* @__PURE__ */ new Set();
   const projects = [];
   for (const file of files) {
-    const absoluteFile = join7(repoRoot, file);
-    let dir = dirname3(absoluteFile);
+    const absoluteFile = join10(repoRoot, file);
+    let dir = dirname5(absoluteFile);
     while (dir.length >= repoRoot.length) {
-      const candidate = join7(dir, "project.json");
+      const candidate = join10(dir, "project.json");
       if (existsSync(candidate)) {
         try {
           const json = JSON.parse(readFileSync(candidate, "utf8"));
@@ -6910,7 +8384,7 @@ function resolveOwnerProjects(files, repoRoot) {
         }
         break;
       }
-      const parent = dirname3(dir);
+      const parent = dirname5(dir);
       if (parent === dir) break;
       dir = parent;
     }
@@ -6975,10 +8449,10 @@ function buildOracleCommand(oracle, files, repoRoot) {
 
 // ../src/application/oracle/oracle-executor.ts
 import { spawn, spawnSync } from "node:child_process";
-import { createHash as createHash15 } from "node:crypto";
+import { createHash as createHash18 } from "node:crypto";
 import { readFileSync as readFileSync2 } from "node:fs";
-import { realpath } from "node:fs/promises";
-import { isAbsolute as isAbsolute3, join as join8 } from "node:path";
+import { realpath as realpath2 } from "node:fs/promises";
+import { isAbsolute as isAbsolute5, join as join11 } from "node:path";
 var MAX_OUTPUT_CHARS = 1e5;
 var LIMIT = 16384;
 function truncate(s) {
@@ -7009,7 +8483,7 @@ function runCommand(command, { cwd, timeoutMs } = {}) {
 }
 function contentFingerprint(cwd, relPath) {
   try {
-    return createHash15("sha256").update(readFileSync2(join8(cwd, relPath))).digest("hex");
+    return createHash18("sha256").update(readFileSync2(join11(cwd, relPath))).digest("hex");
   } catch {
     return "unreadable";
   }
@@ -7039,12 +8513,12 @@ function classifyOracleExecution(definition, result) {
   return { classification: "CLEAN", outcome: "pass" };
 }
 async function validateOracleRoot(repoRoot) {
-  if (typeof repoRoot !== "string" || !isAbsolute3(repoRoot))
+  if (typeof repoRoot !== "string" || !isAbsolute5(repoRoot))
     throw Object.assign(new Error("INVALID_ORACLE_ROOT"), { code: "INVALID_ORACLE_ROOT" });
-  return realpath(repoRoot);
+  return realpath2(repoRoot);
 }
 function oracleRootIdentity(repoRoot) {
-  return `sha256:${createHash15("sha256").update(repoRoot).digest("hex")}`;
+  return `sha256:${createHash18("sha256").update(repoRoot).digest("hex")}`;
 }
 function processEnvironment(source = process.env) {
   const env = {};
@@ -7117,7 +8591,7 @@ ${err.excerpt}`);
 }
 function oracleArtifact(result) {
   const raw = JSON.stringify({ stdout: result.stdout.excerpt, stderr: result.stderr.excerpt });
-  return { raw, hash: `sha256:${createHash15("sha256").update(raw).digest("hex")}` };
+  return { raw, hash: `sha256:${createHash18("sha256").update(raw).digest("hex")}` };
 }
 
 // ../src/application/oracle/oracle-baseline.ts
@@ -7455,291 +8929,6 @@ function buildQuarantineRecord(params) {
   };
 }
 
-// ../src/adapters/persistence/work-unit-environment-store.ts
-import { createHash as createHash16, randomBytes as randomBytes5 } from "node:crypto";
-import { appendFile as appendFile2, lstat, mkdir as mkdir3, open as open3, readFile as readFile4, readdir as readdir3, realpath as realpath2, rename as rename3, rm as rm3 } from "node:fs/promises";
-import { dirname as dirname4, isAbsolute as isAbsolute4, join as join9, relative as relative2, sep } from "node:path";
-var ENVIRONMENT_STORE_ERROR_CODES = Object.freeze({
-  INVALID_DATA_ROOT: "INVALID_DATA_ROOT",
-  INVALID_ENVIRONMENT: "INVALID_ENVIRONMENT",
-  INVALID_NAMESPACE: "INVALID_NAMESPACE",
-  NOT_FOUND: "NOT_FOUND",
-  REVISION_CONFLICT: "REVISION_CONFLICT",
-  INVALID_TRANSITION: "INVALID_TRANSITION",
-  CORRUPT_STORAGE: "CORRUPT_STORAGE"
-});
-var WorkUnitEnvironmentStoreError = class extends Error {
-  code;
-  details;
-  constructor(code, details = {}, cause) {
-    super(code, cause ? { cause } : void 0);
-    this.code = code;
-    this.details = details;
-  }
-};
-var digest2 = (value) => createHash16("sha256").update(value).digest("hex");
-var snapshotHash2 = (e) => digest2(JSON.stringify(e, Object.keys(e).sort()));
-var contained = (root, path) => {
-  const r = relative2(root, path);
-  return r !== "" && !r.startsWith(`..${sep}`) && r !== ".." && !isAbsolute4(r);
-};
-async function syncDir(p) {
-  const h = await open3(p, "r");
-  try {
-    await h.sync();
-  } finally {
-    await h.close();
-  }
-}
-async function atomic(p, v) {
-  await mkdir3(dirname4(p), { recursive: true });
-  const t = `${p}.tmp-${process.pid}-${randomBytes5(6).toString("hex")}`;
-  const h = await open3(t, "wx", 384);
-  try {
-    await h.writeFile(`${JSON.stringify(v)}
-`);
-    await h.sync();
-  } finally {
-    await h.close();
-  }
-  await rename3(t, p);
-  await syncDir(dirname4(p));
-}
-async function append(p, v) {
-  await appendFile2(p, `${JSON.stringify(v)}
-`, { encoding: "utf8", mode: 384 });
-  const h = await open3(p, "r");
-  try {
-    await h.sync();
-  } finally {
-    await h.close();
-  }
-}
-var WorkUnitEnvironmentStore = class {
-  dataRoot;
-  fault;
-  locks;
-  root;
-  constructor(dataRoot, { fault = async () => {
-  } } = {}) {
-    if (typeof dataRoot !== "string" || !isAbsolute4(dataRoot))
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_DATA_ROOT);
-    this.dataRoot = dataRoot;
-    this.fault = fault;
-    this.locks = /* @__PURE__ */ new Map();
-    this.root = null;
-  }
-  async initialize() {
-    await mkdir3(join9(this.dataRoot, "environments"), { recursive: true });
-    this.root = await realpath2(join9(this.dataRoot, "environments"));
-  }
-  async _safeDirectory(path, { missing = true } = {}) {
-    let stat2;
-    try {
-      stat2 = await lstat(path);
-    } catch (error2) {
-      if (error2?.code === "ENOENT" && missing) return false;
-      throw new WorkUnitEnvironmentStoreError(
-        ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE,
-        { artifact: "path" },
-        error2
-      );
-    }
-    if (stat2.isSymbolicLink() || !stat2.isDirectory())
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
-        artifact: "unsafe_path"
-      });
-    const canonical6 = await realpath2(path);
-    if (path !== this.root && !contained(this.root, canonical6))
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
-        artifact: "path_escape"
-      });
-    return true;
-  }
-  async _guard(p, { environmentMayBeMissing = true } = {}) {
-    await this._safeDirectory(this.root, { missing: false });
-    const namespaceDirectory = dirname4(p.directory);
-    const namespaceExists = await this._safeDirectory(namespaceDirectory, { missing: true });
-    if (!namespaceExists) return;
-    await this._safeDirectory(p.directory, { missing: environmentMayBeMissing });
-  }
-  _namespace(ns) {
-    if (!validateNamespaceId(ns).ok)
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_NAMESPACE);
-  }
-  paths(ns, id2) {
-    this._namespace(ns);
-    if (!this.root || typeof id2 !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id2))
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
-    const directory = join9(this.root, ns, digest2(`${ns}:${id2}`));
-    if (!contained(this.root, directory))
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.INVALID_ENVIRONMENT);
-    return {
-      directory,
-      snapshot: join9(directory, "environment.json"),
-      events: join9(directory, "events.jsonl"),
-      pending: join9(directory, "pending.json")
-    };
-  }
-  _locked(ns, id2, fn) {
-    this._namespace(ns);
-    const k = `${ns}\0${id2}`;
-    const p = this.locks.get(k) ?? Promise.resolve();
-    const o = p.then(fn);
-    const t = o.catch(() => {
-    });
-    this.locks.set(k, t);
-    return o.finally(() => {
-      if (this.locks.get(k) === t) this.locks.delete(k);
-    });
-  }
-  async _json(p, missing = null) {
-    try {
-      return JSON.parse(await readFile4(p, "utf8"));
-    } catch (e) {
-      if (e?.code === "ENOENT") return missing;
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {}, e);
-    }
-  }
-  async _recover(p, ns, id2) {
-    const q = await this._json(p.pending);
-    if (!q) return;
-    const valid = q && Number.isSafeInteger(q.revision) && q.revision > 0 && q.environment?.namespaceId === ns && q.environment?.environmentId === id2 && validateWorkUnitEnvironment(q.environment).ok && q.environmentHash === snapshotHash2(q.environment);
-    if (!valid)
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "pending" });
-    let facts;
-    try {
-      facts = (await readFile4(p.events, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    } catch (e) {
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, { artifact: "journal" }, e);
-    }
-    if (!facts.some((f) => f.revision === q.revision && f.environmentId === id2 && f.environmentHash === q.environmentHash))
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE, {
-        artifact: "recovery_binding"
-      });
-    await atomic(p.snapshot, q);
-    await rm3(p.pending);
-    await syncDir(p.directory);
-  }
-  async read(ns, id2) {
-    this._namespace(ns);
-    const p = this.paths(ns, id2);
-    await this._guard(p);
-    await this._recover(p, ns, id2);
-    const s = await this._json(p.snapshot);
-    if (!s) return null;
-    if (!Number.isSafeInteger(s.revision) || s.environmentHash !== snapshotHash2(s.environment) || !validateWorkUnitEnvironment(s.environment).ok)
-      throw new WorkUnitEnvironmentStoreError(ENVIRONMENT_STORE_ERROR_CODES.CORRUPT_STORAGE);
-    return s;
-  }
-  async list(ns, { states } = {}) {
-    this._namespace(ns);
-    let es;
-    const root = join9(this.root, ns);
-    const probe = this.paths(ns, "list-probe");
-    await this._guard(probe);
-    try {
-      es = await readdir3(root, { withFileTypes: true });
-    } catch (e) {
-      if (e?.code === "ENOENT") return [];
-      throw e;
-    }
-    const out = [];
-    for (const x of es) {
-      const d = join9(root, x.name);
-      const p = {
-        directory: d,
-        snapshot: join9(d, "environment.json"),
-        events: join9(d, "events.jsonl"),
-        pending: join9(d, "pending.json")
-      };
-      await this._guard(p, { environmentMayBeMissing: false });
-      const pending = await this._json(p.pending);
-      if (pending) await this._recover(p, ns, pending.environment?.environmentId);
-      const s = await this._json(p.snapshot);
-      if (s && s.environment.namespaceId === ns && (!states || states.includes(s.environment.lifecycleState)))
-        out.push(s);
-    }
-    return out;
-  }
-  async reserve(e) {
-    const v = validateWorkUnitEnvironment(e);
-    if (!v.ok) return v;
-    this._namespace(v.environment.namespaceId);
-    return this._locked(v.environment.namespaceId, v.environment.environmentId, async () => {
-      const c = await this.read(v.environment.namespaceId, v.environment.environmentId);
-      if (c)
-        return JSON.stringify(c.environment) === JSON.stringify(v.environment) ? { ok: true, changed: false, snapshot: c } : { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
-      return this._write(null, v.environment, "provisioning_reserved");
-    });
-  }
-  async transition(ns, id2, next, { expectedRevision, errorCode: errorCode2 } = {}) {
-    this._namespace(ns);
-    return this._locked(ns, id2, async () => {
-      const c = await this.read(ns, id2);
-      if (!c) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.NOT_FOUND } };
-      if (expectedRevision !== void 0 && expectedRevision !== c.revision)
-        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.REVISION_CONFLICT } };
-      if (JSON.stringify(c.environment) === JSON.stringify(next)) return { ok: true, changed: false, snapshot: c };
-      for (const field of [
-        "schemaVersion",
-        "environmentId",
-        "workUnitId",
-        "workflowId",
-        "namespaceId",
-        "repoRoot",
-        "integrationBranch",
-        "branch",
-        "worktreePath",
-        "baseCommit",
-        "createdAt",
-        "createdBy"
-      ])
-        if (c.environment[field] !== next[field])
-          return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
-      if (c.environment.parentCaseId && next.parentCaseId !== c.environment.parentCaseId)
-        return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
-      const f = c.environment.lifecycleState;
-      const t = next.lifecycleState;
-      const allowed = f === "provisioning" && ["provisioning", "active", "error"].includes(t) || f === "active" && ["completed", "abandoned", "error"].includes(t) || ["completed", "abandoned", "error"].includes(f) && t === "removed";
-      if (!allowed) return { ok: false, error: { code: ENVIRONMENT_STORE_ERROR_CODES.INVALID_TRANSITION } };
-      const v = validateWorkUnitEnvironment(next);
-      if (!v.ok) return v;
-      return this._write(
-        c,
-        v.environment,
-        t === "active" ? "parent_case_bound" : t === "removed" ? "environment_removed" : f === t ? "environment_provisioned" : "environment_state_changed",
-        errorCode2
-      );
-    });
-  }
-  async _write(c, e, kind, errorCode2) {
-    const p = this.paths(e.namespaceId, e.environmentId);
-    await this._guard(p);
-    const revision = (c?.revision ?? 0) + 1;
-    const environmentHash = snapshotHash2(e);
-    const s = { revision, environmentHash, environment: e };
-    await mkdir3(p.directory, { recursive: true });
-    await this._guard(p, { environmentMayBeMissing: false });
-    await atomic(p.pending, s);
-    await this.fault("after-pending");
-    await append(p.events, {
-      kind,
-      revision,
-      environmentId: e.environmentId,
-      environmentHash,
-      lifecycleState: e.lifecycleState,
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      ...errorCode2 ? { errorCode: errorCode2 } : {}
-    });
-    await this.fault("after-journal");
-    await atomic(p.snapshot, s);
-    await this.fault("after-snapshot");
-    await rm3(p.pending, { force: true });
-    return { ok: true, changed: true, snapshot: s };
-  }
-};
-
 // ../src/application/environment/work-unit-environment-service.ts
 import { randomUUID as randomUUID10 } from "node:crypto";
 var machine = (e) => {
@@ -7914,8 +9103,8 @@ var WorkUnitEnvironmentService = class {
 };
 
 // ../src/application/environment/work-unit-environment-controller.ts
-var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-var SAFE7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+var SAFE8 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var ALLOWED2 = /* @__PURE__ */ new Set(["workflowId", "workUnitId", "integrationBranch", "branch"]);
 var error = (send, status, code, message) => send(status, { error: { code, message } });
 var publicEnvironment = (result) => {
@@ -7960,10 +9149,10 @@ var WorkUnitEnvironmentController = class {
     createdBy,
     body
   }) {
-    if (!UUID3.test(namespaceId ?? "") || !UUID3.test(caseId ?? "") || !SAFE7.test(createdBy ?? ""))
+    if (!UUID4.test(namespaceId ?? "") || !UUID4.test(caseId ?? "") || !SAFE8.test(createdBy ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_TRUST_CONTEXT" } };
     const requestBody = body ?? {};
-    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(requestBody).some((key) => !ALLOWED2.has(key)) || !SAFE7.test(requestBody.workflowId ?? "") || !SAFE7.test(requestBody.workUnitId ?? ""))
+    if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(requestBody).some((key) => !ALLOWED2.has(key)) || !SAFE8.test(requestBody.workflowId ?? "") || !SAFE8.test(requestBody.workUnitId ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_ENVIRONMENT_REQUEST" } };
     const roots = await this.policy.resolve(namespaceId, requestBody);
     if (!roots?.repoRoot || !roots?.worktreePath)
@@ -7998,7 +9187,7 @@ var WorkUnitEnvironmentController = class {
     return { ok: true, status: result.changed ? 201 : 200, data: publicEnvironment(inspected) };
   }
   async get(namespaceId, workflowId) {
-    if (!UUID3.test(namespaceId ?? "") || !SAFE7.test(workflowId ?? ""))
+    if (!UUID4.test(namespaceId ?? "") || !SAFE8.test(workflowId ?? ""))
       return { ok: false, status: 400, error: { code: "INVALID_LOOKUP" } };
     const workflow = await this.workflowStore?.read(namespaceId, workflowId);
     const ref2 = workflow?.instance?.environmentRef;
@@ -8179,473 +9368,10 @@ function resolveDeliveryVerificationRequest(request, target) {
   };
 }
 
-// ../src/adapters/persistence/delivery-store.ts
-import { createHash as createHash17, randomBytes as randomBytes6 } from "node:crypto";
-import { appendFile as appendFile3, mkdir as mkdir4, open as open4, readFile as readFile5, rename as rename4, rm as rm4 } from "node:fs/promises";
-import { dirname as dirname5, isAbsolute as isAbsolute5, join as join10 } from "node:path";
-var UUID4 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-var SAFE8 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-var SHA4 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
-var HASH3 = /^sha256:[0-9a-f]{64}$/;
-var canonical4 = (value) => Array.isArray(value) ? value.map(canonical4) : value && typeof value === "object" ? Object.fromEntries(
-  Object.keys(value).filter((key) => value[key] !== void 0).sort().map((key) => [key, canonical4(value[key])])
-) : value;
-var hash3 = (value) => createHash17("sha256").update(JSON.stringify(canonical4(value))).digest("hex");
-async function sync(path) {
-  const handle = await open4(path, "r");
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-}
-async function atomic2(path, value) {
-  await mkdir4(dirname5(path), { recursive: true });
-  const temp = `${path}.tmp-${process.pid}-${randomBytes6(6).toString("hex")}`;
-  const handle = await open4(temp, "wx", 384);
-  try {
-    await handle.writeFile(`${JSON.stringify(value)}
-`);
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
-  await rename4(temp, path);
-  await sync(dirname5(path));
-}
-async function append2(path, value) {
-  await mkdir4(dirname5(path), { recursive: true });
-  await appendFile3(path, `${JSON.stringify(value)}
-`, { mode: 384 });
-  await sync(path);
-}
-var validSnapshot2 = (value) => value !== null && typeof value === "object" && value.schemaVersion === "1" && UUID4.test(value.namespaceId ?? "") && SAFE8.test(value.deliveryId ?? "") && SAFE8.test(value.workflowId ?? "") && UUID4.test(value.environmentId ?? "") && HASH3.test(value.environmentHash ?? "") && UUID4.test(value.parentCaseId ?? "") && SAFE8.test(value.runtimeId ?? "") && SHA4.test(value.baseCommit ?? "") && SHA4.test(value.headCommit ?? "") && Number.isSafeInteger(value.revision) && value.revision > 0;
-var DeliveryStore = class {
-  dataRoot;
-  fault;
-  locks;
-  constructor(dataRoot, { fault = async () => {
-  } } = {}) {
-    if (!isAbsolute5(dataRoot)) throw new Error("INVALID_DATA_ROOT");
-    this.dataRoot = dataRoot;
-    this.fault = fault;
-    this.locks = /* @__PURE__ */ new Map();
-  }
-  async initialize() {
-    await mkdir4(join10(this.dataRoot, "deliveries"), { recursive: true });
-  }
-  paths(namespaceId, deliveryId) {
-    if (!UUID4.test(namespaceId ?? "") || !SAFE8.test(deliveryId ?? "")) throw new Error("INVALID_DELIVERY_SCOPE");
-    const directory = join10(
-      this.dataRoot,
-      "deliveries",
-      namespaceId,
-      createHash17("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex")
-    );
-    return {
-      directory,
-      snapshot: join10(directory, "delivery.json"),
-      journal: join10(directory, "operations.jsonl"),
-      pending: join10(directory, "pending.json")
-    };
-  }
-  _locked(namespaceId, deliveryId, action) {
-    const key = `${namespaceId}\0${deliveryId}`, prior = this.locks.get(key) ?? Promise.resolve(), operation = prior.then(action), tail = operation.catch(() => {
-    });
-    this.locks.set(key, tail);
-    return operation.finally(() => {
-      if (this.locks.get(key) === tail) this.locks.delete(key);
-    });
-  }
-  async _json(path) {
-    try {
-      return JSON.parse(await readFile5(path, "utf8"));
-    } catch (error2) {
-      if (error2?.code === "ENOENT") return null;
-      throw Object.assign(new Error("CORRUPT_DELIVERY_STORAGE"), { code: "CORRUPT_DELIVERY_STORAGE" });
-    }
-  }
-  async journal(namespaceId, deliveryId) {
-    try {
-      return (await readFile5(this.paths(namespaceId, deliveryId).journal, "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
-    } catch (error2) {
-      if (error2?.code === "ENOENT") return [];
-      throw Object.assign(new Error("CORRUPT_DELIVERY_JOURNAL"), { code: "CORRUPT_DELIVERY_JOURNAL" });
-    }
-  }
-  async _recover(paths) {
-    const pending = await this._json(paths.pending);
-    if (!pending) return;
-    const pendingSnapshot = pending.snapshot, pendingOperation = pending.operation;
-    const records = await this.journal(pendingSnapshot.namespaceId, pendingSnapshot.deliveryId);
-    const matching = records.filter((item) => item.operationId === pendingOperation.operationId);
-    if (!matching.length)
-      throw Object.assign(new Error("DELIVERY_OPERATION_INDETERMINATE"), { code: "DELIVERY_OPERATION_INDETERMINATE" });
-    const last = matching[matching.length - 1];
-    if (last.state === "succeeded" && pending.snapshotHash === hash3(pendingSnapshot)) {
-      await atomic2(paths.snapshot, pendingSnapshot);
-      await rm4(paths.pending, { force: true });
-      return;
-    }
-    throw Object.assign(new Error("DELIVERY_OPERATION_INDETERMINATE"), { code: "DELIVERY_OPERATION_INDETERMINATE" });
-  }
-  async read(namespaceId, deliveryId) {
-    const paths = this.paths(namespaceId, deliveryId);
-    await this._recover(paths);
-    const snapshot = await this._json(paths.snapshot);
-    if (!snapshot) return null;
-    if (!validSnapshot2(snapshot) || snapshot.snapshotHash !== hash3({ ...snapshot, snapshotHash: void 0 }))
-      throw Object.assign(new Error("CORRUPT_DELIVERY_STORAGE"), { code: "CORRUPT_DELIVERY_STORAGE" });
-    return snapshot;
-  }
-  async create(input) {
-    return this._locked(input.namespaceId, input.deliveryId, async () => {
-      const current = await this.read(input.namespaceId, input.deliveryId);
-      if (current)
-        return JSON.stringify({ ...current, snapshotHash: void 0 }) === JSON.stringify(input) ? { ok: true, changed: false, snapshot: current } : { ok: false, error: { code: "DELIVERY_IDENTITY_CONFLICT" } };
-      if (!validSnapshot2(input)) return { ok: false, error: { code: "INVALID_DELIVERY_SNAPSHOT" } };
-      return this._write(null, input, { kind: "delivery_created", idempotencyKey: `create:${input.deliveryId}` });
-    });
-  }
-  async promote({
-    namespaceId,
-    request,
-    definition,
-    evidence,
-    execution: execution2
-  }) {
-    return this._locked(namespaceId, request.deliveryId, async () => {
-      const current = await this.read(namespaceId, request.deliveryId);
-      const records = await this.journal(namespaceId, request.deliveryId);
-      const scopeHash = deliveryScopeHash(namespaceId, request, execution2), semanticHash2 = deliverySemanticHash(request), prior = records.find((item) => item.scopeHash === scopeHash && item.state === "succeeded");
-      if (prior) {
-        if (prior.semanticHash !== semanticHash2) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
-        return { ok: true, changed: false, idempotent: true, snapshot: current };
-      }
-      const decision = evaluateDeliveryPromotion({ request, snapshot: current, definition, evidence, execution: execution2 });
-      if (!decision.allowed) return { ok: false, error: decision };
-      const next = applyDeliveryPromotion(current, request);
-      return this._write(current, next, {
-        kind: "delivery_promoted",
-        idempotencyKey: request.idempotencyKey,
-        scopeHash,
-        semanticHash: semanticHash2,
-        evidenceIds: request.evidenceIds
-      });
-    });
-  }
-  async _write(current, value, operationInput) {
-    const paths = this.paths(value.namespaceId, value.deliveryId), operationId = createHash17("sha256").update(`${value.namespaceId}:${value.deliveryId}:${operationInput.idempotencyKey}`).digest("hex"), operation = {
-      schemaVersion: "1",
-      operationId,
-      deliveryId: value.deliveryId,
-      revision: (current?.revision ?? 0) + (current ? 1 : 0),
-      kind: operationInput.kind,
-      state: "pending",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      ...operationInput.scopeHash ? { scopeHash: operationInput.scopeHash, semanticHash: operationInput.semanticHash } : {},
-      ...operationInput.evidenceIds ? { evidenceIds: [...operationInput.evidenceIds].sort() } : {}
-    };
-    const clean = { ...value };
-    delete clean.snapshotHash;
-    const snapshot = { ...clean, snapshotHash: hash3(clean) };
-    await atomic2(paths.pending, { operation, snapshot, snapshotHash: hash3(snapshot) });
-    await append2(paths.journal, operation);
-    await this.fault("after-pending-journal");
-    const running = { ...operation, state: "running", timestamp: (/* @__PURE__ */ new Date()).toISOString() };
-    await append2(paths.journal, running);
-    await this.fault("after-running");
-    const succeeded = {
-      ...operation,
-      state: "succeeded",
-      timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      resultHash: snapshot.snapshotHash
-    };
-    await append2(paths.journal, succeeded);
-    await this.fault("after-success");
-    await atomic2(paths.snapshot, snapshot);
-    await this.fault("after-snapshot");
-    await rm4(paths.pending, { force: true });
-    return { ok: true, changed: true, idempotent: false, snapshot };
-  }
-  async recordOperation(namespaceId, deliveryId, input) {
-    return this._locked(namespaceId, deliveryId, async () => {
-      const records = await this.journal(namespaceId, deliveryId), operationId = createHash17("sha256").update(`${namespaceId}:${deliveryId}:${input.idempotencyKey}`).digest("hex"), prior = records.filter((item) => item.operationId === operationId).at(-1);
-      const semanticHash2 = hash3(input.facts);
-      if (prior) {
-        if (prior.semanticHash !== semanticHash2) return { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
-        return { ok: true, changed: false, operation: prior };
-      }
-      const operation = {
-        schemaVersion: "1",
-        operationId,
-        deliveryId,
-        kind: input.kind,
-        state: input.state,
-        semanticHash: semanticHash2,
-        facts: input.facts,
-        timestamp: (/* @__PURE__ */ new Date()).toISOString()
-      };
-      await append2(this.paths(namespaceId, deliveryId).journal, operation);
-      return { ok: true, changed: true, operation };
-    });
-  }
-  _deliveryOperationProjection(records) {
-    const history = records.filter((record2) => record2.recordType === "delivery-operation");
-    const current = /* @__PURE__ */ new Map();
-    const resolved = new Set(
-      history.filter((record2) => record2.resolvedOperationId && ["succeeded", "failed"].includes(record2.state)).map((record2) => record2.resolvedOperationId)
-    );
-    for (const record2 of history) current.set(record2.operationId, record2);
-    const rollbackHistory = records.filter((record2) => record2.recordType === "rollback-request");
-    const rollbackCurrent = /* @__PURE__ */ new Map();
-    for (const record2 of rollbackHistory) rollbackCurrent.set(record2.rollbackRequestId, record2);
-    return {
-      history,
-      operations: [...current.values()],
-      rollbackRequests: [...rollbackCurrent.values()],
-      rollbackRequestHistory: rollbackHistory,
-      unresolvedIndeterminate: [...current.values()].filter(
-        (record2) => record2.state === "indeterminate" && !resolved.has(record2.operationId)
-      )
-    };
-  }
-  async readWithOperations(namespaceId, deliveryId) {
-    const snapshot = await this.read(namespaceId, deliveryId);
-    if (!snapshot) return null;
-    const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId));
-    return { ...snapshot, deliveryOperations: projection.operations, rollbackRequests: projection.rollbackRequests };
-  }
-  async inspectDeliveryOperations(namespaceId, deliveryId) {
-    return this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId));
-  }
-  async createRollbackRequest({
-    namespaceId,
-    deliveryId,
-    workflowId,
-    caseId,
-    runtimeId,
-    request,
-    execution: execution2
-  }) {
-    return this._locked(namespaceId, deliveryId, async () => {
-      const snapshot = await this.read(namespaceId, deliveryId);
-      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
-      if (snapshot.workflowId !== workflowId || snapshot.parentCaseId !== caseId || snapshot.runtimeId !== runtimeId)
-        return { ok: false, error: { code: "DELIVERY_SCOPE_MISMATCH" } };
-      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), prior = projection.rollbackRequestHistory.find((record3) => record3.scopeHash === request.scopeHash);
-      if (prior)
-        return prior.semanticHash === request.semanticHash ? {
-          ok: true,
-          changed: false,
-          idempotent: true,
-          request: projection.rollbackRequests.find((item) => item.rollbackRequestId === prior.rollbackRequestId) ?? prior
-        } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
-      if (snapshot.revision !== request.expectedRevision) return { ok: false, error: { code: "REVISION_CONFLICT" } };
-      const record2 = {
-        recordType: "rollback-request",
-        schemaVersion: "1",
-        rollbackRequestId: request.rollbackRequestId,
-        deliveryId,
-        workflowId,
-        namespaceId,
-        caseId,
-        runtimeId,
-        status: "requested",
-        expectedRevision: request.expectedRevision,
-        idempotencyKey: request.idempotencyKey,
-        scopeHash: request.scopeHash,
-        semanticHash: request.semanticHash,
-        targetId: request.targetId,
-        targetHash: request.targetHash,
-        deploymentRef: canonical4(request.deploymentRef),
-        priorArtifactRef: canonical4(request.priorArtifactRef),
-        priorReleaseRef: canonical4(request.priorReleaseRef),
-        reasonCode: request.reasonCode,
-        ...request.reason ? { reason: request.reason } : {},
-        requestedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        requestedBy: canonical4(execution2)
-      };
-      await append2(this.paths(namespaceId, deliveryId).journal, record2);
-      return { ok: true, changed: true, idempotent: false, request: record2 };
-    });
-  }
-  async approveRollbackRequest(namespaceId, deliveryId, rollbackRequestId, approval) {
-    return this._locked(namespaceId, deliveryId, async () => {
-      const snapshot = await this.read(namespaceId, deliveryId);
-      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
-      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), current = projection.rollbackRequests.find((item) => item.rollbackRequestId === rollbackRequestId);
-      if (!current) return { ok: false, error: { code: "ROLLBACK_REQUEST_NOT_FOUND" } };
-      const scopeHash = `sha256:${hash3({ rollbackRequestId, idempotencyKey: approval.idempotencyKey })}`, semanticHash2 = `sha256:${hash3({ rollbackRequestId, expectedRevision: approval.expectedRevision, actorId: approval.execution.actorId })}`, prior = projection.rollbackRequestHistory.find((item) => item.approvalScopeHash === scopeHash);
-      if (prior)
-        return prior.approvalSemanticHash === semanticHash2 ? { ok: true, changed: false, idempotent: true, request: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
-      if (snapshot.revision !== approval.expectedRevision || current.expectedRevision !== approval.expectedRevision)
-        return { ok: false, error: { code: "REVISION_CONFLICT" } };
-      if (current.status !== "requested") return { ok: false, error: { code: "ROLLBACK_REQUEST_ALREADY_DECIDED" } };
-      const record2 = {
-        ...current,
-        status: "approved",
-        approvedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        approvedBy: canonical4(approval.execution),
-        approvalScopeHash: scopeHash,
-        approvalSemanticHash: semanticHash2,
-        approvalIdempotencyKey: approval.idempotencyKey
-      };
-      await append2(this.paths(namespaceId, deliveryId).journal, record2);
-      return { ok: true, changed: true, idempotent: false, request: record2 };
-    });
-  }
-  async createDeliveryOperation({
-    namespaceId,
-    workflowId,
-    deliveryId,
-    caseId,
-    runtimeId,
-    request,
-    targetRef,
-    execution: execution2
-  }) {
-    return this._locked(namespaceId, deliveryId, async () => {
-      const normalized = normalizeDeliveryOperationRequest(request);
-      if (!normalized.ok) return normalized;
-      const snapshot = await this.read(namespaceId, deliveryId);
-      if (!snapshot) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
-      const targetHash = targetRef?.targetHash;
-      const identity = deriveDeliveryOperationIdentity(
-        { namespaceId, workflowId, deliveryId, caseId, runtimeId },
-        normalized.value,
-        targetHash
-      );
-      if (!identity.ok) return identity;
-      const records = await this.journal(namespaceId, deliveryId), projection = this._deliveryOperationProjection(records), existing = projection.history.find((record2) => record2.scopeHash === identity.value.scopeHash);
-      if (existing)
-        return existing.semanticHash === identity.value.semanticHash ? {
-          ok: true,
-          changed: false,
-          idempotent: true,
-          operation: projection.operations.find((record2) => record2.operationId === existing.operationId) ?? existing
-        } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
-      if (snapshot.revision !== normalized.value.expectedRevision)
-        return { ok: false, error: { code: "REVISION_CONFLICT" } };
-      if (projection.unresolvedIndeterminate.length)
-        return { ok: false, error: { code: "DELIVERY_OPERATION_INDETERMINATE" } };
-      const now = (/* @__PURE__ */ new Date()).toISOString(), source = normalized.value.artifactRef ?? normalized.value.priorArtifactRef, operation = {
-        recordType: "delivery-operation",
-        operationId: identity.value.operationId,
-        kind: normalized.value.kind,
-        expectedRevision: normalized.value.expectedRevision,
-        targetRef: canonical4(targetRef),
-        artifactRef: normalized.value.artifactRef ?? normalized.value.priorArtifactRef,
-        releaseRef: normalized.value.releaseRef ?? normalized.value.priorReleaseRef,
-        deploymentRef: normalized.value.deploymentRef,
-        rollbackRef: normalized.value.rollbackRef,
-        state: "pending",
-        attempt: 0,
-        requestedAt: now,
-        startedAt: void 0,
-        completedAt: void 0,
-        execution: canonical4(execution2),
-        adapterCorrelation: void 0,
-        scopeHash: identity.value.scopeHash,
-        semanticHash: identity.value.semanticHash,
-        result: void 0,
-        error: void 0,
-        resolvedOperationId: void 0,
-        sourceCommit: source?.sourceCommit,
-        artifactDigest: source?.digest,
-        rollbackRequestId: normalized.value.rollbackRequestId,
-        approvedEvidenceId: normalized.value.approvedEvidenceId
-      };
-      const persisted = Object.fromEntries(Object.entries(operation).filter(([, value]) => value !== void 0));
-      const contract = validateDeliveryOperationRecord(persisted);
-      if (!contract.ok) return { ok: false, error: contract.error };
-      await append2(this.paths(namespaceId, deliveryId).journal, persisted);
-      await this.fault("after-delivery-operation-write");
-      return { ok: true, changed: true, idempotent: false, operation: persisted };
-    });
-  }
-  async recordDeliveryOperation(namespaceId, deliveryId, operationId, transition, options = {}) {
-    return this._locked(namespaceId, deliveryId, async () => {
-      await this.read(namespaceId, deliveryId);
-      const projection = this._deliveryOperationProjection(await this.journal(namespaceId, deliveryId)), previous = projection.operations.find((record2) => record2.operationId === operationId);
-      if (!previous) return { ok: false, error: { code: "DELIVERY_OPERATION_NOT_FOUND" } };
-      const now = (/* @__PURE__ */ new Date()).toISOString(), state = transition.state, next = {
-        ...previous,
-        state,
-        attempt: state === "running" ? previous.attempt + 1 : previous.attempt,
-        startedAt: state === "running" ? now : previous.startedAt,
-        completedAt: ["succeeded", "failed"].includes(state) ? now : void 0,
-        adapterCorrelation: transition.adapterCorrelation ?? previous.adapterCorrelation,
-        result: transition.result,
-        error: transition.error,
-        resolvedOperationId: transition.resolvedOperationId
-      };
-      const clean = Object.fromEntries(Object.entries(next).filter(([, value]) => value !== void 0)), valid = validateDeliveryOperationTransition(previous, clean, options);
-      if (!valid.ok) return valid;
-      const contract = validateDeliveryOperationRecord(clean);
-      if (!contract.ok) return contract;
-      await append2(this.paths(namespaceId, deliveryId).journal, clean);
-      await this.fault(`after-delivery-operation-${state}`);
-      return { ok: true, changed: true, operation: clean };
-    });
-  }
-  async startDeliveryOperation(namespaceId, deliveryId, operationId, adapterCorrelation) {
-    return this.recordDeliveryOperation(namespaceId, deliveryId, operationId, { state: "running", adapterCorrelation });
-  }
-  async reconcileDeliveryOperation(namespaceId, deliveryId, operationId, observation) {
-    return this.recordDeliveryOperation(
-      namespaceId,
-      deliveryId,
-      operationId,
-      {
-        state: observation.state,
-        result: observation.result,
-        error: observation.error,
-        adapterCorrelation: observation.adapterCorrelation,
-        resolvedOperationId: operationId
-      },
-      { inspectedObservation: { ...observation, operationId } }
-    );
-  }
-  /** Only an indeterminate logical operation without a later terminal reconciliation blocks. */
-  async hasIndeterminateOperation(namespaceId, deliveryId) {
-    try {
-      return (await this.inspectDeliveryOperations(namespaceId, deliveryId)).unresolvedIndeterminate.length > 0;
-    } catch {
-      return true;
-    }
-  }
-  /**
-   * Atomically patch specific fields in the delivery snapshot and append a journal record.
-   * Supports dot-notation keys like 'git.checkpoint' to set nested properties.
-   * Used after checkpoint/push/PR to persist the new state without a full promote cycle.
-   */
-  async updateSnapshot(namespaceId, deliveryId, patch, operationInput) {
-    return this._locked(namespaceId, deliveryId, async () => {
-      const current = await this.read(namespaceId, deliveryId);
-      if (!current) return { ok: false, error: { code: "DELIVERY_NOT_FOUND" } };
-      const updated = { ...current };
-      for (const [key, value] of Object.entries(patch)) {
-        const parts = key.split(".");
-        if (parts.length === 1) {
-          updated[key] = value;
-        } else if (parts.length === 2) {
-          const head = parts[0], tail = parts[1];
-          updated[head] = { ...updated[head] ?? {}, [tail]: value };
-        } else {
-          updated[key] = value;
-        }
-      }
-      updated.updatedAt = patch.updatedAt ?? (/* @__PURE__ */ new Date()).toISOString();
-      return this._write(current, updated, operationInput);
-    });
-  }
-};
-
 // ../src/adapters/persistence/delivery-evidence-store.ts
-import { createHash as createHash18, randomUUID as randomUUID11 } from "node:crypto";
-import { appendFile as appendFile4, mkdir as mkdir5, open as open5, readFile as readFile6 } from "node:fs/promises";
-import { dirname as dirname6, join as join11 } from "node:path";
+import { createHash as createHash19, randomUUID as randomUUID11 } from "node:crypto";
+import { appendFile as appendFile4, mkdir as mkdir5, open as open5, readFile as readFile7 } from "node:fs/promises";
+import { dirname as dirname6, join as join12 } from "node:path";
 var SAFE9 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var UUID5 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 var HASH4 = /^sha256:[0-9a-f]{64}$/;
@@ -8666,7 +9392,7 @@ var ALLOWED3 = /* @__PURE__ */ new Set([
 var canonical5 = (value) => Array.isArray(value) ? value.map(canonical5) : value && typeof value === "object" ? Object.fromEntries(
   Object.keys(value).sort().map((key) => [key, canonical5(value[key])])
 ) : value;
-var digest3 = (value) => createHash18("sha256").update(JSON.stringify(canonical5(value))).digest("hex");
+var digest3 = (value) => createHash19("sha256").update(JSON.stringify(canonical5(value))).digest("hex");
 async function append3(path, value) {
   await mkdir5(dirname6(path), { recursive: true });
   await appendFile4(path, `${JSON.stringify(value)}
@@ -8708,17 +9434,17 @@ var DeliveryEvidenceStore = class {
       throw Object.assign(new Error("INVALID_NAMESPACE_ID"), { code: "INVALID_NAMESPACE_ID" });
     if (!SAFE9.test(deliveryId ?? ""))
       throw Object.assign(new Error("INVALID_DELIVERY_ID"), { code: "INVALID_DELIVERY_ID" });
-    return join11(
+    return join12(
       this.dataRoot,
       "deliveries",
       namespaceId,
-      createHash18("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex"),
+      createHash19("sha256").update(`${namespaceId}:${deliveryId}`).digest("hex"),
       "evidence.jsonl"
     );
   }
   async list(namespaceId, deliveryId) {
     try {
-      return (await readFile6(this.path(namespaceId, deliveryId), "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      return (await readFile7(this.path(namespaceId, deliveryId), "utf8")).split("\n").filter(Boolean).map((line) => JSON.parse(line));
     } catch (error2) {
       if (error2?.code === "ENOENT") return [];
       throw error2;
@@ -8806,7 +9532,7 @@ var unavailableDeliveryTargetRegistry = Object.freeze({ lookup: unavailable });
 
 // ../src/adapters/delivery/delivery-git-control-plane.ts
 import { execFile } from "node:child_process";
-import { createHash as createHash19 } from "node:crypto";
+import { createHash as createHash20 } from "node:crypto";
 import { realpath as realpath3 } from "node:fs/promises";
 import { isAbsolute as isAbsolute6 } from "node:path";
 import { promisify } from "node:util";
@@ -8929,7 +9655,7 @@ ${untracked.map((path) => `untracked ${path}`).join("\n")}`;
       branch: binding.branch,
       headCommit: head.stdout.trim(),
       files,
-      diffHash: `sha256:${createHash19("sha256").update(diffContent).digest("hex")}`
+      diffHash: `sha256:${createHash20("sha256").update(diffContent).digest("hex")}`
     };
   }
   compareClaims(inspection, claims) {
@@ -9765,7 +10491,7 @@ var DeliveryOperationController = class {
 };
 
 // ../src/domain/forge-bmad/forge-roots.ts
-import { isAbsolute as isAbsolute7, join as join12, relative as relative3 } from "node:path";
+import { isAbsolute as isAbsolute7, join as join13, relative as relative3 } from "node:path";
 var FORGE_ROOTS_SCHEMA_VERSION = 2;
 var DEFAULT_RUN_STORE_POLICY = "under_orchestrator";
 var EXTERNAL_RUN_STORE_POLICY = "external_allowed";
@@ -9780,11 +10506,11 @@ function isWithin(child, parent) {
   return rel === "" || !rel.startsWith("..") && !isAbsolute7(rel);
 }
 function defaultRunStoreRoot(repoRoot) {
-  return join12(repoRoot, "forge", "factory-runs");
+  return join13(repoRoot, "forge", "factory-runs");
 }
 
 // ../src/domain/forge-bmad/forge-human-decision.ts
-import { createHash as createHash20 } from "node:crypto";
+import { createHash as createHash21 } from "node:crypto";
 var G1_POLICY_VERSION = "forge-g1-human-v1";
 var G1_OUTCOMES = /* @__PURE__ */ new Set(["approved", "rejected"]);
 var G1_REASON_CODES = /* @__PURE__ */ new Set([
@@ -9803,11 +10529,11 @@ function computeG1EvidenceSetHash(events, runId, attempt = 1, policyVersion = G1
   const evidence = events.filter(
     (event) => event.event === "run_started" && event.runId === runId || event.event === "story_run_created" && event.parentRunId === runId || event.event === "gate_started" && event.runId === runId && event.gate === "G1" && event.attempt === attempt
   );
-  return `sha256:${createHash20("sha256").update(canonicalG1({ policyVersion, evidence })).digest("hex")}`;
+  return `sha256:${createHash21("sha256").update(canonicalG1({ policyVersion, evidence })).digest("hex")}`;
 }
 
 // ../src/domain/forge-bmad/forge-spec.ts
-import { createHash as createHash21 } from "node:crypto";
+import { createHash as createHash22 } from "node:crypto";
 var FORGE_SPEC_SCHEMA_VERSION = 1;
 var G2_POLICY_VERSION = "forge-g2-deterministic-v1";
 var ORACLE_CATALOG = /* @__PURE__ */ new Set(["front.build", "front.tests", "back.build"]);
@@ -9897,12 +10623,12 @@ function validateForgeSpecSchema(data, workItem) {
     fail7("G2_FRONTMATTER_INVALID");
 }
 function computeForgeSpecHash(content) {
-  return `sha256:${createHash21("sha256").update(content).digest("hex")}`;
+  return `sha256:${createHash22("sha256").update(content).digest("hex")}`;
 }
 var FORGE_SPEC_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
 
 // ../src/domain/forge-bmad/forge-story-spec.ts
-import { createHash as createHash22 } from "node:crypto";
+import { createHash as createHash23 } from "node:crypto";
 var FORGE_STORY_SPEC_SCHEMA_VERSION = 1;
 var G2_US_POLICY_VERSION = "forge-g2-us-deterministic-v1";
 var STORY_SPEC_ALLOWED_KEYS = /* @__PURE__ */ new Set([
@@ -10035,7 +10761,7 @@ function validateInheritance(storySpec, epicSpec) {
   return { valid: violations.length === 0, violations };
 }
 function computeStorySpecHash(content) {
-  return `sha256:${createHash22("sha256").update(content).digest("hex")}`;
+  return `sha256:${createHash23("sha256").update(content).digest("hex")}`;
 }
 
 // ../src/domain/forge-bmad/forge-bmad-parser.ts
@@ -10414,7 +11140,7 @@ function projectForgeRun(events) {
 }
 
 // ../lib/workflow-projection.mjs
-import { createHash as createHash23 } from "node:crypto";
+import { createHash as createHash24 } from "node:crypto";
 var WORKFLOW_STATUSES2 = Object.freeze([
   "pending",
   "ready",
@@ -10749,7 +11475,7 @@ function applyCommentBudget(comments, budget) {
 
 // ../src/adapters/forge/forge-roots-resolver.ts
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, realpathSync as realpathSync2, statSync } from "node:fs";
-import { basename, dirname as dirname7, isAbsolute as isAbsolute8, join as join13, resolve as resolve3 } from "node:path";
+import { basename, dirname as dirname7, isAbsolute as isAbsolute8, join as join14, resolve as resolve3 } from "node:path";
 function resolveExistingDirectory(value, field) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${field} is required`);
   if (!isAbsolute8(value)) throw new Error(`${field} must be an absolute path`);
@@ -10766,7 +11492,7 @@ function resolveStoreRoot(value) {
   if (!isAbsolute8(value)) throw new Error("roots.runStoreRoot must be an absolute path");
   const requested = resolve3(value);
   const parent = resolveExistingDirectory(dirname7(requested), "roots.runStoreParent");
-  const candidate = join13(parent, basename(requested));
+  const candidate = join14(parent, basename(requested));
   if (existsSync2(candidate)) return resolveExistingDirectory(candidate, "roots.runStoreRoot");
   return candidate;
 }
@@ -10807,7 +11533,7 @@ function ensureForgeRunStore(roots) {
 
 // ../src/adapters/forge/forge-bmad-file-reader.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
-import { isAbsolute as isAbsolute9, join as join14 } from "node:path";
+import { isAbsolute as isAbsolute9, join as join15 } from "node:path";
 function readFileSafe(filePath) {
   if (!existsSync3(filePath)) return null;
   try {
@@ -10826,13 +11552,13 @@ function readYamlFile(filePath) {
   }
 }
 function readForgeRunYaml(repoRoot, ticketId) {
-  const yamlPath = join14(repoRoot, "forge", "state", "forge-runs", `${ticketId}.yaml`);
+  const yamlPath = join15(repoRoot, "forge", "state", "forge-runs", `${ticketId}.yaml`);
   const raw = readYamlFile(yamlPath);
   if (!raw) return null;
   return normalizeForgeRunYaml(raw, ticketId);
 }
 function readForgeRunYamlStrict(repoRoot, ticketId) {
-  const yamlPath = join14(repoRoot, "forge", "state", "forge-runs", `${ticketId}.yaml`);
+  const yamlPath = join15(repoRoot, "forge", "state", "forge-runs", `${ticketId}.yaml`);
   if (!existsSync3(yamlPath)) return { ok: false, error: { code: "FORGE_RUN_NOT_FOUND" } };
   let content;
   try {
@@ -10855,7 +11581,7 @@ function readForgeRunYamlStrict(repoRoot, ticketId) {
   return { ok: true, run: normalized };
 }
 function readStoryFrontmatter(repoRoot, storePath) {
-  const fullPath = isAbsolute9(storePath) ? storePath : join14(repoRoot, storePath);
+  const fullPath = isAbsolute9(storePath) ? storePath : join15(repoRoot, storePath);
   const content = readFileSafe(fullPath);
   if (content === null) return null;
   const fmRaw = extractFrontmatter(content);
@@ -10869,7 +11595,7 @@ function readStoryFrontmatter(repoRoot, storePath) {
   return normalizeStoryFrontmatterFields(parsed);
 }
 function readSprintStatus(repoRoot, workstreamSlug) {
-  const yamlPath = join14(
+  const yamlPath = join15(
     repoRoot,
     "forge",
     "bmad",
@@ -10964,7 +11690,7 @@ function hashStorySpec(specPath) {
 
 // ../src/adapters/forge/forge-ledger-store.ts
 import { appendFileSync as appendFileSync2, readdirSync, readFileSync as readFileSync5 } from "node:fs";
-import { join as join15 } from "node:path";
+import { join as join16 } from "node:path";
 import { randomUUID as randomUUID12 } from "node:crypto";
 function assertString(value, name) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${name} is required`);
@@ -10992,7 +11718,7 @@ function createEpicRun({
     assertWorkItem(story, "story");
     if (story.kind !== "Story") throw new Error('every child work item must have kind "Story"');
   }
-  const filePath = join15(ensureForgeRunStore(roots), `${runId}.jsonl`);
+  const filePath = join16(ensureForgeRunStore(roots), `${runId}.jsonl`);
   const at = now();
   appendForgeLedgerEvent(filePath, {
     schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
@@ -11043,7 +11769,7 @@ function listForgeRunProjections(runStoreRoot) {
   }
   return files.flatMap((file) => {
     try {
-      const projection = projectForgeRun(parseForgeLedger(join15(runStoreRoot, file)));
+      const projection = projectForgeRun(parseForgeLedger(join16(runStoreRoot, file)));
       return projection ? [projection] : [];
     } catch {
       return [];
@@ -11178,7 +11904,7 @@ ${formatCommentsSection(included, omitted)}`);
 
 // ../src/application/forge-bmad/forge-human-decision.ts
 import { randomUUID as randomUUID13 } from "node:crypto";
-import { join as join16 } from "node:path";
+import { join as join17 } from "node:path";
 function currentGate(events, runId) {
   return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === "G1").at(-1);
 }
@@ -11196,7 +11922,7 @@ async function recordHumanDecision({
   if (!G1_REASON_CODES.has(decision.reasonCode)) throw new Error("decision.reasonCode is invalid");
   if (decision.actorId !== void 0 || decision.actorRole !== void 0)
     throw new Error("actor identity and role must not be declared by the decision payload");
-  const filePath = join16(ensureForgeRunStore(roots), `${runId}.jsonl`);
+  const filePath = join17(ensureForgeRunStore(roots), `${runId}.jsonl`);
   const events = parseForgeLedger(filePath);
   const gate2 = currentGate(events, runId);
   if (!gate2 || gate2.status !== "waiting_human") throw new Error("G1 is not waiting for a human decision");
@@ -11251,7 +11977,7 @@ async function recordHumanDecision({
 }
 
 // ../src/application/forge-bmad/forge-g2.ts
-import { join as join17 } from "node:path";
+import { join as join18 } from "node:path";
 function gate(events, runId, name) {
   return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === name).at(-1);
 }
@@ -11268,7 +11994,7 @@ function evaluateG2({
   specPath,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
-  const filePath = join17(ensureForgeRunStore(roots), `${runId}.jsonl`);
+  const filePath = join18(ensureForgeRunStore(roots), `${runId}.jsonl`);
   const events = parseForgeLedger(filePath);
   const start = events.find((event) => event.event === "run_started" && event.runId === runId);
   if (!start) throw new Error("G2_RUN_NOT_FOUND");
@@ -11312,7 +12038,7 @@ function evaluateG2US({
   storySpecPath,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
-  const filePath = join17(ensureForgeRunStore(roots), `${epicRunId}.jsonl`);
+  const filePath = join18(ensureForgeRunStore(roots), `${epicRunId}.jsonl`);
   const events = parseForgeLedger(filePath);
   const prior = events.filter((e) => e.event === "g2_us_evaluated" && e.storyRunId === storyRunId).at(-1);
   const epicStart = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
@@ -11387,12 +12113,12 @@ function recordUS(filePath, epicRunId, storyRunId, storySpec, prior, status, cod
 
 // ../src/application/forge-bmad/forge-story-analysis.ts
 import { mkdirSync as mkdirSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { createHash as createHash24, randomUUID as randomUUID14 } from "node:crypto";
-import { join as join19, relative as relative5, resolve as resolve5 } from "node:path";
+import { createHash as createHash25, randomUUID as randomUUID14 } from "node:crypto";
+import { join as join20, relative as relative5, resolve as resolve5 } from "node:path";
 
 // ../lib/plan.mjs
 import { existsSync as existsSync4 } from "node:fs";
-import { join as join18, isAbsolute as isAbsolute11 } from "node:path";
+import { join as join19, isAbsolute as isAbsolute11 } from "node:path";
 function extractJsonFragment(text2) {
   const jsonFenceMatch = text2.match(/```json\s*([\s\S]*?)```/);
   if (jsonFenceMatch) return jsonFenceMatch[1].trim();
@@ -11451,7 +12177,7 @@ function parsePlan(agentMessage) {
   };
 }
 function checkPlanFiles(files, repoRoot) {
-  const missingFiles = files.filter((f) => !existsSync4(join18(repoRoot, f)));
+  const missingFiles = files.filter((f) => !existsSync4(join19(repoRoot, f)));
   return {
     plannedFiles: files,
     missingFiles,
@@ -11466,7 +12192,7 @@ var STORY_ANALYSIS_PLAN_SCHEMA_VERSION = 1;
 var MAX_FILES = 30;
 var MAX_TEXT = 4e3;
 function sha2562(content) {
-  return `sha256:${createHash24("sha256").update(content).digest("hex")}`;
+  return `sha256:${createHash25("sha256").update(content).digest("hex")}`;
 }
 function g1(events, runId) {
   const gate2 = events.filter((e) => e.event === "gate_started" && e.runId === runId && e.gate === "G1").at(-1);
@@ -11565,7 +12291,7 @@ async function executeStoryAnalysis({
   if (supplement !== void 0 && (typeof supplement !== "string" || supplement.length > MAX_TEXT))
     throw new Error("STORY_ANALYSIS_SUPPLEMENT_INVALID");
   const store = ensureForgeRunStore(roots);
-  const filePath = join19(store, `${epicRunId}.jsonl`);
+  const filePath = join20(store, `${epicRunId}.jsonl`);
   const events = parseForgeLedger(filePath);
   const epic = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
   const story = events.find(
@@ -11692,8 +12418,8 @@ async function executeStoryAnalysis({
 
 // ../src/application/forge-bmad/forge-story-edit.ts
 import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
-import { createHash as createHash25, randomUUID as randomUUID15 } from "node:crypto";
-import { join as join20, resolve as resolve6 } from "node:path";
+import { createHash as createHash26, randomUUID as randomUUID15 } from "node:crypto";
+import { join as join21, resolve as resolve6 } from "node:path";
 var STORY_EDIT_SCHEMA_VERSION = 1;
 var STORY_EDIT_POLICY_VERSION = "forge-story-edit-v1";
 var fail10 = (code, message = code) => {
@@ -11701,7 +12427,7 @@ var fail10 = (code, message = code) => {
   error2.code = code;
   throw error2;
 };
-var hash4 = (value) => `sha256:${createHash25("sha256").update(value).digest("hex")}`;
+var hash4 = (value) => `sha256:${createHash26("sha256").update(value).digest("hex")}`;
 var safeArtifact = (store, descriptor) => {
   if (!descriptor?.path || !descriptor?.sha256)
     fail10("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact descriptor requires path and sha256.");
@@ -11755,7 +12481,7 @@ async function executeStoryEdit({
   if (supplement !== void 0 && (typeof supplement !== "string" || supplement.length > 4e3))
     fail10("STORY_EDIT_SUPPLEMENT_INVALID", "supplement must be a string of at most 4000 characters.");
   const store = ensureForgeRunStore(roots);
-  const filePath = join20(store, `${epicRunId}.jsonl`);
+  const filePath = join21(store, `${epicRunId}.jsonl`);
   if (!existsSync5(filePath)) fail10("STORY_EDIT_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
   const events = parseForgeLedger(filePath);
   const epic = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
@@ -11865,21 +12591,21 @@ async function executeStoryEdit({
 
 // ../src/application/forge-bmad/forge-story-oracles.ts
 import { existsSync as existsSync7 } from "node:fs";
-import { createHash as createHash27, randomUUID as randomUUID16 } from "node:crypto";
-import { join as join23 } from "node:path";
+import { createHash as createHash28, randomUUID as randomUUID16 } from "node:crypto";
+import { join as join24 } from "node:path";
 
 // ../lib/domains.mjs
-import { join as join21, dirname as dirname8, resolve as resolve7 } from "node:path";
+import { join as join22, dirname as dirname8, resolve as resolve7 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 var __dirname = dirname8(fileURLToPath2(import.meta.url));
-var REPO_ROOT = process.env.FACTORY_ROOT ? resolve7(process.env.FACTORY_ROOT) : join21(__dirname, "..", "..");
+var REPO_ROOT = process.env.FACTORY_ROOT ? resolve7(process.env.FACTORY_ROOT) : join22(__dirname, "..", "..");
 var domains = {
   back: {
     oracles: [
       {
         name: "build",
         command: process.env.FACTORY_COMMAND_BACK ?? "./gradlew :agentos-service:build --rerun-tasks --console=plain",
-        cwd: process.env.FACTORY_CWD_BACK ?? join21(REPO_ROOT, "agentos")
+        cwd: process.env.FACTORY_CWD_BACK ?? join22(REPO_ROOT, "agentos")
       }
     ]
     // lock: null  — placeholder pour le verrou lecteurs/écrivain à venir
@@ -12003,8 +12729,8 @@ var domains = {
 // ../src/application/forge-bmad/forge-front-oracle-resolution.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { createHash as createHash26 } from "node:crypto";
-import { dirname as dirname9, isAbsolute as isAbsolute12, join as join22, relative as relative6, resolve as resolve8 } from "node:path";
+import { createHash as createHash27 } from "node:crypto";
+import { dirname as dirname9, isAbsolute as isAbsolute12, join as join23, relative as relative6, resolve as resolve8 } from "node:path";
 var FRONT_ORACLE_MAP_SCHEMA_VERSION = 1;
 var INSPECT_TIMEOUT_MS = 1e4;
 var INSPECT_MAX_BUFFER = 1024 * 1024;
@@ -12013,7 +12739,7 @@ var fail11 = (code, message = code) => {
   error2.code = code;
   throw error2;
 };
-var hash5 = (value) => `sha256:${createHash26("sha256").update(JSON.stringify(value)).digest("hex")}`;
+var hash5 = (value) => `sha256:${createHash27("sha256").update(JSON.stringify(value)).digest("hex")}`;
 var validName = (name) => typeof name === "string" && /^[A-Za-z0-9._-]+$/.test(name);
 var readProject = (path, label) => {
   try {
@@ -12027,9 +12753,9 @@ var readProject = (path, label) => {
 };
 var hostProject = (root, name) => {
   for (const path of [
-    join22(root, "apps", name, "project.json"),
-    join22(root, "frontend", "apps", name, "project.json"),
-    join22(root, name, "project.json")
+    join23(root, "apps", name, "project.json"),
+    join23(root, "frontend", "apps", name, "project.json"),
+    join23(root, name, "project.json")
   ])
     if (existsSync6(path)) return readProject(path, `Build host project.json for ${name}`);
   return null;
@@ -12046,7 +12772,7 @@ function resolveOwnerProjectConfigs(files, repoRoot) {
     let dir = dirname9(absolute);
     let found = false;
     while (dir === root || dir.startsWith(`${root}/`)) {
-      const projectPath = join22(dir, "project.json");
+      const projectPath = join23(dir, "project.json");
       if (existsSync6(projectPath)) {
         const config = readProject(projectPath, `Owner project.json for ${file}`);
         const previous = byName.get(config.name);
@@ -12191,7 +12917,7 @@ var fail12 = (code, message = code) => {
   throw error2;
 };
 var isAllowedStoryOracleRequestBody = (body) => !!body && typeof body === "object" && !Array.isArray(body) && Object.keys(body).every((key) => ["editId", "expectedSpecHash", "attempt"].includes(key));
-var hash6 = (value) => `sha256:${createHash27("sha256").update(value).digest("hex")}`;
+var hash6 = (value) => `sha256:${createHash28("sha256").update(value).digest("hex")}`;
 var catalog = {
   "front.build": { domain: "front", name: "build" },
   "front.tests": { domain: "front", name: "tests" },
@@ -12224,7 +12950,7 @@ async function executeStoryOracles({
   if (!Number.isInteger(attempt) || attempt <= 0)
     fail12("STORY_ORACLE_ATTEMPT_INVALID", "attempt must be a positive integer.");
   const store = ensureForgeRunStore(roots);
-  const path = join23(store, `${epicRunId}.jsonl`);
+  const path = join24(store, `${epicRunId}.jsonl`);
   if (!existsSync7(path)) fail12("STORY_ORACLE_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
   const events = parseForgeLedger(path);
   const start = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
@@ -12492,10 +13218,10 @@ async function syncForgeWorkflowProjection({
 }
 
 // ../src/adapters/artifact/artifact-hash.ts
-import { createHash as createHash28, randomUUID as randomUUID17 } from "node:crypto";
+import { createHash as createHash29, randomUUID as randomUUID17 } from "node:crypto";
 var ARTIFACT_HASH_PREFIX = "sha256";
 function computeArtifactHash(data) {
-  return `${ARTIFACT_HASH_PREFIX}:${createHash28("sha256").update(data).digest("hex")}`;
+  return `${ARTIFACT_HASH_PREFIX}:${createHash29("sha256").update(data).digest("hex")}`;
 }
 function createArtifactId() {
   return randomUUID17();
@@ -12631,11 +13357,11 @@ function createMemoryArtifactStore(options) {
 }
 
 // ../src/adapters/artifact/s3-object-client.ts
-import { createHash as createHash29, createHmac } from "node:crypto";
+import { createHash as createHash30, createHmac } from "node:crypto";
 var SIGNING_ALGORITHM = "AWS4-HMAC-SHA256";
 var SERVICE = "s3";
 function sha256Hex(data) {
-  return createHash29("sha256").update(data).digest("hex");
+  return createHash30("sha256").update(data).digest("hex");
 }
 function hmac(key, data) {
   return createHmac("sha256", key).update(data, "utf8").digest();
@@ -13747,6 +14473,7 @@ export {
   hashOracleDefinition,
   hashStorySpec,
   hashStructuredAgentResult,
+  hashVerificationReport,
   hashWorkflowDefinition,
   humanInteractionSemanticHash,
   inspectNxProject,
@@ -13814,6 +14541,7 @@ export {
   runBaselineOracle,
   runCommand,
   runLocalWorker,
+  runOneShotImport,
   safeEqual,
   sanitizeForgeSyncAttribution,
   setActiveCaseId,
@@ -13852,6 +14580,7 @@ export {
   validateWorkflowDefinition,
   validateWorkflowEvidenceInput,
   validateWorkflowTransitionRequest,
+  verifyImport,
   withFormatVersion,
   withProcessLock,
   workflowStartCommandHash,

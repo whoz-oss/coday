@@ -143,3 +143,21 @@ export {
   createSqlLeaseRepository,
   type SqlLeaseRepositoryOptions,
 } from './sql/index.js'
+
+// --------------------------------------------------------------------------
+// One-shot filesystem → PostgreSQL import (Milestone B4-T1)
+//
+// Offline migration utility: reads every aggregate through the filesystem
+// repositories and idempotently upserts it into the SQL adapter tables, then
+// verifies count + canonical-hash fidelity. The runtime server keeps writing to
+// the filesystem; this module is never on the request path.
+// --------------------------------------------------------------------------
+export {
+  runOneShotImport,
+  verifyImport,
+  hashVerificationReport,
+  type OneShotImportOptions,
+  type VerificationReport,
+  type ContextVerificationResult,
+  type ContextDiscrepancy,
+} from './migration/one-shot-import.js'
