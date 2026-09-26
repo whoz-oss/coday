@@ -1,0 +1,488 @@
+/*
+ * Coday Dockyard — Factory Cockpit visual theme.
+ *
+ * Pure vanilla CSS: zero dependencies, zero build step. The tokens below are the
+ * single source of truth for the cockpit shell and every future wave view.
+ */
+
+:root {
+  color-scheme: dark;
+  --bg:#06080f; --panel:#0d1119; --panel-2:#131a26; --panel-3:#0a0e16;
+  --border:#232c3d; --border-soft:#222b3d;
+  --text:#f2f5fa; --dim:#aabdd5; --faint:#8b9cb6;
+  --green:#4ade80; --red:#ff6f67; --blue:#6cb6ff; --amber:#e8b64a;
+  --purple:#c89bff; --cyan:#5ad2dd; --violet:#94a3ff;
+  --sans:'Play','Helvetica Neue',system-ui,sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Monaco,'Roboto Mono',monospace;
+  --surface:linear-gradient(180deg,#10141f 0%,#0b0f18 100%);
+}
+
+/* ------------------------------------------------------------------ Reset */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(200, 155, 255, 0.05) 0%, transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(90, 210, 221, 0.05) 0%, transparent 40%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a {
+  color: var(--cyan);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--violet);
+}
+
+/* Monospace data rule: ids, hashes, durations, timestamps, status numbers. */
+code,
+pre,
+kbd,
+samp,
+.mono,
+[data-mono],
+.tabular,
+.chip,
+.cockpit-id,
+.cockpit-duration {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* ---------------------------------------------------------------- Topbar */
+
+.cockpit-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.75rem 1.25rem;
+  background: rgba(13, 17, 25, 0.85);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.cockpit-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.cockpit-brand-bars {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 22px;
+}
+
+.cockpit-brand-bars span {
+  display: block;
+  width: 4px;
+  border-radius: 2px;
+}
+
+.cockpit-brand-bars span:nth-child(1) {
+  height: 14px;
+  background: var(--amber);
+}
+
+.cockpit-brand-bars span:nth-child(2) {
+  height: 22px;
+  background: var(--purple);
+}
+
+.cockpit-brand-bars span:nth-child(3) {
+  height: 17px;
+  background: var(--cyan);
+}
+
+.cockpit-brand-text {
+  background: linear-gradient(90deg, var(--purple), var(--cyan));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Navigation */
+
+.cockpit-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.cockpit-nav a {
+  padding: 0.4rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  color: var(--dim);
+  font-weight: 500;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
+.cockpit-nav a:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+
+.cockpit-nav a.active {
+  color: var(--text);
+  background: var(--panel-2);
+  border-color: var(--border);
+}
+
+/* Live indicator */
+
+.cockpit-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cockpit-live-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--faint);
+  box-shadow: 0 0 0 rgba(74, 222, 128, 0);
+}
+
+.cockpit-live[data-state='online'] .cockpit-live-dot {
+  background: var(--green);
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.75);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.cockpit-live[data-state='connecting'] .cockpit-live-dot {
+  background: var(--amber);
+}
+
+.cockpit-live[data-state='offline'] .cockpit-live-dot {
+  background: var(--red);
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ------------------------------------------------------------------ Main */
+
+.cockpit-main {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 4rem;
+}
+
+.cockpit-view {
+  display: none;
+}
+
+.cockpit-view.active {
+  display: block;
+  animation: fade-in 220ms ease both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------------------------------------------------------------- Panels */
+
+.panel,
+.cockpit-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 1.25rem 1.4rem;
+  margin-bottom: 1.25rem;
+}
+
+.panel-title,
+.cockpit-panel-title,
+.cockpit-view h2 {
+  margin: 0 0 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+
+.panel-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.placeholder {
+  color: var(--faint);
+  font-size: 0.92rem;
+}
+
+/* ----------------------------------------------------------------- Chips */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-3);
+  color: var(--dim);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.chip-success {
+  color: var(--green);
+  border-color: var(--green);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.2);
+}
+
+.chip-fail {
+  color: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 10px rgba(255, 111, 103, 0.2);
+}
+
+.chip-running {
+  color: var(--blue);
+  border-color: var(--blue);
+  box-shadow: 0 0 10px rgba(108, 182, 255, 0.2);
+}
+
+.chip-running::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 2px solid rgba(108, 182, 255, 0.35);
+  border-top-color: var(--blue);
+  animation: spin 900ms linear infinite;
+}
+
+.chip-wave {
+  color: var(--amber);
+  border-color: var(--amber);
+  box-shadow: 0 0 10px rgba(232, 182, 74, 0.2);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --------------------------------------------------------------- Buttons */
+
+button,
+.btn {
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 0.5rem 0.95rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: transform 150ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+button:hover,
+.btn:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--purple), var(--violet));
+  border-color: transparent;
+  color: #06080f;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  box-shadow: 0 0 18px rgba(200, 155, 255, 0.5);
+}
+
+.btn-danger {
+  background: var(--red);
+  border-color: transparent;
+  color: #06080f;
+  font-weight: 600;
+}
+
+.btn-danger:hover {
+  box-shadow: 0 0 18px rgba(255, 111, 103, 0.5);
+}
+
+/* ---------------------------------------------------- Native dialog modal */
+
+#cockpit-dialog {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--text);
+  padding: 1.5rem;
+  max-width: min(640px, 92vw);
+  width: 100%;
+}
+
+#cockpit-dialog::backdrop {
+  background: rgba(6, 8, 15, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+#cockpit-dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ----------------------------------------------------------- Accessibility */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .cockpit-live[data-state='online'] .cockpit-live-dot,
+  .chip-running::before {
+    animation: none !important;
+  }
+}
+
+/* -------------------------------------------------------------- Responsive */
+
+/* Tablet */
+@media (max-width: 900px) {
+  .cockpit-topbar {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 0.7rem 1rem;
+  }
+
+  .cockpit-nav {
+    order: 3;
+    width: 100%;
+    margin-left: 0;
+    overflow-x: auto;
+  }
+
+  .cockpit-live {
+    margin-left: auto;
+  }
+
+  .cockpit-main {
+    padding: 1.25rem 1rem 3rem;
+  }
+
+  .panel-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  body {
+    font-size: 14px;
+  }
+
+  .cockpit-topbar {
+    padding: 0.6rem 0.75rem;
+  }
+
+  .cockpit-brand {
+    font-size: 0.95rem;
+  }
+
+  .cockpit-nav {
+    gap: 0.2rem;
+  }
+
+  .cockpit-nav a {
+    padding: 0.35rem 0.55rem;
+    font-size: 0.82rem;
+  }
+
+  .cockpit-main {
+    padding: 1rem 0.75rem 2.5rem;
+  }
+
+  .panel,
+  .cockpit-panel {
+    border-radius: 12px;
+    padding: 1rem;
+  }
+
+  .panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  #cockpit-dialog {
+    padding: 1.1rem;
+    max-width: 94vw;
+  }
+}

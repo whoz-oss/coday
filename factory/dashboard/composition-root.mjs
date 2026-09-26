@@ -24,9 +24,9 @@
  */
 
 import { createServer } from 'node:http'
-import { readFileSync } from 'node:fs'
+import { readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, dirname } from 'node:path'
+import { join, dirname, resolve, sep, extname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // Domain / lib — untouched by this migration, only wired.
@@ -779,6 +779,32 @@ export function createHttpServer(application, config) {
   const resolvedFactoryUser = resolveFactoryUser(config)
   const { baseUrl: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken } = config.jira
   const indexHtml = () => readFileSync(join(config.dashboardDir, 'index.html'), 'utf8')
+  const cockpitHtml = () => readFileSync(join(config.dashboardDir, 'cockpit.html'), 'utf8')
+
+  // Static cockpit assets. Each prefix maps to a directory the shell is allowed
+  // to read from; anything else under those prefixes is a hard 404 (never an
+  // HTML fallback, so a missing module can never masquerade as a page).
+  const STATIC_ASSET_ROOTS = {
+    '/css/': join(config.dashboardDir, 'css'),
+    '/js/': join(config.dashboardDir, 'js'),
+  }
+  const STATIC_CONTENT_TYPES = {
+    '.css': 'text/css; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.mjs': 'application/javascript; charset=utf-8',
+  }
+  /** Resolve a `/css/*` or `/js/*` path to a file, or null when unsafe/absent. */
+  const resolveStaticAsset = (path) => {
+    for (const [prefix, root] of Object.entries(STATIC_ASSET_ROOTS)) {
+      if (!path.startsWith(prefix)) continue
+      const relative = path.slice(prefix.length)
+      if (!relative || relative.includes('\0')) return null
+      const resolvedPath = resolve(root, relative)
+      if (resolvedPath !== root && !resolvedPath.startsWith(root + sep)) return null
+      return resolvedPath
+    }
+    return null
+  }
 
   const forgeDeps = {
     forgeLedger: { listForgeRunProjections, parseForgeLedger, projectForgeRun, createEpicRun },
@@ -930,6 +956,30 @@ export function createHttpServer(application, config) {
       },
       log: console,
     })) return
+
+    // Cockpit shell — standalone governed HTML (coexists with the legacy index).
+    if (method === 'GET' && (path === '/cockpit' || path === '/cockpit.html')) {
+      try {
+        return send(res, 200, cockpitHtml(), 'text/html; charset=utf-8')
+      } catch {
+        return sendError(sendFn, 404, 'NOT_FOUND', 'Cockpit shell not found')
+      }
+    }
+
+    // Cockpit static assets (`/css/*`, `/js/*`). Content-Type is strict and a
+    // missing asset is always a JSON 404 — never an HTML fallback.
+    if (method === 'GET' && (path.startsWith('/css/') || path.startsWith('/js/'))) {
+      const assetPath = resolveStaticAsset(path)
+      const contentType = assetPath ? STATIC_CONTENT_TYPES[extname(assetPath).toLowerCase()] : null
+      if (assetPath && contentType) {
+        try {
+          if (statSync(assetPath).isFile()) return send(res, 200, readFileSync(assetPath, 'utf8'), contentType)
+        } catch {
+          // Fall through to the JSON 404 — never an HTML fallback.
+        }
+      }
+      return sendError(sendFn, 404, 'NOT_FOUND', 'Asset not found')
+    }
 
     // UI
     if (method === 'GET' && (path === '/' || path === '/index.html')) {
