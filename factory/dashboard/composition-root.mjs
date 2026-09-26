@@ -61,6 +61,17 @@ import { WorkflowResumeDispatchStore } from '../lib/workflow-resume-dispatch-sto
 import { createFactoryFrontendRunner } from '../lib/factory-frontend-composition.mjs'
 import { AgentStepResultStore } from '../lib/agent-step-result-store.mjs'
 
+// Persistence authority selection (B4-T2): decides filesystem vs PostgreSQL
+// authority and the shadow-read decorators. The concrete stores stay here.
+import {
+  PERSISTENCE_MODES,
+  createLazySqlClient,
+  createShadowReadStores,
+  createSqlAuthorityStores,
+  createSqlRepositories,
+  resolvePersistenceSettings,
+} from './persistence-authority.mjs'
+
 // Transport — route modules and their shared utilities.
 import { send, readBody, sendError, extractTrustContext, resolveCorrelationId } from './http-utils.mjs'
 import { DEFAULT_FAKE_IDP_SECRET, LocalDevMembershipResolver } from '../src/domain/identity/index.ts'
@@ -163,6 +174,11 @@ export function loadConfig(env = process.env) {
   const deliveryAllowedPaths = (env.FACTORY_DELIVERY_ALLOWED_PATHS ?? '').split(',').map((value) => value.trim()).filter(Boolean)
   const deliveryProtectedPaths = (env.FACTORY_DELIVERY_PROTECTED_PATHS ?? '.git,.coday').split(',').map((value) => value.trim()).filter(Boolean)
 
+  // Persistence authority. Default `fs` guarantees the historical behaviour;
+  // `sql` switches the writer-unique authority to PostgreSQL; shadow reads are
+  // only meaningful while the filesystem remains the authority.
+  const { persistenceMode, shadowReadEnabled } = resolvePersistenceSettings(env)
+
   return {
     port: parseInt(env.PORT ?? '3141', 10),
     bindPolicy,
@@ -210,6 +226,14 @@ export function loadConfig(env = process.env) {
       repoRoot: env.FACTORY_ORACLE_REPO_ROOT,
       namespaceId: env.FACTORY_ORACLE_NAMESPACE_ID,
     },
+    persistenceMode,
+    shadowReadEnabled,
+    persistence: {
+      mode: persistenceMode,
+      shadowRead: shadowReadEnabled,
+      organizationId: env.FACTORY_ORGANIZATION_ID ?? 'default',
+      workstreamId: env.FACTORY_WORKSTREAM_ID ?? 'default',
+    },
   }
 }
 
@@ -223,11 +247,37 @@ export function resolveFactoryUser(config) {
 // ---------------------------------------------------------------------------
 
 /**
+ * Build the SQL repositories used by shadow mode and by SQL authority mode.
+ *
+ * Tests inject `options.sqlClient` (the in-memory client); production builds a
+ * lazily-connected `pg` pool so the composition root stays synchronous and the
+ * driver is only loaded when the first shadow/SQL query actually runs.
+ */
+function resolveSqlRepositories(config, options) {
+  const client = options.sqlClient ?? createLazySqlClient(options.env ?? process.env)
+  return createSqlRepositories({
+    client,
+    organizationId: config.persistence?.organizationId,
+    workstreamId: config.persistence?.workstreamId,
+  })
+}
+
+/**
+ * Instantiate the persistence stores selected by the configuration.
+ *
+ *  - `FACTORY_PERSISTENCE=fs` (default): filesystem stores, unchanged.
+ *  - `FACTORY_PERSISTENCE=fs` + `FACTORY_PERSISTENCE_SHADOW=true`: filesystem
+ *    stores decorated with read-only PostgreSQL shadow probes.
+ *  - `FACTORY_PERSISTENCE=sql`: PostgreSQL-authority stores; the filesystem is
+ *    never written.
+ *
  * @param {ReturnType<typeof loadConfig>} config
+ * @param {{ sqlClient?: object, env?: Record<string, string|undefined>, logger?: Console }} [options]
  * @returns {{ workflowProjectionStore: WorkflowProjectionStore, workflowEvidenceStore: WorkflowEvidenceStore, agentStepResultStore: AgentStepResultStore, workflowHumanInteractionStore: WorkflowHumanInteractionStore, workflowResumeDispatchStore: WorkflowResumeDispatchStore, workUnitEnvironmentStore: WorkUnitEnvironmentStore, deliveryStore: DeliveryStore, deliveryEvidenceStore: DeliveryEvidenceStore }}
  */
-export function createStores(config) {
-  return {
+export function createStores(config, options = {}) {
+  const log = options.logger ?? console
+  const filesystemStores = {
     workflowProjectionStore: new WorkflowProjectionStore(config.factoryDataRoot),
     workflowEvidenceStore: new WorkflowEvidenceStore(config.factoryDataRoot),
     agentStepResultStore: new AgentStepResultStore(config.factoryDataRoot),
@@ -237,6 +287,18 @@ export function createStores(config) {
     deliveryStore: new DeliveryStore(config.factoryDataRoot),
     deliveryEvidenceStore: new DeliveryEvidenceStore(config.factoryDataRoot),
   }
+
+  if (config.persistenceMode === PERSISTENCE_MODES.SQL) {
+    const repositories = resolveSqlRepositories(config, options)
+    return createSqlAuthorityStores({ repositories })
+  }
+
+  if (config.shadowReadEnabled) {
+    const repositories = resolveSqlRepositories(config, options)
+    return createShadowReadStores({ stores: filesystemStores, repositories, log })
+  }
+
+  return filesystemStores
 }
 
 // ---------------------------------------------------------------------------
@@ -697,9 +759,9 @@ export function createHttpServer(application, config) {
  *   start: () => Promise<import('node:http').Server>,
  * }}
  */
-export function createCompositionRoot(env = process.env) {
+export function createCompositionRoot(env = process.env, options = {}) {
   const config = loadConfig(env)
-  const stores = createStores(config)
+  const stores = createStores(config, options)
   const adapters = createAdapters(config, stores)
   const application = createApplication(config, stores, adapters)
   const server = createHttpServer(application, config)
@@ -734,6 +796,9 @@ function logStartup(config) {
   console.log(`Factory bind mode  : ${config.bindPolicy.trustMode}${config.bindPolicy.trustMode.startsWith('unsafe') ? ' (explicit unsafe opt-in; routes are unauthenticated)' : ''}`)
   console.log(`AgentOS           : ${config.agentosUrl}`)
   console.log(`Factory data root : ${config.factoryDataRoot}`)
+  console.log(
+    `Persistence       : ${config.persistenceMode}${config.shadowReadEnabled ? ' (shadow reads against PostgreSQL)' : ''}`
+  )
   for (const msg of config.jira.diagnostics ?? []) console.log(`Coday config      : ${msg}`)
   if (config.jira.baseUrl) {
     const src = process.env.JIRA_BASE_URL ? 'env' : 'user.yaml Coday'

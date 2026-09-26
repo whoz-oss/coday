@@ -26,6 +26,7 @@ La cible actée de migration est différente sans changer cet invariant : des so
 - [ADR_TYPESCRIPT_MIGRATION.md](ADR_TYPESCRIPT_MIGRATION.md) — décision, coexistence, premier candidat et rollback.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — frontières, bounded contexts et architecture runtime/build cible.
 - [AUTHORITY_SOURCES.md](AUTHORITY_SOURCES.md) — sources d'autorité actuelles et futures, résolution des conflits.
+- [PERSISTENCE_SWITCH_ROLLBACK.md](PERSISTENCE_SWITCH_ROLLBACK.md) — bascule PostgreSQL (shadow-read, writer unique) et rollback via `composition-root.mjs`.
 - [DEPENDENCY_MATRIX.md](DEPENDENCY_MATRIX.md) — dépendances autorisées, bornées ou interdites.
 - [lib/README.md](lib/README.md) — responsabilités et invariants des modules actuels.
 
