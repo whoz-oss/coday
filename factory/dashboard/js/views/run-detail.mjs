@@ -23,6 +23,7 @@ import { WORKFLOW_PROJECTION_EVENTS } from '../services/sse-client.mjs'
 import { normalizeSteps, renderGantt } from '../components/gantt.mjs'
 import { renderPhasePanel, loadPhaseEnrichment } from '../components/phase-panel.mjs'
 import { esc, fmtDur } from '../components/facts.mjs'
+import { buildCaseLinkHtml } from '../components/case-link.mjs'
 
 /** Live-refresh event, derived from the shared SSE contract (never hard-coded twice). */
 export const WORKFLOW_UPDATED_EVENT =
@@ -76,6 +77,8 @@ function renderMetricsStrip(metrics) {
  *   apiClient: { get: (path: string, options?: object) => Promise<any> },
  *   sseClient?: { on: (event: string, handler: Function) => (() => void) } | null,
  *   now?: () => number,
+ *   agentosUrl?: string,
+ *   codayExpressUrl?: string,
  *   setTimeoutFn?: typeof setTimeout,
  *   clearTimeoutFn?: typeof clearTimeout,
  *   refreshDebounceMs?: number,
@@ -159,6 +162,16 @@ export async function mount(container, options = {}) {
       chips.push(`<span class="chip">actif ${esc(fmtDur(timing.activeMs))}</span>`)
     }
 
+    // Controller identity (case/thread) — rendered through the shared SSRF-safe
+    // component. Clickable only against a trusted base supplied by the caller.
+    const identityHtml = buildCaseLinkHtml(state.workflow.controllerExecution, {
+      agentosUrl: options.agentosUrl,
+      codayExpressUrl: options.codayExpressUrl,
+    })
+    const identity = identityHtml
+      ? `<div class="run-detail-identity" data-run-detail-identity="true">${identityHtml}</div>`
+      : ''
+
     return (
       '<div class="panel" data-run-detail-head="true">' +
       `<h2 class="panel-title" title="${esc(title)}">${esc(title)}</h2>` +
@@ -166,6 +179,7 @@ export async function mount(container, options = {}) {
         workflowId
       )}</div>` +
       `<div class="metrics" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${chips.join('')}</div>` +
+      identity +
       '</div>'
     )
   }

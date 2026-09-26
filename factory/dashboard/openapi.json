@@ -334,9 +334,9 @@
     }
   },
   "info": {
-    "description": "HTTP contract for the Coday Software Factory dashboard.\n\n**Transport invariants**\n- Every response carries `X-Correlation-Id`; an inbound `X-Correlation-Id` is propagated, otherwise a `coday-corr-<uuid>` is generated.\n- Errors use the `{ \"error\": { \"code\", \"message\", \"details\" } }` envelope.\n- Optimistic concurrency is expressed with `409` and the `REVISION_CONFLICT` / `IDEMPOTENCY_KEY_COLLISION` codes.\n\n**Trust context**\nIdentity is read only from trusted headers (`X-Factory-Namespace-Id`, `X-Factory-Case-Id`, `X-Factory-Actor-Id`, `X-Factory-Authority-Id`, `X-Factory-Runtime-Id`, `X-Factory-Agent-Id`, `X-Factory-Thread-Id`). The dashboard binds to loopback by default; remote binding requires `FACTORY_UNSAFE_ALLOW_REMOTE_BIND=true` and leaves routes unauthenticated.\n\n**Retirement notice**\nEndpoints tagged `legacy` are deprecated as of Phase 5 and are scheduled for removal in Phase 7 / Q4 2026.",
+    "description": "HTTP contract for the Coday Software Factory dashboard.\n\n**Transport invariants**\n- Every response carries `X-Correlation-Id`; an inbound `X-Correlation-Id` is propagated, otherwise a `coday-corr-<uuid>` is generated.\n- Errors use the `{ \"error\": { \"code\", \"message\", \"details\" } }` envelope.\n- Optimistic concurrency is expressed with `409` and the `REVISION_CONFLICT` / `IDEMPOTENCY_KEY_COLLISION` codes.\n\n**Trust context**\nIdentity is read only from trusted headers (`X-Factory-Namespace-Id`, `X-Factory-Case-Id`, `X-Factory-Actor-Id`, `X-Factory-Authority-Id`, `X-Factory-Runtime-Id`, `X-Factory-Agent-Id`, `X-Factory-Thread-Id`). The dashboard binds to loopback by default; remote binding requires `FACTORY_UNSAFE_ALLOW_REMOTE_BIND=true` and leaves routes unauthenticated.\n\n**Admin governance (B5/B6)**\nArtifact governance commands live under `/api/factory/admin/artifacts/*` and are guarded by a real entitlement check (`requireAdminRole`). A non-admin caller gets `403 FORBIDDEN_ADMIN_REQUIRED` and the store is never touched.\n\n**Legacy unprefixed forge aliases**\nTODO: the unprefixed `/api/forge/*` aliases are retained for backwards compatibility; they are scheduled to be folded into the canonical `/api/factory/forge/*` surface.\n\n**Retirement notice**\nEndpoints tagged `legacy` are deprecated as of Phase 5 and are scheduled for removal in Phase 7 / Q4 2026.",
     "title": "Factory Dashboard HTTP API",
-    "version": "5.0.0-phase5"
+    "version": "6.0.0-b6"
   },
   "openapi": "3.0.3",
   "paths": {
@@ -861,6 +861,348 @@
         },
         "summary": "Write the active-run marker.",
         "tags": ["active-run"]
+      }
+    },
+    "/api/factory/admin/artifacts/gc": {
+      "post": {
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "dryRun": {
+                    "description": "Advisory dry-run flag.",
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "description": "Optional GC options. `dryRun` is accepted for forward compatibility; the command always performs the same reconciliation audit and only reclaims orphaned staging uploads — content-addressed blobs are never destroyed.",
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataEnvelope"
+                }
+              }
+            },
+            "description": "Garbage collection report.",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Admin role required (FORBIDDEN_ADMIN_REQUIRED).",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "500 error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          }
+        },
+        "summary": "Trigger admin artifact garbage collection.",
+        "tags": ["admin"]
+      }
+    },
+    "/api/factory/admin/artifacts/{id}/legal-hold": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Artifact id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "legalHold": {
+                    "description": "true places the hold, false releases it.",
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": ["legalHold"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataEnvelope"
+                }
+              }
+            },
+            "description": "Updated artifact metadata.",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "`legalHold` must be a boolean (INVALID_LEGAL_HOLD).",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Admin role required (FORBIDDEN_ADMIN_REQUIRED).",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Artifact not found (ARTIFACT_NOT_FOUND).",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "500 error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          }
+        },
+        "summary": "Admin placement or release of an artifact legal hold.",
+        "tags": ["admin"]
+      }
+    },
+    "/api/factory/admin/artifacts/{id}/purge": {
+      "post": {
+        "parameters": [
+          {
+            "description": "Artifact id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "description": "Human-readable purge justification.",
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataEnvelope"
+                }
+              }
+            },
+            "description": "Purged artifact metadata.",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Admin role required (FORBIDDEN_ADMIN_REQUIRED).",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Artifact not found (NOT_FOUND).",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Method not allowed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Purge refused: LEGAL_HOLD_ACTIVE or RETENTION_ACTIVE.",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "500 error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              }
+            }
+          }
+        },
+        "summary": "Admin purge of an artifact whose retention window expired.",
+        "tags": ["admin"]
       }
     },
     "/api/factory/agent-step-results": {
@@ -8024,6 +8366,10 @@
     {
       "description": "Jira ticket proxy.",
       "name": "jira"
+    },
+    {
+      "description": "Admin artifact governance (B5/B6): purge, legal hold, garbage collection.",
+      "name": "admin"
     },
     {
       "description": "Deprecated JSONL run and review-gate endpoints (retirement Phase 7 / Q4 2026).",
