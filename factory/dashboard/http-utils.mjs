@@ -53,6 +53,57 @@ export function generateCorrelationId() {
 }
 
 /**
+ * Explicit admin authorization guard for factory-artifact governance commands.
+ *
+ * This is the single, named authorization point every admin use case must pass
+ * through: purge, legal-hold management and garbage collection. It inspects the
+ * already-resolved `TrustContext` (never client headers) and grants access when
+ * the principal carries the `admin` role, the `admin:*` scope, or the wildcard
+ * `*` scope (loopback-dev).
+ *
+ * B5-T2b intentionally does NOT implement a real IdP / role model — that is
+ * reserved for B6. This function is the explicit, replaceable seam: B6 will
+ * swap the body for an entitlement lookup while every call site stays put.
+ *
+ * Pure and never throws: returns a structured decision so callers can either
+ * branch on it or translate it through {@link requireAdminRole}.
+ *
+ * @param {object|null|undefined} trustContext
+ * @returns {{ authorized: boolean, reason: string|null }}
+ */
+export function checkAdminAuthorization(trustContext) {
+  if (!trustContext || typeof trustContext !== 'object') {
+    return { authorized: false, reason: 'MISSING_TRUST_CONTEXT' }
+  }
+  const roles = Array.isArray(trustContext.roles) ? trustContext.roles : []
+  const scopes = Array.isArray(trustContext.scopes) ? trustContext.scopes : []
+  const isAdmin = roles.includes('admin') || scopes.includes('admin:*') || scopes.includes('*')
+  return isAdmin
+    ? { authorized: true, reason: null }
+    : { authorized: false, reason: 'INSUFFICIENT_ADMIN_PERMISSIONS' }
+}
+
+/**
+ * Enforce {@link checkAdminAuthorization}, throwing a transport-ready 403 error
+ * (`FORBIDDEN_ADMIN_REQUIRED`) when the principal is not an admin. Returns
+ * `true` when authorized, so a caller can `requireAdminRole(trust)` inline.
+ *
+ * @param {object|null|undefined} trustContext
+ * @returns {true}
+ */
+export function requireAdminRole(trustContext) {
+  const check = checkAdminAuthorization(trustContext)
+  if (!check.authorized) {
+    const error = new Error(`Admin authorization required (${check.reason})`)
+    error.statusCode = 403
+    error.code = 'FORBIDDEN_ADMIN_REQUIRED'
+    error.reason = check.reason
+    throw error
+  }
+  return true
+}
+
+/**
  * Resolve the correlation id for a request: propagate the inbound header when
  * present, otherwise mint one. Never throws on malformed headers.
  *
