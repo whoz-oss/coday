@@ -19,6 +19,28 @@
 const PRIMARY_KEYS = {
   workflow_definitions: ['organization_id', 'workflow_type', 'version'],
   workflow_instances: ['organization_id', 'workstream_id', 'namespace_id', 'workflow_id'],
+  workflow_evidence: ['organization_id', 'workstream_id', 'namespace_id', 'workflow_id', 'evidence_id'],
+  human_interactions: ['organization_id', 'workstream_id', 'namespace_id', 'workflow_id', 'interaction_id'],
+  agent_step_attempts: [
+    'organization_id',
+    'workstream_id',
+    'namespace_id',
+    'workflow_id',
+    'step_id',
+    'attempt_id',
+  ],
+  agent_step_results: [
+    'organization_id',
+    'workstream_id',
+    'namespace_id',
+    'workflow_id',
+    'step_id',
+    'attempt_id',
+    'result_id',
+  ],
+  oracle_executions: ['organization_id', 'workstream_id', 'namespace_id', 'workflow_id', 'execution_id'],
+  work_environments: ['organization_id', 'workstream_id', 'environment_id'],
+  deliveries: ['organization_id', 'workstream_id', 'namespace_id', 'delivery_id'],
 }
 
 function stripCast(token) {
