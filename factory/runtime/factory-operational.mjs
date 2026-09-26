@@ -5,7 +5,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// factory/src/lib/active-case.ts
+// ../src/lib/active-case.ts
 import { unlinkSync, writeFileSync } from "node:fs";
 var registry = /* @__PURE__ */ new Map();
 var observabilityFile = process.env.FACTORY_ACTIVE_CASE_FILE ?? null;
@@ -44,7 +44,7 @@ function getActiveCaseId() {
   return first.done ? null : first.value;
 }
 
-// factory/src/lib/registry.ts
+// ../src/lib/registry.ts
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -123,7 +123,7 @@ function endCurrentRunOnce(status, facts = {}) {
   return true;
 }
 
-// factory/src/domain/workflow/workflow-definition.ts
+// ../src/domain/workflow/workflow-definition.ts
 import { createHash } from "node:crypto";
 var WORKFLOW_DEFINITION_SCHEMA_VERSION = "1";
 var WORKFLOW_DEFINITION_RESPONSIBILITIES = Object.freeze(["human", "agent", "code"]);
@@ -283,7 +283,7 @@ function hashWorkflowDefinition(definition) {
   return createHash("sha256").update(canonicalizeWorkflowDefinition(definition), "utf8").digest("hex");
 }
 
-// factory/src/domain/workflow/workflow-instance.ts
+// ../src/domain/workflow/workflow-instance.ts
 import { createHash as createHash2 } from "node:crypto";
 var WORKFLOW_GOVERNANCE_MODE = "governed";
 function independentWorkflowRelations(workflowId) {
@@ -350,7 +350,7 @@ function createWorkflowInstance(command, definition, controllerExecution, observ
   return { instance, projection, creationCommandHash: workflowStartCommandHash(command, definition) };
 }
 
-// factory/src/domain/workflow/workflow-transition-policy.ts
+// ../src/domain/workflow/workflow-transition-policy.ts
 import { createHash as createHash3, randomUUID } from "node:crypto";
 var WORKFLOW_STATUSES = Object.freeze([
   "pending",
@@ -680,7 +680,7 @@ function applyHumanCheckpointOpen(snapshot, definition, request, observedAt = (/
   return { ...snapshot, instance, projection, revision };
 }
 
-// factory/src/domain/evidence/workflow-evidence.ts
+// ../src/domain/evidence/workflow-evidence.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 var WORKFLOW_EVIDENCE_KINDS = Object.freeze([
   "agent-result",
@@ -814,7 +814,7 @@ function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/*
   return Object.freeze(record2);
 }
 
-// factory/src/domain/interaction/workflow-human-interaction.ts
+// ../src/domain/interaction/workflow-human-interaction.ts
 import { createHash as createHash4 } from "node:crypto";
 var HUMAN_INTERACTION_KINDS = Object.freeze(["approval", "choice", "text"]);
 var WORKFLOW_HUMAN_INTERACTION_STATUSES = Object.freeze(["opening", "open", "replied", "aborted"]);
@@ -878,7 +878,7 @@ function openedInteractionRevision(event) {
   return event.interaction?.revision ?? event.revision;
 }
 
-// factory/src/domain/agent-attempt/agent-step-attempt.ts
+// ../src/domain/agent-attempt/agent-step-attempt.ts
 var AGENT_STEP_ATTEMPT_STATUSES = Object.freeze([
   "starting",
   "running",
@@ -932,7 +932,7 @@ function validateAgentStepAttempt(attempt) {
   return attempt;
 }
 
-// factory/src/domain/agent-attempt/agent-step-result.ts
+// ../src/domain/agent-attempt/agent-step-result.ts
 import { createHash as createHash5, timingSafeEqual } from "node:crypto";
 var AGENT_STEP_RESULT_STATUSES = Object.freeze(["PASS", "FAIL"]);
 var AGENT_STEP_RESULT_LIMITS = Object.freeze({
@@ -1027,7 +1027,7 @@ function validateAgentStepResultBusiness(value) {
   return true;
 }
 
-// factory/src/domain/environment/work-unit-environment.ts
+// ../src/domain/environment/work-unit-environment.ts
 import { isAbsolute, normalize, resolve } from "node:path";
 var WORK_UNIT_ENVIRONMENT_STATES = Object.freeze([
   "provisioning",
@@ -1142,7 +1142,7 @@ function validateWorkUnitEnvironment(input) {
   return { ok: true, environment };
 }
 
-// factory/src/infrastructure/storage/storage-kernel.ts
+// ../src/infrastructure/storage/storage-kernel.ts
 import { createHash as createHash6, randomBytes as randomBytes2 } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname as dirname2, join as join2 } from "node:path";
@@ -1320,7 +1320,7 @@ function assertSupportedFormatVersion(value, supported = STORAGE_FORMAT_VERSION)
   return version;
 }
 
-// factory/src/ports/persistence/workflow-definition-repository.ts
+// ../src/ports/persistence/workflow-definition-repository.ts
 var WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES = Object.freeze({
   WORKFLOW_DEFINITION_NOT_FOUND: "WORKFLOW_DEFINITION_NOT_FOUND",
   INVALID_DEFINITION_FILE: "INVALID_DEFINITION_FILE",
@@ -1328,7 +1328,7 @@ var WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES = Object.freeze({
   DEFINITION_COLLISION: "DEFINITION_COLLISION"
 });
 
-// factory/src/adapters/persistence/filesystem-workflow-definition-repository.ts
+// ../src/adapters/persistence/filesystem-workflow-definition-repository.ts
 var WorkflowDefinitionRepositoryError = class extends Error {
   code;
   details;
@@ -1357,7 +1357,7 @@ function createFilesystemWorkflowDefinitionRepository(registry2) {
   return new FilesystemWorkflowDefinitionRepository(registry2);
 }
 
-// factory/src/adapters/persistence/filesystem-workflow-instance-repository.ts
+// ../src/adapters/persistence/filesystem-workflow-instance-repository.ts
 var WorkflowInstanceRepositoryError = class extends Error {
   code;
   details;
@@ -1438,7 +1438,7 @@ function createFilesystemWorkflowInstanceRepository(store) {
   return new FilesystemWorkflowInstanceRepository(store);
 }
 
-// factory/src/adapters/persistence/filesystem-workflow-evidence-repository.ts
+// ../src/adapters/persistence/filesystem-workflow-evidence-repository.ts
 var FilesystemWorkflowEvidenceRepository = class {
   constructor(store) {
     this.store = store;
@@ -1454,7 +1454,7 @@ function createFilesystemWorkflowEvidenceRepository(store) {
   return new FilesystemWorkflowEvidenceRepository(store);
 }
 
-// factory/src/adapters/persistence/filesystem-workflow-human-interaction-repository.ts
+// ../src/adapters/persistence/filesystem-workflow-human-interaction-repository.ts
 var WorkflowHumanInteractionRepositoryError = class extends Error {
   code;
   details;
@@ -1512,7 +1512,7 @@ function createFilesystemWorkflowHumanInteractionRepository(store) {
   return new FilesystemWorkflowHumanInteractionRepository(store);
 }
 
-// factory/src/adapters/persistence/agent-step-attempt-store.ts
+// ../src/adapters/persistence/agent-step-attempt-store.ts
 import { join as join3 } from "node:path";
 var AgentStepAttemptStore = class {
   constructor(dataRoot) {
@@ -1545,7 +1545,7 @@ var AgentStepAttemptStore = class {
   }
 };
 
-// factory/src/adapters/persistence/filesystem-agent-step-attempt-repository.ts
+// ../src/adapters/persistence/filesystem-agent-step-attempt-repository.ts
 var FilesystemAgentStepAttemptRepository = class {
   constructor(store) {
     this.store = store;
@@ -1561,7 +1561,7 @@ function createFilesystemAgentStepAttemptRepository(store) {
   return new FilesystemAgentStepAttemptRepository(store);
 }
 
-// factory/src/adapters/persistence/agent-step-result-store.ts
+// ../src/adapters/persistence/agent-step-result-store.ts
 import { randomBytes as randomBytes3, randomUUID as randomUUID3 } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { join as join4 } from "node:path";
@@ -1715,7 +1715,7 @@ var AgentStepResultStore = class {
   }
 };
 
-// factory/src/adapters/persistence/filesystem-agent-step-result-repository.ts
+// ../src/adapters/persistence/filesystem-agent-step-result-repository.ts
 var FilesystemAgentStepResultRepository = class {
   constructor(store) {
     this.store = store;
@@ -1737,7 +1737,7 @@ function createFilesystemAgentStepResultRepository(store) {
   return new FilesystemAgentStepResultRepository(store);
 }
 
-// factory/src/adapters/persistence/filesystem-oracle-execution-repository.ts
+// ../src/adapters/persistence/filesystem-oracle-execution-repository.ts
 var FilesystemOracleExecutionRepository = class {
   constructor(registry2) {
     this.registry = registry2;
@@ -1753,7 +1753,7 @@ function createFilesystemOracleExecutionRepository(registry2) {
   return new FilesystemOracleExecutionRepository(registry2);
 }
 
-// factory/src/adapters/persistence/filesystem-work-environment-repository.ts
+// ../src/adapters/persistence/filesystem-work-environment-repository.ts
 var FilesystemWorkEnvironmentRepository = class {
   constructor(store) {
     this.store = store;
@@ -1778,7 +1778,7 @@ function createFilesystemWorkEnvironmentRepository(store) {
   return new FilesystemWorkEnvironmentRepository(store);
 }
 
-// factory/src/adapters/persistence/filesystem-delivery-repository.ts
+// ../src/adapters/persistence/filesystem-delivery-repository.ts
 var FilesystemDeliveryRepository = class {
   constructor(store) {
     this.store = store;
@@ -1827,7 +1827,7 @@ function createFilesystemDeliveryRepository(store) {
   return new FilesystemDeliveryRepository(store);
 }
 
-// factory/src/adapters/persistence/sql/db.ts
+// ../src/adapters/persistence/sql/db.ts
 var DEFAULT_ORGANIZATION_ID = "default";
 var DEFAULT_WORKSTREAM_ID = "default";
 function resolveSqlDatabaseConfig(env = process.env) {
@@ -1869,7 +1869,7 @@ function parseJsonColumn(value) {
   return value;
 }
 
-// factory/src/adapters/persistence/sql/sql-workflow-definition-repository.ts
+// ../src/adapters/persistence/sql/sql-workflow-definition-repository.ts
 var SELECT_COLUMNS = "organization_id, workstream_id, workflow_type, version, definition_hash, definition_json";
 function compareVersions(left, right) {
   const parse = (value) => value.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -1939,7 +1939,7 @@ function createSqlWorkflowDefinitionRepository(client, options = {}) {
   return new SqlWorkflowDefinitionRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/sql-workflow-instance-repository.ts
+// ../src/adapters/persistence/sql/sql-workflow-instance-repository.ts
 var INSTANCE_COLUMNS = [
   "organization_id",
   "workstream_id",
@@ -2112,7 +2112,7 @@ function createSqlWorkflowInstanceRepository(client, options = {}) {
   return new SqlWorkflowInstanceRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/unit-of-work.ts
+// ../src/adapters/persistence/sql/unit-of-work.ts
 async function withTransaction(client, work) {
   await client.query("BEGIN");
   try {
@@ -2125,7 +2125,7 @@ async function withTransaction(client, work) {
   }
 }
 
-// factory/src/adapters/persistence/sql/sql-workflow-evidence-repository.ts
+// ../src/adapters/persistence/sql/sql-workflow-evidence-repository.ts
 import { createHash as createHash7 } from "node:crypto";
 var WorkflowEvidenceStoreError = class extends Error {
   code;
@@ -2222,7 +2222,7 @@ function createSqlWorkflowEvidenceRepository(client, options = {}) {
   return new SqlWorkflowEvidenceRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/sql-workflow-human-interaction-repository.ts
+// ../src/adapters/persistence/sql/sql-workflow-human-interaction-repository.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
 var WorkflowHumanInteractionError = class extends Error {
   code;
@@ -2702,7 +2702,7 @@ function createSqlWorkflowHumanInteractionRepository(client, options = {}) {
   return new SqlWorkflowHumanInteractionRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/sql-agent-step-attempt-repository.ts
+// ../src/adapters/persistence/sql/sql-agent-step-attempt-repository.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
 var ATTEMPT_DB_STATUS = Object.freeze({
   starting: "running",
@@ -2820,7 +2820,7 @@ function createSqlAgentStepAttemptRepository(client, options = {}) {
   return new SqlAgentStepAttemptRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/sql-agent-step-result-repository.ts
+// ../src/adapters/persistence/sql/sql-agent-step-result-repository.ts
 import { randomBytes as randomBytes4, randomUUID as randomUUID6 } from "node:crypto";
 var IDENTITY_FIELDS2 = ["attemptId", "workflowId", "stepId", "namespaceId", "caseId", "agentName"];
 var CAPABILITY_MATCH_FIELDS2 = [...IDENTITY_FIELDS2, "briefHash"];
@@ -3057,7 +3057,7 @@ function createSqlAgentStepResultRepository(client, options = {}) {
   return new SqlAgentStepResultRepository(client, options);
 }
 
-// factory/src/domain/oracle/oracle-definition.ts
+// ../src/domain/oracle/oracle-definition.ts
 import { createHash as createHash8 } from "node:crypto";
 var SAFE2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var VERSION = /^\d+\.\d+\.\d+$/;
@@ -3176,7 +3176,7 @@ var OracleDefinitionRegistryCore = class {
   }
 };
 
-// factory/src/adapters/persistence/sql/sql-oracle-execution-repository.ts
+// ../src/adapters/persistence/sql/sql-oracle-execution-repository.ts
 var SqlOracleExecutionRepository = class {
   #client;
   #organizationId;
@@ -3276,7 +3276,7 @@ function createSqlOracleExecutionRepository(client, options = {}) {
   return new SqlOracleExecutionRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/sql-work-environment-repository.ts
+// ../src/adapters/persistence/sql/sql-work-environment-repository.ts
 import { createHash as createHash9 } from "node:crypto";
 var ERROR_CODES = Object.freeze({
   INVALID_ENVIRONMENT: "INVALID_ENVIRONMENT",
@@ -3512,10 +3512,10 @@ function createSqlWorkEnvironmentRepository(client, options = {}) {
   return new SqlWorkEnvironmentRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/sql-delivery-repository.ts
+// ../src/adapters/persistence/sql/sql-delivery-repository.ts
 import { createHash as createHash13 } from "node:crypto";
 
-// factory/src/domain/delivery/delivery-operation-definition.ts
+// ../src/domain/delivery/delivery-operation-definition.ts
 import { createHash as createHash10 } from "node:crypto";
 var DELIVERY_OPERATION_KINDS = Object.freeze([
   "deployment",
@@ -3708,10 +3708,10 @@ function validateDeliveryOperationRecord(v) {
   return { ok: true, value: Object.freeze({ ...v }) };
 }
 
-// factory/src/domain/delivery/delivery-policy.ts
+// ../src/domain/delivery/delivery-policy.ts
 import { createHash as createHash12, randomUUID as randomUUID7 } from "node:crypto";
 
-// factory/src/domain/delivery/delivery-definition.ts
+// ../src/domain/delivery/delivery-definition.ts
 import { createHash as createHash11 } from "node:crypto";
 var DELIVERY_DEFINITION_SCHEMA_VERSION = "1";
 var DELIVERY_STAGES = Object.freeze([
@@ -3853,7 +3853,7 @@ function defaultDeliveryDefinition() {
   };
 }
 
-// factory/src/domain/delivery/delivery-policy.ts
+// ../src/domain/delivery/delivery-policy.ts
 var DELIVERY_INITIAL_STAGE = "implementation-ready";
 var SAFE5 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var FIELDS3 = /* @__PURE__ */ new Set(["deliveryId", "expectedRevision", "requestedStage", "evidenceIds", "idempotencyKey"]);
@@ -3948,7 +3948,7 @@ function applyDeliveryPromotion(snapshot, request, observedAt = (/* @__PURE__ */
   };
 }
 
-// factory/src/adapters/persistence/sql/sql-delivery-repository.ts
+// ../src/adapters/persistence/sql/sql-delivery-repository.ts
 var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 var SAFE6 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var SHA3 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
@@ -4469,7 +4469,7 @@ function createSqlDeliveryRepository(client, options = {}) {
   return new SqlDeliveryRepository(client, options);
 }
 
-// factory/src/domain/work-unit.ts
+// ../src/domain/work-unit.ts
 var WORK_UNIT_STATES = Object.freeze([
   "created",
   "assigned",
@@ -4547,7 +4547,7 @@ function validateWorkUnit(input) {
   return { ok: true, workUnit };
 }
 
-// factory/src/adapters/persistence/sql/sql-work-unit-repository.ts
+// ../src/adapters/persistence/sql/sql-work-unit-repository.ts
 var SqlWorkUnitRepositoryError = class extends Error {
   code;
   details;
@@ -4761,7 +4761,7 @@ function createSqlWorkUnitRepository(client, options = {}) {
   return new SqlWorkUnitRepository(client, options);
 }
 
-// factory/src/domain/worker.ts
+// ../src/domain/worker.ts
 var WORKER_STATES = Object.freeze(["offline", "idle", "busy", "maintenance"]);
 var WORKER_ERROR_CODES = Object.freeze({
   INVALID_WORKER: "INVALID_WORKER",
@@ -4828,7 +4828,7 @@ function validateWorker(input) {
   return { ok: true, worker };
 }
 
-// factory/src/adapters/persistence/sql/sql-worker-repository.ts
+// ../src/adapters/persistence/sql/sql-worker-repository.ts
 var SqlWorkerRepositoryError = class extends Error {
   code;
   details;
@@ -5046,10 +5046,10 @@ function createSqlWorkerRepository(client, options = {}) {
   return new SqlWorkerRepository(client, options);
 }
 
-// factory/src/adapters/persistence/sql/sql-lease-repository.ts
+// ../src/adapters/persistence/sql/sql-lease-repository.ts
 import { randomUUID as randomUUID8 } from "node:crypto";
 
-// factory/src/domain/lease/lease.ts
+// ../src/domain/lease/lease.ts
 var WORK_UNIT_LEASE_STATUSES = Object.freeze(["active", "released", "expired"]);
 var LEASE_ELIGIBLE_WORK_UNIT_STATUSES = Object.freeze(["created", "failed"]);
 var LEASE_RELEASE_RESULT_STATUSES = Object.freeze(["completed", "failed", "created"]);
@@ -5116,7 +5116,7 @@ function assertLeaseRenewable(lease, nowIso) {
   }
 }
 
-// factory/src/adapters/persistence/sql/sql-lease-repository.ts
+// ../src/adapters/persistence/sql/sql-lease-repository.ts
 function toIso(value) {
   if (value === null || value === void 0) return null;
   if (value instanceof Date) return value.toISOString();
@@ -5315,7 +5315,7 @@ function createSqlLeaseRepository(client, options = {}) {
   return new SqlLeaseRepository(client, options);
 }
 
-// factory/src/application/shutdown.ts
+// ../src/application/shutdown.ts
 function createShutdownController(deps) {
   let initiated = false;
   let completed = false;
@@ -5353,7 +5353,7 @@ function createShutdownController(deps) {
   };
 }
 
-// factory/src/adapters/agentos/agentos-http-case-terminator.ts
+// ../src/adapters/agentos/agentos-http-case-terminator.ts
 function createAgentOsHttpCaseTerminator(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 5e3;
@@ -5369,7 +5369,7 @@ function createAgentOsHttpCaseTerminator(options) {
   };
 }
 
-// factory/src/adapters/process-shutdown.ts
+// ../src/adapters/process-shutdown.ts
 function installSigtermHandler(controller, processPort = process) {
   processPort.once("SIGTERM", () => {
     void controller.handle("SIGTERM");
@@ -5379,12 +5379,12 @@ function processExit(processPort = process) {
   return (code) => processPort.exit(code);
 }
 
-// factory/src/ports/agent-runtime-gateway.ts
+// ../src/ports/agent-runtime-gateway.ts
 function asRuntimeExecutionId(value) {
   return value;
 }
 
-// factory/src/adapters/agentos/agentos-http-client.ts
+// ../src/adapters/agentos/agentos-http-client.ts
 var DEFAULT_BASE_URL = "http://localhost:8124";
 var DEFAULT_USER_ID = "benjamin.valdes";
 var DEFAULT_TIMEOUT_MS = 15e3;
@@ -5473,7 +5473,7 @@ ${responseBody}`);
   };
 }
 
-// factory/src/adapters/agentos/agentos-capability-inspector.ts
+// ../src/adapters/agentos/agentos-capability-inspector.ts
 import { realpathSync } from "node:fs";
 var RESERVED_INTEGRATIONS = /* @__PURE__ */ new Set(["QUERY_USER", "CASE_FILE_EXCHANGE", "NAMESPACE_FILE_EXCHANGE", "FACTORY"]);
 function normalizeRoot(p) {
@@ -5737,7 +5737,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
   return { inspectWorker, preflightWorkspace: preflightWorkspace2, preflightWritableWorkspace: preflightWritableWorkspace2, preflightReadOnlyWorkspace: preflightReadOnlyWorkspace2 };
 }
 
-// factory/src/adapters/agentos/agentos-event-translator.ts
+// ../src/adapters/agentos/agentos-event-translator.ts
 var CASE_STATUS_EVENT = "CaseStatusEvent";
 var QUIESCENT_STATUSES = ["IDLE", "KILLED", "ERROR"];
 function asString(value) {
@@ -5869,7 +5869,7 @@ function toRuntimeEvents(events) {
   return events.map(toRuntimeEvent);
 }
 
-// factory/src/adapters/agentos/agentos-runtime-observer.ts
+// ../src/adapters/agentos/agentos-runtime-observer.ts
 var DEFAULT_POLL_INTERVAL_MS = 2e3;
 var DEFAULT_START_TIMEOUT_MS = 3e4;
 var DEFAULT_WORK_TIMEOUT_MS = 10 * 60 * 1e3;
@@ -5995,7 +5995,7 @@ function createAgentOsRuntimeObserver(deps) {
   };
 }
 
-// factory/src/adapters/agentos/agentos-runtime-adapter.ts
+// ../src/adapters/agentos/agentos-runtime-adapter.ts
 function createAgentOsRuntimeAdapter(config = {}) {
   const client = config.client ?? createAgentOsHttpClient(config);
   const inspector = createAgentOsCapabilityInspector({
@@ -6144,7 +6144,7 @@ function createAgentOsRuntimeAdapter(config = {}) {
   };
 }
 
-// factory/src/application/agentos-operations.ts
+// ../src/application/agentos-operations.ts
 var agentos_operations_exports = {};
 __export(agentos_operations_exports, {
   bindFactoryStepResult: () => bindFactoryStepResult,
@@ -6207,7 +6207,7 @@ function runAgentTurn(caseId, agentName, brief, options) {
   return getAgentOsRuntimeAdapter().runAgentTurn(caseId, agentName, brief, options);
 }
 
-// factory/src/application/agent-attempt/factory-agent-step-executor.ts
+// ../src/application/agent-attempt/factory-agent-step-executor.ts
 import { createHash as createHash14, randomUUID as randomUUID9 } from "node:crypto";
 import { mkdir as mkdir2, open as open2, readFile as readFile2, rename as rename2, rm as rm2, stat } from "node:fs/promises";
 import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2 } from "node:path";
@@ -6700,7 +6700,7 @@ async function executeAgentStepAttempt(input) {
   } : { ok: false, code: transition.error.code, attempt: finished };
 }
 
-// factory/src/domain/oracle/oracle.ts
+// ../src/domain/oracle/oracle.ts
 function countTaskOutcomes(output) {
   const plain = output.replace(/\u001b\[[0-9;]*m/g, "");
   const lines = plain.split("\n");
@@ -6777,7 +6777,7 @@ function diffSnapshots(before, after) {
   return { modified, untracked };
 }
 
-// factory/src/application/oracle/oracle-definition-registry.ts
+// ../src/application/oracle/oracle-definition-registry.ts
 import { readFile as readFile3, readdir as readdir2 } from "node:fs/promises";
 import { join as join6 } from "node:path";
 function createFilesystemOracleDefinitionSource(root) {
@@ -6792,7 +6792,7 @@ var OracleDefinitionRegistry = class extends OracleDefinitionRegistryCore {
   }
 };
 
-// factory/src/application/oracle/oracle-command.ts
+// ../src/application/oracle/oracle-command.ts
 import { existsSync, readFileSync } from "node:fs";
 import { dirname as dirname3, join as join7 } from "node:path";
 function resolveBuildHosts(ownerProjects, repoRoot) {
@@ -6973,7 +6973,7 @@ function buildOracleCommand(oracle, files, repoRoot) {
   return "pnpm nx run-many --target=" + target + " --projects=" + projects.join(",") + " --skip-nx-cache";
 }
 
-// factory/src/application/oracle/oracle-executor.ts
+// ../src/application/oracle/oracle-executor.ts
 import { spawn, spawnSync } from "node:child_process";
 import { createHash as createHash15 } from "node:crypto";
 import { readFileSync as readFileSync2 } from "node:fs";
@@ -6997,8 +6997,8 @@ function runCommand(command, { cwd, timeoutMs } = {}) {
     // 200 MB pour éviter les troncatures internes
   });
   const durationMs = Date.now() - start;
-  const errorCode = result.error?.code;
-  const timedOut = result.signal === "SIGTERM" || errorCode === "ETIMEDOUT";
+  const errorCode2 = result.error?.code;
+  const timedOut = result.signal === "SIGTERM" || errorCode2 === "ETIMEDOUT";
   return {
     exitCode: timedOut ? -1 : result.status ?? -1,
     stdout: truncate(result.stdout ?? ""),
@@ -7120,7 +7120,7 @@ function oracleArtifact(result) {
   return { raw, hash: `sha256:${createHash15("sha256").update(raw).digest("hex")}` };
 }
 
-// factory/src/application/oracle/oracle-baseline.ts
+// ../src/application/oracle/oracle-baseline.ts
 var TS_INFRASTRUCTURE_CODES = /* @__PURE__ */ new Set(["TS5090", "TS6059", "TS18003", "TS6305", "TS6307"]);
 var BASELINE_TAIL_LINES = 40;
 function stripAnsi(s) {
@@ -7455,7 +7455,7 @@ function buildQuarantineRecord(params) {
   };
 }
 
-// factory/src/adapters/persistence/work-unit-environment-store.ts
+// ../src/adapters/persistence/work-unit-environment-store.ts
 import { createHash as createHash16, randomBytes as randomBytes5 } from "node:crypto";
 import { appendFile as appendFile2, lstat, mkdir as mkdir3, open as open3, readFile as readFile4, readdir as readdir3, realpath as realpath2, rename as rename3, rm as rm3 } from "node:fs/promises";
 import { dirname as dirname4, isAbsolute as isAbsolute4, join as join9, relative as relative2, sep } from "node:path";
@@ -7673,7 +7673,7 @@ var WorkUnitEnvironmentStore = class {
       return this._write(null, v.environment, "provisioning_reserved");
     });
   }
-  async transition(ns, id2, next, { expectedRevision, errorCode } = {}) {
+  async transition(ns, id2, next, { expectedRevision, errorCode: errorCode2 } = {}) {
     this._namespace(ns);
     return this._locked(ns, id2, async () => {
       const c = await this.read(ns, id2);
@@ -7709,11 +7709,11 @@ var WorkUnitEnvironmentStore = class {
         c,
         v.environment,
         t === "active" ? "parent_case_bound" : t === "removed" ? "environment_removed" : f === t ? "environment_provisioned" : "environment_state_changed",
-        errorCode
+        errorCode2
       );
     });
   }
-  async _write(c, e, kind, errorCode) {
+  async _write(c, e, kind, errorCode2) {
     const p = this.paths(e.namespaceId, e.environmentId);
     await this._guard(p);
     const revision = (c?.revision ?? 0) + 1;
@@ -7730,7 +7730,7 @@ var WorkUnitEnvironmentStore = class {
       environmentHash,
       lifecycleState: e.lifecycleState,
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
-      ...errorCode ? { errorCode } : {}
+      ...errorCode2 ? { errorCode: errorCode2 } : {}
     });
     await this.fault("after-journal");
     await atomic(p.snapshot, s);
@@ -7740,7 +7740,7 @@ var WorkUnitEnvironmentStore = class {
   }
 };
 
-// factory/src/application/environment/work-unit-environment-service.ts
+// ../src/application/environment/work-unit-environment-service.ts
 import { randomUUID as randomUUID10 } from "node:crypto";
 var machine = (e) => {
   const code = e?.code;
@@ -7913,7 +7913,7 @@ var WorkUnitEnvironmentService = class {
   }
 };
 
-// factory/src/application/environment/work-unit-environment-controller.ts
+// ../src/application/environment/work-unit-environment-controller.ts
 var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 var SAFE7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var ALLOWED2 = /* @__PURE__ */ new Set(["workflowId", "workUnitId", "integrationBranch", "branch"]);
@@ -8112,7 +8112,7 @@ async function handleWorkUnitEnvironmentRequest({
   }
 }
 
-// factory/src/domain/delivery/delivery-operation-policy.ts
+// ../src/domain/delivery/delivery-operation-policy.ts
 var deny3 = (code, reason) => ({ allowed: false, code, reason });
 var pass = () => ({ allowed: true });
 function evaluateDeliveryOperationPolicy({
@@ -8179,7 +8179,7 @@ function resolveDeliveryVerificationRequest(request, target) {
   };
 }
 
-// factory/src/adapters/persistence/delivery-store.ts
+// ../src/adapters/persistence/delivery-store.ts
 import { createHash as createHash17, randomBytes as randomBytes6 } from "node:crypto";
 import { appendFile as appendFile3, mkdir as mkdir4, open as open4, readFile as readFile5, rename as rename4, rm as rm4 } from "node:fs/promises";
 import { dirname as dirname5, isAbsolute as isAbsolute5, join as join10 } from "node:path";
@@ -8642,7 +8642,7 @@ var DeliveryStore = class {
   }
 };
 
-// factory/src/adapters/persistence/delivery-evidence-store.ts
+// ../src/adapters/persistence/delivery-evidence-store.ts
 import { createHash as createHash18, randomUUID as randomUUID11 } from "node:crypto";
 import { appendFile as appendFile4, mkdir as mkdir5, open as open5, readFile as readFile6 } from "node:fs/promises";
 import { dirname as dirname6, join as join11 } from "node:path";
@@ -8762,7 +8762,7 @@ var DeliveryEvidenceStore = class {
   }
 };
 
-// factory/src/adapters/delivery/delivery-target-registry.ts
+// ../src/adapters/delivery/delivery-target-registry.ts
 var SAFE10 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var DIGEST2 = /^sha256:[0-9a-f]{64}$/i;
 var FIELDS4 = [
@@ -8804,7 +8804,7 @@ var DeliveryTargetRegistry = class {
 };
 var unavailableDeliveryTargetRegistry = Object.freeze({ lookup: unavailable });
 
-// factory/src/adapters/delivery/delivery-git-control-plane.ts
+// ../src/adapters/delivery/delivery-git-control-plane.ts
 import { execFile } from "node:child_process";
 import { createHash as createHash19 } from "node:crypto";
 import { realpath as realpath3 } from "node:fs/promises";
@@ -8998,7 +8998,7 @@ ${this.identity.email}`)
   }
 };
 
-// factory/src/adapters/delivery/delivery-pr-adapter.ts
+// ../src/adapters/delivery/delivery-pr-adapter.ts
 var TRUSTED_PR_HOSTS = /* @__PURE__ */ new Set(["github.com", "www.github.com"]);
 function trustedPullRequestUrl(value) {
   try {
@@ -9067,7 +9067,7 @@ var DeliveryPullRequestAdapter = class {
   }
 };
 
-// factory/src/adapters/delivery/delivery-deployment-adapter.ts
+// ../src/adapters/delivery/delivery-deployment-adapter.ts
 var SAFE11 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var DELIVERY_ADAPTER_OUTCOMES = Object.freeze(["running", "succeeded", "failed", "indeterminate"]);
 function normalizeDeliveryAdapterOutcome(value) {
@@ -9118,7 +9118,7 @@ var UnconfiguredDeliveryVerificationAdapter = class {
   inspect = blocked;
 };
 
-// factory/src/application/delivery/delivery-controller.ts
+// ../src/application/delivery/delivery-controller.ts
 var UUID6 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 var SAFE12 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var FORBIDDEN = /* @__PURE__ */ new Set([
@@ -9514,7 +9514,7 @@ async function handleDeliveryRequest({
   }
 }
 
-// factory/src/application/delivery/delivery-operation-controller.ts
+// ../src/application/delivery/delivery-operation-controller.ts
 var SAFE13 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var REASON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 var FORBIDDEN2 = /* @__PURE__ */ new Set([
@@ -9764,7 +9764,7 @@ var DeliveryOperationController = class {
   }
 };
 
-// factory/src/domain/forge-bmad/forge-roots.ts
+// ../src/domain/forge-bmad/forge-roots.ts
 import { isAbsolute as isAbsolute7, join as join12, relative as relative3 } from "node:path";
 var FORGE_ROOTS_SCHEMA_VERSION = 2;
 var DEFAULT_RUN_STORE_POLICY = "under_orchestrator";
@@ -9783,7 +9783,7 @@ function defaultRunStoreRoot(repoRoot) {
   return join12(repoRoot, "forge", "factory-runs");
 }
 
-// factory/src/domain/forge-bmad/forge-human-decision.ts
+// ../src/domain/forge-bmad/forge-human-decision.ts
 import { createHash as createHash20 } from "node:crypto";
 var G1_POLICY_VERSION = "forge-g1-human-v1";
 var G1_OUTCOMES = /* @__PURE__ */ new Set(["approved", "rejected"]);
@@ -9806,7 +9806,7 @@ function computeG1EvidenceSetHash(events, runId, attempt = 1, policyVersion = G1
   return `sha256:${createHash20("sha256").update(canonicalG1({ policyVersion, evidence })).digest("hex")}`;
 }
 
-// factory/src/domain/forge-bmad/forge-spec.ts
+// ../src/domain/forge-bmad/forge-spec.ts
 import { createHash as createHash21 } from "node:crypto";
 var FORGE_SPEC_SCHEMA_VERSION = 1;
 var G2_POLICY_VERSION = "forge-g2-deterministic-v1";
@@ -9901,7 +9901,7 @@ function computeForgeSpecHash(content) {
 }
 var FORGE_SPEC_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
 
-// factory/src/domain/forge-bmad/forge-story-spec.ts
+// ../src/domain/forge-bmad/forge-story-spec.ts
 import { createHash as createHash22 } from "node:crypto";
 var FORGE_STORY_SPEC_SCHEMA_VERSION = 1;
 var G2_US_POLICY_VERSION = "forge-g2-us-deterministic-v1";
@@ -10038,7 +10038,7 @@ function computeStorySpecHash(content) {
   return `sha256:${createHash22("sha256").update(content).digest("hex")}`;
 }
 
-// factory/src/domain/forge-bmad/forge-bmad-parser.ts
+// ../src/domain/forge-bmad/forge-bmad-parser.ts
 function toLines(raw) {
   return raw.replace(/\r\n/g, "\n").split("\n");
 }
@@ -10254,7 +10254,7 @@ function validateForgeRunStructure(raw, ticketId) {
   return { ok: true };
 }
 
-// factory/src/domain/forge-bmad/forge-ledger.ts
+// ../src/domain/forge-bmad/forge-ledger.ts
 var FORGE_LEDGER_SCHEMA_VERSION = 1;
 var FORGE_WORKFLOW_VERSION = "forge-epic-v1";
 function parseForgeLedgerLines(raw) {
@@ -10413,7 +10413,7 @@ function projectForgeRun(events) {
   };
 }
 
-// factory/lib/workflow-projection.mjs
+// ../lib/workflow-projection.mjs
 import { createHash as createHash23 } from "node:crypto";
 var WORKFLOW_STATUSES2 = Object.freeze([
   "pending",
@@ -10605,7 +10605,7 @@ function validateWorkflowProjection(input) {
   };
 }
 
-// factory/src/domain/forge-bmad/forge-workflow-adapter.ts
+// ../src/domain/forge-bmad/forge-workflow-adapter.ts
 var FORGE_WORKFLOW_ERROR_CODES = Object.freeze({
   INVALID_RUN: "INVALID_FORGE_RUN",
   UNKNOWN_DECISION: "UNKNOWN_FORGE_DECISION",
@@ -10707,7 +10707,7 @@ function adaptForgeRunToWorkflowProjection(run) {
   return validated.ok ? { ok: true, projection: validated.projection } : failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_PROJECTION, validated.error.path, { validation: validated.error });
 }
 
-// factory/src/domain/forge-bmad/jira.ts
+// ../src/domain/forge-bmad/jira.ts
 var COMMENTS_CHAR_BUDGET = 8e3;
 function extractTicketId(input) {
   if (!input || typeof input !== "string") return null;
@@ -10747,7 +10747,7 @@ function applyCommentBudget(comments, budget) {
   return { included, omitted };
 }
 
-// factory/src/adapters/forge/forge-roots-resolver.ts
+// ../src/adapters/forge/forge-roots-resolver.ts
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, realpathSync as realpathSync2, statSync } from "node:fs";
 import { basename, dirname as dirname7, isAbsolute as isAbsolute8, join as join13, resolve as resolve3 } from "node:path";
 function resolveExistingDirectory(value, field) {
@@ -10805,7 +10805,7 @@ function ensureForgeRunStore(roots) {
   return resolveExistingDirectory(roots.runStoreRoot, "roots.runStoreRoot");
 }
 
-// factory/src/adapters/forge/forge-bmad-file-reader.ts
+// ../src/adapters/forge/forge-bmad-file-reader.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import { isAbsolute as isAbsolute9, join as join14 } from "node:path";
 function readFileSafe(filePath) {
@@ -10883,7 +10883,7 @@ function readSprintStatus(repoRoot, workstreamSlug) {
   return normalizeSprintStatus(raw);
 }
 
-// factory/src/adapters/forge/forge-spec-reader.ts
+// ../src/adapters/forge/forge-spec-reader.ts
 import { readFileSync as readFileSync4, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
 import { isAbsolute as isAbsolute10, relative as relative4, resolve as resolve4 } from "node:path";
 function inside2(child, root) {
@@ -10962,7 +10962,7 @@ function hashStorySpec(specPath) {
   return computeStorySpecHash(content);
 }
 
-// factory/src/adapters/forge/forge-ledger-store.ts
+// ../src/adapters/forge/forge-ledger-store.ts
 import { appendFileSync as appendFileSync2, readdirSync, readFileSync as readFileSync5 } from "node:fs";
 import { join as join15 } from "node:path";
 import { randomUUID as randomUUID12 } from "node:crypto";
@@ -11051,7 +11051,7 @@ function listForgeRunProjections(runStoreRoot) {
   }).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-// factory/src/adapters/jira/jira-client.ts
+// ../src/adapters/jira/jira-client.ts
 function formatCommentsSection(comments, omitted) {
   const parts = comments.map((c) => {
     const date = c.created ? new Date(c.created).toISOString().slice(0, 10) : "";
@@ -11176,7 +11176,7 @@ ${formatCommentsSection(included, omitted)}`);
   };
 }
 
-// factory/src/application/forge-bmad/forge-human-decision.ts
+// ../src/application/forge-bmad/forge-human-decision.ts
 import { randomUUID as randomUUID13 } from "node:crypto";
 import { join as join16 } from "node:path";
 function currentGate(events, runId) {
@@ -11250,7 +11250,7 @@ async function recordHumanDecision({
   return { status: "recorded", event };
 }
 
-// factory/src/application/forge-bmad/forge-g2.ts
+// ../src/application/forge-bmad/forge-g2.ts
 import { join as join17 } from "node:path";
 function gate(events, runId, name) {
   return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === name).at(-1);
@@ -11385,12 +11385,12 @@ function recordUS(filePath, epicRunId, storyRunId, storySpec, prior, status, cod
   return { status: "recorded", event };
 }
 
-// factory/src/application/forge-bmad/forge-story-analysis.ts
+// ../src/application/forge-bmad/forge-story-analysis.ts
 import { mkdirSync as mkdirSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
 import { createHash as createHash24, randomUUID as randomUUID14 } from "node:crypto";
 import { join as join19, relative as relative5, resolve as resolve5 } from "node:path";
 
-// factory/lib/plan.mjs
+// ../lib/plan.mjs
 import { existsSync as existsSync4 } from "node:fs";
 import { join as join18, isAbsolute as isAbsolute11 } from "node:path";
 function extractJsonFragment(text2) {
@@ -11459,7 +11459,7 @@ function checkPlanFiles(files, repoRoot) {
   };
 }
 
-// factory/src/application/forge-bmad/forge-story-analysis.ts
+// ../src/application/forge-bmad/forge-story-analysis.ts
 var AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION = 1;
 var STORY_ANALYSIS_POLICY_VERSION = "forge-story-analysis-v2";
 var STORY_ANALYSIS_PLAN_SCHEMA_VERSION = 1;
@@ -11690,7 +11690,7 @@ async function executeStoryAnalysis({
   return { execution: finished, outcome: turn.status, validation };
 }
 
-// factory/src/application/forge-bmad/forge-story-edit.ts
+// ../src/application/forge-bmad/forge-story-edit.ts
 import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
 import { createHash as createHash25, randomUUID as randomUUID15 } from "node:crypto";
 import { join as join20, resolve as resolve6 } from "node:path";
@@ -11863,12 +11863,12 @@ async function executeStoryEdit({
   };
 }
 
-// factory/src/application/forge-bmad/forge-story-oracles.ts
+// ../src/application/forge-bmad/forge-story-oracles.ts
 import { existsSync as existsSync7 } from "node:fs";
 import { createHash as createHash27, randomUUID as randomUUID16 } from "node:crypto";
 import { join as join23 } from "node:path";
 
-// factory/lib/domains.mjs
+// ../lib/domains.mjs
 import { join as join21, dirname as dirname8, resolve as resolve7 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 var __dirname = dirname8(fileURLToPath2(import.meta.url));
@@ -12000,7 +12000,7 @@ var domains = {
   }
 };
 
-// factory/src/application/forge-bmad/forge-front-oracle-resolution.ts
+// ../src/application/forge-bmad/forge-front-oracle-resolution.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createHash as createHash26 } from "node:crypto";
@@ -12183,7 +12183,7 @@ function resolveFrontOraclePlan({
   };
 }
 
-// factory/src/application/forge-bmad/forge-story-oracles.ts
+// ../src/application/forge-bmad/forge-story-oracles.ts
 var STORY_ORACLE_POLICY_VERSION = "forge-story-oracles-v1";
 var fail12 = (code, message = code) => {
   const error2 = new Error(message);
@@ -12454,7 +12454,7 @@ async function executeStoryOracles({
   return { campaignId, status, results };
 }
 
-// factory/src/application/forge-bmad/forge-workflow-sync.ts
+// ../src/application/forge-bmad/forge-workflow-sync.ts
 var ATTRIBUTION_FIELDS = /* @__PURE__ */ new Set(["actorId", "agentId", "caseId", "runId"]);
 var SAFE_ATTRIBUTION = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/;
 var SAFE_FORGE_TICKET_ID = /^[A-Z][A-Z0-9]+-\d+$/;
@@ -12491,7 +12491,7 @@ async function syncForgeWorkflowProjection({
   };
 }
 
-// factory/src/adapters/artifact/artifact-hash.ts
+// ../src/adapters/artifact/artifact-hash.ts
 import { createHash as createHash28, randomUUID as randomUUID17 } from "node:crypto";
 var ARTIFACT_HASH_PREFIX = "sha256";
 function computeArtifactHash(data) {
@@ -12501,7 +12501,7 @@ function createArtifactId() {
   return randomUUID17();
 }
 
-// factory/src/adapters/artifact/memory-artifact-store.ts
+// ../src/adapters/artifact/memory-artifact-store.ts
 var MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1e3;
 function toArtifactBytes(data) {
   return data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -12630,7 +12630,7 @@ function createMemoryArtifactStore(options) {
   return new MemoryArtifactStore(options);
 }
 
-// factory/src/adapters/artifact/s3-object-client.ts
+// ../src/adapters/artifact/s3-object-client.ts
 import { createHash as createHash29, createHmac } from "node:crypto";
 var SIGNING_ALGORITHM = "AWS4-HMAC-SHA256";
 var SERVICE = "s3";
@@ -12803,7 +12803,7 @@ function createS3ObjectClient(config) {
   return new S3ObjectClient(config);
 }
 
-// factory/src/adapters/artifact/s3-artifact-store.ts
+// ../src/adapters/artifact/s3-artifact-store.ts
 var DEFAULT_UPLOAD_PREFIX = "uploads";
 var DEFAULT_OBJECT_PREFIX = "objects";
 var DEFAULT_METADATA_PREFIX = "metadata";
@@ -12944,6 +12944,576 @@ var S3ArtifactStore = class {
 function createS3ArtifactStore(config) {
   return new S3ArtifactStore(config);
 }
+
+// ../src/domain/worker-runtime/worker-runtime.ts
+var FENCING_ERROR_CODES = /* @__PURE__ */ new Set([
+  LEASE_ERROR_CODES.LEASE_FENCED,
+  LEASE_ERROR_CODES.LEASE_EXPIRED,
+  LEASE_ERROR_CODES.LEASE_NOT_FOUND
+]);
+var DEFAULT_PROTOCOL_VERSION = "1";
+var defaultTimers = {
+  setInterval: (handler, timeout) => setInterval(handler, timeout),
+  clearInterval: (handle) => {
+    clearInterval(handle);
+  },
+  setTimeout: (handler, timeout) => setTimeout(handler, timeout),
+  clearTimeout: (handle) => {
+    clearTimeout(handle);
+  }
+};
+var noopLogger = {
+  info: () => {
+  },
+  warn: () => {
+  },
+  error: () => {
+  },
+  debug: () => {
+  }
+};
+function errorMessage(error2) {
+  return error2 instanceof Error ? error2.message : String(error2);
+}
+function errorCode(error2) {
+  const code = error2?.code;
+  return typeof code === "string" ? code : null;
+}
+var WorkerRuntime = class {
+  #config;
+  #leaseRepo;
+  #workUnitRepo;
+  #workerRepo;
+  #executor;
+  #clock;
+  #timers;
+  #logger;
+  #idGenerator;
+  #concurrency;
+  #instanceId;
+  #status = "stopped";
+  #worker = null;
+  #workerHeartbeatHandle = null;
+  #active = /* @__PURE__ */ new Map();
+  #sleepers = /* @__PURE__ */ new Set();
+  #slotWaiters = /* @__PURE__ */ new Set();
+  #workerQueue = Promise.resolve();
+  #loopRunning = false;
+  constructor(config, deps) {
+    this.#config = config;
+    this.#leaseRepo = deps.leaseRepo;
+    this.#workUnitRepo = deps.workUnitRepo;
+    this.#workerRepo = deps.workerRepo;
+    this.#executor = deps.executor;
+    this.#clock = deps.clock ?? (() => /* @__PURE__ */ new Date());
+    this.#timers = deps.timers ?? defaultTimers;
+    this.#logger = deps.logger ?? noopLogger;
+    this.#idGenerator = deps.idGenerator ?? (() => crypto.randomUUID());
+    this.#concurrency = Math.max(1, Math.trunc(config.concurrency ?? 1));
+    this.#instanceId = this.#idGenerator();
+  }
+  /** Current lifecycle state. */
+  get status() {
+    return this.#status;
+  }
+  /** Number of executions currently in flight. */
+  get activeCount() {
+    return this.#active.size;
+  }
+  /** Identifier of this runtime instance (generated from the injected source). */
+  get instanceId() {
+    return this.#instanceId;
+  }
+  /** The worker row as last observed; `null` before {@link start}. */
+  get worker() {
+    return this.#worker;
+  }
+  /**
+   * Registers the worker, flips it to `idle`, starts its liveness heartbeat and
+   * enters the claim loop. Idempotent: a second call while running is a no-op.
+   */
+  async start() {
+    if (this.#status !== "stopped") return;
+    this.#status = "starting";
+    try {
+      await this.#ensureWorker();
+    } catch (error2) {
+      this.#status = "stopped";
+      this.#logger.error("worker registration failed", {
+        workerId: this.#config.workerId,
+        error: errorMessage(error2)
+      });
+      throw error2;
+    }
+    this.#status = "running";
+    this.#startWorkerHeartbeat();
+    this.#startLoop();
+    this.#logger.info("worker runtime started", {
+      workerId: this.#config.workerId,
+      concurrency: this.#concurrency
+    });
+  }
+  /**
+   * Gracefully drains the runtime: stops claiming new work, lets in-flight
+   * executions finish (or aborts them past `drainTimeoutMs`), then marks the
+   * worker `offline`.
+   */
+  async stop(options = {}) {
+    if (this.#status === "stopped") return;
+    this.#status = "draining";
+    this.#wakeSleepers();
+    this.#notifySlot();
+    if (options.drainTimeoutMs !== void 0) {
+      await this.#drainWithTimeout(options.drainTimeoutMs);
+    } else {
+      await this.#waitForIdle();
+    }
+    this.#status = "stopped";
+    this.#stopWorkerHeartbeat();
+    await this.#transitionWorker("offline");
+    this.#wakeSleepers();
+    this.#notifySlot();
+    this.#logger.info("worker runtime stopped", { workerId: this.#config.workerId });
+  }
+  // -------------------------------------------------------------------------
+  // Worker registration & liveness
+  // -------------------------------------------------------------------------
+  async #ensureWorker() {
+    const nowIso = this.#clock().toISOString();
+    let worker = await this.#workerRepo.get(this.#config.workerId);
+    if (worker === null) {
+      worker = await this.#workerRepo.create({
+        workerId: this.#config.workerId,
+        workerType: this.#config.workerType,
+        status: "idle",
+        lastHeartbeatAt: nowIso,
+        protocolVersion: this.#config.protocolVersion ?? DEFAULT_PROTOCOL_VERSION,
+        capabilities: [...this.#config.capabilities ?? []],
+        payload: { runtimeInstanceId: this.#instanceId }
+      });
+    } else if (worker.status !== "idle") {
+      worker = await this.#workerRepo.transition(worker.workerId, "idle", worker.revision);
+    }
+    this.#worker = worker;
+  }
+  #startWorkerHeartbeat() {
+    if (this.#workerHeartbeatHandle !== null) return;
+    this.#workerHeartbeatHandle = this.#timers.setInterval(() => {
+      void this.#beatWorker();
+    }, this.#config.heartbeatIntervalMs);
+  }
+  #stopWorkerHeartbeat() {
+    if (this.#workerHeartbeatHandle === null) return;
+    this.#timers.clearInterval(this.#workerHeartbeatHandle);
+    this.#workerHeartbeatHandle = null;
+  }
+  async #beatWorker() {
+    try {
+      await this.#serializeWorker(async () => {
+        if (this.#worker === null) return;
+        this.#worker = await this.#workerRepo.heartbeat(this.#worker.workerId, this.#clock().toISOString());
+      });
+    } catch (error2) {
+      this.#logger.warn("worker heartbeat failed", {
+        workerId: this.#config.workerId,
+        error: errorMessage(error2)
+      });
+    }
+  }
+  /** Serializes worker mutations so revision compare-and-swaps never race. */
+  #serializeWorker(task) {
+    const run = this.#workerQueue.then(task, task);
+    this.#workerQueue = run.then(
+      () => void 0,
+      () => void 0
+    );
+    return run;
+  }
+  async #transitionWorker(next) {
+    try {
+      await this.#serializeWorker(async () => {
+        const current = await this.#workerRepo.get(this.#config.workerId);
+        if (current === null) return;
+        this.#worker = current;
+        if (current.status === next) return;
+        if (!canTransitionWorker(current.status, next)) return;
+        this.#worker = await this.#workerRepo.transition(current.workerId, next, current.revision);
+      });
+    } catch (error2) {
+      this.#logger.warn("worker state transition failed", {
+        workerId: this.#config.workerId,
+        next,
+        error: errorMessage(error2)
+      });
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Claim loop
+  // -------------------------------------------------------------------------
+  #startLoop() {
+    if (this.#loopRunning) return;
+    this.#loopRunning = true;
+    void this.#runLoop().finally(() => {
+      this.#loopRunning = false;
+    });
+  }
+  async #runLoop() {
+    while (this.#status === "running") {
+      if (this.#active.size >= this.#concurrency) {
+        await this.#waitSlot();
+        continue;
+      }
+      let claimed = false;
+      try {
+        claimed = await this.#claimOnce();
+      } catch (error2) {
+        this.#logger.error("worker claim failed", {
+          workerId: this.#config.workerId,
+          error: errorMessage(error2)
+        });
+      }
+      if (claimed) continue;
+      if (this.#status !== "running") break;
+      await this.#sleep(this.#config.pollBackoffMs);
+    }
+  }
+  /** Attempts a single claim; returns `true` when a job was spawned. */
+  async #claimOnce() {
+    const acquired = await this.#leaseRepo.acquire({
+      organizationId: this.#config.organizationId,
+      workstreamId: this.#config.workstreamId,
+      workerId: this.#config.workerId,
+      environmentId: this.#config.environmentId ?? null,
+      ttlMs: this.#config.leaseTtlMs,
+      now: this.#clock()
+    });
+    if (acquired === null) return false;
+    const workUnit = await this.#workUnitRepo.get(acquired.workUnitId);
+    if (workUnit === null) {
+      this.#logger.error("claimed work unit not found", { workUnitId: acquired.workUnitId });
+      await this.#safeRelease(acquired.lease, "failed");
+      return false;
+    }
+    this.#spawnJob(acquired, workUnit);
+    return true;
+  }
+  #spawnJob(acquired, workUnit) {
+    const job = {
+      workUnitId: acquired.workUnitId,
+      leaseId: acquired.lease.leaseId,
+      fencingToken: acquired.lease.fencingToken,
+      controller: new AbortController(),
+      fenced: false,
+      stopRequested: false,
+      heartbeatHandle: null
+    };
+    this.#active.set(job.leaseId, job);
+    if (this.#active.size === 1) void this.#transitionWorker("busy");
+    void this.#processJob(job, acquired.lease, workUnit);
+  }
+  // -------------------------------------------------------------------------
+  // Execution & lease heartbeat
+  // -------------------------------------------------------------------------
+  async #processJob(job, lease, workUnit) {
+    this.#startLeaseHeartbeat(job);
+    try {
+      let result = null;
+      let failure4 = null;
+      try {
+        result = await this.#executor.execute(workUnit, job.controller.signal);
+      } catch (error2) {
+        failure4 = error2;
+      }
+      this.#stopLeaseHeartbeat(job);
+      if (job.fenced) {
+        this.#logger.warn("lease fenced: discarding execution outcome", {
+          workUnitId: job.workUnitId,
+          leaseId: job.leaseId,
+          fencingToken: job.fencingToken
+        });
+        return;
+      }
+      if (job.stopRequested) {
+        await this.#safeRelease(lease, "created");
+        return;
+      }
+      if (failure4 !== null) {
+        this.#logger.error("work unit execution failed", {
+          workUnitId: job.workUnitId,
+          leaseId: job.leaseId,
+          error: errorMessage(failure4)
+        });
+        await this.#safeRelease(lease, "failed");
+        return;
+      }
+      if (result !== null && result.status === "completed") {
+        if (result.payloadUpdate !== void 0) {
+          await this.#applyPayloadUpdate(workUnit, result.payloadUpdate);
+          if (job.fenced) return;
+        }
+        await this.#safeRelease(lease, "completed");
+        return;
+      }
+      this.#logger.warn("work unit reported a failure result", {
+        workUnitId: job.workUnitId,
+        leaseId: job.leaseId,
+        code: result?.error?.code ?? null
+      });
+      await this.#safeRelease(lease, "failed");
+    } catch (error2) {
+      this.#logger.error("worker job processing failed", {
+        workUnitId: job.workUnitId,
+        leaseId: job.leaseId,
+        error: errorMessage(error2)
+      });
+    } finally {
+      this.#stopLeaseHeartbeat(job);
+      this.#active.delete(job.leaseId);
+      if (this.#active.size === 0 && this.#status === "running") {
+        void this.#transitionWorker("idle");
+      }
+      this.#notifySlot();
+    }
+  }
+  #startLeaseHeartbeat(job) {
+    if (job.heartbeatHandle !== null) return;
+    job.heartbeatHandle = this.#timers.setInterval(() => {
+      void this.#renewLease(job);
+    }, this.#config.heartbeatIntervalMs);
+  }
+  #stopLeaseHeartbeat(job) {
+    if (job.heartbeatHandle === null) return;
+    this.#timers.clearInterval(job.heartbeatHandle);
+    job.heartbeatHandle = null;
+  }
+  async #renewLease(job) {
+    if (job.fenced) return;
+    try {
+      await this.#leaseRepo.renew({
+        organizationId: this.#config.organizationId,
+        workstreamId: this.#config.workstreamId,
+        workUnitId: job.workUnitId,
+        leaseId: job.leaseId,
+        fencingToken: job.fencingToken,
+        ttlMs: this.#config.leaseTtlMs,
+        now: this.#clock()
+      });
+    } catch (error2) {
+      const code = errorCode(error2);
+      if (code !== null && FENCING_ERROR_CODES.has(code)) {
+        job.fenced = true;
+        this.#stopLeaseHeartbeat(job);
+        job.controller.abort(error2 instanceof Error ? error2 : new Error(String(error2)));
+        this.#logger.warn("lease heartbeat fenced: aborting execution", {
+          workUnitId: job.workUnitId,
+          leaseId: job.leaseId,
+          code
+        });
+        return;
+      }
+      this.#logger.warn("lease heartbeat failed", {
+        workUnitId: job.workUnitId,
+        leaseId: job.leaseId,
+        error: errorMessage(error2)
+      });
+    }
+  }
+  async #applyPayloadUpdate(workUnit, payloadUpdate) {
+    try {
+      await this.#workUnitRepo.update(
+        workUnit.workUnitId,
+        { payload: { ...workUnit.payload, ...payloadUpdate } },
+        workUnit.revision
+      );
+    } catch (error2) {
+      this.#logger.warn("work unit payload update failed", {
+        workUnitId: workUnit.workUnitId,
+        error: errorMessage(error2)
+      });
+    }
+  }
+  /**
+   * Releases a lease and swallows protocol errors: a fenced release is the
+   * adapter's decision to reject, and it must not crash the loop.
+   */
+  async #safeRelease(lease, resultStatus) {
+    try {
+      await this.#leaseRepo.release({
+        organizationId: this.#config.organizationId,
+        workstreamId: this.#config.workstreamId,
+        workUnitId: lease.workUnitId,
+        leaseId: lease.leaseId,
+        fencingToken: lease.fencingToken,
+        resultStatus,
+        now: this.#clock()
+      });
+    } catch (error2) {
+      this.#logger.error("lease release failed", {
+        workUnitId: lease.workUnitId,
+        leaseId: lease.leaseId,
+        resultStatus,
+        error: errorMessage(error2)
+      });
+    }
+  }
+  // -------------------------------------------------------------------------
+  // Drain helpers
+  // -------------------------------------------------------------------------
+  async #waitForIdle() {
+    while (this.#active.size > 0) {
+      await this.#waitSlot();
+    }
+  }
+  async #drainWithTimeout(timeoutMs) {
+    if (this.#active.size === 0) return;
+    const drained = await Promise.race([this.#waitForIdle().then(() => true), this.#sleep(timeoutMs).then(() => false)]);
+    if (drained) return;
+    this.#logger.warn("drain timeout reached: aborting in-flight executions", {
+      workerId: this.#config.workerId,
+      activeCount: this.#active.size
+    });
+    for (const job of [...this.#active.values()]) {
+      job.stopRequested = true;
+      this.#stopLeaseHeartbeat(job);
+      job.controller.abort(new Error("DRAIN_TIMEOUT"));
+    }
+    await this.#waitForIdle();
+  }
+  #waitSlot() {
+    return new Promise((resolve10) => {
+      this.#slotWaiters.add(resolve10);
+    });
+  }
+  #notifySlot() {
+    const waiters = [...this.#slotWaiters];
+    this.#slotWaiters.clear();
+    for (const waiter of waiters) waiter();
+  }
+  #sleep(ms) {
+    if (ms <= 0) return Promise.resolve();
+    return new Promise((resolve10) => {
+      let handle = null;
+      let settled = false;
+      const wake = () => {
+        if (settled) return;
+        settled = true;
+        this.#sleepers.delete(wake);
+        if (handle !== null) this.#timers.clearTimeout(handle);
+        resolve10();
+      };
+      handle = this.#timers.setTimeout(wake, ms);
+      this.#sleepers.add(wake);
+    });
+  }
+  #wakeSleepers() {
+    for (const wake of [...this.#sleepers]) wake();
+  }
+};
+
+// ../src/entrypoints/worker-runtime.ts
+var DEFAULT_DEMO_DELAY_MS = 50;
+var DEFAULT_LEASE_TTL_MS = 3e4;
+var DEFAULT_HEARTBEAT_INTERVAL_MS = 1e4;
+var DEFAULT_POLL_BACKOFF_MS = 2e3;
+function createConsoleWorkerRuntimeLogger(prefix = "[worker-runtime]") {
+  const write = (level, message, details) => {
+    const line = `${prefix} ${level}: ${message}`;
+    if (details === void 0) console[level === "debug" ? "log" : level](line);
+    else console[level === "debug" ? "log" : level](line, details);
+  };
+  return {
+    info: (message, details) => write("info", message, details),
+    warn: (message, details) => write("warn", message, details),
+    error: (message, details) => write("error", message, details),
+    debug: (message, details) => write("debug", message, details)
+  };
+}
+function positiveInt(value, fallback) {
+  if (value === void 0) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+function sleepWithSignal(ms, signal) {
+  return new Promise((resolve10, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new Error("ABORTED"));
+      return;
+    }
+    const onAbort = () => {
+      clearTimeout(handle);
+      reject(signal.reason ?? new Error("ABORTED"));
+    };
+    const handle = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve10();
+    }, ms);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+function createDemoWorkExecutor(options = {}) {
+  const delayMs = options.delayMs ?? DEFAULT_DEMO_DELAY_MS;
+  const logger = options.logger ?? createConsoleWorkerRuntimeLogger("[worker-runtime:demo-executor]");
+  return {
+    async execute(workUnit, signal) {
+      logger.info("demo executor: start (no real ADW dispatch)", {
+        workUnitId: workUnit.workUnitId,
+        unitType: workUnit.unitType,
+        status: workUnit.status,
+        payload: workUnit.payload
+      });
+      await sleepWithSignal(delayMs, signal);
+      logger.info("demo executor: completed", { workUnitId: workUnit.workUnitId });
+      return {
+        status: "completed",
+        payloadUpdate: { executedAt: (/* @__PURE__ */ new Date()).toISOString(), executor: "demo-echo" }
+      };
+    }
+  };
+}
+async function createLocalWorkerRuntime(options = {}) {
+  const logger = options.logger ?? createConsoleWorkerRuntimeLogger();
+  const dbConfig = { ...resolveSqlDatabaseConfig(), ...options.dbConfig };
+  const client = options.client ?? await createPgPoolClient(dbConfig);
+  const organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  const workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  const leaseRepo = createSqlLeaseRepository(client, { organizationId, workstreamId });
+  const workUnitRepo = createSqlWorkUnitRepository(client, { organizationId, workstreamId });
+  const workerRepo = createSqlWorkerRepository(client, { organizationId });
+  const config = {
+    organizationId,
+    workstreamId,
+    workerId: options.workerId ?? process.env.WORKER_ID ?? "local-worker-1",
+    workerType: options.workerType ?? "local-demo-worker",
+    leaseTtlMs: options.leaseTtlMs ?? positiveInt(process.env.LEASE_TTL_MS, DEFAULT_LEASE_TTL_MS),
+    heartbeatIntervalMs: options.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_INTERVAL_MS,
+    pollBackoffMs: options.pollBackoffMs ?? DEFAULT_POLL_BACKOFF_MS,
+    concurrency: options.concurrency ?? 1
+  };
+  if (options.environmentId !== void 0) config.environmentId = options.environmentId;
+  if (options.capabilities !== void 0) config.capabilities = [...options.capabilities];
+  if (options.protocolVersion !== void 0) config.protocolVersion = options.protocolVersion;
+  const executor = options.executor ?? createDemoWorkExecutor({ logger });
+  const runtime = new WorkerRuntime(config, {
+    leaseRepo,
+    workUnitRepo,
+    workerRepo,
+    executor,
+    logger
+  });
+  return {
+    runtime,
+    client,
+    executor,
+    config,
+    start: () => runtime.start(),
+    stop: (stopOptions) => runtime.stop(stopOptions)
+  };
+}
+async function runLocalWorker(options = {}) {
+  const handle = await createLocalWorkerRuntime(options);
+  await handle.start();
+  return handle;
+}
 export {
   AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION,
   AGENT_STEP_ATTEMPT_IMMUTABLE_FIELDS,
@@ -13053,6 +13623,7 @@ export {
   WorkUnitEnvironmentService,
   WorkUnitEnvironmentStore,
   WorkUnitEnvironmentStoreError,
+  WorkerRuntime,
   WorkflowDefinitionRepositoryError,
   WorkflowHumanInteractionRepositoryError,
   WorkflowInstanceRepositoryError,
@@ -13099,6 +13670,8 @@ export {
   createAgentOsRuntimeAdapter,
   createArtifactId,
   createCase,
+  createConsoleWorkerRuntimeLogger,
+  createDemoWorkExecutor,
   createEpicRun,
   createFilesystemAgentStepAttemptRepository,
   createFilesystemAgentStepResultRepository,
@@ -13111,6 +13684,7 @@ export {
   createFilesystemWorkflowHumanInteractionRepository,
   createFilesystemWorkflowInstanceRepository,
   createKeyedLock,
+  createLocalWorkerRuntime,
   createMemoryArtifactStore,
   createPgPoolClient,
   createRun,
@@ -13239,6 +13813,7 @@ export {
   runAgentTurn,
   runBaselineOracle,
   runCommand,
+  runLocalWorker,
   safeEqual,
   sanitizeForgeSyncAttribution,
   setActiveCaseId,

@@ -195,3 +195,16 @@ export * from '../application/forge-bmad/forge-front-oracle-resolution.js'
 // --------------------------------------------------------------------------
 export * from '../ports/artifact/index.js'
 export * from '../adapters/artifact/index.js'
+
+// --------------------------------------------------------------------------
+// Worker runtime (Jalon C2): frozen C2-T1 loop vocabulary + the local
+// entrypoint that wires it against the C1 SQL lease/work-unit/worker adapters.
+//
+// The domain owns the loop and its vocabulary; `entrypoints/worker-runtime.ts`
+// owns dependency wiring and the deterministic demo executor. Re-exporting the
+// domain here keeps the whole worker-runtime surface available from the
+// generated `factory-operational.mjs` bundle.
+// --------------------------------------------------------------------------
+export * from '../domain/worker-runtime/types.js'
+export * from '../domain/worker-runtime/worker-runtime.js'
+export * from './worker-runtime.js'
