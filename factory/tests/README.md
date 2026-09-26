@@ -212,6 +212,26 @@ node factory/tests/test-artifact-store.mjs
 
 ---
 
+### `test-persistence-shadow-and-switch.mjs`
+
+**Catégorie** : intégration hors-ligne (client SQL en mémoire, racine temporaire)
+
+Vérifie la bascule d'autorité de persistance B4-T2 pilotée par le composition
+root :
+- défaut `FACTORY_PERSISTENCE=fs` (aucune régression, shadow désactivé) ;
+- shadow-read : la réponse servie reste celle du système de fichiers, un écart
+  PostgreSQL est journalisé `[SHADOW_READ_DISCREPANCY]`, une erreur PostgreSQL
+  est contenue (`[SHADOW_READ_ERROR]`) ;
+- `FACTORY_PERSISTENCE=sql` : lectures/écritures servies par PostgreSQL et
+  zéro écriture sur le système de fichiers ;
+- rollback vers `fs` : l'autorité système de fichiers est restaurée.
+
+```bash
+node factory/tests/test-persistence-shadow-and-switch.mjs
+```
+
+---
+
 ### `typescript-factory-operational.mjs`
 
 **Catégorie** : contrat de l'unique bundle runtime généré (hors-ligne, build préalable requis)
