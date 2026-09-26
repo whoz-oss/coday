@@ -778,7 +778,6 @@ export function createHttpServer(application, config) {
   } = application
   const resolvedFactoryUser = resolveFactoryUser(config)
   const { baseUrl: jiraBaseUrl, email: jiraEmail, apiToken: jiraApiToken } = config.jira
-  const indexHtml = () => readFileSync(join(config.dashboardDir, 'index.html'), 'utf8')
   const cockpitHtml = () => readFileSync(join(config.dashboardDir, 'cockpit.html'), 'utf8')
 
   // Static cockpit assets. Each prefix maps to a directory the shell is allowed
@@ -957,7 +956,7 @@ export function createHttpServer(application, config) {
       log: console,
     })) return
 
-    // Cockpit shell — standalone governed HTML (coexists with the legacy index).
+    // Cockpit shell — standalone governed HTML served as the single dashboard entry point.
     if (method === 'GET' && (path === '/cockpit' || path === '/cockpit.html')) {
       try {
         return send(res, 200, cockpitHtml(), 'text/html; charset=utf-8')
@@ -981,10 +980,11 @@ export function createHttpServer(application, config) {
       return sendError(sendFn, 404, 'NOT_FOUND', 'Asset not found')
     }
 
-    // UI
+    // UI — the legacy monolithic dashboard was decommissioned; `/` and
+    // `/index.html` now redirect permanently to the standalone cockpit shell.
     if (method === 'GET' && (path === '/' || path === '/index.html')) {
-      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8', 'X-Correlation-Id': res.correlationId })
-      return res.end(indexHtml())
+      res.writeHead(302, { ...corsHeaders, 'Location': '/cockpit', 'X-Correlation-Id': res.correlationId })
+      return res.end()
     }
 
     // GET /api/config — expose l'URL AgentOS pour les liens profonds côté client,

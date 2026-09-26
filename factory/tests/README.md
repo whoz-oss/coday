@@ -36,26 +36,6 @@ node factory/tests/test-f7.mjs
 
 ---
 
-### `test-dashboard-chronology.mjs`
-
-**Catégorie** : statique (lecture de fichiers locaux)
-
-Vérifie la chronologie du Gantt du dashboard : ordre des phases, positions
-relatives, rendu HTML des barres compactes, contraintes CSS de mise en page.
-
-**Dépendances** :
-- `factory/dashboard/server.mjs` (import ES module)
-- `factory/dashboard/index.html` (lu via `readFileSync`)
-- `factory/runs/20260820T132311Z-5b34.jsonl` (fixture de run réelle)
-
-Ces fichiers doivent exister sur le disque. Aucun réseau requis.
-
-```bash
-node factory/tests/test-dashboard-chronology.mjs
-```
-
----
-
 ### `test-oracle.mjs`
 
 **Catégorie** : unité (pur, sans I/O)
