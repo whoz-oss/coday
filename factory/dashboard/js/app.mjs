@@ -101,9 +101,11 @@ export function closeModal(doc = globalThis.document) {
  * Create the router bound to a window/document pair. Returns handles used by
  * the auto-bootstrap and by tests.
  *
- * `options.onMount(route, { registerTeardown, doc, win })` is the additive,
- * optional view-mount hook: it runs after the section classes are toggled so a
- * view can register its own teardown. It never changes the route table.
+ * `options.mounters` maps a route to its view mounter (defaults to
+ * {@link VIEW_MOUNTERS}); `options.onMount(route, { registerTeardown, doc, win })`
+ * is an additive, optional view-mount hook that runs after the section classes
+ * are toggled so a view can register its own teardown. Both are optional and
+ * neither changes the route table.
  */
 export function createRouter(win = globalThis.window, doc = globalThis.document, options = {}) {
   let currentRoute = null
