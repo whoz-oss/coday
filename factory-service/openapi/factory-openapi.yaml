@@ -6,5 +6,68 @@ info:
 servers:
 - url: http://localhost:18141
   description: Generated server url
-paths: {}
+paths:
+  /api/factory/admin/artifacts/{artifactId}/purge:
+    post:
+      tags:
+      - artifact-admin-controller
+      operationId: purgeArtifactArtifactAdmin
+      parameters:
+      - name: artifactId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/admin/artifacts/{artifactId}/legal-hold:
+    post:
+      tags:
+      - artifact-admin-controller
+      operationId: setLegalHoldArtifactAdmin
+      parameters:
+      - name: artifactId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/admin/artifacts/gc:
+    post:
+      tags:
+      - artifact-admin-controller
+      operationId: collectAndAuditGarbageArtifactAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
 components: {}
