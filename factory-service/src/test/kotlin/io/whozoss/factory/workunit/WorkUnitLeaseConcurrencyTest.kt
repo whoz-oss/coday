@@ -9,7 +9,6 @@ import io.whozoss.factory.workunit.service.WorkUnitService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import java.util.concurrent.Callable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
@@ -26,7 +25,6 @@ import java.util.concurrent.TimeUnit
  * distinct work unit and a distinct, strictly-increasing fencing token that
  * matches the token persisted in `work_unit_leases`.
  */
-@SpringBootTest
 class WorkUnitLeaseConcurrencyTest : DomainIntegrationTest() {
 
     @Autowired

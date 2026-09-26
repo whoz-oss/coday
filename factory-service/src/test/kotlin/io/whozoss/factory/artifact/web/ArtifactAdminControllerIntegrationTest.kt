@@ -11,7 +11,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.HttpEntity
@@ -30,10 +29,6 @@ import org.springframework.jdbc.core.JdbcTemplate
  * envelope, the machine error codes of the purge / legal-hold refusals and the
  * `METHOD_NOT_ALLOWED` 405 for non-POST calls.
  */
-@SpringBootTest(
-    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = ["factory.security.fake-idp-secret=artifact-admin-test-secret"],
-)
 class ArtifactAdminControllerIntegrationTest : PostgresContainerSpec() {
 
     @Autowired

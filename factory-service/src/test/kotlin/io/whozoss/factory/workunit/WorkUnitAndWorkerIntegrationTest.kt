@@ -13,7 +13,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import java.time.Instant
 
 /**
@@ -23,7 +22,6 @@ import java.time.Instant
  * `factory/src/domain/work-unit.ts` / `factory/src/domain/worker.ts` against
  * PostgreSQL, including the JSONB capabilities array and the heartbeat write.
  */
-@SpringBootTest
 class WorkUnitAndWorkerIntegrationTest : DomainIntegrationTest() {
 
     @Autowired

@@ -14,7 +14,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 
 /**
  * Fencing, expiry and re-queue integration tests of the lease protocol.
@@ -25,7 +24,6 @@ import org.springframework.boot.test.context.SpringBootTest
  * `heartbeat_timeout` reason, and an empty eligible scan yields
  * `NO_ELIGIBLE_WORK_UNIT`.
  */
-@SpringBootTest
 class LeaseFencingAndExpiryTest : DomainIntegrationTest() {
 
     @Autowired

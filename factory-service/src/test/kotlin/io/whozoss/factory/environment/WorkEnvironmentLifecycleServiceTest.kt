@@ -9,7 +9,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 
 /**
  * Environment lifecycle integration test against PostgreSQL.
@@ -18,7 +17,6 @@ import org.springframework.boot.test.context.SpringBootTest
  * end-to-end against the V6 `work_environments.status` vocabulary, and that the
  * lifecycle status column never drifts from the descriptor payload.
  */
-@SpringBootTest
 class WorkEnvironmentLifecycleServiceTest : DomainIntegrationTest() {
 
     @Autowired

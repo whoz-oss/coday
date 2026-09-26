@@ -16,7 +16,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Instant
 
@@ -26,7 +25,6 @@ import java.time.Instant
  * metadata round-trip with the three orthogonal statuses, the upload-then-commit
  * protocol, the purge lifecycle, legal holds and the triggered GC audit.
  */
-@SpringBootTest
 class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
 
     @Autowired
