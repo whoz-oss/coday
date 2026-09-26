@@ -355,7 +355,13 @@ await scenario('composition-root wires the admin artifact route to the composed 
 await scenario('POST /api/factory/admin/artifacts/gc answers 200 on loopback', async () => {
   const root = await mkdtemp(join(tmpdir(), 'factory-artifact-wiring-'))
   try {
-    const { server, config } = createCompositionRoot({ ...BIND, PORT: '0', FACTORY_DATA_ROOT: root })
+    const { server, config } = createCompositionRoot({
+      ...BIND,
+      PORT: '0',
+      FACTORY_DATA_ROOT: root,
+      // The boundary refuses loopback-dev unless explicitly enabled (B6-T2b).
+      FACTORY_ALLOW_LOOPBACK_DEV: 'true',
+    })
     assert.ok(config.artifact.s3Bucket)
     await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
     try {

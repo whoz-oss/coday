@@ -87,7 +87,8 @@ const resolver = new MockMembershipResolver({
 
 const bindPolicy = {
   trustMode: 'loopback-only',
-  identity: { membershipResolver: resolver, fakeIdpSecret: SECRET },
+  // Explicit opt-in: without it the strict boundary refuses `loopback-dev`.
+  identity: { membershipResolver: resolver, fakeIdpSecret: SECRET, allowLoopbackDev: true },
 }
 
 function makeReq({ headers = {}, remoteAddress = LOOPBACK } = {}) {
@@ -501,7 +502,7 @@ test('validateTrustContext flags an impersonating context', () => {
 })
 
 test('extractTrustContext: default resolver is used when none is injected', () => {
-  const ctx = extractTrustContext(makeReq({}))
+  const ctx = extractTrustContext(makeReq({}), { allowLoopbackDev: true })
   assert.equal(ctx.authenticationMethod, 'loopback-dev')
   assert.equal(ctx.organizationId, 'org-local-dev')
   assert.deepEqual(ctx.roles, ['developer'])
