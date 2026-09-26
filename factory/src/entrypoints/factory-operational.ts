@@ -196,6 +196,13 @@ export * from '../application/forge-bmad/forge-front-oracle-resolution.js'
 export * from '../ports/artifact/index.js'
 export * from '../adapters/artifact/index.js'
 
+// SQL artifact metadata repository and the composed PostgreSQL ArtifactStore.
+// Exported directly (rather than through the `adapters/artifact` and
+// `adapters/persistence/sql` barrels, which are owned by a separate wiring
+// task) so the standalone conformance test can reach them from the bundle.
+export * from '../adapters/artifact/postgres-artifact-store.js'
+export * from '../adapters/persistence/sql/sql-artifact-metadata-repository.js'
+
 // --------------------------------------------------------------------------
 // Worker runtime (Jalon C2): frozen C2-T1 loop vocabulary + the local
 // entrypoint that wires it against the C1 SQL lease/work-unit/worker adapters.
