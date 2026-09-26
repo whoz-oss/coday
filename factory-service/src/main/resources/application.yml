@@ -41,3 +41,13 @@ factory:
   security:
     allow-loopback-dev: ${FACTORY_ALLOW_LOOPBACK_DEV:true}
     fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
+  artifact:
+    retention-days: ${ARTIFACT_RETENTION_DAYS:90}
+    signed-url-ttl-seconds: ${ARTIFACT_SIGNED_URL_TTL:900}
+    blob-client: ${ARTIFACT_BLOB_CLIENT:in-memory}
+    s3:
+      endpoint: ${S3_ENDPOINT:http://localhost:9000}
+      region: ${S3_REGION:us-east-1}
+      bucket: ${S3_BUCKET:coday-artifacts}
+      access-key-id: ${S3_ACCESS_KEY_ID:minioadmin}
+      secret-access-key: ${S3_SECRET_ACCESS_KEY:minioadmin}
