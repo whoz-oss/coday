@@ -5,7 +5,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// ../src/lib/active-case.ts
+// factory/src/lib/active-case.ts
 import { unlinkSync, writeFileSync } from "node:fs";
 var registry = /* @__PURE__ */ new Map();
 var observabilityFile = process.env.FACTORY_ACTIVE_CASE_FILE ?? null;
@@ -44,7 +44,7 @@ function getActiveCaseId() {
   return first.done ? null : first.value;
 }
 
-// ../src/lib/registry.ts
+// factory/src/lib/registry.ts
 import { appendFileSync, mkdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -123,7 +123,7 @@ function endCurrentRunOnce(status, facts = {}) {
   return true;
 }
 
-// ../src/domain/workflow/workflow-definition.ts
+// factory/src/domain/workflow/workflow-definition.ts
 import { createHash } from "node:crypto";
 var WORKFLOW_DEFINITION_SCHEMA_VERSION = "1";
 var WORKFLOW_DEFINITION_RESPONSIBILITIES = Object.freeze(["human", "agent", "code"]);
@@ -283,7 +283,7 @@ function hashWorkflowDefinition(definition) {
   return createHash("sha256").update(canonicalizeWorkflowDefinition(definition), "utf8").digest("hex");
 }
 
-// ../src/domain/workflow/workflow-instance.ts
+// factory/src/domain/workflow/workflow-instance.ts
 import { createHash as createHash2 } from "node:crypto";
 var WORKFLOW_GOVERNANCE_MODE = "governed";
 function independentWorkflowRelations(workflowId) {
@@ -350,7 +350,7 @@ function createWorkflowInstance(command, definition, controllerExecution, observ
   return { instance, projection, creationCommandHash: workflowStartCommandHash(command, definition) };
 }
 
-// ../src/domain/workflow/workflow-transition-policy.ts
+// factory/src/domain/workflow/workflow-transition-policy.ts
 import { createHash as createHash3, randomUUID } from "node:crypto";
 var WORKFLOW_STATUSES = Object.freeze([
   "pending",
@@ -680,7 +680,7 @@ function applyHumanCheckpointOpen(snapshot, definition, request, observedAt = (/
   return { ...snapshot, instance, projection, revision };
 }
 
-// ../src/domain/evidence/workflow-evidence.ts
+// factory/src/domain/evidence/workflow-evidence.ts
 import { randomUUID as randomUUID2 } from "node:crypto";
 var WORKFLOW_EVIDENCE_KINDS = Object.freeze([
   "agent-result",
@@ -814,7 +814,7 @@ function createWorkflowEvidence(validated, namespaceId, source, observedAt = (/*
   return Object.freeze(record2);
 }
 
-// ../src/domain/interaction/workflow-human-interaction.ts
+// factory/src/domain/interaction/workflow-human-interaction.ts
 import { createHash as createHash4 } from "node:crypto";
 var HUMAN_INTERACTION_KINDS = Object.freeze(["approval", "choice", "text"]);
 var WORKFLOW_HUMAN_INTERACTION_STATUSES = Object.freeze(["opening", "open", "replied", "aborted"]);
@@ -878,7 +878,7 @@ function openedInteractionRevision(event) {
   return event.interaction?.revision ?? event.revision;
 }
 
-// ../src/domain/agent-attempt/agent-step-attempt.ts
+// factory/src/domain/agent-attempt/agent-step-attempt.ts
 var AGENT_STEP_ATTEMPT_STATUSES = Object.freeze([
   "starting",
   "running",
@@ -932,7 +932,7 @@ function validateAgentStepAttempt(attempt) {
   return attempt;
 }
 
-// ../src/domain/agent-attempt/agent-step-result.ts
+// factory/src/domain/agent-attempt/agent-step-result.ts
 import { createHash as createHash5, timingSafeEqual } from "node:crypto";
 var AGENT_STEP_RESULT_STATUSES = Object.freeze(["PASS", "FAIL"]);
 var AGENT_STEP_RESULT_LIMITS = Object.freeze({
@@ -1027,7 +1027,7 @@ function validateAgentStepResultBusiness(value) {
   return true;
 }
 
-// ../src/domain/environment/work-unit-environment.ts
+// factory/src/domain/environment/work-unit-environment.ts
 import { isAbsolute, normalize, resolve } from "node:path";
 var WORK_UNIT_ENVIRONMENT_STATES = Object.freeze([
   "provisioning",
@@ -1142,7 +1142,7 @@ function validateWorkUnitEnvironment(input) {
   return { ok: true, environment };
 }
 
-// ../src/infrastructure/storage/storage-kernel.ts
+// factory/src/infrastructure/storage/storage-kernel.ts
 import { createHash as createHash6, randomBytes as randomBytes2 } from "node:crypto";
 import { appendFile, mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { dirname as dirname2, join as join2 } from "node:path";
@@ -1320,7 +1320,7 @@ function assertSupportedFormatVersion(value, supported = STORAGE_FORMAT_VERSION)
   return version;
 }
 
-// ../src/ports/persistence/workflow-definition-repository.ts
+// factory/src/ports/persistence/workflow-definition-repository.ts
 var WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES = Object.freeze({
   WORKFLOW_DEFINITION_NOT_FOUND: "WORKFLOW_DEFINITION_NOT_FOUND",
   INVALID_DEFINITION_FILE: "INVALID_DEFINITION_FILE",
@@ -1328,7 +1328,7 @@ var WORKFLOW_DEFINITION_REPOSITORY_ERROR_CODES = Object.freeze({
   DEFINITION_COLLISION: "DEFINITION_COLLISION"
 });
 
-// ../src/adapters/persistence/filesystem-workflow-definition-repository.ts
+// factory/src/adapters/persistence/filesystem-workflow-definition-repository.ts
 var WorkflowDefinitionRepositoryError = class extends Error {
   code;
   details;
@@ -1357,7 +1357,7 @@ function createFilesystemWorkflowDefinitionRepository(registry2) {
   return new FilesystemWorkflowDefinitionRepository(registry2);
 }
 
-// ../src/adapters/persistence/filesystem-workflow-instance-repository.ts
+// factory/src/adapters/persistence/filesystem-workflow-instance-repository.ts
 var WorkflowInstanceRepositoryError = class extends Error {
   code;
   details;
@@ -1438,7 +1438,7 @@ function createFilesystemWorkflowInstanceRepository(store) {
   return new FilesystemWorkflowInstanceRepository(store);
 }
 
-// ../src/adapters/persistence/filesystem-workflow-evidence-repository.ts
+// factory/src/adapters/persistence/filesystem-workflow-evidence-repository.ts
 var FilesystemWorkflowEvidenceRepository = class {
   constructor(store) {
     this.store = store;
@@ -1454,7 +1454,7 @@ function createFilesystemWorkflowEvidenceRepository(store) {
   return new FilesystemWorkflowEvidenceRepository(store);
 }
 
-// ../src/adapters/persistence/filesystem-workflow-human-interaction-repository.ts
+// factory/src/adapters/persistence/filesystem-workflow-human-interaction-repository.ts
 var WorkflowHumanInteractionRepositoryError = class extends Error {
   code;
   details;
@@ -1512,7 +1512,7 @@ function createFilesystemWorkflowHumanInteractionRepository(store) {
   return new FilesystemWorkflowHumanInteractionRepository(store);
 }
 
-// ../src/adapters/persistence/agent-step-attempt-store.ts
+// factory/src/adapters/persistence/agent-step-attempt-store.ts
 import { join as join3 } from "node:path";
 var AgentStepAttemptStore = class {
   constructor(dataRoot) {
@@ -1545,7 +1545,7 @@ var AgentStepAttemptStore = class {
   }
 };
 
-// ../src/adapters/persistence/filesystem-agent-step-attempt-repository.ts
+// factory/src/adapters/persistence/filesystem-agent-step-attempt-repository.ts
 var FilesystemAgentStepAttemptRepository = class {
   constructor(store) {
     this.store = store;
@@ -1561,7 +1561,7 @@ function createFilesystemAgentStepAttemptRepository(store) {
   return new FilesystemAgentStepAttemptRepository(store);
 }
 
-// ../src/adapters/persistence/agent-step-result-store.ts
+// factory/src/adapters/persistence/agent-step-result-store.ts
 import { randomBytes as randomBytes3, randomUUID as randomUUID3 } from "node:crypto";
 import { readdir } from "node:fs/promises";
 import { join as join4 } from "node:path";
@@ -1715,7 +1715,7 @@ var AgentStepResultStore = class {
   }
 };
 
-// ../src/adapters/persistence/filesystem-agent-step-result-repository.ts
+// factory/src/adapters/persistence/filesystem-agent-step-result-repository.ts
 var FilesystemAgentStepResultRepository = class {
   constructor(store) {
     this.store = store;
@@ -1737,7 +1737,7 @@ function createFilesystemAgentStepResultRepository(store) {
   return new FilesystemAgentStepResultRepository(store);
 }
 
-// ../src/adapters/persistence/filesystem-oracle-execution-repository.ts
+// factory/src/adapters/persistence/filesystem-oracle-execution-repository.ts
 var FilesystemOracleExecutionRepository = class {
   constructor(registry2) {
     this.registry = registry2;
@@ -1753,7 +1753,7 @@ function createFilesystemOracleExecutionRepository(registry2) {
   return new FilesystemOracleExecutionRepository(registry2);
 }
 
-// ../src/adapters/persistence/filesystem-work-environment-repository.ts
+// factory/src/adapters/persistence/filesystem-work-environment-repository.ts
 var FilesystemWorkEnvironmentRepository = class {
   constructor(store) {
     this.store = store;
@@ -1778,7 +1778,7 @@ function createFilesystemWorkEnvironmentRepository(store) {
   return new FilesystemWorkEnvironmentRepository(store);
 }
 
-// ../src/adapters/persistence/filesystem-delivery-repository.ts
+// factory/src/adapters/persistence/filesystem-delivery-repository.ts
 var FilesystemDeliveryRepository = class {
   constructor(store) {
     this.store = store;
@@ -1827,7 +1827,7 @@ function createFilesystemDeliveryRepository(store) {
   return new FilesystemDeliveryRepository(store);
 }
 
-// ../src/adapters/persistence/sql/db.ts
+// factory/src/adapters/persistence/sql/db.ts
 var DEFAULT_ORGANIZATION_ID = "default";
 var DEFAULT_WORKSTREAM_ID = "default";
 function resolveSqlDatabaseConfig(env = process.env) {
@@ -1869,7 +1869,7 @@ function parseJsonColumn(value) {
   return value;
 }
 
-// ../src/adapters/persistence/sql/sql-workflow-definition-repository.ts
+// factory/src/adapters/persistence/sql/sql-workflow-definition-repository.ts
 var SELECT_COLUMNS = "organization_id, workstream_id, workflow_type, version, definition_hash, definition_json";
 function compareVersions(left, right) {
   const parse = (value) => value.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -1939,7 +1939,7 @@ function createSqlWorkflowDefinitionRepository(client, options = {}) {
   return new SqlWorkflowDefinitionRepository(client, options);
 }
 
-// ../src/adapters/persistence/sql/sql-workflow-instance-repository.ts
+// factory/src/adapters/persistence/sql/sql-workflow-instance-repository.ts
 var INSTANCE_COLUMNS = [
   "organization_id",
   "workstream_id",
@@ -2112,7 +2112,7 @@ function createSqlWorkflowInstanceRepository(client, options = {}) {
   return new SqlWorkflowInstanceRepository(client, options);
 }
 
-// ../src/adapters/persistence/sql/unit-of-work.ts
+// factory/src/adapters/persistence/sql/unit-of-work.ts
 async function withTransaction(client, work) {
   await client.query("BEGIN");
   try {
@@ -2125,7 +2125,7 @@ async function withTransaction(client, work) {
   }
 }
 
-// ../src/adapters/persistence/sql/sql-workflow-evidence-repository.ts
+// factory/src/adapters/persistence/sql/sql-workflow-evidence-repository.ts
 import { createHash as createHash7 } from "node:crypto";
 var WorkflowEvidenceStoreError = class extends Error {
   code;
@@ -2222,7 +2222,7 @@ function createSqlWorkflowEvidenceRepository(client, options = {}) {
   return new SqlWorkflowEvidenceRepository(client, options);
 }
 
-// ../src/adapters/persistence/sql/sql-workflow-human-interaction-repository.ts
+// factory/src/adapters/persistence/sql/sql-workflow-human-interaction-repository.ts
 import { randomUUID as randomUUID4 } from "node:crypto";
 var WorkflowHumanInteractionError = class extends Error {
   code;
@@ -2702,7 +2702,7 @@ function createSqlWorkflowHumanInteractionRepository(client, options = {}) {
   return new SqlWorkflowHumanInteractionRepository(client, options);
 }
 
-// ../src/adapters/persistence/sql/sql-agent-step-attempt-repository.ts
+// factory/src/adapters/persistence/sql/sql-agent-step-attempt-repository.ts
 import { randomUUID as randomUUID5 } from "node:crypto";
 var ATTEMPT_DB_STATUS = Object.freeze({
   starting: "running",
@@ -2820,7 +2820,7 @@ function createSqlAgentStepAttemptRepository(client, options = {}) {
   return new SqlAgentStepAttemptRepository(client, options);
 }
 
-// ../src/adapters/persistence/sql/sql-agent-step-result-repository.ts
+// factory/src/adapters/persistence/sql/sql-agent-step-result-repository.ts
 import { randomBytes as randomBytes4, randomUUID as randomUUID6 } from "node:crypto";
 var IDENTITY_FIELDS2 = ["attemptId", "workflowId", "stepId", "namespaceId", "caseId", "agentName"];
 var CAPABILITY_MATCH_FIELDS2 = [...IDENTITY_FIELDS2, "briefHash"];
@@ -3057,7 +3057,7 @@ function createSqlAgentStepResultRepository(client, options = {}) {
   return new SqlAgentStepResultRepository(client, options);
 }
 
-// ../src/domain/oracle/oracle-definition.ts
+// factory/src/domain/oracle/oracle-definition.ts
 import { createHash as createHash8 } from "node:crypto";
 var SAFE2 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var VERSION = /^\d+\.\d+\.\d+$/;
@@ -3176,7 +3176,7 @@ var OracleDefinitionRegistryCore = class {
   }
 };
 
-// ../src/adapters/persistence/sql/sql-oracle-execution-repository.ts
+// factory/src/adapters/persistence/sql/sql-oracle-execution-repository.ts
 var SqlOracleExecutionRepository = class {
   #client;
   #organizationId;
@@ -3276,7 +3276,7 @@ function createSqlOracleExecutionRepository(client, options = {}) {
   return new SqlOracleExecutionRepository(client, options);
 }
 
-// ../src/adapters/persistence/sql/sql-work-environment-repository.ts
+// factory/src/adapters/persistence/sql/sql-work-environment-repository.ts
 import { createHash as createHash9 } from "node:crypto";
 var ERROR_CODES = Object.freeze({
   INVALID_ENVIRONMENT: "INVALID_ENVIRONMENT",
@@ -3512,10 +3512,10 @@ function createSqlWorkEnvironmentRepository(client, options = {}) {
   return new SqlWorkEnvironmentRepository(client, options);
 }
 
-// ../src/adapters/persistence/sql/sql-delivery-repository.ts
+// factory/src/adapters/persistence/sql/sql-delivery-repository.ts
 import { createHash as createHash13 } from "node:crypto";
 
-// ../src/domain/delivery/delivery-operation-definition.ts
+// factory/src/domain/delivery/delivery-operation-definition.ts
 import { createHash as createHash10 } from "node:crypto";
 var DELIVERY_OPERATION_KINDS = Object.freeze([
   "deployment",
@@ -3708,10 +3708,10 @@ function validateDeliveryOperationRecord(v) {
   return { ok: true, value: Object.freeze({ ...v }) };
 }
 
-// ../src/domain/delivery/delivery-policy.ts
+// factory/src/domain/delivery/delivery-policy.ts
 import { createHash as createHash12, randomUUID as randomUUID7 } from "node:crypto";
 
-// ../src/domain/delivery/delivery-definition.ts
+// factory/src/domain/delivery/delivery-definition.ts
 import { createHash as createHash11 } from "node:crypto";
 var DELIVERY_DEFINITION_SCHEMA_VERSION = "1";
 var DELIVERY_STAGES = Object.freeze([
@@ -3853,7 +3853,7 @@ function defaultDeliveryDefinition() {
   };
 }
 
-// ../src/domain/delivery/delivery-policy.ts
+// factory/src/domain/delivery/delivery-policy.ts
 var DELIVERY_INITIAL_STAGE = "implementation-ready";
 var SAFE5 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var FIELDS3 = /* @__PURE__ */ new Set(["deliveryId", "expectedRevision", "requestedStage", "evidenceIds", "idempotencyKey"]);
@@ -3948,7 +3948,7 @@ function applyDeliveryPromotion(snapshot, request, observedAt = (/* @__PURE__ */
   };
 }
 
-// ../src/adapters/persistence/sql/sql-delivery-repository.ts
+// factory/src/adapters/persistence/sql/sql-delivery-repository.ts
 var UUID2 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 var SAFE6 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var SHA3 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
@@ -4469,7 +4469,853 @@ function createSqlDeliveryRepository(client, options = {}) {
   return new SqlDeliveryRepository(client, options);
 }
 
-// ../src/application/shutdown.ts
+// factory/src/domain/work-unit.ts
+var WORK_UNIT_STATES = Object.freeze([
+  "created",
+  "assigned",
+  "running",
+  "completed",
+  "failed",
+  "cancelled"
+]);
+var WORK_UNIT_TERMINAL_STATES = Object.freeze(["completed", "failed", "cancelled"]);
+var WORK_UNIT_ERROR_CODES = Object.freeze({
+  INVALID_WORK_UNIT: "INVALID_WORK_UNIT",
+  INVALID_STATE: "INVALID_STATE",
+  INVALID_TRANSITION: "INVALID_TRANSITION",
+  REVISION_CONFLICT: "REVISION_CONFLICT",
+  NOT_FOUND: "NOT_FOUND"
+});
+var WORK_UNIT_TRANSITIONS = {
+  created: ["assigned", "cancelled"],
+  assigned: ["running", "created", "cancelled", "failed"],
+  running: ["completed", "failed", "cancelled"],
+  completed: [],
+  failed: [],
+  cancelled: []
+};
+var SAFE_ID8 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var STATE_SET = new Set(WORK_UNIT_STATES);
+var TERMINAL_SET = new Set(WORK_UNIT_TERMINAL_STATES);
+function fail4(code, path) {
+  return { ok: false, error: { code, path } };
+}
+function isPlainRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isWorkUnitIsoInstant(value) {
+  if (typeof value !== "string") return false;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+}
+function isWorkUnitState(value) {
+  return typeof value === "string" && STATE_SET.has(value);
+}
+function canTransitionWorkUnit(from, to) {
+  return WORK_UNIT_TRANSITIONS[from].includes(to);
+}
+function validateWorkUnit(input) {
+  if (!isPlainRecord(input)) return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "$");
+  if (typeof input.workUnitId !== "string" || !SAFE_ID8.test(input.workUnitId))
+    return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "workUnitId");
+  if (typeof input.unitType !== "string" || !SAFE_ID8.test(input.unitType))
+    return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "unitType");
+  if (!isWorkUnitState(input.status)) return fail4(WORK_UNIT_ERROR_CODES.INVALID_STATE, "status");
+  if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1)
+    return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "revision");
+  if (typeof input.priority !== "number" || !Number.isSafeInteger(input.priority))
+    return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "priority");
+  if (input.notBefore !== null && !isWorkUnitIsoInstant(input.notBefore))
+    return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "notBefore");
+  if (typeof input.attemptCount !== "number" || !Number.isSafeInteger(input.attemptCount) || input.attemptCount < 0)
+    return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "attemptCount");
+  if (!isPlainRecord(input.payload)) return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "payload");
+  if (!isWorkUnitIsoInstant(input.createdAt)) return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "createdAt");
+  if (!isWorkUnitIsoInstant(input.updatedAt)) return fail4(WORK_UNIT_ERROR_CODES.INVALID_WORK_UNIT, "updatedAt");
+  const workUnit = {
+    workUnitId: input.workUnitId,
+    unitType: input.unitType,
+    status: input.status,
+    revision: input.revision,
+    priority: input.priority,
+    notBefore: input.notBefore,
+    attemptCount: input.attemptCount,
+    payload: input.payload,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt
+  };
+  return { ok: true, workUnit };
+}
+
+// factory/src/adapters/persistence/sql/sql-work-unit-repository.ts
+var SqlWorkUnitRepositoryError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "SqlWorkUnitRepositoryError";
+    this.code = code;
+    this.details = details;
+  }
+};
+var WORK_UNIT_COLUMNS = [
+  "work_unit_id",
+  "unit_type",
+  "status",
+  "revision",
+  "priority",
+  "not_before",
+  "attempt_count",
+  "payload",
+  "created_at",
+  "updated_at"
+].join(", ");
+function toIsoInstant(value) {
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+function toIsoInstantOrNull(value) {
+  if (value === null || value === void 0) return null;
+  return toIsoInstant(value);
+}
+function compareNotBefore(left, right) {
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return left.localeCompare(right);
+}
+var SqlWorkUnitRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  }
+  get scope() {
+    return { organizationId: this.#organizationId, workstreamId: this.#workstreamId };
+  }
+  #toWorkUnit(row) {
+    const validated = validateWorkUnit({
+      workUnitId: row.work_unit_id,
+      unitType: row.unit_type,
+      status: row.status,
+      revision: Number(row.revision),
+      priority: Number(row.priority),
+      notBefore: toIsoInstantOrNull(row.not_before),
+      attemptCount: Number(row.attempt_count),
+      payload: parseJsonColumn(row.payload),
+      createdAt: toIsoInstant(row.created_at),
+      updatedAt: toIsoInstant(row.updated_at)
+    });
+    if (!validated.ok) throw new SqlWorkUnitRepositoryError("CORRUPT_STORAGE", { path: validated.error.path });
+    return validated.workUnit;
+  }
+  async #select(workUnitId) {
+    const { rows } = await this.#client.query(
+      `SELECT ${WORK_UNIT_COLUMNS} FROM work_units
+       WHERE organization_id = $1 AND workstream_id = $2 AND work_unit_id = $3`,
+      [this.#organizationId, this.#workstreamId, workUnitId]
+    );
+    const row = rows[0];
+    return row ? this.#toWorkUnit(row) : null;
+  }
+  /** Compare-and-swap write: the row is only updated when `revision` still matches. */
+  async #write(workUnit, expectedRevision) {
+    const { rowCount } = await this.#client.query(
+      `UPDATE work_units
+         SET unit_type = $1, status = $2, revision = $3, priority = $4, not_before = $5,
+             attempt_count = $6, payload = $7::jsonb, updated_at = $8
+       WHERE organization_id = $9 AND workstream_id = $10 AND work_unit_id = $11 AND revision = $12`,
+      [
+        workUnit.unitType,
+        workUnit.status,
+        workUnit.revision,
+        workUnit.priority,
+        workUnit.notBefore,
+        workUnit.attemptCount,
+        JSON.stringify(workUnit.payload),
+        workUnit.updatedAt,
+        this.#organizationId,
+        this.#workstreamId,
+        workUnit.workUnitId,
+        expectedRevision
+      ]
+    );
+    if (!rowCount)
+      throw new SqlWorkUnitRepositoryError("REVISION_CONFLICT", {
+        workUnitId: workUnit.workUnitId,
+        expectedRevision
+      });
+  }
+  async get(workUnitId) {
+    return this.#select(workUnitId);
+  }
+  async create(input) {
+    const observedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const validated = validateWorkUnit({
+      workUnitId: input.workUnitId,
+      unitType: input.unitType,
+      status: input.status ?? "created",
+      revision: input.revision ?? 1,
+      priority: input.priority ?? 0,
+      notBefore: input.notBefore ?? null,
+      attemptCount: input.attemptCount ?? 0,
+      payload: input.payload ?? {},
+      createdAt: observedAt,
+      updatedAt: observedAt
+    });
+    if (!validated.ok) throw new SqlWorkUnitRepositoryError(validated.error.code, { path: validated.error.path });
+    const existing = await this.#select(input.workUnitId);
+    if (existing) throw new SqlWorkUnitRepositoryError("WORK_UNIT_ALREADY_EXISTS", { workUnitId: input.workUnitId });
+    const workUnit = validated.workUnit;
+    await this.#client.query(
+      `INSERT INTO work_units
+         (organization_id, workstream_id, work_unit_id, unit_type, status, revision, priority, not_before,
+          attempt_count, payload, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12)`,
+      [
+        this.#organizationId,
+        this.#workstreamId,
+        workUnit.workUnitId,
+        workUnit.unitType,
+        workUnit.status,
+        workUnit.revision,
+        workUnit.priority,
+        workUnit.notBefore,
+        workUnit.attemptCount,
+        JSON.stringify(workUnit.payload),
+        workUnit.createdAt,
+        workUnit.updatedAt
+      ]
+    );
+    return workUnit;
+  }
+  async update(workUnitId, patch, expectedRevision) {
+    const current = await this.#select(workUnitId);
+    if (!current) throw new SqlWorkUnitRepositoryError("NOT_FOUND", { workUnitId });
+    if (current.revision !== expectedRevision)
+      throw new SqlWorkUnitRepositoryError("REVISION_CONFLICT", {
+        workUnitId,
+        expectedRevision,
+        actualRevision: current.revision
+      });
+    if (patch.workUnitId !== void 0 && patch.workUnitId !== current.workUnitId)
+      throw new SqlWorkUnitRepositoryError("INVALID_WORK_UNIT", { path: "workUnitId" });
+    const status = patch.status ?? current.status;
+    if (!isWorkUnitState(status)) throw new SqlWorkUnitRepositoryError("INVALID_STATE", { path: "status" });
+    if (status !== current.status && !canTransitionWorkUnit(current.status, status))
+      throw new SqlWorkUnitRepositoryError("INVALID_TRANSITION", { from: current.status, to: status });
+    const validated = validateWorkUnit({
+      workUnitId: current.workUnitId,
+      unitType: patch.unitType ?? current.unitType,
+      status,
+      revision: current.revision + 1,
+      priority: patch.priority ?? current.priority,
+      notBefore: patch.notBefore === void 0 ? current.notBefore : patch.notBefore,
+      attemptCount: patch.attemptCount ?? current.attemptCount,
+      payload: patch.payload ?? current.payload,
+      createdAt: current.createdAt,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    if (!validated.ok) throw new SqlWorkUnitRepositoryError(validated.error.code, { path: validated.error.path });
+    await this.#write(validated.workUnit, current.revision);
+    return validated.workUnit;
+  }
+  async transition(workUnitId, nextState, expectedRevision, payloadUpdate) {
+    if (!isWorkUnitState(nextState)) throw new SqlWorkUnitRepositoryError("INVALID_STATE", { path: "status" });
+    const current = await this.#select(workUnitId);
+    if (!current) throw new SqlWorkUnitRepositoryError("NOT_FOUND", { workUnitId });
+    if (current.revision !== expectedRevision)
+      throw new SqlWorkUnitRepositoryError("REVISION_CONFLICT", {
+        workUnitId,
+        expectedRevision,
+        actualRevision: current.revision
+      });
+    if (!canTransitionWorkUnit(current.status, nextState))
+      throw new SqlWorkUnitRepositoryError("INVALID_TRANSITION", { from: current.status, to: nextState });
+    const validated = validateWorkUnit({
+      ...current,
+      status: nextState,
+      revision: current.revision + 1,
+      payload: payloadUpdate ? { ...current.payload, ...payloadUpdate } : current.payload,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    if (!validated.ok) throw new SqlWorkUnitRepositoryError(validated.error.code, { path: validated.error.path });
+    await this.#write(validated.workUnit, current.revision);
+    return validated.workUnit;
+  }
+  async list(filter = {}) {
+    const { rows } = await this.#client.query(
+      `SELECT ${WORK_UNIT_COLUMNS} FROM work_units WHERE organization_id = $1 AND workstream_id = $2`,
+      [this.#organizationId, this.#workstreamId]
+    );
+    const statuses = filter.status === void 0 ? null : Array.isArray(filter.status) ? filter.status : [filter.status];
+    const units = rows.map((row) => this.#toWorkUnit(row)).filter((unit) => statuses === null || statuses.includes(unit.status)).filter((unit) => filter.priorityMin === void 0 || unit.priority >= filter.priorityMin).sort(
+      (left, right) => right.priority - left.priority || compareNotBefore(left.notBefore, right.notBefore) || left.workUnitId.localeCompare(right.workUnitId)
+    );
+    return filter.limit === void 0 ? units : units.slice(0, Math.max(0, filter.limit));
+  }
+};
+function createSqlWorkUnitRepository(client, options = {}) {
+  return new SqlWorkUnitRepository(client, options);
+}
+
+// factory/src/domain/worker.ts
+var WORKER_STATES = Object.freeze(["offline", "idle", "busy", "maintenance"]);
+var WORKER_ERROR_CODES = Object.freeze({
+  INVALID_WORKER: "INVALID_WORKER",
+  INVALID_STATE: "INVALID_STATE",
+  INVALID_TRANSITION: "INVALID_TRANSITION",
+  REVISION_CONFLICT: "REVISION_CONFLICT",
+  NOT_FOUND: "NOT_FOUND"
+});
+var WORKER_TRANSITIONS = {
+  offline: ["idle", "maintenance"],
+  idle: ["busy", "offline", "maintenance"],
+  busy: ["idle", "offline", "maintenance"],
+  maintenance: ["offline", "idle"]
+};
+var SAFE_ID9 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+var STATE_SET2 = new Set(WORKER_STATES);
+function fail5(code, path) {
+  return { ok: false, error: { code, path } };
+}
+function isPlainRecord2(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+function isWorkerIsoInstant(value) {
+  if (typeof value !== "string") return false;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) && new Date(milliseconds).toISOString() === value;
+}
+function isWorkerState(value) {
+  return typeof value === "string" && STATE_SET2.has(value);
+}
+function canTransitionWorker(from, to) {
+  return WORKER_TRANSITIONS[from].includes(to);
+}
+function validateWorker(input) {
+  if (!isPlainRecord2(input)) return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "$");
+  if (typeof input.workerId !== "string" || !SAFE_ID9.test(input.workerId))
+    return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "workerId");
+  if (typeof input.workerType !== "string" || !SAFE_ID9.test(input.workerType))
+    return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "workerType");
+  if (!isWorkerState(input.status)) return fail5(WORKER_ERROR_CODES.INVALID_STATE, "status");
+  if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1)
+    return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "revision");
+  if (input.lastHeartbeatAt !== null && !isWorkerIsoInstant(input.lastHeartbeatAt))
+    return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "lastHeartbeatAt");
+  if (input.protocolVersion !== null && typeof input.protocolVersion !== "string")
+    return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "protocolVersion");
+  if (!Array.isArray(input.capabilities) || !input.capabilities.every((entry) => typeof entry === "string"))
+    return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "capabilities");
+  if (!isPlainRecord2(input.payload)) return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "payload");
+  if (!isWorkerIsoInstant(input.createdAt)) return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "createdAt");
+  if (!isWorkerIsoInstant(input.updatedAt)) return fail5(WORKER_ERROR_CODES.INVALID_WORKER, "updatedAt");
+  const worker = {
+    workerId: input.workerId,
+    workerType: input.workerType,
+    status: input.status,
+    revision: input.revision,
+    lastHeartbeatAt: input.lastHeartbeatAt,
+    protocolVersion: input.protocolVersion,
+    capabilities: [...input.capabilities],
+    payload: input.payload,
+    createdAt: input.createdAt,
+    updatedAt: input.updatedAt
+  };
+  return { ok: true, worker };
+}
+
+// factory/src/adapters/persistence/sql/sql-worker-repository.ts
+var SqlWorkerRepositoryError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "SqlWorkerRepositoryError";
+    this.code = code;
+    this.details = details;
+  }
+};
+var WORKER_COLUMNS = [
+  "worker_id",
+  "worker_type",
+  "status",
+  "revision",
+  "last_heartbeat_at",
+  "protocol_version",
+  "capabilities",
+  "payload",
+  "created_at",
+  "updated_at"
+].join(", ");
+function toIsoInstant2(value) {
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+function toIsoInstantOrNull2(value) {
+  if (value === null || value === void 0) return null;
+  return toIsoInstant2(value);
+}
+var SqlWorkerRepository = class {
+  #client;
+  #organizationId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+  }
+  get scope() {
+    return { organizationId: this.#organizationId };
+  }
+  #toWorker(row) {
+    const validated = validateWorker({
+      workerId: row.worker_id,
+      workerType: row.worker_type,
+      status: row.status,
+      revision: Number(row.revision),
+      lastHeartbeatAt: toIsoInstantOrNull2(row.last_heartbeat_at),
+      protocolVersion: row.protocol_version === void 0 ? null : row.protocol_version,
+      capabilities: parseJsonColumn(row.capabilities),
+      payload: parseJsonColumn(row.payload),
+      createdAt: toIsoInstant2(row.created_at),
+      updatedAt: toIsoInstant2(row.updated_at)
+    });
+    if (!validated.ok) throw new SqlWorkerRepositoryError("CORRUPT_STORAGE", { path: validated.error.path });
+    return validated.worker;
+  }
+  async #select(workerId) {
+    const { rows } = await this.#client.query(
+      `SELECT ${WORKER_COLUMNS} FROM workers WHERE organization_id = $1 AND worker_id = $2`,
+      [this.#organizationId, workerId]
+    );
+    const row = rows[0];
+    return row ? this.#toWorker(row) : null;
+  }
+  /** Compare-and-swap write: the row is only updated when `revision` still matches. */
+  async #write(worker, expectedRevision) {
+    const { rowCount } = await this.#client.query(
+      `UPDATE workers
+         SET worker_type = $1, status = $2, revision = $3, last_heartbeat_at = $4,
+             protocol_version = $5, capabilities = $6::jsonb, payload = $7::jsonb, updated_at = $8
+       WHERE organization_id = $9 AND worker_id = $10 AND revision = $11`,
+      [
+        worker.workerType,
+        worker.status,
+        worker.revision,
+        worker.lastHeartbeatAt,
+        worker.protocolVersion,
+        JSON.stringify(worker.capabilities),
+        JSON.stringify(worker.payload),
+        worker.updatedAt,
+        this.#organizationId,
+        worker.workerId,
+        expectedRevision
+      ]
+    );
+    if (!rowCount)
+      throw new SqlWorkerRepositoryError("REVISION_CONFLICT", { workerId: worker.workerId, expectedRevision });
+  }
+  async get(workerId) {
+    return this.#select(workerId);
+  }
+  async create(input) {
+    const observedAt = (/* @__PURE__ */ new Date()).toISOString();
+    const validated = validateWorker({
+      workerId: input.workerId,
+      workerType: input.workerType,
+      status: input.status ?? "offline",
+      revision: input.revision ?? 1,
+      lastHeartbeatAt: input.lastHeartbeatAt ?? null,
+      protocolVersion: input.protocolVersion ?? null,
+      capabilities: input.capabilities ?? [],
+      payload: input.payload ?? {},
+      createdAt: observedAt,
+      updatedAt: observedAt
+    });
+    if (!validated.ok) throw new SqlWorkerRepositoryError(validated.error.code, { path: validated.error.path });
+    const existing = await this.#select(input.workerId);
+    if (existing) throw new SqlWorkerRepositoryError("WORKER_ALREADY_EXISTS", { workerId: input.workerId });
+    const worker = validated.worker;
+    await this.#client.query(
+      `INSERT INTO workers
+         (organization_id, worker_id, worker_type, status, revision, last_heartbeat_at, protocol_version,
+          capabilities, payload, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11)`,
+      [
+        this.#organizationId,
+        worker.workerId,
+        worker.workerType,
+        worker.status,
+        worker.revision,
+        worker.lastHeartbeatAt,
+        worker.protocolVersion,
+        JSON.stringify(worker.capabilities),
+        JSON.stringify(worker.payload),
+        worker.createdAt,
+        worker.updatedAt
+      ]
+    );
+    return worker;
+  }
+  async update(workerId, patch, expectedRevision) {
+    const current = await this.#select(workerId);
+    if (!current) throw new SqlWorkerRepositoryError("NOT_FOUND", { workerId });
+    if (current.revision !== expectedRevision)
+      throw new SqlWorkerRepositoryError("REVISION_CONFLICT", {
+        workerId,
+        expectedRevision,
+        actualRevision: current.revision
+      });
+    if (patch.workerId !== void 0 && patch.workerId !== current.workerId)
+      throw new SqlWorkerRepositoryError("INVALID_WORKER", { path: "workerId" });
+    const status = patch.status ?? current.status;
+    if (!isWorkerState(status)) throw new SqlWorkerRepositoryError("INVALID_STATE", { path: "status" });
+    if (status !== current.status && !canTransitionWorker(current.status, status))
+      throw new SqlWorkerRepositoryError("INVALID_TRANSITION", { from: current.status, to: status });
+    const validated = validateWorker({
+      workerId: current.workerId,
+      workerType: patch.workerType ?? current.workerType,
+      status,
+      revision: current.revision + 1,
+      lastHeartbeatAt: patch.lastHeartbeatAt === void 0 ? current.lastHeartbeatAt : patch.lastHeartbeatAt,
+      protocolVersion: patch.protocolVersion === void 0 ? current.protocolVersion : patch.protocolVersion,
+      capabilities: patch.capabilities ?? current.capabilities,
+      payload: patch.payload ?? current.payload,
+      createdAt: current.createdAt,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    if (!validated.ok) throw new SqlWorkerRepositoryError(validated.error.code, { path: validated.error.path });
+    await this.#write(validated.worker, current.revision);
+    return validated.worker;
+  }
+  async transition(workerId, nextState, expectedRevision, payloadUpdate) {
+    if (!isWorkerState(nextState)) throw new SqlWorkerRepositoryError("INVALID_STATE", { path: "status" });
+    const current = await this.#select(workerId);
+    if (!current) throw new SqlWorkerRepositoryError("NOT_FOUND", { workerId });
+    if (current.revision !== expectedRevision)
+      throw new SqlWorkerRepositoryError("REVISION_CONFLICT", {
+        workerId,
+        expectedRevision,
+        actualRevision: current.revision
+      });
+    if (!canTransitionWorker(current.status, nextState))
+      throw new SqlWorkerRepositoryError("INVALID_TRANSITION", { from: current.status, to: nextState });
+    const validated = validateWorker({
+      ...current,
+      status: nextState,
+      revision: current.revision + 1,
+      payload: payloadUpdate ? { ...current.payload, ...payloadUpdate } : current.payload,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    if (!validated.ok) throw new SqlWorkerRepositoryError(validated.error.code, { path: validated.error.path });
+    await this.#write(validated.worker, current.revision);
+    return validated.worker;
+  }
+  async heartbeat(workerId, heartbeatAt, expectedRevision) {
+    if (!isWorkerIsoInstant(heartbeatAt))
+      throw new SqlWorkerRepositoryError("INVALID_WORKER", { path: "lastHeartbeatAt" });
+    const current = await this.#select(workerId);
+    if (!current) throw new SqlWorkerRepositoryError("NOT_FOUND", { workerId });
+    if (expectedRevision !== void 0 && current.revision !== expectedRevision)
+      throw new SqlWorkerRepositoryError("REVISION_CONFLICT", {
+        workerId,
+        expectedRevision,
+        actualRevision: current.revision
+      });
+    const validated = validateWorker({
+      ...current,
+      revision: current.revision + 1,
+      lastHeartbeatAt: heartbeatAt,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    if (!validated.ok) throw new SqlWorkerRepositoryError(validated.error.code, { path: validated.error.path });
+    await this.#write(validated.worker, current.revision);
+    return validated.worker;
+  }
+  async list(filter = {}) {
+    const { rows } = await this.#client.query(
+      `SELECT ${WORKER_COLUMNS} FROM workers WHERE organization_id = $1`,
+      [this.#organizationId]
+    );
+    const statuses = filter.status === void 0 ? null : Array.isArray(filter.status) ? filter.status : [filter.status];
+    return rows.map((row) => this.#toWorker(row)).filter((worker) => statuses === null || statuses.includes(worker.status)).filter((worker) => filter.workerType === void 0 || worker.workerType === filter.workerType).sort((left, right) => left.workerId.localeCompare(right.workerId));
+  }
+};
+function createSqlWorkerRepository(client, options = {}) {
+  return new SqlWorkerRepository(client, options);
+}
+
+// factory/src/adapters/persistence/sql/sql-lease-repository.ts
+import { randomUUID as randomUUID8 } from "node:crypto";
+
+// factory/src/domain/lease/lease.ts
+var WORK_UNIT_LEASE_STATUSES = Object.freeze(["active", "released", "expired"]);
+var LEASE_ELIGIBLE_WORK_UNIT_STATUSES = Object.freeze(["created", "failed"]);
+var LEASE_RELEASE_RESULT_STATUSES = Object.freeze(["completed", "failed", "created"]);
+var LEASE_EXPIRY_REASONS = Object.freeze({
+  HEARTBEAT_TIMEOUT: "heartbeat_timeout",
+  WORKER_LOST: "worker_lost",
+  RECLAIMED: "reclaimed"
+});
+var LEASE_ERROR_CODES = Object.freeze({
+  /** A stale / mismatched fencing token was presented. */
+  LEASE_FENCED: "LEASE_FENCED",
+  /** No lease row matches the addressed identity. */
+  LEASE_NOT_FOUND: "LEASE_NOT_FOUND",
+  /** The lease is past its deadline and can no longer be renewed. */
+  LEASE_EXPIRED: "LEASE_EXPIRED",
+  /** The eligible-work-unit scan found nothing to lease. */
+  NO_ELIGIBLE_WORK_UNIT: "NO_ELIGIBLE_WORK_UNIT",
+  /** The work unit addressed by the operation does not exist. */
+  WORK_UNIT_NOT_FOUND: "WORK_UNIT_NOT_FOUND",
+  /** The operation is not legal for the lease's current state. */
+  INVALID_LEASE_STATE: "INVALID_LEASE_STATE"
+});
+var LeaseError = class extends Error {
+  code;
+  details;
+  constructor(code, details = {}, cause) {
+    super(code, cause === void 0 ? void 0 : { cause });
+    this.name = "LeaseError";
+    this.code = code;
+    this.details = details;
+  }
+};
+function isLeaseStatus(value) {
+  return typeof value === "string" && WORK_UNIT_LEASE_STATUSES.includes(value);
+}
+function computeLeaseExpiresAt(nowIso, ttlMs) {
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0) throw new RangeError("INVALID_LEASE_TTL");
+  return new Date(Date.parse(nowIso) + ttlMs).toISOString();
+}
+function isLeaseExpiredByTime(lease, nowIso) {
+  if (lease.status !== "active" || lease.leaseExpiresAt === null) return false;
+  return Date.parse(lease.leaseExpiresAt) <= Date.parse(nowIso);
+}
+function isFencingTokenCurrent(current, incoming) {
+  return Number.isFinite(incoming) && incoming === current;
+}
+function assertFencingToken(current, incoming) {
+  if (!isFencingTokenCurrent(current, incoming)) {
+    throw new LeaseError(LEASE_ERROR_CODES.LEASE_FENCED, {
+      currentFencingToken: current,
+      incomingFencingToken: incoming
+    });
+  }
+}
+function assertLeaseRenewable(lease, nowIso) {
+  if (lease.status !== "active") {
+    throw new LeaseError(LEASE_ERROR_CODES.INVALID_LEASE_STATE, { leaseId: lease.leaseId, status: lease.status });
+  }
+  if (isLeaseExpiredByTime(lease, nowIso)) {
+    throw new LeaseError(LEASE_ERROR_CODES.LEASE_EXPIRED, {
+      leaseId: lease.leaseId,
+      leaseExpiresAt: lease.leaseExpiresAt
+    });
+  }
+}
+
+// factory/src/adapters/persistence/sql/sql-lease-repository.ts
+function toIso(value) {
+  if (value === null || value === void 0) return null;
+  if (value instanceof Date) return value.toISOString();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+function toIsoRequired(value) {
+  return toIso(value) ?? (/* @__PURE__ */ new Date(0)).toISOString();
+}
+function mapLease(row) {
+  const status = isLeaseStatus(row.status) ? row.status : "expired";
+  return {
+    organizationId: row.organization_id,
+    workstreamId: row.workstream_id,
+    workUnitId: row.work_unit_id,
+    leaseId: row.lease_id,
+    workerId: row.worker_id,
+    environmentId: row.environment_id ?? null,
+    status,
+    fencingToken: Number(row.fencing_token ?? 0),
+    acquiredAt: toIso(row.acquired_at),
+    leaseExpiresAt: toIso(row.lease_expires_at),
+    heartbeatAt: toIso(row.heartbeat_at),
+    releasedAt: toIso(row.released_at),
+    expiryReason: row.expiry_reason ?? null,
+    createdAt: toIsoRequired(row.created_at)
+  };
+}
+var SqlLeaseRepository = class {
+  #client;
+  #organizationId;
+  #workstreamId;
+  constructor(client, options = {}) {
+    this.#client = client;
+    this.#organizationId = options.organizationId ?? DEFAULT_ORGANIZATION_ID;
+    this.#workstreamId = options.workstreamId ?? DEFAULT_WORKSTREAM_ID;
+  }
+  async #selectLease(client, organizationId, workstreamId, workUnitId, leaseId, forUpdate = false) {
+    const { rows } = await client.query(
+      `SELECT * FROM work_unit_leases
+       WHERE organization_id = $1 AND workstream_id = $2 AND work_unit_id = $3 AND lease_id = $4${forUpdate ? " FOR UPDATE" : ""}`,
+      [organizationId, workstreamId, workUnitId, leaseId]
+    );
+    const row = rows[0];
+    return row ? mapLease(row) : null;
+  }
+  async acquire(options) {
+    const organizationId = options.organizationId ?? this.#organizationId;
+    const workstreamId = options.workstreamId ?? this.#workstreamId;
+    const nowIso = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+    const leaseExpiresAt = computeLeaseExpiresAt(nowIso, options.ttlMs);
+    const environmentId = options.environmentId ?? null;
+    return withTransaction(this.#client, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT work_unit_id, revision, attempt_count FROM work_units
+         WHERE organization_id = $1 AND workstream_id = $2
+           AND status IN ('created', 'failed')
+           AND (not_before IS NULL OR not_before <= $3)
+         ORDER BY priority DESC, created_at ASC
+         LIMIT 1
+         FOR UPDATE SKIP LOCKED`,
+        [organizationId, workstreamId, nowIso]
+      );
+      const candidate = rows[0];
+      if (!candidate) return null;
+      const sequence = await tx.query(`SELECT nextval('work_unit_lease_fencing_seq') AS fencing_token`);
+      const fencingToken = Number(sequence.rows[0]?.fencing_token ?? 0);
+      const leaseId = `lease_${randomUUID8()}`;
+      await tx.query(
+        `INSERT INTO work_unit_leases
+           (organization_id, workstream_id, work_unit_id, lease_id, worker_id, environment_id, status,
+            fencing_token, acquired_at, lease_expires_at, heartbeat_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'active', $7, $8, $9, $10, $11)`,
+        [
+          organizationId,
+          workstreamId,
+          candidate.work_unit_id,
+          leaseId,
+          options.workerId,
+          environmentId,
+          fencingToken,
+          nowIso,
+          leaseExpiresAt,
+          nowIso,
+          nowIso
+        ]
+      );
+      const { rowCount } = await tx.query(
+        `UPDATE work_units
+           SET status = 'running', attempt_count = attempt_count + 1, revision = revision + 1, updated_at = $1
+         WHERE organization_id = $2 AND workstream_id = $3 AND work_unit_id = $4`,
+        [nowIso, organizationId, workstreamId, candidate.work_unit_id]
+      );
+      if (!rowCount) {
+        throw new LeaseError(LEASE_ERROR_CODES.WORK_UNIT_NOT_FOUND, { workUnitId: candidate.work_unit_id });
+      }
+      const lease = await this.#selectLease(tx, organizationId, workstreamId, candidate.work_unit_id, leaseId);
+      if (!lease) throw new LeaseError(LEASE_ERROR_CODES.LEASE_NOT_FOUND, { leaseId });
+      return { lease, workUnitId: candidate.work_unit_id };
+    });
+  }
+  async renew(options) {
+    const organizationId = options.organizationId ?? this.#organizationId;
+    const workstreamId = options.workstreamId ?? this.#workstreamId;
+    const nowIso = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+    const leaseExpiresAt = computeLeaseExpiresAt(nowIso, options.ttlMs);
+    return withTransaction(this.#client, async (tx) => {
+      const lease = await this.#selectLease(tx, organizationId, workstreamId, options.workUnitId, options.leaseId, true);
+      if (!lease) throw new LeaseError(LEASE_ERROR_CODES.LEASE_NOT_FOUND, { leaseId: options.leaseId });
+      assertLeaseRenewable(lease, nowIso);
+      assertFencingToken(lease.fencingToken, options.fencingToken);
+      await tx.query(
+        `UPDATE work_unit_leases SET lease_expires_at = $1, heartbeat_at = $2
+         WHERE organization_id = $3 AND workstream_id = $4 AND work_unit_id = $5 AND lease_id = $6`,
+        [leaseExpiresAt, nowIso, organizationId, workstreamId, options.workUnitId, options.leaseId]
+      );
+      const updated = await this.#selectLease(tx, organizationId, workstreamId, options.workUnitId, options.leaseId);
+      if (!updated) throw new LeaseError(LEASE_ERROR_CODES.LEASE_NOT_FOUND, { leaseId: options.leaseId });
+      return updated;
+    });
+  }
+  async release(options) {
+    const organizationId = options.organizationId ?? this.#organizationId;
+    const workstreamId = options.workstreamId ?? this.#workstreamId;
+    const nowIso = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+    const resultStatus = options.resultStatus ?? "completed";
+    return withTransaction(this.#client, async (tx) => {
+      const lease = await this.#selectLease(tx, organizationId, workstreamId, options.workUnitId, options.leaseId, true);
+      if (!lease) throw new LeaseError(LEASE_ERROR_CODES.LEASE_NOT_FOUND, { leaseId: options.leaseId });
+      if (options.fencingToken !== void 0) assertFencingToken(lease.fencingToken, options.fencingToken);
+      if (lease.status !== "active") {
+        throw new LeaseError(LEASE_ERROR_CODES.INVALID_LEASE_STATE, { leaseId: lease.leaseId, status: lease.status });
+      }
+      await tx.query(
+        `UPDATE work_unit_leases SET status = 'released', released_at = $1
+         WHERE organization_id = $2 AND workstream_id = $3 AND work_unit_id = $4 AND lease_id = $5`,
+        [nowIso, organizationId, workstreamId, options.workUnitId, options.leaseId]
+      );
+      const { rowCount } = await tx.query(
+        `UPDATE work_units SET status = $1, revision = revision + 1, updated_at = $2
+         WHERE organization_id = $3 AND workstream_id = $4 AND work_unit_id = $5`,
+        [resultStatus, nowIso, organizationId, workstreamId, options.workUnitId]
+      );
+      if (!rowCount) throw new LeaseError(LEASE_ERROR_CODES.WORK_UNIT_NOT_FOUND, { workUnitId: options.workUnitId });
+      const released = await this.#selectLease(tx, organizationId, workstreamId, options.workUnitId, options.leaseId);
+      if (!released) throw new LeaseError(LEASE_ERROR_CODES.LEASE_NOT_FOUND, { leaseId: options.leaseId });
+      return released;
+    });
+  }
+  async expire(options) {
+    const organizationId = options.organizationId ?? this.#organizationId;
+    const workstreamId = options.workstreamId ?? this.#workstreamId;
+    const nowIso = (options.now ?? /* @__PURE__ */ new Date()).toISOString();
+    const expiryReason = options.expiryReason ?? LEASE_EXPIRY_REASONS.HEARTBEAT_TIMEOUT;
+    return withTransaction(this.#client, async (tx) => {
+      const { rows } = await tx.query(
+        `SELECT * FROM work_unit_leases
+         WHERE organization_id = $1 AND workstream_id = $2 AND status = 'active' AND lease_expires_at < $3
+         FOR UPDATE`,
+        [organizationId, workstreamId, nowIso]
+      );
+      const expired = [];
+      for (const row of rows) {
+        const lease = mapLease(row);
+        await tx.query(
+          `UPDATE work_unit_leases SET status = 'expired', released_at = $1, expiry_reason = $2
+           WHERE organization_id = $3 AND workstream_id = $4 AND work_unit_id = $5 AND lease_id = $6`,
+          [nowIso, expiryReason, organizationId, workstreamId, lease.workUnitId, lease.leaseId]
+        );
+        await tx.query(
+          `UPDATE work_units SET status = 'created', revision = revision + 1, updated_at = $1
+           WHERE organization_id = $2 AND workstream_id = $3 AND work_unit_id = $4`,
+          [nowIso, organizationId, workstreamId, lease.workUnitId]
+        );
+        expired.push({ ...lease, status: "expired", releasedAt: nowIso, expiryReason });
+      }
+      return expired;
+    });
+  }
+  async findByLeaseId(organizationId, workstreamId, workUnitId, leaseId) {
+    return this.#selectLease(this.#client, organizationId, workstreamId, workUnitId, leaseId);
+  }
+  async findActiveLeaseByWorkUnit(organizationId, workstreamId, workUnitId) {
+    const { rows } = await this.#client.query(
+      `SELECT * FROM work_unit_leases
+       WHERE organization_id = $1 AND workstream_id = $2 AND work_unit_id = $3 AND status = 'active'
+       ORDER BY fencing_token DESC
+       LIMIT 1`,
+      [organizationId, workstreamId, workUnitId]
+    );
+    const row = rows[0];
+    return row ? mapLease(row) : null;
+  }
+};
+function createSqlLeaseRepository(client, options = {}) {
+  return new SqlLeaseRepository(client, options);
+}
+
+// factory/src/application/shutdown.ts
 function createShutdownController(deps) {
   let initiated = false;
   let completed = false;
@@ -4507,7 +5353,7 @@ function createShutdownController(deps) {
   };
 }
 
-// ../src/adapters/agentos/agentos-http-case-terminator.ts
+// factory/src/adapters/agentos/agentos-http-case-terminator.ts
 function createAgentOsHttpCaseTerminator(options) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 5e3;
@@ -4523,7 +5369,7 @@ function createAgentOsHttpCaseTerminator(options) {
   };
 }
 
-// ../src/adapters/process-shutdown.ts
+// factory/src/adapters/process-shutdown.ts
 function installSigtermHandler(controller, processPort = process) {
   processPort.once("SIGTERM", () => {
     void controller.handle("SIGTERM");
@@ -4533,12 +5379,12 @@ function processExit(processPort = process) {
   return (code) => processPort.exit(code);
 }
 
-// ../src/ports/agent-runtime-gateway.ts
+// factory/src/ports/agent-runtime-gateway.ts
 function asRuntimeExecutionId(value) {
   return value;
 }
 
-// ../src/adapters/agentos/agentos-http-client.ts
+// factory/src/adapters/agentos/agentos-http-client.ts
 var DEFAULT_BASE_URL = "http://localhost:8124";
 var DEFAULT_USER_ID = "benjamin.valdes";
 var DEFAULT_TIMEOUT_MS = 15e3;
@@ -4627,7 +5473,7 @@ ${responseBody}`);
   };
 }
 
-// ../src/adapters/agentos/agentos-capability-inspector.ts
+// factory/src/adapters/agentos/agentos-capability-inspector.ts
 import { realpathSync } from "node:fs";
 var RESERVED_INTEGRATIONS = /* @__PURE__ */ new Set(["QUERY_USER", "CASE_FILE_EXCHANGE", "NAMESPACE_FILE_EXCHANGE", "FACTORY"]);
 function normalizeRoot(p) {
@@ -4891,7 +5737,7 @@ L'agent \xE9crirait dans un arbre et l'oracle en compilerait un autre : le verdi
   return { inspectWorker, preflightWorkspace: preflightWorkspace2, preflightWritableWorkspace: preflightWritableWorkspace2, preflightReadOnlyWorkspace: preflightReadOnlyWorkspace2 };
 }
 
-// ../src/adapters/agentos/agentos-event-translator.ts
+// factory/src/adapters/agentos/agentos-event-translator.ts
 var CASE_STATUS_EVENT = "CaseStatusEvent";
 var QUIESCENT_STATUSES = ["IDLE", "KILLED", "ERROR"];
 function asString(value) {
@@ -5023,7 +5869,7 @@ function toRuntimeEvents(events) {
   return events.map(toRuntimeEvent);
 }
 
-// ../src/adapters/agentos/agentos-runtime-observer.ts
+// factory/src/adapters/agentos/agentos-runtime-observer.ts
 var DEFAULT_POLL_INTERVAL_MS = 2e3;
 var DEFAULT_START_TIMEOUT_MS = 3e4;
 var DEFAULT_WORK_TIMEOUT_MS = 10 * 60 * 1e3;
@@ -5149,7 +5995,7 @@ function createAgentOsRuntimeObserver(deps) {
   };
 }
 
-// ../src/adapters/agentos/agentos-runtime-adapter.ts
+// factory/src/adapters/agentos/agentos-runtime-adapter.ts
 function createAgentOsRuntimeAdapter(config = {}) {
   const client = config.client ?? createAgentOsHttpClient(config);
   const inspector = createAgentOsCapabilityInspector({
@@ -5298,7 +6144,7 @@ function createAgentOsRuntimeAdapter(config = {}) {
   };
 }
 
-// ../src/application/agentos-operations.ts
+// factory/src/application/agentos-operations.ts
 var agentos_operations_exports = {};
 __export(agentos_operations_exports, {
   bindFactoryStepResult: () => bindFactoryStepResult,
@@ -5361,8 +6207,8 @@ function runAgentTurn(caseId, agentName, brief, options) {
   return getAgentOsRuntimeAdapter().runAgentTurn(caseId, agentName, brief, options);
 }
 
-// ../src/application/agent-attempt/factory-agent-step-executor.ts
-import { createHash as createHash14, randomUUID as randomUUID8 } from "node:crypto";
+// factory/src/application/agent-attempt/factory-agent-step-executor.ts
+import { createHash as createHash14, randomUUID as randomUUID9 } from "node:crypto";
 import { mkdir as mkdir2, open as open2, readFile as readFile2, rename as rename2, rm as rm2, stat } from "node:fs/promises";
 import { isAbsolute as isAbsolute2, join as join5, relative, resolve as resolve2 } from "node:path";
 var MAX_INLINE_ARTIFACT_BYTES = 256 * 1024;
@@ -5510,7 +6356,7 @@ async function materializeInlineArtifact({
     if (error2?.code !== "ENOENT")
       return { ok: false, code: "ARTIFACT_MATERIALIZATION_FAILED" };
   }
-  const temporary = join5(directory, `.${stepId}.${randomUUID8()}.tmp`);
+  const temporary = join5(directory, `.${stepId}.${randomUUID9()}.tmp`);
   let handle = null;
   try {
     handle = await open2(temporary, "wx", 384);
@@ -5587,7 +6433,7 @@ async function executeAgentStepAttempt(input) {
       details: diagnostic(workspace.reason, "Workspace capability preflight failed.")
     };
   const attemptNumber = (await attemptStore.list(namespaceId, storageId)).filter((a) => a.stepId === input.stepId).reduce((n, a) => Math.max(n, a.attemptNumber), 0) + 1;
-  const attemptId = randomUUID8();
+  const attemptId = randomUUID9();
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
   const briefHash = sha256(brief);
   let attempt = {
@@ -5854,7 +6700,7 @@ async function executeAgentStepAttempt(input) {
   } : { ok: false, code: transition.error.code, attempt: finished };
 }
 
-// ../src/domain/oracle/oracle.ts
+// factory/src/domain/oracle/oracle.ts
 function countTaskOutcomes(output) {
   const plain = output.replace(/\u001b\[[0-9;]*m/g, "");
   const lines = plain.split("\n");
@@ -5931,7 +6777,7 @@ function diffSnapshots(before, after) {
   return { modified, untracked };
 }
 
-// ../src/application/oracle/oracle-definition-registry.ts
+// factory/src/application/oracle/oracle-definition-registry.ts
 import { readFile as readFile3, readdir as readdir2 } from "node:fs/promises";
 import { join as join6 } from "node:path";
 function createFilesystemOracleDefinitionSource(root) {
@@ -5946,7 +6792,7 @@ var OracleDefinitionRegistry = class extends OracleDefinitionRegistryCore {
   }
 };
 
-// ../src/application/oracle/oracle-command.ts
+// factory/src/application/oracle/oracle-command.ts
 import { existsSync, readFileSync } from "node:fs";
 import { dirname as dirname3, join as join7 } from "node:path";
 function resolveBuildHosts(ownerProjects, repoRoot) {
@@ -6127,7 +6973,7 @@ function buildOracleCommand(oracle, files, repoRoot) {
   return "pnpm nx run-many --target=" + target + " --projects=" + projects.join(",") + " --skip-nx-cache";
 }
 
-// ../src/application/oracle/oracle-executor.ts
+// factory/src/application/oracle/oracle-executor.ts
 import { spawn, spawnSync } from "node:child_process";
 import { createHash as createHash15 } from "node:crypto";
 import { readFileSync as readFileSync2 } from "node:fs";
@@ -6274,7 +7120,7 @@ function oracleArtifact(result) {
   return { raw, hash: `sha256:${createHash15("sha256").update(raw).digest("hex")}` };
 }
 
-// ../src/application/oracle/oracle-baseline.ts
+// factory/src/application/oracle/oracle-baseline.ts
 var TS_INFRASTRUCTURE_CODES = /* @__PURE__ */ new Set(["TS5090", "TS6059", "TS18003", "TS6305", "TS6307"]);
 var BASELINE_TAIL_LINES = 40;
 function stripAnsi(s) {
@@ -6609,7 +7455,7 @@ function buildQuarantineRecord(params) {
   };
 }
 
-// ../src/adapters/persistence/work-unit-environment-store.ts
+// factory/src/adapters/persistence/work-unit-environment-store.ts
 import { createHash as createHash16, randomBytes as randomBytes5 } from "node:crypto";
 import { appendFile as appendFile2, lstat, mkdir as mkdir3, open as open3, readFile as readFile4, readdir as readdir3, realpath as realpath2, rename as rename3, rm as rm3 } from "node:fs/promises";
 import { dirname as dirname4, isAbsolute as isAbsolute4, join as join9, relative as relative2, sep } from "node:path";
@@ -6894,8 +7740,8 @@ var WorkUnitEnvironmentStore = class {
   }
 };
 
-// ../src/application/environment/work-unit-environment-service.ts
-import { randomUUID as randomUUID9 } from "node:crypto";
+// factory/src/application/environment/work-unit-environment-service.ts
+import { randomUUID as randomUUID10 } from "node:crypto";
 var machine = (e) => {
   const code = e?.code;
   return typeof code === "string" && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : "GIT_FAILED";
@@ -6912,7 +7758,7 @@ var WorkUnitEnvironmentService = class {
     store,
     git,
     clock = () => /* @__PURE__ */ new Date(),
-    idGenerator = () => randomUUID9(),
+    idGenerator = () => randomUUID10(),
     fault = async () => {
     }
   }) {
@@ -7067,7 +7913,7 @@ var WorkUnitEnvironmentService = class {
   }
 };
 
-// ../src/application/environment/work-unit-environment-controller.ts
+// factory/src/application/environment/work-unit-environment-controller.ts
 var UUID3 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 var SAFE7 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var ALLOWED2 = /* @__PURE__ */ new Set(["workflowId", "workUnitId", "integrationBranch", "branch"]);
@@ -7266,7 +8112,7 @@ async function handleWorkUnitEnvironmentRequest({
   }
 }
 
-// ../src/domain/delivery/delivery-operation-policy.ts
+// factory/src/domain/delivery/delivery-operation-policy.ts
 var deny3 = (code, reason) => ({ allowed: false, code, reason });
 var pass = () => ({ allowed: true });
 function evaluateDeliveryOperationPolicy({
@@ -7333,7 +8179,7 @@ function resolveDeliveryVerificationRequest(request, target) {
   };
 }
 
-// ../src/adapters/persistence/delivery-store.ts
+// factory/src/adapters/persistence/delivery-store.ts
 import { createHash as createHash17, randomBytes as randomBytes6 } from "node:crypto";
 import { appendFile as appendFile3, mkdir as mkdir4, open as open4, readFile as readFile5, rename as rename4, rm as rm4 } from "node:fs/promises";
 import { dirname as dirname5, isAbsolute as isAbsolute5, join as join10 } from "node:path";
@@ -7796,8 +8642,8 @@ var DeliveryStore = class {
   }
 };
 
-// ../src/adapters/persistence/delivery-evidence-store.ts
-import { createHash as createHash18, randomUUID as randomUUID10 } from "node:crypto";
+// factory/src/adapters/persistence/delivery-evidence-store.ts
+import { createHash as createHash18, randomUUID as randomUUID11 } from "node:crypto";
 import { appendFile as appendFile4, mkdir as mkdir5, open as open5, readFile as readFile6 } from "node:fs/promises";
 import { dirname as dirname6, join as join11 } from "node:path";
 var SAFE9 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -7903,7 +8749,7 @@ var DeliveryEvidenceStore = class {
       if (prior)
         return prior.idempotency.semanticHash === semanticHash2 ? { ok: true, created: false, evidence: prior } : { ok: false, error: { code: "IDEMPOTENCY_KEY_COLLISION" } };
       const evidence = {
-        evidenceId: randomUUID10(),
+        evidenceId: randomUUID11(),
         namespaceId,
         ...value,
         source: { ...source },
@@ -7916,7 +8762,7 @@ var DeliveryEvidenceStore = class {
   }
 };
 
-// ../src/adapters/delivery/delivery-target-registry.ts
+// factory/src/adapters/delivery/delivery-target-registry.ts
 var SAFE10 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var DIGEST2 = /^sha256:[0-9a-f]{64}$/i;
 var FIELDS4 = [
@@ -7958,7 +8804,7 @@ var DeliveryTargetRegistry = class {
 };
 var unavailableDeliveryTargetRegistry = Object.freeze({ lookup: unavailable });
 
-// ../src/adapters/delivery/delivery-git-control-plane.ts
+// factory/src/adapters/delivery/delivery-git-control-plane.ts
 import { execFile } from "node:child_process";
 import { createHash as createHash19 } from "node:crypto";
 import { realpath as realpath3 } from "node:fs/promises";
@@ -7968,7 +8814,7 @@ var execute = promisify(execFile);
 var SHA6 = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i;
 var SAFE_REMOTE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var SAFE_BRANCH = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,255}$/;
-var fail4 = (code, details = {}) => {
+var fail6 = (code, details = {}) => {
   throw Object.assign(new Error(code), { code, details });
 };
 function createExecFileRunner() {
@@ -8029,10 +8875,10 @@ var DeliveryGitControlPlane = class {
     allowedPaths = [],
     protectedPaths = []
   }) {
-    if (!serviceIdentity?.name || !serviceIdentity?.email) fail4("SERVICE_IDENTITY_NOT_CONFIGURED");
+    if (!serviceIdentity?.name || !serviceIdentity?.email) fail6("SERVICE_IDENTITY_NOT_CONFIGURED");
     if (configuredRemote !== null && configuredRemote !== void 0 && !SAFE_REMOTE.test(configuredRemote))
-      fail4("INVALID_REMOTE_CONFIGURATION");
-    if (![...allowedPaths, ...protectedPaths].every(safePath)) fail4("INVALID_PATH_POLICY");
+      fail6("INVALID_REMOTE_CONFIGURATION");
+    if (![...allowedPaths, ...protectedPaths].every(safePath)) fail6("INVALID_PATH_POLICY");
     this.runner = runner;
     this.identity = serviceIdentity;
     this.remote = configuredRemote;
@@ -8043,30 +8889,30 @@ var DeliveryGitControlPlane = class {
     return this.runner("git", args, { cwd });
   }
   async inspect(binding) {
-    const canonical6 = await realpath3(binding.worktreePath).catch(() => fail4("CANONICAL_WORKTREE_REQUIRED"));
-    if (canonical6 !== binding.worktreePath) fail4("CANONICAL_WORKTREE_REQUIRED");
+    const canonical6 = await realpath3(binding.worktreePath).catch(() => fail6("CANONICAL_WORKTREE_REQUIRED"));
+    if (canonical6 !== binding.worktreePath) fail6("CANONICAL_WORKTREE_REQUIRED");
     const top = await this._run(["rev-parse", "--show-toplevel"], canonical6);
     if (top.exitCode || await realpath3(top.stdout.trim()).catch(() => null) !== canonical6)
-      fail4("CANONICAL_WORKTREE_REQUIRED");
-    if (!SAFE_BRANCH.test(binding.branch ?? "")) fail4("INVALID_BRANCH_NAME");
+      fail6("CANONICAL_WORKTREE_REQUIRED");
+    if (!SAFE_BRANCH.test(binding.branch ?? "")) fail6("INVALID_BRANCH_NAME");
     const branch = await this._run(["branch", "--show-current"], canonical6), head = await this._run(["rev-parse", "HEAD"], canonical6);
     if (branch.exitCode || branch.stdout.trim() !== binding.branch || head.exitCode || !SHA6.test(head.stdout.trim()))
-      fail4("WORKTREE_BINDING_UNCERTAIN");
+      fail6("WORKTREE_BINDING_UNCERTAIN");
     if (head.stdout.trim() !== binding.expectedHead)
-      fail4("STALE_HEAD", { expected: binding.expectedHead, actual: head.stdout.trim() });
+      fail6("STALE_HEAD", { expected: binding.expectedHead, actual: head.stdout.trim() });
     const status = await this._run(["status", "--porcelain=v1", "-z", "--untracked-files=all"], canonical6);
-    if (status.exitCode) fail4("GIT_INSPECTION_FAILED");
+    if (status.exitCode) fail6("GIT_INSPECTION_FAILED");
     const files = parseStatusZ(status.stdout);
     const protectedHit = files.find(
       (item) => this.protectedPaths.some(
         (prefix) => matchesPrefix(item.path, prefix) || item.originalPath && matchesPrefix(item.originalPath, prefix)
       )
     );
-    if (protectedHit) fail4("PROTECTED_FILE_CHANGED", { path: protectedHit.path });
+    if (protectedHit) fail6("PROTECTED_FILE_CHANGED", { path: protectedHit.path });
     const outOfScope = files.find(
       (item) => !this.allowedPaths.some((prefix) => matchesPrefix(item.path, prefix)) || item.originalPath && !this.allowedPaths.some((prefix) => matchesPrefix(item.originalPath, prefix))
     );
-    if (outOfScope) fail4("SCOPE_VIOLATION", { path: outOfScope.path });
+    if (outOfScope) fail6("SCOPE_VIOLATION", { path: outOfScope.path });
     const allPaths = [
       ...new Set(files.flatMap((item) => item.originalPath ? [item.path, item.originalPath] : [item.path]))
     ].sort();
@@ -8074,7 +8920,7 @@ var DeliveryGitControlPlane = class {
       ["diff", "--binary", "--no-ext-diff", binding.baseCommit, "--", ...allPaths],
       canonical6
     );
-    if (trackedDiff.exitCode) fail4("GIT_INSPECTION_FAILED");
+    if (trackedDiff.exitCode) fail6("GIT_INSPECTION_FAILED");
     const untracked = files.filter((item) => item.code === "??").map((item) => item.path).sort();
     const diffContent = `${trackedDiff.stdout}
 ${untracked.map((path) => `untracked ${path}`).join("\n")}`;
@@ -8088,13 +8934,13 @@ ${untracked.map((path) => `untracked ${path}`).join("\n")}`;
   }
   compareClaims(inspection, claims) {
     const candidate = claims;
-    if (!candidate) fail4("INVALID_CLAIMS");
+    if (!candidate) fail6("INVALID_CLAIMS");
     if (Object.keys(candidate).some((key) => !["paths", "diffHash"].includes(key)) || !Array.isArray(candidate.paths))
-      fail4("INVALID_CLAIMS");
+      fail6("INVALID_CLAIMS");
     const trusted = candidate;
     const actual = [...new Set(inspection.files.map((item) => item.path))].sort(), claimed = [...new Set(trusted.paths)].sort();
     if (JSON.stringify(actual) !== JSON.stringify(claimed) || trusted.diffHash !== inspection.diffHash)
-      fail4("CLAIMS_MISMATCH");
+      fail6("CLAIMS_MISMATCH");
     return { ok: true };
   }
   async checkpoint(binding, { message, claims }) {
@@ -8103,10 +8949,10 @@ ${untracked.map((path) => `untracked ${path}`).join("\n")}`;
     if (inspection.files.length === 0) return { changed: false, commit: inspection.headCommit, inspection };
     const paths = inspection.files.map((item) => item.path);
     const add = await this._run(["add", "--", ...paths], inspection.worktreePath);
-    if (add.exitCode) fail4("GIT_STAGE_FAILED");
+    if (add.exitCode) fail6("GIT_STAGE_FAILED");
     const staged = await this._run(["diff", "--cached", "--quiet", "--exit-code"], inspection.worktreePath);
     if (staged.exitCode === 0) return { changed: false, commit: inspection.headCommit, inspection };
-    if (staged.exitCode !== 1) fail4("GIT_STAGE_INDETERMINATE");
+    if (staged.exitCode !== 1) fail6("GIT_STAGE_INDETERMINATE");
     const commit = await this._run(
       [
         "-c",
@@ -8122,11 +8968,11 @@ ${untracked.map((path) => `untracked ${path}`).join("\n")}`;
       ],
       inspection.worktreePath
     );
-    if (commit.exitCode) fail4("GIT_COMMIT_FAILED");
+    if (commit.exitCode) fail6("GIT_COMMIT_FAILED");
     const head = await this._run(["rev-parse", "HEAD"], inspection.worktreePath), identity = await this._run(["show", "-s", "--format=%cn%n%ce", "HEAD"], inspection.worktreePath);
     if (head.exitCode || !SHA6.test(head.stdout.trim()) || identity.stdout.trim() !== `${this.identity.name}
 ${this.identity.email}`)
-      fail4("GIT_COMMIT_INDETERMINATE");
+      fail6("GIT_COMMIT_INDETERMINATE");
     return { changed: true, commit: head.stdout.trim(), previousHead: inspection.headCommit, inspection };
   }
   async push(binding) {
@@ -8135,24 +8981,24 @@ ${this.identity.email}`)
       ["ls-remote", "--heads", this.remote, `refs/heads/${binding.branch}`],
       inspection.worktreePath
     );
-    if (remoteHeadBefore.exitCode) fail4("REMOTE_INSPECTION_FAILED");
+    if (remoteHeadBefore.exitCode) fail6("REMOTE_INSPECTION_FAILED");
     const previous = remoteHeadBefore.stdout.trim().split(/\s+/)[0] || null;
     if (previous === inspection.headCommit) return { ok: true, changed: false, headCommit: inspection.headCommit };
     const push = await this._run(
       ["push", "--porcelain", this.remote, `refs/heads/${binding.branch}:refs/heads/${binding.branch}`],
       inspection.worktreePath
     );
-    if (push.exitCode) fail4("GIT_PUSH_FAILED");
+    if (push.exitCode) fail6("GIT_PUSH_FAILED");
     const remoteHeadAfter = await this._run(
       ["ls-remote", "--heads", this.remote, `refs/heads/${binding.branch}`],
       inspection.worktreePath
     ), actual = remoteHeadAfter.stdout.trim().split(/\s+/)[0];
-    if (remoteHeadAfter.exitCode || actual !== inspection.headCommit) fail4("GIT_PUSH_INDETERMINATE");
+    if (remoteHeadAfter.exitCode || actual !== inspection.headCommit) fail6("GIT_PUSH_INDETERMINATE");
     return { ok: true, changed: true, headCommit: inspection.headCommit, previousRemoteHead: previous };
   }
 };
 
-// ../src/adapters/delivery/delivery-pr-adapter.ts
+// factory/src/adapters/delivery/delivery-pr-adapter.ts
 var TRUSTED_PR_HOSTS = /* @__PURE__ */ new Set(["github.com", "www.github.com"]);
 function trustedPullRequestUrl(value) {
   try {
@@ -8221,7 +9067,7 @@ var DeliveryPullRequestAdapter = class {
   }
 };
 
-// ../src/adapters/delivery/delivery-deployment-adapter.ts
+// factory/src/adapters/delivery/delivery-deployment-adapter.ts
 var SAFE11 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var DELIVERY_ADAPTER_OUTCOMES = Object.freeze(["running", "succeeded", "failed", "indeterminate"]);
 function normalizeDeliveryAdapterOutcome(value) {
@@ -8272,7 +9118,7 @@ var UnconfiguredDeliveryVerificationAdapter = class {
   inspect = blocked;
 };
 
-// ../src/application/delivery/delivery-controller.ts
+// factory/src/application/delivery/delivery-controller.ts
 var UUID6 = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 var SAFE12 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var FORBIDDEN = /* @__PURE__ */ new Set([
@@ -8668,7 +9514,7 @@ async function handleDeliveryRequest({
   }
 }
 
-// ../src/application/delivery/delivery-operation-controller.ts
+// factory/src/application/delivery/delivery-operation-controller.ts
 var SAFE13 = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 var REASON = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 var FORBIDDEN2 = /* @__PURE__ */ new Set([
@@ -8918,7 +9764,7 @@ var DeliveryOperationController = class {
   }
 };
 
-// ../src/domain/forge-bmad/forge-roots.ts
+// factory/src/domain/forge-bmad/forge-roots.ts
 import { isAbsolute as isAbsolute7, join as join12, relative as relative3 } from "node:path";
 var FORGE_ROOTS_SCHEMA_VERSION = 2;
 var DEFAULT_RUN_STORE_POLICY = "under_orchestrator";
@@ -8937,7 +9783,7 @@ function defaultRunStoreRoot(repoRoot) {
   return join12(repoRoot, "forge", "factory-runs");
 }
 
-// ../src/domain/forge-bmad/forge-human-decision.ts
+// factory/src/domain/forge-bmad/forge-human-decision.ts
 import { createHash as createHash20 } from "node:crypto";
 var G1_POLICY_VERSION = "forge-g1-human-v1";
 var G1_OUTCOMES = /* @__PURE__ */ new Set(["approved", "rejected"]);
@@ -8960,12 +9806,12 @@ function computeG1EvidenceSetHash(events, runId, attempt = 1, policyVersion = G1
   return `sha256:${createHash20("sha256").update(canonicalG1({ policyVersion, evidence })).digest("hex")}`;
 }
 
-// ../src/domain/forge-bmad/forge-spec.ts
+// factory/src/domain/forge-bmad/forge-spec.ts
 import { createHash as createHash21 } from "node:crypto";
 var FORGE_SPEC_SCHEMA_VERSION = 1;
 var G2_POLICY_VERSION = "forge-g2-deterministic-v1";
 var ORACLE_CATALOG = /* @__PURE__ */ new Set(["front.build", "front.tests", "back.build"]);
-function fail5(code) {
+function fail7(code) {
   const error2 = new Error(code);
   error2.code = code;
   throw error2;
@@ -8989,9 +9835,9 @@ function parseForgeSpecFrontmatter(text2) {
     const line = raw.trim();
     if (indent === 0) {
       const match2 = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/);
-      if (!match2) fail5("G2_FRONTMATTER_INVALID");
+      if (!match2) fail7("G2_FRONTMATTER_INVALID");
       const [, key, value] = match2;
-      if (Object.hasOwn(out, key)) fail5("G2_FRONTMATTER_INVALID");
+      if (Object.hasOwn(out, key)) fail7("G2_FRONTMATTER_INVALID");
       if (value) {
         out[key] = scalar(value);
         section = null;
@@ -9024,38 +9870,38 @@ function parseForgeSpecFrontmatter(text2) {
       list.push(scalar(line.slice(2)));
       continue;
     }
-    fail5("G2_FRONTMATTER_INVALID");
+    fail7("G2_FRONTMATTER_INVALID");
   }
   return out;
 }
 function validatePattern(pattern) {
   if (typeof pattern !== "string" || !pattern || pattern.includes("\\") || pattern.startsWith("/") || pattern.includes("..") || pattern.includes("//"))
-    fail5("G2_SCOPE_PATTERN_INVALID");
+    fail7("G2_SCOPE_PATTERN_INVALID");
   const parts = pattern.split("/");
   if (parts.some((part) => !part || part !== "*" && part !== "**" && !/^[A-Za-z0-9._@-]+$/.test(part)))
-    fail5("G2_SCOPE_PATTERN_INVALID");
-  if (parts.includes("**") && parts.at(-1) !== "**") fail5("G2_SCOPE_PATTERN_INVALID");
+    fail7("G2_SCOPE_PATTERN_INVALID");
+  if (parts.includes("**") && parts.at(-1) !== "**") fail7("G2_SCOPE_PATTERN_INVALID");
 }
 function validateForgeSpecSchema(data, workItem) {
-  if (data.schemaVersion !== FORGE_SPEC_SCHEMA_VERSION) fail5("G2_SPEC_SCHEMA_UNSUPPORTED");
+  if (data.schemaVersion !== FORGE_SPEC_SCHEMA_VERSION) fail7("G2_SPEC_SCHEMA_UNSUPPORTED");
   if (!data.workItem || data.workItem.id !== workItem.id || data.workItem.kind !== workItem.kind)
-    fail5("G2_WORK_ITEM_MISMATCH");
-  if (!data.scope || typeof data.scope !== "object") fail5("G2_SCOPE_INVALID");
+    fail7("G2_WORK_ITEM_MISMATCH");
+  if (!data.scope || typeof data.scope !== "object") fail7("G2_SCOPE_INVALID");
   for (const key of ["allow", "create", "deny"]) {
-    if (!Array.isArray(data.scope[key]) || data.scope[key].length === 0) fail5("G2_SCOPE_INVALID");
+    if (!Array.isArray(data.scope[key]) || data.scope[key].length === 0) fail7("G2_SCOPE_INVALID");
     data.scope[key].forEach(validatePattern);
   }
   if (!Array.isArray(data.oracles) || data.oracles.some((oracle) => typeof oracle !== "string" || !ORACLE_CATALOG.has(oracle)))
-    fail5("G2_ORACLE_UNKNOWN");
+    fail7("G2_ORACLE_UNKNOWN");
   if (Object.keys(data).some((key) => !["schemaVersion", "workItem", "scope", "oracles"].includes(key)))
-    fail5("G2_FRONTMATTER_INVALID");
+    fail7("G2_FRONTMATTER_INVALID");
 }
 function computeForgeSpecHash(content) {
   return `sha256:${createHash21("sha256").update(content).digest("hex")}`;
 }
 var FORGE_SPEC_FRONTMATTER_PATTERN = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
 
-// ../src/domain/forge-bmad/forge-story-spec.ts
+// factory/src/domain/forge-bmad/forge-story-spec.ts
 import { createHash as createHash22 } from "node:crypto";
 var FORGE_STORY_SPEC_SCHEMA_VERSION = 1;
 var G2_US_POLICY_VERSION = "forge-g2-us-deterministic-v1";
@@ -9067,7 +9913,7 @@ var STORY_SPEC_ALLOWED_KEYS = /* @__PURE__ */ new Set([
   "acceptanceCriteria",
   "impacts"
 ]);
-function fail6(code, detail) {
+function fail8(code, detail) {
   const error2 = new Error(detail ?? code);
   error2.code = code;
   throw error2;
@@ -9091,9 +9937,9 @@ function parseStorySpecFrontmatter(text2) {
     const line = raw.trim();
     if (indent === 0) {
       const match2 = line.match(/^([A-Za-z][A-Za-z0-9]*):\s*(.*)$/);
-      if (!match2) fail6("G2_FRONTMATTER_INVALID");
+      if (!match2) fail8("G2_FRONTMATTER_INVALID");
       const [, key, value] = match2;
-      if (Object.hasOwn(out, key)) fail6("G2_FRONTMATTER_INVALID");
+      if (Object.hasOwn(out, key)) fail8("G2_FRONTMATTER_INVALID");
       if (value) {
         out[key] = scalar2(value);
         section = null;
@@ -9126,27 +9972,27 @@ function parseStorySpecFrontmatter(text2) {
       list.push(scalar2(line.slice(2)));
       continue;
     }
-    fail6("G2_FRONTMATTER_INVALID");
+    fail8("G2_FRONTMATTER_INVALID");
   }
   return out;
 }
 function validateStorySpec(data) {
-  if (data.schemaVersion !== FORGE_STORY_SPEC_SCHEMA_VERSION) fail6("G2_US_SPEC_SCHEMA_UNSUPPORTED");
+  if (data.schemaVersion !== FORGE_STORY_SPEC_SCHEMA_VERSION) fail8("G2_US_SPEC_SCHEMA_UNSUPPORTED");
   for (const key of Object.keys(data)) {
-    if (!STORY_SPEC_ALLOWED_KEYS.has(key)) fail6("G2_FRONTMATTER_INVALID", `unexpected key: ${key}`);
+    if (!STORY_SPEC_ALLOWED_KEYS.has(key)) fail8("G2_FRONTMATTER_INVALID", `unexpected key: ${key}`);
   }
-  if (!data.workItem || typeof data.workItem !== "object") fail6("G2_US_WORK_ITEM_KIND_INVALID");
-  if (data.workItem.kind !== "Story") fail6("G2_US_WORK_ITEM_KIND_INVALID");
-  if (typeof data.workItem.id !== "string" || !data.workItem.id) fail6("G2_FRONTMATTER_INVALID");
-  if (typeof data.workItem.parentId !== "string" || !data.workItem.parentId) fail6("G2_US_PARENT_ID_MISSING");
-  if (!data.scope || typeof data.scope !== "object") fail6("G2_SCOPE_INVALID");
+  if (!data.workItem || typeof data.workItem !== "object") fail8("G2_US_WORK_ITEM_KIND_INVALID");
+  if (data.workItem.kind !== "Story") fail8("G2_US_WORK_ITEM_KIND_INVALID");
+  if (typeof data.workItem.id !== "string" || !data.workItem.id) fail8("G2_FRONTMATTER_INVALID");
+  if (typeof data.workItem.parentId !== "string" || !data.workItem.parentId) fail8("G2_US_PARENT_ID_MISSING");
+  if (!data.scope || typeof data.scope !== "object") fail8("G2_SCOPE_INVALID");
   for (const key of ["allow", "create", "deny"]) {
-    if (!Array.isArray(data.scope[key]) || data.scope[key].length === 0) fail6("G2_SCOPE_INVALID");
+    if (!Array.isArray(data.scope[key]) || data.scope[key].length === 0) fail8("G2_SCOPE_INVALID");
   }
-  if (data.oracles !== void 0 && !Array.isArray(data.oracles)) fail6("G2_FRONTMATTER_INVALID");
+  if (data.oracles !== void 0 && !Array.isArray(data.oracles)) fail8("G2_FRONTMATTER_INVALID");
   for (const key of ["acceptanceCriteria", "impacts"]) {
     if (data[key] !== void 0) {
-      if (!Array.isArray(data[key])) fail6("G2_FRONTMATTER_INVALID");
+      if (!Array.isArray(data[key])) fail8("G2_FRONTMATTER_INVALID");
     }
   }
 }
@@ -9192,7 +10038,7 @@ function computeStorySpecHash(content) {
   return `sha256:${createHash22("sha256").update(content).digest("hex")}`;
 }
 
-// ../src/domain/forge-bmad/forge-bmad-parser.ts
+// factory/src/domain/forge-bmad/forge-bmad-parser.ts
 function toLines(raw) {
   return raw.replace(/\r\n/g, "\n").split("\n");
 }
@@ -9408,7 +10254,7 @@ function validateForgeRunStructure(raw, ticketId) {
   return { ok: true };
 }
 
-// ../src/domain/forge-bmad/forge-ledger.ts
+// factory/src/domain/forge-bmad/forge-ledger.ts
 var FORGE_LEDGER_SCHEMA_VERSION = 1;
 var FORGE_WORKFLOW_VERSION = "forge-epic-v1";
 function parseForgeLedgerLines(raw) {
@@ -9567,7 +10413,7 @@ function projectForgeRun(events) {
   };
 }
 
-// ../lib/workflow-projection.mjs
+// factory/lib/workflow-projection.mjs
 import { createHash as createHash23 } from "node:crypto";
 var WORKFLOW_STATUSES2 = Object.freeze([
   "pending",
@@ -9600,7 +10446,7 @@ var WORKFLOW_PROJECTION_ERROR_CODES = Object.freeze({
   SELF_DEPENDENCY: "SELF_DEPENDENCY",
   DEPENDENCY_CYCLE: "DEPENDENCY_CYCLE"
 });
-var SAFE_ID8 = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
+var SAFE_ID10 = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$/;
 var STATUS_SET = new Set(WORKFLOW_STATUSES2);
 var ACTOR_KIND_SET = new Set(WORKFLOW_RESPONSIBILITY_KINDS);
 var PROJECTION_FIELDS = /* @__PURE__ */ new Set([
@@ -9626,7 +10472,7 @@ function boundedString(value, maximum, path, { safe: safe2 = false, optional = f
       path
     );
   if (value.length > maximum) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.EXCESSIVE_SIZE, path, { maximum });
-  if (safe2 && !SAFE_ID8.test(value)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_ID, path);
+  if (safe2 && !SAFE_ID10.test(value)) return failure2(WORKFLOW_PROJECTION_ERROR_CODES.INVALID_ID, path);
   return { ok: true, value };
 }
 function validateWorkflowProjection(input) {
@@ -9759,7 +10605,7 @@ function validateWorkflowProjection(input) {
   };
 }
 
-// ../src/domain/forge-bmad/forge-workflow-adapter.ts
+// factory/src/domain/forge-bmad/forge-workflow-adapter.ts
 var FORGE_WORKFLOW_ERROR_CODES = Object.freeze({
   INVALID_RUN: "INVALID_FORGE_RUN",
   UNKNOWN_DECISION: "UNKNOWN_FORGE_DECISION",
@@ -9861,7 +10707,7 @@ function adaptForgeRunToWorkflowProjection(run) {
   return validated.ok ? { ok: true, projection: validated.projection } : failure3(FORGE_WORKFLOW_ERROR_CODES.INVALID_PROJECTION, validated.error.path, { validation: validated.error });
 }
 
-// ../src/domain/forge-bmad/jira.ts
+// factory/src/domain/forge-bmad/jira.ts
 var COMMENTS_CHAR_BUDGET = 8e3;
 function extractTicketId(input) {
   if (!input || typeof input !== "string") return null;
@@ -9901,7 +10747,7 @@ function applyCommentBudget(comments, budget) {
   return { included, omitted };
 }
 
-// ../src/adapters/forge/forge-roots-resolver.ts
+// factory/src/adapters/forge/forge-roots-resolver.ts
 import { existsSync as existsSync2, mkdirSync as mkdirSync2, realpathSync as realpathSync2, statSync } from "node:fs";
 import { basename, dirname as dirname7, isAbsolute as isAbsolute8, join as join13, resolve as resolve3 } from "node:path";
 function resolveExistingDirectory(value, field) {
@@ -9959,7 +10805,7 @@ function ensureForgeRunStore(roots) {
   return resolveExistingDirectory(roots.runStoreRoot, "roots.runStoreRoot");
 }
 
-// ../src/adapters/forge/forge-bmad-file-reader.ts
+// factory/src/adapters/forge/forge-bmad-file-reader.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3 } from "node:fs";
 import { isAbsolute as isAbsolute9, join as join14 } from "node:path";
 function readFileSafe(filePath) {
@@ -10037,14 +10883,14 @@ function readSprintStatus(repoRoot, workstreamSlug) {
   return normalizeSprintStatus(raw);
 }
 
-// ../src/adapters/forge/forge-spec-reader.ts
+// factory/src/adapters/forge/forge-spec-reader.ts
 import { readFileSync as readFileSync4, realpathSync as realpathSync3, statSync as statSync2 } from "node:fs";
 import { isAbsolute as isAbsolute10, relative as relative4, resolve as resolve4 } from "node:path";
 function inside2(child, root) {
   const rel = relative4(root, child);
   return rel === "" || !rel.startsWith("..") && !isAbsolute10(rel);
 }
-function fail7(code) {
+function fail9(code) {
   const error2 = new Error(code);
   error2.code = code;
   throw error2;
@@ -10054,20 +10900,20 @@ function loadForgeSpec({
   roots,
   workItem
 }) {
-  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail7("G2_SPEC_PATH_INVALID");
+  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail9("G2_SPEC_PATH_INVALID");
   let path;
   try {
     path = realpathSync3(resolve4(specPath));
-    if (!statSync2(path).isFile()) fail7("G2_SPEC_PATH_INVALID");
+    if (!statSync2(path).isFile()) fail9("G2_SPEC_PATH_INVALID");
   } catch (error2) {
     if (error2.code?.startsWith("G2_")) throw error2;
-    fail7("G2_SPEC_PATH_INVALID");
+    fail9("G2_SPEC_PATH_INVALID");
   }
   if (!inside2(path, roots.repoRoot) && !(roots.forgeRoot && inside2(path, roots.forgeRoot)))
-    fail7("G2_SPEC_OUTSIDE_ROOT");
+    fail9("G2_SPEC_OUTSIDE_ROOT");
   const content = readFileSync4(path, "utf8");
   const match2 = content.match(FORGE_SPEC_FRONTMATTER_PATTERN);
-  if (!match2) fail7("G2_FRONTMATTER_MISSING");
+  if (!match2) fail9("G2_FRONTMATTER_MISSING");
   const frontmatter = parseForgeSpecFrontmatter(match2[1]);
   validateForgeSpecSchema(frontmatter, workItem);
   return {
@@ -10078,20 +10924,20 @@ function loadForgeSpec({
   };
 }
 function readStorySpec(specPath, roots) {
-  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail7("G2_US_SPEC_PATH_INVALID");
+  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail9("G2_US_SPEC_PATH_INVALID");
   let realPath;
   try {
     realPath = realpathSync3(resolve4(specPath));
-    if (!statSync2(realPath).isFile()) fail7("G2_US_SPEC_PATH_INVALID");
+    if (!statSync2(realPath).isFile()) fail9("G2_US_SPEC_PATH_INVALID");
   } catch (error2) {
     if (error2.code?.startsWith("G2_")) throw error2;
-    fail7("G2_US_SPEC_PATH_INVALID");
+    fail9("G2_US_SPEC_PATH_INVALID");
   }
   if (!inside2(realPath, roots.repoRoot) && !(roots.forgeRoot && inside2(realPath, roots.forgeRoot)))
-    fail7("G2_US_SPEC_OUTSIDE_ROOT");
+    fail9("G2_US_SPEC_OUTSIDE_ROOT");
   const rawContent = readFileSync4(realPath, "utf8");
   const match2 = rawContent.match(FORGE_SPEC_FRONTMATTER_PATTERN);
-  if (!match2) fail7("G2_FRONTMATTER_MISSING");
+  if (!match2) fail9("G2_FRONTMATTER_MISSING");
   const frontmatter = parseStorySpecFrontmatter(match2[1]);
   validateStorySpec(frontmatter);
   return {
@@ -10103,23 +10949,23 @@ function readStorySpec(specPath, roots) {
   };
 }
 function hashStorySpec(specPath) {
-  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail7("G2_US_SPEC_PATH_INVALID");
+  if (typeof specPath !== "string" || !isAbsolute10(specPath)) fail9("G2_US_SPEC_PATH_INVALID");
   let realPath;
   try {
     realPath = realpathSync3(resolve4(specPath));
-    if (!statSync2(realPath).isFile()) fail7("G2_US_SPEC_PATH_INVALID");
+    if (!statSync2(realPath).isFile()) fail9("G2_US_SPEC_PATH_INVALID");
   } catch (error2) {
     if (error2.code?.startsWith("G2_")) throw error2;
-    fail7("G2_US_SPEC_PATH_INVALID");
+    fail9("G2_US_SPEC_PATH_INVALID");
   }
   const content = readFileSync4(realPath, "utf8");
   return computeStorySpecHash(content);
 }
 
-// ../src/adapters/forge/forge-ledger-store.ts
+// factory/src/adapters/forge/forge-ledger-store.ts
 import { appendFileSync as appendFileSync2, readdirSync, readFileSync as readFileSync5 } from "node:fs";
 import { join as join15 } from "node:path";
-import { randomUUID as randomUUID11 } from "node:crypto";
+import { randomUUID as randomUUID12 } from "node:crypto";
 function assertString(value, name) {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${name} is required`);
 }
@@ -10136,7 +10982,7 @@ function createEpicRun({
   roots,
   epic,
   stories,
-  runId = `epic_${randomUUID11()}`,
+  runId = `epic_${randomUUID12()}`,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
   assertWorkItem(epic, "epic");
@@ -10159,7 +11005,7 @@ function createEpicRun({
     at
   });
   const storyRuns = stories.map((workItem, index) => {
-    const storyRunId = `story_${randomUUID11()}`;
+    const storyRunId = `story_${randomUUID12()}`;
     appendForgeLedgerEvent(filePath, {
       schemaVersion: FORGE_LEDGER_SCHEMA_VERSION,
       event: "story_run_created",
@@ -10205,7 +11051,7 @@ function listForgeRunProjections(runStoreRoot) {
   }).sort((a, b) => b.startedAt.localeCompare(a.startedAt));
 }
 
-// ../src/adapters/jira/jira-client.ts
+// factory/src/adapters/jira/jira-client.ts
 function formatCommentsSection(comments, omitted) {
   const parts = comments.map((c) => {
     const date = c.created ? new Date(c.created).toISOString().slice(0, 10) : "";
@@ -10330,8 +11176,8 @@ ${formatCommentsSection(included, omitted)}`);
   };
 }
 
-// ../src/application/forge-bmad/forge-human-decision.ts
-import { randomUUID as randomUUID12 } from "node:crypto";
+// factory/src/application/forge-bmad/forge-human-decision.ts
+import { randomUUID as randomUUID13 } from "node:crypto";
 import { join as join16 } from "node:path";
 function currentGate(events, runId) {
   return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === "G1").at(-1);
@@ -10385,7 +11231,7 @@ async function recordHumanDecision({
   const event = {
     schemaVersion: 1,
     event: "human_decision_recorded",
-    decisionId: `decision_${randomUUID12()}`,
+    decisionId: `decision_${randomUUID13()}`,
     runId,
     gate: "G1",
     attempt: gate2.attempt,
@@ -10404,7 +11250,7 @@ async function recordHumanDecision({
   return { status: "recorded", event };
 }
 
-// ../src/application/forge-bmad/forge-g2.ts
+// factory/src/application/forge-bmad/forge-g2.ts
 import { join as join17 } from "node:path";
 function gate(events, runId, name) {
   return events.filter((event) => event.event === "gate_started" && event.runId === runId && event.gate === name).at(-1);
@@ -10539,12 +11385,12 @@ function recordUS(filePath, epicRunId, storyRunId, storySpec, prior, status, cod
   return { status: "recorded", event };
 }
 
-// ../src/application/forge-bmad/forge-story-analysis.ts
+// factory/src/application/forge-bmad/forge-story-analysis.ts
 import { mkdirSync as mkdirSync3, renameSync, writeFileSync as writeFileSync2 } from "node:fs";
-import { createHash as createHash24, randomUUID as randomUUID13 } from "node:crypto";
+import { createHash as createHash24, randomUUID as randomUUID14 } from "node:crypto";
 import { join as join19, relative as relative5, resolve as resolve5 } from "node:path";
 
-// ../lib/plan.mjs
+// factory/lib/plan.mjs
 import { existsSync as existsSync4 } from "node:fs";
 import { join as join18, isAbsolute as isAbsolute11 } from "node:path";
 function extractJsonFragment(text2) {
@@ -10613,7 +11459,7 @@ function checkPlanFiles(files, repoRoot) {
   };
 }
 
-// ../src/application/forge-bmad/forge-story-analysis.ts
+// factory/src/application/forge-bmad/forge-story-analysis.ts
 var AGENT_EXECUTION_REFERENCE_SCHEMA_VERSION = 1;
 var STORY_ANALYSIS_POLICY_VERSION = "forge-story-analysis-v2";
 var STORY_ANALYSIS_PLAN_SCHEMA_VERSION = 1;
@@ -10691,7 +11537,7 @@ function writeStoryAnalysisArtifact(store, runId, executionId, content) {
   if (!dir.startsWith(`${root}/`) || !finalPath.startsWith(`${dir}/`))
     throw new Error("STORY_ANALYSIS_ARTIFACT_PATH_INVALID");
   mkdirSync3(dir, { recursive: true });
-  const temporary = resolve5(dir, `.${executionId}.${randomUUID13()}.tmp`);
+  const temporary = resolve5(dir, `.${executionId}.${randomUUID14()}.tmp`);
   if (!temporary.startsWith(`${dir}/`)) throw new Error("STORY_ANALYSIS_ARTIFACT_PATH_INVALID");
   writeFileSync2(temporary, content, { encoding: "utf8", mode: 384 });
   renameSync(temporary, finalPath);
@@ -10750,7 +11596,7 @@ async function executeStoryAnalysis({
   if (!agent.ok) throw new Error(`STORY_ANALYSIS_AGENT_PREFLIGHT_FAILED:${agent.reason}`);
   const ro = await runtime.preflightReadOnlyWorkspace(namespaceId, agent.agent, roots.repoRoot);
   if (!ro.ok) throw new Error(`STORY_ANALYSIS_READ_ONLY_PREFLIGHT_FAILED:${ro.reason}`);
-  const executionId = `exec_${randomUUID13()}`;
+  const executionId = `exec_${randomUUID14()}`;
   const created = await runtime.createCase(namespaceId, `Forge analysis ${story.workItem.id}`);
   const caseId = created.id;
   const brief = buildBrief({ epic, story, spec, ...supplement !== void 0 ? { supplement } : {} });
@@ -10844,13 +11690,13 @@ async function executeStoryAnalysis({
   return { execution: finished, outcome: turn.status, validation };
 }
 
-// ../src/application/forge-bmad/forge-story-edit.ts
+// factory/src/application/forge-bmad/forge-story-edit.ts
 import { existsSync as existsSync5, readFileSync as readFileSync6 } from "node:fs";
-import { createHash as createHash25, randomUUID as randomUUID14 } from "node:crypto";
+import { createHash as createHash25, randomUUID as randomUUID15 } from "node:crypto";
 import { join as join20, resolve as resolve6 } from "node:path";
 var STORY_EDIT_SCHEMA_VERSION = 1;
 var STORY_EDIT_POLICY_VERSION = "forge-story-edit-v1";
-var fail8 = (code, message = code) => {
+var fail10 = (code, message = code) => {
   const error2 = new Error(message);
   error2.code = code;
   throw error2;
@@ -10858,15 +11704,15 @@ var fail8 = (code, message = code) => {
 var hash4 = (value) => `sha256:${createHash25("sha256").update(value).digest("hex")}`;
 var safeArtifact = (store, descriptor) => {
   if (!descriptor?.path || !descriptor?.sha256)
-    fail8("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact descriptor requires path and sha256.");
+    fail10("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact descriptor requires path and sha256.");
   const root = resolve6(store);
   const path = resolve6(root, descriptor.path);
   if (!path.startsWith(`${root}/`))
-    fail8("STORY_EDIT_ANALYSIS_ARTIFACT_PATH_INVALID", "Analysis artifact path escapes the run store.");
-  if (!existsSync5(path)) fail8("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact does not exist.");
+    fail10("STORY_EDIT_ANALYSIS_ARTIFACT_PATH_INVALID", "Analysis artifact path escapes the run store.");
+  if (!existsSync5(path)) fail10("STORY_EDIT_ANALYSIS_ARTIFACT_INVALID", "Analysis artifact does not exist.");
   const text2 = readFileSync6(path, "utf8");
   if (hash4(text2) !== descriptor.sha256)
-    fail8("STORY_EDIT_ANALYSIS_ARTIFACT_HASH_MISMATCH", "Analysis artifact content does not match its SHA-256.");
+    fail10("STORY_EDIT_ANALYSIS_ARTIFACT_HASH_MISMATCH", "Analysis artifact content does not match its SHA-256.");
   return text2;
 };
 var matches = (pattern, file) => new RegExp(
@@ -10877,19 +11723,19 @@ var allowedCreated = (file, scope) => scope.create.some((p) => matches(p, file))
 function planFromArtifact(text2) {
   const blocks = [...text2.matchAll(/```json\s*([\s\S]*?)```/g)].map((m) => m[1].trim());
   if (blocks.length !== 1)
-    fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact must contain exactly one JSON plan.");
+    fail10("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact must contain exactly one JSON plan.");
   let raw;
   try {
     raw = JSON.parse(blocks[0]);
   } catch {
-    fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact JSON plan is invalid.");
+    fail10("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact JSON plan is invalid.");
   }
   if (!raw || typeof raw !== "object" || Array.isArray(raw) || Object.keys(raw).some((k) => !["files", "doneWhen", "steps"].includes(k)))
-    fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact plan schema is invalid.");
+    fail10("STORY_EDIT_ANALYSIS_PLAN_INVALID", "Analysis artifact plan schema is invalid.");
   const parsed = parsePlan(`\`\`\`json
 ${blocks[0]}
 \`\`\``);
-  if (!parsed.ok) fail8("STORY_EDIT_ANALYSIS_PLAN_INVALID", parsed.error);
+  if (!parsed.ok) fail10("STORY_EDIT_ANALYSIS_PLAN_INVALID", parsed.error);
   return parsed.plan;
 }
 async function executeStoryEdit({
@@ -10905,32 +11751,32 @@ async function executeStoryEdit({
   runtime = agentos_operations_exports,
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
-  if (!namespaceId || !agentName) fail8("STORY_EDIT_INPUT_INVALID", "namespaceId and agentName are required.");
+  if (!namespaceId || !agentName) fail10("STORY_EDIT_INPUT_INVALID", "namespaceId and agentName are required.");
   if (supplement !== void 0 && (typeof supplement !== "string" || supplement.length > 4e3))
-    fail8("STORY_EDIT_SUPPLEMENT_INVALID", "supplement must be a string of at most 4000 characters.");
+    fail10("STORY_EDIT_SUPPLEMENT_INVALID", "supplement must be a string of at most 4000 characters.");
   const store = ensureForgeRunStore(roots);
   const filePath = join20(store, `${epicRunId}.jsonl`);
-  if (!existsSync5(filePath)) fail8("STORY_EDIT_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
+  if (!existsSync5(filePath)) fail10("STORY_EDIT_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
   const events = parseForgeLedger(filePath);
   const epic = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
-  if (!epic) fail8("STORY_EDIT_RUN_NOT_FOUND", `Epic run ${epicRunId} is absent from its ledger.`);
+  if (!epic) fail10("STORY_EDIT_RUN_NOT_FOUND", `Epic run ${epicRunId} is absent from its ledger.`);
   const story = events.find(
     (e) => e.event === "story_run_created" && e.runId === storyRunId && e.parentRunId === epicRunId
   );
-  if (!story) fail8("STORY_EDIT_STORY_NOT_FOUND", `Story run ${storyRunId} is absent from Epic run ${epicRunId}.`);
+  if (!story) fail10("STORY_EDIT_STORY_NOT_FOUND", `Story run ${storyRunId} is absent from Epic run ${epicRunId}.`);
   if (events.some(
     (e) => e.event === "story_edit_started" && e.storyRunId === storyRunId && !events.some((f) => f.event === "story_edit_finished" && f.editId === e.editId)
   ))
-    fail8("STORY_EDIT_ALREADY_RUNNING", "A Story edit is already active.");
+    fail10("STORY_EDIT_ALREADY_RUNNING", "A Story edit is already active.");
   const g1Event = events.find((e) => e.event === "human_decision_recorded" && e.runId === epicRunId && e.gate === "G1");
-  if (g1Event?.decision?.outcome !== "approved") fail8("STORY_EDIT_G1_NOT_APPROVED");
+  if (g1Event?.decision?.outcome !== "approved") fail10("STORY_EDIT_G1_NOT_APPROVED");
   const g22 = events.filter((e) => e.event === "g2_evaluated" && e.runId === epicRunId && e.status === "passed").at(-1);
-  if (!g22 || g22.spec?.sha256 !== expectedSpecHash) fail8("STORY_EDIT_G2_NOT_PASSED");
+  if (!g22 || g22.spec?.sha256 !== expectedSpecHash) fail10("STORY_EDIT_G2_NOT_PASSED");
   if (storySpecHash !== void 0) {
     const g2us = events.find(
       (e) => e.event === "g2_us_evaluated" && e.storyRunId === storyRunId && e.status === "passed" && e.storySpec?.sha256 === storySpecHash
     );
-    if (!g2us) fail8("STORY_EDIT_G2_US_NOT_PASSED");
+    if (!g2us) fail10("STORY_EDIT_G2_US_NOT_PASSED");
   }
   const analysis = events.find(
     (e) => e.event === "agent_execution_finished" && e.executionId === analysisExecutionId && e.storyRunId === storyRunId && e.status === "finished"
@@ -10938,24 +11784,24 @@ async function executeStoryEdit({
   const validation = events.find(
     (e) => e.event === "story_analysis_plan_validated" && e.executionId === analysisExecutionId && e.status === "valid"
   );
-  if (!analysis || !validation) fail8("STORY_EDIT_ANALYSIS_NOT_VALID");
+  if (!analysis || !validation) fail10("STORY_EDIT_ANALYSIS_NOT_VALID");
   const text2 = safeArtifact(store, analysis.artifact);
   if (validation.artifact?.sha256 !== analysis.artifact?.sha256 || validation.artifact?.path !== analysis.artifact?.path)
-    fail8("STORY_EDIT_ANALYSIS_PLAN_STALE", "Analysis validation does not reference the finished artifact.");
+    fail10("STORY_EDIT_ANALYSIS_PLAN_STALE", "Analysis validation does not reference the finished artifact.");
   const plan = planFromArtifact(text2);
   const missing = checkPlanFiles(plan.files, roots.repoRoot).missingFiles;
-  if (missing.length) fail8("STORY_EDIT_ANALYSIS_PLAN_STALE", `Analysis plan files are missing: ${missing.join(", ")}.`);
+  if (missing.length) fail10("STORY_EDIT_ANALYSIS_PLAN_STALE", `Analysis plan files are missing: ${missing.join(", ")}.`);
   const spec = loadForgeSpec({
     specPath: g22.spec.path,
     roots,
     workItem: epic.workItem
   });
-  if (spec.sha256 !== g22.spec.sha256) fail8("STORY_EDIT_SPEC_HASH_STALE");
+  if (spec.sha256 !== g22.spec.sha256) fail10("STORY_EDIT_SPEC_HASH_STALE");
   const agent = await runtime.preflightAgent(namespaceId, agentName);
-  if (!agent.ok) fail8("STORY_EDIT_AGENT_PREFLIGHT_FAILED");
+  if (!agent.ok) fail10("STORY_EDIT_AGENT_PREFLIGHT_FAILED");
   const writable = await runtime.preflightWritableWorkspace(namespaceId, agent.agent, roots.repoRoot);
-  if (!writable.ok) fail8("STORY_EDIT_WRITABLE_PREFLIGHT_FAILED", writable.reason);
-  const editId = `edit_${randomUUID14()}`;
+  if (!writable.ok) fail10("STORY_EDIT_WRITABLE_PREFLIGHT_FAILED", writable.reason);
+  const editId = `edit_${randomUUID15()}`;
   const brief = [
     `Epic: ${epic.workItem.id}`,
     `Story: ${story.workItem.id}`,
@@ -11017,12 +11863,12 @@ async function executeStoryEdit({
   };
 }
 
-// ../src/application/forge-bmad/forge-story-oracles.ts
+// factory/src/application/forge-bmad/forge-story-oracles.ts
 import { existsSync as existsSync7 } from "node:fs";
-import { createHash as createHash27, randomUUID as randomUUID15 } from "node:crypto";
+import { createHash as createHash27, randomUUID as randomUUID16 } from "node:crypto";
 import { join as join23 } from "node:path";
 
-// ../lib/domains.mjs
+// factory/lib/domains.mjs
 import { join as join21, dirname as dirname8, resolve as resolve7 } from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 var __dirname = dirname8(fileURLToPath2(import.meta.url));
@@ -11154,7 +12000,7 @@ var domains = {
   }
 };
 
-// ../src/application/forge-bmad/forge-front-oracle-resolution.ts
+// factory/src/application/forge-bmad/forge-front-oracle-resolution.ts
 import { existsSync as existsSync6, readFileSync as readFileSync7 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createHash as createHash26 } from "node:crypto";
@@ -11162,7 +12008,7 @@ import { dirname as dirname9, isAbsolute as isAbsolute12, join as join22, relati
 var FRONT_ORACLE_MAP_SCHEMA_VERSION = 1;
 var INSPECT_TIMEOUT_MS = 1e4;
 var INSPECT_MAX_BUFFER = 1024 * 1024;
-var fail9 = (code, message = code) => {
+var fail11 = (code, message = code) => {
   const error2 = new Error(message);
   error2.code = code;
   throw error2;
@@ -11172,11 +12018,11 @@ var validName = (name) => typeof name === "string" && /^[A-Za-z0-9._-]+$/.test(n
 var readProject = (path, label) => {
   try {
     const config = JSON.parse(readFileSync7(path, "utf8"));
-    if (!validName(config.name)) fail9("ORACLE_INFRASTRUCTURE", `${label} has an absent or invalid Nx project name.`);
+    if (!validName(config.name)) fail11("ORACLE_INFRASTRUCTURE", `${label} has an absent or invalid Nx project name.`);
     return config;
   } catch (error2) {
     if (error2.code === "ORACLE_INFRASTRUCTURE") throw error2;
-    fail9("ORACLE_INFRASTRUCTURE", `Cannot read ${label}.`);
+    fail11("ORACLE_INFRASTRUCTURE", `Cannot read ${label}.`);
   }
 };
 var hostProject = (root, name) => {
@@ -11193,10 +12039,10 @@ function resolveOwnerProjectConfigs(files, repoRoot) {
   const byName = /* @__PURE__ */ new Map();
   for (const file of files) {
     if (typeof file !== "string" || !file || isAbsolute12(file))
-      fail9("ORACLE_INFRASTRUCTURE", `Invalid StoryEdit file path: ${String(file)}.`);
+      fail11("ORACLE_INFRASTRUCTURE", `Invalid StoryEdit file path: ${String(file)}.`);
     const absolute = resolve8(root, file);
     if (relative6(root, absolute).startsWith(".."))
-      fail9("ORACLE_INFRASTRUCTURE", `StoryEdit file escapes repository root: ${file}.`);
+      fail11("ORACLE_INFRASTRUCTURE", `StoryEdit file escapes repository root: ${file}.`);
     let dir = dirname9(absolute);
     let found = false;
     while (dir === root || dir.startsWith(`${root}/`)) {
@@ -11205,7 +12051,7 @@ function resolveOwnerProjectConfigs(files, repoRoot) {
         const config = readProject(projectPath, `Owner project.json for ${file}`);
         const previous = byName.get(config.name);
         if (previous && previous.projectPath !== projectPath)
-          fail9("ORACLE_INFRASTRUCTURE", `Nx owner ${config.name} resolves to multiple project.json files.`);
+          fail11("ORACLE_INFRASTRUCTURE", `Nx owner ${config.name} resolves to multiple project.json files.`);
         if (!previous) byName.set(config.name, { name: config.name, projectPath, config });
         found = true;
         break;
@@ -11219,7 +12065,7 @@ function resolveOwnerProjectConfigs(files, repoRoot) {
   return [...byName.values()];
 }
 function inspectNxProject(name, repoRoot) {
-  if (!validName(name)) fail9("ORACLE_INFRASTRUCTURE", `Invalid Nx project name for inspection: ${String(name)}.`);
+  if (!validName(name)) fail11("ORACLE_INFRASTRUCTURE", `Invalid Nx project name for inspection: ${String(name)}.`);
   let output;
   try {
     output = execFileSync("pnpm", ["nx", "show", "project", name, "--json"], {
@@ -11230,16 +12076,16 @@ function inspectNxProject(name, repoRoot) {
       stdio: ["ignore", "pipe", "pipe"]
     });
   } catch {
-    fail9("ORACLE_INFRASTRUCTURE", `Cannot inspect effective Nx configuration for ${name}.`);
+    fail11("ORACLE_INFRASTRUCTURE", `Cannot inspect effective Nx configuration for ${name}.`);
   }
   let config;
   try {
     config = JSON.parse(output);
   } catch {
-    fail9("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is not valid JSON.`);
+    fail11("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is not valid JSON.`);
   }
   if (config?.name !== name || !config.targets || typeof config.targets !== "object" || Array.isArray(config.targets))
-    fail9("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is invalid or mismatched.`);
+    fail11("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is invalid or mismatched.`);
   return config;
 }
 var inspectEffectiveProject = (name, repoRoot, projectInspector) => {
@@ -11248,25 +12094,25 @@ var inspectEffectiveProject = (name, repoRoot, projectInspector) => {
     config = projectInspector(name, repoRoot);
   } catch (error2) {
     if (error2?.code === "ORACLE_INFRASTRUCTURE") throw error2;
-    fail9("ORACLE_INFRASTRUCTURE", `Cannot inspect effective Nx configuration for ${name}.`);
+    fail11("ORACLE_INFRASTRUCTURE", `Cannot inspect effective Nx configuration for ${name}.`);
   }
   if (!config || config.name !== name || !config.targets || typeof config.targets !== "object" || Array.isArray(config.targets))
-    fail9("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is invalid or mismatched.`);
+    fail11("ORACLE_INFRASTRUCTURE", `Effective Nx configuration for ${name} is invalid or mismatched.`);
   return config;
 };
 function parseFrontBuildHostMap(raw) {
-  if (typeof raw !== "string" || !raw) fail9("ORACLE_INFRASTRUCTURE", "FACTORY_FRONT_BUILD_HOST_MAP is required.");
+  if (typeof raw !== "string" || !raw) fail11("ORACLE_INFRASTRUCTURE", "FACTORY_FRONT_BUILD_HOST_MAP is required.");
   let map;
   try {
     map = JSON.parse(raw);
   } catch {
-    fail9("ORACLE_INFRASTRUCTURE", "FACTORY_FRONT_BUILD_HOST_MAP must be valid JSON.");
+    fail11("ORACLE_INFRASTRUCTURE", "FACTORY_FRONT_BUILD_HOST_MAP must be valid JSON.");
   }
   if (!map || typeof map !== "object" || Array.isArray(map))
-    fail9("ORACLE_INFRASTRUCTURE", "Host map must be an object.");
+    fail11("ORACLE_INFRASTRUCTURE", "Host map must be an object.");
   for (const [owner, hosts] of Object.entries(map)) {
     if (owner !== "*" && !validName(owner) || !Array.isArray(hosts) || hosts.length === 0 || hosts.some((host) => !validName(host)))
-      fail9("ORACLE_INFRASTRUCTURE", "Host map contains an invalid owner or host.");
+      fail11("ORACLE_INFRASTRUCTURE", "Host map contains an invalid owner or host.");
   }
   return Object.fromEntries(
     Object.entries(map).map(([owner, hosts]) => [owner, [...new Set(hosts)].sort()])
@@ -11283,7 +12129,7 @@ function resolveFrontOraclePlan({
 }) {
   const ownerProjects = resolveOwnerProjectConfigs(files, repoRoot);
   const owners = ownerProjects.map((owner) => owner.name);
-  if (!owners.length) fail9("ORACLE_INFRASTRUCTURE", "No Nx owner project found for StoryEdit files.");
+  if (!owners.length) fail11("ORACLE_INFRASTRUCTURE", "No Nx owner project found for StoryEdit files.");
   const inspected = /* @__PURE__ */ new Map();
   const inspect = (name) => {
     if (!inspected.has(name)) inspected.set(name, inspectEffectiveProject(name, repoRoot, projectInspector));
@@ -11296,11 +12142,11 @@ function resolveFrontOraclePlan({
   for (const owner of ownerProjects) {
     if (requireBuild) {
       const mapped = map[owner.name] ?? map["*"];
-      if (!mapped) fail9("ORACLE_INFRASTRUCTURE", `No build host mapping for owner ${owner.name}.`);
+      if (!mapped) fail11("ORACLE_INFRASTRUCTURE", `No build host mapping for owner ${owner.name}.`);
       for (const host of mapped) {
-        if (!hostProject(repoRoot, host)) fail9("ORACLE_INFRASTRUCTURE", `Build host ${host} does not exist.`);
+        if (!hostProject(repoRoot, host)) fail11("ORACLE_INFRASTRUCTURE", `Build host ${host} does not exist.`);
         if (!inspect(host).targets.build && !inspect(host).targets["build-angular"])
-          fail9("ORACLE_INFRASTRUCTURE", `Build host ${host} has no build target.`);
+          fail11("ORACLE_INFRASTRUCTURE", `Build host ${host} has no build target.`);
         if (!hosts.includes(host)) hosts.push(host);
       }
     }
@@ -11337,9 +12183,9 @@ function resolveFrontOraclePlan({
   };
 }
 
-// ../src/application/forge-bmad/forge-story-oracles.ts
+// factory/src/application/forge-bmad/forge-story-oracles.ts
 var STORY_ORACLE_POLICY_VERSION = "forge-story-oracles-v1";
-var fail10 = (code, message = code) => {
+var fail12 = (code, message = code) => {
   const error2 = new Error(message);
   error2.code = code;
   throw error2;
@@ -11355,9 +12201,9 @@ function resolve9(ids) {
   const result = [];
   for (const id2 of ids) {
     const entry = catalog[id2];
-    if (!entry) fail10("STORY_ORACLE_CATALOG_INVALID", `Unknown oracle catalog id: ${id2}`);
+    if (!entry) fail12("STORY_ORACLE_CATALOG_INVALID", `Unknown oracle catalog id: ${id2}`);
     const oracle = domains[entry.domain]?.oracles.find((item) => item.name === entry.name);
-    if (!oracle) fail10("STORY_ORACLE_CATALOG_INVALID", `Unavailable oracle catalog id: ${id2}`);
+    if (!oracle) fail12("STORY_ORACLE_CATALOG_INVALID", `Unavailable oracle catalog id: ${id2}`);
     result.push({ id: id2, oracle });
   }
   return result;
@@ -11376,43 +12222,43 @@ async function executeStoryOracles({
   now = () => (/* @__PURE__ */ new Date()).toISOString()
 }) {
   if (!Number.isInteger(attempt) || attempt <= 0)
-    fail10("STORY_ORACLE_ATTEMPT_INVALID", "attempt must be a positive integer.");
+    fail12("STORY_ORACLE_ATTEMPT_INVALID", "attempt must be a positive integer.");
   const store = ensureForgeRunStore(roots);
   const path = join23(store, `${epicRunId}.jsonl`);
-  if (!existsSync7(path)) fail10("STORY_ORACLE_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
+  if (!existsSync7(path)) fail12("STORY_ORACLE_RUN_NOT_FOUND", `Epic run ${epicRunId} has no ledger.`);
   const events = parseForgeLedger(path);
   const start = events.find((e) => e.event === "run_started" && e.runId === epicRunId);
   const story = events.find(
     (e) => e.event === "story_run_created" && e.runId === storyRunId && e.parentRunId === epicRunId
   );
-  if (!start || !story) fail10("STORY_ORACLE_STORY_NOT_FOUND");
+  if (!start || !story) fail12("STORY_ORACLE_STORY_NOT_FOUND");
   if (events.some(
     (e) => e.event === "story_oracles_started" && e.editId === editId && !events.some((f) => f.event === "story_g3_evaluated" && f.campaignId === e.campaignId)
   ))
-    fail10("STORY_ORACLE_ALREADY_RUNNING", "A Story oracle campaign is already active.");
+    fail12("STORY_ORACLE_ALREADY_RUNNING", "A Story oracle campaign is already active.");
   if (events.some((e) => e.event === "story_g3_evaluated" && e.editId === editId && e.attempt === attempt))
-    fail10("STORY_ORACLE_ATTEMPT_COLLISION", "A terminal campaign already exists for this editId and attempt.");
+    fail12("STORY_ORACLE_ATTEMPT_COLLISION", "A terminal campaign already exists for this editId and attempt.");
   const g12 = events.find((e) => e.event === "human_decision_recorded" && e.runId === epicRunId && e.gate === "G1");
-  if (g12?.decision?.outcome !== "approved") fail10("STORY_ORACLE_G1_NOT_APPROVED");
+  if (g12?.decision?.outcome !== "approved") fail12("STORY_ORACLE_G1_NOT_APPROVED");
   const g22 = events.filter((e) => e.event === "g2_evaluated" && e.runId === epicRunId && e.status === "passed").at(-1);
-  if (!g22 || g22.spec?.sha256 !== expectedSpecHash) fail10("STORY_ORACLE_G2_NOT_PASSED");
+  if (!g22 || g22.spec?.sha256 !== expectedSpecHash) fail12("STORY_ORACLE_G2_NOT_PASSED");
   const edit = events.find(
     (e) => e.event === "story_edit_finished" && e.editId === editId && e.storyRunId === storyRunId
   );
   if (!edit || edit.status !== "finished" || edit.outcome !== "finished" || edit.diffValidation?.status !== "valid")
-    fail10("STORY_ORACLE_EDIT_NOT_VALID");
+    fail12("STORY_ORACLE_EDIT_NOT_VALID");
   let spec;
   try {
     spec = loadForgeSpec({ specPath: g22.spec.path, roots, workItem: start.workItem });
   } catch (error2) {
     if (error2.code === "G2_ORACLE_UNKNOWN")
-      fail10(
+      fail12(
         "STORY_ORACLE_CATALOG_INVALID",
         "The persisted G2 spec references an oracle outside the StoryOracle catalog."
       );
     throw error2;
   }
-  if (spec.sha256 !== g22.spec.sha256) fail10("STORY_ORACLE_SPEC_HASH_STALE");
+  if (spec.sha256 !== g22.spec.sha256) fail12("STORY_ORACLE_SPEC_HASH_STALE");
   const entries = resolve9(spec.frontmatter.oracles);
   const files = [...edit.filesModified ?? [], ...edit.filesCreated ?? []];
   let frontPlan;
@@ -11428,7 +12274,7 @@ async function executeStoryOracles({
       });
   } catch (error2) {
     const code = error2.code ?? "ORACLE_INFRASTRUCTURE";
-    const campaignId2 = `oracle_${randomUUID15()}`;
+    const campaignId2 = `oracle_${randomUUID16()}`;
     appendForgeLedgerEvent(path, {
       schemaVersion: 1,
       event: "story_oracles_started",
@@ -11477,7 +12323,7 @@ async function executeStoryOracles({
       ]
     };
   }
-  const campaignId = `oracle_${randomUUID15()}`;
+  const campaignId = `oracle_${randomUUID16()}`;
   appendForgeLedgerEvent(path, {
     schemaVersion: 1,
     event: "story_oracles_started",
@@ -11608,7 +12454,7 @@ async function executeStoryOracles({
   return { campaignId, status, results };
 }
 
-// ../src/application/forge-bmad/forge-workflow-sync.ts
+// factory/src/application/forge-bmad/forge-workflow-sync.ts
 var ATTRIBUTION_FIELDS = /* @__PURE__ */ new Set(["actorId", "agentId", "caseId", "runId"]);
 var SAFE_ATTRIBUTION = /^[A-Za-z0-9][A-Za-z0-9._:@-]{0,255}$/;
 var SAFE_FORGE_TICKET_ID = /^[A-Z][A-Z0-9]+-\d+$/;
@@ -11645,17 +12491,17 @@ async function syncForgeWorkflowProjection({
   };
 }
 
-// ../src/adapters/artifact/artifact-hash.ts
-import { createHash as createHash28, randomUUID as randomUUID16 } from "node:crypto";
+// factory/src/adapters/artifact/artifact-hash.ts
+import { createHash as createHash28, randomUUID as randomUUID17 } from "node:crypto";
 var ARTIFACT_HASH_PREFIX = "sha256";
 function computeArtifactHash(data) {
   return `${ARTIFACT_HASH_PREFIX}:${createHash28("sha256").update(data).digest("hex")}`;
 }
 function createArtifactId() {
-  return randomUUID16();
+  return randomUUID17();
 }
 
-// ../src/adapters/artifact/memory-artifact-store.ts
+// factory/src/adapters/artifact/memory-artifact-store.ts
 var MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1e3;
 function toArtifactBytes(data) {
   return data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -11784,7 +12630,7 @@ function createMemoryArtifactStore(options) {
   return new MemoryArtifactStore(options);
 }
 
-// ../src/adapters/artifact/s3-object-client.ts
+// factory/src/adapters/artifact/s3-object-client.ts
 import { createHash as createHash29, createHmac } from "node:crypto";
 var SIGNING_ALGORITHM = "AWS4-HMAC-SHA256";
 var SERVICE = "s3";
@@ -11957,7 +12803,7 @@ function createS3ObjectClient(config) {
   return new S3ObjectClient(config);
 }
 
-// ../src/adapters/artifact/s3-artifact-store.ts
+// factory/src/adapters/artifact/s3-artifact-store.ts
 var DEFAULT_UPLOAD_PREFIX = "uploads";
 var DEFAULT_OBJECT_PREFIX = "objects";
 var DEFAULT_METADATA_PREFIX = "metadata";
@@ -12176,8 +13022,13 @@ export {
   SqlAgentStepAttemptRepository,
   SqlAgentStepResultRepository,
   SqlDeliveryRepository,
+  SqlLeaseRepository,
   SqlOracleExecutionRepository,
   SqlWorkEnvironmentRepository,
+  SqlWorkUnitRepository,
+  SqlWorkUnitRepositoryError,
+  SqlWorkerRepository,
+  SqlWorkerRepositoryError,
   SqlWorkflowDefinitionRepository,
   SqlWorkflowEvidenceRepository,
   SqlWorkflowHumanInteractionRepository,
@@ -12269,8 +13120,11 @@ export {
   createSqlAgentStepAttemptRepository,
   createSqlAgentStepResultRepository,
   createSqlDeliveryRepository,
+  createSqlLeaseRepository,
   createSqlOracleExecutionRepository,
   createSqlWorkEnvironmentRepository,
+  createSqlWorkUnitRepository,
+  createSqlWorkerRepository,
   createSqlWorkflowDefinitionRepository,
   createSqlWorkflowEvidenceRepository,
   createSqlWorkflowHumanInteractionRepository,

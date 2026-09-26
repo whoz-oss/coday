@@ -74,3 +74,19 @@ export {
   createSqlDeliveryRepository,
   type SqlDeliveryRepositoryOptions,
 } from './sql-delivery-repository.js'
+
+export {
+  SqlWorkUnitRepository,
+  createSqlWorkUnitRepository,
+  SqlWorkUnitRepositoryError,
+  type SqlWorkUnitRepositoryOptions,
+} from './sql-work-unit-repository.js'
+
+export {
+  SqlWorkerRepository,
+  createSqlWorkerRepository,
+  SqlWorkerRepositoryError,
+  type SqlWorkerRepositoryOptions,
+} from './sql-worker-repository.js'
+
+export { SqlLeaseRepository, createSqlLeaseRepository, type SqlLeaseRepositoryOptions } from './sql-lease-repository.js'

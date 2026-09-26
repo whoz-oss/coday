@@ -48,3 +48,16 @@ export type { OracleExecutionRepository } from './oracle-execution-repository.js
 export type { WorkEnvironmentRepository } from './work-environment-repository.js'
 
 export type { DeliveryRepository } from './delivery-repository.js'
+
+export type { WorkUnitRepository, WorkUnitRepositoryScope, WorkUnitListFilter } from './work-unit-repository.js'
+
+export type { WorkerRepository, WorkerRepositoryScope, WorkerListFilter } from './worker-repository.js'
+
+export type {
+  LeaseRepository,
+  AcquireLeaseOptions,
+  AcquireLeaseResult,
+  RenewLeaseOptions,
+  ReleaseLeaseOptions,
+  ExpireLeasesOptions,
+} from './lease-repository.js'

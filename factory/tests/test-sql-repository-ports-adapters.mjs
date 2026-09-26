@@ -24,8 +24,11 @@ import {
   SqlAgentStepAttemptRepository,
   SqlAgentStepResultRepository,
   SqlDeliveryRepository,
+  SqlLeaseRepository,
   SqlOracleExecutionRepository,
   SqlWorkEnvironmentRepository,
+  SqlWorkUnitRepository,
+  SqlWorkerRepository,
   SqlWorkflowDefinitionRepository,
   SqlWorkflowEvidenceRepository,
   SqlWorkflowHumanInteractionRepository,
@@ -33,8 +36,11 @@ import {
   createSqlAgentStepAttemptRepository,
   createSqlAgentStepResultRepository,
   createSqlDeliveryRepository,
+  createSqlLeaseRepository,
   createSqlOracleExecutionRepository,
   createSqlWorkEnvironmentRepository,
+  createSqlWorkUnitRepository,
+  createSqlWorkerRepository,
   createSqlWorkflowDefinitionRepository,
   createSqlWorkflowEvidenceRepository,
   createSqlWorkflowHumanInteractionRepository,
@@ -62,9 +68,10 @@ function prototypeMethods(repositoryClass) {
 }
 
 /**
- * The nine persistence ports, each paired with its filesystem adapter, its SQL
- * adapter and the `createSql*Repository` factory exported by the operational
- * bundle.
+ * The twelve persistence ports, each paired with its SQL adapter and the
+ * `createSql*Repository` factory exported by the operational bundle. The nine
+ * pilot aggregates also have a filesystem adapter; the scheduling/liveness/lease
+ * ports (`work-unit`, `worker`, `lease`) are SQL-only in this tier.
  */
 const REPOSITORY_PORTS = [
   {
@@ -120,6 +127,21 @@ const REPOSITORY_PORTS = [
     filesystem: FilesystemDeliveryRepository,
     sql: SqlDeliveryRepository,
     createSql: createSqlDeliveryRepository,
+  },
+  {
+    port: 'work-unit',
+    sql: SqlWorkUnitRepository,
+    createSql: createSqlWorkUnitRepository,
+  },
+  {
+    port: 'worker',
+    sql: SqlWorkerRepository,
+    createSql: createSqlWorkerRepository,
+  },
+  {
+    port: 'lease',
+    sql: SqlLeaseRepository,
+    createSql: createSqlLeaseRepository,
   },
 ]
 
@@ -260,11 +282,13 @@ try {
       [
         `${descriptor.port}: filesystem and SQL adapters are exported constructors`,
         () => {
-          assert.equal(
-            typeof descriptor.filesystem,
-            'function',
-            `${descriptor.port}: filesystem adapter is not an exported constructor`
-          )
+          if (descriptor.filesystem) {
+            assert.equal(
+              typeof descriptor.filesystem,
+              'function',
+              `${descriptor.port}: filesystem adapter is not an exported constructor`
+            )
+          }
           assert.equal(
             typeof descriptor.sql,
             'function',
@@ -299,6 +323,7 @@ try {
       [
         `${descriptor.port}: SQL surface covers the filesystem surface`,
         () => {
+          if (!descriptor.filesystem) return
           const sqlMethods = prototypeMethods(descriptor.sql)
           for (const method of prototypeMethods(descriptor.filesystem)) {
             assert.ok(sqlMethods.includes(method), `${descriptor.port}: SQL adapter is missing the "${method}" method`)
