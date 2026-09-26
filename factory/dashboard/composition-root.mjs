@@ -85,7 +85,7 @@ import {
 } from '../runtime/factory-operational.mjs'
 
 // Transport — route modules and their shared utilities.
-import { send, readBody, sendError, extractTrustContext, resolveCorrelationId } from './http-utils.mjs'
+import { send, readBody, sendError, extractTrustContext, resolveCorrelationId, resolveCorsOrigin } from './http-utils.mjs'
 import { DEFAULT_FAKE_IDP_SECRET, LocalDevMembershipResolver } from '../src/domain/identity/index.ts'
 import { createAgentOsProxy } from './agentos-proxy.mjs'
 import { handleWorkflowProjectionRequest } from './workflow-projection-routes.mjs'
@@ -141,12 +141,14 @@ export function resolveFactoryBindPolicy(env = process.env) {
  * from — never from client headers.
  *
  * @param {Record<string, string|undefined>} [env]
- * @returns {{ membershipResolver: LocalDevMembershipResolver, fakeIdpSecret: string }}
+ * @returns {{ membershipResolver: LocalDevMembershipResolver, fakeIdpSecret: string, allowLoopbackDev: boolean }}
  */
 export function createIdentityBoundaryOptions(env = process.env) {
   return {
     membershipResolver: new LocalDevMembershipResolver(),
     fakeIdpSecret: env.FACTORY_FAKE_IDP_SECRET ?? env.FACTORY_IDP_SECRET ?? DEFAULT_FAKE_IDP_SECRET,
+    // Strict opt-in: loopback-dev is refused unless explicitly enabled.
+    allowLoopbackDev: env.FACTORY_ALLOW_LOOPBACK_DEV === 'true',
   }
 }
 
@@ -179,6 +181,23 @@ function parseOptionalPositiveInt(value) {
 }
 
 /**
+ * Parse the CORS allow-list from the environment.
+ *
+ * `FACTORY_ALLOWED_ORIGINS` (preferred) or `FACTORY_CORS_ORIGIN` accepts a
+ * comma-separated list of origins, or `*` for a deliberate (and discouraged)
+ * allow-everything opt-in. An empty/unset value yields `[]`, which the boundary
+ * treats as same-origin only (no CORS header emitted).
+ *
+ * @param {string|undefined} value
+ * @returns {string[]}
+ */
+function parseAllowedOrigins(value) {
+  if (typeof value !== 'string') return []
+  const origins = value.split(',').map((origin) => origin.trim()).filter(Boolean)
+  return origins.includes('*') ? ['*'] : origins
+}
+
+/**
  * @param {Record<string, string|undefined>} [env]
  * @returns {object} frozen configuration consumed by every later step
  */
@@ -202,6 +221,9 @@ export function loadConfig(env = process.env) {
   return {
     port: parseInt(env.PORT ?? '3141', 10),
     bindPolicy,
+    // Cross-origin allow-list for the shared HTTP boundary. Unset → [] →
+    // same-origin only; never a hardcoded wildcard.
+    corsAllowedOrigins: parseAllowedOrigins(env.FACTORY_ALLOWED_ORIGINS ?? env.FACTORY_CORS_ORIGIN),
     dashboardDir: DASHBOARD_DIR,
     factoryDir: FACTORY_DIR,
     runsDir: join(FACTORY_DIR, 'runs'),
@@ -777,10 +799,17 @@ export function createHttpServer(application, config) {
     // Correlation + trust context resolved once, at the edge.
     res.correlationId = resolveCorrelationId(req)
     const trust = extractTrustContext(req, config.bindPolicy)
+    // CORS origin resolved once per request from the configured allow-list.
+    // `null` means same-origin only (no Access-Control-Allow-Origin header).
+    const corsOrigin = resolveCorsOrigin(req, config.corsAllowedOrigins)
+    res.corsOrigin = corsOrigin
+    const corsHeaders = corsOrigin
+      ? { 'Access-Control-Allow-Origin': corsOrigin, ...(corsOrigin === '*' ? {} : { Vary: 'Origin' }) }
+      : {}
 
     if (method === 'OPTIONS') {
       res.writeHead(204, {
-        'Access-Control-Allow-Origin': '*',
+        ...corsHeaders,
         'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE',
         'Access-Control-Allow-Headers': 'Content-Type,X-Factory-Namespace-Id,X-Factory-Case-Id,X-Factory-Actor-Id',
         'X-Correlation-Id': res.correlationId,
@@ -881,10 +910,10 @@ export function createHttpServer(application, config) {
       notifier: workflowProjectionSseHub,
       openStream: (namespaceId) => {
         res.writeHead(200, {
+          ...corsHeaders,
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
           'X-Correlation-Id': res.correlationId,
         })
         res.write(': connected\n\n')
@@ -904,7 +933,7 @@ export function createHttpServer(application, config) {
 
     // UI
     if (method === 'GET' && (path === '/' || path === '/index.html')) {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'X-Correlation-Id': res.correlationId })
+      res.writeHead(200, { ...corsHeaders, 'Content-Type': 'text/html; charset=utf-8', 'X-Correlation-Id': res.correlationId })
       return res.end(indexHtml())
     }
 

@@ -166,6 +166,11 @@ export function normalizeErrorBody(status, body) {
  * `res.correlationId` is set by the composition root per request; when present
  * it is echoed on every response so a caller can trace one request end-to-end.
  *
+ * `res.corsOrigin` is likewise resolved once per request by the composition
+ * root from the configured allow-list ({@link resolveCorsOrigin}). The CORS
+ * header is only emitted when an origin was explicitly authorized, so a
+ * shared/remote deployment never falls back to a hardcoded wildcard.
+ *
  * @param {import('node:http').ServerResponse} res
  * @param {number} status
  * @param {object|string|null} body
@@ -175,10 +180,39 @@ export function normalizeErrorBody(status, body) {
 export function send(res, status, body, ct = 'application/json', extraHeaders = {}) {
   const normalized = normalizeErrorBody(status, body)
   const data = typeof normalized === 'string' ? normalized : JSON.stringify(normalized)
-  const headers = { 'Content-Type': ct, 'Access-Control-Allow-Origin': '*', ...extraHeaders }
+  const headers = { 'Content-Type': ct, ...extraHeaders }
+  if (res?.corsOrigin) {
+    headers['Access-Control-Allow-Origin'] = res.corsOrigin
+    if (res.corsOrigin !== '*') headers['Vary'] = 'Origin'
+  }
   if (res?.correlationId) headers[CORRELATION_ID_HEADER] = res.correlationId
   res.writeHead(status, headers)
   res.end(data)
+}
+
+/**
+ * Resolve the `Access-Control-Allow-Origin` value for a request, fail-closed.
+ *
+ * The allow-list comes from `FACTORY_ALLOWED_ORIGINS` / `FACTORY_CORS_ORIGIN`
+ * (parsed by the composition root). Rules:
+ *
+ *   - no configured allow-list → `null` (same-origin only, no CORS header);
+ *   - request without an `Origin` header → `null` (nothing to reflect);
+ *   - an explicit `*` entry → `*` (deliberate operator opt-in);
+ *   - an exact match in the list → the request origin (reflected);
+ *   - anything else → `null` (cross-origin access denied).
+ *
+ * @param {{ headers?: Record<string, string|string[]|undefined> }|null|undefined} req
+ * @param {string[]|null|undefined} allowedOrigins
+ * @returns {string|null}
+ */
+export function resolveCorsOrigin(req, allowedOrigins) {
+  const raw = req?.headers?.origin
+  const origin = Array.isArray(raw) ? raw[0] : raw
+  if (typeof origin !== 'string' || origin.length === 0) return null
+  if (!Array.isArray(allowedOrigins) || allowedOrigins.length === 0) return null
+  if (allowedOrigins.includes('*')) return '*'
+  return allowedOrigins.includes(origin) ? origin : null
 }
 
 /**
@@ -236,6 +270,23 @@ export function isLoopbackAddress(address) {
 }
 
 /**
+ * Resolve whether `loopback-dev` is explicitly permitted.
+ *
+ * An explicit `bindPolicy.allowLoopbackDev` (or its non-enumerable
+ * `bindPolicy.identity.allowLoopbackDev`) wins; otherwise the strict
+ * `FACTORY_ALLOW_LOOPBACK_DEV === 'true'` environment flag is required.
+ * Absent, `false`, or any other value refuses the mode (fail-closed).
+ *
+ * @param {{ allowLoopbackDev?: unknown, identity?: { allowLoopbackDev?: unknown } }} [bindPolicy]
+ * @returns {boolean}
+ */
+function resolveAllowLoopbackDev(bindPolicy) {
+  const policyValue = bindPolicy?.allowLoopbackDev ?? bindPolicy?.identity?.allowLoopbackDev
+  if (policyValue !== undefined) return policyValue === true || policyValue === 'true'
+  return process.env?.FACTORY_ALLOW_LOOPBACK_DEV === 'true'
+}
+
+/**
  * Fallback membership resolver used when the composition root injects none.
  * Guarantees memberships stay server-side even on the default code path.
  */
@@ -257,8 +308,12 @@ function pickPrincipalId(claims) {
  *   1. a valid `Authorization: Bearer <jwt>` verified against the Fake IdP;
  *   2. otherwise signed proxy headers (`x-proxy-signature`, ...) verified
  *      against the shared secret;
- *   3. otherwise a loopback-dev context (unauthenticated local dev) or an
- *      anonymous context (unauthenticated remote caller).
+ *   3. otherwise a loopback-dev context — and only when the socket is a
+ *      loopback address AND `loopback-dev` is explicitly allowed via
+ *      `bindPolicy.allowLoopbackDev` / `FACTORY_ALLOW_LOOPBACK_DEV === 'true'`;
+ *   4. otherwise an anonymous context with strictly zero privilege
+ *      (`scopes: []`, `roles: []`, `principalId: null`). A refused loopback or
+ *      a remote caller without a verified credential never gets the wildcard.
  *
  * Any identity header supplied WITHOUT a valid signature is ignored — in
  * particular the `x-proxy-*` family — so a client cannot forge a principal.
@@ -274,7 +329,7 @@ function pickPrincipalId(claims) {
  * `delegationChain` are always `null`).
  *
  * @param {import('node:http').IncomingMessage} req
- * @param {{ trustMode?: string, identity?: { membershipResolver?: object, fakeIdpSecret?: string } }} [bindPolicy]
+ * @param {{ trustMode?: string, allowLoopbackDev?: boolean|string, identity?: { membershipResolver?: object, fakeIdpSecret?: string, allowLoopbackDev?: boolean|string } }} [bindPolicy]
  * @returns {{
  *   namespaceId: string|null, caseId: string|null, actorId: string|null,
  *   authorityId: string|null, runtimeId: string|null, agentId: string|null,
@@ -297,6 +352,7 @@ export function extractTrustContext(req, bindPolicy = {}) {
   const membershipResolver = identityOptions.membershipResolver ?? DEFAULT_MEMBERSHIP_RESOLVER
   const fakeIdpSecret = identityOptions.fakeIdpSecret ?? DEFAULT_FAKE_IDP_SECRET
   const loopback = isLoopbackAddress(req?.socket?.remoteAddress)
+  const allowLoopbackDev = resolveAllowLoopbackDev(bindPolicy)
 
   // Legacy fields — semantics preserved for existing dashboard routes.
   const legacy = {
@@ -350,8 +406,10 @@ export function extractTrustContext(req, bindPolicy = {}) {
   }
 
   // 3. Fallback — loopback development vs unauthenticated anonymous.
+  // `loopback-dev` requires BOTH a loopback socket AND an explicit opt-in;
+  // otherwise the caller stays anonymous with zero privilege (fail-closed).
   if (authenticationMethod === 'anonymous') {
-    if (loopback) {
+    if (loopback && allowLoopbackDev) {
       authenticationMethod = 'loopback-dev'
       principalId = header('x-factory-actor-id') ?? LOOPBACK_DEV_PRINCIPAL_ID
       principalType = 'human'
@@ -368,8 +426,12 @@ export function extractTrustContext(req, bindPolicy = {}) {
 
   // 4. Memberships are resolved server-side from the authenticated principal.
   // Client headers (x-organization-id, x-workstream-id, x-roles, ...) are
-  // deliberately never consulted here.
-  const membership = resolveMembershipSync(membershipResolver, principalId, principalType)
+  // deliberately never consulted here. An anonymous caller is forced to a
+  // strictly empty membership even if the injected resolver is permissive.
+  const membership =
+    authenticationMethod === 'anonymous'
+      ? { organizationId: null, workstreamId: null, squadId: null, roles: [] }
+      : resolveMembershipSync(membershipResolver, principalId, principalType)
 
   return {
     ...legacy,
