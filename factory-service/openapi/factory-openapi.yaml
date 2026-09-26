@@ -1,0 +1,10 @@
+openapi: 3.1.0
+info:
+  title: Factory Service API
+  description: REST API for the Factory Service — autonomous Kotlin/Spring Boot backend
+  version: 0.0.1
+servers:
+- url: http://localhost:18141
+  description: Generated server url
+paths: {}
+components: {}
