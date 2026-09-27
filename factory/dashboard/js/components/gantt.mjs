@@ -146,7 +146,7 @@ export function normalizeSteps(workflow, timing) {
     return {
       id,
       name: String(raw.name ?? raw.title ?? raw.type ?? id),
-      phaseKind: raw.phaseKind ?? raw.responsibility?.kind ?? raw.type ?? 'code',
+      phaseKind: raw.lane ?? raw.phaseKind ?? raw.responsibility?.kind ?? raw.type ?? 'code',
       responsibility: isPlainObject(raw.responsibility) ? raw.responsibility : null,
       description: raw.description ?? null,
       facts,

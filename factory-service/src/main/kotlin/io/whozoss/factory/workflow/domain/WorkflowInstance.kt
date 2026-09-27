@@ -42,6 +42,7 @@ fun createWorkflowInstance(
             "id" to step.id,
             "name" to step.name,
             "status" to if (step.dependsOn.isEmpty()) WorkflowStatuses.READY else WorkflowStatuses.PENDING,
+            "lane" to step.responsibility.kind.wire,
             "dependsOn" to step.dependsOn.toList(),
             "responsibility" to step.responsibility.toJson(),
         )

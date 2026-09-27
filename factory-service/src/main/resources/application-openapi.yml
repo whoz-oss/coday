@@ -16,3 +16,8 @@ spring:
 factory:
   security:
     allow-loopback-dev: true
+  workflow:
+    seed:
+      # Spec generation boots on H2 with Flyway disabled (no workflow tables):
+      # never run the definition seed there.
+      enabled: false

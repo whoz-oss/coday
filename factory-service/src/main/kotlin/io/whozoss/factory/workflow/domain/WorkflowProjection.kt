@@ -14,7 +14,13 @@ package io.whozoss.factory.workflow.domain
 
 private val SAFE_ID = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 private val PROJECTION_FIELDS = setOf("schemaVersion", "workflowId", "workflowType", "title", "status", "steps")
-private val STEP_FIELDS = setOf("id", "name", "status", "description", "dependsOn", "responsibility")
+// `lane`, `startedAt`, `completedAt` and `durationMs` are the optional
+// multi-lane timeline attributes (W8.4) surfaced by the session projection for
+// the cockpit swimlanes. They are pass-through metadata: absent for a v1/v2
+// publication, present once a session run has scheduled/executed the step.
+private val STEP_FIELDS =
+    setOf("id", "name", "status", "description", "dependsOn", "responsibility", "lane", "startedAt", "completedAt", "durationMs")
+private val LANE_VALUES = setOf("agent", "code", "human")
 
 data class ProjectionError(val code: String, val path: String, val details: Map<String, Any?> = emptyMap())
 
@@ -73,6 +79,20 @@ object WorkflowProjectionValidator {
             if (dependsOn != null && (dependsOn !is List<*> || dependsOn.any { it !is String || !SAFE_ID.matches(it) })) {
                 return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.dependsOn")
             }
+            val lane = step["lane"]
+            if (lane != null && (lane !is String || lane !in LANE_VALUES)) {
+                return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.lane")
+            }
+            for (timestampField in listOf("startedAt", "completedAt")) {
+                val timestamp = step[timestampField]
+                if (timestamp != null && timestamp !is String) {
+                    return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.$timestampField")
+                }
+            }
+            val durationMs = step["durationMs"]
+            if (durationMs != null && (durationMs !is Number || durationMs.toLong() < 0)) {
+                return invalid(WorkflowErrorCodes.INVALID_PROJECTION, "$base.durationMs")
+            }
             val responsibility = step["responsibility"]
             if (schemaVersion == "2") {
                 if (responsibility !is Map<*, *>) {
@@ -104,6 +124,16 @@ object WorkflowProjectionValidator {
                     "name" to responsibilityRecord["name"],
                 ).filterValues { it != null }
             }
+            // Optional multi-lane timeline attributes: explicit `lane` wins,
+            // otherwise it is derived from the responsibility kind.
+            val explicitLane = lane as? String
+            val responsibilityKind = (responsibility as? Map<*, *>)?.get("kind") as? String
+            val derivedLane = explicitLane
+                ?: responsibilityKind?.takeIf { it in LANE_VALUES }
+            if (derivedLane != null) normalizedStep["lane"] = derivedLane
+            (step["startedAt"] as? String)?.let { normalizedStep["startedAt"] = it }
+            (step["completedAt"] as? String)?.let { normalizedStep["completedAt"] = it }
+            (durationMs as? Number)?.let { normalizedStep["durationMs"] = it.toLong() }
             steps.add(normalizedStep)
         }
         // Dependency targets must exist (array order stays semantic).

@@ -35,13 +35,16 @@ export function escapeHtml(value) {
 }
 
 /**
- * Resolve the actor kind of a step: explicit responsibility wins, otherwise a
- * deterministic hint-based fallback defaulting to `agent`.
+ * Resolve the actor kind of a step: an explicit projection `lane` first, then
+ * the declared responsibility `kind`, otherwise a deterministic hint-based
+ * fallback defaulting to `agent`.
  *
- * @param {{ responsibility?: { kind?: string }, id?: string, name?: string }} step
+ * @param {{ lane?: string, responsibility?: { kind?: string }, id?: string, name?: string }} step
  * @returns {'human'|'agent'|'code'}
  */
 export function classifyActorKind(step) {
+  const lane = step?.lane
+  if (lane === 'human' || lane === 'agent' || lane === 'code') return lane
   const kind = step?.responsibility?.kind
   if (kind === 'human' || kind === 'agent' || kind === 'code') return kind
   const haystack = `${step?.id ?? ''} ${step?.name ?? ''}`
@@ -138,7 +141,12 @@ export function buildBlueprintLayout(phases, activeStepId) {
       widthRatio: 1 / total,
       durationMs: Number.isFinite(step?.durationMs) ? step.durationMs : null,
       startedAt: typeof step?.startedAt === 'string' ? step.startedAt : null,
-      endedAt: typeof step?.endedAt === 'string' ? step.endedAt : null,
+      endedAt:
+        typeof step?.endedAt === 'string'
+          ? step.endedAt
+          : typeof step?.completedAt === 'string'
+            ? step.completedAt
+            : null,
     }
     const node = {
       id: step?.id ?? `step-${index}`,
@@ -146,6 +154,7 @@ export function buildBlueprintLayout(phases, activeStepId) {
       status: step?.status ?? 'pending',
       state,
       actorKind,
+      lane: actorKind,
       responsibility: step?.responsibility ?? null,
       phase: step?.phase ?? null,
       dependsOn: Array.isArray(step?.dependsOn) ? [...step.dependsOn] : [],

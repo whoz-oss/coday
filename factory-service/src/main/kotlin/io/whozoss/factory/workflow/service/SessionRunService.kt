@@ -22,6 +22,8 @@ import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import java.nio.file.Path
+import java.time.Duration
+import java.time.Instant
 import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -36,6 +38,37 @@ data class SessionRunResult(
     val status: String,
     val steps: List<SessionStepState>,
 )
+
+/**
+ * In-memory per-step progress of a single run/resume: the current status plus
+ * the execution window (`startedAt` when a step first became `running`,
+ * `completedAt` when it reached a terminal status). Timings are also persisted
+ * in `workflow_step_states.payload` so a resumed run and a read-only
+ * [SessionRunService.sessionState] recover them.
+ */
+private class SessionProgress {
+    val statuses = LinkedHashMap<String, String>()
+    val startedAt = HashMap<String, String>()
+    val completedAt = HashMap<String, String>()
+
+    /** Persisted payload of a step state: only the timing facts, never the status. */
+    fun payload(stepId: String): Map<String, Any?> = buildMap {
+        startedAt[stepId]?.let { put("startedAt", it) }
+        completedAt[stepId]?.let { put("completedAt", it) }
+    }
+
+    companion object {
+        /** Rebuilds a progress from the durable per-step states (resume / read). */
+        fun fromStates(states: Map<String, WorkflowStepStateRecord>): SessionProgress {
+            val progress = SessionProgress()
+            for ((stepId, state) in states) {
+                (state.payload["startedAt"] as? String)?.let { progress.startedAt[stepId] = it }
+                (state.payload["completedAt"] as? String)?.let { progress.completedAt[stepId] = it }
+            }
+            return progress
+        }
+    }
+}
 
 /**
  * Automatic DAG execution of a declarative session (W8.3).
@@ -87,21 +120,21 @@ class SessionRunService(
         if (steps.isEmpty()) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The session has no steps.")
         }
-        val statuses = loadStatuses(scope, namespaceId, workflowId, steps)
+        val statuses = loadProgress(scope, namespaceId, workflowId, steps)
         var suspended = false
         val guard = steps.size * 4 + 8
         var iterations = 0
         run {
             while (iterations++ < guard) {
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
-                if (statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
+                if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
                     if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses)) {
                         suspended = true
                         return@run
                     }
                     continue
                 }
-                val readyId = SessionSequencer.readySteps(steps, statuses).firstOrNull() ?: return@run
+                val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull() ?: return@run
                 val step = steps.first { it.id == readyId }
                 executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot)?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
@@ -111,10 +144,10 @@ class SessionRunService(
                 }
             }
         }
-        val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else SessionSequencer.terminalStatus(steps, statuses)
+        val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else SessionSequencer.terminalStatus(steps, statuses.statuses)
         persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus)
         sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
-        return SessionRunResult(namespaceId, workflowId, sessionStatus, statusesOf(steps, statuses))
+        return SessionRunResult(namespaceId, workflowId, sessionStatus, statusesOf(steps, statuses.statuses))
     }
 
     /** Read-only projection of the current session state. */
@@ -141,30 +174,33 @@ class SessionRunService(
         statuses: Map<String, String>,
     ): List<SessionStepState> = steps.map { SessionStepState(it.id, statuses[it.id] ?: WorkflowStatuses.PENDING) }
 
-    private fun loadStatuses(
+    private fun loadProgress(
         scope: TenantScope,
         namespaceId: String,
         workflowId: String,
         steps: List<WorkflowStepDefinition>,
-    ): LinkedHashMap<String, String> {
-        val statuses = LinkedHashMap<String, String>()
+    ): SessionProgress {
+        val progress = SessionProgress()
         val existing = repository.findStepStates(scope, namespaceId, workflowId)
         if (existing.isEmpty()) {
             val initial = SessionSequencer.initialStatuses(steps)
             for (step in steps) {
                 val status = initial[step.id] ?: WorkflowStatuses.PENDING
-                setStatus(scope, namespaceId, workflowId, step.id, status, statuses)
+                setStatus(scope, namespaceId, workflowId, step.id, status, progress)
             }
-            return statuses
+            return progress
         }
         val byId = existing.associateBy { it.stepId }
+        val restored = SessionProgress.fromStates(byId)
         for (step in steps) {
             val stored = byId[step.id]?.status ?: WorkflowStatuses.PENDING
             // A step left `running` by an interrupted run is re-scheduled: the
             // in-process sequencer is the only owner of the `running` state.
-            statuses[step.id] = if (stored == WorkflowStatuses.RUNNING) WorkflowStatuses.READY else stored
+            progress.statuses[step.id] = if (stored == WorkflowStatuses.RUNNING) WorkflowStatuses.READY else stored
         }
-        return statuses
+        progress.startedAt.putAll(restored.startedAt)
+        progress.completedAt.putAll(restored.completedAt)
+        return progress
     }
 
     private fun applyEvaluation(
@@ -172,11 +208,11 @@ class SessionRunService(
         namespaceId: String,
         workflowId: String,
         steps: List<WorkflowStepDefinition>,
-        statuses: LinkedHashMap<String, String>,
+        progress: SessionProgress,
     ) {
-        val evaluation = SessionSequencer.evaluate(steps, statuses)
-        for (stepId in evaluation.blocked) setStatus(scope, namespaceId, workflowId, stepId, WorkflowStatuses.BLOCKED, statuses)
-        for (stepId in evaluation.ready) setStatus(scope, namespaceId, workflowId, stepId, WorkflowStatuses.READY, statuses)
+        val evaluation = SessionSequencer.evaluate(steps, progress.statuses)
+        for (stepId in evaluation.blocked) setStatus(scope, namespaceId, workflowId, stepId, WorkflowStatuses.BLOCKED, progress)
+        for (stepId in evaluation.ready) setStatus(scope, namespaceId, workflowId, stepId, WorkflowStatuses.READY, progress)
     }
 
     /** Executes one ready step; returns its terminal status, or null on an unexpected failure path. */
@@ -185,7 +221,7 @@ class SessionRunService(
         namespaceId: String,
         workflowId: String,
         steps: List<WorkflowStepDefinition>,
-        statuses: LinkedHashMap<String, String>,
+        statuses: SessionProgress,
         step: WorkflowStepDefinition,
         repoRoot: Path,
     ): String? {
@@ -225,12 +261,12 @@ class SessionRunService(
         namespaceId: String,
         workflowId: String,
         steps: List<WorkflowStepDefinition>,
-        statuses: LinkedHashMap<String, String>,
+        statuses: SessionProgress,
     ): Boolean {
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = false)
         var allResolved = true
         for (step in steps) {
-            if (statuses[step.id] != WorkflowStatuses.WAITING_HUMAN) continue
+            if (statuses.statuses[step.id] != WorkflowStatuses.WAITING_HUMAN) continue
             val interaction = interactions.filter { it.stepId == step.id }.maxByOrNull { it.revision }
             val terminal = humanDecision(interaction)
             if (terminal == null || interaction == null) {
@@ -258,10 +294,21 @@ class SessionRunService(
         workflowId: String,
         stepId: String,
         status: String,
-        statuses: LinkedHashMap<String, String>,
+        progress: SessionProgress,
     ) {
-        if (statuses[stepId] == status) return
-        statuses[stepId] = status
+        if (progress.statuses[stepId] == status) return
+        progress.statuses[stepId] = status
+        val now = nowIso()
+        when (status) {
+            WorkflowStatuses.RUNNING -> progress.startedAt.putIfAbsent(stepId, now)
+            WorkflowStatuses.COMPLETED,
+            WorkflowStatuses.FAILED,
+            WorkflowStatuses.CANCELLED,
+            -> {
+                progress.startedAt.putIfAbsent(stepId, now)
+                progress.completedAt.putIfAbsent(stepId, now)
+            }
+        }
         repository.upsertStepState(
             scope,
             WorkflowStepStateRecord(
@@ -270,6 +317,7 @@ class SessionRunService(
                 stepId = stepId,
                 revision = 1,
                 status = status,
+                payload = progress.payload(stepId),
             ),
         )
     }
@@ -399,24 +447,34 @@ class SessionRunService(
         namespaceId: String,
         workflowId: String,
         steps: List<WorkflowStepDefinition>,
-        statuses: Map<String, String>,
+        progress: SessionProgress,
         sessionStatus: String,
     ) {
         val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return
         val nextInstance = instance.instance.toMutableMap()
         nextInstance["status"] = sessionStatus
-        nextInstance["steps"] = steps.map { mapOf("id" to it.id, "status" to (statuses[it.id] ?: WorkflowStatuses.PENDING)) }
+        nextInstance["steps"] = steps.map { mapOf("id" to it.id, "status" to (progress.statuses[it.id] ?: WorkflowStatuses.PENDING)) }
         nextInstance["updatedAt"] = nowIso()
         val projection = instance.projection.toMutableMap()
         projection["status"] = sessionStatus
+        // Multi-lane timeline projection: one entry per step carrying its lane
+        // (agent|code|human) derived from the responsibility kind, the actor
+        // name, the status and the optional execution window.
         projection["steps"] = steps.map { step ->
+            val status = progress.statuses[step.id] ?: WorkflowStatuses.PENDING
+            val startedAt = progress.startedAt[step.id]
+            val completedAt = progress.completedAt[step.id]
             linkedMapOf<String, Any?>(
                 "id" to step.id,
                 "name" to step.name,
-                "status" to (statuses[step.id] ?: WorkflowStatuses.PENDING),
+                "status" to status,
+                "lane" to step.responsibility.kind.wire,
                 "dependsOn" to step.dependsOn,
                 "responsibility" to step.responsibility.toJson(),
-            )
+                "startedAt" to startedAt,
+                "completedAt" to completedAt,
+                "durationMs" to elapsedMs(startedAt, completedAt),
+            ).filterValues { it != null }
         }
         val next = instance.copy(revision = instance.revision + 1, instance = nextInstance, projection = projection)
         repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)
@@ -469,4 +527,11 @@ class SessionRunService(
             }
             record.toPolicyDefinition()
         }
+
+    /** Elapsed milliseconds between two ISO-8601 instants, or null when incomplete. */
+    private fun elapsedMs(startedAt: String?, completedAt: String?): Long? {
+        if (startedAt == null || completedAt == null) return null
+        return runCatching { Duration.between(Instant.parse(startedAt), Instant.parse(completedAt)).toMillis() }
+            .getOrNull()
+    }
 }
