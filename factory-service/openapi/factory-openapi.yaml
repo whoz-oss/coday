@@ -1315,7 +1315,7 @@ paths:
     get:
       tags:
       - workflows
-      summary: List workflow projections for a namespace.
+      summary: List workflow projections of the caller's tenant scope (optionally filtered by namespace).
       operationId: listWorkflow
       parameters:
       - name: namespaceId

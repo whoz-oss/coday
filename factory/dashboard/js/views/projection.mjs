@@ -8,7 +8,8 @@
  *
  * Consumes (never redefines) the shared services:
  *   - GET /api/config                              → `agentosUrl`
- *   - GET /api/factory/workflows?namespaceId=&state=active|removed
+ *   - GET /api/factory/workflows?state=active|removed          (namespace scope-wide)
+ *   - GET /api/factory/workflows?namespaceId=&state=active|removed (optional filter)
  *   - GET /api/factory/workflows/:id             → targeted re-fetch
  *   - POST   /api/factory/workflows/:id/restore
  *   - DELETE /api/factory/workflows/:id
@@ -227,8 +228,14 @@ export class ProjectionController {
   }
 
   listPath(state = this.mode) {
-    const namespace = encodeURIComponent(this.namespaceId ?? '')
-    return `/api/factory/workflows?namespaceId=${namespace}&state=${state === 'removed' ? 'removed' : 'active'}`
+    const stateParam = `state=${state === 'removed' ? 'removed' : 'active'}`
+    // `namespaceId` is an OPTIONAL filter: when the caller has no active
+    // namespace the list is requested scope-wide (no empty `namespaceId=` that
+    // the server would reject).
+    if (this.namespaceId) {
+      return `/api/factory/workflows?namespaceId=${encodeURIComponent(this.namespaceId)}&${stateParam}`
+    }
+    return `/api/factory/workflows?${stateParam}`
   }
 
   detailPath(workflowId) {

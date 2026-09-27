@@ -1,6 +1,7 @@
 package io.whozoss.factory.workflow
 
 import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
@@ -36,6 +37,7 @@ class WorkflowControllerHttpTest : DomainIntegrationTest() {
     private lateinit var service: WorkflowService
 
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
+    private val secondNamespace = "1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
 
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =
         object : ParameterizedTypeReference<Map<String, Any?>>() {}
@@ -165,5 +167,115 @@ class WorkflowControllerHttpTest : DomainIntegrationTest() {
         assertThat(start.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
         val error = start.body?.get("error") as? Map<*, *>
         assertThat(error?.get("code")).isEqualTo("INVALID_NAMESPACE_ID")
+    }
+
+    // ----- optional namespaceId on the list route ------------------------
+
+    @Suppress("UNCHECKED_CAST")
+    private fun listIds(payload: Map<String, Any?>): List<String> =
+        (payload["items"] as? List<*>)
+            ?.filterIsInstance<Map<String, Any?>>()
+            ?.mapNotNull { it["workflowId"] as? String }
+            ?: emptyList()
+
+    private fun publish(workflowId: String, namespaceId: String) {
+        val body = mapOf(
+            "execution" to mapOf(
+                "namespaceId" to namespaceId,
+                "runtimeId" to "factory-dashboard",
+                "kind" to "coday-express",
+                "agentId" to "runner",
+            ),
+            "projection" to mapOf(
+                "schemaVersion" to "2",
+                "workflowId" to workflowId,
+                "workflowType" to "wf-http",
+                "title" to "Listed $workflowId",
+                "status" to "ready",
+                "steps" to listOf(
+                    mapOf(
+                        "id" to "gate",
+                        "name" to "Gate",
+                        "status" to "ready",
+                        "responsibility" to mapOf("kind" to "human"),
+                    ),
+                ),
+            ),
+        )
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId/projection",
+            HttpMethod.PUT,
+            HttpEntity(body, headers()),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+    }
+
+    @Test
+    fun `list without namespaceId returns workflows of every namespace in the tenant scope`() {
+        publish("wf-list-a", namespace)
+        publish("wf-list-b", secondNamespace)
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows?state=active",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        val ids = listIds(data(response.body))
+        assertThat(ids).contains("wf-list-a", "wf-list-b")
+    }
+
+    @Test
+    fun `list with namespaceId returns only that namespace`() {
+        publish("wf-list-a", namespace)
+        publish("wf-list-b", secondNamespace)
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows?namespaceId=$namespace&state=active",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        val ids = listIds(data(response.body))
+        assertThat(ids).containsExactly("wf-list-a")
+    }
+
+    @Test
+    fun `tenant scope isolation keeps other scopes invisible to a scope-wide list`() {
+        jdbcTemplate.update("DELETE FROM workflow_projections WHERE organization_id = ?", "org-other")
+        publish("wf-list-a", namespace)
+
+        val otherScope = TenantScope("org-other", "ws-other")
+        service.publishProjection(
+            otherScope,
+            secondNamespace,
+            "wf-other-scope",
+            mapOf(
+                "schemaVersion" to "2",
+                "workflowId" to "wf-other-scope",
+                "workflowType" to "wf-http",
+                "title" to "Other scope",
+                "status" to "ready",
+                "steps" to listOf(
+                    mapOf(
+                        "id" to "gate",
+                        "name" to "Gate",
+                        "status" to "ready",
+                        "responsibility" to mapOf("kind" to "human"),
+                    ),
+                ),
+            ),
+            0,
+            null,
+        )
+
+        assertThat(listIds(service.listProjections(scope, null, "active")))
+            .contains("wf-list-a")
+            .doesNotContain("wf-other-scope")
+        assertThat(listIds(service.listProjections(otherScope, null, "active")))
+            .containsExactly("wf-other-scope")
     }
 }

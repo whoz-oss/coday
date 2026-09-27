@@ -468,21 +468,25 @@ class JdbcWorkflowRepository(
 
     override fun listProjections(
         scope: TenantScope,
-        namespaceId: String,
+        namespaceId: String?,
         lifecycleState: String,
-    ): List<WorkflowProjectionRecord> =
-        jdbc.query(
+    ): List<WorkflowProjectionRecord> {
+        val namespaceFilter = if (namespaceId.isNullOrBlank()) "" else " AND namespace_id = :namespaceId"
+        val params = scopeParams(scope).addValue("lifecycleState", lifecycleState)
+        if (!namespaceId.isNullOrBlank()) params.addValue("namespaceId", namespaceId)
+        return jdbc.query(
             """
             SELECT namespace_id, workflow_id, schema_version, revision, projection_hash, status,
                    projection_json, instance_json, governance_mode, definition_version, definition_hash,
                    relations_json, controller_execution, lifecycle_state
               FROM workflow_projections
-             WHERE organization_id = :organizationId AND workstream_id = :workstreamId
-               AND namespace_id = :namespaceId AND lifecycle_state = :lifecycleState
+             WHERE organization_id = :organizationId AND workstream_id = :workstreamId$namespaceFilter
+               AND lifecycle_state = :lifecycleState
              ORDER BY workflow_id ASC
             """.trimIndent(),
-            scopeParams(scope).addValue("namespaceId", namespaceId).addValue("lifecycleState", lifecycleState),
+            params,
         ) { rs, _ -> readProjection(rs) }
+    }
 
     override fun publishProjection(
         scope: TenantScope,
