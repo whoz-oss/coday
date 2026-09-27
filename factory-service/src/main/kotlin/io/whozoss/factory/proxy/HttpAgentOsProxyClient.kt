@@ -2,19 +2,37 @@ package io.whozoss.factory.proxy
 
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.HttpStatusCode
+import org.springframework.http.MediaType
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
 
 /**
  * HTTP adapter for the AgentOS proxy.
  *
- * Port of `factory/dashboard/agentos-proxy.mjs`. Propagates the trusted
- * `X-External-User-Id` header; an AgentOS 404 resolves to `null`, any other
- * failure to [AgentOsUnavailableException] (502).
+ * Port of `factory/dashboard/agentos-proxy.mjs` and (for the W8.3 agent turn)
+ * `factory/src/adapters/agentos/agentos-http-client.ts` +
+ * `agentos-runtime-observer.ts`. Propagates the trusted `X-External-User-Id`
+ * header; an AgentOS 404 resolves to `null`, any other failure to
+ * [AgentOsUnavailableException] (502).
+ *
+ * The agent-turn transport is HTTP only and reaches the real AgentOS routes:
+ * `POST /api/cases` (create), `POST /api/cases/{id}/messages` (post the brief),
+ * `GET /api/case-events/by-parentId/{id}` (poll to quiescence),
+ * `POST /api/cases/{id}/kill` (best-effort budget kill).
+ *
+ * Quiescence is read from `CaseStatusEvent` (`status ∈ {IDLE, KILLED, ERROR}`),
+ * exactly like the Node observer: the message POST is asynchronous, so the turn
+ * first waits for `RUNNING`, then waits for quiescence *after the last RUNNING*
+ * (an agent can chain several turns without new user input — F7).
  */
 class HttpAgentOsProxyClient(
     builder: RestClient.Builder,
     baseUrl: String,
+    private val pollIntervalMs: Long = DEFAULT_POLL_INTERVAL_MS,
+    private val startTimeoutMs: Long = DEFAULT_START_TIMEOUT_MS,
+    private val workTimeoutMs: Long = DEFAULT_WORK_TIMEOUT_MS,
+    private val sleep: (Long) -> Unit = { Thread.sleep(it) },
+    private val now: () -> Long = System::currentTimeMillis,
 ) : AgentOsProxyClient {
 
     private val client: RestClient = builder.baseUrl(baseUrl).build()
@@ -66,5 +84,251 @@ class HttpAgentOsProxyClient(
     override fun resolveRunStoreRoot(namespaceId: String, externalUserId: String?): String? {
         val repoRoot = resolveRepoRoot(namespaceId, externalUserId) ?: return null
         return java.nio.file.Path.of(repoRoot, "forge", "factory-runs").toString()
+    }
+
+    // ------------------------------------------------------------------
+    // Agent turn (W8.3)
+    // ------------------------------------------------------------------
+
+    override fun executeAgentTurn(
+        namespaceId: String,
+        persona: String,
+        stepId: String,
+        workflowId: String,
+        brief: String?,
+        externalUserId: String?,
+    ): AgentTurnExecutionResult {
+        val caseId = try {
+            val created = createCase(namespaceId, "Factory session $workflowId · step $stepId", externalUserId)
+            created ?: return AgentTurnExecutionResult.Failed(
+                "AGENTOS_CASE_CREATION",
+                "AgentOS case creation returned an empty body.",
+            )
+        } catch (error: Exception) {
+            return AgentTurnExecutionResult.Failed("AGENTOS_UNAVAILABLE", error.message ?: error.toString())
+        }
+        return try {
+            val baselineEvents = try {
+                listEvents(caseId, externalUserId)
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val baselineId = baselineEvents.lastOrNull()?.get("id") as? String
+            val busyStatus = lastStatusOf(baselineEvents)
+            if (busyStatus != null && busyStatus !in QUIESCENT_STATUSES) {
+                return AgentTurnExecutionResult.Failed(
+                    "AGENT_CASE_BUSY",
+                    "Case $caseId is in status $busyStatus; posting now would be silently abandoned.",
+                )
+            }
+            postMessage(caseId, "@$persona ${brief ?: defaultBrief(stepId, workflowId)}", externalUserId)
+            awaitQuiescence(caseId, baselineId, externalUserId)
+        } catch (error: RestClientResponseException) {
+            AgentTurnExecutionResult.Failed(
+                "AGENTOS_HTTP_${error.statusCode.value()}",
+                "AgentOS answered HTTP ${error.statusCode.value()} during the agent turn.",
+            )
+        } catch (error: Exception) {
+            AgentTurnExecutionResult.Failed("AGENTOS_UNAVAILABLE", error.message ?: error.toString())
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun createCase(namespaceId: String, title: String, externalUserId: String?): String? {
+        val spec = client.post()
+            .uri("/api/cases")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(mapOf("namespaceId" to namespaceId, "title" to title))
+        if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+        val body = spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+        return body?.get("id") as? String
+    }
+
+    private fun postMessage(caseId: String, content: String, externalUserId: String?) {
+        val spec = client.post()
+            .uri("/api/cases/$caseId/messages")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(mapOf("content" to content))
+        if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+        spec.retrieve().toBodilessEntity()
+    }
+
+    private fun killQuietly(caseId: String, externalUserId: String?) {
+        try {
+            val spec = client.post().uri("/api/cases/$caseId/kill")
+            if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+            spec.retrieve().toBodilessEntity()
+        } catch (_: Exception) {
+            // ignored: the failure verdict takes precedence over the kill succeeding
+        }
+    }
+
+    private fun listEvents(caseId: String, externalUserId: String?): List<Map<String, Any?>> {
+        val spec = client.get().uri("/api/case-events/by-parentId/$caseId")
+        if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+        return spec.retrieve()
+            .body(object : ParameterizedTypeReference<List<Map<String, Any?>>>() {}) ?: emptyList()
+    }
+
+    private fun awaitQuiescence(
+        caseId: String,
+        baselineId: String?,
+        externalUserId: String?,
+    ): AgentTurnExecutionResult {
+        val startDeadline = now() + startTimeoutMs
+        var started = false
+        var workDeadline = 0L
+        var runningIndex = -1
+        while (true) {
+            sleep(pollIntervalMs)
+            val all = try {
+                listEvents(caseId, externalUserId)
+            } catch (error: Exception) {
+                return AgentTurnExecutionResult.Failed("AGENTOS_UNAVAILABLE", error.message ?: error.toString())
+            }
+            val turn = sliceAfterId(all, baselineId)
+            if (!started) {
+                val running = findStatus(turn, listOf(STATUS_RUNNING))
+                if (running != null) {
+                    runningIndex = running.index
+                    workDeadline = now() + workTimeoutMs
+                    started = true
+                } else if (now() > startDeadline) {
+                    killQuietly(caseId, externalUserId)
+                    return AgentTurnExecutionResult.Failed(
+                        "AGENT_TURN_START_TIMEOUT",
+                        "Case $caseId did not reach RUNNING within ${startTimeoutMs}ms.",
+                        mapOf("caseId" to caseId, "caseStatus" to lastStatusOf(all)),
+                    )
+                } else {
+                    continue
+                }
+            }
+            // F7 — advance to the most recent RUNNING, then look for quiescence after it.
+            val lastRunning = findLastStatus(turn, listOf(STATUS_RUNNING))
+            if (lastRunning != null && lastRunning.index > runningIndex) runningIndex = lastRunning.index
+            val quiescent = findStatus(turn, QUIESCENT_STATUSES, runningIndex + 1)
+            if (quiescent != null) return verdict(caseId, turn, quiescent.event)
+            if (now() > workDeadline) {
+                killQuietly(caseId, externalUserId)
+                return AgentTurnExecutionResult.Failed(
+                    "AGENT_TURN_WORK_TIMEOUT",
+                    "Case $caseId did not reach quiescence within ${workTimeoutMs}ms.",
+                    mapOf("caseId" to caseId, "caseStatus" to lastStatusOf(all)),
+                )
+            }
+        }
+    }
+
+    private fun verdict(caseId: String, events: List<Map<String, Any?>>, quiescent: Map<String, Any?>): AgentTurnExecutionResult {
+        val status = quiescent["status"] as? String ?: ""
+        val facts = turnFacts(caseId, events, status)
+        return when (status) {
+            STATUS_KILLED -> AgentTurnExecutionResult.Failed("AGENT_CASE_KILLED", "Case $caseId was killed.", facts)
+            STATUS_ERROR -> AgentTurnExecutionResult.Failed("AGENT_CASE_ERROR", "Case $caseId ended in ERROR.", facts)
+            STATUS_IDLE -> {
+                val pendingQuestion = lastUnansweredQuestion(events)
+                if (pendingQuestion != null) {
+                    AgentTurnExecutionResult.Failed(
+                        "AGENT_TURN_PENDING_QUESTION",
+                        "Case $caseId is idle but waiting for a human answer.",
+                        facts + ("question" to pendingQuestion),
+                    )
+                } else {
+                    val summary = lastAgentMessage(events)
+                    AgentTurnExecutionResult.Completed(summary, facts + ("summary" to summary))
+                }
+            }
+            else -> AgentTurnExecutionResult.Failed(
+                "AGENT_CASE_STATUS",
+                "Case $caseId reached unexpected status '$status'.",
+                facts,
+            )
+        }
+    }
+
+    private fun turnFacts(caseId: String, events: List<Map<String, Any?>>, caseStatus: String): Map<String, Any?> = mapOf(
+        "caseId" to caseId,
+        "caseStatus" to caseStatus,
+        "agentTurns" to events.count { it["type"] == "AgentFinishedEvent" },
+        "toolCalls" to events.count { it["type"] == "ToolResponseEvent" },
+        // AgentOS events do not carry a change list; the durable modified-file
+        // facts come from the worker's step-result binding (W8.4 projection).
+        "modifiedFiles" to emptyList<String>(),
+    )
+
+    private fun lastStatusOf(events: List<Map<String, Any?>>): String? =
+        findLastStatus(events, QUIESCENT_STATUSES + STATUS_RUNNING)?.event?.get("status") as? String
+
+    /** Events that follow [baselineId]; missing id → the whole (permissive) history. */
+    private fun sliceAfterId(events: List<Map<String, Any?>>, baselineId: String?): List<Map<String, Any?>> {
+        if (baselineId == null) return events
+        val index = events.indexOfFirst { it["id"] == baselineId }
+        return if (index < 0) events else events.subList(index + 1, events.size)
+    }
+
+    private fun defaultBrief(stepId: String, workflowId: String): String =
+        "Execute the Factory session step '$stepId' of workflow '$workflowId'."
+
+    private data class StatusHit(val event: Map<String, Any?>, val index: Int)
+
+    private fun findStatus(
+        events: List<Map<String, Any?>>,
+        statuses: List<String>,
+        fromIndex: Int = 0,
+    ): StatusHit? {
+        for (index in fromIndex until events.size) {
+            val event = events[index]
+            if (event["type"] == CASE_STATUS_EVENT && event["status"] in statuses) return StatusHit(event, index)
+        }
+        return null
+    }
+
+    private fun findLastStatus(events: List<Map<String, Any?>>, statuses: List<String>): StatusHit? {
+        for (index in events.indices.reversed()) {
+            val event = events[index]
+            if (event["type"] == CASE_STATUS_EVENT && event["status"] in statuses) return StatusHit(event, index)
+        }
+        return null
+    }
+
+    private fun lastAgentMessage(events: List<Map<String, Any?>>): String {
+        val message = events.lastOrNull { event ->
+            event["type"] == "MessageEvent" && (event["actor"] as? Map<*, *>)?.get("role") == "AGENT"
+        } ?: return ""
+        return messageContent(message["content"])
+    }
+
+    private fun messageContent(content: Any?): String = when (content) {
+        is String -> content
+        is List<*> -> content.joinToString("") { part ->
+            ((part as? Map<*, *>)?.get("content") as? String) ?: ""
+        }
+        else -> ""
+    }
+
+    private fun lastUnansweredQuestion(events: List<Map<String, Any?>>): String? {
+        val answered = events
+            .filter { it["type"] == "AnswerEvent" }
+            .mapNotNull { it["questionId"] as? String }
+            .toSet()
+        return events
+            .filter { it["type"] == "QuestionEvent" && (it["id"] as? String) !in answered }
+            .lastOrNull()
+            ?.let { (it["question"] as? String) ?: "The agent is waiting for a human answer." }
+    }
+
+    companion object {
+        const val CASE_STATUS_EVENT = "CaseStatusEvent"
+        val QUIESCENT_STATUSES: List<String> = listOf("IDLE", "KILLED", "ERROR")
+
+        private const val STATUS_RUNNING = "RUNNING"
+        private const val STATUS_IDLE = "IDLE"
+        private const val STATUS_KILLED = "KILLED"
+        private const val STATUS_ERROR = "ERROR"
+
+        const val DEFAULT_POLL_INTERVAL_MS = 2_000L
+        const val DEFAULT_START_TIMEOUT_MS = 30_000L
+        const val DEFAULT_WORK_TIMEOUT_MS = 10L * 60L * 1_000L
     }
 }
