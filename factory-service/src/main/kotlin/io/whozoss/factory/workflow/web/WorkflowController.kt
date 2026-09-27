@@ -73,6 +73,7 @@ class WorkflowController(
 
     @DeleteMapping(path = ["/{workflowId}"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Remove a workflow projection (recoverable).")
+    @Suppress("UNCHECKED_CAST")
     fun remove(
         @PathVariable workflowId: String,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
@@ -315,6 +316,7 @@ class WorkflowController(
 
     @PostMapping(path = ["/{workflowId}/restore"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Restore a removed workflow projection.")
+    @Suppress("UNCHECKED_CAST")
     fun restore(
         @PathVariable workflowId: String,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
@@ -340,6 +342,7 @@ class WorkflowController(
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): WorkflowDataEnvelope<Map<String, Any?>> = purgeInternal(workflowId, namespaceId, trustContext)
 
+    @Suppress("UNCHECKED_CAST")
     private fun purgeInternal(
         workflowId: String,
         namespaceId: String?,

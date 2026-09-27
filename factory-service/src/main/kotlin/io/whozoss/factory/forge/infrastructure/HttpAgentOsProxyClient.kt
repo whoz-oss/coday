@@ -21,6 +21,7 @@ class HttpAgentOsProxyClient(
 
     private val client: RestClient = builder.baseUrl(baseUrl).build()
 
+    @Suppress("UNCHECKED_CAST")
     private fun <T> relay(path: String, namespaceUserId: String?, type: ParameterizedTypeReference<T>): T {
         try {
             val spec = client.get().uri(path)

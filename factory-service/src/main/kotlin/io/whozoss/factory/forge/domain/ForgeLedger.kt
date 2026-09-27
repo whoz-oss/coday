@@ -81,7 +81,7 @@ object ForgeLedger {
                         "status" to event["status"],
                         "code" to event["code"],
                         "ownerProjects" to (event["ownerProjects"] ?: emptyList<String>()),
-                        "target" to (event["target"] ?: null),
+                        "target" to event["target"],
                         "buildHosts" to (event["buildHosts"] ?: emptyList<String>()),
                         "ownersWithTestTarget" to (event["ownersWithTestTarget"] ?: emptyList<String>()),
                         "ownersWithoutTestTarget" to (event["ownersWithoutTestTarget"] ?: emptyList<String>()),
@@ -138,9 +138,9 @@ object ForgeLedger {
                     "namespaceId" to execution["namespaceId"],
                     "status" to execution["status"],
                     "outcome" to execution["outcome"],
-                    "caseStatus" to (execution["caseStatus"] ?: null),
+                    "caseStatus" to execution["caseStatus"],
                     "killedByBudget" to (execution["killedByBudget"] == true),
-                    "artifact" to (execution["artifact"] ?: null),
+                    "artifact" to execution["artifact"],
                     "analysisValidation" to (
                         validation?.let {
                             linkedMapOf(
@@ -165,7 +165,7 @@ object ForgeLedger {
                     "requiredDecision" to g1["requiredDecision"],
                     "policyVersion" to g1["policyVersion"],
                     "evidenceSetHash" to evidenceSetHash,
-                    "decision" to (decision?.get("decision") ?: null),
+                    "decision" to decision?.get("decision"),
                 ),
             )
         }
@@ -177,7 +177,7 @@ object ForgeLedger {
                     "status" to g2["status"],
                     "code" to g2["code"],
                     "policyVersion" to g2["policyVersion"],
-                    "spec" to (g2["spec"] ?: null),
+                    "spec" to g2["spec"],
                 ),
             )
         }
@@ -195,7 +195,7 @@ object ForgeLedger {
                     "status" to it["status"],
                     "code" to it["code"],
                     "policyVersion" to it["policyVersion"],
-                    "storySpec" to (it["storySpec"] ?: null),
+                    "storySpec" to it["storySpec"],
                 )
             }
             // Event order is the ledger's authoritative chronology. A Story's

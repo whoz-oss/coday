@@ -57,21 +57,22 @@ object ForgeStorySpec {
             }
             if (indent == 2 && section != null && SECTION_LIST.matches(line)) {
                 val newList = mutableListOf<Any?>()
-                sectionMap(out, section!!)[line.dropLast(1)] = newList
+                sectionMap(out, section)[line.dropLast(1)] = newList
                 list = newList
                 continue
             }
             if (indent == 2 && section != null) {
                 val match = SECTION_KEY.matchEntire(line)
                 if (match != null) {
-                    sectionMap(out, section!!)[match.groupValues[1]] = ForgeSpec.scalar(match.groupValues[2])
+                    sectionMap(out, section)[match.groupValues[1]] = ForgeSpec.scalar(match.groupValues[2])
                     list = null
                     continue
                 }
             }
             if (indent == 2 && section != null && line.startsWith("- ")) {
                 val existing = out[section]
-                val target = (existing as? MutableList<Any?>) ?: mutableListOf<Any?>().also { out[section!!] = it }
+                @Suppress("UNCHECKED_CAST")
+                val target = (existing as? MutableList<Any?>) ?: mutableListOf<Any?>().also { out[section] = it }
                 target.add(ForgeSpec.scalar(line.substring(2)))
                 continue
             }

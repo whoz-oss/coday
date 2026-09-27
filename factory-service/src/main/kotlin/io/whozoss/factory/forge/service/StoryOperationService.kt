@@ -243,7 +243,7 @@ class StoryOperationService(
             "status" to status,
             "policyVersion" to ForgeStoryOperations.STORY_ANALYSIS_POLICY_VERSION,
             "outcome" to turn["status"],
-            "caseStatus" to (turn["caseStatus"] ?: null),
+            "caseStatus" to turn["caseStatus"],
             "killedByBudget" to (turn["killedByBudget"] == true),
         )
         if (turn["status"] != "finished") {
@@ -415,7 +415,7 @@ class StoryOperationService(
                 "caseId" to created["id"],
                 "status" to status,
                 "outcome" to turn["status"],
-                "caseStatus" to (turn["caseStatus"] ?: null),
+                "caseStatus" to turn["caseStatus"],
                 "killedByBudget" to (turn["killedByBudget"] == true),
                 "filesModified" to modified,
                 "filesCreated" to untracked,

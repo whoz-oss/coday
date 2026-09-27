@@ -155,7 +155,7 @@ class LegacyRunController(
         if (message != null && message !is String) {
             return ResponseEntity.status(400).body(errorEnvelope(400, "INVALID_GATE_REPLY", "message must be a string."))
         }
-        val result = runs.replyGate(id, gateInstanceId, decision, message as? String ?: "")
+        val result = runs.replyGate(id, gateInstanceId, decision, message ?: "")
         if (result["ok"] != true) {
             val status = (result["status"] as? Int) ?: 400
             return ResponseEntity.status(status).body(

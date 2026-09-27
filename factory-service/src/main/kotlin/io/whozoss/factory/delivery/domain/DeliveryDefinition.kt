@@ -134,8 +134,8 @@ fun validateDeliveryDefinition(input: Map<String, Any?>?): DeliveryDefinitionVal
         return DeliveryDefinitionValidation.Invalid("$")
     }
     val resolvedDeliveryType = deliveryType!!
-    val resolvedVersion = version!!
-    val resolvedTitle = title!!
+    val resolvedVersion = version
+    val resolvedTitle = title
     val rawCheckpoints = input["checkpoints"] as? List<*> ?: return DeliveryDefinitionValidation.Invalid("checkpoints")
     if (rawCheckpoints.size != DeliveryDefinitionSchema.STAGES.size) {
         return DeliveryDefinitionValidation.Invalid("checkpoints")

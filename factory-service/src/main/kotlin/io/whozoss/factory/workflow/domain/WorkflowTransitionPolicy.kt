@@ -95,7 +95,9 @@ object WorkflowTransitionPolicy {
         val requestedStatus = record["requestedStatus"] as? String
         val evidenceIds = record["evidenceIds"] as? List<*>
         val idempotencyKey = record["idempotencyKey"] as? String
-        if (workflowId != expectedWorkflowId || workflowId == null || !SAFE_ID.matches(workflowId) ||
+        // `workflowId != expectedWorkflowId` already rejects a null workflowId
+        // (expectedWorkflowId is non-null), so the extra null guard is redundant.
+        if (workflowId != expectedWorkflowId || !SAFE_ID.matches(workflowId) ||
             stepId == null || !SAFE_ID.matches(stepId)
         ) {
             return invalid()
@@ -241,7 +243,7 @@ object WorkflowTransitionPolicy {
                 factoryHuman -> {
                     val decision = selected.any {
                         it.kind == "human-decision" && it.outcome == "pass" &&
-                            it.source?.get("kind") == "factory-human" && it.source?.get("actorId") == execution.actorId
+                            it.source?.get("kind") == "factory-human" && it.source.get("actorId") == execution.actorId
                     }
                     if (!decision) return deny("PASS_EVIDENCE_REQUIRED", "matching_human_decision_required")
                 }
@@ -336,7 +338,7 @@ object WorkflowTransitionPolicy {
         if (request.requestedStatus == WorkflowStatuses.COMPLETED) {
             val decision = evidence.any {
                 it.evidenceId in request.evidenceIds && it.kind == "human-decision" && it.outcome == "pass" &&
-                    it.source?.get("kind") == "factory-human" && it.source?.get("actorId") == execution.actorId
+                    it.source?.get("kind") == "factory-human" && it.source.get("actorId") == execution.actorId
             }
             if (!decision) return deny("PASS_EVIDENCE_REQUIRED", "matching_human_decision_required", listOf("human-decision:pass"))
             val bridged = present.copy(
@@ -373,7 +375,7 @@ object WorkflowTransitionPolicy {
         val selected = request.evidenceIds.mapNotNull { id -> evidence.firstOrNull { it.evidenceId == id } }
         return if (selected.any {
                 it.kind == "human-decision" && it.outcome == "fail" &&
-                    it.source?.get("kind") == "factory-human" && it.source?.get("actorId") == execution.actorId
+                    it.source?.get("kind") == "factory-human" && it.source.get("actorId") == execution.actorId
             }
         ) {
             TransitionDecision.Allowed

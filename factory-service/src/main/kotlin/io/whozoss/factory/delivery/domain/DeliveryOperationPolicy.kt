@@ -89,7 +89,7 @@ fun evaluateDeliveryOperationPolicy(evaluation: DeliveryOperationPolicyEvaluatio
         if (request.approvedEvidenceId == null) {
             return opDenied("ROLLBACK_APPROVAL_REQUIRED", "approval_evidence_required")
         }
-        if (request.priorArtifactRef?.get("digest") == request.deploymentRef?.get("artifactDigest")) {
+        if (request.priorArtifactRef?.get("digest") == request.deploymentRef.get("artifactDigest")) {
             return opDenied("ROLLBACK_RELEASE_UNCHANGED", "prior_release_must_differ")
         }
         if (request.deploymentRef["targetHash"] != target.targetHash ||
