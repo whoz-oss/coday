@@ -231,6 +231,34 @@ await scenario('falls back to deterministic name heuristics', () => {
   assert.equal(classifyActorKind({ responsibility: { kind: 'code' }, name: 'Human review' }), 'code')
 })
 
+await scenario('honours an explicit projection lane over responsibility and hints', () => {
+  assert.equal(classifyActorKind({ id: 'x', name: 'Run tests', lane: 'human' }), 'human')
+  assert.equal(classifyActorKind({ lane: 'code', responsibility: { kind: 'agent' } }), 'code')
+  assert.equal(classifyActorKind({ lane: 'agent', responsibility: { kind: 'human' } }), 'agent')
+})
+
+await scenario('captures the lane, actor name and execution window on lane nodes', () => {
+  const layout = buildBlueprintLayout([
+    {
+      id: 'verify',
+      name: 'Fullstack verification',
+      status: 'completed',
+      lane: 'code',
+      responsibility: { kind: 'code', name: 'forge-fullstack-verification' },
+      startedAt: '2026-09-27T10:00:00.000Z',
+      completedAt: '2026-09-27T10:00:02.000Z',
+      durationMs: 2000,
+    },
+  ])
+  const node = layout.lanes.code[0]
+  assert.equal(node.actorKind, 'code')
+  assert.equal(node.lane, 'code')
+  assert.equal(node.responsibility.name, 'forge-fullstack-verification')
+  assert.equal(node.timing.startedAt, '2026-09-27T10:00:00.000Z')
+  assert.equal(node.timing.endedAt, '2026-09-27T10:00:02.000Z')
+  assert.equal(node.timing.durationMs, 2000)
+})
+
 await scenario('computes failed state and honours an explicit active step id', () => {
   const layout = buildBlueprintLayout(
     [

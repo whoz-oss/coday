@@ -8,6 +8,11 @@
 > 1. **l'instrument de mesure** (W8.1, fait) : la bibliothèque pure `factory-verification-core` ;
 > 2. **le session runner déclaratif** (W8.2 → W8.4, puis W6b) : le modèle de session, la résolution
 >    de capacité, les handlers agent-turn, la projection cockpit et la coupe Node.
+>
+> **État (2026-09-27)** : W8.1 → W8.4 sont faits. Il ne reste sur la trajectoire W8 que **W6b**
+> (coupe Node : bascule `LegacyRunService`, suppression du toolchain `factory/` et bascule complète
+> du cockpit sur `factory-service`). Le port restant noté « W8.5+ » (diagnostics, worker-runtime,
+> workflows `fix-loop`/`us-loop`) est hors de la trajectoire minimale de la coupe Node.
 
 ---
 
@@ -86,7 +91,7 @@ bibliothèque elle-même dépende du service.
 | **W8.1** | **Primitives déterministes** : `RunRegistry` (JSONL fail-par-défaut), `WorkspaceSnapshot` (git+SHA256), `OracleExecutor` (ProcessBuilder, classification, timeout, sortie bornée), `OracleCommand`, `PlanParsing`, `Domains` (résolution pure + surcharges env). Aucune dépendance AgentOS. | — | Parité de format JSONL, tests oracles déterministes. |
 | **W8.2** | **Définition de session déclarative + résolution de capacité** : modèle de step `id`/`name`/`dependsOn`/`responsibility{kind,name}` (kind ∈ `agent`/`code`/`human`), validation DAG (ids uniques, dépendances existantes, acyclicité, kind valide) ; manifeste `factory/verification.json` du **repo de destination** (liste blanche `name → commande`, `VERIFICATION_NOT_DECLARED`) dans `factory-verification-core` ; `CapabilityResolver` dans `factory-service` (code → exécution bout-en-bout du script déclaré ; human → checkpoint `human_interactions` ; agent → port `AgentTurnCapability` no-op `NOT_IMPLEMENTED_YET`). Voir § 8. | W8.1 | `./gradlew clean test` de `factory-verification-core` ET `factory-service` ; résolution code bout-en-bout. |
 | **W8.3** | **Séquenceur DAG + capacité agent-turn HTTP (fait)** : séquenceur automatique du DAG (`SessionSequencer` pur + `SessionRunService`) qui exécute les steps `ready`, applique la règle d'échec (un échec → dépendants transitifs `blocked`, branches indépendantes poursuivies, `human` → suspension `waiting_human` avec reprise), enregistre `workflow_step_states` + `workflow_transitions` + `workflow_evidence` et rafraîchit la projection ; capacité `agent` branchée sur `HttpAgentOsProxyClient.executeAgentTurn` (create case / post brief / quiescence / kill, HTTP uniquement) avec cycle `agent_step_attempts`. | W8.2 | `./gradlew clean test` (verification-core + service) ; fake HTTP AgentOS, oracles déterministes. |
-| **W8.4** | **Projection lanes cockpit + import** : projection lanes du cockpit, import, métriques workflow (`timing`/`retries`/evidence). | W8.3 | Fakes AgentOS + oracles déterministes, comparaison phases/statuts/facts. |
+| **W8.4** | **Projection lanes cockpit + import (fait)** : la projection de session porte par step la lane dérivée de `responsibility.kind` (`agent|code|human`), le nom d'acteur, le statut (`pending/ready/running/completed/failed/blocked/waiting_human`), la fenêtre d'exécution (`startedAt`/`completedAt`/`durationMs`) et les dépendances (`dependsOn`) ; import/upsert des définitions déclaratives (`POST /api/factory/workflow-definitions`, validées par le DAG) et seed au démarrage depuis `classpath:sessions/*.json` (exemple committé `forge-story-fullstack-ux`) ; rendu lanes du cockpit vanilla étendu (`temporal-lanes`/`gantt`) sur le contrat REST/SSE existant. | W8.3 | `./gradlew clean test` (verification-core + service) ; fakes AgentOS + oracles déterministes ; `node factory/tests/test-projection-governance.mjs`. |
 | **W8.5+ (port restant)** | Diagnostics + worker-runtime (si conservés), workflows `fix-loop`/`us-loop` (budgets, briefs, gardes). | W8.4 | Rejeu des diagnostics Node. |
 | **W6b** | **Coupe Node** : basculer `LegacyRunService` sur l'instrument Kotlin (remplacer `node factory/run.mjs`, corriger les écarts de spawn : catégorisation des args, propagation d'env dont le secret de gate, suivi runId, parsing des signaux de gate), puis retirer bundle, toolchain TS, `.mjs`, dashboard et mettre à jour `coday.yaml`/docs. | W8.5 | Run nominal de bout en bout + run AgentOS down (échec propre tracé) ; la suite Node ne tourne plus, le Kotlin couvre tout. |
 
@@ -171,8 +176,27 @@ le verdict est `exitCode == 0` (aucune interprétation de la sortie).
 | --- | --- | --- |
 | **W8.2** | modèle de session + validation DAG ; manifeste `factory/verification.json` (library pure, + Jackson) ; `CapabilityResolver` (code bout-en-bout, human checkpoint, agent port no-op) | `./gradlew clean test` des deux modules |
 | **W8.3 (fait)** | séquenceur DAG automatique (`SessionSequencer` + `SessionRunService`) + capacité agent-turn HTTP AgentOS (`HttpAgentOsProxyClient.executeAgentTurn`, quiescence, `agent_step_attempts`) | Fake HTTP AgentOS, oracles déterministes |
-| **W8.4** | projection lanes cockpit + import + métriques workflow | Fakes + oracles déterministes |
+| **W8.4 (fait)** | projection lanes cockpit (`lane`/`responsibility`/statuts/timestamps) + import/seed des définitions déclaratives (exemple `forge-story-fullstack-ux`) + rendu lanes cockpit | Fakes + oracles déterministes, suite Node |
 | **W6b** | coupe Node / bascule `LegacyRunService` | Run de bout en bout |
+
+## 8.5 W8.4 — projection multi-lanes & import des définitions (fait)
+
+- **Projection multi-lanes** : `SessionRunService` enrichit chaque step de la projection avec
+  `lane` (`agent|code|human`), `responsibility { kind, name }`, `status`, `startedAt`/`completedAt`,
+  `durationMs` et `dependsOn`. Les timings sont persistés dans `workflow_step_states.payload` (reprise
+  d'un run) et exposés via `workflow_instances.projection_json` / `workflow_projections` et la SSE
+  `/api/factory/workflows/stream`, sans nouvelle migration (V1→V9 gelées). `WorkflowProjectionValidator`
+  accepte et normalise ces attributs optionnels (dérivation de `lane` depuis `responsibility.kind`),
+  rétro-compatible v1/v2.
+- **Import/seed** : `POST /api/factory/workflow-definitions` (upsert) reste la surface d'import, validée
+  par `WorkflowDefinitionValidator`/`SessionDefinitionValidator` (ids uniques, `dependsOn` valides,
+  acyclicité, `kind` valide). `SessionDefinitionCatalog` charge `classpath:sessions/*.json` et
+  `WorkflowDefinitionSeeder` les enregistre de façon idempotente ; `SessionDefinitionSeedRunner` amorce
+  le tenant par défaut au démarrage (`factory.workflow.seed.enabled`, désactivé sous le profil `openapi`).
+  Définition d'exemple committée : `factory-service/src/main/resources/sessions/forge-story-fullstack-ux.json`.
+- **Rendu cockpit** : `factory/dashboard/js/components/temporal-lanes.mjs` priorise l'attribut explicite
+  `lane`, puis `responsibility.kind`, et capture `completedAt`/`durationMs` ; `gantt.mjs` tient compte de
+  `lane`. Contrat REST/SSE inchangé — la bascule complète du cockpit et la coupe Node restent **W6b**.
 
 ## 9. Risques principaux (conception §6.3)
 

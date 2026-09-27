@@ -50,6 +50,11 @@ factory:
     jira-api-token: ${JIRA_API_TOKEN:}
   proxy:
     agentos-url: ${AGENTOS_URL:http://localhost:8080}
+  workflow:
+    seed:
+      # Registers the bundled declarative session definitions
+      # (`classpath:sessions/*.json`) into the configured default tenant on startup.
+      enabled: ${FACTORY_WORKFLOW_SEED_ENABLED:true}
   artifact:
     retention-days: ${ARTIFACT_RETENTION_DAYS:90}
     signed-url-ttl-seconds: ${ARTIFACT_SIGNED_URL_TTL:900}
