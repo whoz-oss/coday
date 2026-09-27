@@ -5,6 +5,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 /**
  * Translates exceptions into the canonical Factory error envelope.
@@ -29,6 +30,30 @@ class FactoryExceptionHandler {
                         code = exception.errorCode,
                         message = exception.message ?: exception.errorCode,
                         details = exception.details,
+                    ),
+                ),
+            )
+    }
+
+    /**
+     * An unmapped URL reaches the resource handler in Spring 6.1+, which raises
+     * [NoResourceFoundException]. Without this explicit mapping the catch-all
+     * [Exception] handler below would turn every unknown path into a `500`,
+     * breaking the plugin contract: a core without the Forge plugin must leave
+     * the `api/forge` and `api/jira` surfaces unmounted and answer `404`.
+     */
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResourceFound(exception: NoResourceFoundException): ResponseEntity<ErrorResponse> {
+        logger.debug { "No handler for request: ${exception.resourcePath}" }
+        return ResponseEntity
+            .status(404)
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(
+                ErrorResponse(
+                    ErrorDetail(
+                        code = "NOT_FOUND",
+                        message = "Resource not found",
+                        details = null,
                     ),
                 ),
             )

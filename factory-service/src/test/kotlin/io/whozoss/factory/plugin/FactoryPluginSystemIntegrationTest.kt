@@ -13,8 +13,12 @@ import org.springframework.web.servlet.function.RouterFunction
 
 /**
  * Verifies the PF4J plugin host boots cleanly with an empty `plugins/`
- * directory and that the pre-existing Forge surfaces stay fully functional when
- * no plugin contributes a route.
+ * directory: the core routes respond, and the optional Forge plugin surfaces are
+ * absent (`404`) until the plugin JAR is deployed.
+ *
+ * The `factory.plugins.dir` property is pinned to a temp directory by
+ * [io.whozoss.factory.PostgresContainerSpec], so this test always exercises the
+ * "core without plugin" contract.
  */
 class FactoryPluginSystemIntegrationTest : DomainIntegrationTest() {
 
@@ -41,7 +45,7 @@ class FactoryPluginSystemIntegrationTest : DomainIntegrationTest() {
     }
 
     @Test
-    fun `existing factory workstream route still returns 200`() {
+    fun `core workstream route still returns 200 without the plugin`() {
         val response = restTemplate.getForEntity(
             "/api/factory/workstreams?namespaceId=test",
             Array<Any>::class.java,
@@ -50,11 +54,22 @@ class FactoryPluginSystemIntegrationTest : DomainIntegrationTest() {
     }
 
     @Test
-    fun `the forge runs route is still mapped and validates its query parameter`() {
-        val response = restTemplate.getForEntity("/api/forge/runs", Map::class.java)
-
+    fun `core agentos relay route is still mapped without the plugin`() {
+        val response = restTemplate.getForEntity("/api/agents", Map::class.java)
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
         val error = response.body?.get("error") as? Map<*, *>
         assertThat(error?.get("code")).isEqualTo("MISSING_NAMESPACE_ID")
+    }
+
+    @Test
+    fun `forge routes are absent when the plugin is not deployed`() {
+        val response = restTemplate.getForEntity("/api/forge/runs", Map::class.java)
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+    }
+
+    @Test
+    fun `jira routes are absent when the plugin is not deployed`() {
+        val response = restTemplate.getForEntity("/api/jira/PROJ-1", Map::class.java)
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
     }
 }

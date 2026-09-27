@@ -105,6 +105,15 @@ abstract class PostgresContainerSpec {
                 Files.writeString(root.resolve("smoke@1.0.0.json"), SMOKE_DEFINITION)
             }
 
+        /**
+         * Empty plug-in drop-in directory shared by every integration test, so the
+         * suite always runs the core *without* any deployed plugin regardless of
+         * what is present in the default `plugins/` directory on disk.
+         */
+        @JvmStatic
+        protected val pluginsDir: Path =
+            Files.createTempDirectory("factory-test-plugins")
+
         @JvmStatic
         @DynamicPropertySource
         fun registerSharedProperties(registry: DynamicPropertyRegistry) {
@@ -116,6 +125,7 @@ abstract class PostgresContainerSpec {
             registry.add("spring.flyway.validate-on-migrate") { "true" }
             registry.add("factory.oracle.definitions-root") { oracleDefinitionsRoot.toAbsolutePath().toString() }
             registry.add("factory.security.fake-idp-secret") { SHARED_FAKE_IDP_SECRET }
+            registry.add("factory.plugins.dir") { pluginsDir.toAbsolutePath().toString() }
             registry.add("server.forward-headers-strategy") { "framework" }
         }
     }

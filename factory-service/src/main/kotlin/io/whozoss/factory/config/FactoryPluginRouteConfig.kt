@@ -23,8 +23,9 @@ import java.util.Optional
  * [FactoryRouteContributor] extensions as a Spring MVC `RouterFunction`.
  *
  * The router is always a bean: with zero installed plugins it is an empty
- * router, so the application context still starts cleanly and the pre-existing
- * `@RestController` surfaces (`/api/forge/...`, …) keep working unchanged.
+ * router, so the application context still starts cleanly and the core
+ * `@RestController` surfaces (workstreams, legacy runs, AgentOS relay, …) keep
+ * working unchanged.
  */
 @Configuration
 class FactoryPluginRouteConfig {
@@ -74,6 +75,7 @@ class FactoryPluginRouteConfig {
             queryParams = params(),
             headers = headers().asHttpHeaders().mapValues { it.value },
             body = runCatching { body(String::class.java) }.getOrNull(),
+            attributes = attributes(),
         )
 
     companion object : KLogging()

@@ -3,11 +3,11 @@ package io.whozoss.factory.runs.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.forge.web.forgeError
-import io.whozoss.factory.forge.web.resolveForgeCaller
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.runs.service.LegacyRunService
 import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.factoryError
+import io.whozoss.factory.web.resolveFactoryCaller
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -32,7 +32,7 @@ class LegacyRunController(
     private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
-    private fun requireCaller(trustContext: TrustContext?) = resolveForgeCaller(trustContext, tenantScopeProvider)
+    private fun requireCaller(trustContext: TrustContext?) = resolveFactoryCaller(trustContext, tenantScopeProvider)
 
     // ----- /api/runs --------------------------------------------------------
 
@@ -64,7 +64,7 @@ class LegacyRunController(
     @Operation(summary = "Read a legacy run detail.")
     fun detail(@PathVariable id: String, @Parameter(hidden = true) trustContext: TrustContext?): Any {
         requireCaller(trustContext)
-        return runs.detailRun(id) ?: forgeError(404, "RUN_NOT_FOUND", "Run introuvable")
+        return runs.detailRun(id) ?: factoryError(404, "RUN_NOT_FOUND", "Run introuvable")
     }
 
     // ----- /api/factory/runs ------------------------------------------------
@@ -101,7 +101,7 @@ class LegacyRunController(
     @Operation(summary = "Read a legacy run detail (alias).")
     fun factoryDetail(@PathVariable id: String, @Parameter(hidden = true) trustContext: TrustContext?): Any {
         requireCaller(trustContext)
-        return runs.detailRun(id) ?: forgeError(404, "RUN_NOT_FOUND", "Run introuvable")
+        return runs.detailRun(id) ?: factoryError(404, "RUN_NOT_FOUND", "Run introuvable")
     }
 
     @PostMapping(path = ["/factory/runs/{id}/stop"])
@@ -130,7 +130,7 @@ class LegacyRunController(
     fun reviewGate(@PathVariable id: String, @Parameter(hidden = true) trustContext: TrustContext?): Any {
         requireCaller(trustContext)
         val result = runs.reviewGate(id)
-        if (result["status"] == 404) forgeError(404, "RUN_NOT_FOUND", "Run not found.")
+        if (result["status"] == 404) factoryError(404, "RUN_NOT_FOUND", "Run not found.")
         return result
     }
 
