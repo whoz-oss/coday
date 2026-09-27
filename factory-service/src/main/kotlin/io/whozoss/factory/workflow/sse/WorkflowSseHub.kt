@@ -1,6 +1,8 @@
 package io.whozoss.factory.workflow.sse
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.context.ApplicationListener
+import org.springframework.context.event.ContextClosedEvent
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
@@ -41,7 +43,7 @@ object WorkflowProjectionEvents {
 class WorkflowSseHub(
     private val objectMapper: ObjectMapper,
     private val heartbeatMs: Long = 30_000,
-) {
+) : ApplicationListener<ContextClosedEvent> {
 
     private class Client(
         val emitter: SseEmitter,
@@ -63,10 +65,15 @@ class WorkflowSseHub(
         val client = Client(emitter)
         clients.computeIfAbsent(namespaceId) { ConcurrentHashMap.newKeySet() }.add(client)
 
-        val remove = { removeClient(namespaceId, client) }
-        emitter.onCompletion(remove)
-        emitter.onTimeout(remove)
-        emitter.onError { remove() }
+        emitter.onCompletion { removeClient(namespaceId, client) }
+        // Complete the emitter on async timeout so the servlet container is not
+        // left holding an open async request (which stalls graceful shutdown and
+        // surfaces an `AsyncRequestTimeoutException`).
+        emitter.onTimeout {
+            emitter.complete()
+            removeClient(namespaceId, client)
+        }
+        emitter.onError { removeClient(namespaceId, client) }
         client.heartbeat = scheduler.scheduleAtFixedRate(
             { sendHeartbeat(namespaceId, client) },
             heartbeatMs,
@@ -110,6 +117,29 @@ class WorkflowSseHub(
 
     /** Number of live connections for a namespace (test/introspection hook). */
     fun size(namespaceId: String): Int = clients[namespaceId]?.count { !it.closed } ?: 0
+
+    /**
+     * Completes every live emitter when the context closes.
+     *
+     * [ContextClosedEvent] is published before Spring Boot's graceful web-server
+     * shutdown starts waiting for active requests, so completing the streams here
+     * lets the connector drain immediately instead of blocking for the full
+     * `spring.lifecycle.timeout-per-shutdown-phase` (30s) and then logging
+     * "Graceful shutdown aborted with one or more requests still active".
+     */
+    override fun onApplicationEvent(event: ContextClosedEvent) {
+        for ((namespaceId, namespaceClients) in clients) {
+            for (client in namespaceClients.toList()) {
+                try {
+                    client.emitter.complete()
+                } catch (_: Exception) {
+                    // already completed or client gone
+                }
+                removeClient(namespaceId, client)
+            }
+        }
+        scheduler.shutdownNow()
+    }
 
     /**
      * An [SseEmitter.SseEventBuilder] that writes a pre-framed raw SSE frame

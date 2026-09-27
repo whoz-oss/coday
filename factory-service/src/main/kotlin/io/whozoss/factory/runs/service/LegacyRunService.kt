@@ -3,6 +3,8 @@ package io.whozoss.factory.runs.service
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.web.RawSseEvent
+import org.springframework.context.ApplicationListener
+import org.springframework.context.event.ContextClosedEvent
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.nio.file.Files
 import java.nio.file.Path
@@ -25,7 +27,7 @@ class LegacyRunService(
     private val jiraBaseUrl: String?,
     private val jiraEmail: String?,
     private val jiraApiToken: String?,
-) {
+) : ApplicationListener<ContextClosedEvent> {
 
     private val mapper = ObjectMapper()
 
@@ -413,9 +415,37 @@ class LegacyRunService(
         }
         entry.listeners.add(emitter)
         emitter.onCompletion { entry.listeners.remove(emitter) }
-        emitter.onTimeout { entry.listeners.remove(emitter) }
+        // Complete the emitter on async timeout so the servlet container is not
+        // left holding an open async request (which stalls graceful shutdown and
+        // surfaces an `AsyncRequestTimeoutException`).
+        emitter.onTimeout {
+            emitter.complete()
+            entry.listeners.remove(emitter)
+        }
         emitter.onError { entry.listeners.remove(emitter) }
         return emitter
+    }
+
+    /**
+     * Completes every live run stream when the context closes.
+     *
+     * [ContextClosedEvent] is published before Spring Boot's graceful web-server
+     * shutdown starts waiting for active requests, so completing the streams here
+     * lets the connector drain immediately instead of blocking for the full
+     * `spring.lifecycle.timeout-per-shutdown-phase` (30s) and then logging
+     * "Graceful shutdown aborted with one or more requests still active".
+     */
+    override fun onApplicationEvent(event: ContextClosedEvent) {
+        for (entry in activeRuns.values) {
+            for (listener in entry.listeners.toList()) {
+                try {
+                    listener.complete()
+                } catch (_: Exception) {
+                    // already completed or client gone
+                }
+                entry.listeners.remove(listener)
+            }
+        }
     }
 
     private fun json(value: Any?): String = mapper.writeValueAsString(value)
