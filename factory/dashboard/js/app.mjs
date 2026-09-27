@@ -17,6 +17,7 @@ import { SseClient } from './services/sse-client.mjs'
 import { ApiClient } from './services/api-client.mjs'
 import { mountRunLaunchView } from './views/run-launch.mjs'
 import { mountArtifactAdminView } from './views/artifact-admin.mjs'
+import { mountProjectionView } from './views/projection.mjs'
 import { mount as mountForgeCockpit } from './views/forge-cockpit.mjs'
 
 export const ROUTES = Object.freeze({
@@ -235,6 +236,21 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
     apiClient: api,
     mounters: VIEW_MOUNTERS,
     onMount: (route, ctx) => {
+      if (route === '/projection') {
+        // Timeline / swimlanes view: lists the workflow sessions and renders
+        // each projection's human / agent / code lanes, live-updated by the
+        // named `/api/factory/workflows/stream` SSE events.
+        const projectionContainer = doc.getElementById('view-projection')
+        if (!projectionContainer) return
+        mountProjectionView(projectionContainer, {
+          api,
+          namespaceId: resolveNamespaceId(win),
+          registerTeardown: ctx.registerTeardown,
+          showModal: (content) => showModal(content, doc),
+          closeModal: () => closeModal(doc),
+        })
+        return
+      }
       if (route !== '/forge') return
       const container = doc.getElementById('view-forge')
       if (!container) return
