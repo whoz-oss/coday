@@ -7,14 +7,25 @@
 
 :root {
   color-scheme: dark;
-  --bg:#06080f; --panel:#0d1119; --panel-2:#131a26; --panel-3:#0a0e16;
-  --border:#232c3d; --border-soft:#222b3d;
-  --text:#f2f5fa; --dim:#aabdd5; --faint:#8b9cb6;
-  --green:#4ade80; --red:#ff6f67; --blue:#6cb6ff; --amber:#e8b64a;
-  --purple:#c89bff; --cyan:#5ad2dd; --violet:#94a3ff;
-  --sans:'Play','Helvetica Neue',system-ui,sans-serif;
-  --mono:ui-monospace,'SF Mono',Menlo,Monaco,'Roboto Mono',monospace;
-  --surface:linear-gradient(180deg,#10141f 0%,#0b0f18 100%);
+  --bg: #06080f;
+  --panel: #0d1119;
+  --panel-2: #131a26;
+  --panel-3: #0a0e16;
+  --border: #232c3d;
+  --border-soft: #222b3d;
+  --text: #f2f5fa;
+  --dim: #aabdd5;
+  --faint: #8b9cb6;
+  --green: #4ade80;
+  --red: #ff6f67;
+  --blue: #6cb6ff;
+  --amber: #e8b64a;
+  --purple: #c89bff;
+  --cyan: #5ad2dd;
+  --violet: #94a3ff;
+  --sans: 'Play', 'Helvetica Neue', system-ui, sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Monaco, 'Roboto Mono', monospace;
+  --surface: linear-gradient(180deg, #10141f 0%, #0b0f18 100%);
 }
 
 /* ------------------------------------------------------------------ Reset */
@@ -148,7 +159,10 @@ samp,
   border: 1px solid transparent;
   color: var(--dim);
   font-weight: 500;
-  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    border-color 180ms ease;
 }
 
 .cockpit-nav a:hover {
@@ -342,7 +356,10 @@ button,
   background: var(--panel-2);
   color: var(--text);
   cursor: pointer;
-  transition: transform 150ms ease, box-shadow 180ms ease, filter 180ms ease;
+  transition:
+    transform 150ms ease,
+    box-shadow 180ms ease,
+    filter 180ms ease;
 }
 
 button:hover,
@@ -532,7 +549,9 @@ button:hover,
   font-size: 12px;
 }
 
-.temporal-lanes .lane-step-name { color: var(--text); }
+.temporal-lanes .lane-step-name {
+  color: var(--text);
+}
 .temporal-lanes .lane-step-actor {
   color: var(--cyan);
   font-family: var(--mono);
@@ -545,22 +564,362 @@ button:hover,
   letter-spacing: 0.04em;
 }
 
-.temporal-lanes .lane-step.state-completed { border-color: var(--green); }
-.temporal-lanes .lane-step.state-active { border-color: var(--blue); }
-.temporal-lanes .lane-step.state-failed { border-color: var(--red); }
-.temporal-lanes .lane-step.state-pending { opacity: 0.72; }
+.temporal-lanes .lane-step.state-completed {
+  border-color: var(--green);
+}
+.temporal-lanes .lane-step.state-active {
+  border-color: var(--blue);
+}
+.temporal-lanes .lane-step.state-failed {
+  border-color: var(--red);
+}
+.temporal-lanes .lane-step.state-pending {
+  opacity: 0.72;
+}
 .temporal-lanes .lane-step.lane-empty {
   border-style: dashed;
   color: var(--faint);
   opacity: 0.6;
 }
 
-.workflow-card-temporal-lanes { margin-top: 6px; }
+.workflow-card-temporal-lanes {
+  margin-top: 6px;
+}
 
 /* The whole card is the click target that opens the run's detail timeline
    (see projection.mjs); nested links and buttons keep their own affordance. */
-.workflow-card { cursor: pointer; }
+.workflow-card {
+  cursor: pointer;
+}
 .workflow-card a,
 .workflow-card button {
   cursor: pointer;
+}
+
+/* ------------------------------------------------ SSSF waterfall timeline */
+/* Run detail view: a run-strip band followed by one horizontal lane per actor,
+   with phase blocks positioned in REAL time (temporal-lanes.mjs). */
+
+.run-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.run-strip-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.run-strip-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.run-strip-meta {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.run-strip-type {
+  text-transform: none;
+}
+
+.run-strip-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-3);
+  font-size: 11px;
+}
+
+.stat-ico {
+  color: var(--cyan);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.stat-key {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.stat-val {
+  color: var(--text);
+}
+
+.stat-missing .stat-val {
+  color: var(--faint);
+}
+
+.waterfall-container {
+  --lane-label-width: 280px;
+  --lane-gap: 10px;
+  margin-top: 6px;
+}
+
+.waterfall-axis {
+  display: grid;
+  grid-template-columns: var(--lane-label-width) 1fr;
+  gap: var(--lane-gap);
+  margin-bottom: 4px;
+}
+
+.waterfall-axis-track {
+  position: relative;
+  height: 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.axis-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px dashed var(--border-soft);
+}
+
+.axis-tick-label {
+  position: absolute;
+  top: -1px;
+  left: 4px;
+  font-size: 10px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.axis-tick:last-child .axis-tick-label {
+  left: auto;
+  right: 4px;
+}
+
+.waterfall-lane {
+  display: grid;
+  grid-template-columns: var(--lane-label-width) 1fr;
+  gap: var(--lane-gap);
+  align-items: stretch;
+  padding: 6px 0;
+  border-top: 1px solid rgba(35, 44, 61, 0.55);
+}
+
+.waterfall-lane:first-of-type {
+  border-top: none;
+}
+
+.lane-label-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lane-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.lane-ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lane-name {
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  color: var(--lane-color, var(--text));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lane-submeta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 30px;
+}
+
+.submeta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--faint);
+}
+
+.submeta-ico {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.submeta-key {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.submeta-val {
+  color: var(--dim);
+}
+
+.context-bar {
+  flex: 1;
+  max-width: 90px;
+  height: 5px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-3);
+  overflow: hidden;
+}
+
+.context-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--lane-color, var(--cyan));
+}
+
+.lane-track {
+  position: relative;
+  min-height: 38px;
+  border-radius: 10px;
+  border: 1px solid rgba(35, 44, 61, 0.55);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0));
+}
+
+.lane-empty-note {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.waterfall-block {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  min-width: 30px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--lane-color, var(--border));
+  background: rgba(255, 255, 255, 0.06);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--lane-color, var(--cyan)) 26%, transparent),
+    color-mix(in srgb, var(--lane-color, var(--cyan)) 12%, transparent)
+  );
+  box-shadow: 0 0 12px color-mix(in srgb, var(--lane-color, var(--cyan)) 18%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    filter 150ms ease,
+    transform 150ms ease;
+}
+
+.waterfall-block:hover {
+  filter: brightness(1.18);
+}
+
+.waterfall-block .block-glyph {
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.waterfall-block .block-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.waterfall-block .block-duration {
+  margin-left: auto;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  font-size: 10px;
+  color: var(--dim);
+}
+
+.waterfall-block.state-failed {
+  border-color: var(--red);
+  background: linear-gradient(180deg, rgba(255, 111, 103, 0.3), rgba(255, 111, 103, 0.12));
+}
+
+.waterfall-block.state-active {
+  border-color: var(--blue);
+  background: linear-gradient(180deg, rgba(108, 182, 255, 0.3), rgba(108, 182, 255, 0.12));
+  box-shadow: 0 0 14px rgba(108, 182, 255, 0.45);
+}
+
+.waterfall-block.state-pending,
+.waterfall-block.is-queued {
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.85;
+}
+
+.block-queued {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+@media (max-width: 900px) {
+  .waterfall-container {
+    --lane-label-width: 190px;
+  }
+}
+
+@media (max-width: 480px) {
+  .waterfall-container {
+    --lane-label-width: 130px;
+  }
+
+  .lane-submeta {
+    padding-left: 0;
+  }
+
+  .waterfall-block .block-duration {
+    display: none;
+  }
 }

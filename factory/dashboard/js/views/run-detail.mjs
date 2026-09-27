@@ -24,7 +24,7 @@
 
 import { WORKFLOW_PROJECTION_EVENTS } from '../services/sse-client.mjs'
 import { normalizeSteps, renderGantt } from '../components/gantt.mjs'
-import { buildBlueprintLayout, renderTemporalLanes } from '../components/temporal-lanes.mjs'
+import { buildWaterfallLayout, renderWaterfallTimeline } from '../components/temporal-lanes.mjs'
 import { renderPhasePanel, loadPhaseEnrichment } from '../components/phase-panel.mjs'
 import { esc, fmtDur } from '../components/facts.mjs'
 import { buildCaseLinkHtml } from '../components/case-link.mjs'
@@ -53,11 +53,19 @@ function isExistingWorkflow(workflow) {
 
 function renderSwimlanes(lanesHtml) {
   return (
-    '<div class="panel" data-run-detail-lanes="true">' +
-    '<h2 class="panel-title">Timeline</h2>' +
-    lanesHtml +
-    '</div>'
+    '<div class="panel" data-run-detail-lanes="true">' + '<h2 class="panel-title">Timeline</h2>' + lanesHtml + '</div>'
   )
+}
+
+// The run waterfall is fed the Governed Projection v2 steps (which carry
+// `lane`, `responsibility`, `startedAt`, `completedAt`, `durationMs`); the
+// timing payload supplies the run origin when the projection omits it.
+function renderTimeline(state, now) {
+  const layout = buildWaterfallLayout(state.workflow, {
+    now,
+    startedAt: state.timing?.startedAt ?? state.timing?.createdAt ?? null,
+  })
+  return renderWaterfallTimeline(layout)
 }
 
 function renderMetricsStrip(metrics) {
@@ -213,9 +221,9 @@ export async function mount(container, options = {}) {
     }
 
     const currentSteps = steps()
-    // Human / agent / code swimlanes: the same lane layout the list cards use,
-    // rendered here as the run's readable timeline (statuses + actors).
-    const lanes = renderTemporalLanes(buildBlueprintLayout(state.workflow?.projection?.steps ?? []))
+    // SSSF-style horizontal waterfall: run-strip + one lane per actor, with
+    // phase blocks positioned in real time from the projection timestamps.
+    const lanes = renderTimeline(state, now())
     const gantt = renderGantt({
       workflow: state.workflow,
       timing: state.timing,
@@ -232,7 +240,7 @@ export async function mount(container, options = {}) {
     })
 
     container.innerHTML = `<div class="run-detail" data-run-detail="true">${renderHeader()}${renderSwimlanes(
-      lanes,
+      lanes
     )}${gantt}${panel}${renderMetricsStrip(state.metrics)}</div>`
   }
 
