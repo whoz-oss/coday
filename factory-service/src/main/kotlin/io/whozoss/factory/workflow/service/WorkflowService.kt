@@ -90,13 +90,22 @@ class WorkflowService(
     // Projections (declarative store + governed instances)
     // ------------------------------------------------------------------
 
+    /**
+     * Lists workflow projections of the caller's tenant scope.
+     *
+     * [namespaceId] is an OPTIONAL filter: when it is `null`/blank every
+     * namespace of the scope is listed; when it is supplied only that namespace
+     * is returned. The tenant isolation always comes from [scope] — never from
+     * the namespace filter.
+     */
     @Transactional(readOnly = true)
-    fun listProjections(scope: TenantScope, namespaceId: String, state: String): Map<String, Any?> {
+    fun listProjections(scope: TenantScope, namespaceId: String?, state: String): Map<String, Any?> {
         if (state !in setOf("active", "removed")) {
             throw workflowException(WorkflowErrorCodes.UNSUPPORTED_STATE, "state must be active or removed.")
         }
-        val items = repository.listProjections(scope, namespaceId, state).map { publicSnapshot(it) }
-        return mapOf("namespaceId" to namespaceId, "state" to state, "items" to items)
+        val resolvedNamespace = namespaceId?.takeIf { it.isNotBlank() }
+        val items = repository.listProjections(scope, resolvedNamespace, state).map { publicSnapshot(it) }
+        return mapOf("namespaceId" to (resolvedNamespace ?: ""), "state" to state, "items" to items)
     }
 
     @Transactional(readOnly = true)

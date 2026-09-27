@@ -32,6 +32,12 @@ springdoc:
     path: /v3/api-docs
 
 factory:
+  cockpit:
+    # Directory of the vanilla cockpit (`cockpit.html`, `css/**`, `js/**`) served
+    # same-origin at /cockpit. A relative path is resolved against the process
+    # working directory, then its parent (so it works when launched from
+    # `factory-service/`).
+    assets-dir: ${FACTORY_COCKPIT_ASSETS_DIR:factory/dashboard}
   bind:
     host: ${FACTORY_BIND_HOST:127.0.0.1}
     unsafe-allow-remote-bind: ${FACTORY_UNSAFE_ALLOW_REMOTE_BIND:false}

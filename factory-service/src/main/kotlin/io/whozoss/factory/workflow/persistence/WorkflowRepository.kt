@@ -108,7 +108,13 @@ interface WorkflowRepository {
     // ----- declarative projection store ----------------------------------
     fun findProjection(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowProjectionRecord?
 
-    fun listProjections(scope: TenantScope, namespaceId: String, lifecycleState: String): List<WorkflowProjectionRecord>
+    /**
+     * Lists the projections of a scope, optionally filtered by namespace.
+     *
+     * A `null`/blank [namespaceId] lists every namespace of the scope; a
+     * supplied namespace filters to that one. The tenant key is always applied.
+     */
+    fun listProjections(scope: TenantScope, namespaceId: String?, lifecycleState: String): List<WorkflowProjectionRecord>
 
     /** Publication with optional optimistic-locking [expectedRevision] (0 = create). */
     fun publishProjection(

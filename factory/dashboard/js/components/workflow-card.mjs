@@ -15,7 +15,7 @@
  * `codayExpressUrl` base is supplied — never a URL built from thread input.
  */
 
-import { buildBlueprintLayout } from './temporal-lanes.mjs'
+import { buildBlueprintLayout, renderTemporalLanes } from './temporal-lanes.mjs'
 import { buildCaseLinkHtml, buildAgentosCaseUrl, escapeHtml, escapeAttr } from './case-link.mjs'
 
 // Re-exported for backwards compatibility: `case-link.mjs` now owns the single
@@ -134,6 +134,10 @@ export function renderWorkflowCard(snapshot = {}, options = {}) {
     })
     .join('')
 
+  // Three temporal swimlanes (human / agent / code) with each step's status and
+  // actor name (`responsibility.name`); the same layout drives the lane chips.
+  const temporalLanes = renderTemporalLanes(layout)
+
   const isRemoved = lifecycle === 'removed'
   const restoreButton = isRemoved
     ? `<button type="button" class="btn btn-primary" data-action="restore" data-workflow-id="${escapeAttr(workflowId)}">Restaurer</button>`
@@ -164,6 +168,7 @@ export function renderWorkflowCard(snapshot = {}, options = {}) {
     `<span class="workflow-card-progress-label">${completedSteps}/${totalSteps} étapes</span>` +
     `</div>` +
     `<div class="workflow-card-lanes">${laneChips}</div>` +
+    `<div class="workflow-card-temporal-lanes" data-temporal-lanes="true">${temporalLanes}</div>` +
     (durationLabel ? `<div class="workflow-card-timing cockpit-duration">${escapeHtml(durationLabel)}</div>` : '') +
     `<div class="workflow-card-actions">${restoreButton}${removeButton}${purgeButton}</div>` +
     `</article>`

@@ -486,3 +486,73 @@ button:hover,
     max-width: 94vw;
   }
 }
+
+/* ------------------------------------------------------- Temporal swimlanes */
+/* Three actor lanes (Human / Agent / Code) rendered by temporal-lanes.mjs
+   inside each workflow card. Tokens only — no new colours. */
+
+.temporal-lanes {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.temporal-lanes .lane {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: start;
+  gap: 8px;
+}
+
+.temporal-lanes .lane-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+  padding-top: 4px;
+}
+
+.temporal-lanes .lane-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.temporal-lanes .lane-step {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.temporal-lanes .lane-step-name { color: var(--text); }
+.temporal-lanes .lane-step-actor {
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.temporal-lanes .lane-step-status {
+  color: var(--faint);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.temporal-lanes .lane-step.state-completed { border-color: var(--green); }
+.temporal-lanes .lane-step.state-active { border-color: var(--blue); }
+.temporal-lanes .lane-step.state-failed { border-color: var(--red); }
+.temporal-lanes .lane-step.state-pending { opacity: 0.72; }
+.temporal-lanes .lane-step.lane-empty {
+  border-style: dashed;
+  color: var(--faint);
+  opacity: 0.6;
+}
+
+.workflow-card-temporal-lanes { margin-top: 6px; }

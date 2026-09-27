@@ -195,10 +195,17 @@ export function renderTemporalLanes(layout, options = {}) {
       ? nodes
           .map((node) => {
             const style = `--start:${node.timing?.startRatio ?? 0};--width:${node.timing?.widthRatio ?? 1}`
+            const actor = node.responsibility?.name ?? null
+            const title = actor ? `${node.name} — ${actor} (${node.state})` : `${node.name} (${node.state})`
             return (
               `<li class="lane-step state-${escapeHtml(node.state)}" data-step-id="${escapeHtml(node.id)}" ` +
-              `data-state="${escapeHtml(node.state)}" style="${style}" title="${escapeHtml(node.name)}">` +
+              `data-lane="${kind}" data-status="${escapeHtml(node.status)}" ` +
+              `data-state="${escapeHtml(node.state)}" style="${style}" title="${escapeHtml(title)}">` +
               `<span class="lane-step-name">${escapeHtml(node.name)}</span>` +
+              (actor
+                ? `<span class="lane-step-actor" data-actor="${escapeHtml(actor)}">${escapeHtml(actor)}</span>`
+                : '') +
+              `<span class="lane-step-status" data-status-label="${escapeHtml(node.state)}">${escapeHtml(node.state)}</span>` +
               `</li>`
             )
           })

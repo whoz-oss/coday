@@ -56,13 +56,15 @@ class WorkflowController(
     // ----- collection / detail ------------------------------------------
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(summary = "List workflow projections for a namespace.")
+    @Operation(summary = "List workflow projections of the caller's tenant scope (optionally filtered by namespace).")
     fun list(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestParam(name = "state", required = false) state: String?,
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        // `namespaceId` is an OPTIONAL filter: absent/blank lists every namespace
+        // of the caller's trusted tenant scope.
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId, requireNamespace = false)
         return WorkflowDataEnvelope(service.listProjections(caller.scope, caller.namespaceId, state ?: "active"))
     }
 
