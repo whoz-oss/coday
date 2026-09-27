@@ -17,9 +17,9 @@ import org.springframework.stereotype.Component
  *    (`VERIFICATION_NOT_DECLARED`) and executes the declared command through
  *    `factory-verification-core` (`OracleExecutor`). The verdict is
  *    `exitCode == 0`; nothing is inferred from the output.
- *  - `agent` -> delegates to [AgentTurnCapability]. The default
- *    [NoOpAgentTurnCapability] returns `NOT_IMPLEMENTED_YET`: the HTTP AgentOS
- *    transport is W8.3 and is intentionally not wired here.
+ *  - `agent` -> delegates to [AgentTurnCapability]. W8.3 wires the HTTP AgentOS
+ *    implementation ([AgentOsAgentTurnCapability]); the default
+ *    [NoOpAgentTurnCapability] is only used by pure unit tests.
  *  - `human` -> returns a checkpoint intent; the persistence boundary
  *    (`human_interactions`) is handled by [CapabilityExecutionService].
  *
@@ -32,10 +32,16 @@ class CapabilityResolver(
     private val agentTurnCapability: AgentTurnCapability = NoOpAgentTurnCapability(),
 ) {
 
-    fun resolve(step: WorkflowStepDefinition, repoRoot: Path): CapabilityOutcome =
+    fun resolve(
+        step: WorkflowStepDefinition,
+        repoRoot: Path,
+        namespaceId: String? = null,
+        workflowId: String? = null,
+        brief: String? = null,
+    ): CapabilityOutcome =
         when (step.responsibility.kind) {
             ResponsibilityKind.CODE -> resolveCode(step, repoRoot)
-            ResponsibilityKind.AGENT -> resolveAgent(step, repoRoot)
+            ResponsibilityKind.AGENT -> resolveAgent(step, repoRoot, namespaceId, workflowId, brief)
             ResponsibilityKind.HUMAN ->
                 CapabilityOutcome.HumanCheckpointRequired(step.id, step.responsibility.name)
         }
@@ -72,9 +78,22 @@ class CapabilityResolver(
         }
     }
 
-    private fun resolveAgent(step: WorkflowStepDefinition, repoRoot: Path): CapabilityOutcome {
+    private fun resolveAgent(
+        step: WorkflowStepDefinition,
+        repoRoot: Path,
+        namespaceId: String?,
+        workflowId: String?,
+        brief: String?,
+    ): CapabilityOutcome {
         val result = agentTurnCapability.executeAgentTurn(
-            AgentTurnRequest(stepId = step.id, persona = step.responsibility.name, repoRoot = repoRoot),
+            AgentTurnRequest(
+                stepId = step.id,
+                persona = step.responsibility.name,
+                repoRoot = repoRoot,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                brief = brief,
+            ),
         )
         return when (result) {
             is AgentTurnResult.NotImplementedYet -> CapabilityOutcome.AgentDeferred(
@@ -87,6 +106,13 @@ class CapabilityResolver(
                 stepId = step.id,
                 persona = step.responsibility.name,
                 status = result.status,
+                facts = result.facts,
+            )
+            is AgentTurnResult.Failed -> CapabilityOutcome.AgentFailed(
+                stepId = step.id,
+                persona = step.responsibility.name,
+                code = result.code,
+                message = result.message,
                 facts = result.facts,
             )
         }

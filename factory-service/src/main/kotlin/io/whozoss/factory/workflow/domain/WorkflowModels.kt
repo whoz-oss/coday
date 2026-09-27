@@ -207,6 +207,25 @@ data class HumanInteractionEventRecord(
     val payload: Map<String, Any?>,
 )
 
+/**
+ * Per-step execution state of a workflow instance (`workflow_step_states`, V3).
+ *
+ * The status vocabulary is [WorkflowStatuses] and the sequencer (W8.3) is the
+ * only writer of the DAG lifecycle: `pending -> ready -> running -> completed |
+ * failed | blocked | waiting_human`. `revision` is the optimistic-locking counter
+ * and `payload` the verbatim JSONB trace of the step (facts of the last attempt).
+ */
+data class WorkflowStepStateRecord(
+    val namespaceId: String,
+    val workflowId: String,
+    val stepId: String,
+    val revision: Int,
+    val status: String,
+    val payload: Map<String, Any?> = emptyMap(),
+    val createdAt: String? = null,
+    val updatedAt: String? = null,
+)
+
 /** A workflow code transition row (`workflow_code_transitions`). */
 data class WorkflowCodeTransitionRecord(
     val codeTransitionId: String,
