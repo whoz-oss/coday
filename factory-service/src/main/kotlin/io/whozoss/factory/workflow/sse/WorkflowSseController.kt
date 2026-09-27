@@ -44,8 +44,11 @@ class WorkflowSseController(
         response: HttpServletResponse,
     ): SseEmitter {
         // Identity is resolved from the verified trust context; a missing context
-        // fails closed with 401 before any SSE response is opened.
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        // fails closed with 401 before any SSE response is opened. `namespaceId`
+        // is an OPTIONAL filter: absent/blank subscribes to the whole tenant
+        // scope (registered under `""`) instead of failing with
+        // INVALID_NAMESPACE_ID.
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId, requireNamespace = false)
         // SSE framing headers: disable intermediary buffering/caching so events
         // reach the client immediately (byte-for-byte parity with the Node hub).
         response.setHeader("Cache-Control", "no-cache, no-transform")

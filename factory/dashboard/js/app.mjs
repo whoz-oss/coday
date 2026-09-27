@@ -18,13 +18,17 @@ import { ApiClient } from './services/api-client.mjs'
 import { mountRunLaunchView } from './views/run-launch.mjs'
 import { mountArtifactAdminView } from './views/artifact-admin.mjs'
 import { mountProjectionView } from './views/projection.mjs'
+import { mount as mountRunDetailView } from './views/run-detail.mjs'
 import { mount as mountForgeCockpit } from './views/forge-cockpit.mjs'
 
 export const ROUTES = Object.freeze({
   '/runs': { id: 'view-runs', label: 'Runs' },
   '/launch': { id: 'view-launch', label: 'Lancer' },
   '/detail': { id: 'view-detail', label: 'Détail' },
-  '/projection': { id: 'view-projection', label: 'Projection' },
+  // Legacy alias of the runs list (the former standalone `Projection` tab).
+  // Resolves to the same list view so old links keep working without a second
+  // placeholder screen.
+  '/projection': { id: 'view-runs', label: 'Projection' },
   '/forge': { id: 'view-forge', label: 'Forge' },
   '/admin': { id: 'view-admin', label: 'Admin' },
 })
@@ -61,6 +65,46 @@ export function resolveNamespaceId(win = globalThis.window) {
     if (value) return value
   }
   return null
+}
+
+/**
+ * Read a named query parameter from the querystring or the hash route. Returns
+ * `null` when absent. Pure and import-safe in Node.
+ */
+export function resolveRouteParam(win, name) {
+  if (!win?.location || !name) return null
+  const hash = typeof win.location.hash === 'string' ? win.location.hash : ''
+  const sources = [win.location.search ?? '', hash.includes('?') ? hash.slice(hash.indexOf('?')) : '']
+  for (const source of sources) {
+    let params
+    try {
+      params = new URLSearchParams(source)
+    } catch {
+      continue
+    }
+    const value = params.get(name)
+    if (value) return value
+  }
+  return null
+}
+
+/** Resolve the workflow a `/detail` route should mount, or `null`. */
+export function resolveWorkflowId(win = globalThis.window) {
+  return resolveRouteParam(win, 'workflowId') ?? resolveRouteParam(win, 'id')
+}
+
+/** Build `#route?params` and navigate to it (shared by the view mounters). */
+export function navigateTo(win, route, params) {
+  const query = params && Object.keys(params).length > 0 ? `?${new URLSearchParams(params).toString()}` : ''
+  if (win?.location) win.location.hash = `#${route}${query}`
+}
+
+/** True when the hash's path (query excluded) names a registered route. */
+function isKnownHash(hash) {
+  const raw = typeof hash === 'string' ? hash.replace(/^#/, '') : ''
+  const path = raw.split('?')[0].replace(/\/+$/, '') || '/'
+  const normalized = path.startsWith('/') ? path : `/${path}`
+  return Object.prototype.hasOwnProperty.call(ROUTES, normalized)
 }
 
 /** Normalize any hash (`#/x`, `#x`, ``, `#/unknown`) into a known route. */
@@ -201,8 +245,9 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
 
   const applyHash = () => {
     const route = parseHash(win.location.hash)
-    if (win.location.hash !== `#${route}`) {
-      // Canonicalize an empty/unknown hash without adding a history entry.
+    if (!isKnownHash(win.location.hash)) {
+      // Canonicalize an empty/unknown hash without adding a history entry. A
+      // known route keeps its query string (e.g. `#/detail?workflowId=…`).
       win.history?.replaceState?.(null, '', `#${route}`)
     }
     mount(route)
@@ -236,19 +281,51 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
     apiClient: api,
     mounters: VIEW_MOUNTERS,
     onMount: (route, ctx) => {
-      if (route === '/projection') {
-        // Timeline / swimlanes view: lists the workflow sessions and renders
-        // each projection's human / agent / code lanes, live-updated by the
-        // named `/api/factory/workflows/stream` SSE events.
-        const projectionContainer = doc.getElementById('view-projection')
-        if (!projectionContainer) return
-        mountProjectionView(projectionContainer, {
+      if (route === '/runs' || route === '/projection') {
+        // Home view: the workflow (run) list. Each card renders its
+        // human / agent / code swimlanes and clicking one opens its detail
+        // timeline. Live-updated by the named `/api/factory/workflows/stream`
+        // SSE events (once connected; the namespace param is optional).
+        const listContainer = doc.getElementById('view-runs')
+        if (!listContainer) return
+        mountProjectionView(listContainer, {
           api,
           namespaceId: resolveNamespaceId(win),
           registerTeardown: ctx.registerTeardown,
+          onNavigate: (target, params) => navigateTo(win, target, params),
           showModal: (content) => showModal(content, doc),
           closeModal: () => closeModal(doc),
         })
+        return
+      }
+      if (route === '/detail') {
+        // Dedicated run timeline: reuses the governed projection + swimlanes.
+        const container = doc.getElementById('view-detail')
+        const workflowId = resolveWorkflowId(win)
+        if (!container || !workflowId) return
+        let handle = null
+        let unmounted = false
+        ctx.registerTeardown(() => {
+          unmounted = true
+          if (typeof handle?.unmount === 'function') handle.unmount()
+          handle = null
+        })
+        Promise.resolve(
+          mountRunDetailView(container, {
+            workflowId,
+            namespaceId: resolveNamespaceId(win),
+            apiClient: api,
+            sseClient: null,
+          }),
+        )
+          .then((resolved) => {
+            if (unmounted) {
+              if (typeof resolved?.unmount === 'function') resolved.unmount()
+              return
+            }
+            handle = resolved
+          })
+          .catch(() => {})
         return
       }
       if (route !== '/forge') return

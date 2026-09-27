@@ -106,6 +106,9 @@ export function renderWorkflowCard(snapshot = {}, options = {}) {
   const projection = snapshot?.projection ?? {}
   const execution = snapshot?.controllerExecution ?? {}
   const workflowId = snapshot?.workflowId ?? projection?.workflowId ?? ''
+  // Namespace attribution carried by a scope-wide list item; lets the cockpit
+  // route the card click to the namespace-scoped detail timeline.
+  const namespaceId = snapshot?.namespaceId ?? ''
   const title = projection?.title ?? workflowId ?? 'Workflow'
   const status = projection?.status ?? snapshot?.status ?? 'pending'
   const lifecycle = resolveLifecycle(snapshot, options)
@@ -156,7 +159,7 @@ export function renderWorkflowCard(snapshot = {}, options = {}) {
     .join('<span class="card-sep" aria-hidden="true">·</span>')
 
   return (
-    `<article class="workflow-card" data-workflow-id="${escapeAttr(workflowId)}" data-state="${escapeHtml(lifecycle)}">` +
+    `<article class="workflow-card" data-workflow-id="${escapeAttr(workflowId)}" data-namespace-id="${escapeAttr(namespaceId)}" data-state="${escapeHtml(lifecycle)}">` +
     `<header class="workflow-card-head">` +
     `<h3 class="workflow-card-title">${escapeHtml(title)}</h3>` +
     `<span class="${statusChipClass(status)}" data-status="${escapeHtml(status)}">${escapeHtml(status)}</span>` +

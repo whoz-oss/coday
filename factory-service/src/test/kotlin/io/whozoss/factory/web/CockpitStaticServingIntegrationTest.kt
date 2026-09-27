@@ -33,7 +33,8 @@ class CockpitStaticServingIntegrationTest : DomainIntegrationTest() {
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
         assertThat(response.headers.contentType).isNotNull
         assertThat(response.headers.contentType!!.isCompatibleWith(MediaType.TEXT_HTML)).isTrue()
-        assertThat(response.body).contains("Coday Factory Cockpit")
+        assertThat(response.body).contains("<title>Factory</title>")
+        assertThat(response.body).contains("cockpit-topbar")
     }
 
     @Test
@@ -44,7 +45,7 @@ class CockpitStaticServingIntegrationTest : DomainIntegrationTest() {
         } else {
             // TestRestTemplate may follow the redirect to the served shell.
             assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
-            assertThat(response.body).contains("Coday Factory Cockpit")
+            assertThat(response.body).contains("<title>Factory</title>")
         }
     }
 

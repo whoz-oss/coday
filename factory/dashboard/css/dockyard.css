@@ -556,3 +556,11 @@ button:hover,
 }
 
 .workflow-card-temporal-lanes { margin-top: 6px; }
+
+/* The whole card is the click target that opens the run's detail timeline
+   (see projection.mjs); nested links and buttons keep their own affordance. */
+.workflow-card { cursor: pointer; }
+.workflow-card a,
+.workflow-card button {
+  cursor: pointer;
+}

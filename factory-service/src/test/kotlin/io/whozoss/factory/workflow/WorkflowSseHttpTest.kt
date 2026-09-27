@@ -111,4 +111,50 @@ class WorkflowSseHttpTest : DomainIntegrationTest() {
         assertThat(lines).contains("event: workflow-projection-updated")
         assertThat(lines).anyMatch { it.startsWith("data: {\"workflowId\":\"wf-sse-http\"") }
     }
+
+    /**
+     * A stream opened without `namespaceId` on a loopback-dev trust context must
+     * subscribe to the whole tenant scope (registered under `""`) instead of
+     * failing closed with `401 INVALID_NAMESPACE_ID`.
+     */
+    @Test
+    fun `stream without namespaceId opens on a loopback trust context`() {
+        val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
+        val request = HttpRequest.newBuilder(URI.create("http://localhost:$port/api/factory/workflows/stream"))
+            .header("Accept", "text/event-stream")
+            .timeout(Duration.ofSeconds(10))
+            .GET()
+            .build()
+
+        val future = client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
+
+        val deadline = System.currentTimeMillis() + 5_000
+        while (hub.size("") == 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(20)
+        }
+        assertThat(hub.size("")).isGreaterThan(0)
+
+        // Force one frame so the 200 response headers reach the client.
+        hub.publish(
+            "",
+            linkedMapOf("workflowId" to "wf-sse-namespace-less", "revision" to 1),
+            WorkflowProjectionEvents.UPDATED,
+        )
+
+        val response = future.get(10, TimeUnit.SECONDS)
+        assertThat(response.statusCode()).isEqualTo(200)
+        assertThat(response.headers().firstValue("content-type").orElse("")).contains("text/event-stream")
+
+        val lines = mutableListOf<String>()
+        BufferedReader(InputStreamReader(response.body(), Charsets.UTF_8)).use { reader ->
+            val readDeadline = System.currentTimeMillis() + 5_000
+            while (System.currentTimeMillis() < readDeadline) {
+                val line = reader.readLine() ?: break
+                lines.add(line)
+                if (line.isEmpty() && lines.any { it.startsWith("data:") }) break
+            }
+        }
+        assertThat(lines).contains("event: workflow-projection-updated")
+        assertThat(lines).anyMatch { it.startsWith("data: {\"workflowId\":\"wf-sse-namespace-less\"") }
+    }
 }

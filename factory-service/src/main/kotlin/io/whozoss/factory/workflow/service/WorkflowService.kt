@@ -128,6 +128,9 @@ class WorkflowService(
 
     private fun publicSnapshot(record: WorkflowProjectionRecord): Map<String, Any?> = buildMap {
         put("workflowId", record.workflowId)
+        // Namespace attribution of the row: required by the cockpit to route a
+        // scope-wide list item to its namespace-scoped detail/timeline view.
+        put("namespaceId", record.namespaceId)
         put("revision", record.revision)
         put("projectionHash", record.projectionHash)
         if (record.governanceMode != null) {
@@ -145,6 +148,7 @@ class WorkflowService(
 
     private fun publicInstanceSnapshot(record: WorkflowInstanceRecord): Map<String, Any?> = buildMap {
         put("workflowId", record.workflowId)
+        put("namespaceId", record.namespaceId)
         put("revision", record.revision)
         put("projectionHash", CanonicalHash.workflowProjectionHash(record.projection))
         put("governanceMode", record.instance["governanceMode"])
