@@ -1,6 +1,7 @@
 package io.whozoss.factory.capability
 
 import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.verification.manifest.VERIFICATION_MANIFEST_MISSING
 import io.whozoss.factory.verification.manifest.VERIFICATION_NOT_DECLARED
@@ -42,6 +43,9 @@ class CapabilityExecutionIntegrationTest : DomainIntegrationTest() {
 
     @Autowired
     private lateinit var interactionRepository: HumanInteractionRepository
+
+    @Autowired
+    private lateinit var attemptRepository: AgentStepAttemptRepository
 
     @TempDir
     lateinit var repoRoot: Path
@@ -159,8 +163,11 @@ class CapabilityExecutionIntegrationTest : DomainIntegrationTest() {
     }
 
     @Test
-    fun `an agent step is deferred as not implemented yet`() {
+    fun `an agent step runs the turn, opens an attempt and records evidence`() {
         createInstance()
+        val service = serviceWithAgent(
+            AgentTurnResult.Completed("PASS", mapOf("caseStatus" to "IDLE")),
+        )
 
         val execution = service.resolveAndRecord(
             tenantScope,
@@ -170,11 +177,48 @@ class CapabilityExecutionIntegrationTest : DomainIntegrationTest() {
             repoRoot,
         )
 
-        assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentDeferred::class.java)
-        assertThat((execution.outcome as CapabilityOutcome.AgentDeferred).code).isEqualTo("NOT_IMPLEMENTED_YET")
-        assertThat(execution.codeTransitionId).isNull()
-        assertThat(execution.interactionId).isNull()
+        assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentCompleted::class.java)
+        assertThat(execution.attemptId).isNotNull()
+        val attempt = attemptRepository.find(tenantScope, namespace, workflowId, "step-1", execution.attemptId!!)
+        assertThat(attempt).isNotNull()
+        assertThat(attempt!!.status).isEqualTo("completed")
+        val evidence = evidenceRepository.list(tenantScope, namespace, workflowId)
+        assertThat(evidence).anyMatch { it.kind == "agent-turn" && it.outcome == "pass" }
     }
+
+    @Test
+    fun `a failed agent turn terminalizes the attempt as failed and records a fail evidence`() {
+        createInstance()
+        val service = serviceWithAgent(AgentTurnResult.Failed("AGENT_CASE_ERROR", "boom"))
+
+        val execution = service.resolveAndRecord(
+            tenantScope,
+            namespace,
+            workflowId,
+            step(ResponsibilityKind.AGENT, "architect"),
+            repoRoot,
+        )
+
+        assertThat(execution.outcome).isInstanceOf(CapabilityOutcome.AgentFailed::class.java)
+        assertThat((execution.outcome as CapabilityOutcome.AgentFailed).code).isEqualTo("AGENT_CASE_ERROR")
+        val attempt = attemptRepository.find(tenantScope, namespace, workflowId, "step-1", execution.attemptId!!)
+        assertThat(attempt!!.status).isEqualTo("failed")
+        val evidence = evidenceRepository.list(tenantScope, namespace, workflowId)
+        assertThat(evidence).anyMatch { it.kind == "agent-turn" && it.outcome == "fail" }
+    }
+
+    private fun serviceWithAgent(result: AgentTurnResult): CapabilityExecutionService =
+        CapabilityExecutionService(
+            CapabilityResolver(
+                object : AgentTurnCapability {
+                    override fun executeAgentTurn(request: AgentTurnRequest): AgentTurnResult = result
+                },
+            ),
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            attemptRepository,
+        )
 
     @Test
     fun `a human step opens a waiting checkpoint`() {
