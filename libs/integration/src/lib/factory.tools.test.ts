@@ -13,7 +13,7 @@ const configuredProject = {
   root: '/tmp',
   name: 'sprint',
   description: '',
-  factory: { enabled: true, baseUrl: 'http://127.0.0.1:3141/', namespaceId: '0d4bd471-df37-43d8-a8f7-c989f95e71d7' },
+  factory: { enabled: true, baseUrl: 'http://127.0.0.1:8141/', namespaceId: '0d4bd471-df37-43d8-a8f7-c989f95e71d7' },
 }
 const interactor = {} as Interactor
 
@@ -111,7 +111,7 @@ describe('FactoryTools transitional adapter', () => {
       if (state === 'existing') expect(result).toMatchObject({ revision: 4, workflowType: 'demo' })
       const [url, request] = requireFetchCall(fetchMock)
       expect(url).toBe(
-        `http://127.0.0.1:3141/api/factory/workflows/demo.id?namespaceId=${configuredProject.factory.namespaceId}`
+        `http://127.0.0.1:8141/api/factory/workflows/demo.id?namespaceId=${configuredProject.factory.namespaceId}`
       )
       expect(request).toMatchObject({ signal: expect.any(AbortSignal) })
     }
@@ -155,7 +155,7 @@ describe('FactoryTools transitional adapter', () => {
     [{ ...configuredProject, factory: undefined }, 'disabled'],
     [{ ...configuredProject, factory: { enabled: false } }, 'disabled'],
     [
-      { ...configuredProject, factory: { enabled: true, baseUrl: 'http://localhost:3141', namespaceId: 'not-a-uuid' } },
+      { ...configuredProject, factory: { enabled: true, baseUrl: 'http://localhost:8141', namespaceId: 'not-a-uuid' } },
       'valid UUID',
     ],
   ])('fails closed for project config', async (project, message) => {
@@ -185,7 +185,7 @@ describe('FactoryTools transitional adapter', () => {
     expect(result).toMatchObject({ workflowId: 'demo.id', revision: 2, changed: true })
     expect(result.updatedAt).toEqual(expect.any(String))
     const [url, request] = requireFetchCall(fetchMock)
-    expect(url).toBe('http://127.0.0.1:3141/api/factory/workflows/demo.id/projection')
+    expect(url).toBe('http://127.0.0.1:8141/api/factory/workflows/demo.id/projection')
     if (typeof request.body !== 'string') throw new Error('Expected a JSON request body.')
     expect(JSON.parse(request.body)).toEqual({
       projection,

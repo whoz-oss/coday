@@ -49,7 +49,6 @@ factory:
     fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
   runs:
     dir: ${FACTORY_RUNS_DIR:factory/runs}
-    entry: ${FACTORY_RUN_ENTRY:factory/run.mjs}
     agentos-url: ${AGENTOS_URL:http://localhost:8080}
     jira-base-url: ${JIRA_BASE_URL:}
     jira-email: ${JIRA_EMAIL:}

@@ -53,8 +53,8 @@ data class Phase(
  *  - **Append-only**: each record is one JSON line appended to
  *    `<runsDir>/<runId>.jsonl`; nothing is ever rewritten.
  *  - **Byte-compatible format**: `run_start` / `phase` / `phase_end` / `run_end`
- *    with the exact field order and ISO-8601 millisecond timestamps the Node
- *    instrument writes, so `LegacyRunService` keeps reading it unchanged.
+ *    with the exact field order and ISO-8601 millisecond timestamps the
+ *    instrument writes, so the runtime keeps reading it unchanged.
  *  - **Facts are not opinions**: `facts` is a plain map under the `facts` key and is
  *    never overwritten.
  */

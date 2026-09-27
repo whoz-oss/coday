@@ -11,12 +11,12 @@ import io.whozoss.agentos.sdk.tool.StandardTool
  */
 internal object FactoryTestFixtures {
     fun services(
-        baseUrl: String = "http://localhost:3141",
+        baseUrl: String = "http://localhost:8141",
         runtimeId: String = "test-runtime",
     ): FactoryBridgeServices = FactoryBridgeServices.create(FactoryBridgeConfig(baseUrl, runtimeId))
 
-    fun tools(baseUrl: String = "http://localhost:3141"): List<StandardTool<*>> = buildFactoryTools(services(baseUrl))
+    fun tools(baseUrl: String = "http://localhost:8141"): List<StandardTool<*>> = buildFactoryTools(services(baseUrl))
 
-    fun grantService(baseUrl: String = "http://localhost:3141"): FactoryToolGrantService =
+    fun grantService(baseUrl: String = "http://localhost:8141"): FactoryToolGrantService =
         FactoryToolGrantService { tools(baseUrl) }
 }

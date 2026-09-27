@@ -41,7 +41,7 @@ class JiraNotConfiguredException(missing: List<String>) : io.whozoss.factory.err
         "JIRA_BASE_URL=https://votre-instance.atlassian.net " +
         "JIRA_EMAIL=votre@email.com " +
         "JIRA_API_TOKEN=votre-token " +
-        "node factory/dashboard/server.mjs",
+        "puis redémarrez factory-service (port 8141).",
     mapOf("missing" to missing),
 )
 

@@ -76,59 +76,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
-  /api/runs:
-    get:
-      tags:
-      - runs
-      summary: List legacy runs.
-      operationId: listLegacyRun
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  type: object
-                  additionalProperties: {}
-    post:
-      tags:
-      - runs
-      summary: Launch a legacy run (returns the pid).
-      operationId: launchLegacyRun
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
-  /api/review-gate/reply:
-    post:
-      tags:
-      - runs
-      summary: Deprecated global review-gate reply route.
-      operationId: deprecatedGateReplyLegacyRun
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
   /api/factory/workstreams:
     get:
       tags:
@@ -1061,90 +1008,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
-  /api/factory/runs:
-    get:
-      tags:
-      - runs
-      summary: "List legacy runs, optionally filtered by namespace."
-      operationId: factoryListLegacyRun
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: array
-                items:
-                  type: object
-                  additionalProperties: {}
-    post:
-      tags:
-      - runs
-      summary: Launch a legacy run and wait for its runId.
-      operationId: factoryLaunchLegacyRun
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
-  /api/factory/runs/{id}/stop:
-    post:
-      tags:
-      - runs
-      summary: Stop a legacy run.
-      operationId: stopLegacyRun
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
-  /api/factory/runs/{id}/review-gate/reply:
-    post:
-      tags:
-      - runs
-      summary: Deliver a review-gate decision.
-      operationId: reviewGateReplyLegacyRun
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
   /api/factory/agent-step-results:
     post:
       tags:
@@ -1279,38 +1142,6 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
-  /api/runs/{id}:
-    get:
-      tags:
-      - runs
-      summary: Read a legacy run detail.
-      operationId: detailLegacyRun
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
-  /api/review-gate:
-    get:
-      tags:
-      - runs
-      summary: Deprecated global review-gate route.
-      operationId: deprecatedGateLegacyRun
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
   /api/factory/workflows:
     get:
       tags:
@@ -1497,44 +1328,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
-  /api/factory/runs/{id}:
-    get:
-      tags:
-      - runs
-      summary: Read a legacy run detail (alias).
-      operationId: factoryDetailLegacyRun
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
-  /api/factory/runs/{id}/review-gate:
-    get:
-      tags:
-      - runs
-      summary: Read the review-gate state of a legacy run.
-      operationId: reviewGateLegacyRun
-      parameters:
-      - name: id
-        in: path
-        required: true
-        schema:
-          type: string
-      responses:
-        "200":
-          description: OK
-          content:
-            '*/*':
-              schema:
-                type: object
   /api/cases/{caseId}/events:
     get:
       tags:

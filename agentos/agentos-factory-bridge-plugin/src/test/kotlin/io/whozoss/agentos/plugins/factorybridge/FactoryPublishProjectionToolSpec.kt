@@ -13,7 +13,7 @@ import java.util.UUID
 
 class FactoryPublishProjectionToolSpec : StringSpec({
     val mapper = jacksonObjectMapper()
-    val tool = FactoryPublishProjectionTool("http://localhost:3141", OkHttpClient(), mapper, "agentos-test")
+    val tool = FactoryPublishProjectionTool("http://localhost:8141", OkHttpClient(), mapper, "agentos-test")
 
     fun input(expectedRevision: Long? = null) =
         FactoryPublishProjectionTool.Input(

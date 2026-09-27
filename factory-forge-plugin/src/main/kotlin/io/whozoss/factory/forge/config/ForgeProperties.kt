@@ -9,7 +9,7 @@ package io.whozoss.factory.forge.config
  * runs, Jira and AgentOS surfaces:
  *   - `AGENTOS_URL` (AgentOS proxy base URL)
  *   - `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN`
- *   - the legacy runs directory and run entry point
+ *   - the legacy runs directory
  *
  * System properties (e.g. `-Dfactory.forge.agentos-url=...`) take precedence
  * over environment variables, then the built-in defaults apply.
@@ -17,7 +17,6 @@ package io.whozoss.factory.forge.config
 data class ForgeProperties(
     val agentosUrl: String = "http://localhost:8080",
     val runsDir: String = "factory/runs",
-    val runEntry: String = "factory/run.mjs",
     val jira: Jira = Jira(),
 ) {
     data class Jira(
@@ -43,7 +42,6 @@ data class ForgeProperties(
             ForgeProperties(
                 agentosUrl = read("factory.forge.agentos-url", "AGENTOS_URL", env) ?: "http://localhost:8080",
                 runsDir = read("factory.forge.runs-dir", "FACTORY_RUNS_DIR", env) ?: "factory/runs",
-                runEntry = read("factory.forge.run-entry", "FACTORY_RUN_ENTRY", env) ?: "factory/run.mjs",
                 jira = Jira(
                     baseUrl = read("factory.forge.jira.base-url", "JIRA_BASE_URL", env),
                     email = read("factory.forge.jira.email", "JIRA_EMAIL", env),

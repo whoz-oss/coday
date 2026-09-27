@@ -1106,7 +1106,7 @@ docker compose -f factory/docker-compose.minio.yml ps
 node factory/tests/test-artifact-global-wiring.mjs
 
 # 3. Trigger the GC/audit explicitly (loopback-dev is admin)
-curl -sS -X POST http://127.0.0.1:3141/api/factory/admin/artifacts/gc | jq
+curl -sS -X POST http://127.0.0.1:8141/api/factory/admin/artifacts/gc | jq
 
 # 4. Offline adapter suites (memory, S3, presigning, SQL, admin)
 node factory/tests/test-artifact-store.mjs

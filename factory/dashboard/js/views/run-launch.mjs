@@ -35,11 +35,6 @@ export function buildRunUrl(workflowId) {
   return `/api/factory/workflows/${encodeURIComponent(workflowId)}/run`
 }
 
-/** Legacy route the view must never call. Exported for regression assertions. */
-export function buildLegacyRunUrl() {
-  return '/api/factory/runs'
-}
-
 /** Canonical detail hash carrying the targeted scope. */
 export function buildDetailHash(workflowId, namespaceId) {
   return `${DETAIL_ROUTE}?workflowId=${encodeURIComponent(workflowId)}&namespaceId=${encodeURIComponent(namespaceId)}`

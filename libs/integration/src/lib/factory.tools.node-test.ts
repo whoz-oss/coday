@@ -8,7 +8,7 @@ const project = {
   root: '/tmp',
   name: 'sprint',
   description: '',
-  factory: { enabled: true, baseUrl: 'http://127.0.0.1:3141/', namespaceId },
+  factory: { enabled: true, baseUrl: 'http://127.0.0.1:8141/', namespaceId },
 }
 const interactor = {} as Interactor
 
@@ -68,7 +68,7 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
     })
     const result = await invoke(start, { workflowId: 'demo.id', workflowType: 'demo', title: 'Demo' })
     assert.equal(result.created, true)
-    assert.equal(String(requestedUrl), 'http://127.0.0.1:3141/api/factory/workflows/demo.id/start')
+    assert.equal(String(requestedUrl), 'http://127.0.0.1:8141/api/factory/workflows/demo.id/start')
     assert.deepEqual(JSON.parse(request?.body as string), {
       workflow: { workflowId: 'demo.id', workflowType: 'demo', title: 'Demo' },
       execution: {
@@ -163,7 +163,7 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
             }
       const result = await invoke(tool, business)
       assert.equal(result.idempotent, true)
-      assert.equal(String(requestedUrl), 'http://127.0.0.1:3141/api/factory/workflows/wf-1/evidence')
+      assert.equal(String(requestedUrl), 'http://127.0.0.1:8141/api/factory/workflows/wf-1/evidence')
       assert.deepEqual(JSON.parse(request?.body as string), {
         evidence: { ...business, kind: capability === 'record_agent_result' ? 'agent-result' : 'artifact' },
         execution: {
@@ -222,7 +222,7 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
       }
       const result = await invoke(tool, transition)
       assert.equal(result.revision, 3)
-      assert.equal(String(requestedUrl), 'http://127.0.0.1:3141/api/factory/workflows/wf-1/transitions')
+      assert.equal(String(requestedUrl), 'http://127.0.0.1:8141/api/factory/workflows/wf-1/transitions')
       assert.deepEqual(JSON.parse(request?.body as string), {
         transition,
         execution: {
@@ -469,7 +469,7 @@ describe('FactoryTools Phase 1 without Jest/Haste', () => {
         )
       assert.equal(
         String(requestedUrl),
-        `http://127.0.0.1:3141/api/factory/workflows/demo.id?namespaceId=${namespaceId}`
+        `http://127.0.0.1:8141/api/factory/workflows/demo.id?namespaceId=${namespaceId}`
       )
     })
   }
