@@ -94,7 +94,7 @@ class AgentStepResultServiceIntegrationTest : DomainIntegrationTest() {
         ).isEqualTo(2)
 
         val outbox = jdbcTemplate.queryForList(
-            "SELECT event_type, status FROM outbox_events WHERE organization_id = ?",
+            "SELECT event_type FROM outbox_events WHERE organization_id = ?",
             String::class.java,
             ORGANIZATION_ID,
         )

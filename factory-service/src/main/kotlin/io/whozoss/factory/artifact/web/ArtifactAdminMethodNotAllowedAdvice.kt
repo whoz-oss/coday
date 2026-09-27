@@ -2,6 +2,7 @@ package io.whozoss.factory.artifact.web
 
 import io.whozoss.factory.error.ErrorDetail
 import io.whozoss.factory.error.ErrorResponse
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.HttpRequestMethodNotSupportedException
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -26,6 +27,7 @@ class ArtifactAdminMethodNotAllowedAdvice {
     fun handleMethodNotSupported(exception: HttpRequestMethodNotSupportedException): ResponseEntity<ErrorResponse> =
         ResponseEntity
             .status(405)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(
                 ErrorResponse(
                     ErrorDetail(

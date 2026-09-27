@@ -6,7 +6,13 @@ import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.web.client.TestRestTemplate
 import org.springframework.boot.test.web.server.LocalServerPort
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
+import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.URI
@@ -31,7 +37,37 @@ class WorkflowSseHttpTest : DomainIntegrationTest() {
     @Autowired
     private lateinit var hub: WorkflowSseHub
 
+    @Autowired
+    private lateinit var restTemplate: TestRestTemplate
+
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
+
+    /**
+     * An error raised while opening the SSE stream must still be rendered as a
+     * regular `application/json` error envelope. Without an explicit content
+     * type the endpoint's `produces = text/event-stream` would be reused for the
+     * error response, and no converter can write `ErrorResponse` as an event
+     * stream (`HttpMessageNotWritableException`).
+     */
+    @Test
+    fun `stream error is rendered as a json error envelope`() {
+        val headers = HttpHeaders().apply {
+            accept = listOf(MediaType.TEXT_EVENT_STREAM)
+            add("X-Forwarded-For", "203.0.113.9")
+        }
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/stream?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers),
+            String::class.java,
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat(response.headers.contentType?.toString().orEmpty()).contains("application/json")
+        assertThat(response.body).contains("TRUST_CONTEXT_UNAVAILABLE")
+        assertThat(response.body).contains("\"error\"")
+    }
 
     @Test
     fun `stream emits the named projection event through the servlet stack`() {
