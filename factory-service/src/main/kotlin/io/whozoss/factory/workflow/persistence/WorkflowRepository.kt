@@ -8,6 +8,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowProjectionRecord
+import io.whozoss.factory.workflow.domain.WorkflowStepStateRecord
 import io.whozoss.factory.workflow.domain.WorkflowTransitionRequest
 
 /** Outcome of a declarative projection publication. */
@@ -76,6 +77,24 @@ interface WorkflowRepository {
     )
 
     fun listTransitionTimestamps(scope: TenantScope, namespaceId: String, workflowId: String): List<String>
+
+    // ----- per-step DAG state ---------------------------------------------
+    /** All step states of an instance, in insertion order. */
+    fun findStepStates(scope: TenantScope, namespaceId: String, workflowId: String): List<WorkflowStepStateRecord>
+
+    /** Insert or update a step state; on conflict the revision is incremented. */
+    fun upsertStepState(scope: TenantScope, record: WorkflowStepStateRecord): WorkflowStepStateRecord
+
+    /** Compare-and-swap a step status at [expectedRevision]; `false` on stale revision. */
+    fun updateStepStatus(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        expectedRevision: Int,
+        nextStatus: String,
+        payload: Map<String, Any?>,
+    ): Boolean
 
     fun appendCodeTransition(
         scope: TenantScope,

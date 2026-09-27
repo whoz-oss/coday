@@ -9,6 +9,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.domain.WorkflowInstanceRecord
 import io.whozoss.factory.workflow.domain.WorkflowProjectionRecord
+import io.whozoss.factory.workflow.domain.WorkflowStepStateRecord
 import io.whozoss.factory.workflow.domain.WorkflowTransitionRequest
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -328,6 +329,96 @@ class JdbcWorkflowRepository(
                 createdAt = rs.getTimestamp("created_at").toInstant().toString(),
             )
         }
+
+    // ------------------------------------------------------------------
+    // Per-step DAG state
+    // ------------------------------------------------------------------
+
+    override fun findStepStates(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+    ): List<WorkflowStepStateRecord> =
+        jdbc.query(
+            """
+            SELECT namespace_id, workflow_id, step_id, revision, status, payload, created_at, updated_at
+              FROM workflow_step_states
+             WHERE organization_id = :organizationId AND workstream_id = :workstreamId
+               AND namespace_id = :namespaceId AND workflow_id = :workflowId
+             ORDER BY created_at ASC, step_id ASC
+            """.trimIndent(),
+            instanceParams(scope, namespaceId, workflowId),
+        ) { rs, _ -> readStepState(rs) }
+
+    override fun upsertStepState(scope: TenantScope, record: WorkflowStepStateRecord): WorkflowStepStateRecord {
+        jdbc.update(
+            """
+            INSERT INTO workflow_step_states (
+                organization_id, workstream_id, namespace_id, workflow_id, step_id, revision, status, payload
+            ) VALUES (
+                :organizationId, :workstreamId, :namespaceId, :workflowId, :stepId, 1, :status, CAST(:payload AS jsonb)
+            )
+            ON CONFLICT (organization_id, workstream_id, namespace_id, workflow_id, step_id) DO UPDATE
+               SET status = EXCLUDED.status,
+                   payload = EXCLUDED.payload,
+                   revision = workflow_step_states.revision + 1,
+                   updated_at = CURRENT_TIMESTAMP
+            """.trimIndent(),
+            instanceParams(scope, record.namespaceId, record.workflowId)
+                .addValue("stepId", record.stepId)
+                .addValue("status", record.status)
+                .addValue("payload", serialize(record.payload)),
+        )
+        return jdbc.query(
+            """
+            SELECT namespace_id, workflow_id, step_id, revision, status, payload, created_at, updated_at
+              FROM workflow_step_states
+             WHERE organization_id = :organizationId AND workstream_id = :workstreamId
+               AND namespace_id = :namespaceId AND workflow_id = :workflowId AND step_id = :stepId
+            """.trimIndent(),
+            instanceParams(scope, record.namespaceId, record.workflowId).addValue("stepId", record.stepId),
+        ) { rs, _ -> readStepState(rs) }.firstOrNull() ?: record
+    }
+
+    override fun updateStepStatus(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        expectedRevision: Int,
+        nextStatus: String,
+        payload: Map<String, Any?>,
+    ): Boolean {
+        val rows = jdbc.update(
+            """
+            UPDATE workflow_step_states
+               SET status = :status,
+                   payload = CAST(:payload AS jsonb),
+                   revision = revision + 1,
+                   updated_at = CURRENT_TIMESTAMP
+             WHERE organization_id = :organizationId AND workstream_id = :workstreamId
+               AND namespace_id = :namespaceId AND workflow_id = :workflowId
+               AND step_id = :stepId AND revision = :expectedRevision
+            """.trimIndent(),
+            instanceParams(scope, namespaceId, workflowId)
+                .addValue("stepId", stepId)
+                .addValue("expectedRevision", expectedRevision)
+                .addValue("status", nextStatus)
+                .addValue("payload", serialize(payload)),
+        )
+        return rows > 0
+    }
+
+    private fun readStepState(rs: java.sql.ResultSet): WorkflowStepStateRecord = WorkflowStepStateRecord(
+        namespaceId = rs.getString("namespace_id"),
+        workflowId = rs.getString("workflow_id"),
+        stepId = rs.getString("step_id"),
+        revision = rs.getInt("revision"),
+        status = rs.getString("status"),
+        payload = deserializeMap(rs.getString("payload")),
+        createdAt = rs.getTimestamp("created_at")?.toInstant()?.toString(),
+        updatedAt = rs.getTimestamp("updated_at")?.toInstant()?.toString(),
+    )
 
     // ------------------------------------------------------------------
     // Declarative projection store
