@@ -9,16 +9,26 @@ servers:
 tags:
 - name: work-environments
   description: Work-unit environment provisioning control plane
+- name: forge
+  description: "Forge/BMAD runs, gates and story operations"
 - name: workflows
   description: "Workflow projections, transitions and interactions"
+- name: agentos-proxy
+  description: AgentOS relay endpoints
+- name: jira
+  description: Jira ticket relay
 - name: delivery
   description: Governed delivery control plane
 - name: agent-step-results
   description: Capability-bound agent step result submission
+- name: runs
+  description: Legacy workflow JSONL runs
 - name: delivery-operations
   description: "Delivery deployment, verification and rollback control plane"
 - name: workflows
   description: Workflow definitions
+- name: workstreams
+  description: Factory workstreams
 - name: oracles
   description: Oracle definitions and execution runs
 paths:
@@ -70,6 +80,289 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/runs:
+    get:
+      tags:
+      - runs
+      summary: List legacy runs.
+      operationId: listLegacyRun
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: {}
+    post:
+      tags:
+      - runs
+      summary: Launch a legacy run (returns the pid).
+      operationId: launchLegacyRun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/review-gate/reply:
+    post:
+      tags:
+      - runs
+      summary: Deprecated global review-gate reply route.
+      operationId: deprecatedGateReplyLegacyRun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/forge/runs/{epicRunId}/stories/{storyRunId}/oracles:
+    get:
+      tags:
+      - forge
+      summary: List Story oracle campaigns.
+      operationId: oraclesForgeRun
+      parameters:
+      - name: epicRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storyRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - forge
+      summary: Execute the Story oracle campaign (G3).
+      operationId: executeOraclesForgeRun
+      parameters:
+      - name: epicRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storyRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/forge/runs/{epicRunId}/stories/{storyRunId}/executions:
+    get:
+      tags:
+      - forge
+      summary: List Story executions.
+      operationId: executionsForgeRun
+      parameters:
+      - name: epicRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storyRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - forge
+      summary: Execute the read-only Story analysis phase.
+      operationId: executeAnalysisForgeRun
+      parameters:
+      - name: epicRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storyRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/forge/runs/{epicRunId}/stories/{storyRunId}/edits:
+    get:
+      tags:
+      - forge
+      summary: List Story edits.
+      operationId: editsForgeRun
+      parameters:
+      - name: epicRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storyRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - forge
+      summary: Execute the write-enabled Story edit phase.
+      operationId: executeEditForgeRun
+      parameters:
+      - name: epicRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: storyRunId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/workstreams:
+    get:
+      tags:
+      - workstreams
+      summary: List workstreams for the caller's tenant.
+      operationId: listWorkstream
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: {}
+    post:
+      tags:
+      - workstreams
+      summary: Create a workstream entry.
+      operationId: createWorkstream
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
   /api/factory/workflows/{workflowId}/transitions:
     post:
       tags:
@@ -961,6 +1254,275 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/runs:
+    get:
+      tags:
+      - runs
+      summary: "List legacy runs, optionally filtered by namespace."
+      operationId: factoryListLegacyRun
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: {}
+    post:
+      tags:
+      - runs
+      summary: Launch a legacy run and wait for its runId.
+      operationId: factoryLaunchLegacyRun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/runs/{id}/stop:
+    post:
+      tags:
+      - runs
+      summary: Stop a legacy run.
+      operationId: stopLegacyRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/runs/{id}/review-gate/reply:
+    post:
+      tags:
+      - runs
+      summary: Deliver a review-gate decision.
+      operationId: reviewGateReplyLegacyRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/forge/runs/{id}/gates/G2:
+    get:
+      tags:
+      - forge
+      summary: Read the G2 gate of a Forge run.
+      operationId: g2ForgeRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - forge
+      summary: Evaluate the deterministic G2 gate against a spec file.
+      operationId: evaluateG2ForgeRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/forge/runs/{id}/gates/G2:
+    get:
+      tags:
+      - forge
+      summary: Read the G2 gate of a Forge run.
+      operationId: g2ForgeRun_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+    post:
+      tags:
+      - forge
+      summary: Evaluate the deterministic G2 gate against a spec file.
+      operationId: evaluateG2ForgeRun_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/forge/runs/{id}/gates/G1/decision:
+    post:
+      tags:
+      - forge
+      summary: Record a human G1 decision.
+      operationId: g1DecisionForgeRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/forge/runs/{id}/gates/G1/decision:
+    post:
+      tags:
+      - forge
+      summary: Record a human G1 decision.
+      operationId: g1DecisionForgeRun_1
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/forge/runs/create:
+    post:
+      tags:
+      - forge
+      summary: Create a Forge EpicRun ledger.
+      operationId: createForgeRun
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
   /api/factory/agent-step-results:
     post:
       tags:
@@ -1095,6 +1657,62 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+  /api/runs/{id}:
+    get:
+      tags:
+      - runs
+      summary: Read a legacy run detail.
+      operationId: detailLegacyRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/review-gate:
+    get:
+      tags:
+      - runs
+      summary: Deprecated global review-gate route.
+      operationId: deprecatedGateLegacyRun
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/forge/runs/{id}/gates/G1:
+    get:
+      tags:
+      - forge
+      summary: Read the G1 gate of a Forge run.
+      operationId: g1ForgeRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
   /api/factory/workflows:
     get:
       tags:
@@ -1281,6 +1899,160 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/runs/{id}:
+    get:
+      tags:
+      - runs
+      summary: Read a legacy run detail (alias).
+      operationId: factoryDetailLegacyRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/runs/{id}/review-gate:
+    get:
+      tags:
+      - runs
+      summary: Read the review-gate state of a legacy run.
+      operationId: reviewGateLegacyRun
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/jira/{ticketId}:
+    get:
+      tags:
+      - jira
+      summary: Fetch a Jira ticket as Markdown.
+      operationId: ticketJiraProxy
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/jira/{ticketId}:
+    get:
+      tags:
+      - jira
+      summary: Fetch a Jira ticket as Markdown.
+      operationId: ticketJiraProxy_1
+      parameters:
+      - name: ticketId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/forge/runs:
+    get:
+      tags:
+      - forge
+      summary: List Forge run projections for a namespace.
+      operationId: listForgeRun
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/forge/runs:
+    get:
+      tags:
+      - forge
+      summary: List Forge run projections for a namespace.
+      operationId: listForgeRun_1
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/cases/{caseId}/events:
+    get:
+      tags:
+      - agentos-proxy
+      summary: Relay the events of an AgentOS case.
+      operationId: caseEventsAgentOsProxy
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/agents:
+    get:
+      tags:
+      - agentos-proxy
+      summary: List AgentOS agent configs for a namespace.
+      operationId: agentsAgentOsProxy
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
 components:
   schemas:
     WorkflowDataEnvelopeObject:

@@ -41,6 +41,14 @@ factory:
   security:
     allow-loopback-dev: ${FACTORY_ALLOW_LOOPBACK_DEV:true}
     fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
+  forge:
+    agentos-url: ${AGENTOS_URL:http://localhost:8080}
+    runs-dir: ${FACTORY_RUNS_DIR:factory/runs}
+    run-entry: ${FACTORY_RUN_ENTRY:factory/run.mjs}
+    jira:
+      base-url: ${JIRA_BASE_URL:}
+      email: ${JIRA_EMAIL:}
+      api-token: ${JIRA_API_TOKEN:}
   artifact:
     retention-days: ${ARTIFACT_RETENTION_DAYS:90}
     signed-url-ttl-seconds: ${ARTIFACT_SIGNED_URL_TTL:900}
