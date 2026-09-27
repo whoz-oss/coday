@@ -112,7 +112,14 @@ private class NullSafeSpringExtensionFactory(
 ) : SpringExtensionFactory(manager) {
     override fun <T : Any?> create(extensionClass: Class<T>): T? {
         val wrapper = manager.whichPlugin(extensionClass)
-        return if (wrapper?.plugin?.wrapper == null) {
+        // `Plugin.getWrapper()` is the only way to detect an extension whose plugin
+        // was built with PF4J's no-arg `Plugin()` constructor (its wrapper field is
+        // null). PF4J 3.13 deprecates it in favour of a custom `PluginContext`, but
+        // that is an architectural migration, not a drop-in replacement, so we keep
+        // the exact original behaviour and silence the deprecation locally.
+        @Suppress("DEPRECATION")
+        val pluginWrapper = wrapper?.plugin?.wrapper
+        return if (pluginWrapper == null) {
             logger.debug {
                 "Extension ${extensionClass.name} has no initialised plugin wrapper; " +
                     "instantiating via root ApplicationContext"

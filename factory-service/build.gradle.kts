@@ -83,6 +83,10 @@ tasks.withType<Test> {
     // rejected with HTTP 400. Force a supported version.
     systemProperty("api.version", "1.44")
     jvmArgs("-XX:-OmitStackTraceInFastThrow")
+    // JDK 25 restricted native access: Testcontainers' docker-java loads JNA
+    // reflectively, which the JVM reports as a warning on the test JVM unless
+    // native access is enabled for the unnamed module.
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {

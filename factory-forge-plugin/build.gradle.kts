@@ -94,6 +94,10 @@ val pluginJar = tasks.named<Jar>("jar")
 tasks.withType<Test> {
     useJUnitPlatform()
     dependsOn(pluginJar)
+    // A test-time Java agent appends to the bootstrap classpath, which makes the
+    // JDK emit a class-data-sharing warning on the test JVM. Disabling CDS for
+    // tests removes the noise without affecting test behaviour.
+    jvmArgs("-Xshare:off")
     doFirst {
         systemProperty("factory.forge.plugin.jar", pluginJar.get().archiveFile.get().asFile.absolutePath)
     }
