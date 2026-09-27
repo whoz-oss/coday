@@ -3,10 +3,10 @@ package io.whozoss.factory.runs.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.forge.web.resolveForgeCaller
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.runs.service.LegacyRunService
 import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.resolveFactoryCaller
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
@@ -42,7 +42,7 @@ class LegacyRunSseController(
     ): SseEmitter {
         // Identity is resolved before any SSE response is opened; a missing
         // context fails closed with 401 and a JSON error envelope.
-        resolveForgeCaller(trustContext, tenantScopeProvider)
+        resolveFactoryCaller(trustContext, tenantScopeProvider)
         response.setHeader("Cache-Control", "no-cache")
         response.setHeader("Connection", "keep-alive")
         response.setHeader("Access-Control-Allow-Origin", "*")

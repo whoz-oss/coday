@@ -15,6 +15,12 @@ data class FactoryRouteRequest(
     val queryParams: Map<String, List<String>> = emptyMap(),
     val headers: Map<String, List<String>> = emptyMap(),
     val body: String? = null,
+    /**
+     * Host request attributes (e.g. the boundary-resolved identity context),
+     * exposed so a plugin can reuse the host's boundary resolution instead of
+     * re-parsing raw headers. Contents are host-defined and stable per request.
+     */
+    val attributes: Map<String, Any?> = emptyMap(),
 )
 
 /**
