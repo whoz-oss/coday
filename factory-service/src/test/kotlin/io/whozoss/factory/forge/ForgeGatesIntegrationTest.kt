@@ -86,7 +86,7 @@ class ForgeGatesIntegrationTest : DomainIntegrationTest() {
         val runId = created.first
         val events = ledgerStore.parse(created.second)
         val evidenceSetHash = ForgeHumanDecision.computeG1EvidenceSetHash(events, runId, 1)
-        val rootsMap = mapOf("runStoreRoot" to roots(root).runStoreRoot)
+        val rootsMap = roots(root).toMap()
 
         val decision = linkedMapOf<String, Any?>(
             "outcome" to "approved",
@@ -136,7 +136,7 @@ class ForgeGatesIntegrationTest : DomainIntegrationTest() {
         Files.writeString(specPath, epicSpec)
         val created = ledgers(root)
         val runId = created.first
-        val rootsMap = mapOf("runStoreRoot" to roots(root).runStoreRoot)
+        val rootsMap = roots(root).toMap()
 
         val blocked = gateService.evaluateG2(rootsMap, runId, specPath.toString())
         assertThat(blocked["status"]).isEqualTo("recorded")
@@ -163,7 +163,7 @@ class ForgeGatesIntegrationTest : DomainIntegrationTest() {
         val created = ledgers(root)
         val epicRunId = created.first
         val storyRunId = (created.third.first()["runId"] as String)
-        val rootsMap = mapOf("runStoreRoot" to roots(root).runStoreRoot)
+        val rootsMap = roots(root).toMap()
 
         approveG1(rootsMap, epicRunId, created.second)
         val g2 = gateService.evaluateG2(rootsMap, epicRunId, epicSpecPath.toString())

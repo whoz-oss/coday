@@ -25,8 +25,27 @@ data class LoadedForgeSpec(
  */
 object ForgeSpecReader {
 
+    /**
+     * Canonicalize a path for containment checks: resolve symlinks when the path
+     * exists, otherwise fall back to an absolute, normalized form. This mirrors
+     * the reference implementation's `realpathSync`, which resolves `/var` to
+     * `/private/var` on macOS, so a spec path and its confinement root are always
+     * compared in the same canonical space.
+     */
+    private fun canonicalPath(value: String): Path {
+        if (value.isBlank()) return Path.of("").toAbsolutePath().normalize()
+        val path = Path.of(value)
+        return if (Files.exists(path)) path.toRealPath() else path.toAbsolutePath().normalize()
+    }
+
     private fun inside(child: String, root: String): Boolean {
-        val rel = Path.of(root).relativize(Path.of(child)).toString()
+        // A missing/blank confinement root can never contain the child, and must
+        // not reach `relativize` (a relative root vs. an absolute child throws
+        // IllegalArgumentException).
+        if (root.isBlank()) return false
+        val rootPath = canonicalPath(root)
+        val childPath = canonicalPath(child)
+        val rel = rootPath.relativize(childPath).toString()
         return rel.isEmpty() || (!rel.startsWith("..") && !Path.of(rel).isAbsolute)
     }
 
