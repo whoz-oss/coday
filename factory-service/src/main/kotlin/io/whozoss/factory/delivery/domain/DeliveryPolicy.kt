@@ -107,7 +107,7 @@ fun validateDeliveryPromotionRequest(
     val evidenceIds = input["evidenceIds"] as? List<*>
     val idempotencyKey = input["idempotencyKey"] as? String
     if (deliveryId != expectedDeliveryId ||
-        !SAFE_ID.matches(deliveryId ?: "") ||
+        !SAFE_ID.matches(deliveryId) ||
         !isSafeInteger(input["expectedRevision"]) ||
         (expectedRevision ?: 0) < 1 ||
         requestedStage !in DeliveryDefinitionSchema.STAGES
@@ -132,7 +132,7 @@ fun validateDeliveryPromotionRequest(
     return DeliveryPromotionRequestValidation.Valid(
         DeliveryPromotionRequest(
             requestId = UUID.randomUUID().toString(),
-            deliveryId = deliveryId!!,
+            deliveryId = deliveryId,
             expectedRevision = expectedRevision!!,
             requestedStage = requestedStage!!,
             evidenceIds = evidenceIds.map { it as String },

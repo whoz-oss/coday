@@ -53,6 +53,7 @@ object WorkflowSync {
         val run = authoritative["run"]
         val adapted = ForgeWorkflowAdapter.adapt(run)
         if (adapted["ok"] != true) return adapted
+        @Suppress("UNCHECKED_CAST")
         val projection = adapted["projection"] as? Map<String, Any?> ?: return adapted
         val published = store(namespaceId, projection, attribution)
         if (published["ok"] != true) return mapOf("ok" to false, "error" to published["error"])

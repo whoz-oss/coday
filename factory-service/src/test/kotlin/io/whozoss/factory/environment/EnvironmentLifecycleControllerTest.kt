@@ -29,6 +29,7 @@ class EnvironmentLifecycleControllerTest : DomainIntegrationTest() {
     private lateinit var restTemplate: TestRestTemplate
 
     @Test
+    @Suppress("UNCHECKED_CAST")
     fun `provision returns 201 with a ready environment in a data envelope`() {
         val response = post("wf-http-provision", "/provision", provisionBody("wu-1"))
 
@@ -54,6 +55,7 @@ class EnvironmentLifecycleControllerTest : DomainIntegrationTest() {
     }
 
     @Test
+    @Suppress("UNCHECKED_CAST")
     fun `get returns the current environment and reconcile reports it as owned`() {
         post("wf-http-get", "/provision", provisionBody("wu-1"))
 
@@ -73,6 +75,7 @@ class EnvironmentLifecycleControllerTest : DomainIntegrationTest() {
     }
 
     @Test
+    @Suppress("UNCHECKED_CAST")
     fun `release decommissions the environment`() {
         post("wf-http-release", "/provision", provisionBody("wu-1"))
 

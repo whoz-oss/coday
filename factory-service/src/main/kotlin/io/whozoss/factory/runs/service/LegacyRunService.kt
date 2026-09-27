@@ -95,8 +95,8 @@ class LegacyRunService(
                 "name" to name,
                 "phaseKind" to (start?.get("phaseKind") ?: "?"),
                 "status" to (end?.get("status") ?: "running"),
-                "startedAt" to (start?.get("startedAt") ?: null),
-                "durationMs" to (end?.get("durationMs") ?: null),
+                "startedAt" to start?.get("startedAt"),
+                "durationMs" to end?.get("durationMs"),
                 "facts" to (end?.get("facts") ?: emptyMap<String, Any?>()),
             )
         }
@@ -144,9 +144,9 @@ class LegacyRunService(
         val summary = linkedMapOf<String, Any?>(
             "runId" to runId,
             "workflow" to (start?.get("workflow") ?: "?"),
-            "startedAt" to (start?.get("startedAt") ?: null),
-            "endedAt" to (end?.get("endedAt") ?: null),
-            "durationMs" to (end?.get("durationMs") ?: null),
+            "startedAt" to start?.get("startedAt"),
+            "endedAt" to end?.get("endedAt"),
+            "durationMs" to end?.get("durationMs"),
             "status" to status,
             "phaseCount" to phaseEnds.size,
             "context" to extractContext(lines),

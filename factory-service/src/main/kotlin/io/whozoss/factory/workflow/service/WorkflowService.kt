@@ -251,6 +251,7 @@ class WorkflowService(
         )
     }
 
+    @Suppress("UNCHECKED_CAST")
     private fun publishProjectionRow(
         scope: TenantScope,
         namespaceId: String,

@@ -63,8 +63,8 @@ class ForgeGateService(
             return record(filePath, runId, prior, null, "blocked", error.code)
         }
         if (prior?.get("status") == "passed" &&
-            asMap(prior?.get("spec"))?.get("sha256") == spec.sha256 &&
-            prior?.get("policyVersion") == G2_POLICY_VERSION
+            asMap(prior.get("spec"))?.get("sha256") == spec.sha256 &&
+            prior.get("policyVersion") == G2_POLICY_VERSION
         ) {
             return mapOf("status" to "idempotent", "event" to prior)
         }
@@ -135,7 +135,7 @@ class ForgeGateService(
         }
         if (asMap(prior?.get("storySpec"))?.get("sha256") == storySpec.sha256 &&
             prior?.get("policyVersion") == G2_US_POLICY_VERSION &&
-            prior?.get("code") != "G2_US_G1_NOT_APPROVED" && prior?.get("code") != "G2_US_G2_NOT_PASSED"
+            prior.get("code") != "G2_US_G1_NOT_APPROVED" && prior.get("code") != "G2_US_G2_NOT_PASSED"
         ) {
             return mapOf("status" to "idempotent", "event" to prior)
         }

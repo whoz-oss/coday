@@ -96,7 +96,7 @@ object WorkflowProjectionValidator {
             normalizedStep["name"] = name
             normalizedStep["status"] = stepStatus
             (step["description"] as? String)?.let { normalizedStep["description"] = it }
-            if (dependsOn != null) normalizedStep["dependsOn"] = (dependsOn as List<*>).map { it as String }
+            if (dependsOn != null) normalizedStep["dependsOn"] = dependsOn.map { it as String }
             if (responsibility is Map<*, *>) {
                 val responsibilityRecord = responsibility.entries.associate { it.key.toString() to it.value }
                 normalizedStep["responsibility"] = linkedMapOf<String, Any?>(

@@ -66,20 +66,21 @@ object ForgeSpec {
             }
             if (indent == 2 && section != null && SECTION_LIST.matches(line)) {
                 val newList = mutableListOf<Any?>()
-                sectionMap(out, section!!)[line.dropLast(1)] = newList
+                sectionMap(out, section)[line.dropLast(1)] = newList
                 list = newList
                 continue
             }
             if (indent == 2 && section != null) {
                 val match = SECTION_KEY.matchEntire(line)
                 if (match != null) {
-                    sectionMap(out, section!!)[match.groupValues[1]] = scalar(match.groupValues[2])
+                    sectionMap(out, section)[match.groupValues[1]] = scalar(match.groupValues[2])
                     list = null
                     continue
                 }
             }
             if (indent == 2 && section != null && line.startsWith("- ") && section == "oracles") {
                 val existing = out["oracles"]
+                @Suppress("UNCHECKED_CAST")
                 val target = (existing as? MutableList<Any?>) ?: mutableListOf<Any?>().also { out["oracles"] = it }
                 target.add(scalar(line.substring(2)))
                 continue
