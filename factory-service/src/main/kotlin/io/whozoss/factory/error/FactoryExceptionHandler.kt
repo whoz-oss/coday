@@ -1,6 +1,7 @@
 package io.whozoss.factory.error
 
 import mu.KotlinLogging
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -21,6 +22,7 @@ class FactoryExceptionHandler {
         logger.debug { "Handled FactoryException ${exception.errorCode} -> ${exception.statusCode}" }
         return ResponseEntity
             .status(exception.statusCode)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(
                 ErrorResponse(
                     ErrorDetail(
@@ -36,6 +38,7 @@ class FactoryExceptionHandler {
     fun handleIllegalArgumentException(exception: IllegalArgumentException): ResponseEntity<ErrorResponse> =
         ResponseEntity
             .status(400)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(
                 ErrorResponse(
                     ErrorDetail(
@@ -51,6 +54,7 @@ class FactoryExceptionHandler {
         logger.error(exception) { "Unhandled exception" }
         return ResponseEntity
             .status(500)
+            .contentType(MediaType.APPLICATION_JSON)
             .body(
                 ErrorResponse(
                     ErrorDetail(

@@ -13,6 +13,8 @@ tags:
   description: "Workflow projections, transitions and interactions"
 - name: delivery
   description: Governed delivery control plane
+- name: agent-step-results
+  description: Capability-bound agent step result submission
 - name: delivery-operations
   description: "Delivery deployment, verification and rollback control plane"
 - name: workflows
@@ -959,6 +961,77 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/agent-step-results:
+    post:
+      tags:
+      - agent-step-results
+      summary: Submit a capability-bound agent step result.
+      description: "Requires an `Authorization: Bearer <capability>` token issued\
+        \ by the Factory."
+      operationId: submitAgentStepResult
+      parameters:
+      - name: Authorization
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Case-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Agent-Name
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentStepResultRequest"
+      responses:
+        "201":
+          description: Result created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStepResultEnvelopeAgentStepResultData"
+        "200":
+          description: Idempotent replay of an identical submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStepResultEnvelopeAgentStepResultData"
+        "400":
+          description: "RESULT_SCHEMA_INVALID, RESULT_IDENTITY_MISMATCH or INVALID_RESULT_REQUEST"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: RESULT_SEMANTIC_COLLISION or IDEMPOTENCY_KEY_COLLISION
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: RESULT_CAPABILITY_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /api/factory/admin/artifacts/{artifactId}/purge:
     post:
       tags:
@@ -1406,5 +1479,70 @@ components:
       type: object
       properties:
         data: {}
+      required:
+      - data
+    AgentStepResultRequest:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        result:
+          $ref: "#/components/schemas/JsonNode"
+        business:
+          $ref: "#/components/schemas/JsonNode"
+        observed:
+          $ref: "#/components/schemas/ObservedIdentityRequest"
+        caseId:
+          type: string
+        agentName:
+          type: string
+        idempotencyKey:
+          type: string
+    JsonNode: {}
+    ObservedIdentityRequest:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        caseId:
+          type: string
+        agentName:
+          type: string
+    ErrorDetail:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+      required:
+      - code
+      - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+      required:
+      - error
+    AgentStepResultData:
+      type: object
+      properties:
+        resultId:
+          type: string
+        idempotent:
+          type: boolean
+        resultHash:
+          type: string
+      required:
+      - idempotent
+      - resultHash
+      - resultId
+    AgentStepResultEnvelopeAgentStepResultData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/AgentStepResultData"
       required:
       - data
