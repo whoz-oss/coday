@@ -3,6 +3,7 @@ package io.whozoss.factory.workflow.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.web.TrustContext
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
@@ -10,6 +11,7 @@ import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowExecution
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.workflowException
+import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.WorkflowHttpResult
 import io.whozoss.factory.workflow.service.WorkflowService
 import org.springframework.http.MediaType
@@ -23,6 +25,8 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.nio.file.Path
+import java.nio.file.Paths
 import java.util.UUID
 
 /**
@@ -44,6 +48,8 @@ import java.util.UUID
 @Tag(name = "workflows", description = "Workflow projections, transitions and interactions")
 class WorkflowController(
     private val service: WorkflowService,
+    private val sessionRunService: SessionRunService,
+    private val sessionProperties: SessionProperties,
     private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
@@ -282,13 +288,51 @@ class WorkflowController(
                 if (projection["state"] == "absent") WorkflowErrorCodes.WORKFLOW_NOT_FOUND else WorkflowErrorCodes.WORKFLOW_REMOVED,
             )
         }
+        val repoRoot = (request["repoRoot"] as? String)?.takeIf { it.isNotBlank() }
+            ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
+            ?: throw workflowException(
+                WorkflowErrorCodes.INVALID_REQUEST,
+                "A repoRoot is required to run the session (body.repoRoot or factory.session.default-repo-root).",
+            )
+        return WorkflowDataEnvelope(
+            runSession(caller.scope, caller.namespaceId, workflowId, Paths.get(repoRoot), operation),
+        )
+    }
+
+    private fun runSession(
+        scope: io.whozoss.factory.persistence.TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        repoRoot: Path,
+        operation: String,
+    ): Map<String, Any?> {
+        val result = sessionRunService.runSession(scope, namespaceId, workflowId, repoRoot)
+        return mapOf(
+            "workflowId" to result.workflowId,
+            "namespaceId" to result.namespaceId,
+            "operation" to operation,
+            "status" to result.status,
+            "steps" to result.steps.map { mapOf("id" to it.stepId, "status" to it.status) },
+            "runtimeNotification" to "not-configured",
+        )
+    }
+
+    @GetMapping(path = ["/{workflowId}/session"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Read the session DAG state (per-step statuses + overall status).")
+    fun sessionState(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        val result = sessionRunService.sessionState(caller.scope, caller.namespaceId, workflowId)
+            ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND)
         return WorkflowDataEnvelope(
             mapOf(
-                "workflowId" to workflowId,
-                "namespaceId" to caller.namespaceId,
-                "operation" to operation,
-                "status" to "ACCEPTED",
-                "runtimeNotification" to "not-configured",
+                "workflowId" to result.workflowId,
+                "namespaceId" to result.namespaceId,
+                "status" to result.status,
+                "steps" to result.steps.map { mapOf("id" to it.stepId, "status" to it.status) },
             ),
         )
     }
