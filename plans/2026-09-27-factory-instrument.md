@@ -37,7 +37,7 @@ Conséquences, non négociables :
 - **Autonome par construction.** Le module compile et s'exécute même si Spring, PostgreSQL, AgentOS et
   `node_modules` sont indisponibles ou en panne.
 - **Frontière réseau = contrat HTTP.** L'instrument ne doit jamais importer les classes internes Kotlin
-  d'AgentOS ni du produit (`factory/DEPENDENCY_MATRIX.md:28`). Le client AgentOS (W8.2) reste HTTP.
+  d'AgentOS ni du produit (`factory/DEPENDENCY_MATRIX.md:28`). Le client AgentOS (W8.3) reste HTTP.
 
 ## 3. Règle d'autorité — une seule source de vérité
 
@@ -48,7 +48,7 @@ Conséquences, non négociables :
 
 Une même primitive peut produire un fait localement **et** via le service ; seul le passage par
 `factory-service` (qui persiste et attribue l'autorité) transforme cette observation en preuve. Le
-moteur Kotlin doit donc rester conçu pour être **appelé par `factory-service`** (W8.6), sans que la
+moteur Kotlin doit donc rester conçu pour être **appelé par `factory-service`** (W6b), sans que la
 bibliothèque elle-même dépende du service.
 
 ## 4. Invariants de comportement (hérités, à préserver)
