@@ -1,15 +1,14 @@
 package io.whozoss.factory.capability
 
-import org.springframework.stereotype.Component
-
 /**
- * Default no-op [AgentTurnCapability] for W8.2.
+ * Default no-op [AgentTurnCapability].
  *
- * The agent-turn transport (HTTP AgentOS, active case, quiescence,
- * step-result binding) is explicitly scheduled for W8.3; until then every
- * `agent` step resolves to `NOT_IMPLEMENTED_YET`, never a silent success.
+ * Kept as the fallback default of [CapabilityResolver] so pure unit tests can
+ * construct a resolver without a transport. It is deliberately NOT a Spring
+ * bean: the wired implementation is [AgentOsAgentTurnCapability]. Every `agent`
+ * step resolved through this no-op returns `NOT_IMPLEMENTED_YET`, never a silent
+ * success.
  */
-@Component
 class NoOpAgentTurnCapability : AgentTurnCapability {
     override fun executeAgentTurn(request: AgentTurnRequest): AgentTurnResult =
         AgentTurnResult.NotImplementedYet("Agent turn execution is scheduled for W8.3")

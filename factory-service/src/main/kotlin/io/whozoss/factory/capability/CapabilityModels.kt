@@ -70,6 +70,19 @@ sealed interface CapabilityOutcome {
         val facts: Map<String, Any?> = emptyMap(),
     ) : CapabilityOutcome
 
+    /**
+     * An agent turn failed explicitly: AgentOS unreachable or misconfigured, a
+     * timeout, a killed case or a case error. The verdict is a failure, never a
+     * silent success.
+     */
+    data class AgentFailed(
+        val stepId: String,
+        val persona: String?,
+        val code: String,
+        val message: String,
+        val facts: Map<String, Any?> = emptyMap(),
+    ) : CapabilityOutcome
+
     /** A human checkpoint is required for this step; the projection/instance opens it. */
     data class HumanCheckpointRequired(
         val stepId: String,
