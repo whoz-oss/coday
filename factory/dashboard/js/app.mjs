@@ -15,21 +15,17 @@
 
 import { SseClient } from './services/sse-client.mjs'
 import { ApiClient } from './services/api-client.mjs'
-import { mountRunLaunchView } from './views/run-launch.mjs'
 import { mountArtifactAdminView } from './views/artifact-admin.mjs'
 import { mountProjectionView } from './views/projection.mjs'
 import { mount as mountRunDetailView } from './views/run-detail.mjs'
-import { mount as mountForgeCockpit } from './views/forge-cockpit.mjs'
 
 export const ROUTES = Object.freeze({
   '/runs': { id: 'view-runs', label: 'Runs' },
-  '/launch': { id: 'view-launch', label: 'Lancer' },
   '/detail': { id: 'view-detail', label: 'Détail' },
   // Legacy alias of the runs list (the former standalone `Projection` tab).
   // Resolves to the same list view so old links keep working without a second
   // placeholder screen.
   '/projection': { id: 'view-runs', label: 'Projection' },
-  '/forge': { id: 'view-forge', label: 'Forge' },
   '/admin': { id: 'view-admin', label: 'Admin' },
 })
 
@@ -39,7 +35,6 @@ export const ROUTES = Object.freeze({
  * a missing mounter is a no-op so existing routes keep working unchanged.
  */
 export const VIEW_MOUNTERS = Object.freeze({
-  '/launch': mountRunLaunchView,
   '/admin': mountArtifactAdminView,
 })
 
@@ -328,17 +323,6 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
           .catch(() => {})
         return
       }
-      if (route !== '/forge') return
-      const container = doc.getElementById('view-forge')
-      if (!container) return
-      const namespaceId = resolveNamespaceId(win)
-      if (!namespaceId) return
-      mountForgeCockpit(container, {
-        namespaceId,
-        apiClient: api,
-        SseClient,
-        registerTeardown: ctx.registerTeardown,
-      })
     },
   })
   const start = () => router.start()

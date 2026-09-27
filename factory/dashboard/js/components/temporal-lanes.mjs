@@ -3,9 +3,8 @@
  *
  * Vanilla ESM, zero dependencies, zero build step. Two renderings live here:
  *
- *   1. the compact inline swimlanes rendered inside a workflow card
- *      (`buildBlueprintLayout` + `renderTemporalLanes`) — kept unchanged for
- *      backwards compatibility with `workflow-card.mjs`;
+ *   1. the compact inline swimlanes (`buildBlueprintLayout` + `renderTemporalLanes`),
+ *      a public helper/tested contract kept for backwards compatibility;
  *   2. the SSSF-style horizontal waterfall used by the run detail view
  *      (`buildWaterfallLayout` + `renderWaterfallTimeline`): a run-strip band
  *      followed by one lane per actor, with phase blocks positioned in REAL
