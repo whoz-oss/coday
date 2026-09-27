@@ -222,9 +222,17 @@ class WorkflowControllerHttpTest : DomainIntegrationTest() {
             HttpEntity<Void>(headers()),
             jsonType(),
         )
+        // A loopback-dev trust context carries no namespace: the scope-wide list
+        // must succeed (200) and never fail closed with 401 INVALID_NAMESPACE_ID.
+        assertThat(response.statusCode).isNotEqualTo(HttpStatus.UNAUTHORIZED)
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
-        val ids = listIds(data(response.body))
-        assertThat(ids).contains("wf-list-a", "wf-list-b")
+        assertThat(response.body?.get("error")).isNull()
+        val items = (data(response.body)["items"] as? List<*>)
+            ?.filterIsInstance<Map<String, Any?>>()
+            ?: emptyList()
+        assertThat(items.mapNotNull { it["workflowId"] as? String }).contains("wf-list-a", "wf-list-b")
+        // Each item carries its namespace so the cockpit can open its detail.
+        assertThat(items.mapNotNull { it["namespaceId"] as? String }).contains(namespace, secondNamespace)
     }
 
     @Test

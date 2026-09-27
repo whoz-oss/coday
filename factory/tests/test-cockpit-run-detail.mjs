@@ -729,8 +729,13 @@ const baseMountOptions = (apiClient, sseClient) => ({
 await scenario('mount() validates its inputs', async () => {
   await assert.rejects(() => mount(null, {}), TypeError)
   await assert.rejects(() => mount(new FakeContainer(), { namespaceId: NS, apiClient: createApiClient() }), TypeError)
-  await assert.rejects(() => mount(new FakeContainer(), { workflowId: WF, apiClient: createApiClient() }), TypeError)
   await assert.rejects(() => mount(new FakeContainer(), { workflowId: WF, namespaceId: NS }), TypeError)
+  // `namespaceId` is OPTIONAL: a mount with only a workflowId + apiClient must
+  // succeed (and omit the namespace query param) instead of rejecting.
+  const container = new FakeContainer()
+  const handle = await mount(container, { workflowId: WF, apiClient: createApiClient(), now: () => FIXED_NOW })
+  assert.equal(handle.isMounted(), true)
+  handle.unmount()
 })
 
 await scenario('mount() loads the projection, timing, evidence and metrics', async () => {

@@ -7,11 +7,14 @@
  * authority is Governed Projection v2 — there is no legacy JSONL run, no
  * `/api/runs`, and no line/done SSE stream anywhere in this module.
  *
- *   - `GET /api/factory/workflows/:id?namespaceId=…`          (projection, required)
- *   - `GET /api/factory/workflows/:id/timing?namespaceId=…`   (durations)
- *   - `GET /api/factory/workflows/:id/evidence?namespaceId=…` (recorded evidence)
- *   - `GET /api/factory/workflows/:id/metrics?namespaceId=…`  (operational rollup)
+ *   - `GET /api/factory/workflows/:id[?namespaceId=…]`          (projection)
+ *   - `GET /api/factory/workflows/:id/timing[?namespaceId=…]`   (durations)
+ *   - `GET /api/factory/workflows/:id/evidence[?namespaceId=…]` (recorded evidence)
+ *   - `GET /api/factory/workflows/:id/metrics[?namespaceId=…]`  (operational rollup)
  *   - SSE `workflow-projection-updated`                        (live refresh)
+ *
+ * `namespaceId` is optional: when absent the query parameter is omitted from
+ * every request instead of being sent empty.
  *
  * Lifecycle contract: `mount` performs the initial load, wires the delegated
  * click handler and the SSE subscription, and returns a handle whose `unmount`
@@ -21,6 +24,7 @@
 
 import { WORKFLOW_PROJECTION_EVENTS } from '../services/sse-client.mjs'
 import { normalizeSteps, renderGantt } from '../components/gantt.mjs'
+import { buildBlueprintLayout, renderTemporalLanes } from '../components/temporal-lanes.mjs'
 import { renderPhasePanel, loadPhaseEnrichment } from '../components/phase-panel.mjs'
 import { esc, fmtDur } from '../components/facts.mjs'
 import { buildCaseLinkHtml } from '../components/case-link.mjs'
@@ -45,6 +49,15 @@ function isExistingWorkflow(workflow) {
   if (!workflow || typeof workflow !== 'object') return false
   if (workflow.state && workflow.state !== 'existing') return false
   return Boolean(workflow.projection)
+}
+
+function renderSwimlanes(lanesHtml) {
+  return (
+    '<div class="panel" data-run-detail-lanes="true">' +
+    '<h2 class="panel-title">Timeline</h2>' +
+    lanesHtml +
+    '</div>'
+  )
 }
 
 function renderMetricsStrip(metrics) {
@@ -73,7 +86,7 @@ function renderMetricsStrip(metrics) {
  * @param {any} container element-like target (typically `#view-detail`)
  * @param {{
  *   workflowId: string,
- *   namespaceId: string,
+ *   namespaceId?: string | null,
  *   apiClient: { get: (path: string, options?: object) => Promise<any> },
  *   sseClient?: { on: (event: string, handler: Function) => (() => void) } | null,
  *   now?: () => number,
@@ -90,7 +103,6 @@ export async function mount(container, options = {}) {
   if (!container || typeof container !== 'object') throw new TypeError('run-detail.mount requires a container')
   const { workflowId, namespaceId, apiClient } = options
   if (!workflowId || typeof workflowId !== 'string') throw new TypeError('run-detail.mount requires a workflowId')
-  if (!namespaceId || typeof namespaceId !== 'string') throw new TypeError('run-detail.mount requires a namespaceId')
   if (!apiClient || typeof apiClient.get !== 'function') {
     throw new TypeError('run-detail.mount requires an apiClient with a get() method')
   }
@@ -104,7 +116,10 @@ export async function mount(container, options = {}) {
     : DEFAULT_REFRESH_DEBOUNCE_MS
 
   const base = `/api/factory/workflows/${encodeURIComponent(workflowId)}`
-  const scope = `namespaceId=${encodeURIComponent(namespaceId)}`
+  // `namespaceId` is OPTIONAL: when absent the scope query is omitted entirely
+  // rather than emitted as an empty `namespaceId=`.
+  const scope = typeof namespaceId === 'string' && namespaceId ? `namespaceId=${encodeURIComponent(namespaceId)}` : ''
+  const withScope = (path) => (scope ? `${path}?${scope}` : path)
 
   const state = {
     mounted: true,
@@ -198,6 +213,9 @@ export async function mount(container, options = {}) {
     }
 
     const currentSteps = steps()
+    // Human / agent / code swimlanes: the same lane layout the list cards use,
+    // rendered here as the run's readable timeline (statuses + actors).
+    const lanes = renderTemporalLanes(buildBlueprintLayout(state.workflow?.projection?.steps ?? []))
     const gantt = renderGantt({
       workflow: state.workflow,
       timing: state.timing,
@@ -213,9 +231,9 @@ export async function mount(container, options = {}) {
       loading: state.enrichmentLoading,
     })
 
-    container.innerHTML = `<div class="run-detail" data-run-detail="true">${renderHeader()}${gantt}${panel}${renderMetricsStrip(
-      state.metrics
-    )}</div>`
+    container.innerHTML = `<div class="run-detail" data-run-detail="true">${renderHeader()}${renderSwimlanes(
+      lanes,
+    )}${gantt}${panel}${renderMetricsStrip(state.metrics)}</div>`
   }
 
   const safeGet = async (path, signal) => {
@@ -239,7 +257,7 @@ export async function mount(container, options = {}) {
 
     let workflow
     try {
-      workflow = await apiClient.get(`${base}?${scope}`, { signal })
+      workflow = await apiClient.get(withScope(base), { signal })
     } catch (error) {
       if (!state.mounted || controller !== state.abortController) return
       state.phase = 'error'
@@ -251,9 +269,9 @@ export async function mount(container, options = {}) {
     if (!state.mounted || controller !== state.abortController) return
 
     const [timingPayload, evidencePayload, metricsPayload] = await Promise.all([
-      safeGet(`${base}/timing?${scope}`, signal),
-      safeGet(`${base}/evidence?${scope}`, signal),
-      safeGet(`${base}/metrics?${scope}`, signal),
+      safeGet(withScope(`${base}/timing`), signal),
+      safeGet(withScope(`${base}/evidence`), signal),
+      safeGet(withScope(`${base}/metrics`), signal),
     ])
     if (!state.mounted || controller !== state.abortController) return
 
@@ -302,7 +320,7 @@ export async function mount(container, options = {}) {
   const matchesWorkflow = (payload) => {
     if (!payload || typeof payload !== 'object') return false
     if (payload.workflowId !== undefined && payload.workflowId !== workflowId) return false
-    if (payload.namespaceId !== undefined && payload.namespaceId !== namespaceId) return false
+    if (namespaceId && payload.namespaceId !== undefined && payload.namespaceId !== namespaceId) return false
     return true
   }
 

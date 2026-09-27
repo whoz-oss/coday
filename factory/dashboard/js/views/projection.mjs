@@ -14,7 +14,10 @@
  *   - POST   /api/factory/workflows/:id/restore
  *   - DELETE /api/factory/workflows/:id
  *   - DELETE /api/factory/workflows/:id/purge
- *   - SSE /api/factory/workflows/stream?namespaceId=  (named projection events)
+ *   - SSE /api/factory/workflows/stream[?namespaceId=]  (named projection events)
+ *
+ * A workflow card click navigates to `/detail` (via the optional `onNavigate`
+ * callback) to open that workflow's namespace-scoped swimlane timeline.
  *
  * The module is import-safe in Node: no `window`/`document` access happens at
  * module evaluation, only inside {@link mountProjectionView}.
@@ -190,7 +193,7 @@ export class ProjectionController {
       options.streamUrl ??
       (this.namespaceId
         ? `/api/factory/workflows/stream?namespaceId=${encodeURIComponent(this.namespaceId)}`
-        : null)
+        : `/api/factory/workflows/stream`)
     this.ownsSse = false
     this.unsubscribers = []
     this.pending = new Set()
@@ -239,15 +242,18 @@ export class ProjectionController {
   }
 
   detailPath(workflowId) {
-    return `/api/factory/workflows/${encodeURIComponent(workflowId)}?namespaceId=${encodeURIComponent(this.namespaceId ?? '')}`
+    const base = `/api/factory/workflows/${encodeURIComponent(workflowId)}`
+    // `namespaceId` is an OPTIONAL filter: omit it entirely when the caller has
+    // no active namespace instead of emitting an empty `namespaceId=`.
+    return this.namespaceId ? `${base}?namespaceId=${encodeURIComponent(this.namespaceId)}` : base
   }
 
   lifecyclePath(action, workflowId) {
     const base = `/api/factory/workflows/${encodeURIComponent(workflowId)}`
-    const namespace = encodeURIComponent(this.namespaceId ?? '')
-    if (action === 'restore') return `${base}/restore?namespaceId=${namespace}`
-    if (action === 'purge') return `${base}/purge?namespaceId=${namespace}`
-    return `${base}?namespaceId=${namespace}`
+    const namespace = this.namespaceId ? `?namespaceId=${encodeURIComponent(this.namespaceId)}` : ''
+    if (action === 'restore') return `${base}/restore${namespace}`
+    if (action === 'purge') return `${base}/purge${namespace}`
+    return `${base}${namespace}`
   }
 
   /** Track a fire-and-forget task so teardown can drop pending references. */
@@ -359,11 +365,9 @@ export class ProjectionController {
   /** Fetch the trusted timing summary for a workflow (GET /timing). */
   async fetchTiming(workflowId) {
     if (this.disposed || !this.api?.get || !workflowId) return null
-    const namespace = encodeURIComponent(this.namespaceId ?? '')
+    const namespace = this.namespaceId ? `?namespaceId=${encodeURIComponent(this.namespaceId)}` : ''
     try {
-      const payload = await this.api.get(
-        `/api/factory/workflows/${encodeURIComponent(workflowId)}/timing?namespaceId=${namespace}`,
-      )
+      const payload = await this.api.get(`/api/factory/workflows/${encodeURIComponent(workflowId)}/timing${namespace}`)
       return payload?.timing ?? null
     } catch (error) {
       if (!this.disposed) this.onError(errorMessage(error), error)
@@ -633,12 +637,14 @@ export function createDialogConfirm({ doc, showModal, closeModal } = {}) {
  * @param {object} container DOM element (or a compatible double)
  * @param {object} [options] `{ api, sse, SseClient, namespaceId, getAgentosUrl,
  *   getCodayExpressUrl, getConfig, agentosUrl, codayExpressUrl,
- *   registerTeardown, confirm, document, showModal, closeModal, onChange, onError }`
+ *   registerTeardown, confirm, document, showModal, closeModal, onChange, onError,
+ *   onNavigate }`
  * @returns {{ controller: ProjectionController, teardown: Function, ready: Promise<void>, render: Function }}
  */
 export function mountProjectionView(container, options = {}) {
   if (!container || typeof container !== 'object') throw new TypeError('mountProjectionView requires a container')
   const doc = options.document ?? globalThis.document ?? null
+  const onNavigate = typeof options.onNavigate === 'function' ? options.onNavigate : null
   const confirm =
     typeof options.confirm === 'function'
       ? options.confirm
@@ -670,11 +676,21 @@ export function mountProjectionView(container, options = {}) {
       return
     }
     const actionButton = target?.closest?.('[data-action]')
-    if (!actionButton) return
-    const action = actionButton.dataset?.action
-    const workflowId = actionButton.dataset?.workflowId
-    if (!action || !workflowId) return
-    void controller.requestAction(action, workflowId)
+    if (actionButton) {
+      const action = actionButton.dataset?.action
+      const workflowId = actionButton.dataset?.workflowId
+      if (action && workflowId) void controller.requestAction(action, workflowId)
+      return
+    }
+    // A plain click on a workflow card opens its namespace-scoped detail
+    // timeline. Links (case/thread identity) keep their own navigation.
+    if (target?.closest?.('a')) return
+    const card = target?.closest?.('.workflow-card')
+    if (!card || typeof onNavigate !== 'function') return
+    const workflowId = card.dataset?.workflowId
+    if (!workflowId) return
+    const cardNamespace = card.dataset?.namespaceId || controller.namespaceId
+    onNavigate('/detail', { workflowId, ...(cardNamespace ? { namespaceId: cardNamespace } : {}) })
   }
 
   container.addEventListener('click', onClick)
