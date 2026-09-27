@@ -23,7 +23,7 @@
  */
 
 import { WORKFLOW_PROJECTION_EVENTS } from '../services/sse-client.mjs'
-import { normalizeSteps, renderGantt } from '../components/gantt.mjs'
+import { normalizeSteps } from '../components/gantt.mjs'
 import { buildWaterfallLayout, renderWaterfallTimeline } from '../components/temporal-lanes.mjs'
 import { renderPhasePanel, loadPhaseEnrichment } from '../components/phase-panel.mjs'
 import { esc, fmtDur } from '../components/facts.mjs'
@@ -220,17 +220,11 @@ export async function mount(container, options = {}) {
       return
     }
 
-    const currentSteps = steps()
     // SSSF-style horizontal waterfall: run-strip + one lane per actor, with
     // phase blocks positioned in real time from the projection timestamps.
+    // This is the SINGLE timeline of the detail view; the former Gantt block
+    // ("ACTEUR · TEMPS") was a redundant duplicate and has been removed.
     const lanes = renderTimeline(state, now())
-    const gantt = renderGantt({
-      workflow: state.workflow,
-      timing: state.timing,
-      steps: currentSteps,
-      selectedStepId: state.selectedStepId,
-      now: now(),
-    })
     const panel = renderPhasePanel({
       step: selectedStep(),
       workflow: state.workflow,
@@ -241,7 +235,7 @@ export async function mount(container, options = {}) {
 
     container.innerHTML = `<div class="run-detail" data-run-detail="true">${renderHeader()}${renderSwimlanes(
       lanes
-    )}${gantt}${panel}${renderMetricsStrip(state.metrics)}</div>`
+    )}${panel}${renderMetricsStrip(state.metrics)}</div>`
   }
 
   const safeGet = async (path, signal) => {

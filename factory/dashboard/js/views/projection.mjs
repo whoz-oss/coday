@@ -557,7 +557,7 @@ export function renderWorkflowGroup(group, state) {
     `<span class="projection-group-label">${escapeHtml(group.label)}</span>` +
     `<span class="chip projection-group-count">${(group.nodes ?? []).length}</span>` +
     `</summary>` +
-    `<div class="projection-group-body">${body}</div>` +
+    `<div class="projection-group-body runs">${body}</div>` +
     `</details>`
   )
 }
@@ -682,10 +682,21 @@ export function mountProjectionView(container, options = {}) {
       if (action && workflowId) void controller.requestAction(action, workflowId)
       return
     }
+    // The explicit "Ouvrir le détail" button navigates to the run timeline.
+    const detailButton = target?.closest?.('[data-open-detail]')
+    if (detailButton) {
+      if (typeof onNavigate !== 'function') return
+      const workflowId = detailButton.dataset?.workflowId
+      if (!workflowId) return
+      const card = detailButton.closest?.('.card, .workflow-card')
+      const cardNamespace = card?.dataset?.namespaceId || controller.namespaceId
+      onNavigate('/detail', { workflowId, ...(cardNamespace ? { namespaceId: cardNamespace } : {}) })
+      return
+    }
     // A plain click on a workflow card opens its namespace-scoped detail
     // timeline. Links (case/thread identity) keep their own navigation.
     if (target?.closest?.('a')) return
-    const card = target?.closest?.('.workflow-card')
+    const card = target?.closest?.('.card, .workflow-card')
     if (!card || typeof onNavigate !== 'function') return
     const workflowId = card.dataset?.workflowId
     if (!workflowId) return
