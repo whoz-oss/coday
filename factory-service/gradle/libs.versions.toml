@@ -20,6 +20,8 @@ testcontainers = "1.20.4"
 mockk = "1.13.5"
 mockk-spring = "3.1.2"
 jackson = "2.19.4"
+pf4j = "3.13.0"
+pf4jSpring = "0.10.0"
 
 [libraries]
 # Kotlin
@@ -48,6 +50,7 @@ springdoc-openapi-starter = { module = "org.springdoc:springdoc-openapi-starter-
 klogger = { module = "io.github.microutils:kotlin-logging-jvm", version.ref = "klogger" }
 
 # Jackson
+jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }
 jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
 
@@ -57,6 +60,10 @@ testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 mockk-spring = { module = "com.ninja-squad:springmockk", version.ref = "mockk-spring" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+# PF4J
+pf4j = { module = "org.pf4j:pf4j", version.ref = "pf4j" }
+pf4j-spring = { module = "org.pf4j:pf4j-spring", version.ref = "pf4jSpring" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

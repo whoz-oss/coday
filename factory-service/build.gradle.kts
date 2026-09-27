@@ -27,6 +27,20 @@ kotlin {
 }
 
 dependencies {
+    // Factory SDK — Spring-agnostic plugin extension points.
+    // Coordinates substituted by the composite build (see settings.gradle.kts).
+    api("io.whozoss.factory:factory-sdk:0.0.1-SNAPSHOT")
+
+    // PF4J plugin framework + Spring integration (service runtime only, never in the SDK).
+    implementation(libs.pf4j) {
+        exclude(group = "org.slf4j", module = "slf4j-reload4j")
+        exclude(group = "org.slf4j", module = "slf4j-log4j12")
+    }
+    implementation(libs.pf4j.spring) {
+        exclude(group = "org.slf4j", module = "slf4j-reload4j")
+        exclude(group = "org.slf4j", module = "slf4j-log4j12")
+    }
+
     // Spring Boot
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)

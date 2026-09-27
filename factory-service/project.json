@@ -8,6 +8,7 @@
       "executor": "nx:run-commands",
       "cache": true,
       "outputs": ["{projectRoot}/build/libs"],
+      "dependsOn": [{ "target": "build", "projects": ["factory-sdk"] }],
       "options": {
         "command": "./gradlew build",
         "cwd": "factory-service"
@@ -16,6 +17,7 @@
     "test": {
       "executor": "nx:run-commands",
       "cache": false,
+      "dependsOn": [{ "target": "test", "projects": ["factory-sdk"] }],
       "options": {
         "command": "./gradlew test",
         "cwd": "factory-service"

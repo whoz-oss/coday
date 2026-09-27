@@ -2,6 +2,9 @@
 .gradle/
 build/
 
+# PF4J drop-in plugin directory (created at runtime)
+plugins/
+
 # IDE
 .idea/
 *.iml
