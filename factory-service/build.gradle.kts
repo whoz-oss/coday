@@ -31,6 +31,11 @@ dependencies {
     // Coordinates substituted by the composite build (see settings.gradle.kts).
     api("io.whozoss.factory:factory-sdk:0.0.1-SNAPSHOT")
 
+    // Factory Verification Core — pure Kotlin deterministic verification
+    // primitives (target-repo `factory/verification.json` manifest + oracle
+    // execution). Coordinates substituted by the composite build.
+    implementation("io.whozoss.factory:factory-verification-core:0.0.1-SNAPSHOT")
+
     // PF4J plugin framework + Spring integration (service runtime only, never in the SDK).
     implementation(libs.pf4j) {
         exclude(group = "org.slf4j", module = "slf4j-reload4j")
