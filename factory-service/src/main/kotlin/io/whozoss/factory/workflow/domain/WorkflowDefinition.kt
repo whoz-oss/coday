@@ -157,35 +157,10 @@ object WorkflowDefinitionValidator {
             )
         }
 
-        for (step in steps) {
-            for (dependency in step.dependsOn) {
-                if (dependency == step.id) {
-                    return failure(WorkflowDefinitionErrorCodes.SELF_DEPENDENCY, "steps.${step.id}.dependsOn")
-                }
-                if (dependency !in ids) {
-                    return failure(
-                        WorkflowDefinitionErrorCodes.MISSING_DEPENDENCY,
-                        "steps.${step.id}.dependsOn",
-                        mapOf("target" to dependency),
-                    )
-                }
-            }
-        }
-
-        val graph = steps.associate { it.id to it.dependsOn }
-        val visiting = HashSet<String>()
-        val visited = HashSet<String>()
-        fun cyclic(id: String): Boolean {
-            if (id in visiting) return true
-            if (id in visited) return false
-            visiting.add(id)
-            for (dependency in graph[id].orEmpty()) if (cyclic(dependency)) return true
-            visiting.remove(id)
-            visited.add(id)
-            return false
-        }
-        for (step in steps) {
-            if (cyclic(step.id)) return failure(WorkflowDefinitionErrorCodes.DEPENDENCY_CYCLE, "steps")
+        when (val graph = SessionDefinitionValidator.validateGraph(steps)) {
+            is SessionDefinitionValidator.Result.Invalid ->
+                return WorkflowDefinitionValidation.Invalid(graph.error)
+            is SessionDefinitionValidator.Result.Valid -> Unit
         }
 
         val normalizedStepJsons = steps.map { step ->
