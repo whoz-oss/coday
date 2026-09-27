@@ -22,7 +22,7 @@
 
 import * as http from 'http'
 
-const FACTORY_URL = process.env.FACTORY_URL ?? 'http://localhost:3141'
+const FACTORY_URL = process.env.FACTORY_URL ?? 'http://localhost:8141'
 
 function emit(obj: Record<string, unknown>): void {
   process.stdout.write(JSON.stringify(obj) + '\n')
@@ -52,7 +52,7 @@ function httpPost(
     const parsed = new URL(url)
     const options: http.RequestOptions = {
       hostname: parsed.hostname,
-      port: parsed.port ? parseInt(parsed.port) : 3141,
+      port: parsed.port ? parseInt(parsed.port) : 8141,
       path: parsed.pathname + parsed.search,
       method: 'POST',
       headers: {
@@ -134,7 +134,7 @@ async function main(): Promise<void> {
     emit({
       ok: false,
       error: `Impossible de joindre le serveur Factory sur ${FACTORY_URL} : ${(err as Error).message}`,
-      hint: 'Vérifiez que node factory/dashboard/server.mjs tourne sur le repo Coday.',
+      hint: 'Vérifiez que factory-service (Kotlin/Spring Boot, port 8141) tourne sur le repo Coday.',
     })
     process.exit(1)
   }

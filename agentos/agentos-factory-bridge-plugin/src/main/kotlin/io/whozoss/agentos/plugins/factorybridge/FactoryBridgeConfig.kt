@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit
  *
  * | Value       | System property                | Environment variable            | Default                 |
  * |-------------|--------------------------------|---------------------------------|-------------------------|
- * | base URL    | `agentos.factory.base-url`     | `AGENTOS_FACTORY_BASE_URL`       | `http://localhost:3141` |
+ * | base URL    | `agentos.factory.base-url`     | `AGENTOS_FACTORY_BASE_URL`       | `http://localhost:8141` |
  * | runtime id  | `agentos.factory.runtime-id`   | `AGENTOS_FACTORY_RUNTIME_ID`     | `agentos-primary`       |
  */
 data class FactoryBridgeConfig(
@@ -33,7 +33,7 @@ data class FactoryBridgeConfig(
             .build()
 
     companion object {
-        const val DEFAULT_BASE_URL = "http://localhost:3141"
+        const val DEFAULT_BASE_URL = "http://localhost:8141"
         const val DEFAULT_RUNTIME_ID = "agentos-primary"
 
         fun fromEnvironment(): FactoryBridgeConfig =

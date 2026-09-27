@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 /**
  * JSONL registry tests. Verifies the strict fail-by-default invariant and the
- * byte-compatible line format the Kotlin `LegacyRunService` already reads.
+ * byte-compatible line format the Kotlin runtime already reads.
  */
 class RunRegistryTest {
 

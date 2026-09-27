@@ -4,11 +4,11 @@
  * WorkflowProjection store. This best-effort integration must never fail the
  * agent workflow when the local Factory dashboard is unavailable.
  *
- * Usage: FACTORY_SERVER_URL=http://localhost:3141 NAMESPACE_ID=<uuid> \
+ * Usage: FACTORY_SERVER_URL=http://localhost:8141 NAMESPACE_ID=<uuid> \
  *   ts-node forge-workflow-sync.ts WZ-123
  */
 
-const FACTORY_SERVER_URL = process.env.FACTORY_SERVER_URL ?? 'http://localhost:3141'
+const FACTORY_SERVER_URL = process.env.FACTORY_SERVER_URL ?? 'http://localhost:8141'
 const NAMESPACE_ID = process.env.NAMESPACE_ID ?? process.env.FACTORY_NAMESPACE_ID
 const ticketId = process.argv[2]
 

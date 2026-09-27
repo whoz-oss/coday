@@ -16,7 +16,7 @@ class FactorySubmitStepResultToolSpec : StringSpec({
     "tool is fail-closed outside a Factory-bound case" {
         val tool =
             FactorySubmitStepResultTool(
-                "http://127.0.0.1:3141",
+                "http://127.0.0.1:8141",
                 OkHttpClient(),
                 jacksonObjectMapper(),
                 FactoryStepResultBindingRegistry(),
@@ -40,7 +40,7 @@ class FactorySubmitStepResultToolSpec : StringSpec({
             )
         val tool =
             FactorySubmitStepResultTool(
-                "http://127.0.0.1:3141",
+                "http://127.0.0.1:8141",
                 OkHttpClient(),
                 jacksonObjectMapper(),
                 FactoryStepResultBindingRegistry(),

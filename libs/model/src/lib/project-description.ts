@@ -8,7 +8,7 @@ import { McpConfig } from './mcp-server-config'
 export interface FactoryProjectConfig {
   /** Transitional Express adapter; disabled unless explicitly true. */
   enabled?: boolean
-  /** Trusted Factory dashboard origin, for example http://127.0.0.1:3141. */
+  /** Trusted Factory dashboard origin, for example http://127.0.0.1:8141. */
   baseUrl?: string
   /** Trusted AgentOS namespace UUID used by Factory storage and SSE. */
   namespaceId?: string

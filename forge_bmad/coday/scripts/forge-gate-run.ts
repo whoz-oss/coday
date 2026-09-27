@@ -50,7 +50,7 @@ function syncWorkflowProjection(ticket: string): void {
   const namespaceId = process.env.NAMESPACE_ID ?? process.env.FACTORY_NAMESPACE_ID
   if (!namespaceId) return
 
-  const factoryUrl = process.env.FACTORY_URL ?? process.env.FACTORY_SERVER_URL ?? 'http://localhost:3141'
+  const factoryUrl = process.env.FACTORY_URL ?? process.env.FACTORY_SERVER_URL ?? 'http://localhost:8141'
   const syncScript = path.join(__dirname, 'forge-workflow-sync.ts')
   const cmd = `FACTORY_SERVER_URL=${factoryUrl} NAMESPACE_ID=${namespaceId} npx ts-node ${syncScript} ${ticket}`
   exec(cmd, { env: process.env }, (err) => {
