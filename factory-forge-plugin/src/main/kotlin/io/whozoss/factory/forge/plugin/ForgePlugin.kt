@@ -15,12 +15,12 @@ import org.springframework.context.annotation.AnnotationConfigApplicationContext
  * into the host JVM with the APD class-loading strategy, Spring, Jackson, PF4J
  * and the host's shared types are all reused from the host classloader.
  */
-class ForgePlugin(wrapper: PluginWrapper) : SpringPlugin(wrapper) {
+class ForgePlugin(private val pluginWrapper: PluginWrapper) : SpringPlugin(pluginWrapper) {
 
     override fun createApplicationContext(): ApplicationContext {
         val context = AnnotationConfigApplicationContext()
-        context.setClassLoader(wrapper.pluginClassLoader)
-        (wrapper.pluginManager as? SpringPluginManager)?.applicationContext?.let { context.parent = it }
+        context.setClassLoader(pluginWrapper.pluginClassLoader)
+        (pluginWrapper.pluginManager as? SpringPluginManager)?.applicationContext?.let { context.parent = it }
         context.scan("io.whozoss.factory.forge")
         context.refresh()
         return context
