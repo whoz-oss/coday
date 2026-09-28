@@ -14,16 +14,41 @@ import org.springframework.data.repository.query.Param
  * - Transitive permission evaluation through namespace hierarchy
  * - Permission listing and management
  *
- * Note: Neo4j does not support parameterized relationship types or label comparisons
- * via parameters, so we use separate methods per relationship type and IN-based label checks.
+ * ## Why the entity label is a Cypher *literal*, not a parameter
+ *
+ * Cypher does not allow labels (nor relationship types) to be parameterised — by design,
+ * since different labels yield different query plans. Relationship types are therefore
+ * still handled by one method per type (`[:ADMIN]` vs `[:ADMIN|MEMBER]`).
+ *
+ * The entity label, however, **is** injected into the query text through Spring Data Neo4j's
+ * SpEL literal-replacement support: `` (e:`:#{literal(#entityLabel)}`) ``. SDN rewrites the
+ * expression to an internal parameter at bootstrap, then substitutes the literal value into
+ * the Cypher string before execution (see `Neo4jSpelSupport.literal` /
+ * `Neo4jQuerySupport.QueryContext`).
+ *
+ * These queries previously used `MATCH (e) WHERE $entityLabel IN labels(e)`, which forced an
+ * **AllNodesScan**: the planner had no label to anchor on, so it traversed the whole graph and
+ * filtered afterwards — a severe production bottleneck. With the label inside the pattern, the
+ * planner performs a label scan and can exploit the `*_id_unique` constraints for an index seek
+ * on `e.id`.
+ *
+ * Cost: one cached plan per distinct label instead of one per query. With ~14 [EntityType]
+ * values across ~20 queries this stays far below Neo4j's default query-plan cache size.
+ *
+ * ## Security invariant
+ *
+ * `literal()` performs **no escaping** of its argument: the value lands verbatim in the Cypher
+ * text. The invariant that prevents Cypher injection is that [entityLabel] always originates
+ * from an [EntityType.label] enum constant, converted at the single boundary in
+ * [Neo4jPermissionRepository]. Any new call path MUST preserve that invariant — never pass an
+ * arbitrary or user-supplied string.
  */
 interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     // Direct permission queries
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN type(r) AS relation
     """,
     )
@@ -35,8 +60,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[r:ADMIN]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN COUNT(r) > 0
     """,
     )
@@ -48,8 +72,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN COUNT(r) > 0
     """,
     )
@@ -64,8 +87,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         MATCH (u:User {id: $userId})-[:ADMIN]->(n:Namespace)
-        MATCH (n)<-[:BELONGS_TO]-(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (n)<-[:BELONGS_TO]-(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN COUNT(e) > 0
     """,
     )
@@ -78,8 +100,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(n:Namespace)
-        MATCH (n)<-[:BELONGS_TO]-(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (n)<-[:BELONGS_TO]-(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN COUNT(e) > 0
     """,
     )
@@ -99,8 +120,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         MATCH (u:User {id: $userId})
-        MATCH (e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (e:`:#{literal(#entityLabel)}` {id: $entityId})
         OPTIONAL MATCH (u)-[oldMember:MEMBER]->(e)
         DELETE oldMember
         MERGE (u)-[r:ADMIN]->(e)
@@ -120,8 +140,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         MATCH (u:User {id: $userId})
-        MATCH (e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (e:`:#{literal(#entityLabel)}` {id: $entityId})
         OPTIONAL MATCH (u)-[oldAdmin:ADMIN]->(e)
         DELETE oldAdmin
         MERGE (u)-[r:MEMBER]->(e)
@@ -136,8 +155,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[r:ADMIN]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         DELETE r
     """,
     )
@@ -149,8 +167,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[r:MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         DELETE r
     """,
     )
@@ -171,8 +188,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      */
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[old:MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[old:MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         MERGE (u)-[:ADMIN]->(e)
         DELETE old
         RETURN count(old)
@@ -195,8 +211,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      */
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[old:ADMIN]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[old:ADMIN]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         MERGE (u)-[:MEMBER]->(e)
         DELETE old
         RETURN count(old)
@@ -212,8 +227,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User)-[r:ADMIN|MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User)-[r:ADMIN|MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN u.id
     """,
     )
@@ -224,8 +238,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User)-[r:ADMIN]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User)-[r:ADMIN]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN u.id
     """,
     )
@@ -236,8 +249,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User)-[r:MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User)-[r:MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN u.id
     """,
     )
@@ -250,8 +262,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN]->(e)
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[r:ADMIN]->(e:`:#{literal(#entityLabel)}`)
         RETURN e.id
     """,
     )
@@ -262,8 +273,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e)
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[r:ADMIN|MEMBER]->(e:`:#{literal(#entityLabel)}`)
         RETURN e.id
     """,
     )
@@ -274,12 +284,10 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[:ADMIN]->(n:Namespace)<-[:BELONGS_TO]-(e)
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[:ADMIN]->(n:Namespace)<-[:BELONGS_TO]-(e:`:#{literal(#entityLabel)}`)
         RETURN e.id
         UNION
-        MATCH (u:User {id: $userId})-[:ADMIN]->(e)
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[:ADMIN]->(e:`:#{literal(#entityLabel)}`)
         RETURN e.id
     """,
     )
@@ -290,12 +298,10 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
 
     @Query(
         $$"""
-        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(n:Namespace)<-[:BELONGS_TO]-(e)
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(n:Namespace)<-[:BELONGS_TO]-(e:`:#{literal(#entityLabel)}`)
         RETURN e.id
         UNION
-        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(e)
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: $userId})-[:ADMIN|MEMBER]->(e:`:#{literal(#entityLabel)}`)
         RETURN e.id
     """,
     )
@@ -313,9 +319,8 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         MATCH (u:User {id: $userId})
-        MATCH (e)
-        WHERE $entityLabel IN labels(e)
-          AND e.id IN $ids
+        MATCH (e:`:#{literal(#entityLabel)}`)
+        WHERE e.id IN $ids
           AND (e.removed IS NULL OR e.removed = false)
           AND (
             ($checkPlatform AND e.namespaceId IS NULL AND e.userId IS NULL)
@@ -335,9 +340,8 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         MATCH (u:User {id: $userId})
-        MATCH (e)
-        WHERE $entityLabel IN labels(e)
-          AND e.id IN $ids
+        MATCH (e:`:#{literal(#entityLabel)}`)
+        WHERE e.id IN $ids
           AND (e.removed IS NULL OR e.removed = false)
           AND (
             (u.isAdmin = true AND $checkPlatform AND e.namespaceId IS NULL AND e.userId IS NULL)
@@ -374,8 +378,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         $$"""
             UNWIND $userIds AS uid
             MATCH (u:User {id: uid})
-            MATCH (e {id: $entityId})
-            WHERE $entityLabel IN labels(e)
+            MATCH (e:`:#{literal(#entityLabel)}` {id: $entityId})
             OPTIONAL MATCH (u)-[oldMember:MEMBER]->(e)
             DELETE oldMember
             MERGE (u)-[:ADMIN]->(e)
@@ -408,8 +411,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
         $$"""
             UNWIND $userIds AS uid
             MATCH (u:User {id: uid})
-            MATCH (e {id: $entityId})
-            WHERE $entityLabel IN labels(e)
+            MATCH (e:`:#{literal(#entityLabel)}` {id: $entityId})
             OPTIONAL MATCH (u)-[oldAdmin:ADMIN]->(e)
             DELETE oldAdmin
             MERGE (u)-[:MEMBER]->(e)
@@ -434,8 +436,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         UNWIND $userIds AS uid
-        MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         RETURN u.id AS userId, type(r) AS relation
         """,
     )
@@ -454,8 +455,7 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
     @Query(
         $$"""
         UNWIND $userIds AS uid
-        MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
+        MATCH (u:User {id: uid})-[r:ADMIN|MEMBER]->(e:`:#{literal(#entityLabel)}` {id: $entityId})
         DELETE r
         RETURN DISTINCT uid
         """,
@@ -475,9 +475,8 @@ interface PermissionNodeNeo4jRepository : Neo4jRepository<UserNode, String> {
      * being mistakenly treated as platform-readable by any authenticated user.
      */
     @Query(
-        $$"""MATCH (e {id: $entityId})
-        WHERE $entityLabel IN labels(e)
-          AND e.namespaceId IS NULL
+        $$"""MATCH (e:`:#{literal(#entityLabel)}` {id: $entityId})
+        WHERE e.namespaceId IS NULL
           AND e.userId IS NULL
         RETURN COUNT(e) > 0""",
     )

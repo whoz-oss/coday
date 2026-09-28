@@ -65,6 +65,7 @@ class UserController(
                     lastname = resource.lastname,
                     bio = resource.bio,
                     isAdmin = resource.isAdmin,
+                    preferredLanguage = resource.preferredLanguage,
                 )
             },
         )
@@ -117,6 +118,7 @@ class UserController(
                     lastname = resource.lastname,
                     bio = resource.bio,
                     isAdmin = if (isSelfEdit) existing.isAdmin else resource.isAdmin,
+                    preferredLanguage = resource.preferredLanguage,
                 ),
             ).let(::toDto)
     }
@@ -189,4 +191,5 @@ internal fun toDto(entity: User) =
         lastname = entity.lastname,
         bio = entity.bio,
         isAdmin = entity.isAdmin,
+        preferredLanguage = entity.preferredLanguage,
     )

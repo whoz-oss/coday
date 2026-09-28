@@ -24,6 +24,7 @@ export interface ScheduledPrompt {
   planning: Planning
   promptContent: string
   recurrence: Recurrence
+  removed?: boolean
   updatedBy?: string
   updatedOn?: string
   userId?: string | null

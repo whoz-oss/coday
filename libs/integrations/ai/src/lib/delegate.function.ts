@@ -4,6 +4,8 @@ import {
   AnswerEvent,
   CommandContext,
   DelegationEvent,
+  DelegationStatus,
+  DelegationStatusEvent,
   Interactor,
   MessageEvent,
   RunStatus,
@@ -183,9 +185,11 @@ async function setupAndRunAsync(
   const agent: Agent | undefined = await agentFind(agentName, context)
   if (!agent) {
     interactor.error(`Async delegation: agent '${agentName}' not found.`)
+    interactor.sendEvent(new DelegationStatusEvent({ status: 'failed', threadId: subThread.id }))
     return
   }
 
+  interactor.sendEvent(new DelegationStatusEvent({ status: 'running', threadId: subThread.id }))
   interactor.sendEvent(new AnswerEvent({ answer: task, threadId: subThread.id }))
 
   // Stop propagation still runs in background
@@ -196,11 +200,17 @@ async function setupAndRunAsync(
     }
   }, 1000)
 
+  let terminalStatus: DelegationStatus = 'completed'
+
   try {
     const agentEvents: Observable<MessageEvent> = (await agent.run(task, subThread)).pipe(
       filter((e: unknown) => e instanceof MessageEvent)
     )
     const lastMessage: MessageEvent | undefined = await lastValueFrom(agentEvents, { defaultValue: undefined })
+
+    if (subThread.runStatus === RunStatus.STOPPED) {
+      terminalStatus = 'interrupted'
+    }
 
     const wrappedResult =
       emitResultAsUserMessage && lastMessage && subThread.runStatus !== RunStatus.STOPPED
@@ -249,9 +259,11 @@ ${lastMessage.getTextContent()}
       interactor.debug(`Could not persist price merge for parent thread ${parentThread.id}: ${mergeErr}`)
     }
   } catch (error: any) {
+    terminalStatus = 'failed'
     interactor.error(`Async delegation to '${agentName}' failed: ${error?.message ?? error}`)
   } finally {
     clearInterval(stopPropagationInterval)
+    interactor.sendEvent(new DelegationStatusEvent({ status: terminalStatus, threadId: subThread.id }))
   }
 }
 
@@ -316,8 +328,11 @@ async function runSingleDelegation(
 
   const agent: Agent | undefined = await agentFind(agentName, context)
   if (!agent) {
+    interactor.sendEvent(new DelegationStatusEvent({ status: 'failed', threadId: subThread.id }))
     return { result: `Agent ${agentName} not found.`, threadId: subThread.id }
   }
+
+  interactor.sendEvent(new DelegationStatusEvent({ status: 'running', threadId: subThread.id }))
 
   // Propagate stop signal from parent thread to sub-thread
   const stopPropagationInterval = setInterval(() => {
@@ -328,6 +343,7 @@ async function runSingleDelegation(
   }, 1000)
 
   let result: string = 'Delegation did not produce a result.'
+  let terminalStatus: DelegationStatus = 'completed'
 
   try {
     // Emit the task as an AnswerEvent tagged with the sub-thread ID so the
@@ -350,6 +366,7 @@ async function runSingleDelegation(
     const lastMessage: MessageEvent | undefined = await lastValueFrom(agentEvents, { defaultValue: undefined })
 
     if (subThread.runStatus === RunStatus.STOPPED) {
+      terminalStatus = 'interrupted'
       result = 'Delegation was interrupted before completion. No result available.'
     } else if (!lastMessage) {
       result = 'Delegation completed but produced no message.'
@@ -401,11 +418,13 @@ ${result}
       interactor.debug(`Could not persist price merge for parent thread ${parentThread.id}: ${mergeErr}`)
     }
   } catch (error: any) {
+    terminalStatus = 'failed'
     result = `Error during delegation: ${error.message}`
     console.error(`Error in delegation for agent ${agentName}:`, error)
     interactor.error(result)
   } finally {
     clearInterval(stopPropagationInterval)
+    interactor.sendEvent(new DelegationStatusEvent({ status: terminalStatus, threadId: subThread.id }))
   }
 
   return { result, threadId: subThread.id }

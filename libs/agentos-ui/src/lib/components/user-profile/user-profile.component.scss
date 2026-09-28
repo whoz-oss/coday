@@ -161,6 +161,18 @@
     color: var(--color-text-secondary);
   }
 
+  &__select {
+    appearance: none;
+    cursor: pointer;
+    // Replace the native OS arrow removed by appearance:none with an inline SVG chevron.
+    // The SVG is URL-encoded and colour-matched to --color-neutral-500 (#6e6e73).
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    // Prevent text from flowing under the arrow.
+    padding-right: 2.25rem;
+  }
+
   // ── Form inputs ─────────────────────────────────────────────────────────
 
   &__input {

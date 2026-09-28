@@ -115,6 +115,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
         caseService: CaseService,
         agentConfigService: AgentConfigService = mockk<AgentConfigService>().also {
             every { it.findById(agentId) } returns activeAgent
+            every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
         },
         userService: UserService = mockk<UserService>().also {
             every { it.findById(userId1) } returns user1
@@ -325,6 +326,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             }
             val agentConfigService = mockk<AgentConfigService>().also {
                 every { it.findById(agentId) } returns activeAgent
+                every { it.findDeployedByNamespaceIdAndUserIdAndName(any(), any(), any()) } returns listOf(activeAgent)
             }
 
             runRepo.userRunRepository = userRunRepo

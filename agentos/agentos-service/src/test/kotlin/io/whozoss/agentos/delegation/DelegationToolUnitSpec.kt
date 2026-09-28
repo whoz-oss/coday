@@ -36,6 +36,7 @@ class DelegationToolUnitSpec :
                 userId = userId,
                 userExternalId = null,
                 caseEvents = emptyList(),
+                toolRequestId = "parent-tool-request",
             )
 
         fun agentMessage(text: String) =
@@ -65,7 +66,12 @@ class DelegationToolUnitSpec :
             loadCaseEvents: suspend (UUID) -> List<io.whozoss.agentos.sdk.caseEvent.CaseEvent> = { events },
             eventLoadTimeoutMs: Long = 2_000,
         ) = DelegationTool(
-            subCaseManager = launcher,
+            subCaseManager = launcher.also {
+                // DelegationTool records durable lifecycle observations on the parent case.
+                // Keep SubCaseManager strict for all business interactions while allowing
+                // this side effect in tests that do not assert on the emitted events.
+                every { it.emitParentEvent(any()) } returns Unit
+            },
             parentCaseId = parentCaseId,
             namespaceId = namespaceId,
             allowedAgents = allowedAgents,
@@ -177,6 +183,7 @@ class DelegationToolUnitSpec :
             val subCaseId2 = UUID.randomUUID()
             val launcher = mockk<SubCaseManager>()
             every { launcher.isCostPaused(any()) } returns false
+            every { launcher.emitParentEvent(any()) } returns Unit
             val runtime1 = idleRuntime(subCaseId)
             val runtime2 = idleRuntime(subCaseId2)
 
@@ -195,11 +202,8 @@ class DelegationToolUnitSpec :
                 )
 
             val tool =
-                DelegationTool(
-                    subCaseManager = launcher,
-                    parentCaseId = parentCaseId,
-                    namespaceId = namespaceId,
-                    allowedAgents = allowedAgents,
+                makeTool(
+                    launcher = launcher,
                     loadCaseEvents = { id -> if (id == subCaseId) events1 else events2 },
                     timeoutMs = 2_000,
                 )
@@ -228,6 +232,7 @@ class DelegationToolUnitSpec :
             val subCaseId2 = UUID.randomUUID()
             val launcher = mockk<SubCaseManager>()
             every { launcher.isCostPaused(any()) } returns false
+            every { launcher.emitParentEvent(any()) } returns Unit
             val successRuntime = idleRuntime(subCaseId)
             val errorRuntime = mockk<CaseRuntime>()
             every { errorRuntime.id } returns subCaseId2
@@ -237,11 +242,8 @@ class DelegationToolUnitSpec :
             every { launcher.startSubCase(parentCaseId, namespaceId, "researcher", "task 2", userId) } returns errorRuntime
 
             val tool =
-                DelegationTool(
-                    subCaseManager = launcher,
-                    parentCaseId = parentCaseId,
-                    namespaceId = namespaceId,
-                    allowedAgents = allowedAgents,
+                makeTool(
+                    launcher = launcher,
                     loadCaseEvents = { listOf(agentMessage("ok")) },
                     timeoutMs = 2_000,
                 )
@@ -330,7 +332,7 @@ class DelegationToolUnitSpec :
             val events = listOf(agentMessage("resumed result"))
             val tool = makeTool(launcher, events)
 
-            every { launcher.resumeSubCase(subCaseId, "sub-agent", "follow-up", userId, allowedAgents) } returns runtime
+            every { launcher.resumeSubCase(subCaseId, parentCaseId, "sub-agent", "follow-up", userId, allowedAgents) } returns runtime
 
             val result =
                 tool.execute(
@@ -403,6 +405,7 @@ class DelegationToolUnitSpec :
             val subCaseId2 = UUID.randomUUID()
             val launcher = mockk<SubCaseManager>()
             every { launcher.isCostPaused(any()) } returns false
+            every { launcher.emitParentEvent(any()) } returns Unit
 
             val flow1 = MutableStateFlow(CaseStatus.RUNNING)
             val flow2 = MutableStateFlow(CaseStatus.RUNNING)
@@ -428,11 +431,8 @@ class DelegationToolUnitSpec :
                 ),
             )
 
-            val tool = DelegationTool(
-                subCaseManager = launcher,
-                parentCaseId = parentCaseId,
-                namespaceId = namespaceId,
-                allowedAgents = allowedAgents,
+            val tool = makeTool(
+                launcher = launcher,
                 loadCaseEvents = { id -> if (id == subCaseId) events1 else events2 },
                 timeoutMs = 2_000,
             )
@@ -474,6 +474,7 @@ class DelegationToolUnitSpec :
             val subCaseId2 = UUID.randomUUID()
             val launcher = mockk<SubCaseManager>()
             every { launcher.isCostPaused(any()) } returns false
+            every { launcher.emitParentEvent(any()) } returns Unit
             val fastRuntime = idleRuntime(subCaseId)
             val slowRuntime = mockk<CaseRuntime>()
             every { slowRuntime.id } returns subCaseId2
@@ -483,11 +484,8 @@ class DelegationToolUnitSpec :
             every { launcher.startSubCase(parentCaseId, namespaceId, "sub-agent", "fast task", userId) } returns fastRuntime
             every { launcher.startSubCase(parentCaseId, namespaceId, "researcher", "slow task", userId) } returns slowRuntime
 
-            val tool = DelegationTool(
-                subCaseManager = launcher,
-                parentCaseId = parentCaseId,
-                namespaceId = namespaceId,
-                allowedAgents = allowedAgents,
+            val tool = makeTool(
+                launcher = launcher,
                 loadCaseEvents = { listOf(agentMessage("fast result")) },
                 timeoutMs = 300,
             )
