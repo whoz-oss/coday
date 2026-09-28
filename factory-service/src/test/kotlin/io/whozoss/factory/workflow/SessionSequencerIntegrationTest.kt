@@ -238,7 +238,28 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
         assertThat(statusOf(workflowId, "s2")).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
         assertThat(statusOf(workflowId, "s3")).isEqualTo(WorkflowStatuses.PENDING)
 
-        answerHuman(workflowId, "s2", "approve")
+        val interaction = interactionRepository.list(scope, namespace, workflowId, openOnly = true).single()
+        assertThat(interaction.payload["actions"]).isEqualTo(
+            listOf(
+                mapOf("id" to "approve", "label" to "Approuver"),
+                mapOf("id" to "reject", "label" to "Rejeter"),
+            ),
+        )
+
+        val replied = workflowService.replyInteraction(
+            scope,
+            namespace,
+            workflowId,
+            interaction.interactionId,
+            interaction.revision,
+            "approve",
+            "looks good",
+            "alice",
+        )
+        assertThat(replied.status).isEqualTo(200)
+        assertThat(interactionRepository.find(scope, namespace, workflowId, interaction.interactionId)?.status)
+            .isEqualTo("closed")
+
         val second = sessionRunService.runSession(scope, namespace, workflowId, repoRoot)
 
         assertThat(second.status).isEqualTo(WorkflowStatuses.COMPLETED)

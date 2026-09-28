@@ -128,6 +128,20 @@ function checkpointClick(action) {
   }
 }
 
+function panelClick({ close = false } = {}) {
+  return {
+    target: {
+      closest(selector) {
+        if (selector === '[data-phase-panel-close]') return close ? { dataset: {} } : null
+        if (selector === '[data-phase-panel]') return { dataset: { stepId: 'gate' } }
+        if (selector === '[data-step-id]') return { dataset: { stepId: 'gate' } }
+        return null
+      },
+    },
+    preventDefault() {},
+  }
+}
+
 async function mountWith(container, apiClient) {
   const handle = await mount(container, {
     workflowId: 'wf-1',
@@ -165,6 +179,34 @@ test('selecting a human waiting step shows the decision buttons', async () => {
   assert.ok(container.innerHTML.includes('data-checkpoint-action="approve"'), 'expected approve button')
   assert.ok(container.innerHTML.includes('data-checkpoint-action="reject"'), 'expected reject button')
   assert.ok(container.innerHTML.includes('id="checkpoint-comment"'), 'expected comment field')
+  handle.unmount()
+})
+
+test('internal phase panel clicks keep the selected panel open', async () => {
+  const container = fakeContainer()
+  const handle = await mountWith(container, fakeApiClient())
+
+  handle.selectStep('gate')
+  await flush()
+  container.fire('click', panelClick())
+
+  assert.equal(handle.getState().selectedStepId, 'gate')
+  assert.ok(container.innerHTML.includes('id="checkpoint-comment"'), 'expected comment field to remain mounted')
+  handle.unmount()
+})
+
+test('the explicit phase panel close button closes the selected panel', async () => {
+  const container = fakeContainer()
+  const handle = await mountWith(container, fakeApiClient())
+
+  handle.selectStep('gate')
+  await flush()
+  assert.ok(container.innerHTML.includes('data-phase-panel-close="true"'), 'expected explicit close button')
+
+  container.fire('click', panelClick({ close: true }))
+
+  assert.equal(handle.getState().selectedStepId, null)
+  assert.ok(!container.innerHTML.includes('id="checkpoint-comment"'), 'expected comment field to close')
   handle.unmount()
 })
 

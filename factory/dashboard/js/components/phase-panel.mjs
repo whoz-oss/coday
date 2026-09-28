@@ -423,6 +423,8 @@ export function renderPhasePanel(options = {}) {
     `<span class="${STATUS_CHIP[status] ?? 'chip'}" data-step-status="${esc(status)}">${esc(stateLabel)}</span>` +
     `<span class="chip">⏱ ${esc(step.durationMs != null ? fmtDur(step.durationMs) : 'en cours')}</span>` +
     flags.map((flag) => `<span class="chip ${esc(flag.level)}">${esc(flag.icon)} ${esc(flag.label)}</span>`).join('') +
+    '<button type="button" class="btn" data-phase-panel-close="true" aria-label="Fermer le détail de la phase" ' +
+    'title="Fermer" style="margin-left:auto;padding:2px 8px;font-size:18px;line-height:1">×</button>' +
     '</div>'
 
   const factsColumn =

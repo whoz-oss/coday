@@ -337,8 +337,8 @@ export async function mount(container, options = {}) {
   }
 
   const selectStep = (stepId) => {
-    if (!state.mounted) return
-    state.selectedStepId = state.selectedStepId === stepId ? null : stepId
+    if (!state.mounted || state.selectedStepId === stepId) return
+    state.selectedStepId = stepId
     state.enrichment = null
     state.enrichmentLoading = false
     state.checkpointSubmitting = false
@@ -461,17 +461,25 @@ export async function mount(container, options = {}) {
 
   state.onClick = (event) => {
     const target = event?.target
-    // Checkpoint decision buttons live INSIDE the `[data-step-id]` panel, so
-    // they must be intercepted before the step-selection branch (which would
-    // otherwise toggle the panel closed).
-    const checkpointEl =
-      typeof target?.closest === 'function' ? target.closest('[data-checkpoint-action]') : null
+    const closest = typeof target?.closest === 'function' ? target.closest.bind(target) : null
+    const checkpointEl = closest?.('[data-checkpoint-action]') ?? null
     if (checkpointEl) {
       event?.preventDefault?.()
       void submitCheckpoint(checkpointEl.dataset.checkpointAction)
       return
     }
-    const el = typeof target?.closest === 'function' ? target.closest('[data-step-id]') : target
+
+    if (closest?.('[data-phase-panel-close]')) {
+      event?.preventDefault?.()
+      selectStep(null)
+      return
+    }
+
+    // The phase panel shares data-step-id with timeline blocks. Internal panel
+    // clicks are interactions with the open inspector, never selection toggles.
+    if (closest?.('[data-phase-panel]')) return
+
+    const el = closest?.('[data-step-id]') ?? target
     const stepId = el?.dataset?.stepId ?? null
     if (stepId) selectStep(stepId)
   }
