@@ -53,7 +53,6 @@ import { DelegationCardComponent } from '../delegation/delegation-card/delegatio
 import {
   buildDelegations,
   DelegationPresentation,
-  extractToolOutputText,
   isCorrelatedDelegateTool,
 } from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
@@ -194,7 +193,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // all SSE callbacks and HTTP calls always reference the current case without going
   // through a signal read inside a zone.runOutsideAngular context.
   protected caseId = this.route.snapshot.queryParams['case'] as string
-  private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
+  protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
   /**
    * Reactive case ID — updated in sync with the queryParams subscription so that
