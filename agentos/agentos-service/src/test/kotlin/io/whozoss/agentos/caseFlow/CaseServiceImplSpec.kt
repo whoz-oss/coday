@@ -1831,7 +1831,10 @@ class CaseServiceImplSpec :
                 }
             val eventStore = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "test-namespace", defaultAgentName = agentName)
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+            }
             val agentService = mockk<AgentService> {
                 every { resolveAgentName(any(), any(), any()) } returns agentName
                 coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
@@ -2117,6 +2120,8 @@ class CaseServiceImplSpec :
             val dualNamespaceService = mockk<NamespaceService> {
                 every { findById(namespaceId) } returns namespace
                 every { findById(otherNamespaceId) } returns otherNamespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+                every { resolveRunCostThreshold(otherNamespaceId) } returns null
             }
             val agentService = mockk<AgentService> {
                 every { resolveAgentName(any(), any(), any()) } returns agentName
