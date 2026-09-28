@@ -22,6 +22,12 @@
 
 import { esc, fmtDur, collectFlags, emptySuccess, EMPTY_SUCCESS_FLAG, renderFactGroups } from './facts.mjs'
 
+/**
+ * Max length accepted by the reply endpoint for the optional `text` field; kept
+ * in sync with the server contract so the UI never sends a rejected payload.
+ */
+export const CHECKPOINT_COMMENT_MAX = 2000
+
 /** Status badge class, aligned with the dockyard chip palette. */
 const STATUS_CHIP = Object.freeze({
   pass: 'chip chip-success',
@@ -96,17 +102,76 @@ export function eventSummary(event) {
 }
 
 /**
+ * True when a normalized projection step belongs to the human lane.
+ *
+ * The Governed Projection v2 carries the lane both on `phaseKind` (normalized by
+ * the Gantt model) and on `responsibility.kind`; either is authoritative.
+ *
+ * @param {any} step
+ * @returns {boolean}
+ */
+export function isHumanStep(step) {
+  if (!step || typeof step !== 'object') return false
+  if (step.phaseKind === 'human' || step.lane === 'human') return true
+  return step.responsibility?.kind === 'human'
+}
+
+/**
+ * Find the OPEN human interaction attached to a step, from the loaded enrichment.
+ *
+ * Returns `null` when no interaction is waiting (already resolved, not loaded,
+ * or belonging to another step) — which is exactly the signal the panel uses to
+ * hide the decision buttons.
+ *
+ * @param {any} step
+ * @param {{ interaction?: object|null }|null} [enrichment]
+ * @returns {object|null}
+ */
+export function findWaitingInteraction(step, enrichment) {
+  const interaction = enrichment?.interaction ?? null
+  if (!interaction) return null
+  if (interaction.status && interaction.status !== 'waiting') return null
+  if (step?.id && interaction.stepId && interaction.stepId !== step.id) return null
+  return interaction
+}
+
+/**
+ * Resolve the human-checkpoint state of a step: whether a decision card applies
+ * and whether the step is still awaiting an answer.
+ *
+ * The normalized step status folds `waiting_human` into the legible `blocked`
+ * status, so the raw `projectionStatus` is honoured too; an open interaction is
+ * itself proof of a pending decision.
+ *
+ * @param {any} step
+ * @param {{ interaction?: object|null }|null} [enrichment]
+ * @returns {{ relevant: boolean, waiting: boolean, interaction: object|null }}
+ */
+export function humanCheckpoint(step, enrichment) {
+  const interaction = findWaitingInteraction(step, enrichment)
+  return {
+    relevant: isHumanStep(step),
+    waiting: Boolean(interaction) || step?.status === 'blocked' || step?.projectionStatus === 'waiting_human',
+    interaction,
+  }
+}
+
+/**
  * Load the optional external enrichment for a step.
  *
  * Never rejects: a 404, a 501 (Jira not configured) or a network failure all
  * degrade into `notices` so the panel can explain what is missing.
  *
+ * When a `workflowId` is supplied for a human/waiting step, the open human
+ * interactions are fetched (`GET .../interactions`) and the one matching this
+ * step is exposed as `interaction`, so the panel can offer a decision.
+ *
  * @param {object|null|undefined} step
- * @param {{ apiClient?: any, signal?: AbortSignal }} [options]
- * @returns {Promise<{ caseId: string|null, ticketId: string|null, caseEvents: Array<object>|null, ticket: object|null, notices: Array<object> }>}
+ * @param {{ apiClient?: any, signal?: AbortSignal, workflowId?: string|null, namespaceId?: string|null }} [options]
+ * @returns {Promise<{ caseId: string|null, ticketId: string|null, caseEvents: Array<object>|null, ticket: object|null, notices: Array<object>, interaction: object|null }>}
  */
 export async function loadPhaseEnrichment(step, options = {}) {
-  const { apiClient = null, signal } = options
+  const { apiClient = null, signal, workflowId = null, namespaceId = null } = options
   const facts = step?.facts ?? {}
   const caseId = facts.caseId != null ? String(facts.caseId) : null
   const ticketId = facts.ticketId != null ? String(facts.ticketId) : null
@@ -141,7 +206,88 @@ export async function loadPhaseEnrichment(step, options = {}) {
     }
   }
 
-  return { caseId, ticketId, caseEvents, ticket, notices }
+  // A human/awaiting step may be suspended on an open interaction: fetch the
+  // workflow interactions and keep the one waiting for THIS step, so the phase
+  // panel can render the decision buttons with the authoritative revision.
+  let interaction = null
+  const mayAwaitHuman = isHumanStep(step) || step?.status === 'blocked' || step?.projectionStatus === 'waiting_human'
+  if (apiClient && typeof apiClient.get === 'function' && workflowId && mayAwaitHuman) {
+    try {
+      const scope = namespaceId ? `?namespaceId=${encodeURIComponent(namespaceId)}` : ''
+      const payload = await apiClient.get(
+        `/api/factory/workflows/${encodeURIComponent(workflowId)}/interactions${scope}`,
+        { signal },
+      )
+      const items = Array.isArray(payload) ? payload : Array.isArray(payload?.items) ? payload.items : []
+      interaction = items.find((item) => item?.stepId === step?.id && item?.status === 'waiting') ?? null
+    } catch (error) {
+      notices.push({
+        kind: 'interaction',
+        label: 'Interactions humaines indisponibles',
+        message: String(error?.message ?? error),
+      })
+    }
+  }
+
+  return { caseId, ticketId, caseEvents, ticket, notices, interaction }
+}
+
+/**
+ * Render the human decision card grafted into the phase detail panel.
+ *
+ * When an OPEN interaction is present, the card offers an optional comment and
+ * the Approve / Reject buttons carrying `data-checkpoint-action`. When the step
+ * merely awaits an interaction that is not loaded yet, the card explains the
+ * wait WITHOUT any button (never a decision without an authoritative revision).
+ *
+ * @param {any} step
+ * @param {object|null} interaction
+ * @param {{ submitting?: boolean, feedback?: { type: string, message: string }|null }|null} [state]
+ * @returns {string} escaped markup
+ */
+function renderCheckpointCard(step, interaction, state = null) {
+  const submitting = state?.submitting === true
+  const feedback = state?.feedback ?? null
+  const title = step?.name ?? step?.id ?? 'Checkpoint humain'
+  const prompt = interaction?.prompt != null ? String(interaction.prompt) : ''
+  const disabled = submitting ? ' disabled' : ''
+
+  const fields = interaction
+    ? '<textarea id="checkpoint-comment" name="checkpoint-comment" maxlength="' +
+      CHECKPOINT_COMMENT_MAX +
+      '" rows="2" placeholder="Commentaire optionnel (' +
+      CHECKPOINT_COMMENT_MAX +
+      ' caractères max)…" style="width:100%;margin-top:8px;background:var(--bg);border:1px solid var(--border-soft);' +
+      'border-radius:6px;padding:8px 10px;color:var(--text);font-size:12px;resize:vertical"' +
+      disabled +
+      '></textarea>' +
+      '<div class="checkpoint-actions" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">' +
+      `<button type="button" class="btn btn-primary" data-checkpoint-action="approve"${disabled}>` +
+      `${submitting ? 'Envoi…' : 'Approuver'}</button>` +
+      `<button type="button" class="btn btn-danger" data-checkpoint-action="reject"${disabled}>Rejeter</button>` +
+      '</div>'
+    : feedback?.type === 'success'
+      ? ''
+      : '<span class="nil">En attente de l’ouverture de l’interaction…</span>'
+
+  const feedbackHtml = feedback
+    ? `<div class="checkpoint-feedback" data-checkpoint-feedback="${esc(feedback.type ?? 'info')}" ` +
+      `style="margin-top:8px;font-size:11.5px;color:${feedback.type === 'error' ? 'var(--red)' : 'var(--green)'}">` +
+      `${esc(feedback.message ?? '')}</div>`
+    : ''
+
+  return (
+    '<div class="panel-col checkpoint-card" data-checkpoint="true" ' +
+    'style="grid-column:1/-1;border:1px solid var(--amber);border-radius:8px;padding:12px;background:var(--panel-2)">' +
+    '<h4 style="font-size:11px;text-transform:uppercase;color:var(--amber);margin:0 0 6px">Validation humaine</h4>' +
+    `<div class="checkpoint-title" style="font-weight:600;margin-bottom:4px">${esc(title)}</div>` +
+    (prompt
+      ? `<div class="checkpoint-prompt" style="color:var(--dim);font-size:12px;line-height:1.6">${esc(prompt)}</div>`
+      : '') +
+    fields +
+    feedbackHtml +
+    '</div>'
+  )
 }
 
 function renderNotice(notice) {
@@ -245,13 +391,14 @@ function renderTicketColumn(enrichment) {
  *   step?: object|null,
  *   workflow?: any,
  *   evidence?: Array<object>,
- *   enrichment?: { caseEvents?: Array<object>|null, ticket?: object|null, notices?: Array<object> } | null,
+ *   enrichment?: { caseEvents?: Array<object>|null, ticket?: object|null, notices?: Array<object>, interaction?: object|null } | null,
  *   loading?: boolean,
+ *   checkpoint?: { submitting?: boolean, feedback?: { type: string, message: string }|null } | null,
  * }} [options]
  * @returns {string} escaped markup
  */
 export function renderPhasePanel(options = {}) {
-  const { step = null, workflow = null, evidence = [], enrichment = null, loading = false } = options
+  const { step = null, workflow = null, evidence = [], enrichment = null, loading = false, checkpoint = null } = options
 
   if (!step) {
     return (
@@ -276,6 +423,8 @@ export function renderPhasePanel(options = {}) {
     `<span class="${STATUS_CHIP[status] ?? 'chip'}" data-step-status="${esc(status)}">${esc(stateLabel)}</span>` +
     `<span class="chip">⏱ ${esc(step.durationMs != null ? fmtDur(step.durationMs) : 'en cours')}</span>` +
     flags.map((flag) => `<span class="chip ${esc(flag.level)}">${esc(flag.icon)} ${esc(flag.label)}</span>`).join('') +
+    '<button type="button" class="btn" data-phase-panel-close="true" aria-label="Fermer le détail de la phase" ' +
+    'title="Fermer" style="margin-left:auto;padding:2px 8px;font-size:18px;line-height:1">×</button>' +
     '</div>'
 
   const factsColumn =
@@ -309,6 +458,14 @@ export function renderPhasePanel(options = {}) {
 
   const notices = (enrichment?.notices ?? []).map(renderNotice).join('')
 
+  // Human decision checkpoint: for a human step still awaiting an answer, and
+  // kept visible after resolution while a success/error feedback is pending.
+  const human = humanCheckpoint(step, enrichment)
+  const checkpointCard =
+    human.relevant && (human.waiting || checkpoint?.feedback)
+      ? renderCheckpointCard(step, human.interaction, checkpoint)
+      : ''
+
   const title = workflow?.projection?.title ?? workflow?.projection?.workflowType ?? ''
   return (
     `<div class="panel" data-phase-panel="true" data-step-id="${esc(step.id)}" data-step-name="${esc(step.name)}"` +
@@ -316,6 +473,7 @@ export function renderPhasePanel(options = {}) {
     '>' +
     head +
     '<div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">' +
+    checkpointCard +
     factsColumn +
     evidenceColumn +
     narrativeColumn +
@@ -325,4 +483,15 @@ export function renderPhasePanel(options = {}) {
   )
 }
 
-export default { renderPhasePanel, loadPhaseEnrichment, eventSummary, firstUserMessage, lastAgentMessage, messageText }
+export default {
+  renderPhasePanel,
+  loadPhaseEnrichment,
+  eventSummary,
+  firstUserMessage,
+  lastAgentMessage,
+  messageText,
+  isHumanStep,
+  findWaitingInteraction,
+  humanCheckpoint,
+  CHECKPOINT_COMMENT_MAX,
+}

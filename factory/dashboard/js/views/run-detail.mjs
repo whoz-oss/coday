@@ -25,7 +25,7 @@
 import { WORKFLOW_PROJECTION_EVENTS } from '../services/sse-client.mjs'
 import { normalizeSteps } from '../components/gantt.mjs'
 import { buildWaterfallLayout, renderWaterfallTimeline } from '../components/temporal-lanes.mjs'
-import { renderPhasePanel, loadPhaseEnrichment } from '../components/phase-panel.mjs'
+import { renderPhasePanel, loadPhaseEnrichment, findWaitingInteraction } from '../components/phase-panel.mjs'
 import { esc, fmtDur } from '../components/facts.mjs'
 import { buildCaseLinkHtml } from '../components/case-link.mjs'
 
@@ -34,6 +34,31 @@ export const WORKFLOW_UPDATED_EVENT =
   WORKFLOW_PROJECTION_EVENTS.find((event) => event === 'workflow-projection-updated') ?? 'workflow-projection-updated'
 
 const DEFAULT_REFRESH_DEBOUNCE_MS = 150
+
+/**
+ * Default human actor attributed to a cockpit decision. Matches the loopback
+ * development principal (`TrustContext.LOOPBACK_DEV_PRINCIPAL_ID`) so the
+ * `X-Factory-Actor-Id` header is always explicit; the server still owns the
+ * authoritative identity and ignores this header outside loopback dev.
+ */
+export const DEFAULT_ACTOR_ID = 'local-dev-user'
+
+/**
+ * Build the STRICT reply body accepted by the interaction endpoint: only
+ * `expectedRevision`, `actionId` and (when non-empty) `text` are ever sent, so a
+ * malformed payload can never be produced by the cockpit.
+ *
+ * @param {object|null} interaction the waiting interaction (carries `revision`)
+ * @param {string} actionId `approve` | `reject`
+ * @param {string} [text] optional free-form comment (truncated to the contract max)
+ * @returns {{ expectedRevision: number, actionId: string, text?: string }}
+ */
+export function buildReplyBody(interaction, actionId, text) {
+  const body = { expectedRevision: Number(interaction?.revision), actionId }
+  const trimmed = typeof text === 'string' ? text.trim() : ''
+  if (trimmed) body.text = trimmed.slice(0, 2000)
+  return body
+}
 
 function statusChipClass(status) {
   if (status === 'pass' || status === 'completed') return 'chip chip-success'
@@ -95,11 +120,12 @@ function renderMetricsStrip(metrics) {
  * @param {{
  *   workflowId: string,
  *   namespaceId?: string | null,
- *   apiClient: { get: (path: string, options?: object) => Promise<any> },
+ *   apiClient: { get: (path: string, options?: object) => Promise<any>, post?: (path: string, body?: any, options?: object) => Promise<any> },
  *   sseClient?: { on: (event: string, handler: Function) => (() => void) } | null,
  *   now?: () => number,
  *   agentosUrl?: string,
  *   codayExpressUrl?: string,
+ *   actorId?: string | null,
  *   setTimeoutFn?: typeof setTimeout,
  *   clearTimeoutFn?: typeof clearTimeout,
  *   refreshDebounceMs?: number,
@@ -140,6 +166,8 @@ export async function mount(container, options = {}) {
     selectedStepId: null,
     enrichment: null,
     enrichmentLoading: false,
+    checkpointSubmitting: false,
+    checkpointFeedback: null,
     refreshTimer: null,
     abortController: null,
     unsubscribe: null,
@@ -231,6 +259,7 @@ export async function mount(container, options = {}) {
       evidence: state.evidence,
       enrichment: state.enrichment,
       loading: state.enrichmentLoading,
+      checkpoint: { submitting: state.checkpointSubmitting, feedback: state.checkpointFeedback },
     })
 
     container.innerHTML = `<div class="run-detail" data-run-detail="true">${renderHeader()}${renderSwimlanes(
@@ -295,7 +324,12 @@ export async function mount(container, options = {}) {
     state.enrichment = null
     render()
 
-    const result = await loadPhaseEnrichment(step, { apiClient, signal: controller?.signal })
+    const result = await loadPhaseEnrichment(step, {
+      apiClient,
+      signal: controller?.signal,
+      workflowId,
+      namespaceId: namespaceId ?? null,
+    })
     if (!state.mounted || controller !== state.abortController || state.selectedStepId !== stepId) return
     state.enrichment = result
     state.enrichmentLoading = false
@@ -303,12 +337,111 @@ export async function mount(container, options = {}) {
   }
 
   const selectStep = (stepId) => {
-    if (!state.mounted) return
-    state.selectedStepId = state.selectedStepId === stepId ? null : stepId
+    if (!state.mounted || state.selectedStepId === stepId) return
+    state.selectedStepId = stepId
     state.enrichment = null
     state.enrichmentLoading = false
+    state.checkpointSubmitting = false
+    state.checkpointFeedback = null
     render()
     if (state.selectedStepId) void loadEnrichment(state.selectedStepId)
+  }
+
+  /**
+   * Resume the server-side sequencer after a checkpoint is resolved.
+   *
+   * The reply endpoint updates the durable interaction/projection but does NOT
+   * re-trigger the in-process `SessionRunService.runSession` loop, so the DAG
+   * would stay suspended: the cockpit therefore calls `POST .../continue`.
+   * `continue` shares the `/run` contract and falls back to
+   * `factory.session.default-repo-root` when no `repoRoot` is supplied (the same
+   * convention the run launcher relies on). Continuation is best-effort: the
+   * checkpoint is already resolved when this call fails.
+   */
+  const resumeAfterCheckpoint = async () => {
+    try {
+      const body = typeof namespaceId === 'string' && namespaceId ? { namespaceId } : {}
+      await apiClient.post(`${base}/continue`, body, {
+        signal: state.abortController?.signal,
+        namespaceId: namespaceId ?? undefined,
+        actorId: options.actorId ?? DEFAULT_ACTOR_ID,
+      })
+      return true
+    } catch {
+      // Best-effort: a misconfigured repoRoot must not mask a successful reply.
+      return false
+    }
+  }
+
+  const submitCheckpoint = async (actionId) => {
+    if (!state.mounted || state.checkpointSubmitting) return
+    const interaction = findWaitingInteraction(selectedStep(), state.enrichment)
+    if (!interaction?.interactionId) {
+      state.checkpointFeedback = { type: 'error', message: "Aucune interaction en attente pour cette étape." }
+      render()
+      return
+    }
+
+    const commentEl = container.querySelector?.('#checkpoint-comment')
+    const text = typeof commentEl?.value === 'string' ? commentEl.value : ''
+
+    state.checkpointSubmitting = true
+    state.checkpointFeedback = null
+    render()
+
+    try {
+      await apiClient.post(
+        `${base}/interactions/${encodeURIComponent(interaction.interactionId)}/reply`,
+        buildReplyBody(interaction, actionId, text),
+        {
+          signal: state.abortController?.signal,
+          namespaceId: namespaceId ?? undefined,
+          actorId: options.actorId ?? DEFAULT_ACTOR_ID,
+        },
+      )
+    } catch (error) {
+      if (!state.mounted) return
+      state.checkpointSubmitting = false
+      const conflict = error?.code === 'REVISION_CONFLICT' || error?.status === 409
+      state.checkpointFeedback = {
+        type: 'error',
+        message: conflict
+          ? 'Conflit de révision : interaction rechargée, réessayez.'
+          : `Échec de la réponse : ${String(error?.message ?? error)}`,
+      }
+      if (conflict && state.selectedStepId) {
+        // Re-fetch the interaction to acquire the new authoritative revision.
+        await loadEnrichment(state.selectedStepId)
+        if (state.mounted) {
+          state.checkpointFeedback = {
+            type: 'error',
+            message: 'Conflit de révision : interaction rechargée, réessayez.',
+          }
+          render()
+        }
+        return
+      }
+      render()
+      return
+    }
+
+    if (!state.mounted) return
+    state.checkpointSubmitting = false
+    state.checkpointFeedback = { type: 'success', message: 'Checkpoint résolu — reprise du workflow…' }
+    // Drop the now-resolved interaction so no button is offered while the
+    // sequencer resumes; the projected status may still read `blocked` until
+    // the fresh loadAll lands.
+    if (state.enrichment) state.enrichment.interaction = null
+    render()
+    const resumed = await resumeAfterCheckpoint()
+    if (!state.mounted) return
+    if (!resumed) {
+      state.checkpointFeedback = {
+        type: 'success',
+        message: 'Checkpoint résolu. Reprise automatique impossible (repoRoot par défaut manquant ?).',
+      }
+    }
+    await loadAll()
   }
 
   const scheduleRefresh = () => {
@@ -328,7 +461,25 @@ export async function mount(container, options = {}) {
 
   state.onClick = (event) => {
     const target = event?.target
-    const el = typeof target?.closest === 'function' ? target.closest('[data-step-id]') : target
+    const closest = typeof target?.closest === 'function' ? target.closest.bind(target) : null
+    const checkpointEl = closest?.('[data-checkpoint-action]') ?? null
+    if (checkpointEl) {
+      event?.preventDefault?.()
+      void submitCheckpoint(checkpointEl.dataset.checkpointAction)
+      return
+    }
+
+    if (closest?.('[data-phase-panel-close]')) {
+      event?.preventDefault?.()
+      selectStep(null)
+      return
+    }
+
+    // The phase panel shares data-step-id with timeline blocks. Internal panel
+    // clicks are interactions with the open inspector, never selection toggles.
+    if (closest?.('[data-phase-panel]')) return
+
+    const el = closest?.('[data-step-id]') ?? target
     const stepId = el?.dataset?.stepId ?? null
     if (stepId) selectStep(stepId)
   }
@@ -364,6 +515,8 @@ export async function mount(container, options = {}) {
     state.metrics = null
     state.enrichment = null
     state.selectedStepId = null
+    state.checkpointSubmitting = false
+    state.checkpointFeedback = null
   }
 
   await loadAll()
@@ -378,4 +531,4 @@ export async function mount(container, options = {}) {
   }
 }
 
-export default { mount, WORKFLOW_UPDATED_EVENT }
+export default { mount, WORKFLOW_UPDATED_EVENT, buildReplyBody, DEFAULT_ACTOR_ID }

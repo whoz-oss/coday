@@ -150,7 +150,14 @@ class CapabilityExecutionService(
                 interactionType = "checkpoint",
                 status = "waiting",
                 revision = 1,
-                payload = linkedMapOf("stepId" to step.id, "role" to outcome.role),
+                payload = linkedMapOf(
+                    "stepId" to step.id,
+                    "role" to outcome.role,
+                    "actions" to listOf(
+                        mapOf("id" to "approve", "label" to "Approuver"),
+                        mapOf("id" to "reject", "label" to "Rejeter"),
+                    ),
+                ),
             ),
         )
         interactionRepository.appendEvent(
