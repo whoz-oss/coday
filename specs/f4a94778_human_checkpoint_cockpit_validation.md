@@ -81,3 +81,29 @@ node --test factory/dashboard/js/components/temporal-lanes.test.mjs
 5. Click on the human checkpoint block in the timeline.
 6. Verify the detail panel displays prompt, comment box, and "Approuver" / "Rejeter" buttons.
 7. Click "Approuver": verify API request is sent, DAG resumes, and status updates to `completed`.
+
+---
+
+## Implementation notes (2026-09-28)
+
+### DAG resume after a reply — verified in `factory-service`
+- `POST /api/factory/workflows/{id}/interactions/{iid}/reply` (`WorkflowService.replyInteraction`)
+  resolves the interaction, records `human-decision` evidence and applies the governed
+  transition, but it does **not** invoke `SessionRunService.runSession`. The step state in
+  `workflow_step_states` therefore stays `waiting_human` and the sequencer does not move.
+- `SessionRunService.runSession` re-evaluates the DAG and `resolveWaitingHuman` closes the
+  suspended step from the durable interaction journal (approve -> `completed`, else `failed`).
+- There is **no** resume endpoint without a `repoRoot`: both `/{id}/run` and `/{id}/continue`
+  share `runInternal`, which falls back to `factory.session.default-repo-root` when the body
+  omits `repoRoot` and fails closed otherwise.
+
+### Chosen solution
+The cockpit replies to the checkpoint, then calls `POST /{id}/continue` with
+`{ "namespaceId": "<ns>" }` (best-effort). This mirrors the run launcher, which also relies on
+`factory.session.default-repo-root`. If continuation fails (no default repo root configured),
+the reply still stands and the projection reflects the resolved checkpoint.
+
+### Landed files
+- `factory/dashboard/js/components/phase-panel.mjs` — decision card + `loadPhaseEnrichment` interaction fetch.
+- `factory/dashboard/js/views/run-detail.mjs` — reply/continue orchestration + `buildReplyBody`.
+- `factory/dashboard/js/components/phase-panel.test.mjs`, `factory/dashboard/js/views/run-detail.test.mjs`.
