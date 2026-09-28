@@ -1,3 +1,37 @@
+## 3.12.0 (2026-09-28)
+
+### 🚀 Features
+
+- define a default platform-level runCostThreshold ([a0c635fa](https://github.com/whoz-oss/coday/commit/a0c635fa))
+- define a default namespace-level runCostThreshold ([6cbc5d4a](https://github.com/whoz-oss/coday/commit/6cbc5d4a))
+- define a default case-level runCostThreshold ([4dd5057b](https://github.com/whoz-oss/coday/commit/4dd5057b))
+- regen openapi and api-client ([ca5be3ef](https://github.com/whoz-oss/coday/commit/ca5be3ef))
+- add front for runCostThreshold ([c2e96650](https://github.com/whoz-oss/coday/commit/c2e96650))
+- apply runCostThreshold to case creation and manual update ([f3e97316](https://github.com/whoz-oss/coday/commit/f3e97316))
+- make case runCostThreshold editable on case ([16e628d5](https://github.com/whoz-oss/coday/commit/16e628d5))
+- add default runCostThreshold for Coday ([ce5472bd](https://github.com/whoz-oss/coday/commit/ce5472bd))
+- regen openapi and rework default coday env var ([df10d7e6](https://github.com/whoz-oss/coday/commit/df10d7e6))
+- pr-review ([d088eb03](https://github.com/whoz-oss/coday/commit/d088eb03))
+- #WZ-34476 add runCostThreshold to platform, namespace, and case ([#1301](https://github.com/whoz-oss/coday/pull/1301))
+
+### 🩹 Fixes
+
+- test NamespaceServiceImplSpec.kt ([74a7a5b4](https://github.com/whoz-oss/coday/commit/74a7a5b4))
+- test CaseServiceImplSpec.kt ([23a55197](https://github.com/whoz-oss/coday/commit/23a55197))
+- #WZ-34476 address frontend review comments on run cost threshold ([b5c2655b](https://github.com/whoz-oss/coday/commit/b5c2655b))
+- #WZ-34476 preserve runCostThreshold on case creation and reject negative values ([b171078c](https://github.com/whoz-oss/coday/commit/b171078c))
+- serialize case edits and restore confirmed state on failure ([623831f7](https://github.com/whoz-oss/coday/commit/623831f7))
+- preserve explicit AgentOS environment fallbacks ([2116b4a9](https://github.com/whoz-oss/coday/commit/2116b4a9))
+- #1290 remove unused import ([#1290](https://github.com/whoz-oss/coday/issues/1290))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- selimbensenouciep-prog
+- vincent.audibert
+
 ## 3.11.0 (2026-09-26)
 
 ### 🚀 Features
