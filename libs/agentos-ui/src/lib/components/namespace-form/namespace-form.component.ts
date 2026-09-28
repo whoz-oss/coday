@@ -35,7 +35,32 @@ export class NamespaceFormComponent implements OnInit {
     configPath: new FormControl<string>('', { nonNullable: true }),
     externalId: new FormControl<string>('', { nonNullable: true }),
     defaultAgentName: new FormControl<string>('', { nonNullable: true }),
+    runCostThreshold: new FormControl<number | null>(null),
   })
+
+  protected get nameControl() {
+    return this.form.controls.name
+  }
+
+  protected get descriptionControl() {
+    return this.form.controls.description
+  }
+
+  protected get configPathControl() {
+    return this.form.controls.configPath
+  }
+
+  protected get externalIdControl() {
+    return this.form.controls.externalId
+  }
+
+  protected get defaultAgentNameControl() {
+    return this.form.controls.defaultAgentName
+  }
+
+  protected get runCostThresholdControl() {
+    return this.form.controls.runCostThreshold
+  }
 
   protected readonly isEditMode = signal(false)
   protected readonly isSubmitting = signal(false)
@@ -60,13 +85,12 @@ export class NamespaceFormComponent implements OnInit {
       .subscribe({
         next: (ns) => {
           this.existingNamespace = ns
-          this.form.setValue({
-            name: ns.name,
-            description: ns.description ?? '',
-            configPath: ns.configPath ?? '',
-            externalId: ns.externalId ?? '',
-            defaultAgentName: ns.defaultAgentName ?? '',
-          })
+          this.nameControl.setValue(ns.name)
+          this.descriptionControl.setValue(ns.description ?? '')
+          this.configPathControl.setValue(ns.configPath ?? '')
+          this.externalIdControl.setValue(ns.externalId ?? '')
+          this.defaultAgentNameControl.setValue(ns.defaultAgentName ?? '')
+          this.runCostThresholdControl.setValue(ns.runCostThreshold ?? null)
           this.isLoading.set(false)
         },
         error: () => {
@@ -94,6 +118,7 @@ export class NamespaceFormComponent implements OnInit {
       configPath: this.form.controls.configPath.value.trim() || undefined,
       externalId: this.form.controls.externalId.value.trim() || undefined,
       defaultAgentName: this.form.controls.defaultAgentName.value.trim() || undefined,
+      runCostThreshold: this.runCostThresholdControl.value ?? undefined,
     }
 
     const call$ = this.isEditMode()

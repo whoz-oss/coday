@@ -32,6 +32,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -204,7 +205,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = defaultAgentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(any()) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -365,7 +370,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -603,7 +612,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
@@ -703,7 +716,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null, // no namespace-level default
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
@@ -761,7 +778,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = namespaceDefaultName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val namespaceAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = namespaceAgentId)
@@ -839,7 +860,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService = mockk<AgentService>(relaxed = true)
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -921,7 +946,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             // resolveAgentName is never reached because selectDefaultAgent short-circuits on null
             val agentService = mockk<AgentService>(relaxed = true)
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
@@ -978,7 +1007,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             // resolveAgentName call sequence:
             //   turn 1, @mention path: resolveAgentName(unavailableAgentName) -> unavailableAgentName (found)
             //   turn 2, sticky-agent availability check: resolveAgentName(unavailableAgentName) -> null (gone)
@@ -1108,7 +1141,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = defaultAgentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     // @selected-agent resolves to selectedAgentName
@@ -1195,7 +1232,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val inspectorAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
@@ -1508,6 +1549,7 @@ class CaseServiceImplSpec :
             val namespaceService =
                 mockk<NamespaceService> {
                     every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
                 }
             val agentService =
                 mockk<AgentService> {
@@ -1626,7 +1668,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val inspectorAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
@@ -1765,6 +1811,68 @@ class CaseServiceImplSpec :
         }
 
         // -------------------------------------------------------------------------
+        // Parent delegation observations are durable/live, but never re-enter runtime state
+        // -------------------------------------------------------------------------
+
+        "emitParentEvent persists and broadcasts an observation without restarting the parent automaton" {
+            var runCallCount = 0
+            val countingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        runCallCount++
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow { emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName)) }
+                    }
+                }
+            val eventStore = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "test-namespace", defaultAgentName = agentName)
+            val namespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
+            }
+            val service = CaseServiceImpl(agentService, allowAllAgentConfigService, AgentConfigProperties(), InMemoryCaseRepository(), eventStore,
+                mockk<UserService> { every { findById(userId) } returns activeUser }, namespaceService,
+                CaseConfigProperties(idleEvictionGraceMs = 10_000), permissionService, promptService, noOpCaseNamingService)
+            val parent = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(parent.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+            val idle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(parent.id, userActor, listOf(MessageContent.Text("hello")))
+            idle.join()
+            awaitNotRunning(runtime)
+
+            val observed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val collector = scope.launch {
+                withTimeout(5_000) {
+                    runtime.events.filterIsInstance<SubCaseStartedEvent>().first()
+                    observed.set(true)
+                }
+            }
+            awaitSubscribers(runtime)
+            service.emitParentEvent(
+                SubCaseStartedEvent(namespaceId = namespaceId, caseId = parent.id, delegationId = UUID.randomUUID(),
+                    toolRequestId = "request-1", subCaseId = UUID.randomUUID(), agentName = "child", task = "work", resumed = false),
+            )
+            collector.join()
+
+            observed.get() shouldBe true
+            runCallCount shouldBe 1
+            eventStore.findByParent(parent.id).filterIsInstance<SubCaseStartedEvent>().size shouldBe 1
+            eventStore.findByParent(parent.id).filterIsInstance<AgentFinishedEvent>().size shouldBe 1
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
         // Rehydration: crash recovery from persisted AgentRunningEvent
         // -------------------------------------------------------------------------
 
@@ -1816,7 +1924,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -1905,7 +2017,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -1955,6 +2071,147 @@ class CaseServiceImplSpec :
                 .any { it.message.contains("Prompt resolution failed") } shouldBe true
         }
 
+        // -------------------------------------------------------------------------
+        // resumeSubCase: security — ownership and namespace checks
+        // -------------------------------------------------------------------------
+
+        "resumeSubCase rejects a sub-case that belongs to a different parent" {
+            // Confused-deputy scenario: an agent obtains a subCaseId that belongs to
+            // another parent and tries to inject a message into it.
+            val service = buildService()
+
+            val legitimateParent = service.create(Case(namespaceId = namespaceId))
+            val attackingParent = service.create(Case(namespaceId = namespaceId))
+
+            // Sub-case is a child of legitimateParent, not attackingParent
+            val subCase = service.create(
+                Case(namespaceId = namespaceId, parentCaseId = legitimateParent.id, status = CaseStatus.IDLE),
+            )
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = subCase.id,
+                    parentCaseId = attackingParent.id, // wrong parent
+                    agentName = agentName,
+                    task = "injected task",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase rejects a sub-case from a different namespace" {
+            // Cross-tenant scenario: a sub-case exists in namespaceId but the parent
+            // case lives in a different namespace. The check must reject this even
+            // though the parentCaseId relationship is correctly set.
+            val otherNamespaceId = UUID.randomUUID()
+
+            // Build a service that also knows about the second namespace
+            val otherNamespace = Namespace(
+                metadata = EntityMetadata(id = otherNamespaceId),
+                name = "other-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val dualNamespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+                every { findById(otherNamespaceId) } returns otherNamespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+                every { resolveRunCostThreshold(otherNamespaceId) } returns null
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+            }
+            val caseRepository = InMemoryCaseRepository()
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = CaseServiceImpl(
+                agentService = agentService,
+                agentConfigService = allowAllAgentConfigService,
+                agentConfigProperties = AgentConfigProperties(agentName = agentName),
+                caseRepository = caseRepository,
+                caseEventService = caseEventService,
+                userService = mockk {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                },
+                namespaceService = dualNamespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = promptService,
+                caseNamingService = noOpCaseNamingService,
+            )
+
+            // Parent lives in namespaceId
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Sub-case lives in otherNamespaceId but has parentCaseId pointing to parentCase
+            // (simulates a case that was created with a cross-namespace parentCaseId,
+            // or a namespace field that was tampered with)
+            val foreignSubCase = service.create(
+                Case(namespaceId = otherNamespaceId, parentCaseId = parentCase.id, status = CaseStatus.IDLE),
+            )
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = foreignSubCase.id,
+                    parentCaseId = parentCase.id,
+                    agentName = agentName,
+                    task = "cross-tenant injection",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase rejects a top-level case (parentCaseId is null)" {
+            // A top-level case has no parent. Passing any parentCaseId must be rejected
+            // because the ownership check (subCase.parentCaseId == parentCaseId) will
+            // never hold when subCase.parentCaseId is null.
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            val topLevelCase = service.create(Case(namespaceId = namespaceId, status = CaseStatus.IDLE))
+            // topLevelCase.parentCaseId is null — it is not a sub-case of anything
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = topLevelCase.id,
+                    parentCaseId = parentCase.id, // parentCase is unrelated
+                    agentName = agentName,
+                    task = "trying to resume a top-level case",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase succeeds for a legitimate parent resuming its own IDLE sub-case" {
+            // Non-regression: the happy path must still work after adding the new checks.
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Create the sub-case directly in IDLE status to skip a full agent run
+            val subCase = service.create(
+                Case(namespaceId = namespaceId, parentCaseId = parentCase.id, status = CaseStatus.IDLE),
+            )
+
+            // resumeSubCase must not throw and must return a live runtime
+            val runtime = service.resumeSubCase(
+                subCaseId = subCase.id,
+                parentCaseId = parentCase.id,
+                agentName = agentName,
+                task = "legitimate follow-up",
+                userId = userId,
+                allowedAgents = listOf(agentName),
+            )
+
+            runtime.id shouldBe subCase.id
+        }
+
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
             // Regression: when a case is rehydrated from persistence after a crash,
             // the last persisted event may be an AgentRunningEvent (emitted by runAgent
@@ -2000,7 +2257,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName

@@ -1,3 +1,180 @@
+## 3.12.0 (2026-09-28)
+
+### 🚀 Features
+
+- define a default platform-level runCostThreshold ([a0c635fa](https://github.com/whoz-oss/coday/commit/a0c635fa))
+- define a default namespace-level runCostThreshold ([6cbc5d4a](https://github.com/whoz-oss/coday/commit/6cbc5d4a))
+- define a default case-level runCostThreshold ([4dd5057b](https://github.com/whoz-oss/coday/commit/4dd5057b))
+- regen openapi and api-client ([ca5be3ef](https://github.com/whoz-oss/coday/commit/ca5be3ef))
+- add front for runCostThreshold ([c2e96650](https://github.com/whoz-oss/coday/commit/c2e96650))
+- apply runCostThreshold to case creation and manual update ([f3e97316](https://github.com/whoz-oss/coday/commit/f3e97316))
+- make case runCostThreshold editable on case ([16e628d5](https://github.com/whoz-oss/coday/commit/16e628d5))
+- add default runCostThreshold for Coday ([ce5472bd](https://github.com/whoz-oss/coday/commit/ce5472bd))
+- regen openapi and rework default coday env var ([df10d7e6](https://github.com/whoz-oss/coday/commit/df10d7e6))
+- pr-review ([d088eb03](https://github.com/whoz-oss/coday/commit/d088eb03))
+- #WZ-34476 add runCostThreshold to platform, namespace, and case ([#1301](https://github.com/whoz-oss/coday/pull/1301))
+
+### 🩹 Fixes
+
+- test NamespaceServiceImplSpec.kt ([74a7a5b4](https://github.com/whoz-oss/coday/commit/74a7a5b4))
+- test CaseServiceImplSpec.kt ([23a55197](https://github.com/whoz-oss/coday/commit/23a55197))
+- #WZ-34476 address frontend review comments on run cost threshold ([b5c2655b](https://github.com/whoz-oss/coday/commit/b5c2655b))
+- #WZ-34476 preserve runCostThreshold on case creation and reject negative values ([b171078c](https://github.com/whoz-oss/coday/commit/b171078c))
+- serialize case edits and restore confirmed state on failure ([623831f7](https://github.com/whoz-oss/coday/commit/623831f7))
+- preserve explicit AgentOS environment fallbacks ([2116b4a9](https://github.com/whoz-oss/coday/commit/2116b4a9))
+- #1290 remove unused import ([#1290](https://github.com/whoz-oss/coday/issues/1290))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- selimbensenouciep-prog
+- vincent.audibert
+
+## 3.11.0 (2026-09-26)
+
+### 🚀 Features
+
+- #1290 add delegation lifecycle events ([#1324](https://github.com/whoz-oss/coday/pull/1324), [#1290](https://github.com/whoz-oss/coday/issues/1290))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 3.10.1 (2026-09-25)
+
+### 🩹 Fixes
+
+- restore clean input state on thread resume ([9a9a4052](https://github.com/whoz-oss/coday/commit/9a9a4052))
+- restore clean input state on thread resume ([#1384](https://github.com/whoz-oss/coday/pull/1384))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 3.10.0 (2026-09-25)
+
+### 🚀 Features
+
+- display running delegation count in thinking loader ([cdf862f8](https://github.com/whoz-oss/coday/commit/cdf862f8))
+- display running delegation count in thinking loader ([#1227](https://github.com/whoz-oss/coday/pull/1227))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 3.9.0 (2026-09-25)
+
+### 🚀 Features
+
+- status icone on delegate thread chat box ([138d2f74](https://github.com/whoz-oss/coday/commit/138d2f74))
+- delegation status event and inline status icon ([#1226](https://github.com/whoz-oss/coday/pull/1226))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 3.8.0 (2026-09-24)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention and recall available agents ([4fac9d2f](https://github.com/whoz-oss/coday/commit/4fac9d2f))
+- **agentos-service:** improve intention and recall available agents ([#1383](https://github.com/whoz-oss/coday/pull/1383))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 3.7.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- wz-34403 - fix case title and first message translation ([#1382](https://github.com/whoz-oss/coday/pull/1382))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.7.0 (2026-09-24)
+
+### 🚀 Features
+
+- wz-34403 - use preferred language in scheduled cases ([#1378](https://github.com/whoz-oss/coday/pull/1378))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.6.2 (2026-09-24)
+
+### 🩹 Fixes
+
+- add Neo4j index on ScheduledPrompt.modified ([d7be44e8](https://github.com/whoz-oss/coday/commit/d7be44e8))
+- add Neo4j index on ScheduledPrompt.modified ([#1381](https://github.com/whoz-oss/coday/pull/1381))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+- mathieu_dearmey @mathieu-de-armey-whoz
+
+## 3.6.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- #WZ-34777 guard case creation against users who lost agent access ([#1373](https://github.com/whoz-oss/coday/pull/1373))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.6.0 (2026-09-24)
+
+### 🚀 Features
+
+- #1375 delta-sync support for ScheduledPrompts (withRemoved, modifiedSince) ([#1376](https://github.com/whoz-oss/coday/pull/1376), [#1375](https://github.com/whoz-oss/coday/issues/1375))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+
+## 3.5.0 (2026-09-23)
+
+### 🚀 Features
+
+- introduce UsageRecord entity, persistence, service and controller ([#1309](https://github.com/whoz-oss/coday/pull/1309))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- vincent-audibert-whoz
+
+## 3.4.0 (2026-09-23)
+
+### 🚀 Features
+
+- wz-34403 - add language support in agentOS ([#1374](https://github.com/whoz-oss/coday/pull/1374))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.3.1 (2026-09-23)
+
+### 🩹 Fixes
+
+- revert requesty provider config mistakenly added to agents ([#1352](https://github.com/whoz-oss/coday/pull/1352))
+- revert requesty provider config mistakenly added to agents ([#1352](https://github.com/whoz-oss/coday/pull/1352), [#1353](https://github.com/whoz-oss/coday/pull/1353))
+- **agentos-service:** remove use of dynamic label on PermissionNodeNeo4jRepository.kt 34948 ([#1354](https://github.com/whoz-oss/coday/pull/1354))
+
+### ❤️ Thank You
+
+- leo
+- leo-punsola-whoz @leo-punsola-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.3.0 (2026-09-22)
 
 ### 🚀 Features

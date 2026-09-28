@@ -30,10 +30,11 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
     fun findEffective(namespaceId: UUID, userId: UUID): List<ScheduledPrompt>
 
     /**
-     * Find all non-removed scheduled prompts at an exact scope level (no merge, no inheritance).
+     * Find scheduled prompts at an exact scope level (no merge, no inheritance).
      * [agentConfigIds] is an optional filter; null or empty means no filter.
+     * When [withRemoved] is true, soft-deleted entries are included.
      */
-    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt>
+    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean = false, modifiedSince: Instant? = null): List<ScheduledPrompt>
 
     /**
      * Find all enabled scheduled prompts whose [ScheduledPrompt.nextRunAt] is at or before [now],

@@ -59,6 +59,9 @@ import io.whozoss.agentos.skill.FilesystemSkillRepository
 import io.whozoss.agentos.skill.Neo4jSkillRepository
 import io.whozoss.agentos.skill.SkillNodeNeo4jRepository
 import io.whozoss.agentos.skill.SkillRepository
+import io.whozoss.agentos.usage.Neo4jUsageRecordRepository
+import io.whozoss.agentos.usage.UsageRecordNodeNeo4jRepository
+import io.whozoss.agentos.usage.UsageRecordRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -120,6 +123,7 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.authSetting",
         "io.whozoss.agentos.credential",
         "io.whozoss.agentos.scheduledPrompt",
+        "io.whozoss.agentos.usage",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -358,6 +362,15 @@ class Neo4jPersistenceConfiguration {
     ): ScheduledPromptRunRepository {
         logger.info { "[Persistence] Neo4jScheduledPromptRunRepository active" }
         return Neo4jScheduledPromptRunRepository(scheduledPromptRunNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jUsageRecordRepository(
+        usageRecordNodeNeo4jRepository: UsageRecordNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): UsageRecordRepository {
+        logger.info { "[Persistence] Neo4jUsageRecordRepository active" }
+        return Neo4jUsageRecordRepository(usageRecordNodeNeo4jRepository, childLinkService)
     }
 
     @Bean

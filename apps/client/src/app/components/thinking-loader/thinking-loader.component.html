@@ -5,7 +5,16 @@
         <div class="logo-container">
           <img src="CODAY-Logo.png" alt="Coday Logo" class="coday-logo" />
         </div>
-        <p class="thinking-text">{{ currentThinkingPhrase }}</p>
+        <p class="thinking-text">
+          {{ currentThinkingPhrase }}
+          @if (runningDelegations > 0) {
+            <span class="delegation-suffix">
+              &nbsp;&mdash;&nbsp;{{ runningDelegations }}&nbsp;{{
+                runningDelegations === 1 ? 'sub-task' : 'sub-tasks'
+              }}&nbsp;running
+            </span>
+          }
+        </p>
       </div>
     </div>
   </div>

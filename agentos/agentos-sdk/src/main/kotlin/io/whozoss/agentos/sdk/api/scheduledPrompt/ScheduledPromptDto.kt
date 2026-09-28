@@ -138,4 +138,6 @@ data class ScheduledPromptDto(
     val createdOn: Instant? = null,
     val updatedBy: String? = null,
     val updatedOn: Instant? = null,
+    /** True when soft-deleted, false when active. Read-only. */
+    val removed: Boolean = false,
 )
