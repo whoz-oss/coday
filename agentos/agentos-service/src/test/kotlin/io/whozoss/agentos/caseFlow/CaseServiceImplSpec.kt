@@ -205,7 +205,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = defaultAgentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(any()) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -366,7 +370,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -604,7 +612,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
@@ -704,7 +716,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null, // no namespace-level default
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
@@ -762,7 +778,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = namespaceDefaultName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val namespaceAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = namespaceAgentId)
@@ -840,7 +860,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService = mockk<AgentService>(relaxed = true)
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -922,7 +946,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             // resolveAgentName is never reached because selectDefaultAgent short-circuits on null
             val agentService = mockk<AgentService>(relaxed = true)
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
@@ -979,7 +1007,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             // resolveAgentName call sequence:
             //   turn 1, @mention path: resolveAgentName(unavailableAgentName) -> unavailableAgentName (found)
             //   turn 2, sticky-agent availability check: resolveAgentName(unavailableAgentName) -> null (gone)
@@ -1109,7 +1141,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = defaultAgentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     // @selected-agent resolves to selectedAgentName
@@ -1196,7 +1232,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val inspectorAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
@@ -1509,6 +1549,7 @@ class CaseServiceImplSpec :
             val namespaceService =
                 mockk<NamespaceService> {
                     every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
                 }
             val agentService =
                 mockk<AgentService> {
@@ -1627,7 +1668,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val inspectorAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
@@ -1786,7 +1831,10 @@ class CaseServiceImplSpec :
                 }
             val eventStore = CaseEventServiceImpl(InMemoryCaseEventRepository())
             val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "test-namespace", defaultAgentName = agentName)
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+            }
             val agentService = mockk<AgentService> {
                 every { resolveAgentName(any(), any(), any()) } returns agentName
                 coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
@@ -1876,7 +1924,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -1965,7 +2017,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -2064,6 +2120,8 @@ class CaseServiceImplSpec :
             val dualNamespaceService = mockk<NamespaceService> {
                 every { findById(namespaceId) } returns namespace
                 every { findById(otherNamespaceId) } returns otherNamespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+                every { resolveRunCostThreshold(otherNamespaceId) } returns null
             }
             val agentService = mockk<AgentService> {
                 every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -2199,7 +2257,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
