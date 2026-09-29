@@ -21,42 +21,40 @@ import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.ResultSemanticCollisionException
 import io.whozoss.factory.agentattempt.domain.SubmitOutcome
 import io.whozoss.factory.persistence.TenantScope
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
-import java.sql.Timestamp
 import java.time.Instant
 import java.util.Base64
 import java.util.UUID
 
 /**
- * `NamedParameterJdbcTemplate` implementation of [AgentStepResultRepository].
+ * Neo4j implementation of [AgentStepResultRepository].
  *
- * Port of `sql-agent-step-result-repository.ts`. Every statement is
- * parameterized and constrained to the supplied [TenantScope].
+ * Replaces `JdbcAgentStepResultRepository`. The result write, the attempt
+ * terminalization and the `result_submitted` outbox event are committed in a
+ * single Neo4j transaction.
  *
- * ## Capability persistence and the V6 composite foreign key
+ * ## Capability persistence
  *
- * The V6 `result_capabilities` table declares a composite foreign key onto
- * `agent_step_results`. A submission capability therefore cannot be persisted
- * before the attempt has a result row. To honour both the schema and the
- * "append-only capability" intent, [issue] writes the capability together with a
- * **reservation** result row (status `collision_detected`, payload
- * `type = capability-reserved`), which [submit] then updates in place with the
- * authoritative submitted payload. This keeps the capability, the result, the
- * attempt transition and the outbox event inside one transactional boundary
- * while never inserting an orphan capability.
+ * The former V6 composite foreign key `result_capabilities -> agent_step_results`
+ * has no graph equivalent, but the write order is preserved for behavioural
+ * parity: [issue] writes a **reservation** result row (status
+ * `collision_detected`, payload `type = capability-reserved`) together with the
+ * capability, and [submit] updates that same node in place with the
+ * authoritative submitted payload.
  *
- * The clear bearer token is never stored; only its `sha256:<hex>` digest, kept
- * inside the JSONB payload, is.
+ * The clear bearer token is never stored; only its `sha256:<hex>` digest is,
+ * denormalised onto [ResultCapabilityNode.tokenHash] for an indexed lookup. The
+ * digest is still compared in constant time after the fetch.
  */
 @Repository
-class JdbcAgentStepResultRepository(
-    private val jdbc: NamedParameterJdbcTemplate,
-    private val objectMapper: ObjectMapper,
+class Neo4jAgentStepResultRepository(
+    private val results: SpringDataNeo4jAgentStepResultRepository,
+    private val capabilities: SpringDataNeo4jResultCapabilityRepository,
+    private val outbox: SpringDataNeo4jOutboxRepository,
     private val attempts: AgentStepAttemptRepository,
+    private val objectMapper: ObjectMapper,
 ) : AgentStepResultRepository {
 
     @Transactional
@@ -110,15 +108,9 @@ class JdbcAgentStepResultRepository(
             expiresAt = expiresAt,
             submissionBudget = AgentStepResultLimits.SUBMISSION_BUDGET,
         )
-        val reservation = ResultReservation(
-            type = RESERVATION_TYPE,
-            capabilityId = capabilityId,
-            resultId = resultId,
-            attemptId = identity.attemptId,
-        )
 
-        insertReservation(scope, identity, resultId, serialize(reservation), now)
-        insertCapability(scope, identity, resultId, capability, now)
+        insertReservation(scope, identity, resultId, capabilityId, now)
+        insertCapability(scope, resultId, capability, now)
 
         return IssuedCapability(token = token, expiresAt = expiresAt)
     }
@@ -205,6 +197,9 @@ class JdbcAgentStepResultRepository(
         return deserialize(row.payload, AgentStepResultSubmitted::class.java)
     }
 
+    override fun findByToken(scope: TenantScope, token: String): AgentStepResultCapability? =
+        findByTokenHash(scope, CanonicalJsonHash.sha256(token))
+
     // ------------------------------------------------------------------
     // Capability / result IO
     // ------------------------------------------------------------------
@@ -213,53 +208,27 @@ class JdbcAgentStepResultRepository(
         scope: TenantScope,
         identity: AgentStepResultCapabilityIdentity,
     ): AgentStepResultCapability? =
-        jdbc.query(
-            """
-            SELECT payload FROM result_capabilities
-             WHERE organization_id = :organizationId
-               AND workstream_id = :workstreamId
-               AND namespace_id = :namespaceId
-               AND workflow_id = :workflowId
-               AND step_id = :stepId
-               AND attempt_id = :attemptId
-               AND capability_type = :capabilityType
-             LIMIT 1
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("namespaceId", identity.namespaceId)
-                .addValue("workflowId", identity.workflowId)
-                .addValue("stepId", identity.stepId)
-                .addValue("attemptId", identity.attemptId)
-                .addValue("capabilityType", CAPABILITY_TYPE),
-        ) { rs, _ -> deserialize(rs.getString("payload"), AgentStepResultCapability::class.java) }.firstOrNull()
-
-    override fun findByToken(scope: TenantScope, token: String): AgentStepResultCapability? =
-        findByTokenHash(scope, CanonicalJsonHash.sha256(token))
+        capabilities
+            .findByAttempt(
+                scope.organizationId,
+                scope.workstreamId,
+                identity.namespaceId,
+                identity.workflowId,
+                identity.stepId,
+                identity.attemptId,
+                CAPABILITY_TYPE,
+            )?.let { deserialize(it.payload, AgentStepResultCapability::class.java) }
 
     private fun findByTokenHash(scope: TenantScope, tokenHash: String): AgentStepResultCapability? {
-        // The token digest lives inside the JSONB payload (no dedicated column),
-        // so the tenant-scoped scan compares it in constant time, exactly like
-        // the Node `#findByToken`.
-        val rows = jdbc.query(
-            """
-            SELECT payload FROM result_capabilities
-             WHERE organization_id = :organizationId
-               AND workstream_id = :workstreamId
-               AND capability_type = :capabilityType
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("capabilityType", CAPABILITY_TYPE),
-        ) { rs, _ -> rs.getString("payload") ?: "{}" }.toList()
-        return rows.asSequence()
-            .filter { payload -> payloadType(payload) == CAPABILITY_ISSUED_TYPE }
-            .mapNotNull { payload ->
-                runCatching { deserialize(payload, AgentStepResultCapability::class.java) }.getOrNull()
-            }
-            .firstOrNull { record -> CanonicalJsonHash.safeEqual(record.tokenHash, tokenHash) }
+        // The digest is indexed (denormalised on the node) for a fast lookup, but
+        // it is still re-verified in constant time before the capability is
+        // trusted — the same guarantee the former JSONB scan gave.
+        val node = capabilities.findByTokenHash(scope.organizationId, scope.workstreamId, tokenHash) ?: return null
+        val record = runCatching { deserialize(node.payload, AgentStepResultCapability::class.java) }.getOrNull()
+            ?: return null
+        return record.takeIf {
+            it.type == CAPABILITY_ISSUED_TYPE && CanonicalJsonHash.safeEqual(it.tokenHash, tokenHash)
+        }
     }
 
     private fun findResult(scope: TenantScope, capability: AgentStepResultCapability): AgentStepResultRow? =
@@ -272,68 +241,53 @@ class JdbcAgentStepResultRepository(
         stepId: String,
         attemptId: String,
     ): AgentStepResultRow? =
-        jdbc.query(
-            """
-            SELECT namespace_id, workflow_id, step_id, attempt_id, result_id, result_status,
-                   semantic_signature, payload
-              FROM agent_step_results
-             WHERE organization_id = :organizationId
-               AND workstream_id = :workstreamId
-               AND namespace_id = :namespaceId
-               AND workflow_id = :workflowId
-               AND step_id = :stepId
-               AND attempt_id = :attemptId
-             ORDER BY created_at ASC
-             LIMIT 1
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("namespaceId", namespaceId)
-                .addValue("workflowId", workflowId)
-                .addValue("stepId", stepId)
-                .addValue("attemptId", attemptId),
-        ) { rs, _ ->
-            AgentStepResultRow(
-                namespaceId = rs.getString("namespace_id"),
-                workflowId = rs.getString("workflow_id"),
-                stepId = rs.getString("step_id"),
-                attemptId = rs.getString("attempt_id"),
-                resultId = rs.getString("result_id"),
-                resultStatus = rs.getString("result_status"),
-                semanticSignature = rs.getString("semantic_signature"),
-                payload = rs.getString("payload") ?: "{}",
-            )
-        }.firstOrNull()
+        results
+            .findFirstByAttempt(
+                scope.organizationId,
+                scope.workstreamId,
+                namespaceId,
+                workflowId,
+                stepId,
+                attemptId,
+            )?.toDomain()
 
     private fun insertReservation(
         scope: TenantScope,
         identity: AgentStepResultCapabilityIdentity,
         resultId: String,
-        payload: String,
+        capabilityId: String,
         now: Instant,
     ) {
-        jdbc.update(
-            """
-            INSERT INTO agent_step_results (
-                organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id,
-                result_id, result_status, semantic_signature, payload, created_at
-            ) VALUES (
-                :organizationId, :workstreamId, :namespaceId, :workflowId, :stepId, :attemptId,
-                :resultId, :resultStatus, NULL, CAST(:payload AS jsonb), :createdAt
-            )
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("namespaceId", identity.namespaceId)
-                .addValue("workflowId", identity.workflowId)
-                .addValue("stepId", identity.stepId)
-                .addValue("attemptId", identity.attemptId)
-                .addValue("resultId", resultId)
-                .addValue("resultStatus", COLLISION_DB_STATUS)
-                .addValue("payload", payload)
-                .addValue("createdAt", Timestamp.from(now)),
+        results.save(
+            AgentStepResultNode(
+                id = AgentStepResultNode.compositeId(
+                    scope.organizationId,
+                    scope.workstreamId,
+                    identity.namespaceId,
+                    identity.workflowId,
+                    identity.stepId,
+                    identity.attemptId,
+                    resultId,
+                ),
+                organizationId = scope.organizationId,
+                workstreamId = scope.workstreamId,
+                namespaceId = identity.namespaceId,
+                workflowId = identity.workflowId,
+                stepId = identity.stepId,
+                attemptId = identity.attemptId,
+                resultId = resultId,
+                resultStatus = COLLISION_DB_STATUS,
+                semanticSignature = null,
+                payload = serialize(
+                    ResultReservation(
+                        type = RESERVATION_TYPE,
+                        capabilityId = capabilityId,
+                        resultId = resultId,
+                        attemptId = identity.attemptId,
+                    ),
+                ),
+                createdAt = now,
+            ),
         )
     }
 
@@ -346,28 +300,29 @@ class JdbcAgentStepResultRepository(
         payload: String,
         now: Instant,
     ) {
-        jdbc.update(
-            """
-            INSERT INTO agent_step_results (
-                organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id,
-                result_id, result_status, semantic_signature, payload, created_at
-            ) VALUES (
-                :organizationId, :workstreamId, :namespaceId, :workflowId, :stepId, :attemptId,
-                :resultId, :resultStatus, :semanticSignature, CAST(:payload AS jsonb), :createdAt
-            )
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("namespaceId", capability.namespaceId)
-                .addValue("workflowId", capability.workflowId)
-                .addValue("stepId", capability.stepId)
-                .addValue("attemptId", capability.attemptId)
-                .addValue("resultId", resultId)
-                .addValue("resultStatus", resultStatus)
-                .addValue("semanticSignature", resultHash)
-                .addValue("payload", payload)
-                .addValue("createdAt", Timestamp.from(now)),
+        results.save(
+            AgentStepResultNode(
+                id = AgentStepResultNode.compositeId(
+                    scope.organizationId,
+                    scope.workstreamId,
+                    capability.namespaceId,
+                    capability.workflowId,
+                    capability.stepId,
+                    capability.attemptId,
+                    resultId,
+                ),
+                organizationId = scope.organizationId,
+                workstreamId = scope.workstreamId,
+                namespaceId = capability.namespaceId,
+                workflowId = capability.workflowId,
+                stepId = capability.stepId,
+                attemptId = capability.attemptId,
+                resultId = resultId,
+                resultStatus = resultStatus,
+                semanticSignature = resultHash,
+                payload = payload,
+                createdAt = now,
+            ),
         )
     }
 
@@ -379,67 +334,38 @@ class JdbcAgentStepResultRepository(
         resultHash: String,
         payload: String,
     ) {
-        jdbc.update(
-            """
-            UPDATE agent_step_results
-               SET result_status = :resultStatus,
-                   semantic_signature = :semanticSignature,
-                   payload = CAST(:payload AS jsonb)
-             WHERE organization_id = :organizationId
-               AND workstream_id = :workstreamId
-               AND namespace_id = :namespaceId
-               AND workflow_id = :workflowId
-               AND step_id = :stepId
-               AND attempt_id = :attemptId
-               AND result_id = :resultId
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("namespaceId", capability.namespaceId)
-                .addValue("workflowId", capability.workflowId)
-                .addValue("stepId", capability.stepId)
-                .addValue("attemptId", capability.attemptId)
-                .addValue("resultId", resultId)
-                .addValue("resultStatus", resultStatus)
-                .addValue("semanticSignature", resultHash)
-                .addValue("payload", payload),
+        val id = AgentStepResultNode.compositeId(
+            scope.organizationId,
+            scope.workstreamId,
+            capability.namespaceId,
+            capability.workflowId,
+            capability.stepId,
+            capability.attemptId,
+            resultId,
         )
+        results.updateResult(id = id, resultStatus = resultStatus, semanticSignature = resultHash, payload = payload)
     }
 
     private fun insertCapability(
         scope: TenantScope,
-        identity: AgentStepResultCapabilityIdentity,
         resultId: String,
         capability: AgentStepResultCapability,
         now: Instant,
     ) {
-        jdbc.update(
-            """
-            INSERT INTO result_capabilities (
-                organization_id, workstream_id, namespace_id, workflow_id, step_id, attempt_id,
-                result_id, capability_id, capability_type, payload, created_at
-            ) VALUES (
-                :organizationId, :workstreamId, :namespaceId, :workflowId, :stepId, :attemptId,
-                :resultId, :capabilityId, :capabilityType, CAST(:payload AS jsonb), :createdAt
-            )
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("namespaceId", identity.namespaceId)
-                .addValue("workflowId", identity.workflowId)
-                .addValue("stepId", identity.stepId)
-                .addValue("attemptId", identity.attemptId)
-                .addValue("resultId", resultId)
-                .addValue("capabilityId", capability.capabilityId)
-                .addValue("capabilityType", CAPABILITY_TYPE)
-                .addValue("payload", serialize(capability))
-                .addValue("createdAt", Timestamp.from(now)),
+        capabilities.save(
+            ResultCapabilityNode.fromDomain(
+                scope = scope,
+                resultId = resultId,
+                capabilityType = CAPABILITY_TYPE,
+                capability = capability,
+                payload = serialize(capability),
+                now = now,
+            ),
         )
     }
 
     private fun insertOutbox(scope: TenantScope, submitted: AgentStepResultSubmitted, now: Instant) {
+        val eventId = UUID.randomUUID().toString()
         val payload = objectMapper.createObjectNode().apply {
             put("aggregateType", "agent_step_result")
             put("attemptId", submitted.attemptId)
@@ -453,22 +379,19 @@ class JdbcAgentStepResultRepository(
             put("stepId", submitted.stepId)
             put("caseId", submitted.caseId)
         }
-        jdbc.update(
-            """
-            INSERT INTO outbox_events (
-                organization_id, id, workstream_id, event_type, payload, status, created_at
-            ) VALUES (
-                :organizationId, :id, :workstreamId, :eventType, CAST(:payload AS jsonb), :status, :createdAt
-            )
-            """.trimIndent(),
-            MapSqlParameterSource()
-                .addValue("organizationId", scope.organizationId)
-                .addValue("id", UUID.randomUUID().toString())
-                .addValue("workstreamId", scope.workstreamId)
-                .addValue("eventType", "result_submitted")
-                .addValue("payload", serialize(payload))
-                .addValue("status", "pending")
-                .addValue("createdAt", Timestamp.from(now)),
+        outbox.save(
+            OutboxEventNode(
+                id = OutboxEventNode.compositeId(scope.organizationId, eventId),
+                organizationId = scope.organizationId,
+                eventId = eventId,
+                workstreamId = scope.workstreamId,
+                eventType = RESULT_SUBMITTED,
+                payload = serialize(payload),
+                status = PENDING,
+                attempts = 0,
+                createdAt = now,
+                dispatchedAt = null,
+            ),
         )
     }
 
@@ -503,7 +426,7 @@ class JdbcAgentStepResultRepository(
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 
-    /** Reservation payload persisted inside `agent_step_results` at issue time. */
+    /** Reservation payload persisted inside an `:AgentStepResult` node at issue time. */
     private data class ResultReservation(
         val type: String,
         val capabilityId: String,
@@ -518,6 +441,8 @@ class JdbcAgentStepResultRepository(
         const val RESERVATION_TYPE = "capability-reserved"
         const val SUBMITTED_TYPE = "result-submitted"
         const val COLLISION_DB_STATUS = "collision_detected"
+        const val RESULT_SUBMITTED = "result_submitted"
+        const val PENDING = "pending"
 
         val DB_RESULT_STATUS: Map<AgentStepResultStatus, String> = mapOf(
             AgentStepResultStatus.PASS to "success",

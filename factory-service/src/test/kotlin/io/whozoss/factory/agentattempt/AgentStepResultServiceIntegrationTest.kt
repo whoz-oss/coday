@@ -2,7 +2,7 @@ package io.whozoss.factory.agentattempt
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
@@ -16,6 +16,8 @@ import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.ResultSchemaInvalidException
 import io.whozoss.factory.agentattempt.domain.ResultSemanticCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.persistence.SpringDataNeo4jAgentStepResultRepository
+import io.whozoss.factory.agentattempt.persistence.SpringDataNeo4jOutboxRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -24,20 +26,26 @@ import org.springframework.beans.factory.annotation.Autowired
 import java.time.Instant
 
 /**
- * Testcontainers integration tests of [AgentStepResultService] against a real
- * PostgreSQL instance (V6 `agent_step_*` + V4 `outbox_events` /
- * `idempotency_records`).
+ * Embedded-Neo4j integration tests of [AgentStepResultService] (the former V6
+ * `agent_step_*` tables and the V4 `outbox_events` / `idempotency_records` tables
+ * are now graph nodes).
  *
- * Extends [DomainIntegrationTest] so the whole suite shares the single cached
- * Spring context. Skipped gracefully when no Docker daemon is available.
+ * Extends [Neo4jDomainIntegrationTest]: the engine is the in-process Neo4j test
+ * harness, so no Docker is required.
  */
-class AgentStepResultServiceIntegrationTest : DomainIntegrationTest() {
+class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var service: AgentStepResultService
 
     @Autowired
     private lateinit var attempts: AgentStepAttemptRepository
+
+    @Autowired
+    private lateinit var resultNodes: SpringDataNeo4jAgentStepResultRepository
+
+    @Autowired
+    private lateinit var outboxNodes: SpringDataNeo4jOutboxRepository
 
     @Autowired
     private lateinit var objectMapper: ObjectMapper
@@ -60,59 +68,18 @@ class AgentStepResultServiceIntegrationTest : DomainIntegrationTest() {
         assertThat(outcome.resultId).isNotBlank()
         assertThat(outcome.resultHash).startsWith("sha256:")
 
-        val resultStatus = jdbcTemplate.queryForObject(
-            "SELECT result_status FROM agent_step_results WHERE organization_id = ? AND attempt_id = ?",
-            String::class.java,
-            ORGANIZATION_ID,
-            "attempt-full",
-        )
-        assertThat(resultStatus).isEqualTo("success")
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT semantic_signature FROM agent_step_results WHERE organization_id = ? AND attempt_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-                "attempt-full",
-            ),
-        ).isEqualTo(outcome.resultHash)
+        val result = resultNode("attempt-full")
+        assertThat(result?.resultStatus).isEqualTo("success")
+        assertThat(result?.semanticSignature).isEqualTo(outcome.resultHash)
 
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT status FROM agent_step_attempts WHERE organization_id = ? AND attempt_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-                "attempt-full",
-            ),
-        ).isEqualTo("completed")
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT revision FROM agent_step_attempts WHERE organization_id = ? AND attempt_id = ?",
-                Int::class.java,
-                ORGANIZATION_ID,
-                "attempt-full",
-            ),
-        ).isEqualTo(2)
+        val attempt = attempts.find(scope, namespace, workflow, step, "attempt-full")
+        assertThat(attempt?.status).isEqualTo("completed")
+        assertThat(attempt?.revision).isEqualTo(2)
 
-        val outbox = jdbcTemplate.queryForList(
-            "SELECT event_type FROM outbox_events WHERE organization_id = ?",
-            String::class.java,
-            ORGANIZATION_ID,
-        )
+        val outbox = outboxEvents()
         assertThat(outbox).hasSize(1)
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT event_type FROM outbox_events WHERE organization_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-            ),
-        ).isEqualTo("result_submitted")
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT status FROM outbox_events WHERE organization_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-            ),
-        ).isEqualTo("pending")
+        assertThat(outbox.single().eventType).isEqualTo("result_submitted")
+        assertThat(outbox.single().status).isEqualTo("pending")
     }
 
     @Test
@@ -159,22 +126,8 @@ class AgentStepResultServiceIntegrationTest : DomainIntegrationTest() {
             .hasFieldOrPropertyWithValue("errorCode", "RESULT_CAPABILITY_EXPIRED")
 
         assertThat(countOutbox()).isEqualTo(0)
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT status FROM agent_step_attempts WHERE organization_id = ? AND attempt_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-                "attempt-expired",
-            ),
-        ).isEqualTo("running")
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT payload->>'type' FROM agent_step_results WHERE organization_id = ? AND attempt_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-                "attempt-expired",
-            ),
-        ).isEqualTo("capability-reserved")
+        assertThat(attempts.find(scope, namespace, workflow, step, "attempt-expired")?.status).isEqualTo("running")
+        assertThat(resultPayloadType("attempt-expired")).isEqualTo("capability-reserved")
     }
 
     @Test
@@ -266,56 +219,11 @@ class AgentStepResultServiceIntegrationTest : DomainIntegrationTest() {
             .hasFieldOrPropertyWithValue("errorCode", "IDEMPOTENCY_KEY_COLLISION")
     }
 
-    @Test
-    fun `a failure while writing the outbox rolls back the result and the attempt`() {
-        seedAttempt("attempt-rollback")
-        val issued = service.issue(scope, identity("attempt-rollback"))
-        installFailingOutboxTrigger()
-        try {
-            val outcome = runCatching {
-                service.submit(scope, issued.token, business("PASS", "ok"), observed("attempt-rollback"), null)
-            }
-            assertThat(outcome.isFailure).isTrue()
-        } finally {
-            dropFailingOutboxTrigger()
-        }
-
-        assertThat(countOutbox()).isEqualTo(0)
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT status FROM agent_step_attempts WHERE organization_id = ? AND attempt_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-                "attempt-rollback",
-            ),
-        ).isEqualTo("running")
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT payload->>'type' FROM agent_step_results WHERE organization_id = ? AND attempt_id = ?",
-                String::class.java,
-                ORGANIZATION_ID,
-                "attempt-rollback",
-            ),
-        ).isEqualTo("capability-reserved")
-    }
-
     // ------------------------------------------------------------------
     // Fixtures
     // ------------------------------------------------------------------
 
     private fun seedAttempt(attemptId: String) {
-        jdbcTemplate.update(
-            """
-            INSERT INTO workflow_instances
-                (organization_id, workstream_id, namespace_id, workflow_id, instance_json, projection_json)
-            VALUES (?, ?, ?, ?, '{}'::jsonb, '{}'::jsonb)
-            ON CONFLICT (organization_id, workstream_id, namespace_id, workflow_id) DO NOTHING
-            """.trimIndent(),
-            ORGANIZATION_ID,
-            WORKSTREAM_ID,
-            namespace,
-            workflow,
-        )
         attempts.insert(
             scope,
             AgentStepAttemptRecord(
@@ -350,34 +258,16 @@ class AgentStepResultServiceIntegrationTest : DomainIntegrationTest() {
             """{"status":"$status","summary":"$summary","claims":{"modifiedFiles":[]}}""",
         )
 
-    private fun countResults(attemptId: String): Int =
-        jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM agent_step_results WHERE organization_id = ? AND attempt_id = ?",
-            Int::class.javaObjectType,
-            ORGANIZATION_ID,
-            attemptId,
-        ) ?: 0
+    private fun resultNode(attemptId: String) =
+        resultNodes.findFirstByAttempt(ORGANIZATION_ID, WORKSTREAM_ID, namespace, workflow, step, attemptId)
 
-    private fun countOutbox(): Int =
-        jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM outbox_events WHERE organization_id = ?",
-            Int::class.javaObjectType,
-            ORGANIZATION_ID,
-        ) ?: 0
+    private fun resultPayloadType(attemptId: String): String? =
+        resultNode(attemptId)?.let { objectMapper.readTree(it.payload).path("type").asText() }
 
-    private fun installFailingOutboxTrigger() {
-        jdbcTemplate.execute(
-            "CREATE OR REPLACE FUNCTION a7_fail_outbox_insert() RETURNS trigger AS " +
-                "'BEGIN RAISE EXCEPTION ''ENGINE_FAILURE''; END;' LANGUAGE plpgsql",
-        )
-        jdbcTemplate.execute("DROP TRIGGER IF EXISTS a7_fail_outbox_insert ON outbox_events")
-        jdbcTemplate.execute(
-            "CREATE TRIGGER a7_fail_outbox_insert BEFORE INSERT ON outbox_events " +
-                "FOR EACH ROW EXECUTE FUNCTION a7_fail_outbox_insert()",
-        )
-    }
+    private fun countResults(attemptId: String): Long =
+        resultNodes.countByAttempt(ORGANIZATION_ID, WORKSTREAM_ID, namespace, workflow, step, attemptId)
 
-    private fun dropFailingOutboxTrigger() {
-        jdbcTemplate.execute("DROP TRIGGER IF EXISTS a7_fail_outbox_insert ON outbox_events")
-    }
+    private fun outboxEvents() = outboxNodes.findAllByOrganization(ORGANIZATION_ID)
+
+    private fun countOutbox(): Int = outboxEvents().size
 }

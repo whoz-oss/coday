@@ -1,24 +1,28 @@
 package io.whozoss.factory.agentattempt
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.agentattempt.persistence.OutboxEventNode
+import io.whozoss.factory.agentattempt.persistence.SpringDataNeo4jOutboxRepository
 import io.whozoss.factory.agentattempt.service.OutboxDrainService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import java.sql.Timestamp
 import java.time.Instant
 
 /**
- * Testcontainers integration tests of [OutboxDrainService] (V4
- * `outbox_events`) against a real PostgreSQL instance.
+ * Embedded-Neo4j integration tests of [OutboxDrainService] (the former V4
+ * `outbox_events` table is now an `:OutboxEvent` node).
  *
- * Extends [DomainIntegrationTest] so the whole suite shares the single cached
- * Spring context. Skipped gracefully when no Docker daemon is available.
+ * Extends [Neo4jDomainIntegrationTest]: the engine is the in-process Neo4j test
+ * harness, so no Docker is required.
  */
-class OutboxDrainServiceIntegrationTest : DomainIntegrationTest() {
+class OutboxDrainServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var drain: OutboxDrainService
+
+    @Autowired
+    private lateinit var outbox: SpringDataNeo4jOutboxRepository
 
     @Test
     fun `drains pending events and marks them dispatched`() {
@@ -31,14 +35,7 @@ class OutboxDrainServiceIntegrationTest : DomainIntegrationTest() {
         assertThat(report.failed).isEqualTo(0)
         assertThat(statusOf("evt-1")).isEqualTo("dispatched")
         assertThat(statusOf("evt-2")).isEqualTo("dispatched")
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT dispatched_at FROM outbox_events WHERE organization_id = ? AND id = ?",
-                Timestamp::class.java,
-                ORGANIZATION_ID,
-                "evt-1",
-            ),
-        ).isNotNull()
+        assertThat(nodeOf("evt-1")?.dispatchedAt).isNotNull()
     }
 
     @Test
@@ -50,14 +47,7 @@ class OutboxDrainServiceIntegrationTest : DomainIntegrationTest() {
         assertThat(report.dispatched).isEqualTo(0)
         assertThat(report.failed).isEqualTo(1)
         assertThat(statusOf("evt-bad")).isEqualTo("failed")
-        assertThat(
-            jdbcTemplate.queryForObject(
-                "SELECT attempts FROM outbox_events WHERE organization_id = ? AND id = ?",
-                Int::class.javaObjectType,
-                ORGANIZATION_ID,
-                "evt-bad",
-            ),
-        ).isEqualTo(1)
+        assertThat(nodeOf("evt-bad")?.attempts).isEqualTo(1)
     }
 
     @Test
@@ -74,27 +64,31 @@ class OutboxDrainServiceIntegrationTest : DomainIntegrationTest() {
         assertThat(statusOf("dispatched-1")).isEqualTo("dispatched")
     }
 
+    @Test
+    fun `pending organizations lists only tenants with pending events`() {
+        insertEvent("evt-pending", "pending", Instant.parse("2026-05-01T00:00:01Z"))
+
+        assertThat(drain.pendingOrganizations()).containsExactly(ORGANIZATION_ID)
+    }
+
     private fun insertEvent(id: String, status: String, createdAt: Instant) {
-        jdbcTemplate.update(
-            """
-            INSERT INTO outbox_events (
-                organization_id, id, workstream_id, event_type, payload, status, created_at
-            ) VALUES (?, ?, ?, ?, '{}'::jsonb, ?, ?)
-            """.trimIndent(),
-            ORGANIZATION_ID,
-            id,
-            WORKSTREAM_ID,
-            "result_submitted",
-            status,
-            Timestamp.from(createdAt),
+        outbox.save(
+            OutboxEventNode(
+                id = OutboxEventNode.compositeId(ORGANIZATION_ID, id),
+                organizationId = ORGANIZATION_ID,
+                eventId = id,
+                workstreamId = WORKSTREAM_ID,
+                eventType = "result_submitted",
+                payload = "{}",
+                status = status,
+                attempts = 0,
+                createdAt = createdAt,
+            ),
         )
     }
 
-    private fun statusOf(id: String): String? =
-        jdbcTemplate.queryForObject(
-            "SELECT status FROM outbox_events WHERE organization_id = ? AND id = ?",
-            String::class.java,
-            ORGANIZATION_ID,
-            id,
-        )
+    private fun nodeOf(id: String): OutboxEventNode? =
+        outbox.findById(OutboxEventNode.compositeId(ORGANIZATION_ID, id)).orElse(null)
+
+    private fun statusOf(id: String): String? = nodeOf(id)?.status
 }

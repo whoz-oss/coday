@@ -1,6 +1,6 @@
 package io.whozoss.factory.agentattempt
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
@@ -20,15 +20,15 @@ import org.springframework.http.ResponseEntity
 
 /**
  * HTTP integration tests of
- * [io.whozoss.factory.agentattempt.web.AgentStepResultController] against a real
- * PostgreSQL instance.
+ * [io.whozoss.factory.agentattempt.web.AgentStepResultController] against the
+ * embedded Neo4j engine (in-process harness, no Docker).
  *
  * Exercises `POST /api/factory/agent-step-results`, asserting the canonical
  * `{ "data": ... }` success envelope and the `{ "error": { code, ... } }`
  * failure envelope, together with the exact Node status-code contract. The
  * trust context is the loopback-dev principal (`org-local-dev` / `ws-default`).
  */
-class AgentStepResultControllerHttpTest : DomainIntegrationTest() {
+class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -48,18 +48,6 @@ class AgentStepResultControllerHttpTest : DomainIntegrationTest() {
 
     @BeforeEach
     fun seedAttempt() {
-        jdbcTemplate.update(
-            """
-            INSERT INTO workflow_instances
-                (organization_id, workstream_id, namespace_id, workflow_id, instance_json, projection_json)
-            VALUES (?, ?, ?, ?, '{}'::jsonb, '{}'::jsonb)
-            ON CONFLICT (organization_id, workstream_id, namespace_id, workflow_id) DO NOTHING
-            """.trimIndent(),
-            ORGANIZATION_ID,
-            WORKSTREAM_ID,
-            namespace,
-            workflow,
-        )
         attempts.insert(
             scope,
             AgentStepAttemptRecord(

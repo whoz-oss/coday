@@ -128,6 +128,75 @@ class Neo4jSchemaInitializer(
                     "FOR (e:WorkEnvironment) ON (e.organizationId, e.workstreamId, e.workflowId)",
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index work_environment_workflow created" }
+
+        // ── Agent-step attempts ────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT agent_step_attempt_id_unique IF NOT EXISTS " +
+                    "FOR (a:AgentStepAttempt) REQUIRE a.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint agent_step_attempt_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX agent_step_attempt_scope IF NOT EXISTS " +
+                    "FOR (a:AgentStepAttempt) ON (a.organizationId, a.workstreamId, a.status)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index agent_step_attempt_scope created" }
+
+        // ── Agent-step results ─────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT agent_step_result_id_unique IF NOT EXISTS " +
+                    "FOR (r:AgentStepResult) REQUIRE r.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint agent_step_result_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX agent_step_result_attempt IF NOT EXISTS " +
+                    "FOR (r:AgentStepResult) ON " +
+                    "(r.organizationId, r.workstreamId, r.namespaceId, r.workflowId, r.stepId, r.attemptId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index agent_step_result_attempt created" }
+
+        // ── Result capabilities ────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT result_capability_id_unique IF NOT EXISTS " +
+                    "FOR (c:ResultCapability) REQUIRE c.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint result_capability_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX result_capability_token_hash IF NOT EXISTS " +
+                    "FOR (c:ResultCapability) ON (c.organizationId, c.workstreamId, c.tokenHash)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index result_capability_token_hash created" }
+
+        // ── Transactional outbox ───────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT outbox_event_id_unique IF NOT EXISTS " +
+                    "FOR (e:OutboxEvent) REQUIRE e.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint outbox_event_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX outbox_event_pending IF NOT EXISTS " +
+                    "FOR (e:OutboxEvent) ON (e.organizationId, e.status, e.createdAt)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index outbox_event_pending created" }
+
+        // ── Idempotency records ────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT idempotency_record_id_unique IF NOT EXISTS " +
+                    "FOR (i:IdempotencyRecord) REQUIRE i.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint idempotency_record_id_unique ensured" }
     }
 
     companion object : KLogging()
