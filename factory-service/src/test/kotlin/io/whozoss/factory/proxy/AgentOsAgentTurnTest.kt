@@ -8,6 +8,8 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
+import org.springframework.test.web.client.match.MockRestRequestMatchers.header
+import org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
 import org.springframework.web.client.RestClient
@@ -68,6 +70,45 @@ class AgentOsAgentTurnTest {
         assertThat(result).isInstanceOf(AgentTurnExecutionResult.Completed::class.java)
         assertThat((result as AgentTurnExecutionResult.Completed).summary).isEqualTo("all good")
         assertThat(result.facts["caseStatus"]).isEqualTo("IDLE")
+        server.verify()
+    }
+
+    @Test
+    fun `the agent turn transmits the attempt id and capability token to case creation`() {
+        val (client, server) = build()
+        val running = """[{"id":"e1","type":"CaseStatusEvent","status":"RUNNING"}]"""
+        val idle = """
+            [{"id":"e1","type":"CaseStatusEvent","status":"RUNNING"},
+             {"id":"e2","type":"CaseStatusEvent","status":"IDLE"}]
+        """.trimIndent()
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(header("X-Factory-Attempt-Id", "attempt-9"))
+            .andExpect(header("X-Factory-Capability-Token", "clear-token"))
+            .andExpect(jsonPath("$.id").value("case-9"))
+            .andExpect(jsonPath("$.attemptId").value("attempt-9"))
+            .andExpect(jsonPath("$.capabilityToken").value("clear-token"))
+            .andRespond(withSuccess("""{"id":"case-9","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$baseUrl/api/case-events/by-parentId/case-9"))
+            .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$baseUrl/api/cases/case-9/messages"))
+            .andExpect(header("X-Factory-Attempt-Id", "attempt-9"))
+            .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$baseUrl/api/case-events/by-parentId/case-9"))
+            .andRespond(withSuccess(running, MediaType.APPLICATION_JSON))
+        server.expect(requestTo("$baseUrl/api/case-events/by-parentId/case-9"))
+            .andRespond(withSuccess(idle, MediaType.APPLICATION_JSON))
+
+        val result = client.executeAgentTurn(
+            "ns-1",
+            "architect",
+            "step-1",
+            "wf-1",
+            attemptId = "attempt-9",
+            capabilityToken = "clear-token",
+            caseId = "case-9",
+        )
+
+        assertThat(result).isInstanceOf(AgentTurnExecutionResult.Completed::class.java)
         server.verify()
     }
 
@@ -186,6 +227,9 @@ class AgentOsAgentTurnTest {
             workflowId: String,
             brief: String?,
             externalUserId: String?,
+            attemptId: String?,
+            capabilityToken: String?,
+            caseId: String?,
         ): AgentTurnExecutionResult = result
     }
 }

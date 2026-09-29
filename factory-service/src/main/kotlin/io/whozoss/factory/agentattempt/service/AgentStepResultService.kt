@@ -2,6 +2,7 @@ package io.whozoss.factory.agentattempt.service
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.agentattempt.domain.AgentStepResultCapability
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultValidation
@@ -51,6 +52,15 @@ class AgentStepResultService(
         now: Instant = Instant.now(),
         ttlSeconds: Long = 15L * 60L,
     ): IssuedCapability = results.issue(scope, identity, now, ttlSeconds)
+
+    /**
+     * Resolve the binding carried by a bearer token without redeeming it. Used
+     * by the step-result binding endpoint to verify a capability and expose the
+     * attempt identity it is bound to. Returns `null` for an unknown token.
+     */
+    @Transactional(readOnly = true)
+    fun resolveCapability(scope: TenantScope, token: String): AgentStepResultCapability? =
+        results.findByToken(scope, token)
 
     /**
      * Redeem a capability with a structured business result.

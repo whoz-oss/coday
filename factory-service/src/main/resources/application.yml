@@ -55,6 +55,13 @@ factory:
     jira-api-token: ${JIRA_API_TOKEN:}
   proxy:
     agentos-url: ${AGENTOS_URL:http://localhost:8080}
+  outbox:
+    # Background drain of the transactional outbox (`result_submitted` →
+    # sequencer continuation). Enabled in production; the shared integration
+    # test context disables it so background drains never race test fixtures.
+    drain-enabled: ${FACTORY_OUTBOX_DRAIN_ENABLED:true}
+    drain-interval-ms: ${FACTORY_OUTBOX_DRAIN_INTERVAL_MS:5000}
+    drain-initial-delay-ms: ${FACTORY_OUTBOX_DRAIN_INITIAL_DELAY_MS:10000}
   workflow:
     seed:
       # Registers the bundled declarative session definitions

@@ -117,6 +117,12 @@ class SessionRunService(
         ticket: String? = null,
     ): SessionRunResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
+        // The instance revision is the optimistic-locking precondition every
+        // transition must carry: it is read once at the start of the run and
+        // stays stable until `persistProjection` bumps it at the end. Using it
+        // (instead of a hardcoded 1) keeps `expectedRevision` in step with the
+        // persisted snapshot and avoids stale-revision conflicts across turns.
+        val expectedRevision = instance.revision
         // The ticket may be supplied by the run request, or have travelled with
         // the start command / instance relations. Either way it must reach the
         // step execution context (agent brief) and be persisted on the instance.
@@ -133,7 +139,7 @@ class SessionRunService(
             while (iterations++ < guard) {
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
                 if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
-                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses)) {
+                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision)) {
                         suspended = true
                         return@run
                     }
@@ -141,7 +147,7 @@ class SessionRunService(
                 }
                 val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull() ?: return@run
                 val step = steps.first { it.id == readyId }
-                executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot, effectiveTicket)?.let { terminal ->
+                executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot, effectiveTicket, expectedRevision)?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
                         suspended = true
                         return@run
@@ -237,18 +243,19 @@ class SessionRunService(
         step: WorkflowStepDefinition,
         repoRoot: Path,
         ticket: String?,
+        expectedRevision: Int,
     ): String? {
         setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.RUNNING, statuses)
         val execution = try {
             capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket)
         } catch (error: Exception) {
             recordFailureEvidence(scope, namespaceId, workflowId, step, error)
-            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED)
+            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision)
             setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
             return WorkflowStatuses.FAILED
         }
         val terminal = classify(execution.outcome)
-        transition(scope, namespaceId, workflowId, step, terminal)
+        transition(scope, namespaceId, workflowId, step, terminal, expectedRevision)
         setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
         recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution)
         return terminal
@@ -275,6 +282,7 @@ class SessionRunService(
         workflowId: String,
         steps: List<WorkflowStepDefinition>,
         statuses: SessionProgress,
+        expectedRevision: Int,
     ): Boolean {
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = false)
         var allResolved = true
@@ -286,7 +294,7 @@ class SessionRunService(
                 allResolved = false
                 continue
             }
-            transition(scope, namespaceId, workflowId, step, terminal)
+            transition(scope, namespaceId, workflowId, step, terminal, expectedRevision)
             setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
             recordHumanResolutionEvidence(scope, namespaceId, workflowId, step, terminal, interaction)
         }
@@ -341,6 +349,7 @@ class SessionRunService(
         workflowId: String,
         step: WorkflowStepDefinition,
         status: String,
+        expectedRevision: Int,
     ) {
         repository.appendTransition(
             scope,
@@ -351,7 +360,7 @@ class SessionRunService(
                 requestId = UUID.randomUUID().toString(),
                 workflowId = workflowId,
                 stepId = step.id,
-                expectedRevision = 1,
+                expectedRevision = expectedRevision,
                 requestedStatus = status,
                 evidenceIds = emptyList(),
             ),

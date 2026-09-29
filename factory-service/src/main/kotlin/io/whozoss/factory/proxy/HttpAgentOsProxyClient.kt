@@ -97,9 +97,19 @@ class HttpAgentOsProxyClient(
         workflowId: String,
         brief: String?,
         externalUserId: String?,
+        attemptId: String?,
+        capabilityToken: String?,
+        caseId: String?,
     ): AgentTurnExecutionResult {
-        val caseId = try {
-            val created = createCase(namespaceId, "Factory session $workflowId · step $stepId", externalUserId)
+        val resolvedCaseId = try {
+            val created = createCase(
+                namespaceId = namespaceId,
+                title = "Factory session $workflowId · step $stepId",
+                externalUserId = externalUserId,
+                caseId = caseId,
+                attemptId = attemptId,
+                capabilityToken = capabilityToken,
+            )
             created ?: return AgentTurnExecutionResult.Failed(
                 "AGENTOS_CASE_CREATION",
                 "AgentOS case creation returned an empty body.",
@@ -109,7 +119,7 @@ class HttpAgentOsProxyClient(
         }
         return try {
             val baselineEvents = try {
-                listEvents(caseId, externalUserId)
+                listEvents(resolvedCaseId, externalUserId)
             } catch (_: Exception) {
                 emptyList()
             }
@@ -118,11 +128,17 @@ class HttpAgentOsProxyClient(
             if (busyStatus != null && busyStatus !in QUIESCENT_STATUSES) {
                 return AgentTurnExecutionResult.Failed(
                     "AGENT_CASE_BUSY",
-                    "Case $caseId is in status $busyStatus; posting now would be silently abandoned.",
+                    "Case $resolvedCaseId is in status $busyStatus; posting now would be silently abandoned.",
                 )
             }
-            postMessage(caseId, "@$persona ${brief ?: defaultBrief(stepId, workflowId)}", externalUserId)
-            awaitQuiescence(caseId, baselineId, externalUserId)
+            postMessage(
+                caseId = resolvedCaseId,
+                content = "@$persona ${brief ?: defaultBrief(stepId, workflowId)}",
+                externalUserId = externalUserId,
+                attemptId = attemptId,
+                capabilityToken = capabilityToken,
+            )
+            awaitQuiescence(resolvedCaseId, baselineId, externalUserId)
         } catch (error: RestClientResponseException) {
             AgentTurnExecutionResult.Failed(
                 "AGENTOS_HTTP_${error.statusCode.value()}",
@@ -134,22 +150,49 @@ class HttpAgentOsProxyClient(
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun createCase(namespaceId: String, title: String, externalUserId: String?): String? {
+    private fun createCase(
+        namespaceId: String,
+        title: String,
+        externalUserId: String?,
+        caseId: String?,
+        attemptId: String?,
+        capabilityToken: String?,
+    ): String? {
+        // The Factory supplies the case id and the result-capability facts so the
+        // AgentOS host can bind them to the case it creates. Unknown fields are
+        // ignored by the AgentOS `Case` DTO; the headers are the authoritative
+        // channel for a host that reads them out-of-band.
+        val body = LinkedHashMap<String, Any?>()
+        body["namespaceId"] = namespaceId
+        body["title"] = title
+        if (!caseId.isNullOrBlank()) body["id"] = caseId
+        if (!attemptId.isNullOrBlank()) body["attemptId"] = attemptId
+        if (!capabilityToken.isNullOrBlank()) body["capabilityToken"] = capabilityToken
         val spec = client.post()
             .uri("/api/cases")
             .contentType(MediaType.APPLICATION_JSON)
-            .body(mapOf("namespaceId" to namespaceId, "title" to title))
+            .body(body)
         if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
-        val body = spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
-        return body?.get("id") as? String
+        if (!attemptId.isNullOrBlank()) spec.header("X-Factory-Attempt-Id", attemptId)
+        if (!capabilityToken.isNullOrBlank()) spec.header("X-Factory-Capability-Token", capabilityToken)
+        val response = spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+        return (response?.get("id") as? String) ?: caseId
     }
 
-    private fun postMessage(caseId: String, content: String, externalUserId: String?) {
+    private fun postMessage(
+        caseId: String,
+        content: String,
+        externalUserId: String?,
+        attemptId: String? = null,
+        capabilityToken: String? = null,
+    ) {
         val spec = client.post()
             .uri("/api/cases/$caseId/messages")
             .contentType(MediaType.APPLICATION_JSON)
             .body(mapOf("content" to content))
         if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+        if (!attemptId.isNullOrBlank()) spec.header("X-Factory-Attempt-Id", attemptId)
+        if (!capabilityToken.isNullOrBlank()) spec.header("X-Factory-Capability-Token", capabilityToken)
         spec.retrieve().toBodilessEntity()
     }
 

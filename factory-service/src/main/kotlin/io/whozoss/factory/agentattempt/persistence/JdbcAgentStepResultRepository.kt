@@ -131,7 +131,7 @@ class JdbcAgentStepResultRepository(
         observed: AgentStepResultObservedIdentity,
         now: Instant,
     ): SubmitOutcome {
-        val capability = findByToken(scope, CanonicalJsonHash.sha256(token))
+        val capability = findByTokenHash(scope, CanonicalJsonHash.sha256(token))
             ?: throw ResultCapabilityInvalidException()
         if (observed.attemptId != capability.attemptId ||
             observed.caseId != capability.caseId ||
@@ -235,7 +235,10 @@ class JdbcAgentStepResultRepository(
                 .addValue("capabilityType", CAPABILITY_TYPE),
         ) { rs, _ -> deserialize(rs.getString("payload"), AgentStepResultCapability::class.java) }.firstOrNull()
 
-    private fun findByToken(scope: TenantScope, tokenHash: String): AgentStepResultCapability? {
+    override fun findByToken(scope: TenantScope, token: String): AgentStepResultCapability? =
+        findByTokenHash(scope, CanonicalJsonHash.sha256(token))
+
+    private fun findByTokenHash(scope: TenantScope, tokenHash: String): AgentStepResultCapability? {
         // The token digest lives inside the JSONB payload (no dedicated column),
         // so the tenant-scoped scan compares it in constant time, exactly like
         // the Node `#findByToken`.
@@ -442,6 +445,13 @@ class JdbcAgentStepResultRepository(
             put("attemptId", submitted.attemptId)
             put("resultId", submitted.resultId)
             put("status", submitted.status.name)
+            // Continuation coordinates: the drain worker needs the destination
+            // instance (and its scope) to advance the DAG once the result is
+            // submitted, without re-deriving them from the attempt table.
+            put("namespaceId", submitted.namespaceId)
+            put("workflowId", submitted.workflowId)
+            put("stepId", submitted.stepId)
+            put("caseId", submitted.caseId)
         }
         jdbc.update(
             """

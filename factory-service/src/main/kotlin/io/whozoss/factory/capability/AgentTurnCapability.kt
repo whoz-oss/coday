@@ -18,6 +18,12 @@ data class AgentTurnRequest(
     val workflowId: String? = null,
     val brief: String? = null,
     val externalUserId: String? = null,
+    /** Durable attempt id the Factory issued the submission capability for. */
+    val attemptId: String? = null,
+    /** Single-use bearer token the AgentOS case must present to submit its result. */
+    val capabilityToken: String? = null,
+    /** Factory-chosen AgentOS case id, so the capability is bound to the real case. */
+    val caseId: String? = null,
 )
 
 /** Facts returned by an agent-turn execution; never LLM prose. */

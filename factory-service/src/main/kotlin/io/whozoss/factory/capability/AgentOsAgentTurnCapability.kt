@@ -41,6 +41,9 @@ class AgentOsAgentTurnCapability(
                 workflowId = request.workflowId ?: request.stepId,
                 brief = request.brief,
                 externalUserId = request.externalUserId,
+                attemptId = request.attemptId,
+                capabilityToken = request.capabilityToken,
+                caseId = request.caseId,
             )
         ) {
             is AgentTurnExecutionResult.Completed -> AgentTurnResult.Completed(

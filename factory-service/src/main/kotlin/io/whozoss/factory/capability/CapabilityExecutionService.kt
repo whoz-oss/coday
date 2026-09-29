@@ -1,7 +1,10 @@
 package io.whozoss.factory.capability
 
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
+import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
+import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -49,6 +52,13 @@ class CapabilityExecutionService(
     private val evidenceRepository: WorkflowEvidenceRepository,
     private val interactionRepository: HumanInteractionRepository,
     private val attemptRepository: AgentStepAttemptRepository,
+    /**
+     * Optional issuer of the single-use result-submission capability. It is
+     * injected in production; pure unit tests that only exercise the DAG
+     * persistence boundary may leave it `null` (capability issuance is then
+     * skipped and the turn runs without a delegate token).
+     */
+    private val agentStepResultService: AgentStepResultService? = null,
 ) {
 
     @Transactional
@@ -209,8 +219,22 @@ class CapabilityExecutionService(
                 payload = "{}",
             ),
         )
+        val brief = briefFromTicket(ticket)
+        // The Factory chooses the AgentOS case id so the submission capability
+        // it mints can be bound to the exact case that will submit the result.
+        val caseId = UUID.randomUUID().toString()
+        val capabilityToken = issueCapability(scope, namespaceId, workflowId, step, attemptId, caseId, agentId, brief)
         val outcome = try {
-            resolver.resolve(step, repoRoot, namespaceId, workflowId, briefFromTicket(ticket))
+            resolver.resolve(
+                step,
+                repoRoot,
+                namespaceId,
+                workflowId,
+                brief,
+                attemptId,
+                capabilityToken,
+                caseId,
+            )
         } catch (error: Exception) {
             CapabilityOutcome.AgentFailed(
                 stepId = step.id,
@@ -247,6 +271,39 @@ class CapabilityExecutionService(
             ),
         )
         return CapabilityExecution(outcome, evidenceId = evidenceId, attemptId = attemptId)
+    }
+
+    /**
+     * Mint the single-use submission capability for [attemptId]. Issuance is
+     * best-effort: a non-safe persona or a missing issuer must not fail the DAG
+     * step, it only means the worker cannot submit through the capability
+     * channel. Failures are swallowed (the step still runs and is recorded).
+     */
+    private fun issueCapability(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        attemptId: String,
+        caseId: String,
+        agentName: String,
+        brief: String?,
+    ): String? {
+        val issuer = agentStepResultService ?: return null
+        return runCatching {
+            issuer.issue(
+                scope,
+                AgentStepResultCapabilityIdentity(
+                    attemptId = attemptId,
+                    workflowId = workflowId,
+                    stepId = step.id,
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentName = agentName,
+                    briefHash = CanonicalJsonHash.sha256(brief ?: ""),
+                ),
+            ).token
+        }.getOrNull()
     }
 
     private fun agentFacts(outcome: CapabilityOutcome, attemptId: String): Map<String, Any?> = when (outcome) {
