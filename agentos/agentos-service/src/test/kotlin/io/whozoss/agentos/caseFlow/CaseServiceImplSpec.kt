@@ -1872,7 +1872,8 @@ class CaseServiceImplSpec :
             }
             val service = CaseServiceImpl(agentService, allowAllAgentConfigService, AgentConfigProperties(), InMemoryCaseRepository(), eventStore,
                 mockk<UserService> { every { findById(userId) } returns activeUser }, namespaceService,
-                CaseConfigProperties(idleEvictionGraceMs = 10_000), permissionService, promptService, noOpCaseNamingService)
+                CaseConfigProperties(idleEvictionGraceMs = 10_000), permissionService, promptService, noOpCaseNamingService,
+                LimitsConfigProperties(), UsageRecordServiceImpl(InMemoryUsageRecordRepository()))
             val parent = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(parent.id)
             val scope = CoroutineScope(Dispatchers.IO)
@@ -2506,6 +2507,8 @@ class CaseServiceImplSpec :
                 permissionService = permissionService,
                 promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
+                limitsConfig = LimitsConfigProperties(),
+                usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
             )
 
             // Parent lives in namespaceId
