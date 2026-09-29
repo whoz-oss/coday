@@ -90,7 +90,10 @@ class ToolInvokeService(
                 )
             }
 
-        logger.info { "[ToolInvoke] Executing tool '${tool.name}' with payload: $payloadJson" }
+        // Payload is intentionally not logged at INFO — it may contain credentials or PII.
+        // Use TRACE only in environments where log data is appropriately secured.
+        logger.trace { "[ToolInvoke] Executing tool '${tool.name}' with payload: $payloadJson" }
+        logger.info { "[ToolInvoke] Executing tool '${tool.name}'" }
         val result = tool.executeWithJson(payloadJson, context)
         logger.info { "[ToolInvoke] Tool '${tool.name}' finished (success=${result.success})" }
 

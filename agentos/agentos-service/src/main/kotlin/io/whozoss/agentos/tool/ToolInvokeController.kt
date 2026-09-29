@@ -33,8 +33,10 @@ class ToolInvokeController(
      *
      * Returns a [ToolInvokeResponse] with the raw result fields.
      *
-     * Responds with 404 when no tool matching [ToolInvokeRequest.toolName] is found,
-     * including the list of available tool names in the error message.
+     * Responds with 404 when no tool matching [ToolInvokeRequest.toolName] is found.
+     * The error message intentionally includes the full list of available tool names for
+     * the resolved namespace/user context — this enumeration is acceptable because the
+     * endpoint is restricted to SUPER_ADMIN callers.
      */
     @PostMapping("/invoke", consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasRole('SUPER_ADMIN')")
