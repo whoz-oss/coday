@@ -251,6 +251,7 @@ class CaseEventNodeMapper(
                     node.metadataJson,
                     node.durationMs,
                     node.imagesJson,
+                    node.structuredOutputJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -503,6 +504,7 @@ class CaseEventNodeMapper(
             images = n.imagesJson
                 ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
                 ?: emptyList(),
+            structuredOutput = n.structuredOutputJson?.let { serializer.deserializeJsonNode(it) },
         )
 
     private fun toDomain(n: ThinkingEventNode) =
@@ -743,6 +745,7 @@ class CaseEventNodeMapper(
             metadataJson = e.toolMetadata.takeIf { it.isNotEmpty() }?.let { serializer.serializeMetadata(it) },
             durationMs = e.durationMs,
             imagesJson = e.images.takeIf { it.isNotEmpty() }?.let { serializer.serialize(it) },
+            structuredOutputJson = e.structuredOutput?.let { serializer.serializeJsonNode(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
