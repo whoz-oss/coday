@@ -1,8 +1,11 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
-import { NamespaceControllerService, Namespace } from '@whoz-oss/agentos-api-client'
+import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { ToolInvokeStateService } from '../../services/tool-invoke-state.service'
+
+/** Minimal namespace shape needed by the select — id + name only. */
+type NamespaceOption = Pick<NamespaceListItem, 'id' | 'name'>
 
 /**
  * ToolInvokeComponent — SUPER_ADMIN debug screen for calling a named tool directly.
@@ -26,7 +29,7 @@ export class ToolInvokeComponent implements OnInit {
   private readonly namespaceController = inject(NamespaceControllerService)
   protected readonly state = inject(ToolInvokeStateService)
 
-  protected readonly namespaces = signal<Namespace[]>([])
+  protected readonly namespaces = signal<NamespaceOption[]>([])
   protected readonly namespacesLoading = signal(true)
 
   protected readonly form = new FormGroup({
@@ -42,7 +45,7 @@ export class ToolInvokeComponent implements OnInit {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (list) => {
-          this.namespaces.set(list.map((item) => ({ id: item.id, name: item.name })))
+          this.namespaces.set(list.map((item): NamespaceOption => ({ id: item.id, name: item.name })))
           this.namespacesLoading.set(false)
         },
         error: () => this.namespacesLoading.set(false),

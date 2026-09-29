@@ -1,5 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core'
 import { ToolInvokeApiService, ToolInvokeResponse } from '@whoz-oss/agentos-api-client'
+import { HttpErrorResponse } from '@angular/common/http'
 import { Observable, tap } from 'rxjs'
 
 /**
@@ -45,13 +46,7 @@ export class ToolInvokeStateService {
             this.isLoading.set(false)
           },
           error: (err: unknown) => {
-            const msg =
-              err instanceof Error
-                ? err.message
-                : typeof err === 'object' && err !== null && 'message' in err
-                  ? String((err as { message: unknown }).message)
-                  : 'Unknown error'
-            this.errorMessage.set(msg)
+            this.errorMessage.set(extractErrorMessage(err))
             this.isLoading.set(false)
           },
         })
@@ -62,4 +57,37 @@ export class ToolInvokeStateService {
     this.result.set(null)
     this.errorMessage.set(null)
   }
+}
+
+/**
+ * Extract a human-readable error message from an unknown HTTP error.
+ *
+ * Angular's HttpClient surfaces errors as `HttpErrorResponse`. The `.message`
+ * property on `HttpErrorResponse` is the generic transport-level string
+ * ("Http failure response for ..."), not the backend body. The actual backend
+ * error detail lives in `.error`, which is the parsed JSON body for JSON
+ * responses (e.g. a Spring `ProblemDetail` or a plain `{ message: string }`).
+ *
+ * Precedence:
+ *   1. `HttpErrorResponse.error.message` — backend JSON body message field
+ *   2. `HttpErrorResponse.error` as a string — plain-text backend body
+ *   3. `HttpErrorResponse.statusText` — HTTP status phrase (last resort)
+ *   4. `Error.message` — non-HTTP JS errors
+ *   5. `'Unknown error'` — catch-all
+ */
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof HttpErrorResponse) {
+    const body = err.error
+    if (body && typeof body === 'object' && 'message' in body && typeof body.message === 'string') {
+      return body.message
+    }
+    if (typeof body === 'string' && body.trim().length > 0) {
+      return body
+    }
+    return err.statusText || `HTTP ${err.status}`
+  }
+  if (err instanceof Error) {
+    return err.message
+  }
+  return 'Unknown error'
 }
