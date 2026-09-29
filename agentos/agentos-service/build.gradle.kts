@@ -137,6 +137,8 @@ dependencies {
 
     // Kotlin Coroutines
     implementation(libs.bundles.kotlin.coroutines)
+    // MDC propagation across coroutine suspension points
+    implementation(libs.kotlinx.coroutines.slf4j)
 
     // Spring AI
     implementation(libs.bundles.spring.ai)

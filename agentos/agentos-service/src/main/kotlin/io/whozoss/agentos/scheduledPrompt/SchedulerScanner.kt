@@ -3,6 +3,7 @@ package io.whozoss.agentos.scheduledPrompt
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import mu.KLogging
+import org.slf4j.MDC
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -289,9 +290,9 @@ class SchedulerScanner(
 
     private fun claim(scheduledPrompt: ScheduledPrompt) {
         val slot = scheduledPrompt.nextRunAt
-        val correlationId = "sp-${scheduledPrompt.id.toString().take(8)}-${slot.epochSecond}"
-
-        // Guard: disable the ScheduledPrompt if its AgentConfig is gone or disabled.
+        val correlationId = "${scheduledPrompt.id}@${slot}"
+        MDC.put(MDC_SCHEDULER_CORRELATION_ID, correlationId)
+        try {
         val agentConfig = agentConfigService.findById(scheduledPrompt.agentConfigId)
         if (agentConfig == null || !agentConfig.enabled) {
             logger.warn {
@@ -336,7 +337,10 @@ class SchedulerScanner(
 
         val insertedRun = try {
             runRepository.insert(run)
-                .also { logger.info { "[SchedulerScanner] Inserted run correlationId=$correlationId status=$status" } }
+                .also { inserted ->
+                    MDC.put(MDC_SCHEDULER_RUN_ID, inserted.id.toString())
+                    logger.info { "[SchedulerScanner] Inserted run correlationId=$correlationId status=$status" }
+                }
         } catch (e: DuplicateRunException) {
             logger.info { "[SchedulerScanner] Duplicate slot for sp=${scheduledPrompt.id} slot=$slot — another tick won the race" }
             null
@@ -374,6 +378,10 @@ class SchedulerScanner(
                         }
                     }
                 }
+        }
+        } finally {
+            MDC.remove(MDC_SCHEDULER_CORRELATION_ID)
+            MDC.remove(MDC_SCHEDULER_RUN_ID)
         }
     }
 
@@ -446,5 +454,18 @@ class SchedulerScanner(
     companion object : KLogging() {
         /** CLAIMED Runs older than this are presumed orphaned (crash between insert and materialize). */
         private val ORPHAN_THRESHOLD = Duration.ofMinutes(5)
+
+        /**
+         * MDC key for the scheduler run's correlationId.
+         *
+         * Distinct from `dd.trace_id` (injected by the Datadog Java agent): this is a
+         * business-level identifier that spans multiple APM spans (claim + materialize +
+         * each UserRun worker). Both coexist in JSON logs and can be correlated in Datadog.
+         */
+        /** MDC key for the human-readable correlation id: "<spId>@<slotISO>". Set at the start of claim(), before the Run is inserted. */
+        const val MDC_SCHEDULER_CORRELATION_ID = "schedulerRunCorrelationId"
+
+        /** MDC key for the UUID of the inserted [ScheduledPromptRun]. Set after insert. */
+        const val MDC_SCHEDULER_RUN_ID = "schedulerRunId"
     }
 }

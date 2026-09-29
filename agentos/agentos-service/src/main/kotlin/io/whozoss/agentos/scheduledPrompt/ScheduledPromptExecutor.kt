@@ -17,6 +17,7 @@ import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PostConstruct
+import org.slf4j.MDC
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
@@ -29,6 +30,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.slf4j.MDCContext
 import kotlinx.coroutines.withTimeoutOrNull
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -186,7 +188,9 @@ class ScheduledPromptExecutor(
     fun start() {
         val newScope = CoroutineScope(SupervisorJob())
         scope = newScope
-        newScope.launch(dispatcher) { startProcessingLoop() }
+        // MDCContext() snapshots the current MDC map and restores it on every coroutine
+        // resumption, even when Dispatchers.IO switches threads between suspensions.
+        newScope.launch(dispatcher + MDCContext()) { startProcessingLoop() }
         logger.info {
             "[Executor] started (workers=${properties.workerCount}, batchSize=${properties.batchSize}, channelCapacity=${properties.channelCapacity})"
         }
@@ -223,7 +227,7 @@ class ScheduledPromptExecutor(
     /** Continuously claims UserRuns from the database and hands them off for processing. */
     private fun startUserRunPoller(channel: Channel<ScheduledPromptUserRun>) {
         val currentScope = checkNotNull(scope)
-        currentScope.launch(dispatcher) {
+        currentScope.launch(dispatcher + MDCContext()) {
             val leaseDuration = Duration.ofMinutes(properties.leaseMinutes)
             var consecutiveErrors = 0
             try {
@@ -268,13 +272,20 @@ class ScheduledPromptExecutor(
     private fun startUserRunWorkers(channel: Channel<ScheduledPromptUserRun>) {
         val currentScope = checkNotNull(scope)
         repeat(properties.workerCount) { workerId ->
-            currentScope.launch(dispatcher) {
+            currentScope.launch(dispatcher + MDCContext()) {
                 for (userRun in channel) {
                     try {
-                        logger.info {
-                            "[Executor] worker=$workerId processing UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
+                        MDC.put(MDC_USER_RUN_ID, userRun.id.toString())
+                        try {
+                            logger.info {
+                                "[Executor] worker=$workerId processing UserRun=${userRun.id} runId=${userRun.runId} userId=${userRun.userId}"
+                            }
+                            processUserRun(userRun)
+                        } finally {
+                            MDC.remove(MDC_USER_RUN_ID)
+                            MDC.remove(SchedulerScanner.MDC_SCHEDULER_RUN_ID)
+                            MDC.remove(SchedulerScanner.MDC_SCHEDULER_CORRELATION_ID)
                         }
-                        processUserRun(userRun)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -435,6 +446,8 @@ class ScheduledPromptExecutor(
             checkNotNull(runRepository.findById(userRun.runId)) {
                 "Parent Run ${userRun.runId} not found"
             }
+        MDC.put(SchedulerScanner.MDC_SCHEDULER_CORRELATION_ID, run.correlationId)
+        MDC.put(SchedulerScanner.MDC_SCHEDULER_RUN_ID, run.id.toString())
         val scheduledPrompt =
             scheduledPromptRepository
                 .findByIds(listOf(run.scheduledPromptId))
@@ -775,6 +788,9 @@ class ScheduledPromptExecutor(
     }
 
     companion object : KLogging() {
+        /** MDC key added per UserRun so concurrent workers produce distinguishable log lines. */
+        const val MDC_USER_RUN_ID = "schedulerUserRunId"
+
         private fun CaseStatus?.toUserRunOutcome(): Pair<UserRunStatus, String?> =
             when (this) {
                 CaseStatus.KILLED, CaseStatus.ERROR -> {
