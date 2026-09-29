@@ -100,6 +100,24 @@ class JdbcWorkflowRepository(
         )
     }
 
+    override fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean {
+        // Mirrors the definition primary key `(organization_id, workflow_type, version)`
+        // (saveDefinition upserts on the same key), so the row a list/get shows is
+        // always the one deleted regardless of the writing workstream.
+        val rows = jdbc.update(
+            """
+            DELETE FROM workflow_definitions
+             WHERE organization_id = :organizationId
+               AND workflow_type = :workflowType
+               AND version = :version
+            """.trimIndent(),
+            scopeParams(scope)
+                .addValue("workflowType", workflowType)
+                .addValue("version", version),
+        )
+        return rows > 0
+    }
+
     // ------------------------------------------------------------------
     // Governed instances
     // ------------------------------------------------------------------

@@ -43,6 +43,9 @@ interface WorkflowRepository {
 
     fun saveDefinition(scope: TenantScope, record: WorkflowDefinitionRecord)
 
+    /** Deletes a definition by `(workflowType, version)`; `false` when absent. */
+    fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean
+
     // ----- governed instances --------------------------------------------
     fun findInstance(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowInstanceRecord?
 

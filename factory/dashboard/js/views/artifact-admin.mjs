@@ -41,6 +41,20 @@ export function buildLegalHoldPath(artifactId) {
   return `/api/factory/admin/artifacts/${encodeURIComponent(artifactId)}/legal-hold`
 }
 
+/** Workflow-definition registry collection route (list + JSON register/upsert). */
+export const WORKFLOW_DEFINITIONS_PATH = '/api/factory/workflow-definitions'
+
+/** Workflow-definition multipart JSON upload route. */
+export const WORKFLOW_DEFINITIONS_UPLOAD_PATH = '/api/factory/workflow-definitions/upload'
+
+/**
+ * Deletion route of one workflow definition identified by its
+ * `(workflowType, version)` identity.
+ */
+export function buildDefinitionPath(workflowType, version) {
+  return `/api/factory/workflow-definitions/${encodeURIComponent(workflowType)}/${encodeURIComponent(version)}`
+}
+
 /** Machine code rendered when the server refuses an admin command. */
 export const FORBIDDEN_ADMIN_REQUIRED = 'FORBIDDEN_ADMIN_REQUIRED'
 
@@ -109,6 +123,7 @@ export function createAdminState(overrides = {}) {
     gc: { dryRun: false, running: false, report: null, error: null },
     purge: { artifactId: '', reason: '', running: false, result: null, error: null },
     legalHold: { artifactId: '', legalHold: true, reason: '', running: false, result: null, error: null },
+    definitions: { items: [], loading: false, uploading: false, file: null, deletingKey: null, error: null },
     ...overrides,
   }
 }
@@ -263,6 +278,72 @@ function renderLegalHoldSection(state) {
   )
 }
 
+function renderWorkflowDefinitionsSection(state) {
+  const defs = state.definitions
+  const busy = defs.uploading || defs.loading
+  const disabled = !state.adminEntitled || busy ? ' disabled' : ''
+  const selected = defs.file && typeof defs.file.name === 'string' ? defs.file.name : ''
+
+  let rows = ''
+  if (defs.items.length === 0) {
+    rows =
+      '<tr data-definition-empty="true"><td colspan="4" class="placeholder">' +
+      (defs.loading ? 'Chargement…' : 'Aucune définition enregistrée.') +
+      '</td></tr>'
+  } else {
+    rows = defs.items
+      .map((item) => {
+        const workflowType = item?.workflowType ?? ''
+        const version = item?.version ?? ''
+        const deleting = defs.deletingKey === `${workflowType}@${version}`
+        return (
+          '<tr data-definition-row="true">' +
+          `<td class="mono" data-definition-type="true">${esc(workflowType)}</td>` +
+          `<td class="mono" data-definition-version="true">${esc(version)}</td>` +
+          `<td class="mono" data-definition-hash="true">${esc(item?.definitionHash ?? '')}</td>` +
+          '<td>' +
+          `<button type="button" class="btn btn-danger" data-admin-definition-delete="true" data-workflow-type="${esc(
+            workflowType
+          )}" data-version="${esc(version)}"${disabled}>${deleting ? 'Suppression…' : 'Supprimer'}</button>` +
+          '</td>' +
+          '</tr>'
+        )
+      })
+      .join('')
+  }
+
+  let error = ''
+  if (defs.error) {
+    error =
+      '<div class="panel" data-admin-definition-error="true" role="alert"><p class="placeholder">' +
+      `${esc(defs.error.message)}</p></div>`
+  }
+
+  return (
+    '<div class="panel" data-admin-definitions="true">' +
+    '<h2 class="panel-title">Workflow definitions</h2>' +
+    '<p class="placeholder">Importez une définition JSON (format v1) et gérez les définitions enregistrées.</p>' +
+    '<div class="form-group">' +
+    '<label for="admin-definition-file">Fichier de définition (.json)</label>' +
+    `<input id="admin-definition-file" type="file" name="file" accept=".json,application/json" data-admin-definition-file="true"${disabled}/>` +
+    (selected ? `<span class="chip" data-admin-definition-filename="true">${esc(selected)}</span>` : '') +
+    '</div>' +
+    '<div class="form-actions">' +
+    `<button type="button" class="btn btn-primary" data-admin-definition-upload="true"${disabled}>${
+      defs.uploading ? 'Import…' : 'Importer la définition'
+    }</button>` +
+    `<button type="button" class="btn" data-admin-definition-refresh="true"${disabled}>Rafraîchir</button>` +
+    '</div>' +
+    error +
+    '<table class="table"><thead><tr>' +
+    '<th>Type</th><th>Version</th><th>Hash</th><th></th>' +
+    '</tr></thead><tbody>' +
+    rows +
+    '</tbody></table>' +
+    '</div>'
+  )
+}
+
 /** Render the full admin view as an escaped HTML string. */
 export function renderArtifactAdmin(state = createAdminState()) {
   const header =
@@ -279,6 +360,7 @@ export function renderArtifactAdmin(state = createAdminState()) {
     renderGcSection(state) +
     renderPurgeSection(state) +
     renderLegalHoldSection(state) +
+    renderWorkflowDefinitionsSection(state) +
     '</div>'
   )
 }
@@ -503,6 +585,106 @@ export function mountArtifactAdminView(container, options = {}) {
     }
   }
 
+  const fetchDefinitions = async () => {
+    if (!state.mounted || state.definitions.loading) return null
+    if (typeof apiClient.get !== 'function') return null
+    state.definitions.loading = true
+    state.definitions.error = null
+    render()
+    try {
+      const payload = await apiClient.get(WORKFLOW_DEFINITIONS_PATH)
+      if (!state.mounted) return null
+      const items = Array.isArray(payload?.items)
+        ? payload.items
+        : Array.isArray(payload)
+          ? payload
+          : []
+      state.definitions.items = items
+      return items
+    } catch (error) {
+      if (!state.mounted) return null
+      applyError(error, 'definitions')
+      return null
+    } finally {
+      if (state.mounted) {
+        state.definitions.loading = false
+        render()
+      }
+    }
+  }
+
+  const uploadDefinition = async (overrides = {}) => {
+    if (!state.mounted || state.definitions.uploading) return null
+    const file = overrides.file ?? state.definitions.file
+    if (!file) {
+      state.definitions.error = {
+        forbidden: false,
+        code: null,
+        status: null,
+        message: 'Sélectionnez un fichier de définition JSON.',
+      }
+      render()
+      return null
+    }
+    state.definitions.uploading = true
+    state.definitions.error = null
+    state.error = null
+    render()
+    try {
+      const formData = new FormData()
+      formData.append('file', file, typeof file.name === 'string' && file.name ? file.name : 'definition.json')
+      const result = await apiClient.post(WORKFLOW_DEFINITIONS_UPLOAD_PATH, formData)
+      if (!state.mounted) return null
+      state.definitions.file = null
+      await fetchDefinitions()
+      return result
+    } catch (error) {
+      if (!state.mounted) return null
+      applyError(error, 'definitions')
+      return null
+    } finally {
+      if (state.mounted) {
+        state.definitions.uploading = false
+        render()
+      }
+    }
+  }
+
+  const deleteDefinition = async (overrides = {}) => {
+    if (!state.mounted || state.definitions.deletingKey) return null
+    const workflowType = String(overrides.workflowType ?? '').trim()
+    const version = String(overrides.version ?? '').trim()
+    if (!workflowType || !version) return null
+    const key = `${workflowType}@${version}`
+    state.definitions.deletingKey = key
+    state.definitions.error = null
+    state.error = null
+    render()
+    try {
+      const approved = await confirm({
+        action: 'delete-definition',
+        label: 'Supprimer la définition',
+        warning:
+          'Suppression définitive de la définition de workflow. Les exécutions déjà démarrées ne sont pas affectées.',
+        detail: key,
+      })
+      if (!approved) return null
+      const result = await apiClient.delete(buildDefinitionPath(workflowType, version))
+      if (!state.mounted) return null
+      await fetchDefinitions()
+      return result
+    } catch (error) {
+      if (!state.mounted) return null
+      applyError(error, 'definitions')
+      return null
+    } finally {
+      if (state.mounted) {
+        state.definitions.deletingKey = null
+        render()
+      }
+    }
+  }
+
   const onClick = (event) => {
     const target = event?.target
     const closest = typeof target?.closest === 'function' ? (selector) => target.closest(selector) : () => null
@@ -516,10 +698,32 @@ export function mountArtifactAdminView(container, options = {}) {
     }
     if (closest('[data-admin-legal-submit]')) {
       void setLegalHold()
+      return
+    }
+    if (closest('[data-admin-definition-upload]')) {
+      void uploadDefinition()
+      return
+    }
+    if (closest('[data-admin-definition-refresh]')) {
+      void fetchDefinitions()
+      return
+    }
+    const deleteButton = closest('[data-admin-definition-delete]')
+    if (deleteButton) {
+      void deleteDefinition({
+        workflowType: deleteButton.dataset?.workflowType,
+        version: deleteButton.dataset?.version,
+      })
     }
   }
 
   const onInput = (event) => {
+    const target = event?.target
+    if (target?.dataset?.adminDefinitionFile !== undefined) {
+      state.definitions.file = target.files?.[0] ?? null
+      render()
+      return
+    }
     const entry = readInputValue(event)
     if (!entry) return
     const [section, field] = entry.field.split(':')
@@ -543,11 +747,13 @@ export function mountArtifactAdminView(container, options = {}) {
     state.gc = { dryRun: false, running: false, report: null, error: null }
     state.purge = { artifactId: '', reason: '', running: false, result: null, error: null }
     state.legalHold = { artifactId: '', legalHold: true, reason: '', running: false, result: null, error: null }
+    state.definitions = { items: [], loading: false, uploading: false, file: null, deletingKey: null, error: null }
   }
 
   if (typeof options.registerTeardown === 'function') options.registerTeardown(unmount)
 
   render()
+  void fetchDefinitions()
 
   return {
     unmount,
@@ -555,6 +761,9 @@ export function mountArtifactAdminView(container, options = {}) {
     runGc,
     purgeArtifact,
     setLegalHold,
+    fetchDefinitions,
+    uploadDefinition,
+    deleteDefinition,
     getState: () => state,
     isMounted: () => state.mounted,
   }
