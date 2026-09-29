@@ -697,6 +697,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             if (!this.messageHtmlCache.has(event.id)) {
               this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
             }
+            if (msg.actor.role === 'AGENT') {
+              this.caseState.notifyAgentMessageEvent(msg)
+            }
           }
 
           this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
@@ -733,8 +736,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
             const status = (event as CaseStatusEvent).status as string
             this._sseStatus.set(status)
-            // Sync the drawer list so both header and drawer show the same status
-            this.caseState.updateCaseStatus(this.caseId, status)
+            // Sync the drawer list; usage refreshes separately on persisted AGENT messages.
+            this.caseState.updateCaseStatus(event.caseId, status)
 
             const isTerminal = status === 'KILLED' || status === 'ERROR'
             this.isTerminal.set(isTerminal)

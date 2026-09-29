@@ -8,7 +8,7 @@ import {
   UsageRecordControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
-import { catchError, EMPTY, exhaustMap, forkJoin, Subscription, switchMap, timer } from 'rxjs'
+import { catchError, distinct, EMPTY, filter, forkJoin, map, Observable, Subscription, switchMap } from 'rxjs'
 
 @Component({
   selector: 'agentos-case-usage',
@@ -37,33 +37,43 @@ export class CaseUsageComponent {
       this.saving.set(false)
       const actions = new Subscription()
       this.actions = actions
-      const polling = timer(0, 3000)
+      const usageRefresh = this.caseState.agentMessageEvent$
         .pipe(
-          exhaustMap(() =>
-            forkJoin({
-              run: this.costs.getRunCost(caseId),
-              total: this.usage.aggregateByCaseTreeUsageRecord(caseId),
-            }).pipe(
-              catchError(() => {
-                this.error.set('Usage could not be refreshed. Displayed values may be out of date.')
-                return EMPTY
-              })
-            )
-          )
+          filter((event) => event.caseId === caseId),
+          map((event) => event.id),
+          distinct(),
+          switchMap(() => this.loadUsage(caseId))
         )
-        .subscribe(({ run, total }) => {
-          this.run.set(run)
-          this.total.set(total)
-          this.error.set(null)
-        })
+        .subscribe((usage) => this.applyUsage(caseId, usage))
+      const initialLoad = this.loadUsage(caseId).subscribe((usage) => this.applyUsage(caseId, usage))
       cleanup(() => {
-        polling.unsubscribe()
+        initialLoad.unsubscribe()
+        usageRefresh.unsubscribe()
         actions.unsubscribe()
       })
     })
   }
 
   private actions = new Subscription()
+
+  private loadUsage(caseId: string): Observable<{ run: RunCostDto; total: UsageAggregate }> {
+    return forkJoin({
+      run: this.costs.getRunCost(caseId),
+      total: this.usage.aggregateByCaseTreeUsageRecord(caseId),
+    }).pipe(
+      catchError(() => {
+        this.error.set('Usage could not be refreshed. Displayed values may be out of date.')
+        return EMPTY
+      })
+    )
+  }
+
+  private applyUsage(caseId: string, usage: { run: RunCostDto; total: UsageAggregate }): void {
+    if (this.caseId() !== caseId) return
+    this.run.set(usage.run)
+    this.total.set(usage.total)
+    this.error.set(null)
+  }
 
   continue(limit: PausedCostDto): void {
     if (!this.canWrite() || this.saving()) return

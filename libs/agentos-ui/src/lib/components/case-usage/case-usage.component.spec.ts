@@ -1,6 +1,12 @@
 import { signal } from '@angular/core'
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
-import { Case, RunCostControllerService, RunCostDto, UsageRecordControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  Case,
+  MessageEvent,
+  RunCostControllerService,
+  RunCostDto,
+  UsageRecordControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { CaseUsageComponent } from './case-usage.component'
@@ -30,6 +36,7 @@ const totals = {
 describe('CaseUsageComponent', () => {
   let costs: { getRunCost: jest.Mock; continueCostRunRunCost: jest.Mock; stopCostRunRunCost: jest.Mock }
   let usage: { aggregateByCaseTreeUsageRecord: jest.Mock }
+  let agentMessageEvents: Subject<MessageEvent>
   beforeEach(() => {
     costs = {
       getRunCost: jest.fn().mockImplementation((id) => of(state(id))),
@@ -37,12 +44,20 @@ describe('CaseUsageComponent', () => {
       stopCostRunRunCost: jest.fn().mockReturnValue(of(undefined)),
     }
     usage = { aggregateByCaseTreeUsageRecord: jest.fn().mockReturnValue(of(totals)) }
+    agentMessageEvents = new Subject<MessageEvent>()
     TestBed.configureTestingModule({
       imports: [CaseUsageComponent],
       providers: [
         { provide: RunCostControllerService, useValue: costs },
         { provide: UsageRecordControllerService, useValue: usage },
-        { provide: CaseStateService, useValue: { cases: signal<Case[]>([]), refreshCaseThreshold: jest.fn() } },
+        {
+          provide: CaseStateService,
+          useValue: {
+            cases: signal<Case[]>([]),
+            agentMessageEvent$: agentMessageEvents.asObservable(),
+            refreshCaseThreshold: jest.fn(),
+          },
+        },
       ],
     })
   })
@@ -99,7 +114,25 @@ describe('CaseUsageComponent', () => {
     fixture.destroy()
   }))
 
-  it('discards the old case response and cancels polling when destroyed', fakeAsync(() => {
+  it('refreshes once per distinct agent answer for the active case only', fakeAsync(() => {
+    const fixture = render()
+    costs.getRunCost.mockClear()
+    usage.aggregateByCaseTreeUsageRecord.mockClear()
+
+    agentMessageEvents.next({ id: 'answer-other', caseId: 'other-case' } as MessageEvent)
+    expect(costs.getRunCost).not.toHaveBeenCalled()
+
+    const answer = { id: 'answer-1', caseId: 'case-a' } as MessageEvent
+    agentMessageEvents.next(answer)
+    agentMessageEvents.next(answer)
+    expect(costs.getRunCost).toHaveBeenCalledTimes(1)
+    expect(costs.getRunCost).toHaveBeenCalledWith('case-a')
+    expect(usage.aggregateByCaseTreeUsageRecord).toHaveBeenCalledTimes(1)
+    expect(usage.aggregateByCaseTreeUsageRecord).toHaveBeenCalledWith('case-a')
+    fixture.destroy()
+  }))
+
+  it('discards the old case response and unsubscribes from status events on destroy', fakeAsync(() => {
     const pending = new Subject<RunCostDto>()
     costs.getRunCost.mockReturnValueOnce(pending)
     const fixture = render()
@@ -112,7 +145,7 @@ describe('CaseUsageComponent', () => {
     expect(fixture.componentInstance.run()?.caseId).toBe('case-b')
     fixture.destroy()
     const calls = costs.getRunCost.mock.calls.length
-    tick(6000)
+    agentMessageEvents.next({ id: 'answer-after-destroy', caseId: 'case-b' } as MessageEvent)
     expect(costs.getRunCost).toHaveBeenCalledTimes(calls)
   }))
 
@@ -127,7 +160,6 @@ describe('CaseUsageComponent', () => {
     const cases = TestBed.inject(CaseStateService).cases
     cases.set([{ id: 'case-a', runCostThreshold: 30 } as Case])
     const fixture = render()
-    tick(3000)
     expect(cases()[0].runCostThreshold).toBe(30)
     expect(fixture.componentInstance.run()?.runCostThreshold).toBe(10)
     fixture.destroy()

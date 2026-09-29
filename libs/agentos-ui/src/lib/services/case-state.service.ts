@@ -1,5 +1,5 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { Case, CaseControllerService } from '@whoz-oss/agentos-api-client'
+import { Case, CaseControllerService, MessageEvent } from '@whoz-oss/agentos-api-client'
 import {
   catchError,
   concatMap,
@@ -12,6 +12,7 @@ import {
   of,
   shareReplay,
   Subscription,
+  Subject,
   tap,
   throwError,
 } from 'rxjs'
@@ -33,6 +34,10 @@ export class CaseStateService {
 
   /** Reactive case list. Empty until loadCases() completes. */
   readonly cases = signal<Case[]>([])
+
+  /** Agent answer messages received from the active SSE stream. */
+  private readonly agentMessageEventSubject = new Subject<MessageEvent>()
+  readonly agentMessageEvent$ = this.agentMessageEventSubject.asObservable()
 
   /** Tracks the in-flight load subscription so a newer call can cancel a stale one. */
   private loadSubscription: Subscription | null = null
@@ -244,5 +249,10 @@ export class CaseStateService {
         c.id === caseId ? { ...c, status: status as import('@whoz-oss/agentos-api-client').CaseStatusEnum } : c
       )
     )
+  }
+
+  /** Forward a persisted agent answer to consumers that need an event-driven refresh. */
+  notifyAgentMessageEvent(event: MessageEvent): void {
+    this.agentMessageEventSubject.next(event)
   }
 }
