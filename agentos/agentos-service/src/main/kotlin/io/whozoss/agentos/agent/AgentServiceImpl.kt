@@ -19,6 +19,7 @@ import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
@@ -86,6 +87,7 @@ class AgentServiceImpl(
     private val agentConfigProperties: AgentConfigProperties,
     private val limitsConfig: LimitsConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val exchangeRootResolver: ExchangeRootResolver,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -870,7 +872,7 @@ class AgentServiceImpl(
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
             tools +=
                 exchangeToolGrantService.grantTools(
-                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
+                    root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt).requireUsable(),
                     readOnly = false,
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
                     allowedTools = caseGrant.allowedTools,

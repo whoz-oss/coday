@@ -54,3 +54,7 @@ the `gitworkspaces` Actuator endpoint, registered only with the worker, over HTT
 A pause takes effect after the item in progress: a clone already running is not interrupted. It
 applies to this instance only and is lost on restart. Metrics: `agentos.git.worker.sweep` (timer),
 `agentos.git.worker.errors` (counter tagged by `operation`) and `agentos.git.worker.paused` (gauge).
+
+## Workspace execution foundation
+
+Case-family workspaces are behind `agentos.git.workspaces.enabled` (`AGENTOS_GIT_WORKSPACES_ENABLED`, off by default). The REST API and the agent's case-file tools ask an `ExchangeRootResolver` where a case's files live. While the flag is off, `DefaultExchangeRootResolver` returns each case's own date-sharded directory, exactly as before, without database access. Access to a directory owned by another case also requires permission on that owner; the default resolver never returns one.

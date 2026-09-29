@@ -130,6 +130,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentConfigProperties = AgentConfigProperties(),
             limitsConfig = LimitsConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
+            exchangeRootResolver = io.whozoss.agentos.exchange.DefaultExchangeRootResolver(exchangeStorageService),
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -523,6 +524,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    exchangeRootResolver = io.whozoss.agentos.exchange.DefaultExchangeRootResolver(exchangeStorageService),
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -857,6 +859,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    exchangeRootResolver = io.whozoss.agentos.exchange.DefaultExchangeRootResolver(exchangeStorageService),
                 )
             val configs =
                 listOf(
