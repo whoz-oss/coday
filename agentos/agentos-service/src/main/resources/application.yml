@@ -103,6 +103,11 @@ management:
 # datadog/agent:latest
 
 agentos:
+  git:
+    workspaces:
+      # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
+      # runs exactly as without Git, whatever the namespace's Git association.
+      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
   encryption:
     key: ${AGENTOS_ENCRYPTION_KEY}
     salt: ${AGENTOS_ENCRYPTION_SALT}
