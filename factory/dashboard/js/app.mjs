@@ -18,9 +18,11 @@ import { ApiClient } from './services/api-client.mjs'
 import { mountArtifactAdminView } from './views/artifact-admin.mjs'
 import { mountProjectionView } from './views/projection.mjs'
 import { mount as mountRunDetailView } from './views/run-detail.mjs'
+import { mountRunLaunchView } from './views/run-launch.mjs'
 
 export const ROUTES = Object.freeze({
   '/runs': { id: 'view-runs', label: 'Runs' },
+  '/launch': { id: 'view-launch', label: 'Lancer' },
   '/detail': { id: 'view-detail', label: 'Détail' },
   // Legacy alias of the runs list (the former standalone `Projection` tab).
   // Resolves to the same list view so old links keep working without a second
@@ -35,6 +37,7 @@ export const ROUTES = Object.freeze({
  * a missing mounter is a no-op so existing routes keep working unchanged.
  */
 export const VIEW_MOUNTERS = Object.freeze({
+  '/launch': mountRunLaunchView,
   '/admin': mountArtifactAdminView,
 })
 
@@ -146,8 +149,9 @@ export function closeModal(doc = globalThis.document) {
  * `options.mounters` maps a route to its view mounter (defaults to
  * {@link VIEW_MOUNTERS}); `options.onMount(route, { registerTeardown, doc, win })`
  * is an additive, optional view-mount hook that runs after the section classes
- * are toggled so a view can register its own teardown. Both are optional and
- * neither changes the route table.
+ * are toggled so a view can register its own teardown. `options.onMountOwnedRoutes`
+ * lists the routes whose mounting is owned by `onMount`, so the generic mounter
+ * is skipped for them. All are optional and none changes the route table.
  */
 export function createRouter(win = globalThis.window, doc = globalThis.document, options = {}) {
   let currentRoute = null
@@ -173,6 +177,10 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
   }
 
   const mounters = options.mounters ?? VIEW_MOUNTERS
+  // Routes whose mounting is owned by the `onMount` hook (they need options the
+  // generic registry cannot supply, e.g. a freshly resolved namespace). The
+  // generic mounter is skipped for them so a view never mounts twice.
+  const onMountOwnedRoutes = new Set(options.onMountOwnedRoutes ?? [])
 
   // Default navigation: canonicalize into a hash so the browser router picks it
   // up. Callers may inject `onNavigate` (tests, embedded hosts).
@@ -182,6 +190,7 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
   }
 
   const mountView = (route) => {
+    if (onMountOwnedRoutes.has(route)) return
     const mounter = mounters[route]
     if (typeof mounter !== 'function') return
     const host = doc?.getElementById?.(ROUTES[route].id)
@@ -275,7 +284,23 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
   const router = createRouter(win, doc, {
     apiClient: api,
     mounters: VIEW_MOUNTERS,
+    onMountOwnedRoutes: ['/launch'],
     onMount: (route, ctx) => {
+      if (route === '/launch') {
+        // Governed run launch: pick a definition, resolve the namespace (and
+        // optional ticket / FACTORY_ROOT) then start + run the workflow. The
+        // rich options (resolved namespace, cockpit navigation) require this
+        // hook rather than the generic `VIEW_MOUNTERS` registration.
+        const container = doc.getElementById('view-launch')
+        if (!container) return
+        mountRunLaunchView(container, {
+          apiClient: api,
+          namespaceId: resolveNamespaceId(win),
+          onNavigate: (target, params) => navigateTo(win, target, params),
+          registerTeardown: ctx.registerTeardown,
+        })
+        return
+      }
       if (route === '/runs' || route === '/projection') {
         // Home view: the workflow (run) list. Each card renders its
         // human / agent / code swimlanes and clicking one opens its detail

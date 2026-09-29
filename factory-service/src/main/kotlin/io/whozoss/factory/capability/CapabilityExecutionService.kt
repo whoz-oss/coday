@@ -58,9 +58,10 @@ class CapabilityExecutionService(
         workflowId: String,
         step: WorkflowStepDefinition,
         repoRoot: Path,
+        ticket: String? = null,
     ): CapabilityExecution {
         return when (step.responsibility.kind) {
-            ResponsibilityKind.AGENT -> resolveAgent(scope, namespaceId, workflowId, step, repoRoot)
+            ResponsibilityKind.AGENT -> resolveAgent(scope, namespaceId, workflowId, step, repoRoot, ticket)
             else -> {
                 val outcome = resolver.resolve(step, repoRoot, namespaceId, workflowId)
                 when (outcome) {
@@ -73,6 +74,10 @@ class CapabilityExecutionService(
             }
         }
     }
+
+    /** The optional ticket reaches the agent persona through the turn brief. */
+    private fun briefFromTicket(ticket: String?): String? =
+        ticket?.takeIf { it.isNotBlank() }?.let { "Execute this Factory session step for ticket $it." }
 
     private fun recordCode(
         scope: TenantScope,
@@ -187,6 +192,7 @@ class CapabilityExecutionService(
         workflowId: String,
         step: WorkflowStepDefinition,
         repoRoot: Path,
+        ticket: String?,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
         val attemptId = UUID.randomUUID().toString()
@@ -204,7 +210,7 @@ class CapabilityExecutionService(
             ),
         )
         val outcome = try {
-            resolver.resolve(step, repoRoot, namespaceId, workflowId)
+            resolver.resolve(step, repoRoot, namespaceId, workflowId, briefFromTicket(ticket))
         } catch (error: Exception) {
             CapabilityOutcome.AgentFailed(
                 stepId = step.id,
