@@ -89,6 +89,9 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun findActiveRuntime(caseId: UUID): CaseRuntime?
 
+    /** Whether any of [caseIds] has a run in progress or admitted and about to start. */
+    fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean = caseIds.any { findActiveRuntime(it)?.isRunning() == true }
+
     /**
      * Retrieve all active [CaseRuntime] instances for a given namespace.
      */
@@ -154,4 +157,13 @@ interface CaseService : EntityService<Case, UUID> {
      * @param caseId The unique identifier of the case to kill
      */
     fun killCase(caseId: UUID)
+
+    /**
+     * Start a turn that a [CaseLaunchGate] held back, if there is one to start.
+     *
+     * Resumes a `PENDING` case whose turn was deferred by this process and nothing else: a case
+     * that was killed, errored or has already consumed its message is left alone, and nothing is
+     * replayed after a restart.
+     */
+    fun resumeIfPending(caseId: UUID) = Unit
 }

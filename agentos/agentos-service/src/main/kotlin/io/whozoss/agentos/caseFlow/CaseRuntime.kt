@@ -16,6 +16,8 @@ import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -181,6 +183,21 @@ class CaseRuntime(
 
     fun isRunning(): Boolean = runInFlight.get()
 
+    /**
+     * Mark a turn held back by a [CaseLaunchGate] as queued (PENDING) until the gate admits it.
+     * Does nothing while a turn is running.
+     */
+    @Synchronized
+    fun markPending() {
+        if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) updateStatus(CaseStatus.PENDING)
+    }
+
+    /** Return a turn that was held back and never started to IDLE, as Stop does for a running one. */
+    @Synchronized
+    fun cancelPending() {
+        if (!isRunning() && _statusFlow.value == CaseStatus.PENDING) updateStatus(CaseStatus.IDLE)
+    }
+
     /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
     val subscriptionCount get() = emitter.subscriptionCount
 
@@ -290,14 +307,26 @@ class CaseRuntime(
      * - Max iterations reached: transitions to [CaseStatus.ERROR]. Terminal.
      */
     suspend fun run() {
-        if (!runInFlight.compareAndSet(false, true)) {
+        val context = currentCoroutineContext()
+        val claimed =
+            synchronized(this) {
+                // A launch admitted by a CaseLaunchGate can be cancelled by Stop or Kill before it
+                // starts. Claiming the runtime and clearing those flags must be atomic with that.
+                context.ensureActive()
+                if (!runInFlight.compareAndSet(false, true)) {
+                    false
+                } else {
+                    interruptRequested.set(false)
+                    killRequested.set(false)
+                    true
+                }
+            }
+        if (!claimed) {
             logger.debug { "[CaseRuntime $id] run() already in-flight, skipping" }
             return
         }
 
         logger.info { "[CaseRuntime $id] run() started" }
-        interruptRequested.set(false)
-        killRequested.set(false)
         updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 
