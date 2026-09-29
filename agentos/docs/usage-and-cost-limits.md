@@ -5,7 +5,7 @@ Agent execution now connects model pricing (#1305), usage persistence and aggreg
 ## Setup
 
 1. Configure model prices using the existing `AiModel.pricing` fields, per million tokens: input, output, cache read and cache write. Use one consistent currency across the platform. Historical records retain the estimate calculated when the call ran.
-2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace ancestry → platform. Null inherits; if the entire chain is unset there is no monetary gate. Existing iteration guards remain independent.
+2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace ancestry → platform. When the environment variable is absent, the platform threshold is `null`; if the entire chain is unset, the monetary gate is disabled. A positive value enables the check at that threshold. `0` is a zero threshold and therefore stops for confirmation immediately; it does not disable the check. Negative values are unsupported and do not mean unlimited. Existing iteration guards remain independent.
 3. Deploy the matching SDK, service and generated API client/UI together. No additional Copilot provider configuration shape is introduced by this PR; prices and thresholds must be populated through the configuration introduced by the prerequisite PRs.
 
 ## Runtime behavior
