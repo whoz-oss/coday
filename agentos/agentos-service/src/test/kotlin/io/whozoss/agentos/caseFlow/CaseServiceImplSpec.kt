@@ -12,6 +12,7 @@ import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
@@ -42,6 +43,9 @@ import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.InMemoryUsageRecordRepository
@@ -212,6 +216,7 @@ class CaseServiceImplSpec :
             idleEvictionGraceMs: Long = 5_000L,
             usageRecordRepository: InMemoryUsageRecordRepository = InMemoryUsageRecordRepository(),
             usageConfig: UsageConfigProperties = UsageConfigProperties(),
+            caseRepository: CaseRepository = InMemoryCaseRepository(),
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -229,7 +234,6 @@ class CaseServiceImplSpec :
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 }
-            val caseRepository = InMemoryCaseRepository()
             val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             return CaseServiceImpl(
                 agentService = agentService,
@@ -1549,6 +1553,56 @@ class CaseServiceImplSpec :
             subCase.parentCaseId shouldBe parentCase.id
         }
 
+        "create links a case to the parent it names" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            val parent = service.create(Case(namespaceId = namespaceId))
+
+            val child = service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
+
+            child.parentCaseId shouldBe parent.id
+            verify(exactly = 1) { repository.linkParentToChild(parent.id, child.id) }
+        }
+
+        "create rejects a parent from another namespace" {
+            val service = buildService()
+            val parent = service.create(Case(namespaceId = namespaceId))
+
+            shouldThrow<BadRequestException> {
+                service.create(Case(namespaceId = UUID.randomUUID(), parentCaseId = parent.id))
+            }
+        }
+
+        "create rejects a parent that does not exist" {
+            val service = buildService()
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(Case(namespaceId = namespaceId, parentCaseId = UUID.randomUUID()))
+            }
+        }
+
+        "create rejects a parent at the depth limit" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            val parent = service.create(Case(namespaceId = namespaceId))
+            every { repository.countAncestorDepth(parent.id) } returns 5
+
+            shouldThrow<UnprocessableEntityException> {
+                service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
+            }
+            verify(exactly = 1) { repository.countAncestorDepth(parent.id) }
+        }
+
+        "create refuses the id of a soft-deleted case" {
+            val service = buildService()
+            val deleted = service.create(Case(namespaceId = namespaceId))
+            service.delete(deleted.id)
+
+            shouldThrow<IllegalArgumentException> {
+                service.create(Case(metadata = EntityMetadata(id = deleted.id), namespaceId = namespaceId))
+            }
+        }
+
         "startSubCase propagates exception when linkParentToChild fails" {
             // Uses a mockk CaseRepository that delegates all operations to InMemoryCaseRepository
             // but throws on linkParentToChild.
@@ -2590,9 +2644,9 @@ class CaseServiceImplSpec :
             // Parent lives in namespaceId
             val parentCase = service.create(Case(namespaceId = namespaceId))
             // Sub-case lives in otherNamespaceId but has parentCaseId pointing to parentCase
-            // (simulates a case that was created with a cross-namespace parentCaseId,
-            // or a namespace field that was tampered with)
-            val foreignSubCase = service.create(
+            // (simulates a namespace field that was tampered with). create() rejects a
+            // cross-namespace parent, so the row is written straight to the repository.
+            val foreignSubCase = caseRepository.save(
                 Case(namespaceId = otherNamespaceId, parentCaseId = parentCase.id, status = CaseStatus.IDLE),
             )
 

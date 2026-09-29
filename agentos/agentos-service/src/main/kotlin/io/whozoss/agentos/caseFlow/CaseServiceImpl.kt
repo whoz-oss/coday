@@ -11,8 +11,10 @@ import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.delegation.SubCaseManager
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -107,8 +109,20 @@ class CaseServiceImpl(
     // EntityService
     // ======================================================
 
+    @Transactional
     override fun create(entity: Case): Case {
-        require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
+        // Soft-deleted ids count: reusing one would resurrect the old node with its existing
+        // relationships, including its place in another family.
+        require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
+        entity.parentCaseId?.let { parentId ->
+            val parent = getById(parentId)
+            if (caseRepository.countAncestorDepth(parentId) >= MAX_DELEGATION_DEPTH) {
+                throw UnprocessableEntityException("Case hierarchy depth limit reached")
+            }
+            if (parent.namespaceId != entity.namespaceId) {
+                throw BadRequestException("A sub-case must belong to its parent's namespace")
+            }
+        }
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -122,6 +136,9 @@ class CaseServiceImpl(
             entity.copy(runCostThreshold = resolvedThreshold)
 
         val saved = caseRepository.save(caseToSave)
+        // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
+        // transaction, so a failed link rolls the case back instead of leaving an orphan.
+        saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
@@ -964,11 +981,6 @@ class CaseServiceImpl(
                     parentCaseId = parentCaseId,
                 ),
             )
-
-        // Create the [:PARENT_OF] graph edge so countAncestorDepth can traverse the chain.
-        // This runs inside the same @Transactional boundary as create() above: if the
-        // link fails, the sub-case node is rolled back too — no orphaned cases.
-        caseRepository.linkParentToChild(parentCaseId, subCase.id)
 
         // Grant the delegating user ADMIN on the sub-case so they can list, open, and
         // stream it — same grant that CaseController.create applies for user-created cases.
