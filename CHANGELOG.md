@@ -1,3 +1,13 @@
+## 3.13.0 (2026-09-29)
+
+### 🚀 Features
+
+- wz-35088 - structured output for tools ([#1392](https://github.com/whoz-oss/coday/pull/1392))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.12.0 (2026-09-28)
 
 ### 🚀 Features

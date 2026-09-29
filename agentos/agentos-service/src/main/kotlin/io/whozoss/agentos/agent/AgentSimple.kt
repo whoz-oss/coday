@@ -592,6 +592,7 @@ class AgentSimple(
                         // They will be delivered to the LLM via the conversation history
                         // on subsequent turns (convertEventsToMessages injects UserMessage+Media).
                         images = executionResult.images,
+                        structuredOutput = executionResult.structuredOutput,
                     ),
                 )
 

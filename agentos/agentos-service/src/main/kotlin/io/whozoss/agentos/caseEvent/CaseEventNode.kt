@@ -211,6 +211,12 @@ class ToolResponseEventNode(
      * string for backward compatibility with existing nodes that pre-date this field.
      */
     val imagesJson: String? = null,
+    /**
+     * Raw JSON string of the structured output produced by the tool, or null when the tool
+     * is text-only. Stored as a nullable string for backward compatibility with existing
+     * nodes that pre-date this field.
+     */
+    val structuredOutputJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
