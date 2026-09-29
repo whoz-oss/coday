@@ -2907,6 +2907,24 @@ paths:
       summary: Update a Skill
       tags:
       - skill-controller
+  /api/tools/invoke:
+    post:
+      operationId: invokeToolInvoke
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolInvokeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolInvokeResponse"
+          description: OK
+      tags:
+      - tool-invoke-controller
   /api/usage-records/aggregate/by-agent:
     get:
       operationId: aggregateByAgentUsageRecord
@@ -5202,6 +5220,43 @@ components:
       - namespaceId
       - timestamp
       - type
+    ToolInvokeRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+        payload:
+          type: string
+        toolName:
+          type: string
+        userId:
+          type: string
+          format: uuid
+      required:
+      - namespaceId
+      - toolName
+    ToolInvokeResponse:
+      type: object
+      properties:
+        errorMessage:
+          type: string
+        errorType:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: {}
+        output:
+          type: string
+        success:
+          type: boolean
+        toolName:
+          type: string
+      required:
+      - metadata
+      - output
+      - success
+      - toolName
     ToolRequestEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
