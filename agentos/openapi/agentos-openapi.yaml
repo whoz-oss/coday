@@ -5242,6 +5242,8 @@ components:
             oneOf:
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
+          structuredOutput:
+            $ref: "#/components/schemas/JsonNode"
           success:
             type: boolean
           toolMetadata:
