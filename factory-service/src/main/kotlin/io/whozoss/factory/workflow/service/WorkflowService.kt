@@ -71,6 +71,11 @@ class WorkflowService(
         repository.saveDefinition(scope, record)
     }
 
+    /** Deletes a definition; `false` when no definition matches the given identity. */
+    @Transactional
+    fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean =
+        repository.deleteDefinition(scope, workflowType, version)
+
     @Transactional(readOnly = true)
     fun listDefinitions(scope: TenantScope): Map<String, Any?> =
         mapOf("items" to repository.listDefinitions(scope).map { definitionJson(it) })
