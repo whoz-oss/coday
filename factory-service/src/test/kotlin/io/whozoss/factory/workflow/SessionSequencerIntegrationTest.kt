@@ -95,7 +95,7 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
         )
     }
 
-    private fun startSession(workflowType: String, workflowId: String, steps: List<Map<String, Any?>>) {
+    private fun startSession(workflowType: String, workflowId: String, steps: List<Map<String, Any?>>, ticket: String? = null) {
         val raw = linkedMapOf<String, Any?>(
             "schemaVersion" to "1",
             "workflowType" to workflowType,
@@ -116,7 +116,7 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
         val result = workflowService.start(
             scope,
             namespace,
-            WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType"),
+            WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType", ticket = ticket),
             ControllerExecutionInput(runtimeId = "test-runtime", kind = "agentos", agentId = "runner", namespaceId = namespace),
         )
         assertThat(result.status).isEqualTo(201)
@@ -354,5 +354,62 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
         assertThat(second.status).isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(evidenceRepository.list(scope, namespace, workflowId)).hasSize(evidenceAfterFirst)
+    }
+
+    @Test
+    fun `a start-time ticket reaches the agent brief and is persisted`() {
+        val workflowId = "wf-ticket"
+        startSession(
+            "ticket-dag",
+            workflowId,
+            listOf(stepJson("s1", "agent", "architect", emptyList())),
+            ticket = "JIRA-42",
+        )
+        val briefs = mutableListOf<String>()
+        val service = SessionRunService(
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            CapabilityExecutionService(
+                CapabilityResolver(
+                    object : AgentTurnCapability {
+                        override fun executeAgentTurn(request: AgentTurnRequest): AgentTurnResult {
+                            briefs += request.brief ?: ""
+                            return AgentTurnResult.Completed("PASS")
+                        }
+                    },
+                ),
+                workflowRepository,
+                evidenceRepository,
+                interactionRepository,
+                attemptRepository,
+            ),
+            sseHub,
+        )
+
+        val result = service.runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(briefs.single()).contains("JIRA-42")
+        val instance = workflowRepository.findInstance(scope, namespace, workflowId)!!
+        assertThat(instance.instance["ticket"]).isEqualTo("JIRA-42")
+        assertThat(instance.projection["ticket"]).isEqualTo("JIRA-42")
+    }
+
+    @Test
+    fun `a run-time ticket is persisted on the instance`() {
+        val workflowId = "wf-ticket-run"
+        startSession(
+            "ticket-run-dag",
+            workflowId,
+            listOf(stepJson("s1", "human", "reviewer", emptyList())),
+        )
+
+        val result = sessionRunService.runSession(scope, namespace, workflowId, repoRoot, ticket = "JIRA-99")
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        val instance = workflowRepository.findInstance(scope, namespace, workflowId)!!
+        assertThat(instance.instance["ticket"]).isEqualTo("JIRA-99")
+        assertThat(instance.projection["ticket"]).isEqualTo("JIRA-99")
     }
 }

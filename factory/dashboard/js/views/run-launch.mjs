@@ -8,11 +8,15 @@
  *
  *   - `GET  /api/factory/workflow-definitions`        → selectable definitions (`items`)
  *   - `GET  /api/agents?namespaceId=…`                → selectable agents (AgentOS proxy)
- *   - `POST /api/factory/workflows/:workflowId/run`   → `{ namespaceId, ticket? }`
+ *   - `POST /api/factory/workflows/:workflowId/start` → materialize the governed instance
+ *   - `POST /api/factory/workflows/:workflowId/run`   → `{ namespaceId, ticket?, repoRoot? }`
  *
- * The legacy JSONL `POST /api/factory/runs` route is NEVER used here. On a
- * `200`/`201` the view hands off to the run detail view with the targeted
- * `workflowId` + `namespaceId` (`#/detail?workflowId=…&namespaceId=…`).
+ * The server requires an EXISTING governed instance (`state == "existing"`) before
+ * it accepts a run, so a launch is a two-step flow: the view first materializes a
+ * fresh instance from the selected definition (`/start`, with a generated unique
+ * `workflowId`), then triggers it (`/run`). The legacy JSONL `POST /api/factory/runs`
+ * route is NEVER used here. On success the view hands off to the run detail view
+ * with the targeted `workflowId` + `namespaceId` (`#/detail?workflowId=…&namespaceId=…`).
  *
  * Lifecycle contract: `mountRunLaunchView` performs the initial loads, wires
  * the delegated form listeners and returns a handle whose `unmount` is
@@ -33,6 +37,23 @@ export const DETAIL_ROUTE = '/detail'
 /** Governed run route for a workflow id. */
 export function buildRunUrl(workflowId) {
   return `/api/factory/workflows/${encodeURIComponent(workflowId)}/run`
+}
+
+/** Governed start route for a workflow id (materializes the instance). */
+export function buildStartUrl(workflowId) {
+  return `/api/factory/workflows/${encodeURIComponent(workflowId)}/start`
+}
+
+/** Generate a unique governed instance id for a new launch. */
+export function generateWorkflowId() {
+  return `wf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+/** True when a `/start` failure simply means the instance already exists. */
+export function isAlreadyStartedError(error) {
+  if (!error) return false
+  const code = error.code ?? error.details?.code ?? error.details?.data?.code
+  return code === 'WORKFLOW_IDENTITY_CONFLICT' || code === 'WORKFLOW_ALREADY_EXISTS'
 }
 
 /** Canonical detail hash carrying the targeted scope. */
@@ -233,6 +254,7 @@ export function renderRunLaunch(state) {
  *   redirectDelayMs?: number,
  *   setTimeoutFn?: typeof setTimeout,
  *   clearTimeoutFn?: typeof clearTimeout,
+ *   registerTeardown?: (fn: () => void) => void,
  * }} [options]
  * @returns {Promise<{ unmount: () => void, render: () => void, submit: () => Promise<void>,
  *   getState: () => object, isMounted: () => boolean, getPendingTimer: () => any }>}
@@ -353,9 +375,9 @@ export async function mountRunLaunchView(container, options = {}) {
 
   const submit = async () => {
     if (!state.mounted || state.submitting) return
-    const workflowId = String(state.workflowId ?? '').trim()
+    const workflowType = String(state.workflowId ?? '').trim()
     const namespaceId = String(state.namespaceId ?? '').trim()
-    if (!workflowId) {
+    if (!workflowType) {
       state.submitError = 'Sélectionnez une définition de workflow.'
       render()
       return
@@ -371,13 +393,51 @@ export async function mountRunLaunchView(container, options = {}) {
     state.submitSuccess = null
     render()
 
-    const body = { namespaceId }
     const ticket = String(state.ticket ?? '').trim()
+    const repoRoot = String(state.factoryRoot ?? '').trim()
+    // Each launch materializes a brand new instance; the selected definition id
+    // is the `workflowType`, never the instance `workflowId`.
+    const workflowId = generateWorkflowId()
+    const signal = state.abortController?.signal
+
+    // Step 1 — materialize the governed instance from the definition. The run
+    // route refuses an absent instance, so the start must come first.
+    const startBody = {
+      workflow: {
+        workflowId,
+        workflowType,
+        title: `Run ${workflowType}`,
+        ...(ticket ? { ticket } : {}),
+      },
+      execution: {
+        namespaceId,
+        runtimeId: 'factory-dashboard',
+        kind: 'agentos',
+        agentId: 'factory-agent',
+      },
+    }
+    try {
+      await apiClient.post(buildStartUrl(workflowId), startBody, { signal })
+    } catch (error) {
+      if (!state.mounted) return
+      // An already-existing instance is not a launch failure: continue to run it.
+      if (!isAlreadyStartedError(error)) {
+        state.submitting = false
+        state.submitError = describeLaunchError(error)
+        render()
+        return
+      }
+    }
+    if (!state.mounted) return
+
+    // Step 2 — trigger the run on the now-existing instance.
+    const body = { namespaceId }
     if (ticket) body.ticket = ticket
+    if (repoRoot) body.repoRoot = repoRoot
 
     let result
     try {
-      result = await apiClient.post(buildRunUrl(workflowId), body, { signal: state.abortController?.signal })
+      result = await apiClient.post(buildRunUrl(workflowId), body, { signal })
     } catch (error) {
       if (!state.mounted) return
       state.submitting = false
@@ -485,6 +545,10 @@ export async function mountRunLaunchView(container, options = {}) {
     state.submitError = null
     state.submitSuccess = null
   }
+
+  // Let the host (cockpit router) own the teardown so navigating away cleans up
+  // the delegated listeners and any pending redirect timer.
+  if (typeof options.registerTeardown === 'function') options.registerTeardown(unmount)
 
   await loadDefinitions()
   if (state.mounted && state.namespaceId) await loadAgents()

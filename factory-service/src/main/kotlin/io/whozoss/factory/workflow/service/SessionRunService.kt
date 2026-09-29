@@ -114,8 +114,13 @@ class SessionRunService(
         namespaceId: String,
         workflowId: String,
         repoRoot: Path,
+        ticket: String? = null,
     ): SessionRunResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
+        // The ticket may be supplied by the run request, or have travelled with
+        // the start command / instance relations. Either way it must reach the
+        // step execution context (agent brief) and be persisted on the instance.
+        val effectiveTicket = ticket?.takeIf { it.isNotBlank() } ?: instanceTicket(instance)
         val steps = resolveDefinition(scope, instance).steps
         if (steps.isEmpty()) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The session has no steps.")
@@ -136,7 +141,7 @@ class SessionRunService(
                 }
                 val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull() ?: return@run
                 val step = steps.first { it.id == readyId }
-                executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot)?.let { terminal ->
+                executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot, effectiveTicket)?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
                         suspended = true
                         return@run
@@ -145,9 +150,16 @@ class SessionRunService(
             }
         }
         val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else SessionSequencer.terminalStatus(steps, statuses.statuses)
-        persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus)
+        persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
         sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
         return SessionRunResult(namespaceId, workflowId, sessionStatus, statusesOf(steps, statuses.statuses))
+    }
+
+    /** The ticket carried by a persisted instance (top-level or in its relations). */
+    private fun instanceTicket(instance: WorkflowInstanceRecord): String? {
+        (instance.instance["ticket"] as? String)?.takeIf { it.isNotBlank() }?.let { return it }
+        val relations = instance.instance["relations"] as? Map<*, *>
+        return (relations?.get("ticket") as? String)?.takeIf { it.isNotBlank() }
     }
 
     /** Read-only projection of the current session state. */
@@ -224,10 +236,11 @@ class SessionRunService(
         statuses: SessionProgress,
         step: WorkflowStepDefinition,
         repoRoot: Path,
+        ticket: String?,
     ): String? {
         setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.RUNNING, statuses)
         val execution = try {
-            capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot)
+            capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket)
         } catch (error: Exception) {
             recordFailureEvidence(scope, namespaceId, workflowId, step, error)
             transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED)
@@ -449,6 +462,7 @@ class SessionRunService(
         steps: List<WorkflowStepDefinition>,
         progress: SessionProgress,
         sessionStatus: String,
+        ticket: String?,
     ) {
         val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return
         val nextInstance = instance.instance.toMutableMap()
@@ -457,6 +471,12 @@ class SessionRunService(
         nextInstance["updatedAt"] = nowIso()
         val projection = instance.projection.toMutableMap()
         projection["status"] = sessionStatus
+        // Persist the ticket so a later resume (which only carries the workflowId)
+        // and the branch-naming context keep reaching it.
+        if (ticket != null) {
+            nextInstance["ticket"] = ticket
+            projection["ticket"] = ticket
+        }
         // Multi-lane timeline projection: one entry per step carrying its lane
         // (agent|code|human) derived from the responsibility kind, the actor
         // name, the status and the optional execution window.

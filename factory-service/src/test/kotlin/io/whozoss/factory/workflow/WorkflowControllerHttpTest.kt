@@ -142,6 +142,38 @@ class WorkflowControllerHttpTest : DomainIntegrationTest() {
         assertThat(data(detail.body)["state"]).isEqualTo("existing")
     }
 
+    @Suppress("UNCHECKED_CAST")
+    @Test
+    fun `start propagates an optional ticket into the instance and its relations`() {
+        registerDefinition()
+        val startBody = mapOf(
+            "workflow" to mapOf(
+                "workflowId" to "wf-http-ticket",
+                "workflowType" to "wf-http",
+                "title" to "HTTP start ticket",
+                "ticket" to "JIRA-7",
+            ),
+            "execution" to mapOf(
+                "namespaceId" to namespace,
+                "runtimeId" to "agentos-primary",
+                "kind" to "agentos",
+                "agentId" to "runner",
+            ),
+        )
+        val start = restTemplate.exchange(
+            "/api/factory/workflows/wf-http-ticket/start",
+            HttpMethod.POST,
+            HttpEntity(startBody, headers()),
+            jsonType(),
+        )
+        assertThat(start.statusCode).isEqualTo(HttpStatus.CREATED)
+        val payload = data(start.body)
+        val instance = payload["instance"] as Map<String, Any?>
+        assertThat(instance["ticket"]).isEqualTo("JIRA-7")
+        val relations = payload["relations"] as Map<String, Any?>
+        assertThat(relations["ticket"]).isEqualTo("JIRA-7")
+    }
+
     @Test
     fun `start rejects an invalid execution with 400`() {
         registerDefinition()
