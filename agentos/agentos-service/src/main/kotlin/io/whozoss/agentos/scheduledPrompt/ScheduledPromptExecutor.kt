@@ -284,7 +284,6 @@ class ScheduledPromptExecutor(
                         } finally {
                             MDC.remove(MDC_USER_RUN_ID)
                             MDC.remove(SchedulerScanner.MDC_SCHEDULER_RUN_ID)
-                            MDC.remove(SchedulerScanner.MDC_SCHEDULER_CORRELATION_ID)
                         }
                     } catch (e: CancellationException) {
                         throw e
@@ -446,7 +445,6 @@ class ScheduledPromptExecutor(
             checkNotNull(runRepository.findById(userRun.runId)) {
                 "Parent Run ${userRun.runId} not found"
             }
-        MDC.put(SchedulerScanner.MDC_SCHEDULER_CORRELATION_ID, run.correlationId)
         MDC.put(SchedulerScanner.MDC_SCHEDULER_RUN_ID, run.id.toString())
         val scheduledPrompt =
             scheduledPromptRepository

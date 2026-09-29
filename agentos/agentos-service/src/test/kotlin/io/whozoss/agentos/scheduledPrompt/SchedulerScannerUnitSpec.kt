@@ -239,18 +239,17 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             val scheduledPrompt = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            runRepo.insert(
+            val preExisting = runRepo.insert(
                 ScheduledPromptRun(
                     scheduledPromptId = scheduledPrompt.id,
                     scheduledFor = slot.minusSeconds(3600),
                     status = RunStatus.CLAIMED,
-                    correlationId = "pre-existing",
                 ),
             )
             scanner(scheduledPromptRepo, runRepo).tickClaim()
             val runs = runRepo.all()
             runs shouldHaveSize 2
-            runs.filter { it.correlationId != "pre-existing" }.first().status shouldBe RunStatus.SKIPPED
+            runs.first { it.id != preExisting.id }.status shouldBe RunStatus.SKIPPED
         }
 
         "tickClaim with RUNNING run already exists: run SKIPPED (overlap)" {
@@ -270,7 +269,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     scheduledPromptId = scheduledPrompt.id,
                     scheduledFor = slot.minusSeconds(3600),
                     status = RunStatus.RUNNING,
-                    correlationId = "running",
                 ),
             )
             // Seed a PENDING UserRun so the sweep sees a non-terminal UserRun and skips it.
@@ -281,7 +279,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             // Existing run untouched — still has a PENDING UserRun, not settled.
             runRepo.findById(existingRun.id)!!.status shouldBe RunStatus.RUNNING
             // New run for the due slot is SKIPPED because hasActive() returned true.
-            runRepo.all().filter { it.correlationId != "running" }.first().status shouldBe RunStatus.SKIPPED
+            runRepo.all().first { it.id != existingRun.id }.status shouldBe RunStatus.SKIPPED
         }
 
         "tickClaim with DONE run: new run inserted and transitioned to DONE (DONE is not active)" {
@@ -289,17 +287,16 @@ class SchedulerScannerUnitSpec : StringSpec() {
             val runRepo = makeRunRepo()
             val slot = Instant.parse("2026-01-01T08:00:00Z")
             val scheduledPrompt = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            runRepo.insert(
+            val doneRun = runRepo.insert(
                 ScheduledPromptRun(
                     scheduledPromptId = scheduledPrompt.id,
                     scheduledFor = slot.minusSeconds(3600),
                     status = RunStatus.DONE,
-                    correlationId = "done-run",
                 ),
             )
             // DONE is not active — hasActive() returns false — new run is CLAIMED then materialised to DONE
             scanner(scheduledPromptRepo, runRepo).tickClaim()
-            runRepo.all().filter { it.correlationId != "done-run" }.first().status shouldBe RunStatus.DONE
+            runRepo.all().first { it.id != doneRun.id }.status shouldBe RunStatus.DONE
         }
 
         // -------------------------------------------------------------------------
@@ -317,7 +314,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     scheduledPromptId = scheduledPrompt.id,
                     scheduledFor = slot,
                     status = RunStatus.CLAIMED,
-                    correlationId = "first-tick",
                 ),
             )
             scanner(scheduledPromptRepo, runRepo).tickClaim()
@@ -335,7 +331,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     scheduledPromptId = scheduledPrompt.id,
                     scheduledFor = slot,
                     status = RunStatus.CLAIMED,
-                    correlationId = "first-tick",
                 ),
             )
             scanner(scheduledPromptRepo, runRepo).tickClaim()
@@ -458,7 +453,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2026-01-01T07:00:00Z"),
                 status = RunStatus.DONE,
-                correlationId = "prev-done",
             ))
             scanner(scheduledPromptRepo, runRepo).tickClaim()
             // Only the pre-existing run, no new one inserted
@@ -536,7 +530,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2026-01-01T07:00:00Z"),
                 status = RunStatus.DONE,
-                correlationId = "prev-1",
             ))
             // tickClaim inserts run #2 → total completed = 2 (prev + this one) ≥ maxOccurrenceCount = 2
             scanner(scheduledPromptRepo, runRepo).tickClaim()
@@ -555,17 +548,16 @@ class SchedulerScannerUnitSpec : StringSpec() {
             )
             // Pre-insert 1 completed run BEFORE startDate (from the old planning window)
             // This run must NOT count toward the quota
-            runRepo.insert(ScheduledPromptRun(
+            val oldWindowRun = runRepo.insert(ScheduledPromptRun(
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2025-12-31T08:00:00Z"), // before 2026-01-01
                 status = RunStatus.DONE,
-                correlationId = "old-window-run",
             ))
             // tickClaim runs the due slot → quota count = 1 (only the new run counts)
             // → disables after (count reaches maxOccurrenceCount = 1)
             scanner(scheduledPromptRepo, runRepo).tickClaim()
             // The new run was inserted (old-window run does not block it)
-            runRepo.all().filter { it.correlationId != "old-window-run" } shouldHaveSize 1
+            runRepo.all().filter { it.id != oldWindowRun.id } shouldHaveSize 1
             // After inserting run #1 in the window, count = 1 >= max = 1 → disabled
             scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe false
         }
@@ -582,21 +574,19 @@ class SchedulerScannerUnitSpec : StringSpec() {
             )
             // Pre-insert 2 completed runs BEFORE startDate
             // Neither should count — the pre-check must NOT disable the prompt
-            runRepo.insert(ScheduledPromptRun(
+            val old1 = runRepo.insert(ScheduledPromptRun(
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2025-12-30T08:00:00Z"),
                 status = RunStatus.DONE,
-                correlationId = "old-1",
             ))
-            runRepo.insert(ScheduledPromptRun(
+            val old2 = runRepo.insert(ScheduledPromptRun(
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2025-12-31T08:00:00Z"),
                 status = RunStatus.DONE,
-                correlationId = "old-2",
             ))
             scanner(scheduledPromptRepo, runRepo).tickClaim()
             // The due slot must have been executed (old-window runs did not consume the quota)
-            runRepo.all().filter { it.correlationId !in listOf("old-1", "old-2") } shouldHaveSize 1
+            runRepo.all().filter { it.id !in listOf(old1.id, old2.id) } shouldHaveSize 1
         }
 
         "tickClaim with OCCURRENCES: does NOT disable when completed runs are below maxOccurrenceCount" {
@@ -627,7 +617,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2026-01-01T07:00:00Z"),
                 status = RunStatus.SKIPPED,
-                correlationId = "skipped",
             ))
             // tickClaim inserts run #2 (SKIPPED + this one) → total = 2 ≥ maxOccurrenceCount = 2 → disables
             scanner(scheduledPromptRepo, runRepo).tickClaim()
@@ -648,7 +637,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
                 status = RunStatus.CLAIMED,
-                correlationId = "orphaned",
             )
             runRepo.insert(orphanedRun)
 
@@ -669,7 +657,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = nowInstant,
                 status = RunStatus.CLAIMED,
-                correlationId = "recent",
             )
             runRepo.insert(recentRun)
 
@@ -690,7 +677,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2025-12-31T08:00:00Z"),
                 status = RunStatus.CLAIMED,
-                correlationId = "orphaned",
             )
             runRepo.insert(orphanedRun)
 
@@ -699,11 +685,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
             scanner(scheduledPromptRepo, runRepo).tickClaim()
 
             val runs = runRepo.all()
-            val orphan = runs.first { it.correlationId == "orphaned" }
-            orphan.status shouldBe RunStatus.FAILED
-
-            val newRun = runs.first { it.correlationId != "orphaned" }
-            newRun.status shouldBe RunStatus.DONE
+            runs.first { it.id == orphanedRun.id }.status shouldBe RunStatus.FAILED
+            runs.first { it.id != orphanedRun.id }.status shouldBe RunStatus.DONE
         }
 
         // -------------------------------------------------------------------------
@@ -728,7 +711,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
                 status = RunStatus.RUNNING,
-                correlationId = "orphaned-running",
             )
             runRepo.insert(run)
 
@@ -757,7 +739,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
                 status = RunStatus.RUNNING,
-                correlationId = "orphaned-running-failed",
             )
             runRepo.insert(run)
 
@@ -785,7 +766,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
                 status = RunStatus.RUNNING,
-                correlationId = "still-running",
             )
             runRepo.insert(run)
 
@@ -1019,7 +999,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                     scheduledPromptId = sp.id,
                     scheduledFor = slot.minusSeconds((i + 1) * 86400L),
                     status = RunStatus.DONE,
-                    correlationId = "done-$i",
                 ))
             }
             scanner(scheduledPromptRepo, runRepo).tickClaim()

@@ -290,8 +290,6 @@ class SchedulerScanner(
 
     private fun claim(scheduledPrompt: ScheduledPrompt) {
         val slot = scheduledPrompt.nextRunAt
-        val correlationId = "${scheduledPrompt.id}@${slot}"
-        MDC.put(MDC_SCHEDULER_CORRELATION_ID, correlationId)
         try {
         val agentConfig = agentConfigService.findById(scheduledPrompt.agentConfigId)
         if (agentConfig == null || !agentConfig.enabled) {
@@ -332,14 +330,13 @@ class SchedulerScanner(
             scheduledPromptId = scheduledPrompt.id,
             scheduledFor = slot,
             status = status,
-            correlationId = correlationId,
         )
 
         val insertedRun = try {
             runRepository.insert(run)
                 .also { inserted ->
                     MDC.put(MDC_SCHEDULER_RUN_ID, inserted.id.toString())
-                    logger.info { "[SchedulerScanner] Inserted run correlationId=$correlationId status=$status" }
+                    logger.info { "[SchedulerScanner] Inserted run=${inserted.id} status=$status" }
                 }
         } catch (e: DuplicateRunException) {
             logger.info { "[SchedulerScanner] Duplicate slot for sp=${scheduledPrompt.id} slot=$slot — another tick won the race" }
@@ -380,7 +377,6 @@ class SchedulerScanner(
                 }
         }
         } finally {
-            MDC.remove(MDC_SCHEDULER_CORRELATION_ID)
             MDC.remove(MDC_SCHEDULER_RUN_ID)
         }
     }
@@ -455,17 +451,7 @@ class SchedulerScanner(
         /** CLAIMED Runs older than this are presumed orphaned (crash between insert and materialize). */
         private val ORPHAN_THRESHOLD = Duration.ofMinutes(5)
 
-        /**
-         * MDC key for the scheduler run's correlationId.
-         *
-         * Distinct from `dd.trace_id` (injected by the Datadog Java agent): this is a
-         * business-level identifier that spans multiple APM spans (claim + materialize +
-         * each UserRun worker). Both coexist in JSON logs and can be correlated in Datadog.
-         */
-        /** MDC key for the human-readable correlation id: "<spId>@<slotISO>". Set at the start of claim(), before the Run is inserted. */
-        const val MDC_SCHEDULER_CORRELATION_ID = "schedulerRunCorrelationId"
-
-        /** MDC key for the UUID of the inserted [ScheduledPromptRun]. Set after insert. */
+        /** MDC key for the UUID of the inserted [ScheduledPromptRun]. Set after insert in Phase A, re-set per worker in Phase B. */
         const val MDC_SCHEDULER_RUN_ID = "schedulerRunId"
     }
 }
