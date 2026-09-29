@@ -22,6 +22,7 @@ import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
@@ -863,14 +864,22 @@ class AgentServiceImpl(
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            tools +=
-                exchangeToolGrantService.grantTools(
-                    root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt).requireUsable(),
-                    readOnly = false,
-                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                    allowedTools = caseGrant.allowedTools,
-                    toolContext = toolContext,
-                )
+            // A directory owned by another case (a family's shared workspace) also requires the
+            // invoking user's permission on that owner: delegation does not confer its rights.
+            val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
+            val userId = context.userId?.toString()
+            val canRead = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+            if (canRead) {
+                val canWrite = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                tools +=
+                    exchangeToolGrantService.grantTools(
+                        root = root.requireUsable(),
+                        readOnly = !canWrite,
+                        configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                        allowedTools = caseGrant.allowedTools,
+                        toolContext = toolContext,
+                    )
+            }
         }
 
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
