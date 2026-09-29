@@ -7,7 +7,6 @@ import io.whozoss.factory.delivery.domain.DeliveryErrorCodes
 import io.whozoss.factory.delivery.domain.DeliveryEvidenceItem
 import io.whozoss.factory.delivery.domain.DeliveryExecutionContext
 import io.whozoss.factory.delivery.domain.DeliveryOperationObservation
-import io.whozoss.factory.delivery.domain.DeliveryOperationPolicyExistingOperation
 import io.whozoss.factory.delivery.domain.DeliveryPromotionEvaluation
 import io.whozoss.factory.delivery.domain.DeliveryPromotionSnapshot
 import io.whozoss.factory.delivery.domain.applyDeliveryPromotion
@@ -25,41 +24,43 @@ import io.whozoss.factory.delivery.domain.normalizeDeliveryOperationRequest
 import io.whozoss.factory.delivery.domain.validateDeliveryOperationRecord
 import io.whozoss.factory.delivery.domain.validateDeliveryOperationTransition
 import io.whozoss.factory.persistence.TenantScope
-import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
-import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
-import org.springframework.transaction.annotation.Transactional
+import org.springframework.context.annotation.Primary
+import org.springframework.stereotype.Repository
 import java.security.MessageDigest
-import java.sql.Timestamp
 import java.time.Instant
 
 /**
- * `NamedParameterJdbcTemplate` implementation of [DeliveryRepository].
+ * Neo4j implementation of [DeliveryRepository].
  *
- * Port of `factory/src/adapters/persistence/sql/sql-delivery-repository.ts`.
- * The durable surface is a `deliveries` snapshot row (optimistic-locking
- * `revision` plus the verbatim JSONB payload) and the append-only
- * `delivery_journal`: every promotion, delivery-operation transition and
- * rollback-request decision is one immutable row, projected back into the live
- * operations exactly like the Node adapter. Every multi-write mutation runs
- * inside one Spring transaction.
+ * Replaces `SqlDeliveryRepository`. The durable surface is a `:Delivery` node
+ * (optimistic-locking `revision` plus the verbatim snapshot JSON) and the
+ * append-only `:DeliveryRecord` journal: every promotion, delivery-operation
+ * transition and rollback-request decision is one immutable node, projected
+ * back into the live operations exactly like the Node adapter. The journal
+ * sequence is generated as `MAX(recordSequence) + 1` in the same transaction.
+ *
+ * Every multi-write mutation runs inside one Spring transaction, and the
+ * domain-level idempotency/optimistic-locking rules are unchanged from the
+ * relational adapter.
  */
-class SqlDeliveryRepository(
-    private val jdbc: NamedParameterJdbcTemplate,
+@Repository
+@Primary
+class Neo4jDeliveryRepository(
+    private val deliveries: SpringDataNeo4jDeliveryRepository,
+    private val records: SpringDataNeo4jDeliveryRecordRepository,
     private val objectMapper: ObjectMapper,
 ) : DeliveryRepository {
 
-    @Transactional(readOnly = true)
     override fun read(scope: TenantScope, namespaceId: String, deliveryId: String): Map<String, Any?>? {
         DeliverySnapshots.assertScope(namespaceId, deliveryId)
-        return readInternal(scope, namespaceId, deliveryId, forUpdate = false)
+        return readInternal(scope, namespaceId, deliveryId)
     }
 
-    @Transactional
     override fun create(scope: TenantScope, input: Map<String, Any?>): DeliveryWriteResult {
         val namespaceId = input["namespaceId"] as? String
         val deliveryId = input["deliveryId"] as? String
         DeliverySnapshots.assertScope(namespaceId, deliveryId)
-        val current = readInternal(scope, namespaceId!!, deliveryId!!, forUpdate = true)
+        val current = readInternal(scope, namespaceId!!, deliveryId!!)
         if (current != null) {
             return if (DeliverySnapshots.payloadHash(current) == DeliverySnapshots.payloadHash(input)) {
                 DeliveryWriteResult.idempotent(snapshot = current)
@@ -78,15 +79,14 @@ class SqlDeliveryRepository(
         )
     }
 
-    @Transactional
     override fun promote(scope: TenantScope, input: DeliveryStorePromoteInput): DeliveryWriteResult {
         val namespaceId = input.namespaceId
         val deliveryId = input.request.deliveryId
-        val current = readInternal(scope, namespaceId, deliveryId, forUpdate = true)
-        val records = journalInternal(scope, namespaceId, deliveryId)
+        val current = readInternal(scope, namespaceId, deliveryId)
+        val journal = journalInternal(scope, namespaceId, deliveryId)
         val scopeHash = deliveryScopeHash(namespaceId, input.request, input.execution)
         val semanticHash = deliverySemanticHash(input.request)
-        val prior = records.find { it["scopeHash"] == scopeHash && it["state"] == "succeeded" }
+        val prior = journal.find { it["scopeHash"] == scopeHash && it["state"] == "succeeded" }
         if (prior != null) {
             return if (prior["semanticHash"] != semanticHash) {
                 DeliveryWriteResult.failure(DeliveryErrorCodes.IDEMPOTENCY_KEY_COLLISION)
@@ -121,9 +121,8 @@ class SqlDeliveryRepository(
         )
     }
 
-    @Transactional(readOnly = true)
     override fun readWithOperations(scope: TenantScope, namespaceId: String, deliveryId: String): Map<String, Any?>? {
-        val snapshot = readInternal(scope, namespaceId, deliveryId, forUpdate = false) ?: return null
+        val snapshot = readInternal(scope, namespaceId, deliveryId) ?: return null
         val projection = projection(journalInternal(scope, namespaceId, deliveryId))
         return snapshot + mapOf(
             "deliveryOperations" to projection.operations,
@@ -131,7 +130,6 @@ class SqlDeliveryRepository(
         )
     }
 
-    @Transactional(readOnly = true)
     override fun inspectDeliveryOperations(
         scope: TenantScope,
         namespaceId: String,
@@ -141,12 +139,11 @@ class SqlDeliveryRepository(
         return projection(journalInternal(scope, namespaceId, deliveryId))
     }
 
-    @Transactional
     override fun createRollbackRequest(
         scope: TenantScope,
         input: DeliveryStoreRollbackRequestInput,
     ): DeliveryWriteResult {
-        val snapshot = readInternal(scope, input.namespaceId, input.deliveryId, forUpdate = true)
+        val snapshot = readInternal(scope, input.namespaceId, input.deliveryId)
             ?: return DeliveryWriteResult.failure(DeliveryErrorCodes.DELIVERY_NOT_FOUND)
         if (snapshot["workflowId"] != input.workflowId ||
             snapshot["parentCaseId"] != input.caseId ||
@@ -198,7 +195,6 @@ class SqlDeliveryRepository(
         return DeliveryWriteResult.changed(request = record)
     }
 
-    @Transactional
     override fun approveRollbackRequest(
         scope: TenantScope,
         namespaceId: String,
@@ -206,7 +202,7 @@ class SqlDeliveryRepository(
         rollbackRequestId: String,
         approval: DeliveryStoreRollbackApprovalInput,
     ): DeliveryWriteResult {
-        val snapshot = readInternal(scope, namespaceId, deliveryId, forUpdate = true)
+        val snapshot = readInternal(scope, namespaceId, deliveryId)
             ?: return DeliveryWriteResult.failure(DeliveryErrorCodes.DELIVERY_NOT_FOUND)
         val projection = projection(journalInternal(scope, namespaceId, deliveryId))
         val current = projection.rollbackRequests.find { it["rollbackRequestId"] == rollbackRequestId }
@@ -248,7 +244,6 @@ class SqlDeliveryRepository(
         return DeliveryWriteResult.changed(request = record)
     }
 
-    @Transactional
     override fun createDeliveryOperation(
         scope: TenantScope,
         input: DeliveryStoreOperationInput,
@@ -258,7 +253,7 @@ class SqlDeliveryRepository(
             return DeliveryWriteResult.failure(normalized.code, normalized.reason)
         }
         val request = (normalized as DeliveryOperationRequestNormalization.Valid).value
-        val snapshot = readInternal(scope, input.namespaceId, input.deliveryId, forUpdate = true)
+        val snapshot = readInternal(scope, input.namespaceId, input.deliveryId)
             ?: return DeliveryWriteResult.failure(DeliveryErrorCodes.DELIVERY_NOT_FOUND)
         val targetHash = input.targetRef?.get("targetHash") as? String
         val identity = deriveDeliveryOperationIdentity(
@@ -325,7 +320,6 @@ class SqlDeliveryRepository(
         return DeliveryWriteResult.changed(operation = persisted)
     }
 
-    @Transactional
     override fun recordDeliveryOperation(
         scope: TenantScope,
         namespaceId: String,
@@ -334,7 +328,7 @@ class SqlDeliveryRepository(
         transition: DeliveryOperationTransitionInput,
         inspectedObservation: DeliveryOperationObservation?,
     ): DeliveryWriteResult {
-        readInternal(scope, namespaceId, deliveryId, forUpdate = true)
+        readInternal(scope, namespaceId, deliveryId)
             ?: return DeliveryWriteResult.failure(DeliveryErrorCodes.DELIVERY_NOT_FOUND)
         val projection = projection(journalInternal(scope, namespaceId, deliveryId))
         val previous = projection.operations.find { it["operationId"] == operationId }
@@ -367,7 +361,6 @@ class SqlDeliveryRepository(
         return DeliveryWriteResult.changed(operation = clean)
     }
 
-    @Transactional
     override fun startDeliveryOperation(
         scope: TenantScope,
         namespaceId: String,
@@ -383,7 +376,6 @@ class SqlDeliveryRepository(
         null,
     )
 
-    @Transactional
     override fun reconcileDeliveryOperation(
         scope: TenantScope,
         namespaceId: String,
@@ -405,14 +397,12 @@ class SqlDeliveryRepository(
         observation.copy(operationId = operationId),
     )
 
-    @Transactional(readOnly = true)
     override fun hasIndeterminateOperation(scope: TenantScope, namespaceId: String, deliveryId: String): Boolean = try {
         inspectDeliveryOperations(scope, namespaceId, deliveryId).unresolvedIndeterminate.isNotEmpty()
     } catch (_: Exception) {
         true
     }
 
-    @Transactional
     override fun updateSnapshot(
         scope: TenantScope,
         namespaceId: String,
@@ -420,7 +410,7 @@ class SqlDeliveryRepository(
         patch: Map<String, Any?>,
         operationInput: Map<String, Any?>,
     ): DeliveryWriteResult {
-        val current = readInternal(scope, namespaceId, deliveryId, forUpdate = true)
+        val current = readInternal(scope, namespaceId, deliveryId)
             ?: return DeliveryWriteResult.failure(DeliveryErrorCodes.DELIVERY_NOT_FOUND)
         val updated = LinkedHashMap(current)
         for ((key, value) in patch) {
@@ -430,7 +420,9 @@ class SqlDeliveryRepository(
                 parts.size == 2 -> {
                     val head = parts[0]
                     val tail = parts[1]
-                    val nested = LinkedHashMap((updated[head] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap())
+                    val nested = LinkedHashMap(
+                        (updated[head] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap(),
+                    )
                     nested[tail] = value
                     updated[head] = nested
                 }
@@ -449,19 +441,14 @@ class SqlDeliveryRepository(
         scope: TenantScope,
         namespaceId: String,
         deliveryId: String,
-        forUpdate: Boolean,
     ): Map<String, Any?>? {
-        val sql = buildString {
-            append("SELECT revision, payload FROM deliveries")
-            append(" WHERE organization_id = :organizationId AND workstream_id = :workstreamId")
-            append(" AND namespace_id = :namespaceId AND delivery_id = :deliveryId")
-            if (forUpdate) append(" FOR UPDATE")
-        }
-        val json = jdbc.query(
-            sql,
-            deliveryParams(scope, namespaceId, deliveryId),
-        ) { rs, _ -> rs.getString("payload") }.firstOrNull() ?: return null
-        val snapshot = deserialize(json)
+        val node = deliveries
+            .findById(
+                DeliveryNode.compositeId(scope.organizationId, scope.workstreamId, namespaceId, deliveryId),
+            ).orElse(null)
+            ?.takeIf { it.organizationId == scope.organizationId && it.workstreamId == scope.workstreamId }
+            ?: return null
+        val snapshot = deserialize(node.payload)
         if (!DeliverySnapshots.valid(snapshot) || snapshot["snapshotHash"] != DeliverySnapshots.payloadHash(snapshot)) {
             throw io.whozoss.factory.delivery.domain.deliveryException("CORRUPT_DELIVERY_STORAGE")
         }
@@ -472,70 +459,55 @@ class SqlDeliveryRepository(
         scope: TenantScope,
         namespaceId: String,
         deliveryId: String,
-    ): List<Map<String, Any?>> = jdbc.query(
-        """
-        SELECT payload FROM delivery_journal
-         WHERE organization_id = :organizationId
-           AND workstream_id = :workstreamId
-           AND namespace_id = :namespaceId
-           AND delivery_id = :deliveryId
-         ORDER BY record_sequence ASC
-        """.trimIndent(),
-        deliveryParams(scope, namespaceId, deliveryId),
-    ) { rs, _ -> rs.getString("payload") }.map { deserialize(it) }
+    ): List<Map<String, Any?>> =
+        records
+            .findByScopeAndDelivery(scope.organizationId, scope.workstreamId, namespaceId, deliveryId)
+            .map { deserialize(it.payload) }
 
     private fun appendInternal(
         scope: TenantScope,
         namespaceId: String,
         deliveryId: String,
-        records: List<Map<String, Any?>>,
+        journalRecords: List<Map<String, Any?>>,
     ) {
         var sequence = maxSequence(scope, namespaceId, deliveryId) + 1
-        for (record in records) {
-            val params = deliveryParams(scope, namespaceId, deliveryId)
-                .addValue("recordSequence", sequence)
-                .addValue("recordId", "$deliveryId:$sequence")
-                .addValue("recordType", record["recordType"] as? String)
-                .addValue("payload", serialize(record))
-                .addValue("createdAt", Timestamp.from(Instant.now()))
-            jdbc.update(
-                """
-                INSERT INTO delivery_journal (
-                    organization_id, workstream_id, namespace_id, delivery_id, record_sequence,
-                    record_id, record_type, payload, created_at
-                ) VALUES (
-                    :organizationId, :workstreamId, :namespaceId, :deliveryId, :recordSequence,
-                    :recordId, :recordType, CAST(:payload AS jsonb), :createdAt
-                )
-                """.trimIndent(),
-                params,
+        for (record in journalRecords) {
+            records.save(
+                DeliveryRecordNode(
+                    id = DeliveryRecordNode.compositeId(
+                        scope.organizationId,
+                        scope.workstreamId,
+                        namespaceId,
+                        deliveryId,
+                        sequence,
+                    ),
+                    organizationId = scope.organizationId,
+                    workstreamId = scope.workstreamId,
+                    namespaceId = namespaceId,
+                    deliveryId = deliveryId,
+                    recordSequence = sequence,
+                    recordId = "$deliveryId:$sequence",
+                    recordType = record["recordType"] as? String,
+                    payload = serialize(record),
+                    createdAt = Instant.now(),
+                ),
             )
             sequence++
         }
     }
 
-    private fun maxSequence(scope: TenantScope, namespaceId: String, deliveryId: String): Int =
-        jdbc.queryForObject(
-            """
-            SELECT COALESCE(MAX(record_sequence), 0) FROM delivery_journal
-             WHERE organization_id = :organizationId
-               AND workstream_id = :workstreamId
-               AND namespace_id = :namespaceId
-               AND delivery_id = :deliveryId
-            """.trimIndent(),
-            deliveryParams(scope, namespaceId, deliveryId),
-            Int::class.java,
-        ) ?: 0
+    private fun maxSequence(scope: TenantScope, namespaceId: String, deliveryId: String): Long =
+        records.maxRecordSequence(scope.organizationId, scope.workstreamId, namespaceId, deliveryId)
 
-    private fun projection(records: List<Map<String, Any?>>): DeliveryOperationProjection {
-        val history = records.filter { it["recordType"] == "delivery-operation" }
+    private fun projection(recordsList: List<Map<String, Any?>>): DeliveryOperationProjection {
+        val history = recordsList.filter { it["recordType"] == "delivery-operation" }
         val current = LinkedHashMap<String, Map<String, Any?>>()
         val resolved = history
             .filter { it["resolvedOperationId"] != null && it["state"] in listOf("succeeded", "failed") }
             .mapNotNull { it["resolvedOperationId"]?.toString() }
             .toSet()
         for (record in history) current[record["operationId"]?.toString() ?: ""] = record
-        val rollbackHistory = records.filter { it["recordType"] == "rollback-request" }
+        val rollbackHistory = recordsList.filter { it["recordType"] == "rollback-request" }
         val rollbackCurrent = LinkedHashMap<String, Map<String, Any?>>()
         for (record in rollbackHistory) rollbackCurrent[record["rollbackRequestId"]?.toString() ?: ""] = record
         val operations = current.values.toList()
@@ -586,58 +558,25 @@ class SqlDeliveryRepository(
             this["timestamp"] = nowIso()
             this["resultHash"] = snapshot["snapshotHash"]
         }
-        val payload = serialize(snapshot)
         val updatedAt = (snapshot["updatedAt"] as? String)?.let { parseInstant(it) } ?: Instant.now()
-        if (current != null) {
-            val updated = jdbc.update(
-                """
-                UPDATE deliveries
-                   SET revision = :revision,
-                       stage = :stage,
-                       payload = CAST(:payload AS jsonb),
-                       updated_at = :updatedAt
-                 WHERE organization_id = :organizationId
-                   AND workstream_id = :workstreamId
-                   AND namespace_id = :namespaceId
-                   AND delivery_id = :deliveryId
-                """.trimIndent(),
-                deliveryParams(scope, namespaceId, deliveryId)
-                    .addValue("revision", snapshot["revision"])
-                    .addValue("stage", snapshot["stage"])
-                    .addValue("payload", payload)
-                    .addValue("updatedAt", Timestamp.from(updatedAt)),
-            )
-            if (updated == 0) return DeliveryWriteResult.failure(DeliveryErrorCodes.REVISION_CONFLICT)
-        } else {
-            val createdAt = (snapshot["createdAt"] as? String)?.let { parseInstant(it) } ?: Instant.now()
-            jdbc.update(
-                """
-                INSERT INTO deliveries (
-                    organization_id, workstream_id, namespace_id, delivery_id,
-                    revision, stage, payload, created_at, updated_at
-                ) VALUES (
-                    :organizationId, :workstreamId, :namespaceId, :deliveryId,
-                    :revision, :stage, CAST(:payload AS jsonb), :createdAt, :updatedAt
-                )
-                """.trimIndent(),
-                deliveryParams(scope, namespaceId, deliveryId)
-                    .addValue("revision", snapshot["revision"])
-                    .addValue("stage", snapshot["stage"])
-                    .addValue("payload", payload)
-                    .addValue("createdAt", Timestamp.from(createdAt))
-                    .addValue("updatedAt", Timestamp.from(updatedAt)),
-            )
-        }
+        val createdAt = (snapshot["createdAt"] as? String)?.let { parseInstant(it) } ?: Instant.now()
+        deliveries.save(
+            DeliveryNode(
+                id = DeliveryNode.compositeId(scope.organizationId, scope.workstreamId, namespaceId, deliveryId),
+                organizationId = scope.organizationId,
+                workstreamId = scope.workstreamId,
+                namespaceId = namespaceId,
+                deliveryId = deliveryId,
+                revision = (snapshot["revision"] as? Number)?.toInt() ?: 1,
+                stage = snapshot["stage"] as? String,
+                payload = serialize(snapshot),
+                createdAt = createdAt,
+                updatedAt = updatedAt,
+            ),
+        )
         appendInternal(scope, namespaceId, deliveryId, listOf(operation, running, succeeded))
         return DeliveryWriteResult.changed(snapshot = snapshot)
     }
-
-    private fun deliveryParams(scope: TenantScope, namespaceId: String, deliveryId: String): MapSqlParameterSource =
-        MapSqlParameterSource()
-            .addValue("organizationId", scope.organizationId)
-            .addValue("workstreamId", scope.workstreamId)
-            .addValue("namespaceId", namespaceId)
-            .addValue("deliveryId", deliveryId)
 
     @Suppress("UNCHECKED_CAST")
     private fun deserialize(json: String?): Map<String, Any?> =

@@ -1,6 +1,6 @@
 package io.whozoss.factory.delivery
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.delivery.domain.DeliveryEvidenceItem
 import io.whozoss.factory.delivery.domain.DeliveryExecutionContext
 import io.whozoss.factory.delivery.domain.DeliveryPromotionDecision
@@ -12,6 +12,7 @@ import io.whozoss.factory.delivery.domain.evaluateDeliveryPromotion
 import io.whozoss.factory.delivery.domain.hashDeliveryDefinition
 import io.whozoss.factory.delivery.persistence.DeliveryRepository
 import io.whozoss.factory.delivery.persistence.DeliveryStorePromoteInput
+import io.whozoss.factory.delivery.persistence.SpringDataNeo4jDeliveryRecordRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -21,10 +22,13 @@ import org.springframework.beans.factory.annotation.Autowired
  * instance: snapshot persistence, append-only journal, optimistic locking,
  * dot-notation snapshot updates and idempotency handling.
  */
-class DeliveryRepositoryIntegrationTest : DomainIntegrationTest() {
+class DeliveryRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var repository: DeliveryRepository
+
+    @Autowired
+    private lateinit var recordRepository: SpringDataNeo4jDeliveryRecordRepository
 
     private val namespaceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
     private val caseId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
@@ -96,13 +100,8 @@ class DeliveryRepositoryIntegrationTest : DomainIntegrationTest() {
         execution = execution(),
     )
 
-    private fun journalCount(): Int = jdbcTemplate.queryForObject(
-        "SELECT COUNT(*) FROM delivery_journal WHERE organization_id = ? AND namespace_id = ? AND delivery_id = ?",
-        Int::class.java,
-        ORGANIZATION_ID,
-        namespaceId,
-        deliveryId,
-    ) ?: 0
+    private fun journalCount(): Int =
+        recordRepository.findByScopeAndDelivery(ORGANIZATION_ID, WORKSTREAM_ID, namespaceId, deliveryId).size
 
     @Test
     fun `create persists the snapshot and appends a journal`() {

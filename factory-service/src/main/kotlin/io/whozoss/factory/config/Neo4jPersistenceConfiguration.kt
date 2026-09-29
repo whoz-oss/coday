@@ -37,6 +37,11 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
     basePackages = [
         "io.whozoss.factory.oracle.persistence",
         "io.whozoss.factory.artifact.infrastructure.persistence",
+        "io.whozoss.factory.delivery.persistence",
+        "io.whozoss.factory.lease.persistence",
+        "io.whozoss.factory.worker.persistence",
+        "io.whozoss.factory.workunit.persistence",
+        "io.whozoss.factory.environment.persistence",
     ],
 )
 class Neo4jPersistenceConfiguration {

@@ -1,6 +1,6 @@
 package io.whozoss.factory.lease
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.lease.domain.LeaseExpiryReasons
 import io.whozoss.factory.lease.domain.LeaseExpiredException
 import io.whozoss.factory.lease.domain.LeaseFencedException
@@ -24,7 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired
  * `heartbeat_timeout` reason, and an empty eligible scan yields
  * `NO_ELIGIBLE_WORK_UNIT`.
  */
-class LeaseFencingAndExpiryTest : DomainIntegrationTest() {
+class LeaseFencingAndExpiryTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var leaseService: LeaseService

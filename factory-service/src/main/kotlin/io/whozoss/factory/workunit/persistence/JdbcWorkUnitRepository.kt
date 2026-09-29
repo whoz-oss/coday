@@ -8,7 +8,6 @@ import io.whozoss.factory.workunit.domain.WorkUnitState
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
-import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Instant
@@ -21,7 +20,6 @@ import java.time.Instant
  * `(organization_id, workstream_id)`; a scope-less statement is impossible by
  * construction.
  */
-@Repository
 class JdbcWorkUnitRepository(
     private val jdbc: NamedParameterJdbcTemplate,
 ) : WorkUnitRepository {

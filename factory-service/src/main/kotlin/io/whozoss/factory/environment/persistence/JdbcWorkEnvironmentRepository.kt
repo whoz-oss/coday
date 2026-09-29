@@ -11,7 +11,6 @@ import io.whozoss.factory.persistence.TenantScope
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
-import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Instant
@@ -26,7 +25,6 @@ import java.time.Instant
  * the optimistic-locking `revision`, while the whole descriptor is kept verbatim
  * in the JSONB `payload`.
  */
-@Repository
 class JdbcWorkEnvironmentRepository(
     private val jdbc: NamedParameterJdbcTemplate,
     private val objectMapper: ObjectMapper,

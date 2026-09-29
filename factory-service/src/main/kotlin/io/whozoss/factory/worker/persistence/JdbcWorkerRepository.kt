@@ -10,7 +10,6 @@ import io.whozoss.factory.worker.domain.WorkerState
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
-import org.springframework.stereotype.Repository
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Instant
@@ -23,7 +22,6 @@ import java.time.Instant
  * columns; `revision` is the optimistic-locking column compared-and-swapped by
  * the `UPDATE ... WHERE revision = :expectedRevision` clause.
  */
-@Repository
 class JdbcWorkerRepository(
     private val jdbc: NamedParameterJdbcTemplate,
     private val objectMapper: ObjectMapper,
