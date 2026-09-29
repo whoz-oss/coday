@@ -1,0 +1,18 @@
+# Activates the embedded Neo4j persistence mode explicitly.
+#
+# `factory.persistence.mode=embedded-neo4j` is already the default in
+# application.yml; this profile file makes the mode explicit and pins the Bolt
+# URI so Spring Data Neo4j can build its connection details when the Driver bean
+# is provided by EmbeddedNeo4jConfiguration.
+#
+# Activate with: --spring.profiles.active=embedded-neo4j
+factory:
+  persistence:
+    mode: embedded-neo4j
+
+spring:
+  neo4j:
+    uri: bolt://localhost:7688
+    authentication:
+      username: neo4j
+      password: password

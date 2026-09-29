@@ -9,7 +9,7 @@ import org.springframework.boot.runApplication
  *
  * This is the *socle*: no domain aggregate, no business controller. It wires the
  * HTTP boundary (correlation id, trust context, admin guard), the error
- * envelope matching the Node contract, OpenAPI, and the PostgreSQL/Flyway
+ * envelope matching the Node contract, OpenAPI, and the embedded-Neo4j
  * persistence foundation.
  */
 @SpringBootApplication

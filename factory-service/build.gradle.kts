@@ -51,11 +51,40 @@ dependencies {
     implementation(libs.spring.boot.starter.actuator)
     implementation(libs.spring.boot.starter.data.jdbc)
 
-    // Persistence — Spring Data JDBC (NOT JPA) + Flyway on PostgreSQL
-    implementation(libs.flyway.core)
-    implementation(libs.flyway.database.postgresql)
-    runtimeOnly(libs.postgresql)
-    // Embedded DB for the `openapi` profile only (spec generation without PostgreSQL).
+    // Persistence — Spring Data Neo4j (embedded engine or standalone server).
+    // Flyway and the PostgreSQL driver were removed as part of the Postgres →
+    // embedded Neo4j swap (Phase 1). The relational repositories that are not
+    // migrated yet run on H2 until later phases move them to the graph.
+    implementation(libs.spring.boot.starter.data.neo4j)
+
+    // Netty 4.2.x — explicit direct dependency to override Spring Boot BOM's 4.1.x pin.
+    // Neo4j 2026.x BoltServer requires MultiThreadIoEventLoopGroup and KQueueIoHandler,
+    // introduced in Netty 4.2.x. See the resolutionStrategy below.
+    runtimeOnly("io.netty:netty-transport-classes-epoll:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-transport-classes-kqueue:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-common:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-buffer:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-transport:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-handler:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-codec:${libs.versions.netty.get()}")
+    runtimeOnly("io.netty:netty-resolver:${libs.versions.netty.get()}")
+
+    // Neo4j embedded engine (Community Edition) — activated only when
+    // factory.persistence.mode=embedded-neo4j. The embedded engine starts an
+    // in-process Neo4j instance and exposes a Bolt port; Spring Data Neo4j
+    // connects to it exactly like to a standalone server. This removes the
+    // Docker prerequisite for local single-user deployments.
+    implementation(libs.neo4j.embedded) {
+        // Neo4j ships a competing SLF4J provider/binding that shadows Logback,
+        // causing Spring Boot's LogbackLoggingSystem to fail with NOPLoggerFactory.
+        exclude(group = "org.slf4j")
+        exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j-impl")
+        exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
+        // Neo4j 2026.x requests driver 6.x; Spring Boot BOM pins 5.x.
+        // Let Spring Boot's driver win to keep a single driver on the classpath.
+        exclude(group = "org.neo4j.driver", module = "neo4j-java-driver")
+    }
+    // Embedded relational DB for the repositories not yet migrated to Neo4j.
     runtimeOnly(libs.h2)
 
     // OpenAPI / Swagger UI
@@ -73,24 +102,70 @@ dependencies {
 
     // Test
     testImplementation(libs.spring.boot.starter.test)
-    testImplementation(libs.testcontainers.junit)
-    testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.mockk)
     testImplementation(libs.mockk.spring)
     testImplementation(libs.kotlin.test.junit5)
     testRuntimeOnly(libs.junit.platform.launcher)
+    // Neo4j test harness — starts an in-process Neo4j for repository tests
+    // without Docker and without the full embedded engine / Netty 4.2 BoltServer.
+    testImplementation(libs.neo4j.harness) {
+        exclude(group = "org.slf4j")
+        exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j-impl")
+        exclude(group = "org.apache.logging.log4j", module = "log4j-slf4j2-impl")
+    }
+}
+
+// Neo4j 2026.x ships org.neo4j:neo4j-slf4j-provider, which registers an SLF4J
+// service provider that can win the ServiceLoader race over Logback. Excluding
+// it from every configuration guarantees it never shadows Spring Boot's logging.
+configurations.all {
+    exclude(group = "org.neo4j", module = "neo4j-slf4j-provider")
+}
+
+// Neo4j 2026.x (embedded engine and test harness) requires Netty 4.2.x for
+// BoltServer. Spring Boot BOM pins Netty 4.1.x, which Gradle's conflict
+// resolution selects by default (lower version wins). Force the core Netty
+// transport modules to 4.2.x across all configurations.
+//
+// Excluded from forcing: netty-tcnative-* (native TLS helper) only exists for
+// specific 4.1.x builds; forcing 4.2.x would fail resolution.
+val nettyCoreModules =
+    setOf(
+        "netty-common",
+        "netty-buffer",
+        "netty-transport",
+        "netty-transport-native-epoll",
+        "netty-transport-native-kqueue",
+        "netty-transport-native-unix-common",
+        "netty-transport-classes-epoll",
+        "netty-transport-classes-kqueue",
+        "netty-handler",
+        "netty-handler-proxy",
+        "netty-codec",
+        "netty-codec-http",
+        "netty-codec-http2",
+        "netty-codec-socks",
+        "netty-resolver",
+        "netty-resolver-dns",
+    )
+configurations.all {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "io.netty" && requested.name in nettyCoreModules) {
+            useVersion(libs.versions.netty.get())
+            because("neo4j 2026.x requires Netty 4.2.x; Spring Boot BOM pins 4.1.x")
+        }
+    }
 }
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    // Docker Engine 29.x raised its minimum API version to 1.40.
-    // Testcontainers 1.x / docker-java 3.4.x defaults to API v1.32 which is
-    // rejected with HTTP 400. Force a supported version.
-    systemProperty("api.version", "1.44")
+    // Neo4j embedded/harness + cached Spring contexts need more than Gradle's
+    // default heap.
+    maxHeapSize = "2g"
     jvmArgs("-XX:-OmitStackTraceInFastThrow")
-    // JDK 25 restricted native access: Testcontainers' docker-java loads JNA
-    // reflectively, which the JVM reports as a warning on the test JVM unless
-    // native access is enabled for the unnamed module.
+    // JDK 25 restricted native access: Neo4j's embedded engine and the test
+    // harness load native helpers reflectively, which the JVM reports as a
+    // warning unless native access is enabled for the unnamed module.
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
@@ -129,8 +204,9 @@ openApi {
     customBootRun {
         args.set(
             listOf(
-                "--spring.profiles.active=openapi",
+                "--spring.profiles.active=openapi,embedded-neo4j",
                 "--server.port=$openApiGenPort",
+                "--factory.persistence.embedded-bolt-port=0",
             ),
         )
     }

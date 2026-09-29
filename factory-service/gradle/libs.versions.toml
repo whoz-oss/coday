@@ -16,12 +16,16 @@ springDependencyManagement = "1.1.7"
 springdoc = "2.8.9"
 springdocPlugin = "1.9.0"
 klogger = "2.0.4"
-testcontainers = "1.20.4"
 mockk = "1.13.5"
 mockk-spring = "3.1.2"
 jackson = "2.19.4"
 pf4j = "3.13.0"
 pf4jSpring = "0.10.0"
+# Neo4j embedded engine (Community Edition) — calendar-versioned release line.
+neo4jEmbedded = "2026.02.2"
+# Netty version required by neo4j-embedded 2026.x / neo4j-harness 2026.x (BoltServer).
+# Spring Boot BOM pins 4.1.x; the resolutionStrategy in build.gradle.kts forces 4.2.x.
+netty = "4.2.9.Final"
 
 [libraries]
 # Kotlin
@@ -34,13 +38,16 @@ spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-start
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-data-jdbc = { module = "org.springframework.boot:spring-boot-starter-data-jdbc" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
+# Spring Data Neo4j — Bolt-based repositories (embedded engine or standalone server).
+spring-boot-starter-data-neo4j = { module = "org.springframework.boot:spring-boot-starter-data-neo4j" }
 
-# Persistence
-flyway-core = { module = "org.flywaydb:flyway-core" }
-flyway-database-postgresql = { module = "org.flywaydb:flyway-database-postgresql" }
-postgresql = { module = "org.postgresql:postgresql" }
-# Embedded database used only by the `openapi` profile so the spec can be
-# generated without a running PostgreSQL instance (see application-openapi.yml).
+# Persistence — Neo4j embedded engine + test harness
+# https://neo4j.com/docs/operations-manual/current/tools/neo4j-harness/
+neo4j-embedded = { module = "org.neo4j:neo4j", version.ref = "neo4jEmbedded" }
+neo4j-harness = { module = "org.neo4j.test:neo4j-harness", version.ref = "neo4jEmbedded" }
+# Embedded relational database used by the not-yet-migrated relational
+# repositories (Phases 2+ migrate them to Neo4j). Replaces PostgreSQL so the
+# service builds and boots without a PostgreSQL driver or Flyway.
 h2 = { module = "com.h2database:h2" }
 
 # OpenAPI
@@ -55,8 +62,6 @@ jackson-module-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-
 jackson-datatype-jsr310 = { module = "com.fasterxml.jackson.datatype:jackson-datatype-jsr310", version.ref = "jackson" }
 
 # Test
-testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
-testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 mockk-spring = { module = "com.ninja-squad:springmockk", version.ref = "mockk-spring" }
 junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }

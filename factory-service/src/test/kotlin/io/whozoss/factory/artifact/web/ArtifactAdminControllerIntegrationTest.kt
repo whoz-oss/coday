@@ -1,6 +1,6 @@
 package io.whozoss.factory.artifact.web
 
-import io.whozoss.factory.PostgresContainerSpec
+import io.whozoss.factory.Neo4jIntegrationTest
 import io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobClient
 import io.whozoss.factory.artifact.port.ArtifactStore
 import io.whozoss.factory.artifact.port.PutArtifactParams
@@ -18,24 +18,20 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.jdbc.core.JdbcTemplate
 
 /**
  * Integration tests for the admin artifact governance HTTP boundary.
  *
  * They exercise the real servlet filter chain (correlation id, trust context)
- * against a PostgreSQL 16 instance, asserting the exact Node contracts: the
+ * against the embedded Neo4j engine, asserting the exact Node contracts: the
  * `FORBIDDEN_ADMIN_REQUIRED` 403 for non-admins, the `{ "data": ... }` success
  * envelope, the machine error codes of the purge / legal-hold refusals and the
  * `METHOD_NOT_ALLOWED` 405 for non-POST calls.
  */
-class ArtifactAdminControllerIntegrationTest : PostgresContainerSpec() {
+class ArtifactAdminControllerIntegrationTest : Neo4jIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
-
-    @Autowired
-    private lateinit var jdbcTemplate: JdbcTemplate
 
     @Autowired
     private lateinit var artifactStore: ArtifactStore
@@ -50,14 +46,8 @@ class ArtifactAdminControllerIntegrationTest : PostgresContainerSpec() {
 
     @BeforeEach
     fun setUp() {
-        jdbcTemplate.update(
-            "DELETE FROM workflow_instances WHERE organization_id = ? AND workstream_id = ?",
-            ORGANIZATION_ID,
-            WORKSTREAM_ID,
-        )
         // Drain the shared in-memory blob store so each test starts from a clean slate.
         (blobClient.listObjectKeys("objects/") + blobClient.listObjectKeys("uploads/")).forEach { blobClient.deleteObject(it) }
-        ensureWorkflowInstance("ns")
     }
 
     private val adminToken: String
@@ -237,20 +227,6 @@ class ArtifactAdminControllerIntegrationTest : PostgresContainerSpec() {
         @Suppress("UNCHECKED_CAST")
         val error = response.body!!["error"] as Map<String, Any?>
         return error["code"] as String?
-    }
-
-    private fun ensureWorkflowInstance(namespaceId: String) {
-        jdbcTemplate.update(
-            """
-            INSERT INTO workflow_instances (
-              organization_id, workstream_id, namespace_id, workflow_id, revision, status, instance_json, projection_json
-            ) VALUES (?, ?, ?, 'default', 1, 'active', '{}'::jsonb, '{}'::jsonb)
-            ON CONFLICT DO NOTHING
-            """.trimIndent(),
-            ORGANIZATION_ID,
-            WORKSTREAM_ID,
-            namespaceId,
-        )
     }
 
     companion object {

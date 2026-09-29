@@ -1,26 +1,24 @@
 # Profile used by the springdoc `generateOpenApiDocs` task.
 #
-# Spec generation must not require a running PostgreSQL instance, so the
-# `openapi` profile boots on an in-memory H2 database with Flyway disabled
-# (the migrations are PostgreSQL-specific). The generated OpenAPI document is a
-# pure function of the controllers/annotations, so the datasource is irrelevant.
+# Spec generation boots on the interim embedded relational store (H2, configured
+# in application.yml) and the embedded Neo4j engine, with the workflow seed and
+# the outbox drain disabled so no background work interferes with spec
+# generation. The generated OpenAPI document is a pure function of the
+# controllers/annotations, so the persistence state is irrelevant.
 spring:
-  datasource:
-    url: jdbc:h2:mem:factory-openapi;DB_CLOSE_DELAY=-1;MODE=PostgreSQL
-    username: sa
-    password: ""
-    driver-class-name: org.h2.Driver
-  flyway:
-    enabled: false
+  neo4j:
+    uri: bolt://localhost:7688
 
 factory:
+  persistence:
+    # Fresh database directory wiped by `./gradlew clean`.
+    data-dir: build/openapi-neo4j-data/
   security:
     allow-loopback-dev: true
   outbox:
-    # Spec generation boots on H2 with no `outbox_events` table: never schedule a drain.
+    # Spec generation must never schedule a background drain.
     drain-enabled: false
   workflow:
     seed:
-      # Spec generation boots on H2 with Flyway disabled (no workflow tables):
-      # never run the definition seed there.
+      # Never run the definition seed during spec generation.
       enabled: false

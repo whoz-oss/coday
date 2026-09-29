@@ -1,6 +1,6 @@
 package io.whozoss.factory.oracle
 
-import io.whozoss.factory.PostgresContainerSpec
+import io.whozoss.factory.Neo4jIntegrationTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -24,7 +24,7 @@ import org.springframework.http.MediaType
  * the [org.springframework.web.filter.ForwardedHeaderFilter], which rewrites
  * `request.remoteAddr` to the forwarded (non-loopback) address.
  */
-class OracleControllerAuthenticationTest : PostgresContainerSpec() {
+class OracleControllerAuthenticationTest : Neo4jIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate

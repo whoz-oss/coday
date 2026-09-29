@@ -1,6 +1,6 @@
 package io.whozoss.factory.artifact.infrastructure.persistence
 
-import io.whozoss.factory.PostgresContainerSpec
+import io.whozoss.factory.Neo4jIntegrationTest
 import io.whozoss.factory.artifact.config.ArtifactProperties
 import io.whozoss.factory.artifact.domain.ArtifactAvailabilityStatus
 import io.whozoss.factory.artifact.domain.ArtifactHash
@@ -16,19 +16,21 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.jdbc.core.JdbcTemplate
 import java.time.Instant
 
 /**
- * Integration tests for [PostgresArtifactStore] and [ArtifactAdminService]
- * against a real PostgreSQL 16 instance (Testcontainers). They cover the
- * metadata round-trip with the three orthogonal statuses, the upload-then-commit
- * protocol, the purge lifecycle, legal holds and the triggered GC audit.
+ * Embedded-Neo4j integration tests for [Neo4jArtifactStore] and
+ * [ArtifactAdminService] (the former `artifacts` rows are now `:ArtifactMetadata`
+ * nodes). They cover the metadata round-trip with the three orthogonal statuses,
+ * the upload-then-commit protocol, the purge lifecycle, legal holds and the
+ * triggered GC audit.
+ *
+ * The Neo4j engine is the in-process test harness — no Docker required.
  */
-class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
+class Neo4jArtifactStoreIntegrationTest : Neo4jIntegrationTest() {
 
     @Autowired
-    private lateinit var jdbcTemplate: JdbcTemplate
+    private lateinit var repository: SpringDataNeo4jArtifactRepository
 
     @Autowired
     private lateinit var properties: ArtifactProperties
@@ -37,22 +39,19 @@ class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
     private val fixedNow: Instant = Instant.parse("2026-01-01T00:00:00Z")
 
     private lateinit var blobClient: InMemoryArtifactBlobClient
-    private lateinit var store: PostgresArtifactStore
+    private lateinit var store: Neo4jArtifactStore
     private lateinit var adminService: ArtifactAdminService
 
     @BeforeEach
     fun setUp() {
-        jdbcTemplate.update("DELETE FROM workflow_instances WHERE organization_id = ?", ORGANIZATION_ID)
         blobClient = InMemoryArtifactBlobClient()
-        store = PostgresArtifactStore(
-            jdbcTemplate = jdbcTemplate,
+        store = Neo4jArtifactStore(
+            repository = repository,
             blobClient = blobClient,
             defaultRetentionDays = properties.retentionDays,
             now = { fixedNow },
         )
         adminService = ArtifactAdminService(store, store, blobClient, now = { fixedNow })
-        ensureWorkflowInstance("ns", "default")
-        ensureWorkflowInstance("team", "flow")
     }
 
     @Test
@@ -93,19 +92,17 @@ class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
     }
 
     @Test
-    fun `structured owner namespaces the persisted row`() {
+    fun `structured owner namespaces the persisted node`() {
         val metadata = store.putArtifact(
             scope,
             PutArtifactParams(owner = "team/flow", contentType = "application/octet-stream", data = "x".toByteArray(), retentionDays = 1),
         )
-        val row = jdbcTemplate.queryForMap(
-            "SELECT organization_id, workstream_id, namespace_id, workflow_id FROM artifacts WHERE artifact_id = ?",
-            metadata.id,
-        )
-        assertThat(row["organization_id"]).isEqualTo(ORGANIZATION_ID)
-        assertThat(row["workstream_id"]).isEqualTo(WORKSTREAM_ID)
-        assertThat(row["namespace_id"]).isEqualTo("team")
-        assertThat(row["workflow_id"]).isEqualTo("flow")
+        val node = repository.findById(metadata.id).orElseThrow()
+        assertThat(node.organizationId).isEqualTo(ORGANIZATION_ID)
+        assertThat(node.workstreamId).isEqualTo(WORKSTREAM_ID)
+        assertThat(node.namespaceId).isEqualTo("team")
+        assertThat(node.workflowId).isEqualTo("flow")
+        assertThat(node.owner).isEqualTo("team/flow")
         assertThat(store.getArtifactMetadata(scope, metadata.id)!!.owner).isEqualTo("team/flow")
     }
 
@@ -126,13 +123,10 @@ class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
         assertThat(store.openArtifact(scope, metadata.id)).isNull()
         assertThat(store.purgeArtifact(scope, metadata.id, "again")).isFalse()
 
-        val row = jdbcTemplate.queryForMap(
-            "SELECT availability_status, purge_reason, legal_hold FROM artifacts WHERE artifact_id = ?",
-            metadata.id,
-        )
-        assertThat(row["availability_status"]).isEqualTo("purged")
-        assertThat(row["purge_reason"]).isEqualTo("retention-elapsed")
-        assertThat(row["legal_hold"]).isEqualTo(false)
+        val node = repository.findById(metadata.id).orElseThrow()
+        assertThat(node.availabilityStatus).isEqualTo("purged")
+        assertThat(node.purgeReason).isEqualTo("retention-elapsed")
+        assertThat(node.legalHold).isFalse()
     }
 
     @Test
@@ -174,12 +168,12 @@ class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
 
     @Test
     fun `triggered GC reclaims staging uploads and audits anomalies`() {
-        // A consistent artifact: blob present, row available.
+        // A consistent artifact: blob present, node available.
         store.putArtifact(
             scope,
             PutArtifactParams(owner = "ns", contentType = "text/plain", data = "consistent".toByteArray(), retentionDays = 30),
         )
-        // A purged artifact: row marked purged.
+        // A purged artifact: node marked purged.
         val toPurge = store.putArtifact(
             scope,
             PutArtifactParams(owner = "ns", contentType = "text/plain", data = "purge-me".toByteArray(), retentionDays = 0),
@@ -241,21 +235,6 @@ class PostgresArtifactStoreIntegrationTest : PostgresContainerSpec() {
         assertThat(thrown).isInstanceOf(ArtifactAdminException::class.java)
         assertThat((thrown as ArtifactAdminException).errorCode).isEqualTo("ARTIFACT_NOT_FOUND")
         assertThat(thrown.statusCode).isEqualTo(404)
-    }
-
-    private fun ensureWorkflowInstance(namespaceId: String, workflowId: String) {
-        jdbcTemplate.update(
-            """
-            INSERT INTO workflow_instances (
-              organization_id, workstream_id, namespace_id, workflow_id, revision, status, instance_json, projection_json
-            ) VALUES (?, ?, ?, ?, 1, 'active', '{}'::jsonb, '{}'::jsonb)
-            ON CONFLICT DO NOTHING
-            """.trimIndent(),
-            ORGANIZATION_ID,
-            WORKSTREAM_ID,
-            namespaceId,
-            workflowId,
-        )
     }
 
     companion object {
