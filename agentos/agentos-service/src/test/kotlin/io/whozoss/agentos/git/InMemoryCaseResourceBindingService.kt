@@ -20,8 +20,29 @@ class InMemoryCaseResourceBindingService : CaseResourceBindingService {
     override fun findByRootCaseId(rootCaseId: UUID): CaseResourceBinding? =
         rows.values.firstOrNull { it.rootCaseId == rootCaseId && !it.metadata.removed }
 
+    override fun findByStatusIn(
+        statuses: Collection<CaseResourceStatus>,
+        limit: Int,
+        after: CaseResourceBindingCursor?,
+    ): List<CaseResourceBinding> =
+        rows.values
+            .filter { !it.metadata.removed && it.status in statuses }
+            .filter { after == null || it.metadata.created > after.created ||
+                (it.metadata.created == after.created && it.id.toString() > after.id.toString()) }
+            .sortedWith(compareBy({ it.metadata.created }, { it.id.toString() }))
+            .take(limit)
+
     override fun delete(id: UUID): Boolean =
         rows[id]?.let { rows[id] = it.copy(metadata = it.metadata.copy(removed = true)); true } ?: false
 
     override fun deleteByParent(parentId: UUID): Int = findByParent(parentId).count { delete(it.id) }
+
+    override fun markStatus(
+        id: UUID,
+        status: CaseResourceStatus,
+        failureReason: String?,
+    ): CaseResourceBinding {
+        val current = requireNotNull(rows[id]) { "binding $id not found" }
+        return current.copy(status = status, failureReason = failureReason).also { rows[id] = it }
+    }
 }

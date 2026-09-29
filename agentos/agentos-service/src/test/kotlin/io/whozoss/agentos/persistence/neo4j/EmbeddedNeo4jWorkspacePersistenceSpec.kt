@@ -26,15 +26,18 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
     @Autowired lateinit var cases: CaseRepository
     @Autowired lateinit var namespaces: NamespaceRepository
     @Autowired lateinit var bindings: CaseResourceBindingService
+    @Autowired lateinit var caseService: CaseService
     @Autowired lateinit var driver: Driver
+    @Autowired lateinit var roots: GitExchangeRootResolver
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
-        "bindings roundtrip their status independently of the case title" {
+        "bindings roundtrip lifecycle and settings independently of the case title" {
             val ns = namespaces.save(Namespace(name = "workspace"))
             val root = cases.save(Case(namespaceId = ns.id, title = "Case title"))
             val value = bindings.create(CaseResourceBinding(rootCaseId = root.id, namespaceId = ns.id,
-                integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY))
+                integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY,
+                settingsJson = "{}", setupStarted = true, setupCompleted = true))
             bindings.findByRootCaseId(root.id) shouldBe value
         }
 
@@ -79,5 +82,22 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             ready.status shouldBe CaseResourceStatus.READY
         }
 
+
+        "REST-style child creation records graph ancestry and the family lookup climbs through removed cases" {
+            val ns = namespaces.save(Namespace(name = "hierarchy"))
+            val root = caseService.create(Case(namespaceId = ns.id))
+            val child = caseService.create(Case(namespaceId = ns.id, parentCaseId = root.id))
+            // Historical records may carry parentCaseId without the PARENT_OF graph edge.
+            val grandchild = cases.save(Case(namespaceId = ns.id, parentCaseId = child.id,
+                status = io.whozoss.agentos.sdk.caseFlow.CaseStatus.KILLED))
+            val unrelated = cases.save(Case(namespaceId = ns.id))
+            val otherNs = namespaces.save(Namespace(name = "other-hierarchy"))
+            cases.save(Case(namespaceId = otherNs.id, parentCaseId = root.id))
+            cases.countAncestorDepth(child.id) shouldBe 1
+            cases.findActiveDescendants(root.id).map { it.id } shouldBe listOf(child.id)
+            cases.save(child.copy(metadata = child.metadata.copy(removed = true)))
+            roots.familyAmong(root, cases.findByParent(ns.id)).map { it.id }.toSet() shouldBe setOf(root.id, grandchild.id)
+            roots.familyAmong(root, listOf(unrelated)) shouldBe emptyList()
+        }
     }
 }

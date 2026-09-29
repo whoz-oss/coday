@@ -18,4 +18,13 @@ data class GitRepositorySettings(
     val mainBranch: String,
     /** UUID — never the name — of the namespace-shared AuthSetting used for every Git operation. */
     val serviceAuthSettingId: UUID,
+    /**
+     * Whether a new root case is equipped with its own detached worktree.
+     *
+     * Read once, when a root case is created, then persisted on that family's binding. Flipping it
+     * later never re-equips existing families nor strips equipped ones.
+     */
+    val autoWorktreeForRootCases: Boolean,
+    /** Optional setup command executed inside a new worktree before it is marked ready. */
+    val setupCommand: String?,
 )

@@ -30,5 +30,12 @@ class GitRepositoryAssociationService(
             .findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE)
             ?.let { gitRepoSettingsFactory.fromConfig(it, validateRemote = false) }
 
-
+    /** Disabled automation must never make ordinary conversation creation depend on Git. */
+    fun findAutomaticSettings(namespaceId: UUID): GitRepositorySettings? {
+        val config = integrationConfigService.findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE)
+            ?: return null
+        if (config.parameters?.get(GitRepositoryIntegration.PARAM_AUTO_WORKTREE)?.asBoolean(false) != true) return null
+        // The saved shape is parsed here; DNS and transport checks belong to actual Git execution.
+        return gitRepoSettingsFactory.fromConfig(config, validateRemote = false)
+    }
 }

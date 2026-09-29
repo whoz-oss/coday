@@ -13,6 +13,10 @@ import java.util.UUID
  * saying "no resource". The presence of a binding — never the namespace's current configuration —
  * is what makes a family equipped: enabling automation later must not retro-equip existing
  * families, and disabling it must not strip equipped ones.
+ *
+ * [baseSha] is frozen once, when preparation first resolves the main branch, and never
+ * recomputed: a retry after a crash must reuse the same base, without
+ * silently rebase the case onto whatever was pushed meanwhile.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CaseResourceBinding(
@@ -23,6 +27,12 @@ data class CaseResourceBinding(
     /** The `GIT_REPOSITORY` configuration this workspace was provisioned from. */
     val integrationConfigId: UUID,
     val status: CaseResourceStatus = CaseResourceStatus.REQUESTED,
+    /** Starting commit of the detached worktree, frozen at first successful resolution. */
+    val baseSha: String? = null,
     /** Operator-facing failure cause; never a secret. */
     val failureReason: String? = null,
+    val settingsJson: String? = null,
+    val cleanupReason: String? = null,
+    val setupStarted: Boolean = false,
+    val setupCompleted: Boolean = false,
 ) : Entity

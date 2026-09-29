@@ -1,5 +1,7 @@
 package io.whozoss.agentos.git
 
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import mu.KLogging
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -23,7 +25,25 @@ class CaseResourceBindingServiceImpl(
 
     override fun findByRootCaseId(rootCaseId: UUID): CaseResourceBinding? = repository.findByRootCaseId(rootCaseId)
 
+    override fun findByStatusIn(
+        statuses: Collection<CaseResourceStatus>,
+        limit: Int,
+        after: CaseResourceBindingCursor?,
+    ): List<CaseResourceBinding> = repository.findByStatusIn(statuses, limit, after)
+
     override fun delete(id: UUID): Boolean = repository.delete(id)
 
     override fun deleteByParent(parentId: UUID): Int = repository.deleteByParent(parentId)
+
+    override fun markStatus(
+        id: UUID,
+        status: CaseResourceStatus,
+        failureReason: String?,
+    ): CaseResourceBinding {
+        val current = repository.findById(id) ?: throw ResourceNotFoundException("Case resource binding $id not found")
+        logger.info { "[CaseResourceBinding] $id rootCase=${current.rootCaseId} ${current.status} -> $status" }
+        return repository.save(current.copy(status = status, failureReason = failureReason))
+    }
+
+    companion object : KLogging()
 }

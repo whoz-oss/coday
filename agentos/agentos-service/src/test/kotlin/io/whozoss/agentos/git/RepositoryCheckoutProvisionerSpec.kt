@@ -70,6 +70,7 @@ class RepositoryCheckoutProvisionerSpec :
 
         fun fixture(
             checkoutStore: InMemoryRepositoryCheckoutService = InMemoryRepositoryCheckoutService(),
+            bindings: CaseResourceBindingService = mockk { every { findByParent(any()) } returns emptyList() },
             properties: GitExecutionProperties = gitProperties,
         ): Triple<ExchangeStorageService, RepositoryCheckoutProvisioner, UUID> {
             val mount = Files.createTempDirectory("agentos-mount-")
@@ -97,6 +98,7 @@ class RepositoryCheckoutProvisionerSpec :
                     exchangeStorageService = storage,
                     checkoutService = checkoutStore,
                     serviceAccountResolver = GitServiceAccountResolver(authSettings),
+                    bindingService = bindings,
                 )
             return Triple(storage, provisioner, namespaceId)
         }
@@ -111,6 +113,8 @@ class RepositoryCheckoutProvisionerSpec :
                 repositoryUrl = origin.toUri().toString(),
                 mainBranch = "main",
                 serviceAuthSettingId = UUID.randomUUID(),
+                autoWorktreeForRootCases = false,
+                setupCommand = null,
             )
 
         "the bare repository lives outside both browsable Exchange roots" {
@@ -206,8 +210,6 @@ class RepositoryCheckoutProvisionerSpec :
             rawGit(common, "rev-parse", "refs/heads/feature-existing") shouldBe agentBranch
         }
 
-
-
         "initial branch import works when the complete ref listing exceeds the output cap" {
             val origin = originRepository()
             val head = rawGit(origin, "rev-parse", "HEAD")
@@ -228,6 +230,42 @@ class RepositoryCheckoutProvisionerSpec :
             rawGit(git, "for-each-ref", "--format=%(refname)", "refs/heads/") shouldBe ""
             rawGit(git, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/")
                 .lineSequence().count() shouldBe branches.size + 1
+        }
+
+        "a failed unused first checkout can be corrected to another URL and branch" {
+            val store = InMemoryRepositoryCheckoutService()
+            val (_, provisioner, namespaceId) = fixture(store)
+            val original = settings(namespaceId, originRepository()).copy(mainBranch = "missing")
+            shouldThrow<GitCommandException> { provisioner.ensureReady(original) }
+            val failed = store.findByNamespaceId(namespaceId)!!
+            provisioner.canReplaceFailedCheckout(failed) shouldBe true
+            val corrected = settings(namespaceId, originRepository()).copy(configId = original.configId)
+            val queued = provisioner.requestPreparation(corrected)
+            queued.id shouldBe failed.id
+            queued.repositoryUrl shouldBe corrected.repositoryUrl
+            queued.mainBranch shouldBe "main"
+            queued.status shouldBe RepositoryCheckoutStatus.PREPARING
+            provisioner.ensureReady(corrected).status shouldBe RepositoryCheckoutStatus.READY
+        }
+
+        "failed checkout replacement preserves any published directory or recorded family" {
+            val store = InMemoryRepositoryCheckoutService()
+            val bindings = mockk<CaseResourceBindingService>()
+            every { bindings.findByParent(any()) } returns emptyList()
+            val (storage, provisioner, namespaceId) = fixture(store, bindings)
+            val original = settings(namespaceId, originRepository()).copy(mainBranch = "missing")
+            shouldThrow<GitCommandException> { provisioner.ensureReady(original) }
+            val failed = store.findByNamespaceId(namespaceId)!!
+            val common = storage.namespaceGitDirectory(namespaceId)
+            Files.createDirectories(common)
+            provisioner.canReplaceFailedCheckout(failed) shouldBe false
+            Files.delete(common)
+            every { bindings.findByParent(namespaceId) } returns listOf(
+                CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId, integrationConfigId = original.configId),
+            )
+            provisioner.canReplaceFailedCheckout(failed) shouldBe false
+            shouldThrow<IllegalStateException> { provisioner.requestPreparation(original.copy(mainBranch = "main")) }
+            store.findByNamespaceId(namespaceId)!!.mainBranch shouldBe "missing"
         }
 
         "preparation is idempotent once ready" {
@@ -265,7 +303,7 @@ class RepositoryCheckoutProvisionerSpec :
                     runner = runner,
                     gitProperties = gitProperties,
                     exchangeStorageService = storage,
-                    checkoutService = InMemoryRepositoryCheckoutService(),
+                    checkoutService = InMemoryRepositoryCheckouts(),
                     serviceAccountResolver = GitServiceAccountResolver(authSettings),
                 )
 
@@ -278,6 +316,8 @@ class RepositoryCheckoutProvisionerSpec :
                             repositoryUrl = originRepository().toUri().toString(),
                             mainBranch = "main",
                             serviceAuthSettingId = UUID.randomUUID(),
+                            autoWorktreeForRootCases = false,
+                            setupCommand = null,
                         ),
                     )
 
@@ -343,6 +383,7 @@ class RepositoryCheckoutProvisionerSpec :
         "a requested checkout is cloned even though no case ever asks for a worktree" {
             val (storage, provisioner, namespaceId) = fixture()
             val configured = settings(namespaceId, originRepository())
+            configured.autoWorktreeForRootCases shouldBe false
             provisioner.requestPreparation(configured)
 
             val ready = provisioner.ensureReady(configured)
@@ -388,7 +429,7 @@ class RepositoryCheckoutProvisionerSpec :
     })
 
 /** Minimal in-memory [RepositoryCheckoutService] for the provisioning tests. */
-internal class InMemoryRepositoryCheckoutService : RepositoryCheckoutService {
+private class InMemoryRepositoryCheckoutService : RepositoryCheckoutService {
     private val rows = mutableMapOf<UUID, RepositoryCheckout>()
 
     override fun create(entity: RepositoryCheckout): RepositoryCheckout = entity.also { rows[it.id] = it }

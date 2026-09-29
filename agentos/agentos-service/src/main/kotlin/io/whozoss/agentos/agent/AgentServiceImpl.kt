@@ -87,6 +87,8 @@ class AgentServiceImpl(
     private val agentConfigProperties: AgentConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
     private val exchangeRootResolver: ExchangeRootResolver,
+    /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
+    private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -232,7 +234,10 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
             )
-        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val effectiveIntegrationConfigs =
+            runIntegrationCustomizers.fold(integrationConfigService.findEffective(context.namespaceId, context.userId)) { configs, customizer ->
+                customizer.customize(configs, context)
+            }
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceSystemPrompt =
             buildNamespaceSystemPrompt(

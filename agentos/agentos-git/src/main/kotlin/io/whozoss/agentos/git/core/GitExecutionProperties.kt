@@ -21,6 +21,7 @@ import java.time.Duration
  * - AGENTOS_GIT_BINARY
  * - AGENTOS_GIT_DEFAULT_TIMEOUT
  * - AGENTOS_GIT_CLONE_TIMEOUT
+ * - AGENTOS_GIT_SETUP_TIMEOUT
  * - AGENTOS_GIT_MAX_OUTPUT_CHARS
  * - AGENTOS_GIT_ALLOW_PRIVATE_REMOTE_HOSTS
  *
@@ -28,8 +29,10 @@ import java.time.Duration
  * | --- | --- | --- | --- |
  * | `binary` | `AGENTOS_GIT_BINARY` | `git` | Absolute path or PATH-resolved name of the git executable |
  * | `defaultTimeout` | `AGENTOS_GIT_DEFAULT_TIMEOUT` | `2m` | Timeout for ordinary plumbing commands |
- * | `cloneTimeout` | `AGENTOS_GIT_CLONE_TIMEOUT` | `30m` | Timeout for clone/fetch of a large repository |
+ * | `cloneTimeout` | `AGENTOS_GIT_CLONE_TIMEOUT` | `30m` | Timeout for clone/fetch of a large repository, and worktree creation and removal |
+ * | `setupTimeout` | `AGENTOS_GIT_SETUP_TIMEOUT` | `15m` | Timeout for the setup command of a new worktree |
  * | `maxOutputChars` | `AGENTOS_GIT_MAX_OUTPUT_CHARS` | `100000` | Cap on captured stdout/stderr |
+ * | `allowedRemoteProtocols` | `AGENTOS_GIT_ALLOWED_REMOTE_PROTOCOLS` | `https` | Transports managed operations may use |
  * | `allowPrivateRemoteHosts` | `AGENTOS_GIT_ALLOW_PRIVATE_REMOTE_HOSTS` | `false` | Permit RFC1918/loopback remotes (self-hosted forge) |
  */
 @ConfigurationProperties(prefix = "agentos.git")
@@ -46,6 +49,8 @@ data class GitExecutionProperties(
     val defaultTimeout: Duration = Duration.ofMinutes(2),
     /** Timeout applied to network-bound commands (clone, fetch). */
     val cloneTimeout: Duration = Duration.ofMinutes(30),
+    /** Timeout applied to the configured setup command run inside a new worktree. */
+    val setupTimeout: Duration = Duration.ofMinutes(15),
     /** Upper bound on captured stdout/stderr characters, to keep a runaway command out of the heap. */
     val maxOutputChars: Int = 100_000,
     /**

@@ -1,5 +1,7 @@
 package io.whozoss.agentos.git
 
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
@@ -18,9 +20,43 @@ object WorkspaceLifecycleLocks {
         }
     }
 
+    private val namespaces = ConcurrentHashMap<UUID, ReentrantLock>()
     private val locks = ConcurrentHashMap<UUID, RootLock>()
 
     private fun root(id: UUID) = locks.computeIfAbsent(id) { RootLock() }
+
+    /**
+     * Serialize a settings save with the allocation that freezes those settings. These sections
+     * only inspect configuration and record intent; clone, fetch and setup run elsewhere.
+     * Case creation is transactional, so a binding must be committed (or rolled back) before a
+     * competing settings update can inspect it. Spring's imperative transaction completes on
+     * this same thread; its completion callback releases the lock after persistence is visible.
+     */
+    fun <T> withNamespace(
+        namespaceId: UUID,
+        action: () -> T,
+    ): T {
+        val lock = namespaces.computeIfAbsent(namespaceId) { ReentrantLock() }
+        lock.lock()
+        var transactionReleasesLock = false
+        try {
+            if (TransactionSynchronizationManager.isActualTransactionActive() &&
+                TransactionSynchronizationManager.isSynchronizationActive()
+            ) {
+                TransactionSynchronizationManager.registerSynchronization(
+                    object : TransactionSynchronization {
+                        override fun afterCompletion(status: Int) {
+                            lock.unlock()
+                        }
+                    },
+                )
+                transactionReleasesLock = true
+            }
+            return action()
+        } finally {
+            if (!transactionReleasesLock) lock.unlock()
+        }
+    }
 
     fun <T> withRoot(
         rootId: UUID,

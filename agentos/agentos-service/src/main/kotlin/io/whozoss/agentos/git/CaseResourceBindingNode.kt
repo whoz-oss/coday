@@ -29,7 +29,12 @@ data class CaseResourceBindingNode(
     val namespaceId: String,
     val integrationConfigId: String,
     val status: String,
+    val baseSha: String? = null,
     val failureReason: String? = null,
+    val settingsJson: String? = null,
+    val cleanupReason: String? = null,
+    val setupStarted: Boolean = false,
+    val setupCompleted: Boolean = false,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -52,7 +57,13 @@ data class CaseResourceBindingNode(
             namespaceId = UUID.fromString(namespaceId),
             integrationConfigId = UUID.fromString(integrationConfigId),
             status = CaseResourceStatus.valueOf(status),
+            baseSha = baseSha,
             failureReason = failureReason,
+            settingsJson = settingsJson,
+            cleanupReason = cleanupReason,
+            setupStarted = setupStarted,
+            setupCompleted = setupCompleted,
+
         )
 
     companion object {
@@ -63,7 +74,13 @@ data class CaseResourceBindingNode(
                 namespaceId = binding.namespaceId.toString(),
                 integrationConfigId = binding.integrationConfigId.toString(),
                 status = binding.status.name,
+                baseSha = binding.baseSha,
                 failureReason = binding.failureReason,
+                settingsJson = binding.settingsJson,
+                cleanupReason = binding.cleanupReason,
+                setupStarted = binding.setupStarted,
+                setupCompleted = binding.setupCompleted,
+
                 created = binding.metadata.created,
                 createdBy = binding.metadata.createdBy,
                 modified = binding.metadata.modified,

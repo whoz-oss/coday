@@ -27,6 +27,7 @@ class CaseResourceBindingSchemaInitializer(
         assertNoDuplicateRootCaseKeys()
         ensureIdConstraint()
         ensureRootCaseUniqueConstraint()
+        ensureNamespaceIndex()
     }
 
     private fun assertNoDuplicateRootCaseKeys() {
@@ -70,6 +71,17 @@ class CaseResourceBindingSchemaInitializer(
                 """.trimIndent(),
             ).run()
         logger.info { "[CaseResourceBindingSchema] constraint 'case_resource_binding_active_root_case_unique' ensured" }
+    }
+
+    private fun ensureNamespaceIndex() {
+        neo4jClient
+            .query(
+                """
+                CREATE INDEX case_resource_binding_namespace_lookup IF NOT EXISTS
+                FOR (b:CaseResourceBinding) ON (b.namespaceId)
+                """.trimIndent(),
+            ).run()
+        logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_namespace_lookup' ensured" }
     }
 
     companion object : KLogging()

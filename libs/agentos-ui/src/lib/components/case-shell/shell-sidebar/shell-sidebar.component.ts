@@ -160,6 +160,7 @@ export class ShellSidebarComponent {
   readonly nsMenuClosed = output<Event>()
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
+  readonly subCaseCreateRequested = output<string>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly renameRequested = output<{ id: string; title: string }>()
