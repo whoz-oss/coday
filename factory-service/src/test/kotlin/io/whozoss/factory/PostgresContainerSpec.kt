@@ -126,6 +126,9 @@ abstract class PostgresContainerSpec {
             registry.add("factory.oracle.definitions-root") { oracleDefinitionsRoot.toAbsolutePath().toString() }
             registry.add("factory.security.fake-idp-secret") { SHARED_FAKE_IDP_SECRET }
             registry.add("factory.plugins.dir") { pluginsDir.toAbsolutePath().toString() }
+            // The outbox drain worker must never race test fixtures: tests assert on
+            // pending `outbox_events` (e.g. `AgentStepResultServiceIntegrationTest`).
+            registry.add("factory.outbox.drain-enabled") { "false" }
             registry.add("server.forward-headers-strategy") { "framework" }
         }
     }

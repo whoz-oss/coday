@@ -16,6 +16,9 @@ spring:
 factory:
   security:
     allow-loopback-dev: true
+  outbox:
+    # Spec generation boots on H2 with no `outbox_events` table: never schedule a drain.
+    drain-enabled: false
   workflow:
     seed:
       # Spec generation boots on H2 with Flyway disabled (no workflow tables):

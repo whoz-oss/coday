@@ -14,6 +14,7 @@ data class OutboxEvent(
     val eventType: String,
     val payload: String,
     val attempts: Int,
+    val workstreamId: String,
 )
 
 /** Outcome of one drain pass. */
@@ -37,6 +38,19 @@ class OutboxDrainService(
 ) {
 
     private val logger = KotlinLogging.logger {}
+
+    /**
+     * The distinct organizations that currently have at least one `pending`
+     * event. A background drain worker iterates these instead of scanning every
+     * tenant, so an idle deployment does no work.
+     */
+    @Transactional(readOnly = true)
+    fun pendingOrganizations(): List<String> =
+        jdbc.queryForList(
+            "SELECT DISTINCT organization_id FROM outbox_events WHERE status = 'pending'",
+            emptyMap<String, Any>(),
+            String::class.java,
+        )
 
     /**
      * Drain up to [limit] pending events of [organizationId].
@@ -71,7 +85,7 @@ class OutboxDrainService(
     private fun selectPending(organizationId: String, limit: Int): List<OutboxEvent> =
         jdbc.query(
             """
-            SELECT id, event_type, payload, attempts
+            SELECT id, workstream_id, event_type, payload, attempts
               FROM outbox_events
              WHERE organization_id = :organizationId
                AND status = 'pending'
@@ -88,6 +102,7 @@ class OutboxDrainService(
                 eventType = rs.getString("event_type"),
                 payload = rs.getString("payload") ?: "{}",
                 attempts = rs.getInt("attempts"),
+                workstreamId = rs.getString("workstream_id") ?: "",
             )
         }
 

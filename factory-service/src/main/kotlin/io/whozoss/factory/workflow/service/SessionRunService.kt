@@ -3,6 +3,12 @@ package io.whozoss.factory.workflow.service
 import io.whozoss.factory.capability.CapabilityExecution
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityOutcome
+import io.whozoss.factory.oracle.domain.OracleApplicableCondition
+import io.whozoss.factory.oracle.domain.OracleDefinition
+import io.whozoss.factory.oracle.domain.OracleExecutionStatus
+import io.whozoss.factory.oracle.registry.OracleDefinitionRegistry
+import io.whozoss.factory.oracle.service.OracleExecutionService
+import io.whozoss.factory.oracle.service.OracleRunCommand
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -25,6 +31,7 @@ import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -71,12 +78,27 @@ private class SessionProgress {
 }
 
 /**
+ * Outcome of the applicable auto-oracles evaluated for a single step: whether
+ * every run succeeded and the evidence ids the runs published (if any).
+ */
+private data class OracleEvaluation(
+    val allSucceeded: Boolean,
+    val evidenceIds: List<String>,
+) {
+    companion object {
+        val EMPTY = OracleEvaluation(allSucceeded = true, evidenceIds = emptyList())
+    }
+}
+
+/**
  * Automatic DAG execution of a declarative session (W8.3).
  *
  * The sequencer runs the whole DAG by itself (never step by step). At every
  * iteration it evaluates the pure [SessionSequencer] rules, executes ONE ready
  * step through [CapabilityExecutionService] and applies the failure rule:
  *  - a succeeded step releases its dependents (`ready`);
+ *  - a succeeded step first runs its applicable auto-oracles (matched by
+ *    `OracleDefinition.applicable`); a failing oracle fails the step instead;
  *  - a failed step marks ALL its transitive dependents `blocked`;
  *  - independent branches keep running;
  *  - a `human` step suspends the session in `waiting_human` until the interaction
@@ -105,7 +127,21 @@ class SessionRunService(
     private val interactionRepository: HumanInteractionRepository,
     private val capabilityExecutionService: CapabilityExecutionService,
     private val sseHub: WorkflowSseHub,
+    /**
+     * Optional oracle catalogue. When present, the step's applicable oracle
+     * definitions (`applicable.workflowTypes` / `applicable.stepIds`) are run
+     * automatically and gate its completion. Pure unit tests may omit it.
+     */
+    private val oracleDefinitionRegistry: OracleDefinitionRegistry? = null,
+    /**
+     * Optional oracle execution service. When present, matching definitions are
+     * really run (and `oracle-result` evidence is published); when absent, the
+     * auto-oracle hook is a no-op.
+     */
+    private val oracleExecutionService: OracleExecutionService? = null,
 ) {
+
+    private val logger = KotlinLogging.logger {}
 
     /** Runs (or resumes) the session DAG to a terminal state or to a human suspension. */
     @Transactional
@@ -117,10 +153,17 @@ class SessionRunService(
         ticket: String? = null,
     ): SessionRunResult {
         val instance = activeInstance(scope, namespaceId, workflowId)
+        // The instance revision is the optimistic-locking precondition every
+        // transition must carry: it is read once at the start of the run and
+        // stays stable until `persistProjection` bumps it at the end. Using it
+        // (instead of a hardcoded 1) keeps `expectedRevision` in step with the
+        // persisted snapshot and avoids stale-revision conflicts across turns.
+        val expectedRevision = instance.revision
         // The ticket may be supplied by the run request, or have travelled with
         // the start command / instance relations. Either way it must reach the
         // step execution context (agent brief) and be persisted on the instance.
         val effectiveTicket = ticket?.takeIf { it.isNotBlank() } ?: instanceTicket(instance)
+        val workflowType = instance.instance["workflowType"] as? String
         val steps = resolveDefinition(scope, instance).steps
         if (steps.isEmpty()) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The session has no steps.")
@@ -133,7 +176,7 @@ class SessionRunService(
             while (iterations++ < guard) {
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
                 if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
-                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses)) {
+                    if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision)) {
                         suspended = true
                         return@run
                     }
@@ -141,7 +184,7 @@ class SessionRunService(
                 }
                 val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull() ?: return@run
                 val step = steps.first { it.id == readyId }
-                executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot, effectiveTicket)?.let { terminal ->
+                executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot, effectiveTicket, expectedRevision, workflowType)?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
                         suspended = true
                         return@run
@@ -237,21 +280,94 @@ class SessionRunService(
         step: WorkflowStepDefinition,
         repoRoot: Path,
         ticket: String?,
+        expectedRevision: Int,
+        workflowType: String?,
     ): String? {
         setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.RUNNING, statuses)
         val execution = try {
             capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket)
         } catch (error: Exception) {
             recordFailureEvidence(scope, namespaceId, workflowId, step, error)
-            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED)
+            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision)
             setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
             return WorkflowStatuses.FAILED
         }
-        val terminal = classify(execution.outcome)
-        transition(scope, namespaceId, workflowId, step, terminal)
+        var terminal = classify(execution.outcome)
+        // Auto-oracles: once the step's own capability has succeeded, run every
+        // oracle definition whose `applicable` conditions match this
+        // (workflowType, stepId). A failing oracle gates the transition: the step
+        // is classified FAILED and its dependents are blocked. The oracle-result
+        // evidence ids are carried on the transition for traceability.
+        val oracleEvidenceIds = if (terminal == WorkflowStatuses.COMPLETED) {
+            val evaluation = runApplicableOracles(scope, namespaceId, workflowId, workflowType, step.id)
+            if (!evaluation.allSucceeded) terminal = WorkflowStatuses.FAILED
+            evaluation.evidenceIds
+        } else {
+            emptyList()
+        }
+        transition(scope, namespaceId, workflowId, step, terminal, expectedRevision, oracleEvidenceIds)
         setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
         recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution)
         return terminal
+    }
+
+    /**
+     * Runs every oracle definition applicable to the current `(workflowType,
+     * stepId)`.
+     *
+     * Matching follows `OracleDefinition.applicable`: an empty
+     * `applicable.workflowTypes` (resp. `applicable.stepIds`) is a wildcard, a
+     * non-empty one must contain the current `workflowType` (resp. `stepId`). A
+     * definition that matches neither is skipped; one that throws is treated as
+     * a failure (its run is abandoned, never a silent success).
+     */
+    private fun runApplicableOracles(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        workflowType: String?,
+        stepId: String,
+    ): OracleEvaluation {
+        val registry = oracleDefinitionRegistry ?: return OracleEvaluation.EMPTY
+        val service = oracleExecutionService ?: return OracleEvaluation.EMPTY
+        val matching = runCatching { registry.list() }
+            .onFailure { logger.warn(it) { "Oracle registry listing failed; skipping auto-oracles for step '$stepId'" } }
+            .getOrElse { return OracleEvaluation.EMPTY }
+            .filter { appliesTo(it, workflowType, stepId) }
+        if (matching.isEmpty()) return OracleEvaluation.EMPTY
+
+        var allSucceeded = true
+        val evidenceIds = ArrayList<String>()
+        for (definition in matching) {
+            val result = runCatching {
+                service.run(
+                    scope,
+                    OracleRunCommand(
+                        workflowId = workflowId,
+                        stepId = stepId,
+                        oracleId = definition.id,
+                        namespaceId = namespaceId,
+                        idempotencyKey = "dag-oracle:$workflowId:$stepId:${definition.id}",
+                    ),
+                )
+            }.getOrElse { error ->
+                logger.warn(error) { "Oracle '${definition.id}' could not run for step '$stepId'" }
+                allSucceeded = false
+                continue
+            }
+            result.evidenceId?.let(evidenceIds::add)
+            if (result.status != OracleExecutionStatus.SUCCEEDED) allSucceeded = false
+        }
+        return OracleEvaluation(allSucceeded, evidenceIds)
+    }
+
+    /** Whether an oracle definition's `applicable` conditions match the step. */
+    private fun appliesTo(definition: OracleDefinition, workflowType: String?, stepId: String): Boolean {
+        val applicable: OracleApplicableCondition = definition.applicable
+        val typesMatch = applicable.workflowTypes.isEmpty() ||
+            (workflowType != null && workflowType in applicable.workflowTypes)
+        val stepsMatch = applicable.stepIds.isEmpty() || stepId in applicable.stepIds
+        return typesMatch && stepsMatch
     }
 
     private fun classify(outcome: CapabilityOutcome): String = when (outcome) {
@@ -275,6 +391,7 @@ class SessionRunService(
         workflowId: String,
         steps: List<WorkflowStepDefinition>,
         statuses: SessionProgress,
+        expectedRevision: Int,
     ): Boolean {
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = false)
         var allResolved = true
@@ -286,7 +403,7 @@ class SessionRunService(
                 allResolved = false
                 continue
             }
-            transition(scope, namespaceId, workflowId, step, terminal)
+            transition(scope, namespaceId, workflowId, step, terminal, expectedRevision)
             setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
             recordHumanResolutionEvidence(scope, namespaceId, workflowId, step, terminal, interaction)
         }
@@ -341,6 +458,8 @@ class SessionRunService(
         workflowId: String,
         step: WorkflowStepDefinition,
         status: String,
+        expectedRevision: Int,
+        evidenceIds: List<String> = emptyList(),
     ) {
         repository.appendTransition(
             scope,
@@ -351,13 +470,17 @@ class SessionRunService(
                 requestId = UUID.randomUUID().toString(),
                 workflowId = workflowId,
                 stepId = step.id,
-                expectedRevision = 1,
+                expectedRevision = expectedRevision,
                 requestedStatus = status,
-                evidenceIds = emptyList(),
+                evidenceIds = evidenceIds,
             ),
             fromStepId = step.id,
             toStepId = step.id,
-            payload = mapOf("kind" to "session-step", "status" to status),
+            payload = buildMap {
+                put("kind", "session-step")
+                put("status", status)
+                if (evidenceIds.isNotEmpty()) put("evidenceIds", evidenceIds)
+            },
         )
     }
 

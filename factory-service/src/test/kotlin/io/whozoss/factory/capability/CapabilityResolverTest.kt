@@ -128,6 +128,37 @@ class CapabilityResolverTest {
         assertThat(outcome.facts).containsEntry("turns", 1)
     }
 
+    @Test
+    fun `agent step forwards the attempt capability facts to the turn request`() {
+        val captured = mutableListOf<AgentTurnRequest>()
+        val resolver = CapabilityResolver(
+            object : AgentTurnCapability {
+                override fun executeAgentTurn(request: AgentTurnRequest): AgentTurnResult {
+                    captured += request
+                    return AgentTurnResult.Completed("PASS")
+                }
+            },
+        )
+
+        resolver.resolve(
+            step(ResponsibilityKind.AGENT, "architect"),
+            repoRoot,
+            namespaceId = "ns-1",
+            workflowId = "wf-1",
+            brief = "do it",
+            attemptId = "attempt-1",
+            capabilityToken = "clear-token",
+            caseId = "case-1",
+        )
+
+        val request = captured.single()
+        assertThat(request.attemptId).isEqualTo("attempt-1")
+        assertThat(request.capabilityToken).isEqualTo("clear-token")
+        assertThat(request.caseId).isEqualTo("case-1")
+        assertThat(request.namespaceId).isEqualTo("ns-1")
+        assertThat(request.workflowId).isEqualTo("wf-1")
+    }
+
     // ------------------------------------------------------------ human branch
 
     @Test
