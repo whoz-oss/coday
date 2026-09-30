@@ -576,6 +576,7 @@ class SessionRunService(
         expectedRevision: Int,
         statuses: SessionProgress,
     ) {
+        logger.warn(error) { "Step '${step.id}' of workflow '$workflowId' failed: ${error.message ?: error.toString()}" }
         runCatching {
             newTransaction {
                 recordFailureEvidence(scope, namespaceId, workflowId, step, error)

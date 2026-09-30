@@ -12,6 +12,7 @@ import io.whozoss.factory.workflow.domain.WorkflowExecution
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.service.SessionRunService
+import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import io.whozoss.factory.workflow.service.WorkflowHttpResult
 import io.whozoss.factory.workflow.service.WorkflowService
 import org.springframework.http.MediaType
@@ -49,6 +50,7 @@ import java.util.UUID
 class WorkflowController(
     private val service: WorkflowService,
     private val sessionRunService: SessionRunService,
+    private val sessionRunSubmissionService: SessionRunSubmissionService,
     private val sessionProperties: SessionProperties,
     private val tenantScopeProvider: TenantScopeProvider,
 ) {
@@ -277,23 +279,26 @@ class WorkflowController(
     fun run(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestParam(name = "sync", required = false) sync: Boolean?,
         @Parameter(hidden = true) trustContext: TrustContext?,
-    ): WorkflowDataEnvelope<Any?> = runInternal(workflowId, body, trustContext, "run")
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> = runInternal(workflowId, body, trustContext, "run", sync ?: false)
 
     @PostMapping(path = ["/{workflowId}/continue"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Continue a paused workflow.")
     fun continueWorkflow(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestParam(name = "sync", required = false) sync: Boolean?,
         @Parameter(hidden = true) trustContext: TrustContext?,
-    ): WorkflowDataEnvelope<Any?> = runInternal(workflowId, body, trustContext, "continue")
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> = runInternal(workflowId, body, trustContext, "continue", sync ?: false)
 
     private fun runInternal(
         workflowId: String,
         body: Map<String, Any?>?,
         trustContext: TrustContext?,
         operation: String,
-    ): WorkflowDataEnvelope<Any?> {
+        sync: Boolean,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
         val projection = service.getProjection(caller.scope, caller.namespaceId, workflowId)
@@ -309,8 +314,36 @@ class WorkflowController(
                 "A repoRoot is required to run the session (body.repoRoot or factory.session.default-repo-root).",
             )
         val ticket = (request["ticket"] as? String)?.takeIf { it.isNotBlank() }
-        return WorkflowDataEnvelope(
-            runSession(caller.scope, caller.namespaceId, workflowId, Paths.get(repoRoot), operation, ticket),
+        if (!sync) {
+            // Asynchronous, durable submission: enqueue the run and answer 202 with
+            // the tracking identity. The bounded outbox worker drains it, so the
+            // HTTP connection is never held for the agent turn and an undrained
+            // submission survives a restart.
+            val submissionId = sessionRunSubmissionService.submit(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                repoRoot,
+                operation,
+                ticket,
+            )
+            return ResponseEntity.accepted().body(
+                WorkflowDataEnvelope(
+                    mapOf(
+                        "workflowId" to workflowId,
+                        "namespaceId" to caller.namespaceId,
+                        "operation" to operation,
+                        "status" to "accepted",
+                        "submissionId" to submissionId,
+                        "runtimeNotification" to "durable-outbox",
+                    ),
+                ),
+            )
+        }
+        return ResponseEntity.ok(
+            WorkflowDataEnvelope(
+                runSession(caller.scope, caller.namespaceId, workflowId, Paths.get(repoRoot), operation, ticket),
+            ),
         )
     }
 
