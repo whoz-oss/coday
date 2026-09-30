@@ -24,6 +24,7 @@ import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -98,6 +99,7 @@ class CapabilityExecutionService(
      * skipped and the turn runs without a delegate token).
      */
     private val agentStepResultService: AgentStepResultService? = null,
+    private val sseHub: WorkflowSseHub? = null,
     /**
      * Optional transaction manager used to isolate each persistence phase in its
      * own short `REQUIRES_NEW` transaction. Injected in production; pure unit
@@ -768,8 +770,9 @@ class CapabilityExecutionService(
         val caseId = UUID.randomUUID().toString()
 
         // Phase 1 — short transaction: reserve the attempt and mint the token.
+        val attemptId = UUID.randomUUID().toString()
+        publishActiveAgentCase(scope, namespaceId, workflowId, step.id, attemptId, agentId, caseId)
         val claim = newTransaction {
-            val attemptId = UUID.randomUUID().toString()
             attemptRepository.insert(
                 scope,
                 AgentStepAttemptRecord(
@@ -843,6 +846,38 @@ class CapabilityExecutionService(
         }
     }
 
+    /** Publishes the current worker case as trusted Factory projection metadata. */
+    private fun publishActiveAgentCase(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        agentId: String,
+        caseId: String,
+    ) {
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId) ?: return
+        val nextInstance = instance.instance.toMutableMap()
+        val controllerExecution = linkedMapOf<String, Any?>(
+            "kind" to "agentos",
+            "runtimeId" to "agentos-primary",
+            "agentId" to agentId,
+            "caseId" to caseId,
+            "stepId" to stepId,
+            "attemptId" to attemptId,
+        )
+        nextInstance["controllerExecution"] = controllerExecution
+        nextInstance["activeAgentCase"] = controllerExecution
+        val next = instance.copy(
+            revision = instance.revision + 1,
+            instance = nextInstance,
+        )
+        nextInstance["revision"] = next.revision
+        if (workflowRepository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)) {
+            sseHub?.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+        }
+    }
+
     /**
      * Mint the single-use submission capability for [attemptId]. Issuance is
      * best-effort: a non-safe persona or a missing issuer must not fail the DAG
@@ -901,8 +936,14 @@ class CapabilityExecutionService(
          */
         fun stableAttemptId(workflowId: String, stepId: String): String = "$workflowId#$stepId"
 
-        /** Deterministic AgentOS case id bound to the durable attempt id. */
-        fun stableCaseId(workflowId: String, stepId: String): String = "case:$workflowId#$stepId"
+        /**
+         * Deterministic AgentOS case UUID bound to a workflow step.
+         *
+         * AgentOS models case ids as UUIDs. UUID.nameUUIDFromBytes gives us a
+         * stable, standards-compliant UUID while preserving replay idempotency.
+         */
+        fun stableCaseId(workflowId: String, stepId: String): String =
+            UUID.nameUUIDFromBytes("$workflowId#$stepId".toByteArray(Charsets.UTF_8)).toString()
 
         /** Process-local locks serialising the register+claim of one attempt. */
         private val reservationLocks = ConcurrentHashMap<String, ReentrantLock>()

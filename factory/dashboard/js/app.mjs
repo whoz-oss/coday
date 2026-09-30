@@ -362,8 +362,15 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
 export function bootstrapCockpit(win = globalThis.window, doc = globalThis.document) {
   if (!win || !doc) return null
   const api = new ApiClient({ baseUrl: '' })
+  const namespaceId = resolveNamespaceId(win)
+  const streamQuery = namespaceId ? `?namespaceId=${encodeURIComponent(namespaceId)}` : ''
+  const sseClient = new SseClient(`/api/factory/workflows/stream${streamQuery}`, {
+    onOpen: () => setLiveIndicator(doc, 'online'),
+    onError: () => setLiveIndicator(doc, 'reconnecting'),
+  }).connect()
   const router = createRouter(win, doc, {
     apiClient: api,
+    sseClient,
     mounters: VIEW_MOUNTERS,
     onMountOwnedRoutes: ['/launch'],
     resolveNamespace: () => resolveNamespaceId(win),
@@ -420,6 +427,7 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
             namespaceId,
             apiClient: api,
             sseClient: ctx.sseClient,
+            agentosUrl: win.location.origin,
           }),
         )
           .then((resolved) => {
@@ -437,7 +445,8 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
   const start = () => router.start()
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true })
   else start()
-  return { api, router, SseClient, showModal: (c) => showModal(c, doc), closeModal: () => closeModal(doc) }
+  win.addEventListener?.('beforeunload', () => sseClient.close(), { once: true })
+  return { api, router, sseClient, SseClient, showModal: (c) => showModal(c, doc), closeModal: () => closeModal(doc) }
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {

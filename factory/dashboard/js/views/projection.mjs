@@ -252,9 +252,9 @@ export class ProjectionController {
     return this.namespaceId ? `${base}?namespaceId=${encodeURIComponent(this.namespaceId)}` : base
   }
 
-  lifecyclePath(action, workflowId) {
+  lifecyclePath(action, workflowId, namespaceId = this.namespaceId) {
     const base = `/api/factory/workflows/${encodeURIComponent(workflowId)}`
-    const namespace = this.namespaceId ? `?namespaceId=${encodeURIComponent(this.namespaceId)}` : ''
+    const namespace = namespaceId ? `?namespaceId=${encodeURIComponent(namespaceId)}` : ''
     if (action === 'restore') return `${base}/restore${namespace}`
     if (action === 'purge') return `${base}/purge${namespace}`
     return `${base}${namespace}`
@@ -457,11 +457,13 @@ export class ProjectionController {
   }
 
   /** Execute a lifecycle action, mapping conflicts to structured feedback. */
-  async performLifecycle(action, workflowId) {
+  async performLifecycle(action, workflowId, namespaceId = null) {
     if (!ACTION_META[action]) return { ok: false, action, workflowId, message: 'Action inconnue.' }
     if (!this.api) return { ok: false, action, workflowId, message: 'Client API indisponible.' }
     try {
-      const path = this.lifecyclePath(action, workflowId)
+      const snapshot = this.active.get(workflowId) ?? this.removed.get(workflowId)
+      const effectiveNamespaceId = namespaceId || snapshot?.namespaceId || this.namespaceId
+      const path = this.lifecyclePath(action, workflowId, effectiveNamespaceId)
       if (action === 'restore') await this.api.post(path, {})
       else await this.api.delete(path)
       await this.load(this.mode)
@@ -488,7 +490,7 @@ export class ProjectionController {
   }
 
   /** Confirmed lifecycle action (uses the injected dialog confirm when present). */
-  async requestAction(action, workflowId) {
+  async requestAction(action, workflowId, namespaceId = null) {
     if (!ACTION_META[action]) return { ok: false, action, workflowId, message: 'Action inconnue.' }
     if (this.confirm) {
       let approved = false
@@ -499,7 +501,7 @@ export class ProjectionController {
       }
       if (!approved) return { ok: false, cancelled: true, action, workflowId }
     }
-    return this.performLifecycle(action, workflowId)
+    return this.performLifecycle(action, workflowId, namespaceId)
   }
 
   /** Resolve config, subscribe to SSE and perform the initial load. */
@@ -707,7 +709,9 @@ export function mountProjectionView(container, options = {}) {
     if (actionButton) {
       const action = actionButton.dataset?.action
       const workflowId = actionButton.dataset?.workflowId
-      if (action && workflowId) void controller.requestAction(action, workflowId)
+      const card = actionButton.closest?.('.card, .workflow-card')
+      const namespaceId = card?.dataset?.namespaceId || controller.namespaceId
+      if (action && workflowId) void controller.requestAction(action, workflowId, namespaceId)
       return
     }
     // The explicit "Ouvrir le détail" button navigates to the run timeline.

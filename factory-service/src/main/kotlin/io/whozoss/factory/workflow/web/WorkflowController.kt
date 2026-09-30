@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.agentattempt.service.BridgeCancellationService
 import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScopeProvider
+import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.web.TrustContext
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
@@ -55,6 +56,7 @@ class WorkflowController(
     private val sessionRunSubmissionService: SessionRunSubmissionService,
     private val sessionProperties: SessionProperties,
     private val tenantScopeProvider: TenantScopeProvider,
+    private val agentOsProxyClient: AgentOsProxyClient,
     /**
      * Optional bridge cancellation command. Present only when the AgentOS
      * execution adapter is enabled; the cancellation route reports a clean 503
@@ -316,10 +318,11 @@ class WorkflowController(
             )
         }
         val repoRoot = (request["repoRoot"] as? String)?.takeIf { it.isNotBlank() }
+            ?: resolveRepoRoot(caller.namespaceId, trustContext?.principalId)
             ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
             ?: throw workflowException(
                 WorkflowErrorCodes.INVALID_REQUEST,
-                "A repoRoot is required to run the session (body.repoRoot or factory.session.default-repo-root).",
+                "The namespace has no resolvable repository root and no explicit/default repoRoot was provided.",
             )
         val ticket = (request["ticket"] as? String)?.takeIf { it.isNotBlank() }
         if (!sync) {
@@ -354,6 +357,16 @@ class WorkflowController(
             ),
         )
     }
+
+    /**
+     * Resolves the target repository from AgentOS' trusted namespace configPath.
+     * The namespace points to its Coday configuration directory; the proxy
+     * adapter returns its parent repository root.
+     */
+    private fun resolveRepoRoot(namespaceId: String, externalUserId: String?): String? =
+        runCatching { agentOsProxyClient.resolveRepoRoot(namespaceId, externalUserId) }
+            .getOrNull()
+            ?.takeIf { it.isNotBlank() }
 
     private fun runSession(
         scope: io.whozoss.factory.persistence.TenantScope,

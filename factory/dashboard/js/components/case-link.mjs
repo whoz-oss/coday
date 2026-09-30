@@ -69,14 +69,17 @@ function parseTrustedBase(baseUrl) {
  * @param {string} agentosUrl trusted base URL (from GET /api/config)
  * @returns {string|null}
  */
-export function buildAgentosCaseUrl(caseId, agentosUrl) {
+export function buildAgentosCaseUrl(caseId, agentosUrl, namespaceId) {
   if (typeof caseId !== 'string' || !caseId.trim()) return null
   const base = parseTrustedBase(agentosUrl)
   if (!base) return null
   try {
-    // A leading `/` guarantees same-origin resolution; encodeURIComponent makes
-    // any path/authority injection in `caseId` inert.
-    return new URL(`/case/${encodeURIComponent(caseId)}`, base).href
+    // The cockpit is hosted alongside the Angular proxy in local development;
+    // this canonical route opens the exact AgentOS case in that UI.
+    const url = new URL('/agentos/home', base)
+    if (typeof namespaceId === 'string' && namespaceId.trim()) url.searchParams.set('ns', namespaceId.trim())
+    url.searchParams.set('case', caseId.trim())
+    return url.href
   } catch {
     return null
   }
@@ -119,7 +122,7 @@ export function resolveCaseLink(controllerExecution, options = {}) {
 
   if (kind === 'agentos' && typeof caseId === 'string' && caseId) {
     const label = `Case ${caseId}`
-    const href = buildAgentosCaseUrl(caseId, options.agentosUrl)
+    const href = buildAgentosCaseUrl(caseId, options.agentosUrl, options.namespaceId)
     if (href) {
       return { tag: 'a', href, label, className: `case-link${extraClass}`, title: 'Ouvrir le case dans AgentOS' }
     }

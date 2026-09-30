@@ -12,6 +12,13 @@ spring:
       username: ${SPRING_NEO4J_USERNAME:neo4j}
       password: ${SPRING_NEO4J_PASSWORD:password}
 
+# Neo4j reports every idempotent `CREATE ... IF NOT EXISTS` as an INFO
+# notification when the schema already exists. Keep actionable warnings while
+# hiding this expected startup noise.
+logging:
+  level:
+    org.springframework.data.neo4j.cypher: WARN
+
 management:
   endpoints:
     web:

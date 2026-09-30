@@ -3,6 +3,7 @@ package io.whozoss.factory.web
 import io.whozoss.factory.config.FactoryProperties
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.stereotype.Component
+import java.net.InetAddress
 import java.util.Locale
 
 /**
@@ -166,7 +167,13 @@ class TrustContextExtractor(
          */
         fun isLoopbackAddress(address: String?): Boolean {
             if (address == null) return true
-            return LOOPBACK_ADDRESSES.contains(address) || address.startsWith("127.")
+            val normalized = address
+                .trim()
+                .removePrefix("[")
+                .removeSuffix("]")
+                .substringBefore('%')
+            if (normalized in LOOPBACK_ADDRESSES || normalized.startsWith("127.")) return true
+            return runCatching { InetAddress.getByName(normalized).isLoopbackAddress }.getOrDefault(false)
         }
     }
 }

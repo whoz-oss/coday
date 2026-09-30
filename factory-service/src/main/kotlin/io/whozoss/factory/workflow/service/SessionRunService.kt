@@ -527,6 +527,11 @@ class SessionRunService(
                 payload = progress.payload(stepId),
             ),
         )
+        // Persist and announce every meaningful step transition. The cockpit
+        // treats SSE as an invalidation hint and reloads this authoritative
+        // projection; it never infers progress from elapsed time or silence.
+        persistProgressProjection(scope, namespaceId, workflowId, progress)
+        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
     }
 
     /**
@@ -718,6 +723,65 @@ class SessionRunService(
                 idempotencyKey = "human:$workflowId:${interaction.interactionId}",
                 createdAt = null,
             ),
+        )
+    }
+
+    private fun persistProgressProjection(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        progress: SessionProgress,
+    ) {
+        val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return
+        val projection = instance.projection.toMutableMap()
+        val projectedSteps = (projection["steps"] as? List<*>)?.mapNotNull { raw ->
+            val step = (raw as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }?.toMutableMap()
+                ?: return@mapNotNull null
+            val stepId = step["id"] as? String ?: return@mapNotNull step
+            val status = progress.statuses[stepId] ?: return@mapNotNull step
+            step["status"] = status
+            progress.startedAt[stepId]?.let { step["startedAt"] = it }
+            progress.completedAt[stepId]?.let { step["completedAt"] = it }
+            elapsedMs(progress.startedAt[stepId], progress.completedAt[stepId])?.let { step["durationMs"] = it }
+            step
+        } ?: return
+        projection["steps"] = projectedSteps
+        projection["status"] = if (progress.statuses.values.any { it == WorkflowStatuses.RUNNING }) {
+            WorkflowStatuses.RUNNING
+        } else {
+            projection["status"] ?: WorkflowStatuses.PENDING
+        }
+        val nextInstance = instance.instance.toMutableMap()
+        nextInstance["steps"] = projectedSteps.map { mapOf("id" to it["id"], "status" to it["status"]) }
+        nextInstance["status"] = projection["status"]
+        nextInstance["updatedAt"] = nowIso()
+        val next = instance.copy(
+            revision = instance.revision + 1,
+            instance = nextInstance,
+            projection = projection,
+        )
+        nextInstance["revision"] = next.revision
+        repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)
+        val existingProjection = repository.findProjection(scope, namespaceId, workflowId)
+        repository.publishProjection(
+            scope,
+            WorkflowProjectionRecord(
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                schemaVersion = (projection["schemaVersion"] as? String) ?: "2",
+                revision = 0,
+                projectionHash = CanonicalHash.workflowProjectionHash(projection),
+                status = projection["status"] as? String ?: WorkflowStatuses.PENDING,
+                projection = projection,
+                instance = nextInstance,
+                governanceMode = existingProjection?.governanceMode ?: "governed",
+                definitionVersion = existingProjection?.definitionVersion,
+                definitionHash = existingProjection?.definitionHash,
+                relations = existingProjection?.relations,
+                controllerExecution = existingProjection?.controllerExecution,
+                lifecycleState = "active",
+            ),
+            expectedRevision = null,
         )
     }
 

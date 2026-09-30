@@ -191,7 +191,11 @@ class WorkflowService(
         } else {
             put("relations", mapOf("rootWorkflowId" to record.workflowId))
         }
-        if (record.controllerExecution != null) put("controllerExecution", record.controllerExecution)
+        val activeController = (record.instance?.get("controllerExecution") as? Map<*, *>)
+            ?.entries
+            ?.associate { it.key.toString() to it.value }
+        if (activeController != null) put("controllerExecution", activeController)
+        else if (record.controllerExecution != null) put("controllerExecution", record.controllerExecution)
         put("projection", record.projection)
     }
 
@@ -205,7 +209,10 @@ class WorkflowService(
         put("definitionHash", record.instance["definitionHash"])
         put("relations", record.instance["relations"] ?: mapOf("rootWorkflowId" to record.workflowId))
         put("instance", record.instance)
-        (record.instance["controllerExecution"] as? Map<*, *>)?.let { put("controllerExecution", it) }
+        val activeController = (record.instance["controllerExecution"] as? Map<*, *>)
+            ?.entries
+            ?.associate { it.key.toString() to it.value }
+        if (activeController != null) put("controllerExecution", activeController)
         put("projection", record.projection)
     }
 

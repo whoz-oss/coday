@@ -38,6 +38,16 @@ class TrustContextExtractorTest {
     }
 
     @Test
+    fun `loopback detection accepts canonical and scoped local addresses`() {
+        assertThat(TrustContextExtractor.isLoopbackAddress("127.0.0.1")).isTrue()
+        assertThat(TrustContextExtractor.isLoopbackAddress("::1")).isTrue()
+        assertThat(TrustContextExtractor.isLoopbackAddress("0:0:0:0:0:0:0:1")).isTrue()
+        assertThat(TrustContextExtractor.isLoopbackAddress("[::1]")).isTrue()
+        assertThat(TrustContextExtractor.isLoopbackAddress("::1%lo0")).isTrue()
+        assertThat(TrustContextExtractor.isLoopbackAddress("203.0.113.10")).isFalse()
+    }
+
+    @Test
     fun `loopback caller with loopback-dev enabled gets the wildcard`() {
         val context = extractor(allowLoopbackDev = true).extract(request())
 

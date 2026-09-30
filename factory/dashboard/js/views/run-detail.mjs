@@ -225,6 +225,7 @@ export async function mount(container, options = {}) {
     // component. Clickable only against a trusted base supplied by the caller.
     const identityHtml = buildCaseLinkHtml(state.workflow.controllerExecution, {
       agentosUrl: options.agentosUrl,
+      namespaceId: state.workflow.namespaceId ?? namespaceId,
       codayExpressUrl: options.codayExpressUrl,
     })
     const identity = identityHtml

@@ -7,7 +7,6 @@
  * only launch authority is the governed frontend route:
  *
  *   - `GET  /api/factory/workflow-definitions`        → selectable definitions (`items`)
- *   - `GET  /api/agents?namespaceId=…`                → selectable agents (AgentOS proxy)
  *   - `POST /api/factory/workflows/:workflowId/start` → materialize the governed instance
  *   - `POST /api/factory/workflows/:workflowId/run`   → `{ namespaceId, ticket?, repoRoot? }`
  *
@@ -101,18 +100,6 @@ export function normalizeDefinitions(payload) {
     .filter((definition) => definition.id)
 }
 
-/** Normalize the agents listing (AgentOS proxy shapes). */
-export function normalizeAgents(payload) {
-  return listOf(payload, ['items', 'agents', 'agentConfigs', 'data'])
-    .map((agent) => {
-      if (typeof agent === 'string') return { id: agent, name: agent }
-      const id = agent?.id ?? agent?.agentId ?? agent?.name ?? agent?.agentName ?? ''
-      const name = agent?.name ?? agent?.agentName ?? agent?.displayName ?? id
-      return { id, name }
-    })
-    .filter((agent) => agent.id)
-}
-
 /** Turn any launch failure into a clear, user-facing message. */
 export function describeLaunchError(error) {
   const status = Number(error?.status)
@@ -139,37 +126,12 @@ function readField(event) {
   return { name, value: target.value, checked: target.checked === true }
 }
 
-function renderAgents(state) {
-  if (!state.namespaceId) {
-    return '<p class="placeholder" data-launch-agents-hint="true">Renseignez un namespace pour charger les agents.</p>'
-  }
-  if (state.agentsLoading) {
-    return '<p class="placeholder" data-launch-agents-loading="true">Chargement des agents…</p>'
-  }
-  if (state.agentsError) {
-    return `<p class="placeholder" data-launch-agents-error="true">${esc(state.agentsError)}</p>`
-  }
-  if (state.agents.length === 0) {
-    return '<p class="placeholder" data-launch-agents-empty="true">Aucun agent disponible.</p>'
-  }
-  return state.agents
-    .map((agent) => {
-      const checked = state.selectedAgents.includes(agent.id) ? ' checked' : ''
-      return (
-        `<label class="chip" data-launch-agent="${esc(agent.id)}">` +
-        `<input type="checkbox" name="agents" data-agent-id="${esc(agent.id)}" value="${esc(agent.id)}"${checked} /> ` +
-        `${esc(agent.name ?? agent.id)}</label>`
-      )
-    })
-    .join('')
-}
-
 /** Render the whole view markup from its state. */
 export function renderRunLaunch(state) {
   const head =
     '<div class="panel" data-launch-head="true">' +
     '<h2 class="panel-title">Lancer un workflow</h2>' +
-    '<p class="placeholder">Sélectionnez une définition, un namespace (FACTORY_ROOT / contexte) puis lancez l\'exécution gouvernée.</p>' +
+    '<p class="placeholder">Sélectionnez une définition et un namespace AgentOS, puis lancez l\'exécution gouvernée.</p>' +
     '</div>'
 
   if (state.phase === 'loading') {
@@ -218,17 +180,15 @@ export function renderRunLaunch(state) {
     `<input id="launch-namespace-id" name="namespaceId" data-launch-namespace-id="true" class="mono" required value="${esc(state.namespaceId)}" />` +
     '</div>' +
     '<div class="form-group">' +
-    '<label for="launch-factory-root">FACTORY_ROOT (contexte)</label>' +
-    `<input id="launch-factory-root" name="factoryRoot" data-launch-factory-root="true" class="mono" value="${esc(state.factoryRoot)}" />` +
+    '<label for="launch-factory-root">Racine du dépôt (optionnelle)</label>' +
+    '<p class="placeholder">Résolue automatiquement depuis le namespace AgentOS. À renseigner uniquement pour forcer un autre dépôt.</p>' +
+    `<input id="launch-factory-root" name="factoryRoot" data-launch-factory-root="true" class="mono" placeholder="Résolution automatique via AgentOS" value="${esc(state.factoryRoot)}" />` +
     '</div>' +
     '<div class="form-group">' +
     '<label for="launch-ticket">Ticket Jira (optionnel)</label>' +
     `<input id="launch-ticket" name="ticket" data-launch-ticket="true" class="mono" value="${esc(state.ticket)}" />` +
     '</div>' +
-    '<fieldset class="form-group" data-launch-agents="true">' +
-    '<legend>Agents</legend>' +
-    renderAgents(state) +
-    '</fieldset>' +
+    '<p class="placeholder" data-launch-agents-from-definition="true">Les agents sont imposés par les responsabilités de la définition du workflow.</p>' +
     '<div class="form-actions">' +
     `<button type="submit" class="btn btn-primary" data-launch-submit="true"${state.submitting ? ' disabled' : ''}>${
       state.submitting ? 'Lancement…' : 'Lancer le workflow'
@@ -275,14 +235,10 @@ export async function mountRunLaunchView(container, options = {}) {
     phase: 'loading',
     error: null,
     definitions: [],
-    agents: [],
-    agentsLoading: false,
-    agentsError: null,
     namespaceId: options.namespaceId ?? '',
     workflowId: options.workflowId ?? '',
     ticket: options.ticket ?? '',
     factoryRoot: options.factoryRoot ?? '',
-    selectedAgents: [],
     submitting: false,
     submitError: null,
     submitSuccess: null,
@@ -297,8 +253,6 @@ export async function mountRunLaunchView(container, options = {}) {
     if (!state.mounted) return
     container.innerHTML = renderRunLaunch(state)
   }
-
-  let agentsRequestId = 0
 
   const navigate = (workflowId, namespaceId) => {
     if (typeof options.onNavigate === 'function') {
@@ -337,42 +291,6 @@ export async function mountRunLaunchView(container, options = {}) {
     render()
   }
 
-  const loadAgents = async () => {
-    if (!state.mounted) return
-    if (!state.namespaceId) {
-      state.agents = []
-      state.agentsError = null
-      state.agentsLoading = false
-      render()
-      return
-    }
-    const controller = state.abortController
-    const requestId = ++agentsRequestId
-    state.agentsLoading = true
-    state.agentsError = null
-    render()
-    try {
-      const payload = await apiClient.get(`/api/agents?namespaceId=${encodeURIComponent(state.namespaceId)}`, {
-        signal: controller?.signal,
-      })
-      if (!state.mounted || requestId !== agentsRequestId) return
-      state.agents = normalizeAgents(payload)
-    } catch (error) {
-      if (!state.mounted || requestId !== agentsRequestId) return
-      state.agents = []
-      state.agentsError = isConflictError(error)
-        ? 'Agents momentanément indisponibles.'
-        : typeof error?.message === 'string'
-          ? error.message
-          : 'Agents indisponibles.'
-    } finally {
-      if (state.mounted && requestId === agentsRequestId) {
-        state.agentsLoading = false
-        render()
-      }
-    }
-  }
-
   const submit = async () => {
     if (!state.mounted || state.submitting) return
     const workflowType = String(state.workflowId ?? '').trim()
@@ -398,7 +316,10 @@ export async function mountRunLaunchView(container, options = {}) {
     // Each launch materializes a brand new instance; the selected definition id
     // is the `workflowType`, never the instance `workflowId`.
     const workflowId = generateWorkflowId()
-    const signal = state.abortController?.signal
+    // The launch requests outlive this view: successful `/start` followed by
+    // `/run` navigates to the detail route, whose teardown aborts only the
+    // view-loading controller. Do not bind these control-plane commands to it.
+    // Progress is observed independently through projection SSE.
 
     // Step 1 — materialize the governed instance from the definition. The run
     // route refuses an absent instance, so the start must come first.
@@ -417,7 +338,7 @@ export async function mountRunLaunchView(container, options = {}) {
       },
     }
     try {
-      await apiClient.post(buildStartUrl(workflowId), startBody, { signal })
+      await apiClient.post(buildStartUrl(workflowId), startBody)
     } catch (error) {
       if (!state.mounted) return
       // An already-existing instance is not a launch failure: continue to run it.
@@ -437,7 +358,7 @@ export async function mountRunLaunchView(container, options = {}) {
 
     let result
     try {
-      result = await apiClient.post(buildRunUrl(workflowId), body, { signal })
+      result = await apiClient.post(buildRunUrl(workflowId), body)
     } catch (error) {
       if (!state.mounted) return
       state.submitting = false
@@ -471,7 +392,6 @@ export async function mountRunLaunchView(container, options = {}) {
     if (!field) return
     if (field.name === 'namespaceId') {
       state.namespaceId = field.value
-      void loadAgents()
       return
     }
     if (field.name === 'workflowId') {
@@ -485,15 +405,6 @@ export async function mountRunLaunchView(container, options = {}) {
     if (field.name === 'factoryRoot') {
       state.factoryRoot = field.value
       return
-    }
-    if (field.name === 'agents') {
-      const id = event.target?.dataset?.agentId ?? field.value
-      if (!id) return
-      if (field.checked) {
-        if (!state.selectedAgents.includes(id)) state.selectedAgents.push(id)
-      } else {
-        state.selectedAgents = state.selectedAgents.filter((entry) => entry !== id)
-      }
     }
   }
 
@@ -510,7 +421,6 @@ export async function mountRunLaunchView(container, options = {}) {
     state.submitError = null
     state.submitSuccess = null
     state.ticket = ''
-    state.selectedAgents = []
     render()
   }
 
@@ -540,8 +450,6 @@ export async function mountRunLaunchView(container, options = {}) {
     state.onClick = null
     container.innerHTML = ''
     state.definitions = []
-    state.agents = []
-    state.selectedAgents = []
     state.submitError = null
     state.submitSuccess = null
   }
@@ -551,14 +459,12 @@ export async function mountRunLaunchView(container, options = {}) {
   if (typeof options.registerTeardown === 'function') options.registerTeardown(unmount)
 
   await loadDefinitions()
-  if (state.mounted && state.namespaceId) await loadAgents()
 
   return {
     unmount,
     render,
     submit,
     reload: () => loadDefinitions(),
-    loadAgents,
     getState: () => state,
     isMounted: () => state.mounted,
     getPendingTimer: () => state.redirectTimer,
