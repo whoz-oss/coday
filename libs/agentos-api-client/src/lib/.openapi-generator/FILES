@@ -102,6 +102,8 @@ model/scheduled-prompt-effective-request.ts
 model/scheduled-prompt-search-request.ts
 model/scheduled-prompt.ts
 model/skill.ts
+model/sub-case-finished-event.ts
+model/sub-case-started-event.ts
 model/sync-user-roles-request.ts
 model/text-chunk-event.ts
 model/text.ts
