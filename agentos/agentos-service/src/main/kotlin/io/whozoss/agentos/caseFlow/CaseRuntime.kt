@@ -13,6 +13,7 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import java.time.Instant
@@ -525,7 +526,7 @@ class CaseRuntime(
     private fun findLegitimateAnswerIndex(question: QuestionEvent, events: List<CaseEvent>): Int {
         // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
         // The recipient check is intentionally inside this predicate — see KDoc for why moving
-        // it outside causes a permanent-deadlock bug on shared cases.
+        // it outside causes a permanent-deadlock bug on sared cases.
         val legitimateAnswerIndex = events.indexOfFirst { event ->
             if (event !is AnswerEvent || event.questionId != question.id) return@indexOfFirst false
             val targetUserId = question.userId
@@ -551,7 +552,7 @@ class CaseRuntime(
         // delivery-mode signal, unlike an AgentFinishedEvent whose ownership cannot be
         // inferred reliably when several questions are interleaved.
         return when (question.questionType) {
-            io.whozoss.agentos.sdk.caseEvent.QuestionType.OAUTH_AUTHORIZE -> -1
+            QuestionType.OAUTH_AUTHORIZE -> -1
             else -> legitimateAnswerIndex
         }
     }
