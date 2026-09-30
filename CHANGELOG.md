@@ -1,3 +1,14 @@
+## 3.14.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** add managed Git execution and repository storage ([#1364](https://github.com/whoz-oss/coday/pull/1364))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.13.0 (2026-09-29)
 
 ### 🚀 Features
