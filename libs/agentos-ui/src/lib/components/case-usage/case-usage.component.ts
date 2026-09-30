@@ -8,7 +8,21 @@ import {
   UsageRecordControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
-import { catchError, distinct, EMPTY, filter, forkJoin, map, Observable, Subscription, switchMap } from 'rxjs'
+import {
+  catchError,
+  distinct,
+  EMPTY,
+  exhaustMap,
+  filter,
+  forkJoin,
+  map,
+  merge,
+  Observable,
+  of,
+  Subscription,
+  switchMap,
+  timer,
+} from 'rxjs'
 
 @Component({
   selector: 'agentos-case-usage',
@@ -20,6 +34,7 @@ import { catchError, distinct, EMPTY, filter, forkJoin, map, Observable, Subscri
 export class CaseUsageComponent {
   readonly caseId = input.required<string>()
   readonly canWrite = input(false)
+  readonly running = input(false)
   private readonly costs = inject(RunCostControllerService)
   private readonly usage = inject(UsageRecordControllerService)
   private readonly caseState = inject(CaseStateService)
@@ -30,36 +45,45 @@ export class CaseUsageComponent {
 
   constructor() {
     effect((cleanup) => {
-      const caseId = this.caseId()
+      // Reset only on navigation, independently of activity changes.
+      this.caseId()
       this.run.set(null)
       this.total.set(null)
       this.error.set(null)
       this.saving.set(false)
       const actions = new Subscription()
       this.actions = actions
-      const usageRefresh = this.caseState.agentMessageEvent$
-        .pipe(
-          filter((event) => event.caseId === caseId),
-          map((event) => event.id),
-          distinct(),
-          switchMap(() => this.loadUsage(caseId))
-        )
+      cleanup(() => actions.unsubscribe())
+    })
+
+    effect((cleanup) => {
+      const caseId = this.caseId()
+      const running = this.running()
+      // A decision owns its refresh; cancel polling so older snapshots cannot restore the pause.
+      if (this.saving()) return
+      const answers = this.caseState.agentMessageEvent$.pipe(
+        filter((event) => event.caseId === caseId),
+        map((event) => event.id),
+        distinct(),
+        map(() => true)
+      )
+      // Only run-cost is polled. Aggregate history refreshes on mount, activity changes and answers.
+      const refresh = merge(of(true), answers, running ? timer(2000, 2000).pipe(map(() => false)) : EMPTY)
+        .pipe(exhaustMap((includeTotal) => this.loadUsage(caseId, includeTotal)))
         .subscribe((usage) => this.applyUsage(caseId, usage))
-      const initialLoad = this.loadUsage(caseId).subscribe((usage) => this.applyUsage(caseId, usage))
-      cleanup(() => {
-        initialLoad.unsubscribe()
-        usageRefresh.unsubscribe()
-        actions.unsubscribe()
-      })
+      cleanup(() => refresh.unsubscribe())
     })
   }
 
   private actions = new Subscription()
 
-  private loadUsage(caseId: string): Observable<{ run: RunCostDto; total: UsageAggregate }> {
+  private loadUsage(
+    caseId: string,
+    includeTotal: boolean
+  ): Observable<{ run: RunCostDto; total: UsageAggregate | undefined }> {
     return forkJoin({
       run: this.costs.getRunCost(caseId),
-      total: this.usage.aggregateByCaseTreeUsageRecord(caseId),
+      total: includeTotal ? this.usage.aggregateByCaseTreeUsageRecord(caseId) : of(undefined),
     }).pipe(
       catchError(() => {
         this.error.set('Usage could not be refreshed. Displayed values may be out of date.')
@@ -68,10 +92,10 @@ export class CaseUsageComponent {
     )
   }
 
-  private applyUsage(caseId: string, usage: { run: RunCostDto; total: UsageAggregate }): void {
-    if (this.caseId() !== caseId) return
+  private applyUsage(caseId: string, usage: { run: RunCostDto; total: UsageAggregate | undefined }): void {
+    if (this.caseId() !== caseId || this.saving()) return
     this.run.set(usage.run)
-    this.total.set(usage.total)
+    if (usage.total) this.total.set(usage.total)
     this.error.set(null)
   }
 

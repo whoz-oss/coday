@@ -156,6 +156,113 @@ describe('CaseUsageComponent', () => {
     expect(fixture.componentInstance.run()).toBeNull()
     fixture.destroy()
   }))
+  it('discovers a pause when a new run starts in an already open idle conversation', fakeAsync(() => {
+    const idle = { ...state(), active: false, paused: false, pausedCases: [], cost: 0 }
+    costs.getRunCost.mockReturnValue(of(idle))
+    const fixture = render()
+    expect(fixture.nativeElement.querySelector('button')).toBeNull()
+    tick(10000)
+    expect(costs.getRunCost).toHaveBeenCalledTimes(1)
+
+    // The chat starts the activity signal before the runtime necessarily exists.
+    fixture.componentRef.setInput('running', true)
+    fixture.detectChanges()
+    tick(0)
+    expect(fixture.componentInstance.run()?.active).toBe(false)
+    const aggregateCalls = usage.aggregateByCaseTreeUsageRecord.mock.calls.length
+    costs.getRunCost.mockReturnValue(of(state()))
+    // No final AGENT message is emitted while the cost gate waits for a decision.
+    tick(2000)
+    fixture.detectChanges()
+
+    expect(fixture.nativeElement.textContent).toContain('Paused · cost threshold reached')
+    expect(fixture.nativeElement.querySelector('details').open).toBe(true)
+    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Continue · double threshold to 20.00',
+      'Stop',
+    ])
+    expect(buttons.every((button) => !button.disabled)).toBe(true)
+    expect(usage.aggregateByCaseTreeUsageRecord).toHaveBeenCalledTimes(aggregateCalls)
+    fixture.destroy()
+  }))
+
+  it('waits for a slow run-cost response and recovers after a failed poll', fakeAsync(() => {
+    const fixture = render()
+    const pending = new Subject<RunCostDto>()
+    costs.getRunCost.mockReturnValueOnce(pending)
+    fixture.componentRef.setInput('running', true)
+    fixture.detectChanges()
+    tick(0)
+    const pendingCalls = costs.getRunCost.mock.calls.length
+    tick(6000)
+    expect(costs.getRunCost).toHaveBeenCalledTimes(pendingCalls)
+    pending.next({ ...state(), cost: 15 })
+    pending.complete()
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).toContain('15.00')
+
+    costs.getRunCost.mockReturnValueOnce(throwError(() => new Error('offline')))
+    tick(2000)
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).toContain('could not be refreshed')
+    costs.getRunCost.mockReturnValue(of({ ...state(), cost: 18 }))
+    tick(2000)
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).toContain('18.00')
+    expect(fixture.nativeElement.textContent).not.toContain('could not be refreshed')
+    fixture.destroy()
+  }))
+
+  it('refreshes on completion and stops polling until another run starts', fakeAsync(() => {
+    const fixture = render()
+    fixture.componentRef.setInput('running', true)
+    fixture.detectChanges()
+    tick(2000)
+    const finished = { ...state(), active: false, paused: false, pausedCases: [], cost: 20 }
+    costs.getRunCost.mockReturnValue(of(finished))
+    usage.aggregateByCaseTreeUsageRecord.mockReturnValue(of({ ...totals, cost: 20 }))
+    fixture.componentRef.setInput('running', false)
+    fixture.detectChanges()
+    tick(0)
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).toContain('20.00 recorded')
+    expect(fixture.nativeElement.querySelector('button')).toBeNull()
+    const calls = costs.getRunCost.mock.calls.length
+    tick(10000)
+    expect(costs.getRunCost).toHaveBeenCalledTimes(calls)
+    fixture.destroy()
+  }))
+
+  it('cancels an active poll on navigation and removes the timer on destroy', fakeAsync(() => {
+    const fixture = render()
+    fixture.componentRef.setInput('running', true)
+    fixture.detectChanges()
+    tick(0)
+    const pending = new Subject<RunCostDto>()
+    costs.getRunCost.mockReturnValueOnce(pending)
+    tick(2000)
+    fixture.componentRef.setInput('caseId', 'case-b')
+    fixture.componentRef.setInput('running', false)
+    fixture.detectChanges()
+    tick(0)
+    pending.next(state('case-a'))
+    pending.complete()
+    fixture.detectChanges()
+    expect(fixture.componentInstance.run()?.caseId).toBe('case-b')
+    const idleCalls = costs.getRunCost.mock.calls.length
+    tick(2000)
+    expect(costs.getRunCost).toHaveBeenCalledTimes(idleCalls)
+    fixture.componentRef.setInput('running', true)
+    fixture.detectChanges()
+    tick(2000)
+    expect(costs.getRunCost).toHaveBeenLastCalledWith('case-b')
+    fixture.destroy()
+    const calls = costs.getRunCost.mock.calls.length
+    tick(10000)
+    expect(costs.getRunCost).toHaveBeenCalledTimes(calls)
+  }))
+
   it('keeps the persisted header threshold separate from the live run threshold', fakeAsync(() => {
     const cases = TestBed.inject(CaseStateService).cases
     cases.set([{ id: 'case-a', runCostThreshold: 30 } as Case])

@@ -122,7 +122,11 @@
       }
     </header>
     @if (caseId) {
-      <agentos-case-usage [caseId]="caseId" [canWrite]="canAttach()" />
+      <agentos-case-usage
+        [caseId]="caseId"
+        [canWrite]="canAttach()"
+        [running]="isRunning() || caseStatus() === 'RUNNING'"
+      />
     }
 
     <div
