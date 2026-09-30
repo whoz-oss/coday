@@ -38,10 +38,13 @@ class CapabilityResolver(
         namespaceId: String? = null,
         workflowId: String? = null,
         brief: String? = null,
+        attemptId: String? = null,
+        capabilityToken: String? = null,
+        caseId: String? = null,
     ): CapabilityOutcome =
         when (step.responsibility.kind) {
             ResponsibilityKind.CODE -> resolveCode(step, repoRoot)
-            ResponsibilityKind.AGENT -> resolveAgent(step, repoRoot, namespaceId, workflowId, brief)
+            ResponsibilityKind.AGENT -> resolveAgent(step, repoRoot, namespaceId, workflowId, brief, attemptId, capabilityToken, caseId)
             ResponsibilityKind.HUMAN ->
                 CapabilityOutcome.HumanCheckpointRequired(step.id, step.responsibility.name)
         }
@@ -84,6 +87,9 @@ class CapabilityResolver(
         namespaceId: String?,
         workflowId: String?,
         brief: String?,
+        attemptId: String?,
+        capabilityToken: String?,
+        caseId: String?,
     ): CapabilityOutcome {
         val result = agentTurnCapability.executeAgentTurn(
             AgentTurnRequest(
@@ -93,6 +99,9 @@ class CapabilityResolver(
                 namespaceId = namespaceId,
                 workflowId = workflowId,
                 brief = brief,
+                attemptId = attemptId,
+                capabilityToken = capabilityToken,
+                caseId = caseId,
             ),
         )
         return when (result) {

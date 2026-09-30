@@ -4,19 +4,14 @@ server:
 spring:
   application:
     name: factory-service
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/factory}
-    username: ${SPRING_DATASOURCE_USERNAME:factory}
-    password: ${SPRING_DATASOURCE_PASSWORD:factory}
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
-  flyway:
-    enabled: true
-    locations: classpath:db/migration
-    validate-on-migrate: true
-    baseline-on-migrate: true
+  # Spring Data Neo4j connection coordinates. In `embedded-neo4j` mode the
+  # Driver bean is provided by EmbeddedNeo4jConfiguration, but Spring Boot's
+  # Neo4j auto-configuration still needs a URI to build Neo4jConnectionDetails.
+  neo4j:
+    uri: ${SPRING_NEO4J_URI:bolt://localhost:7688}
+    authentication:
+      username: ${SPRING_NEO4J_USERNAME:neo4j}
+      password: ${SPRING_NEO4J_PASSWORD:password}
 
 management:
   endpoints:
@@ -32,6 +27,13 @@ springdoc:
     path: /v3/api-docs
 
 factory:
+  persistence:
+    # Persistence mode: `embedded-neo4j` (default, in-process engine, no Docker)
+    # or `neo4j` (standalone server, configure spring.neo4j.*).
+    mode: ${FACTORY_PERSISTENCE_MODE:embedded-neo4j}
+    data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:build/neo4j-data}
+    embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
+    embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:7688}
   cockpit:
     # Directory of the vanilla cockpit (`cockpit.html`, `css/**`, `js/**`) served
     # same-origin at /cockpit. A relative path is resolved against the process
@@ -55,6 +57,13 @@ factory:
     jira-api-token: ${JIRA_API_TOKEN:}
   proxy:
     agentos-url: ${AGENTOS_URL:http://localhost:8080}
+  outbox:
+    # Background drain of the transactional outbox (`result_submitted` →
+    # sequencer continuation). Enabled in production; the shared integration
+    # test context disables it so background drains never race test fixtures.
+    drain-enabled: ${FACTORY_OUTBOX_DRAIN_ENABLED:true}
+    drain-interval-ms: ${FACTORY_OUTBOX_DRAIN_INTERVAL_MS:5000}
+    drain-initial-delay-ms: ${FACTORY_OUTBOX_DRAIN_INITIAL_DELAY_MS:10000}
   workflow:
     seed:
       # Registers the bundled declarative session definitions

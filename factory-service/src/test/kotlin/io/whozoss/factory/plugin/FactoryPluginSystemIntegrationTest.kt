@@ -1,6 +1,6 @@
 package io.whozoss.factory.plugin
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.sdk.spi.FactoryRouteContributor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -17,10 +17,10 @@ import org.springframework.web.servlet.function.RouterFunction
  * absent (`404`) until the plugin JAR is deployed.
  *
  * The `factory.plugins.dir` property is pinned to a temp directory by
- * [io.whozoss.factory.PostgresContainerSpec], so this test always exercises the
+ * [io.whozoss.factory.Neo4jIntegrationTest], so this test always exercises the
  * "core without plugin" contract.
  */
-class FactoryPluginSystemIntegrationTest : DomainIntegrationTest() {
+class FactoryPluginSystemIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var pluginManager: PluginManager

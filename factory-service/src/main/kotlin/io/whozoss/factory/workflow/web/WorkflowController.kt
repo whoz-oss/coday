@@ -166,7 +166,7 @@ class WorkflowController(
         }
         val workflow = (request["workflow"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
-        if (workflow.keys.any { it !in setOf("workflowId", "workflowType", "title", "relations") } ||
+        if (workflow.keys.any { it !in setOf("workflowId", "workflowType", "title", "relations", "ticket") } ||
             workflow["workflowId"] != workflowId ||
             workflow["workflowType"] !is String ||
             (workflow["title"] as? String).isNullOrBlank()
@@ -175,11 +175,23 @@ class WorkflowController(
         }
         val execution = requireExecution(request["execution"] as? Map<*, *>)
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, execution.namespaceId)
+        // The optional ticket may be carried by the workflow object (preferred) or
+        // the top-level request. It is mirrored into `relations` so the branch
+        // naming / session context can read it from the persisted instance.
+        val ticket = ((workflow["ticket"] as? String) ?: (request["ticket"] as? String))?.takeIf { it.isNotBlank() }
+        val explicitRelations = (workflow["relations"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
+        val relations: Map<String, Any?>? = when {
+            explicitRelations != null && ticket != null -> explicitRelations + ("ticket" to ticket)
+            explicitRelations != null -> explicitRelations
+            ticket != null -> mapOf("rootWorkflowId" to workflowId, "ticket" to ticket)
+            else -> null
+        }
         val command = WorkflowStartCommand(
             workflowId = workflowId,
             workflowType = workflow["workflowType"] as String,
             title = workflow["title"] as String,
-            relations = (workflow["relations"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value },
+            relations = relations,
+            ticket = ticket,
         )
         return respond(service.start(caller.scope, caller.namespaceId, command, execution))
     }
@@ -296,8 +308,9 @@ class WorkflowController(
                 WorkflowErrorCodes.INVALID_REQUEST,
                 "A repoRoot is required to run the session (body.repoRoot or factory.session.default-repo-root).",
             )
+        val ticket = (request["ticket"] as? String)?.takeIf { it.isNotBlank() }
         return WorkflowDataEnvelope(
-            runSession(caller.scope, caller.namespaceId, workflowId, Paths.get(repoRoot), operation),
+            runSession(caller.scope, caller.namespaceId, workflowId, Paths.get(repoRoot), operation, ticket),
         )
     }
 
@@ -307,8 +320,9 @@ class WorkflowController(
         workflowId: String,
         repoRoot: Path,
         operation: String,
+        ticket: String?,
     ): Map<String, Any?> {
-        val result = sessionRunService.runSession(scope, namespaceId, workflowId, repoRoot)
+        val result = sessionRunService.runSession(scope, namespaceId, workflowId, repoRoot, ticket)
         return mapOf(
             "workflowId" to result.workflowId,
             "namespaceId" to result.namespaceId,

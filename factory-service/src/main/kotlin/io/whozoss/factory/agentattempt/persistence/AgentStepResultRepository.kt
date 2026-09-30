@@ -1,6 +1,7 @@
 package io.whozoss.factory.agentattempt.persistence
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.factory.agentattempt.domain.AgentStepResultCapability
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultSubmitted
@@ -36,6 +37,13 @@ interface AgentStepResultRepository {
         observed: AgentStepResultObservedIdentity,
         now: Instant = Instant.now(),
     ): SubmitOutcome
+
+    /**
+     * Resolve the submission capability bound to a clear bearer token, or `null`
+     * when the token is unknown in the caller's scope. Read-only: the token is
+     * hashed and compared in constant time, nothing is mutated.
+     */
+    fun findByToken(scope: TenantScope, token: String): AgentStepResultCapability?
 
     /** The submitted result of one attempt, or `null` when none was recorded. */
     fun getByAttempt(

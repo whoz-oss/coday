@@ -1,6 +1,6 @@
 package io.whozoss.factory.workunit
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.lease.domain.AcquireLeaseResult
 import io.whozoss.factory.lease.service.LeaseService
 import io.whozoss.factory.workunit.domain.WorkUnitState
@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * distinct work unit and a distinct, strictly-increasing fencing token that
  * matches the token persisted in `work_unit_leases`.
  */
-class WorkUnitLeaseConcurrencyTest : DomainIntegrationTest() {
+class WorkUnitLeaseConcurrencyTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var leaseService: LeaseService

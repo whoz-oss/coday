@@ -3,21 +3,21 @@ package io.whozoss.factory.artifact.config
 import io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobClient
 import io.whozoss.factory.artifact.infrastructure.blob.InMemoryArtifactBlobClient
 import io.whozoss.factory.artifact.infrastructure.blob.S3ArtifactBlobClient
-import io.whozoss.factory.artifact.infrastructure.persistence.PostgresArtifactStore
+import io.whozoss.factory.artifact.infrastructure.persistence.Neo4jArtifactStore
+import io.whozoss.factory.artifact.infrastructure.persistence.SpringDataNeo4jArtifactRepository
 import io.whozoss.factory.artifact.port.ArtifactGcMetadataLister
 import io.whozoss.factory.artifact.service.ArtifactAdminService
 import io.whozoss.factory.artifact.service.ArtifactService
 import io.whozoss.factory.persistence.TenantScopeProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.jdbc.core.JdbcTemplate
 
 /**
  * Composition root of the ARTEFACTS aggregate.
  *
  * Wires the blob backend selected by `factory.artifact.blob-client`
- * (`in-memory` by default, `s3` for S3 / MinIO), the PostgreSQL-backed
- * [PostgresArtifactStore], the admin governance use cases and the general
+ * (`in-memory` by default, `s3` for S3 / MinIO), the Neo4j-backed
+ * [Neo4jArtifactStore], the admin governance use cases and the general
  * artifact application service. It is strictly additive: it never touches the
  * shared Factory socle.
  */
@@ -46,12 +46,12 @@ class ArtifactConfiguration {
 
     @Bean
     fun artifactStore(
-        jdbcTemplate: JdbcTemplate,
+        repository: SpringDataNeo4jArtifactRepository,
         blobClient: ArtifactBlobClient,
         properties: ArtifactProperties,
-    ): PostgresArtifactStore =
-        PostgresArtifactStore(
-            jdbcTemplate = jdbcTemplate,
+    ): Neo4jArtifactStore =
+        Neo4jArtifactStore(
+            repository = repository,
             blobClient = blobClient,
             defaultRetentionDays = properties.retentionDays,
             uploadPrefix = properties.uploadPrefix,
@@ -60,7 +60,7 @@ class ArtifactConfiguration {
 
     @Bean
     fun artifactAdminService(
-        artifactStore: PostgresArtifactStore,
+        artifactStore: Neo4jArtifactStore,
         blobClient: ArtifactBlobClient,
         properties: ArtifactProperties,
     ): ArtifactAdminService {
@@ -76,7 +76,7 @@ class ArtifactConfiguration {
 
     @Bean
     fun artifactService(
-        artifactStore: PostgresArtifactStore,
+        artifactStore: Neo4jArtifactStore,
         tenantScopeProvider: TenantScopeProvider,
     ): ArtifactService = ArtifactService(store = artifactStore, tenantScopeProvider = tenantScopeProvider)
 }

@@ -1,6 +1,6 @@
 package io.whozoss.factory.workflow
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
@@ -28,7 +28,7 @@ import org.springframework.http.ResponseEntity
  * envelope, the `{ "error": { code, message } }` failure envelope and the
  * governed `start` / detail routes.
  */
-class WorkflowControllerHttpTest : DomainIntegrationTest() {
+class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -142,6 +142,38 @@ class WorkflowControllerHttpTest : DomainIntegrationTest() {
         assertThat(data(detail.body)["state"]).isEqualTo("existing")
     }
 
+    @Suppress("UNCHECKED_CAST")
+    @Test
+    fun `start propagates an optional ticket into the instance and its relations`() {
+        registerDefinition()
+        val startBody = mapOf(
+            "workflow" to mapOf(
+                "workflowId" to "wf-http-ticket",
+                "workflowType" to "wf-http",
+                "title" to "HTTP start ticket",
+                "ticket" to "JIRA-7",
+            ),
+            "execution" to mapOf(
+                "namespaceId" to namespace,
+                "runtimeId" to "agentos-primary",
+                "kind" to "agentos",
+                "agentId" to "runner",
+            ),
+        )
+        val start = restTemplate.exchange(
+            "/api/factory/workflows/wf-http-ticket/start",
+            HttpMethod.POST,
+            HttpEntity(startBody, headers()),
+            jsonType(),
+        )
+        assertThat(start.statusCode).isEqualTo(HttpStatus.CREATED)
+        val payload = data(start.body)
+        val instance = payload["instance"] as Map<String, Any?>
+        assertThat(instance["ticket"]).isEqualTo("JIRA-7")
+        val relations = payload["relations"] as Map<String, Any?>
+        assertThat(relations["ticket"]).isEqualTo("JIRA-7")
+    }
+
     @Test
     fun `start rejects an invalid execution with 400`() {
         registerDefinition()
@@ -253,7 +285,6 @@ class WorkflowControllerHttpTest : DomainIntegrationTest() {
 
     @Test
     fun `tenant scope isolation keeps other scopes invisible to a scope-wide list`() {
-        jdbcTemplate.update("DELETE FROM workflow_projections WHERE organization_id = ?", "org-other")
         publish("wf-list-a", namespace)
 
         val otherScope = TenantScope("org-other", "ws-other")

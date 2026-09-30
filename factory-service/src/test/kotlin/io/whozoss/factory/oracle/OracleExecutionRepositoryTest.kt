@@ -1,6 +1,9 @@
 package io.whozoss.factory.oracle
 
-import io.whozoss.factory.PostgresContainerSpec
+import io.whozoss.factory.Neo4jIntegrationTest
+import io.whozoss.factory.artifact.domain.ArtifactAvailabilityStatus
+import io.whozoss.factory.artifact.infrastructure.persistence.ArtifactMetadataNode
+import io.whozoss.factory.artifact.infrastructure.persistence.SpringDataNeo4jArtifactRepository
 import io.whozoss.factory.error.ResourceNotFoundException
 import io.whozoss.factory.error.RevisionConflictException
 import io.whozoss.factory.oracle.domain.OracleExecution
@@ -12,18 +15,18 @@ import io.whozoss.factory.oracle.service.OracleRunCommand
 import io.whozoss.factory.persistence.TenantScope
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.jdbc.core.JdbcTemplate
+import java.time.Instant
 
 /**
- * Testcontainers integration tests of the oracle execution repository and
- * service against a real PostgreSQL instance (V6 `oracle_executions`).
+ * Embedded-Neo4j integration tests of the oracle execution repository and
+ * service (the former `oracle_executions` table is now an `:OracleExecution`
+ * node).
  *
- * Skipped gracefully when no Docker daemon is available.
+ * The Neo4j engine is the in-process test harness — no Docker required.
  */
-class OracleExecutionRepositoryTest : PostgresContainerSpec() {
+class OracleExecutionRepositoryTest : Neo4jIntegrationTest() {
 
     @Autowired
     private lateinit var repository: OracleExecutionRepository
@@ -32,39 +35,9 @@ class OracleExecutionRepositoryTest : PostgresContainerSpec() {
     private lateinit var service: OracleExecutionService
 
     @Autowired
-    private lateinit var jdbcTemplate: JdbcTemplate
+    private lateinit var artifactRepository: SpringDataNeo4jArtifactRepository
 
     private val scope = TenantScope(ORG, WS)
-
-    @BeforeEach
-    fun resetFixture() {
-        jdbcTemplate.update(
-            "DELETE FROM artifacts WHERE organization_id = ? AND workstream_id = ?",
-            ORG,
-            WS,
-        )
-        jdbcTemplate.update(
-            "DELETE FROM oracle_executions WHERE organization_id = ? AND workstream_id = ?",
-            ORG,
-            WS,
-        )
-        jdbcTemplate.update(
-            "DELETE FROM workflow_instances WHERE organization_id = ? AND workstream_id = ?",
-            ORG,
-            WS,
-        )
-        jdbcTemplate.update(
-            """
-            INSERT INTO workflow_instances
-                (organization_id, workstream_id, namespace_id, workflow_id, instance_json, projection_json)
-            VALUES (?, ?, ?, ?, '{}'::jsonb, '{}'::jsonb)
-            """.trimIndent(),
-            ORG,
-            WS,
-            NAMESPACE,
-            WORKFLOW,
-        )
-    }
 
     private fun newExecution(
         executionId: String,
@@ -183,18 +156,24 @@ class OracleExecutionRepositoryTest : PostgresContainerSpec() {
     @Test
     fun `terminalization publishes the linked artifact as available`() {
         repository.save(scope, newExecution("exec-artifact"))
-        jdbcTemplate.update(
-            """
-            INSERT INTO artifacts
-                (organization_id, workstream_id, namespace_id, workflow_id, artifact_id,
-                 availability_status, content_hash, size, content_type, storage_key)
-            VALUES (?, ?, ?, ?, ?, 'pending', 'hash', 1, 'text/plain', 'key')
-            """.trimIndent(),
-            ORG,
-            WS,
-            NAMESPACE,
-            WORKFLOW,
-            "art-1",
+        artifactRepository.save(
+            ArtifactMetadataNode(
+                id = "art-1",
+                organizationId = ORG,
+                workstreamId = WS,
+                namespaceId = NAMESPACE,
+                workflowId = WORKFLOW,
+                owner = NAMESPACE,
+                contentType = "text/plain",
+                contentHash = "hash",
+                size = 1,
+                storageKey = "key",
+                availabilityStatus = ArtifactAvailabilityStatus.PENDING.wireValue,
+                retentionStatus = "active",
+                legalHold = false,
+                createdAt = Instant.now(),
+                updatedAt = Instant.now(),
+            ),
         )
 
         val terminal = service.terminalize(
@@ -209,12 +188,8 @@ class OracleExecutionRepositoryTest : PostgresContainerSpec() {
 
         assertThat(terminal.artifactId).isEqualTo("art-1")
         assertThat(terminal.revision).isEqualTo(2)
-        val availability = jdbcTemplate.queryForObject(
-            "SELECT availability_status FROM artifacts WHERE artifact_id = ?",
-            String::class.java,
-            "art-1",
-        )
-        assertThat(availability).isEqualTo("available")
+        val availability = artifactRepository.findById("art-1").orElseThrow().availabilityStatus
+        assertThat(availability).isEqualTo(ArtifactAvailabilityStatus.AVAILABLE.wireValue)
     }
 
     companion object {

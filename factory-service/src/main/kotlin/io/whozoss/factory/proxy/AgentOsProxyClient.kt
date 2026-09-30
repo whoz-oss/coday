@@ -49,6 +49,9 @@ interface AgentOsProxyClient {
         workflowId: String,
         brief: String? = null,
         externalUserId: String? = null,
+        attemptId: String? = null,
+        capabilityToken: String? = null,
+        caseId: String? = null,
     ): AgentTurnExecutionResult
 }
 

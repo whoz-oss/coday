@@ -1,8 +1,7 @@
 package io.whozoss.factory.oracle
 
-import io.whozoss.factory.PostgresContainerSpec
+import io.whozoss.factory.Neo4jIntegrationTest
 import org.assertj.core.api.Assertions.assertThat
-import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.web.client.TestRestTemplate
@@ -13,39 +12,18 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.jdbc.core.JdbcTemplate
 
 /**
  * HTTP integration tests of [io.whozoss.factory.oracle.web.OracleController]
- * against a real PostgreSQL instance.
+ * against the embedded Neo4j engine (in-process harness, no Docker).
  *
  * The trust context is the loopback-dev principal granted by
- * `LocalDevMembershipResolver` (`org-local-dev` / `ws-default`). Skipped
- * gracefully when no Docker daemon is available.
+ * `LocalDevMembershipResolver` (`org-local-dev` / `ws-default`).
  */
-class OracleControllerIntegrationTest : PostgresContainerSpec() {
+class OracleControllerIntegrationTest : Neo4jIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
-
-    @Autowired
-    private lateinit var jdbcTemplate: JdbcTemplate
-
-    @BeforeEach
-    fun ensureWorkflowInstance() {
-        jdbcTemplate.update(
-            """
-            INSERT INTO workflow_instances
-                (organization_id, workstream_id, namespace_id, workflow_id, instance_json, projection_json)
-            VALUES (?, ?, ?, ?, '{}'::jsonb, '{}'::jsonb)
-            ON CONFLICT (organization_id, workstream_id, namespace_id, workflow_id) DO NOTHING
-            """.trimIndent(),
-            ORG,
-            WS,
-            NAMESPACE,
-            WORKFLOW,
-        )
-    }
 
     private fun postRun(
         oracleId: String,

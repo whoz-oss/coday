@@ -1,8 +1,10 @@
 package io.whozoss.factory.environment
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.environment.domain.EnvironmentIdentityConflictException
 import io.whozoss.factory.environment.domain.WorkEnvironmentState
+import io.whozoss.factory.environment.persistence.SpringDataNeo4jWorkEnvironmentRepository
+import io.whozoss.factory.environment.persistence.WorkEnvironmentNode
 import io.whozoss.factory.environment.service.ProvisionEnvironmentCommand
 import io.whozoss.factory.environment.service.WorkUnitEnvironmentService
 import org.assertj.core.api.Assertions.assertThat
@@ -17,10 +19,13 @@ import org.springframework.beans.factory.annotation.Autowired
  * end-to-end against the V6 `work_environments.status` vocabulary, and that the
  * lifecycle status column never drifts from the descriptor payload.
  */
-class WorkEnvironmentLifecycleServiceTest : DomainIntegrationTest() {
+class WorkEnvironmentLifecycleServiceTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var service: WorkUnitEnvironmentService
+
+    @Autowired
+    private lateinit var environmentNodes: SpringDataNeo4jWorkEnvironmentRepository
 
     @Test
     fun `environment walks provisioning to ready to busy to decommissioned`() {
@@ -101,12 +106,9 @@ class WorkEnvironmentLifecycleServiceTest : DomainIntegrationTest() {
             createdBy = "tester",
         )
 
-    private fun statusColumn(environmentId: String): String? = jdbcTemplate.queryForObject(
-        "SELECT status FROM work_environments WHERE organization_id = ? AND workstream_id = ? " +
-            "AND environment_id = ?",
-        String::class.java,
-        ORGANIZATION_ID,
-        WORKSTREAM_ID,
-        environmentId,
-    )
+    private fun statusColumn(environmentId: String): String? =
+        environmentNodes
+            .findById(WorkEnvironmentNode.compositeId(ORGANIZATION_ID, WORKSTREAM_ID, environmentId))
+            .orElse(null)
+            ?.status
 }

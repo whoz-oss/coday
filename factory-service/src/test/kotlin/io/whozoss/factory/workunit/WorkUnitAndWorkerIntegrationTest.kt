@@ -1,8 +1,10 @@
 package io.whozoss.factory.workunit
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.worker.domain.InvalidWorkerTransitionException
 import io.whozoss.factory.worker.domain.WorkerState
+import io.whozoss.factory.worker.persistence.SpringDataNeo4jWorkerRepository
+import io.whozoss.factory.worker.persistence.WorkerNode
 import io.whozoss.factory.worker.service.RegisterWorkerCommand
 import io.whozoss.factory.worker.service.WorkerService
 import io.whozoss.factory.workunit.domain.InvalidWorkUnitTransitionException
@@ -22,13 +24,16 @@ import java.time.Instant
  * `factory/src/domain/work-unit.ts` / `factory/src/domain/worker.ts` against
  * PostgreSQL, including the JSONB capabilities array and the heartbeat write.
  */
-class WorkUnitAndWorkerIntegrationTest : DomainIntegrationTest() {
+class WorkUnitAndWorkerIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var workUnitService: WorkUnitService
 
     @Autowired
     private lateinit var workerService: WorkerService
+
+    @Autowired
+    private lateinit var workerNodes: SpringDataNeo4jWorkerRepository
 
     @Test
     fun `a work unit walks the allowed lifecycle transitions and rejects illegal ones`() {
@@ -75,13 +80,8 @@ class WorkUnitAndWorkerIntegrationTest : DomainIntegrationTest() {
         assertThat(registered.status).isEqualTo(WorkerState.OFFLINE)
         assertThat(registered.capabilities).containsExactly("kotlin", "docker")
 
-        val length = jdbcTemplate.queryForObject(
-            "SELECT jsonb_array_length(capabilities) FROM workers WHERE organization_id = ? AND worker_id = ?",
-            Int::class.java,
-            ORGANIZATION_ID,
-            "worker-cap",
-        )
-        assertThat(length).isEqualTo(2)
+        val stored = workerNodes.findById(WorkerNode.compositeId(ORGANIZATION_ID, "worker-cap")).orElseThrow()
+        assertThat(stored.capabilities).contains("kotlin").contains("docker")
 
         val heartbeatAt = Instant.parse("2020-01-02T00:00:00Z")
         val heartbeat = workerService.heartbeat(scope, "worker-cap", heartbeatAt)

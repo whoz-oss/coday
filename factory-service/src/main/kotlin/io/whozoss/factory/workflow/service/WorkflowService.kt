@@ -1,6 +1,7 @@
 package io.whozoss.factory.workflow.service
 
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
@@ -35,8 +36,10 @@ import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.sse.WorkflowProjectionEvents
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
+import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.nio.file.Path
 import java.util.UUID
 
 /** An HTTP-shaped service result: status + payload. */
@@ -60,7 +63,21 @@ class WorkflowService(
     private val evidenceRepository: WorkflowEvidenceRepository,
     private val interactionRepository: HumanInteractionRepository,
     private val sseHub: WorkflowSseHub,
+    /**
+     * Optional DAG sequencer. When present, closing a `checkpoint` interaction
+     * automatically resumes the session instead of requiring a manual
+     * `POST /continue`.
+     */
+    private val sessionRunService: SessionRunService? = null,
+    /**
+     * Optional AgentOS proxy used to resolve the namespace repo root for the
+     * automatic resumption (mirrors
+     * [io.whozoss.factory.agentattempt.service.OutboxDrainWorker]).
+     */
+    private val agentOsProxyClient: AgentOsProxyClient? = null,
 ) {
+
+    private val logger = KotlinLogging.logger {}
 
     // ------------------------------------------------------------------
     // Definitions
@@ -70,6 +87,11 @@ class WorkflowService(
     fun registerDefinition(scope: TenantScope, record: WorkflowDefinitionRecord) {
         repository.saveDefinition(scope, record)
     }
+
+    /** Deletes a definition; `false` when no definition matches the given identity. */
+    @Transactional
+    fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean =
+        repository.deleteDefinition(scope, workflowType, version)
 
     @Transactional(readOnly = true)
     fun listDefinitions(scope: TenantScope): Map<String, Any?> =
@@ -575,6 +597,7 @@ class WorkflowService(
         actionId: String,
         text: String?,
         actorId: String,
+        repoRoot: Path? = null,
     ): WorkflowHttpResult {
         val interaction = interactionRepository.find(scope, namespaceId, workflowId, interactionId)
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_NOT_FOUND)
@@ -591,8 +614,14 @@ class WorkflowService(
         if (snapshot.stepStatus(interaction.stepId) != expectedStepStatus) {
             throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The human step is not awaiting an answer.")
         }
-        val authoritativeRevision = interaction.revision
-        if (expectedRevision != authoritativeRevision || snapshot.revision != authoritativeRevision) {
+        val interactionRevision = interaction.revision
+        // The workflow revision is authoritative for the state-machine CAS; the
+        // interaction revision is the caller's optimistic lock. The two are equal
+        // in the governed frontend flow, but a DAG checkpoint can legitimately be
+        // opened at `workflowRevision` and resolved after the sequencer persisted
+        // further runs, so they must not be conflated.
+        val workflowRevision = snapshot.revision
+        if (expectedRevision != interactionRevision) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
         }
         val outcome = if (actionId == "approve") "pass" else "fail"
@@ -622,7 +651,7 @@ class WorkflowService(
             mapOf(
                 "workflowId" to workflowId,
                 "stepId" to interaction.stepId,
-                "expectedRevision" to authoritativeRevision,
+                "expectedRevision" to workflowRevision,
                 "requestedStatus" to requestedStatus,
                 "evidenceIds" to listOf(recorded.evidenceId),
                 "idempotencyKey" to "human-transition:$interactionId:$actorId",
@@ -641,7 +670,7 @@ class WorkflowService(
         val decision = WorkflowTransitionPolicy.evaluateHumanResolutionTransition(request, snapshot, definition, evidence, execution)
         if (decision is TransitionDecision.Denied) throw decision.toException()
         val applied = WorkflowTransitionPolicy.applyTransition(snapshot, definition, request)
-        if (!repository.updateInstance(scope, namespaceId, workflowId, authoritativeRevision, applied.toInstance(instance))) {
+        if (!repository.updateInstance(scope, namespaceId, workflowId, workflowRevision, applied.toInstance(instance))) {
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
         }
         repository.appendTransition(
@@ -659,8 +688,8 @@ class WorkflowService(
             namespaceId,
             workflowId,
             interactionId,
-            authoritativeRevision,
-            interaction.copy(status = "closed", revision = authoritativeRevision + 1, payload = interaction.payload + ("response" to mapOf("actionId" to actionId, "actorId" to actorId))),
+            interactionRevision,
+            interaction.copy(status = "closed", revision = interactionRevision + 1, payload = interaction.payload + ("response" to mapOf("actionId" to actionId, "actorId" to actorId))),
         )
         interactionRepository.appendEvent(
             scope,
@@ -675,6 +704,9 @@ class WorkflowService(
             ),
         )
         sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
+        // Auto human resumption: re-trigger the in-process DAG sequencer so the
+        // downstream ready steps run without the cockpit calling `/continue`.
+        resumeCheckpointSession(scope, namespaceId, workflowId, interaction, repoRoot)
         return WorkflowHttpResult(
             200,
             mapOf(
@@ -688,6 +720,45 @@ class WorkflowService(
             ),
         )
     }
+
+    // ------------------------------------------------------------------
+    // Automatic session resumption
+    // ------------------------------------------------------------------
+
+    /**
+     * Re-runs the DAG after a human checkpoint is resolved.
+     *
+     * Only DAG-owned `checkpoint` interactions are resumed: the governed
+     * frontend flow (`approval`) mutates the instance without per-step DAG
+     * states, which the sequencer cannot resume. The repo root is the run-time
+     * `repoRoot` when supplied, otherwise resolved from the namespace via AgentOS
+     * (falling back to the process working directory) — the same convention as
+     * [io.whozoss.factory.agentattempt.service.OutboxDrainWorker].
+     */
+    private fun resumeCheckpointSession(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        interaction: HumanInteractionRecord,
+        repoRoot: Path?,
+    ) {
+        if (interaction.interactionType != CHECKPOINT_INTERACTION_TYPE) return
+        val runner = sessionRunService ?: return
+        val root = repoRoot ?: resolveRepoRoot(namespaceId)
+        logger.debug { "Auto-resuming session $workflowId after checkpoint ${interaction.interactionId}" }
+        runner.runSession(scope, namespaceId, workflowId, root)
+    }
+
+    /** The namespace repo root, or the process working directory when AgentOS cannot resolve it. */
+    private fun resolveRepoRoot(namespaceId: String): Path =
+        agentOsProxyClient
+            ?.let { client ->
+                runCatching { client.resolveRepoRoot(namespaceId, null) }
+                    .getOrNull()
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(Path::of)
+            }
+            ?: Path.of(".")
 
     // ------------------------------------------------------------------
     // Retries (frontend-run surfaces)
@@ -867,6 +938,11 @@ class WorkflowService(
             throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_MISMATCH)
         }
         return record.toPolicyDefinition()
+    }
+
+    private companion object {
+        /** Interaction type of a DAG-owned human checkpoint (opened by the capability resolver). */
+        const val CHECKPOINT_INTERACTION_TYPE = "checkpoint"
     }
 }
 

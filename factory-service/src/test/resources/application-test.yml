@@ -1,0 +1,22 @@
+# Profile activated by every factory-service integration test
+# (`@ActiveProfiles("test", "embedded-neo4j")`).
+#
+# The Neo4j engine is provided by the in-process harness
+# (EmbeddedNeo4jTestConfiguration); there is no relational datasource.
+# Background work that could race fixtures is disabled here.
+spring:
+  neo4j:
+    uri: bolt://localhost:7688
+
+server:
+  port: 0 # random port for tests
+
+factory:
+  persistence:
+    mode: embedded-neo4j
+    data-dir: build/test-neo4j-data/
+  outbox:
+    drain-enabled: false
+  workflow:
+    seed:
+      enabled: false

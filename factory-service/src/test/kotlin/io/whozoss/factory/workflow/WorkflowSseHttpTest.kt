@@ -1,6 +1,6 @@
 package io.whozoss.factory.workflow
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.workflow.sse.WorkflowProjectionEvents
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import org.assertj.core.api.Assertions.assertThat
@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
  * publishes a projection invalidation and asserts the exact named-event framing
  * arrives on the wire.
  */
-class WorkflowSseHttpTest : DomainIntegrationTest() {
+class WorkflowSseHttpTest : Neo4jDomainIntegrationTest() {
 
     @LocalServerPort
     private var port: Int = 0

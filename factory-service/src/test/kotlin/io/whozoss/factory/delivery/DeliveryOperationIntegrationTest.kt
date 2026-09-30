@@ -1,6 +1,6 @@
 package io.whozoss.factory.delivery
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.delivery.port.DeliveryTargetRegistry
 import io.whozoss.factory.environment.service.ProvisionEnvironmentCommand
 import io.whozoss.factory.environment.service.WorkUnitEnvironmentService
@@ -23,7 +23,7 @@ import org.springframework.http.ResponseEntity
  * Exercises trusted-target binding, the target-registry-unavailable 503 path
  * and the rollback request/approval lifecycle.
  */
-class DeliveryOperationIntegrationTest : DomainIntegrationTest() {
+class DeliveryOperationIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate

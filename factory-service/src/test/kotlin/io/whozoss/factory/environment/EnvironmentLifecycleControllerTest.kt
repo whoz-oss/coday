@@ -1,6 +1,6 @@
 package io.whozoss.factory.environment
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -23,7 +23,7 @@ import org.springframework.http.ResponseEntity
  * envelope and the `{ "error": { code, ... } }` failure envelope of the Node
  * control plane. The trust context is the loopback-dev principal.
  */
-class EnvironmentLifecycleControllerTest : DomainIntegrationTest() {
+class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate

@@ -28,6 +28,7 @@ object WorkflowErrorCodes {
     const val WORKFLOW_ALREADY_EXISTS = "WORKFLOW_ALREADY_EXISTS"
     const val WORKFLOW_IDENTITY_CONFLICT = "WORKFLOW_IDENTITY_CONFLICT"
     const val WORKFLOW_DEFINITION_NOT_FOUND = "WORKFLOW_DEFINITION_NOT_FOUND"
+    const val WORKFLOW_DEFINITION_INVALID = "WORKFLOW_DEFINITION_INVALID"
     const val WORKFLOW_DEFINITION_AMBIGUOUS = "WORKFLOW_DEFINITION_AMBIGUOUS"
     const val WORKFLOW_DEFINITION_MISMATCH = "WORKFLOW_DEFINITION_MISMATCH"
     const val WORKFLOW_NOT_GOVERNED = "WORKFLOW_NOT_GOVERNED"
@@ -88,6 +89,15 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.INVALID_INTERACTION,
     WorkflowErrorCodes.INVALID_REPLY,
     WorkflowErrorCodes.ACTION_NOT_ALLOWED,
+    WorkflowErrorCodes.WORKFLOW_DEFINITION_INVALID,
+    WorkflowDefinitionErrorCodes.INVALID_DEFINITION,
+    WorkflowDefinitionErrorCodes.INVALID_SCHEMA_VERSION,
+    WorkflowDefinitionErrorCodes.INVALID_VALUE,
+    WorkflowDefinitionErrorCodes.DUPLICATE_STEP_ID,
+    WorkflowDefinitionErrorCodes.MISSING_DEPENDENCY,
+    WorkflowDefinitionErrorCodes.SELF_DEPENDENCY,
+    WorkflowDefinitionErrorCodes.DEPENDENCY_CYCLE,
+    WorkflowDefinitionErrorCodes.INVALID_RESPONSIBILITY,
     WorkflowErrorCodes.UNSUPPORTED_STATE,
     -> 400
     WorkflowErrorCodes.TRUST_CONTEXT_UNAVAILABLE,

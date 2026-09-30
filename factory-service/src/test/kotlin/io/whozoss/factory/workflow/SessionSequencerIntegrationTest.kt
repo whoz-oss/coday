@@ -1,12 +1,18 @@
 package io.whozoss.factory.workflow
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.capability.AgentTurnCapability
 import io.whozoss.factory.capability.AgentTurnRequest
 import io.whozoss.factory.capability.AgentTurnResult
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityResolver
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.oracle.domain.OracleApplicableCondition
+import io.whozoss.factory.oracle.domain.OracleDefinition
+import io.whozoss.factory.oracle.domain.OracleExecutionStatus
+import io.whozoss.factory.oracle.registry.OracleDefinitionRegistry
+import io.whozoss.factory.oracle.service.OracleExecutionService
+import io.whozoss.factory.oracle.service.OracleRunResult
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
@@ -20,6 +26,8 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
+import io.mockk.every
+import io.mockk.mockk
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
@@ -31,14 +39,14 @@ import org.springframework.beans.factory.annotation.Autowired
 /**
  * Integration tests of the W8.3 session DAG sequencer.
  *
- * Extends the shared [DomainIntegrationTest] fixture (one Spring context, one
- * Testcontainers PostgreSQL) — no new `@SpringBootTest` variant. `code` steps run
+ * Extends the shared [Neo4jDomainIntegrationTest] fixture (one Spring context, one
+ * in-process embedded Neo4j) — no new `@SpringBootTest` variant. `code` steps run
  * deterministic shell fixtures; `agent` steps use a fake [AgentTurnCapability]
  * (never a real AgentOS). Covers a linear DAG, parallel independent branches with
  * a failure + blocked propagation, a human suspension/resume, and the agent-turn
  * failure rule.
  */
-class SessionSequencerIntegrationTest : DomainIntegrationTest() {
+class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var workflowService: WorkflowService
@@ -95,7 +103,7 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
         )
     }
 
-    private fun startSession(workflowType: String, workflowId: String, steps: List<Map<String, Any?>>) {
+    private fun startSession(workflowType: String, workflowId: String, steps: List<Map<String, Any?>>, ticket: String? = null) {
         val raw = linkedMapOf<String, Any?>(
             "schemaVersion" to "1",
             "workflowType" to workflowType,
@@ -116,7 +124,7 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
         val result = workflowService.start(
             scope,
             namespace,
-            WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType"),
+            WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType", ticket = ticket),
             ControllerExecutionInput(runtimeId = "test-runtime", kind = "agentos", agentId = "runner", namespaceId = namespace),
         )
         assertThat(result.status).isEqualTo(201)
@@ -255,16 +263,18 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
             "approve",
             "looks good",
             "alice",
+            repoRoot,
         )
         assertThat(replied.status).isEqualTo(200)
         assertThat(interactionRepository.find(scope, namespace, workflowId, interaction.interactionId)?.status)
             .isEqualTo("closed")
 
-        val second = sessionRunService.runSession(scope, namespace, workflowId, repoRoot)
-
-        assertThat(second.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        // Auto human resumption: the downstream code step is executed by
+        // `replyInteraction` itself, with no manual `runSession`/`/continue`.
         assertThat(statusOf(workflowId, "s2")).isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(statusOf(workflowId, "s3")).isEqualTo(WorkflowStatuses.COMPLETED)
+        val state = sessionRunService.sessionState(scope, namespace, workflowId)!!
+        assertThat(state.status).isEqualTo(WorkflowStatuses.COMPLETED)
     }
 
     @Test
@@ -354,5 +364,172 @@ class SessionSequencerIntegrationTest : DomainIntegrationTest() {
         assertThat(second.status).isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
         assertThat(evidenceRepository.list(scope, namespace, workflowId)).hasSize(evidenceAfterFirst)
+    }
+
+    @Test
+    fun `a start-time ticket reaches the agent brief and is persisted`() {
+        val workflowId = "wf-ticket"
+        startSession(
+            "ticket-dag",
+            workflowId,
+            listOf(stepJson("s1", "agent", "architect", emptyList())),
+            ticket = "JIRA-42",
+        )
+        val briefs = mutableListOf<String>()
+        val service = SessionRunService(
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            CapabilityExecutionService(
+                CapabilityResolver(
+                    object : AgentTurnCapability {
+                        override fun executeAgentTurn(request: AgentTurnRequest): AgentTurnResult {
+                            briefs += request.brief ?: ""
+                            return AgentTurnResult.Completed("PASS")
+                        }
+                    },
+                ),
+                workflowRepository,
+                evidenceRepository,
+                interactionRepository,
+                attemptRepository,
+            ),
+            sseHub,
+        )
+
+        val result = service.runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(briefs.single()).contains("JIRA-42")
+        val instance = workflowRepository.findInstance(scope, namespace, workflowId)!!
+        assertThat(instance.instance["ticket"]).isEqualTo("JIRA-42")
+        assertThat(instance.projection["ticket"]).isEqualTo("JIRA-42")
+    }
+
+    @Test
+    fun `a run-time ticket is persisted on the instance`() {
+        val workflowId = "wf-ticket-run"
+        startSession(
+            "ticket-run-dag",
+            workflowId,
+            listOf(stepJson("s1", "human", "reviewer", emptyList())),
+        )
+
+        val result = sessionRunService.runSession(scope, namespace, workflowId, repoRoot, ticket = "JIRA-99")
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        val instance = workflowRepository.findInstance(scope, namespace, workflowId)!!
+        assertThat(instance.instance["ticket"]).isEqualTo("JIRA-99")
+        assertThat(instance.projection["ticket"]).isEqualTo("JIRA-99")
+    }
+
+    // ----- auto oracles (Phase 2, sub-task 4) ----------------------------
+
+    @Test
+    fun `an applicable oracle runs automatically and records pass evidence`() {
+        writeScript("pass", "exit 0")
+        writeManifest("smoke" to "./factory/verification/pass")
+        val workflowId = "wf-auto-oracle"
+        startSession(
+            "oracle-smoke",
+            workflowId,
+            listOf(stepJson("verify-code", "code", "smoke", emptyList())),
+        )
+
+        val result = sessionRunService.runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "verify-code")).isEqualTo(WorkflowStatuses.COMPLETED)
+        val oracleEvidence = evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "oracle-result" }
+        assertThat(oracleEvidence).hasSize(1)
+        assertThat(oracleEvidence.single().outcome).isEqualTo("pass")
+        assertThat(oracleEvidence.single().facts["oracleId"]).isEqualTo("smoke")
+        assertThat(oracleEvidence.single().source?.get("kind")).isEqualTo("factory-oracle")
+    }
+
+    @Test
+    fun `an oracle whose applicability does not match is not run`() {
+        writeScript("pass", "exit 0")
+        writeManifest("check" to "./factory/verification/pass")
+        val workflowId = "wf-no-oracle"
+        startSession(
+            "unrelated-dag",
+            workflowId,
+            listOf(stepJson("s1", "code", "check", emptyList())),
+        )
+
+        val result = sessionRunService.runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(evidenceRepository.list(scope, namespace, workflowId).filter { it.kind == "oracle-result" }).isEmpty()
+    }
+
+    @Test
+    fun `a failing applicable oracle fails the step and blocks its dependents`() {
+        writeScript("pass", "exit 0")
+        writeManifest("check" to "./factory/verification/pass")
+        val workflowId = "wf-oracle-gate"
+        startSession(
+            "oracle-gate-dag",
+            workflowId,
+            listOf(
+                stepJson("verify", "code", "check", emptyList()),
+                stepJson("after", "code", "check", listOf("verify")),
+            ),
+        )
+        val definition = OracleDefinition(
+            id = "gate-oracle",
+            version = "1.0.0",
+            domain = "factory",
+            argv = listOf("true"),
+            timeoutMs = 1000,
+            applicable = OracleApplicableCondition(workflowTypes = listOf("oracle-gate-dag"), stepIds = listOf("verify")),
+        )
+        val service = oracleGatedSession(definition, OracleExecutionStatus.FAILED)
+
+        val result = service.runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(workflowId, "verify")).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(workflowId, "after")).isEqualTo(WorkflowStatuses.BLOCKED)
+    }
+
+    /**
+     * A sequencer wired to a mocked oracle catalogue/service, so the failure
+     * gating path is exercised deterministically (the real service always
+     * terminalizes an execution as `SUCCEEDED`).
+     */
+    private fun oracleGatedSession(definition: OracleDefinition, status: OracleExecutionStatus): SessionRunService {
+        val registry = mockk<OracleDefinitionRegistry>()
+        every { registry.list() } returns listOf(definition)
+        val oracleService = mockk<OracleExecutionService>()
+        every { oracleService.run(any(), any()) } returns OracleRunResult(
+            workflowId = "wf-oracle-gate",
+            stepId = "verify",
+            oracleId = definition.id,
+            executionId = "exec-gate",
+            status = status,
+            revision = 2,
+            outcome = status.dbValue,
+            evidenceId = null,
+            artifactId = null,
+            created = true,
+            idempotent = false,
+        )
+        return SessionRunService(
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            CapabilityExecutionService(
+                CapabilityResolver(),
+                workflowRepository,
+                evidenceRepository,
+                interactionRepository,
+                attemptRepository,
+            ),
+            sseHub,
+            registry,
+            oracleService,
+        )
     }
 }

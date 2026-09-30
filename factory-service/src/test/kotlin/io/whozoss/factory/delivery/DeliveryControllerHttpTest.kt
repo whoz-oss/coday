@@ -1,6 +1,6 @@
 package io.whozoss.factory.delivery
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.environment.service.ProvisionEnvironmentCommand
 import io.whozoss.factory.environment.service.WorkUnitEnvironmentService
 import org.assertj.core.api.Assertions.assertThat
@@ -25,7 +25,7 @@ import org.springframework.http.ResponseEntity
  * `{ "error": { code, ... } }` failure envelope, delivery resolution against a
  * provisioned work environment, git checkpointing and evidence-gated promotion.
  */
-class DeliveryControllerHttpTest : DomainIntegrationTest() {
+class DeliveryControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate

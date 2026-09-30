@@ -65,6 +65,12 @@ fun createWorkflowInstance(
         "createdAt" to observedAt,
         "updatedAt" to observedAt,
     )
+    // The optional ticket travels with the instance so every later run/resume
+    // (which only receives the workflowId) can still reach the agent brief and
+    // the branch-naming relations.
+    if (!command.ticket.isNullOrBlank()) {
+        instance["ticket"] = command.ticket
+    }
     val projection = linkedMapOf<String, Any?>(
         "schemaVersion" to "2",
         "workflowId" to command.workflowId,

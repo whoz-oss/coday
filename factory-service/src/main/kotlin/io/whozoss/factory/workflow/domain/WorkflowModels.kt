@@ -96,6 +96,8 @@ data class WorkflowStartCommand(
     val workflowType: String,
     val title: String,
     val relations: Map<String, Any?>? = null,
+    /** Optional Jira/issue ticket carried through the session (brief, branch naming, relations). */
+    val ticket: String? = null,
 )
 
 /** The trusted controlling runtime of a governed workflow. */
