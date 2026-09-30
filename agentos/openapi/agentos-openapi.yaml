@@ -3105,6 +3105,33 @@ paths:
       summary: Update a Skill
       tags:
       - skill-controller
+  /api/tools:
+    get:
+      operationId: listToolInvoke
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: userId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ToolSummary"
+          description: OK
+      tags:
+      - tool-invoke-controller
   /api/tools/invoke:
     post:
       operationId: invokeToolInvoke
@@ -5761,6 +5788,19 @@ components:
       - timestamp
       - toolName
       - type
+    ToolSummary:
+      type: object
+      properties:
+        description:
+          type: string
+        inputSchema:
+          type: string
+        name:
+          type: string
+      required:
+      - description
+      - inputSchema
+      - name
     UnreadCountResponse:
       type: object
       properties:
