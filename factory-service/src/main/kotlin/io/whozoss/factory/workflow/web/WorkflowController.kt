@@ -3,6 +3,7 @@ package io.whozoss.factory.workflow.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.factory.agentattempt.service.BridgeCancellationService
 import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.web.TrustContext
@@ -10,6 +11,7 @@ import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowExecution
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.SessionRunSubmissionService
@@ -53,6 +55,12 @@ class WorkflowController(
     private val sessionRunSubmissionService: SessionRunSubmissionService,
     private val sessionProperties: SessionProperties,
     private val tenantScopeProvider: TenantScopeProvider,
+    /**
+     * Optional bridge cancellation command. Present only when the AgentOS
+     * execution adapter is enabled; the cancellation route reports a clean 503
+     * otherwise.
+     */
+    private val bridgeCancellationService: BridgeCancellationService? = null,
 ) {
 
     // ----- collection / detail ------------------------------------------
@@ -363,6 +371,59 @@ class WorkflowController(
             "status" to result.status,
             "steps" to result.steps.map { mapOf("id" to it.stepId, "status" to it.status) },
             "runtimeNotification" to "not-configured",
+        )
+    }
+
+    // ----- attempts / explicit cancellation ------------------------------
+
+    /**
+     * Explicit business cancellation of a durable agent attempt.
+     *
+     * Closing the SSE stream (or a browser tab) only stops *observing* the run;
+     * it never cancels it. Cancellation requires this explicit, revision-fenced
+     * command, which interrupts/kills the AgentOS case, reconciles its post-kill
+     * state and moves the attempt to the durable terminal `interrupted` status.
+     */
+    @PostMapping(path = ["/{workflowId}/attempts/{attemptId}/cancel"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Explicitly cancel a durable agent attempt (revision-fenced, interrupt/kill + reconcile).")
+    fun cancelAttempt(
+        @PathVariable workflowId: String,
+        @PathVariable attemptId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("namespaceId", "expectedRevision", "reason") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain expectedRevision.")
+        }
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
+        val cancellation = bridgeCancellationService
+            ?: throw WorkflowException(
+                "BRIDGE_CANCELLATION_UNAVAILABLE",
+                "The AgentOS execution bridge is not enabled; explicit cancellation is unavailable.",
+                503,
+            )
+        val reason = (request["reason"] as? String)?.takeIf { it.isNotBlank() } ?: BridgeCancellationService.DEFAULT_REASON
+        val outcome = cancellation.requestCancel(
+            caller.scope,
+            caller.namespaceId,
+            workflowId,
+            attemptId,
+            expectedRevision,
+            reason,
+        )
+        return WorkflowDataEnvelope(
+            mapOf(
+                "workflowId" to outcome.workflowId,
+                "attemptId" to outcome.attemptId,
+                "stepId" to outcome.stepId,
+                "status" to outcome.status.dbValue,
+                "revision" to outcome.revision,
+                "idempotent" to outcome.idempotent,
+                "reconciledVerdict" to outcome.reconciledVerdict,
+            ),
         )
     }
 

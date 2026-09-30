@@ -34,6 +34,15 @@ data class DurableAgentAttempt(
     val ownerToken: String? = null,
     val turnCorrelation: String? = null,
     val commandId: String? = null,
+    /**
+     * The durable turn brief (the `@persona brief` message body) captured when
+     * the attempt was first registered. Persisting the command payload on the
+     * attempt is what lets the startup recovery worker re-drive a turn ONLY when
+     * it is proven that `startTurn` was never accepted, without re-deriving the
+     * brief from upstream evidence. Null on legacy records and on attempts the
+     * bridge registered before the payload was persisted.
+     */
+    val brief: String? = null,
     val status: AgentAttemptStatus = AgentAttemptStatus.PENDING,
     val failureCode: String? = null,
     val resultEvidenceId: String? = null,

@@ -6,6 +6,7 @@ import io.whozoss.factory.agentattempt.domain.AttemptLeaseFencingException
 import io.whozoss.factory.agentattempt.domain.AttemptNotFoundException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.InvalidAttemptTransitionException
+import io.whozoss.factory.error.RevisionConflictException
 import io.whozoss.factory.persistence.TenantScope
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.PlatformTransactionManager
@@ -70,8 +71,28 @@ class Neo4jDurableAgentAttemptRepository(
             capabilityToken = attempt.capabilityToken,
             turnCorrelation = attempt.turnCorrelation,
             commandId = attempt.commandId,
+            brief = attempt.brief,
             now = now,
         ).toDomain()
+
+    override fun findNonTerminal(limit: Int): List<ScopedDurableAgentAttempt> =
+        attempts.findNonTerminal(limit.toLong()).map { node ->
+            ScopedDurableAgentAttempt(TenantScope(node.organizationId, node.workstreamId), node.toDomain())
+        }
+
+    override fun findByAttemptId(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        attemptId: String,
+    ): DurableAgentAttempt? =
+        attempts.findByAttemptId(
+            organizationId = scope.organizationId,
+            workstreamId = scope.workstreamId,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            attemptId = attemptId,
+        ).firstOrNull()?.toDomain()
 
     override fun find(
         scope: TenantScope,
@@ -192,6 +213,54 @@ class Neo4jDurableAgentAttemptRepository(
             return requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
         }
         return disambiguateFailedCas(scope, namespaceId, workflowId, stepId, attemptId, ownerToken, target)
+    }
+
+    @Transactional
+    override fun cancel(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int?,
+        failureCode: String?,
+        now: Instant,
+    ): DurableAgentAttempt {
+        val current = requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+        // Idempotent cancellation replay: already interrupted.
+        if (current.status == AgentAttemptStatus.INTERRUPTED) return current
+        if (current.status.terminal) {
+            throw InvalidAttemptTransitionException(
+                "Attempt '$attemptId' is already terminal as '${current.status.dbValue}' and cannot be cancelled",
+                details = mapOf("attemptId" to attemptId, "status" to current.status.dbValue),
+            )
+        }
+        val revision = expectedRevision ?: current.revision
+        if (revision != current.revision) {
+            throw RevisionConflictException(
+                "Attempt '$attemptId' is at revision ${current.revision}, expected $revision",
+                details = mapOf("attemptId" to attemptId, "currentRevision" to current.revision, "expectedRevision" to revision),
+            )
+        }
+        val id = requireId(scope, namespaceId, workflowId, stepId, attemptId)
+        val cancelled = attempts.cancel(id, revision, "cancel:$attemptId", failureCode, now)
+        if (cancelled > 0L) {
+            return requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+        }
+        // The CAS matched nothing: the attempt changed (terminal or revision bump)
+        // between the read and the write — surface the precise conflict.
+        val after = requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+        return when {
+            after.status == AgentAttemptStatus.INTERRUPTED -> after
+            after.status.terminal -> throw InvalidAttemptTransitionException(
+                "Attempt '$attemptId' became terminal as '${after.status.dbValue}' and cannot be cancelled",
+                details = mapOf("attemptId" to attemptId, "status" to after.status.dbValue),
+            )
+            else -> throw RevisionConflictException(
+                "Attempt '$attemptId' is at revision ${after.revision}, expected $revision",
+                details = mapOf("attemptId" to attemptId, "currentRevision" to after.revision, "expectedRevision" to revision),
+            )
+        }
     }
 
     /**
