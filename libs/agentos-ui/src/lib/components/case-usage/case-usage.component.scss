@@ -1,0 +1,42 @@
+:host {
+  display: block;
+  flex: 0 0 auto;
+}
+.usage {
+  border-bottom: 1px solid var(--color-border, #8885);
+  font-size: 0.85rem;
+}
+summary {
+  cursor: pointer;
+  padding: 0.65rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.usage__body {
+  padding: 0 1rem 0.8rem;
+}
+p {
+  margin: 0.45rem 0;
+}
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0.3rem 0.5rem 0 0;
+  cursor: pointer;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.usage--paused {
+  border-left: 3px solid #c68a24;
+}
+.usage__warning {
+  color: var(--color-text-secondary, inherit);
+  padding: 0 1rem;
+}

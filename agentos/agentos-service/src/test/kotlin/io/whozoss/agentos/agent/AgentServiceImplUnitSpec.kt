@@ -27,6 +27,7 @@ import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
@@ -34,6 +35,7 @@ import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
+import io.whozoss.agentos.git.GitMetadataEntries
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
 import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.queryUser.QueryUserToolPlugin
@@ -126,6 +128,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             skillToolGrantService = skillToolGrantService,
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(),
+            limitsConfig = LimitsConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
         )
 
@@ -486,6 +489,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 ExchangeToolGrantService(
                     properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true),
                     storageProperties = ExchangeStorageConfigProperties(),
+                    reservedEntries = listOf(GitMetadataEntries()),
                     toolRegistryService = toolRegistryService,
                     toolResolverService = toolResolverService,
                     objectMapper = testObjectMapper,
@@ -517,6 +521,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                 )
             val caseTool = mockk<StandardTool<*>>()
@@ -850,6 +855,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                 )
             val configs =

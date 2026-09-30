@@ -357,6 +357,12 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceAiModelsComponent
               ),
           },
+          {
+            path: ':namespaceId/usage',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-usage/namespace-usage.component').then((m) => m.NamespaceUsageComponent),
+          },
           // --- Scheduled Prompts ---
           {
             path: ':namespaceId/scheduled-prompts/new',

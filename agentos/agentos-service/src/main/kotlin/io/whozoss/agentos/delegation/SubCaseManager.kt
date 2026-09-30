@@ -62,6 +62,9 @@ interface SubCaseManager {
      */
     fun killCase(caseId: UUID)
 
+    /** Human cost confirmation time is excluded from delegation execution deadlines. */
+    fun isCostPaused(caseId: UUID): Boolean = false
+
     /** Persist and emit a durable observation on a parent case without re-entering its runtime. */
     fun emitParentEvent(event: CaseEvent) {
         // Default keeps existing alternative implementations source-compatible.

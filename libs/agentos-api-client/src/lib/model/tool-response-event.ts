@@ -21,6 +21,7 @@ export interface ToolResponseEvent {
   durationMs?: number
   images: Array<Image>
   output: ToolResponseEventAllOfOutput
+  structuredOutput?: any | null
   success: boolean
   toolMetadata: { [key: string]: any }
   toolName: string

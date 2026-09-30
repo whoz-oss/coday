@@ -1174,6 +1174,45 @@ paths:
       summary: Read case exchange file content
       tags:
       - exchange-controller
+  /api/cases/{caseId}/files/directory:
+    get:
+      operationId: browseCaseFilesExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
+      tags:
+      - exchange-controller
   /api/cases/{caseId}/files/download:
     get:
       operationId: downloadCaseFileExchange
@@ -1303,6 +1342,65 @@ paths:
       summary: Mark case as read
       tags:
       - case-controller
+  /api/cases/{caseId}/run-cost:
+    get:
+      operationId: getRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/continue:
+    post:
+      operationId: continueCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContinueCostRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/stop:
+    post:
+      operationId: stopCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - run-cost-controller
   /api/cases/{entityId}/members:
     get:
       description: Returns all users holding a direct ADMIN or MEMBER relation on
@@ -2063,6 +2161,45 @@ paths:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
       summary: Read namespace exchange file content
+      tags:
+      - exchange-controller
+  /api/namespaces/{namespaceId}/files/directory:
+    get:
+      operationId: browseNamespaceFilesExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
       tags:
       - exchange-controller
   /api/namespaces/{namespaceId}/files/download:
@@ -2986,6 +3123,18 @@ paths:
           description: OK
       tags:
       - tool-invoke-controller
+  /api/usage-configuration:
+    get:
+      operationId: getUsageConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageConfiguration"
+          description: OK
+      tags:
+      - usage-configuration-controller
   /api/usage-records/aggregate/by-agent:
     get:
       operationId: aggregateByAgentUsageRecord
@@ -3658,6 +3807,8 @@ components:
             type: string
           llmProvider:
             type: string
+          llmUsage:
+            $ref: "#/components/schemas/LlmUsage"
       required:
       - agentId
       - agentName
@@ -3700,6 +3851,9 @@ components:
             format: uuid
           agentName:
             type: string
+          questionId:
+            type: string
+            format: uuid
       required:
       - agentId
       - agentName
@@ -4080,6 +4234,14 @@ components:
       - resultText
       - timestamp
       - type
+    ContinueCostRequest:
+      type: object
+      properties:
+        expectedThreshold:
+          type: number
+          format: double
+      required:
+      - expectedThreshold
     EnrichmentPhaseTrace:
       type: object
       properties:
@@ -4150,6 +4312,79 @@ components:
       required:
       - message
       - success
+    ExchangeDirectoryEntry:
+      type: object
+      description: A file or sub-directory at one level of an exchange scope.
+      properties:
+        directory:
+          type: boolean
+          description: "True for a sub-directory, false for a file."
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp.
+        mimeType:
+          type: string
+          description: "Detected MIME type for a file, null otherwise."
+        name:
+          type: string
+          description: Entry name (last path segment).
+        path:
+          type: string
+          description: "Path relative to the exchange root, using forward slashes."
+        size:
+          type: integer
+          format: int64
+          description: "File size in bytes; null for a directory, whose size is not\
+            \ computed."
+      required:
+      - directory
+      - name
+      - path
+    ExchangeDirectoryListing:
+      type: object
+      description: "A page of one directory level, plus the caller's capability."
+      properties:
+        capability:
+          type: string
+          description: Capability the caller has over this scope.
+          enum:
+          - NONE
+          - READ
+          - READ_WRITE
+        entries:
+          type: array
+          description: "Entries in this page: sub-directories first, then files, each\
+            \ alphabetically."
+          items:
+            $ref: "#/components/schemas/ExchangeDirectoryEntry"
+        hasMore:
+          type: boolean
+          description: Whether further pages exist for this directory.
+        page:
+          type: integer
+          format: int32
+          description: Zero-based index of the page returned.
+        pageSize:
+          type: integer
+          format: int32
+          description: Maximum number of entries per page.
+        path:
+          type: string
+          description: "Directory being listed, relative to the exchange root. Empty\
+            \ string for the root itself."
+        totalEntries:
+          type: integer
+          format: int32
+          description: "Total number of entries in this directory, across all pages."
+      required:
+      - capability
+      - entries
+      - hasMore
+      - page
+      - pageSize
+      - path
+      - totalEntries
     ExchangeFileContent:
       type: object
       description: Text content and metadata of a single exchange file.
@@ -4419,6 +4654,33 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    LlmUsage:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        estimatedCostUsd:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - inputTokens
+      - outputTokens
+      - totalTokens
     MemberItem:
       type: object
       properties:
@@ -4748,6 +5010,28 @@ components:
       required:
       - authType
       - name
+    PausedCostDto:
+      type: object
+      properties:
+        ancestor:
+          type: boolean
+        canContinue:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        threshold:
+          type: number
+          format: double
+      required:
+      - ancestor
+      - canContinue
+      - caseId
+      - cost
+      - threshold
     PendingConfirmationEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -5054,6 +5338,44 @@ components:
       - days
       - timeUtc
       - unit
+    RunCostDto:
+      type: object
+      properties:
+        active:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        liveTokens:
+          type: integer
+          format: int64
+        paused:
+          type: boolean
+        pausedCases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PausedCostDto"
+        runCostThreshold:
+          type: number
+          format: double
+        since:
+          type: string
+          format: date-time
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - active
+      - caseId
+      - cost
+      - liveTokens
+      - paused
+      - pausedCases
+      - since
+      - unknownCostCount
     ScheduledPrompt:
       type: object
       properties:
@@ -5069,6 +5391,9 @@ components:
           type: string
         enabled:
           type: boolean
+        externalMetadata:
+          type: object
+          additionalProperties: {}
         id:
           type: string
           format: uuid
@@ -5490,6 +5815,13 @@ components:
       required:
       - aggregate
       - key
+    UsageConfiguration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
     UsageRecord:
       type: object
       properties:

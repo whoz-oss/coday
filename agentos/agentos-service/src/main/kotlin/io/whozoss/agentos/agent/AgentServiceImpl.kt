@@ -14,6 +14,7 @@ import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
@@ -83,6 +84,7 @@ class AgentServiceImpl(
     private val skillService: SkillService,
     private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
+    private val limitsConfig: LimitsConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
 ) : AgentService {
     /**
@@ -440,8 +442,12 @@ class AgentServiceImpl(
         effectiveIntegrationConfigs
             .filter { it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(it.name) == true }
             .sortedBy { it.name }
-            .mapNotNull { it.parameters?.get(RedirectToolPlugin.GUIDELINE_PARAM)?.asText()?.takeIf { g -> g.isNotBlank() } }
-            .joinToString("\n\n")
+            .mapNotNull {
+                it.parameters
+                    ?.get(RedirectToolPlugin.GUIDELINE_PARAM)
+                    ?.asText()
+                    ?.takeIf { g -> g.isNotBlank() }
+            }.joinToString("\n\n")
             .takeUnless { it.isBlank() }
 
     /**
@@ -544,7 +550,7 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
 
         return if (advancedExecution) {
             val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
@@ -569,6 +575,7 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
+                maxIterations = limitsConfig.agentMaxIterations,
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
                 toolMetricsService = toolMetricsService,
@@ -916,8 +923,7 @@ class AgentServiceImpl(
     private fun staticCredentialFor(
         userId: UUID,
         setting: AuthSetting,
-    ): Credential? =
-        if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
+    ): Credential? = if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
 
     companion object : KLogging() {
         private val OAUTH_AUTH_TYPES =

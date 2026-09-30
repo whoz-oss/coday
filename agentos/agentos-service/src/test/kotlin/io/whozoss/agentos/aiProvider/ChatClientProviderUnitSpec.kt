@@ -2,16 +2,23 @@ package io.whozoss.agentos.aiProvider
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.model.tool.ToolCallingChatOptions
 import java.util.UUID
 
 class ChatClientProviderUnitSpec :
@@ -93,4 +100,24 @@ class ChatClientProviderUnitSpec :
 
             chatClientProvider.getChatClient(m, p).shouldNotBeNull()
         }
+
+        "enabled accounting still preserves native model behavior when no accumulator is supplied" {
+            val nativeModel = mockk<ChatModel>()
+            every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder()
+                .internalToolExecutionEnabled(true)
+                .build()
+            every { nativeModel.call(any<Prompt>()) } answers {
+                (firstArg<Prompt>().options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe true
+                ChatResponse(listOf(Generation(AssistantMessage("Done"))))
+            }
+            val factory = mockk<ChatModelFactory> {
+                every { createChatModel(any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+            }
+            val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
+            val client = clientProvider.getChatClient(model(), provider())
+
+            client.prompt("Hello").call().content() shouldBe "Done"
+            verify(exactly = 1) { nativeModel.call(any<Prompt>()) }
+        }
+
     })

@@ -276,7 +276,6 @@ export async function startAgentos(
     // Inherit the environment, then apply explicit fallbacks for managed settings.
     env: {
       ...process.env,
-      AGENTOS_LIMITS_RUN_COST_THRESHOLD: process.env.AGENTOS_LIMITS_RUN_COST_THRESHOLD ?? '10',
       // Fallback to NONE only if not already set — real values from the environment
       // take precedence (production deployments with actual encryption keys).
       AGENTOS_ENCRYPTION_KEY: process.env.AGENTOS_ENCRYPTION_KEY ?? 'NONE',
