@@ -317,4 +317,18 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(listIds(service.listProjections(otherScope, null, "active")))
             .containsExactly("wf-other-scope")
     }
+
+    @Test
+    fun `explicit cancellation reports the bridge is unavailable when the adapter is disabled`() {
+        val body = mapOf("namespaceId" to namespace, "expectedRevision" to 1)
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/wf-cancel/attempts/attempt-1/cancel",
+            HttpMethod.POST,
+            HttpEntity(body, headers()),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE)
+        val error = response.body?.get("error") as? Map<*, *>
+        assertThat(error?.get("code")).isEqualTo("BRIDGE_CANCELLATION_UNAVAILABLE")
+    }
 }

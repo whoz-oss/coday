@@ -6,6 +6,18 @@ import io.whozoss.factory.persistence.TenantScope
 import java.time.Instant
 
 /**
+ * A non-terminal durable attempt together with the tenant scope it belongs to.
+ *
+ * The domain [DurableAgentAttempt] deliberately carries only the bridge-supplied
+ * business identity; the recovery sweep works at the whole-graph level, so it
+ * needs the `(organizationId, workstreamId)` scope reconstructed from the node.
+ */
+data class ScopedDurableAgentAttempt(
+    val scope: TenantScope,
+    val attempt: DurableAgentAttempt,
+)
+
+/**
  * Persistence port of the durable execution attempt aggregate
  * (Lot C durable-execution).
  *
@@ -31,6 +43,25 @@ interface DurableAgentAttemptRepository {
         stepId: String,
         attemptId: String,
     ): DurableAgentAttempt?
+
+    /**
+     * Locate the attempt by its bridge-supplied `attemptId` inside a workflow,
+     * across every step of that workflow. Used by the explicit cancellation
+     * route, whose path carries no `stepId`.
+     */
+    fun findByAttemptId(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        attemptId: String,
+    ): DurableAgentAttempt?
+
+    /**
+     * Every non-terminal attempt of the whole graph (all tenant scopes and
+     * namespaces), bounded by [limit]. The startup recovery worker sweeps it to
+     * reconcile attempts orphaned by a crash.
+     */
+    fun findNonTerminal(limit: Int): List<ScopedDurableAgentAttempt>
 
     /**
      * Atomically claim the attempt for [ownerToken], moving it to `claiming`
@@ -84,6 +115,27 @@ interface DurableAgentAttemptRepository {
         failureCode: String?,
         resultEvidenceId: String?,
         lastObservedEventId: String?,
+        now: Instant,
+    ): DurableAgentAttempt
+
+    /**
+     * Explicit business cancellation, fenced on [expectedRevision]: a
+     * non-terminal attempt is moved to `interrupted` and its lease owner token
+     * rotated so an in-flight worker can no longer finalize it. An attempt
+     * already at `interrupted` is returned idempotently; any other terminal
+     * status is rejected with
+     * [io.whozoss.factory.agentattempt.domain.InvalidAttemptTransitionException];
+     * a divergent revision is rejected with
+     * [io.whozoss.factory.error.RevisionConflictException].
+     */
+    fun cancel(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int?,
+        failureCode: String?,
         now: Instant,
     ): DurableAgentAttempt
 }

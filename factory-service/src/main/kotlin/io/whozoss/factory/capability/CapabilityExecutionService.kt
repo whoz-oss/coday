@@ -2,12 +2,14 @@ package io.whozoss.factory.capability
 
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
+import io.whozoss.factory.adapter.agentos.ObservationEscalationPolicy
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
@@ -102,6 +104,12 @@ class CapabilityExecutionService(
     private val agentObservationTimeoutMs: Long = 600_000L,
     /** Lease TTL of the durable attempt claim (a live lease fences a competing worker). */
     private val agentLeaseTtlMs: Long? = 3_600_000L,
+    /**
+     * Escalation chain applied to an indeterminate observation (REST snapshot ->
+     * bounded SSE reconnect -> kill -> post-kill reconcile). Defaults to the
+     * frozen Lot H policy; injectable so tests can pin the kill decision.
+     */
+    private val observationEscalation: ObservationEscalationPolicy = ObservationEscalationPolicy(),
 ) {
 
     private val shortTransaction: TransactionTemplate? = transactionManager?.let { manager ->
@@ -378,7 +386,7 @@ class CapabilityExecutionService(
         // must not be nested in an outer transaction that holds the uncommitted
         // registration.
         val reservation = withReservationLock("$workflowId#${step.id}") {
-            reserveAgentAttempt(attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId)
+            reserveAgentAttempt(attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId, brief)
         }
         reservation.terminalStatus?.let {
             return terminalAgentExecution(scope, namespaceId, workflowId, step, reservation)
@@ -440,6 +448,7 @@ class CapabilityExecutionService(
         attemptId: String,
         ownerToken: String,
         agentId: String,
+        brief: String,
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
         if (existing != null && existing.status.terminal) {
@@ -449,6 +458,19 @@ class CapabilityExecutionService(
                 ownerToken = existing.ownerToken ?: ownerToken,
                 turnStarted = true,
                 terminalStatus = existing.status,
+            )
+        }
+        // Command idempotency: the same `attemptId` replayed with a DIFFERENT
+        // command payload is an explicit collision, never a silent reuse. A null
+        // stored brief is a legacy record and is tolerated.
+        if (existing != null && existing.brief != null && existing.brief != brief) {
+            throw IdempotencyKeyCollisionException(
+                "Attempt '$attemptId' was registered with a different command payload",
+                details = mapOf(
+                    "attemptId" to attemptId,
+                    "workflowId" to workflowId,
+                    "stepId" to step.id,
+                ),
             )
         }
         val newAttempt = existing == null
@@ -463,6 +485,7 @@ class CapabilityExecutionService(
                     stepId = step.id,
                     attemptNumber = 1,
                     agentName = agentId,
+                    brief = brief,
                 ),
             )
         }
@@ -542,7 +565,7 @@ class CapabilityExecutionService(
         newTransaction {
             attempts.transition(scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken, AgentAttemptStatus.RUNNING)
         }
-        return try {
+        val observed = try {
             adapter.observeTurn(caseId, reservation.attemptId, agentObservationTimeoutMs)
         } catch (error: Exception) {
             runCatching { adapter.reconcile(caseId) }.getOrElse {
@@ -551,6 +574,13 @@ class CapabilityExecutionService(
                     evidence = mapOf("caseId" to caseId, "attemptId" to reservation.attemptId),
                 )
             }
+        }
+        // An indeterminate observation is only the START of the escalation
+        // chain; it is never returned as-is when a proof can still be found.
+        return if (observed is AgentOsExecutionVerdict.Indeterminate) {
+            observationEscalation.escalate(adapter, caseId, reservation.attemptId, observed).verdict
+        } else {
+            observed
         }
     }
 

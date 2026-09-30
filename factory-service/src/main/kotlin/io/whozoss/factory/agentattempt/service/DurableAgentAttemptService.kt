@@ -3,6 +3,7 @@ package io.whozoss.factory.agentattempt.service
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.persistence.DurableAgentAttemptRepository
+import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.persistence.TenantScope
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -125,4 +126,57 @@ class DurableAgentAttemptService(
         stepId: String,
         attemptId: String,
     ): DurableAgentAttempt? = repository.find(scope, namespaceId, workflowId, stepId, attemptId)
+
+    /**
+     * Locate an attempt by its bridge `attemptId` within a workflow (any step).
+     * Used by the explicit cancellation route.
+     */
+    @Transactional(readOnly = true)
+    fun findByAttemptId(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        attemptId: String,
+    ): DurableAgentAttempt? = repository.findByAttemptId(scope, namespaceId, workflowId, attemptId)
+
+    /**
+     * Every non-terminal attempt of the whole graph, across all tenant scopes and
+     * namespaces. The startup recovery worker sweeps this list to reconcile or
+     * resume attempts orphaned by a crash.
+     */
+    @Transactional(readOnly = true)
+    fun findNonTerminal(limit: Int = DEFAULT_RECOVERY_LIMIT): List<ScopedDurableAgentAttempt> =
+        repository.findNonTerminal(limit)
+
+    /**
+     * Explicit business cancellation fenced on [expectedRevision]: the attempt is
+     * moved to `interrupted` and its lease owner token rotated. Idempotent when
+     * already interrupted; a divergent revision is a conflict; any other terminal
+     * status is an invalid transition.
+     */
+    @Transactional
+    fun requestCancel(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int? = null,
+        failureCode: String? = "USER_CANCELLED",
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.cancel(
+        scope,
+        namespaceId,
+        workflowId,
+        stepId,
+        attemptId,
+        expectedRevision,
+        failureCode,
+        now,
+    )
+
+    companion object {
+        /** Default bound of the startup recovery sweep. */
+        const val DEFAULT_RECOVERY_LIMIT = 100
+    }
 }

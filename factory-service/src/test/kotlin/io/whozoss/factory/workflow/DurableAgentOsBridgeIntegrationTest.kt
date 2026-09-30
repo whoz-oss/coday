@@ -6,6 +6,7 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseHandle
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.capability.CapabilityExecutionService
@@ -35,6 +36,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import org.springframework.beans.factory.annotation.Autowired
@@ -408,7 +410,6 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     // ----- 7. Turn longer than the Neo4j timeout ⇒ no open transaction ---
-
     @Test
     fun `a long remote turn runs with no open transaction and finalizes normally`() {
         val workflowId = "wf-bridge-long-turn"
@@ -456,5 +457,36 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
             scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
         )
         assertThat(attempt!!.status).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+    }
+
+    // ----- 8. Same attemptId, different payload ⇒ explicit collision -----
+
+    @Test
+    fun `a replay under the same attemptId with a different command payload is an explicit collision`() {
+        val workflowId = "wf-bridge-collision"
+        startSession("bridge-collision", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        // A prior submission registered the attempt with a DIFFERENT command payload.
+        durableAgentAttemptService.register(
+            scope,
+            DurableAgentAttempt(
+                attemptId = attemptId,
+                caseId = CapabilityExecutionService.stableCaseId(workflowId, "A"),
+                namespaceId = namespace,
+                workflowId = workflowId,
+                stepId = "A",
+                attemptNumber = 1,
+                agentName = "architect",
+                brief = "a completely different command",
+            ),
+        )
+        val adapter = FakeAdapter { AgentOsExecutionVerdict.Succeeded(emptyMap()) }
+
+        val failure = assertThrows(IdempotencyKeyCollisionException::class.java) {
+            bridgeService(adapter).resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
+        }
+
+        assertThat(failure.errorCode).isEqualTo("IDEMPOTENCY_KEY_COLLISION")
+        assertThat(adapter.startTurns).isEmpty()
     }
 }
