@@ -236,6 +236,28 @@ class Neo4jWorkflowRepository(
             updatedAt = Instant.now(),
         ) > 0
 
+    override fun claimStep(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        fromStatuses: List<String>,
+        payload: Map<String, Any?>,
+    ): Boolean =
+        stepStates.casClaimStep(
+            id = WorkflowStepStateNode.compositeId(
+                scope.organizationId,
+                scope.workstreamId,
+                namespaceId,
+                workflowId,
+                stepId,
+            ),
+            fromStatuses = fromStatuses,
+            status = "running",
+            payload = objectMapper.writeJson(payload),
+            updatedAt = Instant.now(),
+        ) > 0
+
     override fun appendCodeTransition(
         scope: TenantScope,
         namespaceId: String,

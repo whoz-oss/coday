@@ -176,6 +176,30 @@ interface SpringDataNeo4jWorkflowStepStateRepository : Neo4jRepository<WorkflowS
         @Param("payload") payload: String,
         @Param("updatedAt") updatedAt: Instant,
     ): Long
+
+    /**
+     * Atomically claims a step (status in [fromStatuses] -> [status]), incrementing
+     * its revision and replacing its payload in the same statement. Returns the
+     * number of nodes updated (0 or 1).
+     */
+    @Query(
+        """
+        MATCH (s:WorkflowStepState {id: ${'$'}id})
+        WHERE s.status IN ${'$'}fromStatuses
+        SET s.status = ${'$'}status,
+            s.payload = ${'$'}payload,
+            s.revision = s.revision + 1,
+            s.updatedAt = ${'$'}updatedAt
+        RETURN count(s) AS updated
+        """,
+    )
+    fun casClaimStep(
+        @Param("id") id: String,
+        @Param("fromStatuses") fromStatuses: List<String>,
+        @Param("status") status: String,
+        @Param("payload") payload: String,
+        @Param("updatedAt") updatedAt: Instant,
+    ): Long
 }
 
 interface SpringDataNeo4jWorkflowTransitionRepository : Neo4jRepository<WorkflowTransitionNode, String> {

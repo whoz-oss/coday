@@ -18,7 +18,9 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import java.nio.file.Path
 import java.util.UUID
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
+import org.springframework.transaction.support.TransactionTemplate
 
 /**
  * A resolved capability plus the ids of the facts it recorded (if any).
@@ -44,6 +46,19 @@ data class CapabilityExecution(
  * `agent_step_attempts` lifecycle plus an evidence item. Code, human and agent
  * rows carry composite foreign keys to the workflow instance, so the caller must
  * have materialized the instance first (the DAG sequencer of W8.3 drives that).
+ *
+ * ## Transaction boundaries
+ * [resolveAndRecord] is deliberately NOT transactional: the external execution it
+ * drives (AgentOS HTTP proxy calls, local verification processes) must never run
+ * inside a Neo4j transaction, otherwise a slow turn outlives the transaction
+ * timeout and every subsequent write fails with
+ * "Cannot run more queries in this transaction". Each persistence phase instead
+ * runs in its own short `REQUIRES_NEW` transaction (see [newTransaction]):
+ *  - Phase 1 claims the step (attempt reservation + capability issuance);
+ *  - Phase 2 executes the capability with no active transaction;
+ *  - Phase 3 terminalizes the attempt and records the evidence.
+ * When no [transactionManager] is supplied (pure unit tests), the phases execute
+ * inline and rely on the individual repository operations for durability.
  */
 @Service
 class CapabilityExecutionService(
@@ -59,9 +74,27 @@ class CapabilityExecutionService(
      * skipped and the turn runs without a delegate token).
      */
     private val agentStepResultService: AgentStepResultService? = null,
+    /**
+     * Optional transaction manager used to isolate each persistence phase in its
+     * own short `REQUIRES_NEW` transaction. Injected in production; pure unit
+     * tests may omit it and the phases then run inline.
+     */
+    private val transactionManager: PlatformTransactionManager? = null,
 ) {
 
-    @Transactional
+    private val shortTransaction: TransactionTemplate? = transactionManager?.let { manager ->
+        TransactionTemplate(manager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
+    }
+
+    /** Runs [block] in a fresh short transaction, or inline when none is configured. */
+    private fun <T : Any> newTransaction(block: () -> T): T {
+        val template = shortTransaction ?: return block()
+        return template.execute { block() }!!
+    }
+
+    /** The durable ids produced by the agent claim phase (Phase 1). */
+    private data class AgentClaim(val attemptId: String, val capabilityToken: String?)
+
     fun resolveAndRecord(
         scope: TenantScope,
         namespaceId: String,
@@ -72,16 +105,42 @@ class CapabilityExecutionService(
     ): CapabilityExecution {
         return when (step.responsibility.kind) {
             ResponsibilityKind.AGENT -> resolveAgent(scope, namespaceId, workflowId, step, repoRoot, ticket)
-            else -> {
-                val outcome = resolver.resolve(step, repoRoot, namespaceId, workflowId)
-                when (outcome) {
-                    is CapabilityOutcome.CodeExecuted ->
-                        recordCode(scope, namespaceId, workflowId, step, outcome)
-                    is CapabilityOutcome.HumanCheckpointRequired ->
-                        recordHuman(scope, namespaceId, workflowId, step, outcome)
-                    else -> CapabilityExecution(outcome)
-                }
-            }
+            ResponsibilityKind.HUMAN -> resolveHuman(scope, namespaceId, workflowId, step, repoRoot)
+            ResponsibilityKind.CODE -> resolveCode(scope, namespaceId, workflowId, step, repoRoot)
+        }
+    }
+
+    /**
+     * Code capability: external process execution (Phase 2) then a short
+     * transaction recording the code transition + evidence (Phase 3).
+     */
+    private fun resolveCode(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        repoRoot: Path,
+    ): CapabilityExecution {
+        val outcome = resolver.resolve(step, repoRoot, namespaceId, workflowId)
+        return when (outcome) {
+            is CapabilityOutcome.CodeExecuted -> newTransaction { recordCode(scope, namespaceId, workflowId, step, outcome) }
+            else -> CapabilityExecution(outcome)
+        }
+    }
+
+    /** Human checkpoint: no external execution; the checkpoint is recorded in a short transaction. */
+    private fun resolveHuman(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        repoRoot: Path,
+    ): CapabilityExecution {
+        val outcome = resolver.resolve(step, repoRoot, namespaceId, workflowId)
+        return when (outcome) {
+            is CapabilityOutcome.HumanCheckpointRequired ->
+                newTransaction { recordHuman(scope, namespaceId, workflowId, step, outcome) }
+            else -> CapabilityExecution(outcome)
         }
     }
 
@@ -191,10 +250,10 @@ class CapabilityExecutionService(
     }
 
     /**
-     * Opens an `agent_step_attempts` row, runs the turn through the resolver, then
-     * terminalizes the attempt (`completed` / `failed`) and records an
-     * `agent-turn` evidence fact. Any transport exception is turned into an
-     * explicit failure — never a false success.
+     * Agent capability: three phases — claim (short tx), external turn (no tx),
+     * terminalize + evidence (short tx). Any transport exception is turned into
+     * an explicit failure and terminalized outside the failed call — never a
+     * false success and never an unhandled 500 masking the cause.
      */
     private fun resolveAgent(
         scope: TenantScope,
@@ -205,25 +264,34 @@ class CapabilityExecutionService(
         ticket: String?,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
-        val attemptId = UUID.randomUUID().toString()
-        attemptRepository.insert(
-            scope,
-            AgentStepAttemptRecord(
-                namespaceId = namespaceId,
-                workflowId = workflowId,
-                stepId = step.id,
-                attemptId = attemptId,
-                agentId = agentId,
-                status = "running",
-                revision = 1,
-                payload = "{}",
-            ),
-        )
         val brief = briefFromTicket(ticket)
         // The Factory chooses the AgentOS case id so the submission capability
         // it mints can be bound to the exact case that will submit the result.
         val caseId = UUID.randomUUID().toString()
-        val capabilityToken = issueCapability(scope, namespaceId, workflowId, step, attemptId, caseId, agentId, brief)
+
+        // Phase 1 — short transaction: reserve the attempt and mint the token.
+        val claim = newTransaction {
+            val attemptId = UUID.randomUUID().toString()
+            attemptRepository.insert(
+                scope,
+                AgentStepAttemptRecord(
+                    namespaceId = namespaceId,
+                    workflowId = workflowId,
+                    stepId = step.id,
+                    attemptId = attemptId,
+                    agentId = agentId,
+                    status = "running",
+                    revision = 1,
+                    payload = "{}",
+                ),
+            )
+            AgentClaim(
+                attemptId = attemptId,
+                capabilityToken = issueCapability(scope, namespaceId, workflowId, step, attemptId, caseId, agentId, brief),
+            )
+        }
+
+        // Phase 2 — no transaction: the (potentially long) AgentOS turn.
         val outcome = try {
             resolver.resolve(
                 step,
@@ -231,8 +299,8 @@ class CapabilityExecutionService(
                 namespaceId,
                 workflowId,
                 brief,
-                attemptId,
-                capabilityToken,
+                claim.attemptId,
+                claim.capabilityToken,
                 caseId,
             )
         } catch (error: Exception) {
@@ -243,34 +311,38 @@ class CapabilityExecutionService(
                 message = error.message ?: error.toString(),
             )
         }
-        val passed = outcome is CapabilityOutcome.AgentCompleted
-        attemptRepository.terminalize(
-            scope,
-            namespaceId,
-            workflowId,
-            step.id,
-            attemptId,
-            if (passed) "completed" else "failed",
-        )
-        val evidenceId = UUID.randomUUID().toString()
-        evidenceRepository.append(
-            scope,
-            namespaceId,
-            workflowId,
-            WorkflowEvidenceItem(
-                evidenceId = evidenceId,
-                namespaceId = namespaceId,
-                workflowId = workflowId,
-                stepId = step.id,
-                kind = "agent-turn",
-                outcome = if (passed) "pass" else "fail",
-                source = mapOf("kind" to "agentos", "agentId" to agentId, "attemptId" to attemptId),
-                facts = agentFacts(outcome, attemptId),
-                idempotencyKey = null,
-                createdAt = null,
-            ),
-        )
-        return CapabilityExecution(outcome, evidenceId = evidenceId, attemptId = attemptId)
+
+        // Phase 3 — short transaction: terminalize the attempt and record the evidence.
+        return newTransaction {
+            val passed = outcome is CapabilityOutcome.AgentCompleted
+            attemptRepository.terminalize(
+                scope,
+                namespaceId,
+                workflowId,
+                step.id,
+                claim.attemptId,
+                if (passed) "completed" else "failed",
+            )
+            val evidenceId = UUID.randomUUID().toString()
+            evidenceRepository.append(
+                scope,
+                namespaceId,
+                workflowId,
+                WorkflowEvidenceItem(
+                    evidenceId = evidenceId,
+                    namespaceId = namespaceId,
+                    workflowId = workflowId,
+                    stepId = step.id,
+                    kind = "agent-turn",
+                    outcome = if (passed) "pass" else "fail",
+                    source = mapOf("kind" to "agentos", "agentId" to agentId, "attemptId" to claim.attemptId),
+                    facts = agentFacts(outcome, claim.attemptId),
+                    idempotencyKey = null,
+                    createdAt = null,
+                ),
+            )
+            CapabilityExecution(outcome, evidenceId = evidenceId, attemptId = claim.attemptId)
+        }
     }
 
     /**
