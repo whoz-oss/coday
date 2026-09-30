@@ -38,7 +38,10 @@ import io.whozoss.factory.workflow.sse.WorkflowProjectionEvents
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 import java.nio.file.Path
 import java.util.UUID
 
@@ -75,9 +78,33 @@ class WorkflowService(
      * [io.whozoss.factory.agentattempt.service.OutboxDrainWorker]).
      */
     private val agentOsProxyClient: AgentOsProxyClient? = null,
+    /**
+     * Optional transaction manager used to bracket the atomic reply writes in one
+     * short, isolated transaction that commits BEFORE the session resumption
+     * starts. Injected in production; pure unit tests may omit it.
+     */
+    private val transactionManager: PlatformTransactionManager? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
+
+    /**
+     * Short, isolated transaction boundary for the human reply. `REQUIRES_NEW`
+     * guarantees the reply commits durably before [resumeCheckpointSession] runs, so
+     * a failing resumption can never roll the human decision back.
+     */
+    private val replyTransaction: TransactionTemplate? = transactionManager?.let { manager ->
+        TransactionTemplate(manager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
+    }
+
+    /** Runs [block] in a fresh short transaction, or inline when none is configured. */
+    private fun <T : Any> inReplyTransaction(block: () -> T): T {
+        val template = replyTransaction ?: return block()
+        return template.execute { block() }!!
+    }
+
+    /** Durable outcome of the transactional part of a human reply. */
+    private data class HumanReplyOutcome(val interaction: HumanInteractionRecord, val result: WorkflowHttpResult)
 
     // ------------------------------------------------------------------
     // Definitions
@@ -584,10 +611,12 @@ class WorkflowService(
     }
 
     /**
-     * Atomic human reply: interaction update -> audited `human-decision` evidence
-     * -> governed transition -> interaction closure, all in ONE transaction.
+     * Human reply: the interaction update, the audited `human-decision` evidence,
+     * the governed transition and the interaction closure all commit in ONE short,
+     * isolated transaction. Only once that transaction has committed is the
+     * session resumption triggered — outside the reply transaction — so a failing
+     * (or long) resumption can never roll the human reply back.
      */
-    @Transactional
     fun replyInteraction(
         scope: TenantScope,
         namespaceId: String,
@@ -599,6 +628,27 @@ class WorkflowService(
         actorId: String,
         repoRoot: Path? = null,
     ): WorkflowHttpResult {
+        // Transaction 1 (short): commit the human response + evidence + transition
+        // + interaction closure atomically.
+        val outcome = inReplyTransaction {
+            replyInteractionTransactional(scope, namespaceId, workflowId, interactionId, expectedRevision, actionId, text, actorId)
+        }
+        // Post-transaction resumption: a separate execution context that does not
+        // join (or inherit) the committed reply transaction.
+        resumeCheckpointSession(scope, namespaceId, workflowId, outcome.interaction, repoRoot)
+        return outcome.result
+    }
+
+    private fun replyInteractionTransactional(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        interactionId: String,
+        expectedRevision: Int,
+        actionId: String,
+        text: String?,
+        actorId: String,
+    ): HumanReplyOutcome {
         val interaction = interactionRepository.find(scope, namespaceId, workflowId, interactionId)
             ?: throw workflowException(WorkflowErrorCodes.INTERACTION_NOT_FOUND)
         val actions = (interaction.payload["actions"] as? List<*>).orEmpty().mapNotNull { entry ->
@@ -683,14 +733,20 @@ class WorkflowService(
             toStepId = interaction.stepId,
             payload = mapOf("kind" to "human_resolution", "actionId" to actionId),
         )
-        interactionRepository.update(
-            scope,
-            namespaceId,
-            workflowId,
-            interactionId,
-            interactionRevision,
-            interaction.copy(status = "closed", revision = interactionRevision + 1, payload = interaction.payload + ("response" to mapOf("actionId" to actionId, "actorId" to actorId))),
-        )
+        // Strict CAS verification: the interaction closure must win its
+        // compare-and-swap. A stale revision means the interaction was answered
+        // concurrently; silently ignoring it would close it twice.
+        if (!interactionRepository.update(
+                scope,
+                namespaceId,
+                workflowId,
+                interactionId,
+                interactionRevision,
+                interaction.copy(status = "closed", revision = interactionRevision + 1, payload = interaction.payload + ("response" to mapOf("actionId" to actionId, "actorId" to actorId))),
+            )
+        ) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The interaction revision is stale.")
+        }
         interactionRepository.appendEvent(
             scope,
             namespaceId,
@@ -704,19 +760,19 @@ class WorkflowService(
             ),
         )
         sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
-        // Auto human resumption: re-trigger the in-process DAG sequencer so the
-        // downstream ready steps run without the cockpit calling `/continue`.
-        resumeCheckpointSession(scope, namespaceId, workflowId, interaction, repoRoot)
-        return WorkflowHttpResult(
-            200,
-            mapOf(
-                "workflowId" to workflowId,
-                "interactionId" to interactionId,
-                "actorId" to actorId,
-                "evidenceId" to recorded.evidenceId,
-                "revision" to applied.revision,
-                "projection" to applied.projection,
-                "runtimeNotification" to "not-configured",
+        return HumanReplyOutcome(
+            interaction = interaction,
+            result = WorkflowHttpResult(
+                200,
+                mapOf(
+                    "workflowId" to workflowId,
+                    "interactionId" to interactionId,
+                    "actorId" to actorId,
+                    "evidenceId" to recorded.evidenceId,
+                    "revision" to applied.revision,
+                    "projection" to applied.projection,
+                    "runtimeNotification" to "not-configured",
+                ),
             ),
         )
     }
@@ -821,7 +877,9 @@ class WorkflowService(
             return WorkflowHttpResult(200, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "state" to "active", "revision" to instance.revision))
         }
         if (projection.lifecycleState != "removed") throw workflowException(WorkflowErrorCodes.INVALID_LIFECYCLE_TRANSITION)
-        repository.setProjectionLifecycle(scope, namespaceId, workflowId, listOf("removed"), "active")
+        if (!repository.setProjectionLifecycle(scope, namespaceId, workflowId, listOf("removed"), "active")) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The projection lifecycle was changed concurrently.")
+        }
         sseHub.publish(
             namespaceId,
             mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to projection.revision),
@@ -838,7 +896,9 @@ class WorkflowService(
         val projection = repository.findProjection(scope, namespaceId, workflowId)
             ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND)
         if (projection.lifecycleState != "active") throw workflowException(WorkflowErrorCodes.INVALID_LIFECYCLE_TRANSITION)
-        repository.setProjectionLifecycle(scope, namespaceId, workflowId, listOf("active"), "removed")
+        if (!repository.setProjectionLifecycle(scope, namespaceId, workflowId, listOf("active"), "removed")) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The projection lifecycle was changed concurrently.")
+        }
         repository.setInstanceStatus(scope, namespaceId, workflowId, "active", "removed")
         sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId), WorkflowProjectionEvents.REMOVED)
         return WorkflowHttpResult(200, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "state" to "removed"))
@@ -849,7 +909,9 @@ class WorkflowService(
         val projection = repository.findProjection(scope, namespaceId, workflowId)
             ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND)
         if (projection.lifecycleState != "removed") throw workflowException(WorkflowErrorCodes.INVALID_LIFECYCLE_TRANSITION)
-        repository.setProjectionLifecycle(scope, namespaceId, workflowId, listOf("removed"), "purged")
+        if (!repository.setProjectionLifecycle(scope, namespaceId, workflowId, listOf("removed"), "purged")) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The projection lifecycle was changed concurrently.")
+        }
         repository.deleteInstance(scope, namespaceId, workflowId)
         sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId), WorkflowProjectionEvents.PURGED)
         return WorkflowHttpResult(200, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "state" to "purged"))
