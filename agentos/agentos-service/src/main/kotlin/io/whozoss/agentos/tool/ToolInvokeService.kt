@@ -42,26 +42,32 @@ class ToolInvokeService(
      * instantiates its full tool set. The resulting collection is already sorted by name
      * (via [ToolResolverService.dedupToolsByName]).
      */
-    internal fun resolveTools(namespaceId: UUID, userId: UUID?): Collection<StandardTool<*>> {
-        val effectiveConfigs = integrationConfigService.findEffective(
-            namespaceId = namespaceId,
-            userId = userId,
-        )
+    internal fun resolveTools(
+        namespaceId: UUID,
+        userId: UUID?,
+    ): Collection<StandardTool<*>> {
+        val effectiveConfigs =
+            integrationConfigService.findEffective(
+                namespaceId = namespaceId,
+                userId = userId,
+            )
 
         // Grant all integrations (null value = all tools allowed) so every plugin
         // instantiates its full tool set.
         val allToolsFromIntegrationByName: Map<String, List<String>?> =
             effectiveConfigs.associate { it.name to null }
 
-        val context = ToolContext(
-            namespaceId = namespaceId,
-            userId = userId,
-            userExternalId = userId?.let {
-                runCatching { userService.findById(it)?.externalId }.getOrNull()
-            },
-            caseEvents = emptyList(),
-            agentName = null,
-        )
+        val context =
+            ToolContext(
+                namespaceId = namespaceId,
+                userId = userId,
+                userExternalId =
+                    userId?.let {
+                        runCatching { userService.findById(it)?.externalId }.getOrNull()
+                    },
+                caseEvents = emptyList(),
+                agentName = null,
+            )
 
         return toolResolverService.resolveToolsForRun(
             agentIntegrations = allToolsFromIntegrationByName,
@@ -77,7 +83,10 @@ class ToolInvokeService(
      * @param userId Optional user id; when provided, user-scoped overlay layers are included.
      * @return Summaries of all available tools, sorted by name.
      */
-    fun listTools(namespaceId: UUID, userId: UUID?): List<ToolSummary> {
+    fun listTools(
+        namespaceId: UUID,
+        userId: UUID?,
+    ): List<ToolSummary> {
         logger.info { "[ToolInvoke] Listing tools in namespace $namespaceId" }
         return resolveTools(namespaceId, userId)
             .sortedBy { it.name }
@@ -114,15 +123,16 @@ class ToolInvokeService(
 
         val tools = resolveTools(namespaceId, userId)
 
-        val tool = tools.firstOrNull { it.name == toolName }
-            ?: run {
-                val available = tools.map { it.name }.sorted()
-                logger.warn { "[ToolInvoke] Tool '$toolName' not found. Available (first 10): ${available.take(10)}" }
-                throw ResourceNotFoundException(
-                    "Tool '$toolName' not found in namespace $namespaceId. " +
-                        "Available tools: $available",
-                )
-            }
+        val tool =
+            tools.firstOrNull { it.name == toolName }
+                ?: run {
+                    val available = tools.map { it.name }.sorted()
+                    logger.warn { "[ToolInvoke] Tool '$toolName' not found. Available (first 10): ${available.take(10)}" }
+                    throw ResourceNotFoundException(
+                        "Tool '$toolName' not found in namespace $namespaceId. " +
+                            "Available (first 10): ${available.take(10)}",
+                    )
+                }
 
         // Payload is intentionally not logged at INFO — it may contain credentials or PII.
         // Use TRACE only in environments where log data is appropriately secured.
@@ -130,15 +140,17 @@ class ToolInvokeService(
         logger.info { "[ToolInvoke] Executing tool '${tool.name}'" }
 
         // Build a fresh context for execution (same shape as the one used during resolution).
-        val context = ToolContext(
-            namespaceId = namespaceId,
-            userId = userId,
-            userExternalId = userId?.let {
-                runCatching { userService.findById(it)?.externalId }.getOrNull()
-            },
-            caseEvents = emptyList(),
-            agentName = null,
-        )
+        val context =
+            ToolContext(
+                namespaceId = namespaceId,
+                userId = userId,
+                userExternalId =
+                    userId?.let {
+                        runCatching { userService.findById(it)?.externalId }.getOrNull()
+                    },
+                caseEvents = emptyList(),
+                agentName = null,
+            )
 
         val result = tool.executeWithJson(payloadJson, context)
         logger.info { "[ToolInvoke] Tool '${tool.name}' finished (success=${result.success})" }
