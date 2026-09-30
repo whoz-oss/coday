@@ -2,6 +2,7 @@ package io.whozoss.agentos.chat
 
 import com.google.genai.Client
 import io.micrometer.observation.ObservationRegistry
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.anthropic.AnthropicChatOptions
@@ -50,6 +51,7 @@ data class AnthropicProperties(
 class ChatModelFactory(
     private val observationRegistry: ObservationRegistry,
     private val anthropicProperties: AnthropicProperties,
+    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
     fun createChatModel(
         apiType: AiApiType,
@@ -132,8 +134,10 @@ class ChatModelFactory(
             OpenAiChatOptions
                 .builder()
                 .temperature(temp)
-                .streamUsage(true)
                 .model(model)
+        if (usageConfig.enabled) {
+            optionsBuilder.streamUsage(true)
+        }
         if (maxCompletionTokens != null) {
             optionsBuilder.maxCompletionTokens(maxCompletionTokens)
         }
@@ -171,8 +175,10 @@ class ChatModelFactory(
             OpenAiChatOptions
                 .builder()
                 .temperature(temp)
-                .streamUsage(true)
                 .model(model)
+        if (usageConfig.enabled) {
+            optionsBuilder.streamUsage(true)
+        }
         if (maxCompletionTokens != null) {
             optionsBuilder.maxTokens(maxCompletionTokens)
         }

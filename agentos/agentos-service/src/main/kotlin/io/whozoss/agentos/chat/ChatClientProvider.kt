@@ -1,6 +1,7 @@
 package io.whozoss.agentos.chat
 
 import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import org.springframework.ai.chat.client.ChatClient
@@ -17,7 +18,7 @@ import org.springframework.stereotype.Service
  * Resolution of which model/provider pair to use is the responsibility of the caller
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
  *
- * Tracking is applied to the model, so every call/stream terminal and internal tool
+ * When usage is enabled, tracking is applied to the model so every call/stream terminal and internal tool
  * round goes through accounting and the cost gate. Clients outside agent execution
  * (no accumulator) retain their existing behaviour.
  */
@@ -25,6 +26,7 @@ import org.springframework.stereotype.Service
 class ChatClientProvider(
     private val chatModelFactory: ChatModelFactory,
     private val limits: LimitsConfigProperties = LimitsConfigProperties(),
+    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
     fun getChatClient(
         modelConfig: AiModel,
@@ -43,7 +45,7 @@ class ChatClientProvider(
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
             )
         val trackedModel =
-            if (accumulator != null) {
+            if (usageConfig.enabled && accumulator != null) {
                 UsageTrackingChatModel(
                     chatModel,
                     accumulator,

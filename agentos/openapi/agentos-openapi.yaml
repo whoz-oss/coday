@@ -2966,6 +2966,18 @@ paths:
       summary: Update a Skill
       tags:
       - skill-controller
+  /api/usage-configuration:
+    get:
+      operationId: getUsageConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageConfiguration"
+          description: OK
+      tags:
+      - usage-configuration-controller
   /api/usage-records/aggregate/by-agent:
     get:
       operationId: aggregateByAgentUsageRecord
@@ -5489,6 +5501,13 @@ components:
       required:
       - aggregate
       - key
+    UsageConfiguration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
     UsageRecord:
       type: object
       properties:

@@ -1,6 +1,7 @@
 package io.whozoss.agentos.usage
 
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.api.usageRecord.ContinueCostRequest
 import io.whozoss.agentos.sdk.api.usageRecord.RunCostApi
 import io.whozoss.agentos.sdk.api.usageRecord.RunCostDto
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @RestController
@@ -21,6 +23,7 @@ import java.util.UUID
 class RunCostController(
     private val costs: RunCostService,
     private val cases: CaseService,
+    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) : RunCostApi {
     @GetMapping
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
@@ -41,6 +44,9 @@ class RunCostController(
     override fun stopCostRun(
         @PathVariable caseId: UUID,
     ) {
+        if (!usageConfig.enabled) {
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Usage tracking is disabled")
+        }
         cases.interruptCase(caseId)
     }
 }

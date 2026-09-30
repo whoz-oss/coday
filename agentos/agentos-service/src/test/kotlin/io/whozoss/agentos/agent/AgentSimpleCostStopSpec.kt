@@ -10,6 +10,7 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.chat.UsageTrackingChatModel
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -59,7 +60,7 @@ class AgentSimpleCostStopSpec :
                     every { caseEvents.findByParent(case.id) } returns emptyList()
                     val records = mockk<UsageRecordService>()
                     every { records.sumCostByCaseTreeSince(any(), any()) } returns null
-                    val costs = RunCostService(cases, caseEvents, mockk<NamespaceService>(), records)
+                    val costs = RunCostService(cases, caseEvents, mockk<NamespaceService>(), records, UsageConfigProperties(enabled = true))
                     val usage = UsageAccumulator()
                     val registration = costs.register(case.id, usage)
                     val calls = AtomicInteger()

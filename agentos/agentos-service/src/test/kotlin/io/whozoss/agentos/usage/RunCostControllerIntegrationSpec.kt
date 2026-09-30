@@ -32,7 +32,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import java.util.UUID
 
 /** Real HTTP authorization, cost service and Neo4j; only request identity is substituted. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = ["agentos.usage.enabled=true"])
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)

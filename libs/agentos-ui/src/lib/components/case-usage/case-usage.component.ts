@@ -8,6 +8,7 @@ import {
   UsageRecordControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
+import { UsageConfigurationService } from '../../services/usage-configuration.service'
 import {
   catchError,
   distinct,
@@ -35,6 +36,7 @@ export class CaseUsageComponent {
   readonly caseId = input.required<string>()
   readonly canWrite = input(false)
   readonly running = input(false)
+  readonly configuration = inject(UsageConfigurationService)
   private readonly costs = inject(RunCostControllerService)
   private readonly usage = inject(UsageRecordControllerService)
   private readonly caseState = inject(CaseStateService)
@@ -57,6 +59,7 @@ export class CaseUsageComponent {
     })
 
     effect((cleanup) => {
+      if (!this.configuration.enabled()) return
       const caseId = this.caseId()
       const running = this.running()
       // A decision owns its refresh; cancel polling so older snapshots cannot restore the pause.
@@ -100,7 +103,7 @@ export class CaseUsageComponent {
   }
 
   continue(limit: PausedCostDto): void {
-    if (!this.canWrite() || this.saving()) return
+    if (!this.configuration.enabled() || !this.canWrite() || this.saving()) return
     this.saving.set(true)
     this.actions.add(
       this.costs
@@ -122,7 +125,7 @@ export class CaseUsageComponent {
   }
 
   stop(): void {
-    if (!this.canWrite() || this.saving()) return
+    if (!this.configuration.enabled() || !this.canWrite() || this.saving()) return
     this.saving.set(true)
     this.actions.add(
       this.costs.stopCostRunRunCost(this.caseId()).subscribe({

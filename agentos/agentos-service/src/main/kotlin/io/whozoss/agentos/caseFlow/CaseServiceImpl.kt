@@ -9,6 +9,7 @@ import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -74,6 +75,7 @@ class CaseServiceImpl(
     private val limitsConfig: LimitsConfigProperties,
     private val usageRecordService: UsageRecordService,
     private val runCostService: RunCostService? = null,
+    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) : CaseService,
     SubCaseManager {
     /**
@@ -615,7 +617,7 @@ class CaseServiceImpl(
         }
 
         logger.info { "Running agent: $agentName for case $caseId" }
-        val usageAccumulator = UsageAccumulator()
+        val usageAccumulator = if (usageConfig.enabled) UsageAccumulator() else null
         val context =
             AgentExecutionContext(
                 namespaceId = runtime.namespaceId,
@@ -634,7 +636,7 @@ class CaseServiceImpl(
         // the accumulator has no data (no LLM call was made) and the finally block writes
         // nothing — rule 1 (hasData guard) covers this path naturally.
         val agent = agentService.findAgentByName(agentName, context, this)
-        val costRegistration = runCostService?.register(caseId, usageAccumulator)
+        val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         var outcome = UsageOutcome.COMPLETED
 
         if (shouldEmitRunningEvent(events)) {
@@ -689,7 +691,7 @@ class CaseServiceImpl(
                     // completes; by the time the agent emits AgentFinishedEvent, all calls for
                     // this run are done and the total is stable.
                     val enriched =
-                        if (event is AgentFinishedEvent && usageAccumulator.hasData) {
+                        if (event is AgentFinishedEvent && usageAccumulator?.hasData == true) {
                             event.copy(llmUsage = usageAccumulator.total)
                         } else {
                             event
@@ -711,7 +713,7 @@ class CaseServiceImpl(
             outcome = UsageOutcome.FAILED
             throw e
         } finally {
-            if (usageAccumulator.failed) {
+            if (usageAccumulator?.failed == true) {
                 outcome = UsageOutcome.FAILED
             } else if (outcome == UsageOutcome.COMPLETED && costRegistration?.isStopped() == true) {
                 outcome = UsageOutcome.INTERRUPTED
@@ -722,7 +724,7 @@ class CaseServiceImpl(
                 // The write is wrapped in runCatching so that a Neo4j failure or constraint
                 // violation never propagates into the agent execution path — observability
                 // must not bring down the domain.
-                if (usageAccumulator.hasData) {
+                if (usageAccumulator?.hasData == true) {
                     runCatching {
                         usageAccumulator.recordGroups().forEach { group ->
                             usageRecordService.create(
@@ -841,7 +843,7 @@ class CaseServiceImpl(
         // Mark every runtime interrupted before unblocking any waiting model call.
         caseRepository.findActiveDescendants(caseId).forEach { activeRuntimes[it.id]?.requestInterrupt() }
         runtime.requestInterrupt()
-        runCostService?.stop(caseId)
+        if (usageConfig.enabled) runCostService?.stop(caseId)
     }
 
     /**
@@ -864,11 +866,11 @@ class CaseServiceImpl(
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
         activeRuntimes[caseId]?.requestKill()
-        runCostService?.stop(caseId)
+        if (usageConfig.enabled) runCostService?.stop(caseId)
         handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
-    override fun isCostPaused(caseId: UUID): Boolean = runCostService?.isPaused(caseId) == true
+    override fun isCostPaused(caseId: UUID): Boolean = usageConfig.enabled && runCostService?.isPaused(caseId) == true
 
     override fun emitParentEvent(event: CaseEvent) {
         require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {

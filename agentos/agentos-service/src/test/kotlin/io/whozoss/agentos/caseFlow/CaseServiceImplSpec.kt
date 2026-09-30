@@ -4,7 +4,10 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.mockk.Called
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.every
@@ -18,6 +21,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
@@ -43,6 +47,8 @@ import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.InMemoryUsageRecordRepository
 import io.whozoss.agentos.usage.UsageOutcome
 import io.whozoss.agentos.usage.UsageRecordServiceImpl
+import io.whozoss.agentos.usage.UsageRecordService
+import io.whozoss.agentos.usage.RunCostService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.CoroutineScope
@@ -205,6 +211,7 @@ class CaseServiceImplSpec :
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
             idleEvictionGraceMs: Long = 5_000L,
             usageRecordRepository: InMemoryUsageRecordRepository = InMemoryUsageRecordRepository(),
+            usageConfig: UsageConfigProperties = UsageConfigProperties(),
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -238,6 +245,7 @@ class CaseServiceImplSpec :
                 promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
                 usageRecordService = UsageRecordServiceImpl(usageRecordRepository),
+                usageConfig = usageConfig,
             )
         }
 
@@ -2111,6 +2119,70 @@ class CaseServiceImplSpec :
         // UsageRecord emission
         // -------------------------------------------------------------------------
 
+        "usage disabled runs with explicit cost thresholds without accessing accounting services" {
+            val usageRecordService = mockk<UsageRecordService> {
+                every { create(any()) } throws IllegalStateException("analytics unavailable")
+            }
+            val runCostService = mockk<RunCostService> {
+                every { register(any(), any()) } throws IllegalStateException("cost analytics unavailable")
+            }
+            val nsService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                    runCostThreshold = 0.002,
+                )
+            }
+            var resolvedContext: AgentExecutionContext? = null
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } answers {
+                    resolvedContext = secondArg<AgentExecutionContext>()
+                    finishingAgent()
+                }
+            }
+            val eventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = CaseServiceImpl(
+                agentService = agentService,
+                agentConfigService = allowAllAgentConfigService,
+                agentConfigProperties = AgentConfigProperties(),
+                caseRepository = InMemoryCaseRepository(),
+                caseEventService = eventService,
+                userService = mockk {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                },
+                namespaceService = nsService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = promptService,
+                caseNamingService = noOpCaseNamingService,
+                limitsConfig = LimitsConfigProperties(runCostThreshold = 0.001),
+                usageRecordService = usageRecordService,
+                runCostService = runCostService,
+            )
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, runCostThreshold = 0.003))
+                val runtime = service.getCaseRuntime(case.id)
+                val awaiter = CoroutineScope(Dispatchers.IO).expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+                awaiter.join()
+
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                resolvedContext.shouldNotBeNull().usageAccumulator.shouldBeNull()
+                val finished = eventService.findByParent(case.id).filterIsInstance<AgentFinishedEvent>().single()
+                finished.llmUsage.shouldBeNull()
+                service.isCostPaused(case.id) shouldBe false
+                service.interruptCase(case.id)
+            } finally {
+                service.shutdown()
+            }
+            verify { usageRecordService wasNot Called }
+            verify { runCostService wasNot Called }
+        }
+
         "nominal run with LLM usage produces a UsageRecord with outcome COMPLETED" {
             // Verifies the full happy-path: the agentService injects LLM usage into the
             // accumulator via the context, and the finally block writes a COMPLETED record.
@@ -2141,7 +2213,7 @@ class CaseServiceImplSpec :
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any(), any()) } answers {
                         val ctx = secondArg<AgentExecutionContext>()
-                        ctx.usageAccumulator?.record(llmUsage)
+                        ctx.usageAccumulator.shouldNotBeNull().record(llmUsage)
                         finishingAgent()
                     }
                 }
@@ -2165,6 +2237,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
+                    usageConfig = UsageConfigProperties(enabled = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -2195,7 +2268,7 @@ class CaseServiceImplSpec :
             // Critical invariant: a run that makes no LLM calls must not produce a
             // zero-cost record that would pollute aggregations.
             val usageRepo = InMemoryUsageRecordRepository()
-            val service = buildService(usageRecordRepository = usageRepo)
+            val service = buildService(usageRecordRepository = usageRepo, usageConfig = UsageConfigProperties(enabled = true))
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
             val scope = CoroutineScope(Dispatchers.IO)
@@ -2239,7 +2312,7 @@ class CaseServiceImplSpec :
                     coEvery { findAgentByName(agentName, any(), any()) } answers {
                         val ctx = secondArg<AgentExecutionContext>()
                         // Simulate CostCalculator returning ZERO (provider returned no usage metadata)
-                        ctx.usageAccumulator?.record(LlmUsage.ZERO)
+                        ctx.usageAccumulator.shouldNotBeNull().record(LlmUsage.ZERO)
                         finishingAgent()
                     }
                 }
@@ -2263,6 +2336,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
+                    usageConfig = UsageConfigProperties(enabled = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -2309,7 +2383,7 @@ class CaseServiceImplSpec :
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any(), any()) } answers {
                         val ctx = secondArg<AgentExecutionContext>()
-                        ctx.usageAccumulator?.record(llmUsage)
+                        ctx.usageAccumulator.shouldNotBeNull().record(llmUsage)
                         finishingAgent()
                     }
                 }
@@ -2333,6 +2407,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = failingUsageRecordService,
+                    usageConfig = UsageConfigProperties(enabled = true),
                 )
             val case = throwingService.create(Case(namespaceId = namespaceId))
             val runtime = throwingService.getCaseRuntime(case.id)
@@ -2387,7 +2462,7 @@ class CaseServiceImplSpec :
                     coEvery { findAgentByName(agentName, any(), any()) } answers {
                         val ctx = secondArg<AgentExecutionContext>()
                         // Simulate: LLM was called before the error, accumulator has data.
-                        ctx.usageAccumulator?.record(llmUsage)
+                        ctx.usageAccumulator.shouldNotBeNull().record(llmUsage)
                         throwingAgent
                     }
                 }
@@ -2411,6 +2486,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
+                    usageConfig = UsageConfigProperties(enabled = true),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)

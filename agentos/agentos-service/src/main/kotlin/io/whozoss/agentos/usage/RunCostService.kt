@@ -4,6 +4,7 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.chat.UsageAccumulator
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.usageRecord.PausedCostDto
@@ -30,6 +31,7 @@ class RunCostService(
     private val events: CaseEventService,
     private val namespaces: NamespaceService,
     private val records: UsageRecordService,
+    private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
     private val sessions = mutableMapOf<UUID, Session>()
 
@@ -101,6 +103,7 @@ class RunCostService(
         caseId: UUID,
         accumulator: UsageAccumulator,
     ): Registration {
+        requireEnabled()
         val lineage = ancestors(caseId)
         lineage.forEach { case ->
             sessions.getOrPut(case.id) { newSession(case) }.live.add(accumulator)
@@ -110,6 +113,7 @@ class RunCostService(
 
     @Synchronized
     fun state(caseId: UUID): RunCostDto {
+        requireEnabled()
         val state = snapshot(sessions[caseId] ?: newSession(getCase(caseId)))
         val paused =
             sessions.values
@@ -124,6 +128,7 @@ class RunCostService(
         caseId: UUID,
         expectedThreshold: Double,
     ): RunCostDto {
+        requireEnabled()
         val session = sessions[caseId] ?: throw ResponseStatusException(HttpStatus.CONFLICT, "No paused execution")
         val pending = session.confirmation ?: throw ResponseStatusException(HttpStatus.CONFLICT, "No cost confirmation pending")
         if (session.threshold != expectedThreshold) {
@@ -149,6 +154,7 @@ class RunCostService(
 
     @Synchronized
     fun stop(caseId: UUID) {
+        if (!usageConfig.enabled) return
         sessions.values.filter { caseId in it.ancestorIds }.forEach { session ->
             session.stopped = true
             session.cancellation.completeExceptionally(CostRunStopped())
@@ -160,10 +166,17 @@ class RunCostService(
     /** Waiting on a descendant's human confirmation also pauses a delegation's deadline. */
     @Synchronized
     fun isPaused(caseId: UUID): Boolean {
+        if (!usageConfig.enabled) return false
         val ancestors = sessions[caseId]?.ancestorIds.orEmpty()
         return sessions.values.any { session ->
             session.confirmation != null && !session.stopped &&
                 (session.caseId in ancestors || caseId in session.ancestorIds)
+        }
+    }
+
+    private fun requireEnabled() {
+        if (!usageConfig.enabled) {
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Usage tracking is disabled")
         }
     }
 

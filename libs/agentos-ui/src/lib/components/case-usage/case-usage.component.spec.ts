@@ -5,6 +5,7 @@ import {
   MessageEvent,
   RunCostControllerService,
   RunCostDto,
+  UsageConfigurationControllerService,
   UsageRecordControllerService,
 } from '@whoz-oss/agentos-api-client'
 import { of, Subject, throwError } from 'rxjs'
@@ -37,7 +38,9 @@ describe('CaseUsageComponent', () => {
   let costs: { getRunCost: jest.Mock; continueCostRunRunCost: jest.Mock; stopCostRunRunCost: jest.Mock }
   let usage: { aggregateByCaseTreeUsageRecord: jest.Mock }
   let agentMessageEvents: Subject<MessageEvent>
+  let configuration: { getUsageConfiguration: jest.Mock }
   beforeEach(() => {
+    configuration = { getUsageConfiguration: jest.fn().mockReturnValue(of({ enabled: true })) }
     costs = {
       getRunCost: jest.fn().mockImplementation((id) => of(state(id))),
       continueCostRunRunCost: jest.fn(),
@@ -48,6 +51,7 @@ describe('CaseUsageComponent', () => {
     TestBed.configureTestingModule({
       imports: [CaseUsageComponent],
       providers: [
+        { provide: UsageConfigurationControllerService, useValue: configuration },
         { provide: RunCostControllerService, useValue: costs },
         { provide: UsageRecordControllerService, useValue: usage },
         {
@@ -71,6 +75,66 @@ describe('CaseUsageComponent', () => {
     fixture.detectChanges()
     return fixture
   }
+
+  it('waits for startup settings before fetching usage or polling an active run', fakeAsync(() => {
+    const settings = new Subject<{ enabled: boolean }>()
+    configuration.getUsageConfiguration.mockReturnValue(settings)
+    const fixture = render()
+    fixture.componentRef.setInput('running', true)
+    fixture.detectChanges()
+    tick(10000)
+    expect(fixture.nativeElement.textContent).toContain('Loading usage settings')
+    expect(costs.getRunCost).not.toHaveBeenCalled()
+    expect(usage.aggregateByCaseTreeUsageRecord).not.toHaveBeenCalled()
+    fixture.componentInstance.continue(state().pausedCases[0])
+    fixture.componentInstance.stop()
+    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    expect(costs.stopCostRunRunCost).not.toHaveBeenCalled()
+
+    settings.next({ enabled: true })
+    settings.complete()
+    fixture.detectChanges()
+    expect(costs.getRunCost).toHaveBeenCalledTimes(1)
+    expect(usage.aggregateByCaseTreeUsageRecord).toHaveBeenCalledTimes(1)
+    expect(fixture.nativeElement.textContent).toContain('12.00')
+    tick(2000)
+    expect(costs.getRunCost).toHaveBeenCalledTimes(2)
+    fixture.destroy()
+  }))
+
+  it('hides consumption and blocks requests, polling and cost decisions when disabled', fakeAsync(() => {
+    configuration.getUsageConfiguration.mockReturnValue(of({ enabled: false }))
+    const fixture = render()
+    fixture.componentRef.setInput('running', true)
+    fixture.detectChanges()
+    tick(10000)
+    agentMessageEvents.next({ id: 'answer-1', caseId: 'case-a' } as MessageEvent)
+    fixture.componentInstance.continue(state().pausedCases[0])
+    fixture.componentInstance.stop()
+    expect(fixture.nativeElement.textContent.trim()).toBe('')
+    expect(fixture.nativeElement.querySelector('button')).toBeNull()
+    expect(costs.getRunCost).not.toHaveBeenCalled()
+    expect(usage.aggregateByCaseTreeUsageRecord).not.toHaveBeenCalled()
+    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    expect(costs.stopCostRunRunCost).not.toHaveBeenCalled()
+    fixture.destroy()
+  }))
+
+  it('shows a configuration failure and retries before starting usage requests', fakeAsync(() => {
+    configuration.getUsageConfiguration.mockReturnValueOnce(throwError(() => new Error('offline')))
+    const fixture = render()
+    expect(fixture.nativeElement.textContent).toContain('Could not load usage settings')
+    expect(fixture.nativeElement.textContent).not.toContain('0.00')
+    expect(costs.getRunCost).not.toHaveBeenCalled()
+    expect(usage.aggregateByCaseTreeUsageRecord).not.toHaveBeenCalled()
+    tick(10000)
+    expect(configuration.getUsageConfiguration).toHaveBeenCalledTimes(1)
+    fixture.nativeElement.querySelector('button').click()
+    fixture.detectChanges()
+    expect(configuration.getUsageConfiguration).toHaveBeenCalledTimes(2)
+    expect(fixture.nativeElement.textContent).toContain('12.00')
+    fixture.destroy()
+  }))
 
   it('renders consumption and the exact doubled threshold before confirmation', fakeAsync(() => {
     const fixture = render()

@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, provideRouter } from '@angular/router'
-import { UsageRecordControllerService } from '@whoz-oss/agentos-api-client'
+import { UsageConfigurationControllerService, UsageRecordControllerService } from '@whoz-oss/agentos-api-client'
 import { of, Subject, throwError } from 'rxjs'
 import { NamespaceUsageComponent } from './namespace-usage.component'
 
@@ -22,7 +22,9 @@ const rows = [
 
 describe('NamespaceUsageComponent', () => {
   let api: { aggregateByAgentUsageRecord: jest.Mock; aggregateByModelUsageRecord: jest.Mock }
+  let configuration: { getUsageConfiguration: jest.Mock }
   beforeEach(() => {
+    configuration = { getUsageConfiguration: jest.fn().mockReturnValue(of({ enabled: true })) }
     api = {
       aggregateByAgentUsageRecord: jest.fn().mockReturnValue(of(rows)),
       aggregateByModelUsageRecord: jest.fn().mockReturnValue(of([])),
@@ -33,11 +35,61 @@ describe('NamespaceUsageComponent', () => {
         provideRouter([]),
         { provide: ActivatedRoute, useValue: { snapshot: { params: { namespaceId: 'ns' } } } },
         { provide: UsageRecordControllerService, useValue: api },
+        { provide: UsageConfigurationControllerService, useValue: configuration },
       ],
     })
   })
-  it('renders the namespace report as a known lower bound and uses inclusive UTC dates', () => {
+  function render() {
     const fixture = TestBed.createComponent(NamespaceUsageComponent)
+    fixture.detectChanges()
+    return fixture
+  }
+
+  it('shows a disabled report on direct navigation without loading aggregates', () => {
+    configuration.getUsageConfiguration.mockReturnValue(of({ enabled: false }))
+    const fixture = render()
+    fixture.componentInstance.load()
+    expect(fixture.nativeElement.textContent).toContain('Usage tracking is disabled.')
+    expect(fixture.nativeElement.textContent).not.toContain('No recorded usage')
+    expect(fixture.nativeElement.querySelector('form')).toBeNull()
+    expect(fixture.nativeElement.querySelector('table')).toBeNull()
+    expect(api.aggregateByAgentUsageRecord).not.toHaveBeenCalled()
+    expect(api.aggregateByModelUsageRecord).not.toHaveBeenCalled()
+  })
+
+  it('waits for enabled startup settings before requesting the report', () => {
+    const settings = new Subject<{ enabled: boolean }>()
+    configuration.getUsageConfiguration.mockReturnValue(settings)
+    const fixture = render()
+    fixture.componentInstance.load()
+    expect(fixture.nativeElement.textContent).toContain('Loading usage settings')
+    expect(fixture.nativeElement.textContent).not.toContain('No recorded usage')
+    expect(api.aggregateByAgentUsageRecord).not.toHaveBeenCalled()
+    expect(api.aggregateByModelUsageRecord).not.toHaveBeenCalled()
+    settings.next({ enabled: true })
+    settings.complete()
+    fixture.detectChanges()
+    expect(api.aggregateByAgentUsageRecord).toHaveBeenCalledTimes(1)
+    expect(api.aggregateByModelUsageRecord).toHaveBeenCalledTimes(1)
+    expect(fixture.nativeElement.textContent).toContain('Agent One')
+  })
+
+  it('reports configuration failures separately and allows retrying', () => {
+    configuration.getUsageConfiguration.mockReturnValueOnce(throwError(() => new Error('offline')))
+    const fixture = render()
+    expect(fixture.nativeElement.textContent).toContain('Could not load usage settings')
+    expect(fixture.nativeElement.textContent).not.toContain('Usage tracking is disabled.')
+    expect(fixture.nativeElement.textContent).not.toContain('No recorded usage')
+    expect(api.aggregateByAgentUsageRecord).not.toHaveBeenCalled()
+    expect(api.aggregateByModelUsageRecord).not.toHaveBeenCalled()
+    fixture.nativeElement.querySelector('button').click()
+    fixture.detectChanges()
+    expect(configuration.getUsageConfiguration).toHaveBeenCalledTimes(2)
+    expect(fixture.nativeElement.textContent).toContain('Agent One')
+  })
+
+  it('renders the namespace report as a known lower bound and uses inclusive UTC dates', () => {
+    const fixture = render()
     const component = fixture.componentInstance
     component.from = '2026-09-01'
     component.to = '2026-09-22'
@@ -52,7 +104,7 @@ describe('NamespaceUsageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('At least 12.00')
   })
   it('clears an old report when access is denied or the dates are invalid', () => {
-    const fixture = TestBed.createComponent(NamespaceUsageComponent)
+    const fixture = render()
     api.aggregateByAgentUsageRecord.mockReturnValue(throwError(() => ({ status: 403 })))
     fixture.componentInstance.load()
     fixture.detectChanges()
@@ -68,7 +120,7 @@ describe('NamespaceUsageComponent', () => {
   it('cancels the previous period response when a newer report is requested', () => {
     const older = new Subject<typeof rows>()
     api.aggregateByAgentUsageRecord.mockReturnValueOnce(older)
-    const fixture = TestBed.createComponent(NamespaceUsageComponent)
+    const fixture = render()
     api.aggregateByAgentUsageRecord.mockReturnValue(of([]))
     fixture.componentInstance.load()
     older.next(rows)

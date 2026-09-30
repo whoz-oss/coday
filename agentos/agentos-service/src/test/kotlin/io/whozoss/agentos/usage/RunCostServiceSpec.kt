@@ -3,14 +3,18 @@ package io.whozoss.agentos.usage
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.mockk.Called
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.chat.UsageAccumulator
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.usage.LlmUsage
+import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 import java.util.concurrent.CompletionException
@@ -29,7 +33,32 @@ class RunCostServiceSpec :
             every { namespaces.resolveRunCostThreshold(any()) } returns null
             val records = mockk<UsageRecordService>()
             every { records.sumCostByCaseTreeSince(any(), any()) } returns null
-            return Triple(RunCostService(repo, events, namespaces, records), case, saved)
+            return Triple(RunCostService(repo, events, namespaces, records, UsageConfigProperties(enabled = true)), case, saved)
+        }
+
+        "usage is disabled by default before any data access or registration" {
+            val cases = mockk<CaseRepository>()
+            val events = mockk<CaseEventService>()
+            val namespaces = mockk<NamespaceService>()
+            val records = mockk<UsageRecordService>()
+            val service = RunCostService(cases, events, namespaces, records)
+            val caseId = UUID.randomUUID()
+            val usage = UsageAccumulator()
+            val beforeCall = usage.beforeCall
+
+            listOf<() -> Any>(
+                { service.register(caseId, usage) },
+                { service.state(caseId) },
+                { service.continueRun(caseId, 10.0) },
+            ).forEach { action ->
+                val error = shouldThrow<ResponseStatusException> { action() }
+                error.statusCode shouldBe HttpStatus.SERVICE_UNAVAILABLE
+                error.reason shouldBe "Usage tracking is disabled"
+            }
+            service.stop(caseId)
+            service.isPaused(caseId) shouldBe false
+            usage.beforeCall shouldBe beforeCall
+            verify { listOf(cases, events, namespaces, records) wasNot Called }
         }
 
         "threshold pauses next call and explicit continuation doubles it without replay" {
