@@ -36,11 +36,9 @@ import javax.annotation.PreDestroy
  * Spring bean, SDN is unaware that it talks to an in-process engine instead of a
  * standalone server.
  *
- * `spring.neo4j.uri` must be set in `application.yml` / the
- * `embedded-neo4j` profile to match
- * `factory.persistence.embedded-bolt-host:embedded-bolt-port`: Spring Boot's
- * Neo4j auto-configuration constructs `Neo4jConnectionDetails` and the
- * `neo4jTemplate` bean even when a `Driver` bean is provided manually.
+ * The [Driver] is constructed here from the Bolt port actually assigned after
+ * startup, so embedded mode does not use `spring.neo4j.uri`. That property remains
+ * available for the remote `neo4j` persistence mode.
  *
  * ## Lifecycle
  * The [DatabaseManagementService] is shut down gracefully via

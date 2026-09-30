@@ -4,10 +4,6 @@
 # and the outbox drain disabled so no background work interferes with spec
 # generation. The generated OpenAPI document is a pure function of the
 # controllers/annotations, so the persistence state is irrelevant.
-spring:
-  neo4j:
-    uri: bolt://localhost:7688
-
 factory:
   persistence:
     # Fresh database directory wiped by `./gradlew clean`.

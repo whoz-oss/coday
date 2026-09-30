@@ -4,11 +4,10 @@ server:
 spring:
   application:
     name: factory-service
-  # Spring Data Neo4j connection coordinates. In `embedded-neo4j` mode the
-  # Driver bean is provided by EmbeddedNeo4jConfiguration, but Spring Boot's
-  # Neo4j auto-configuration still needs a URI to build Neo4jConnectionDetails.
+  # Connection coordinates for the remote `neo4j` persistence mode.
+  # EmbeddedNeo4jConfiguration provides its own Driver using the port assigned at startup.
   neo4j:
-    uri: ${SPRING_NEO4J_URI:bolt://localhost:7688}
+    uri: ${SPRING_NEO4J_URI:bolt://localhost:7687}
     authentication:
       username: ${SPRING_NEO4J_USERNAME:neo4j}
       password: ${SPRING_NEO4J_PASSWORD:password}
@@ -33,7 +32,7 @@ factory:
     mode: ${FACTORY_PERSISTENCE_MODE:embedded-neo4j}
     data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:build/neo4j-data}
     embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
-    embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:7688}
+    embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:0}
   cockpit:
     # Directory of the vanilla cockpit (`cockpit.html`, `css/**`, `js/**`) served
     # same-origin at /cockpit. A relative path is resolved against the process

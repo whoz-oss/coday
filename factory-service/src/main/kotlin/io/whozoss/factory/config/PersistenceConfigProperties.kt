@@ -31,11 +31,11 @@ data class PersistenceConfigProperties(
     val mode: String = "embedded-neo4j",
     /**
      * Bolt port for the embedded Neo4j engine.
-     * Defaults to 7688 to avoid conflicting with a standalone Neo4j instance
-     * that typically runs on 7687. Set to 0 for a random OS-assigned port.
+     * Defaults to 0 so the OS assigns a free port. Set an explicit port when
+     * external tools need a stable Bolt endpoint.
      * Only used when mode=embedded-neo4j.
      */
-    val embeddedBoltPort: Int = 7688,
+    val embeddedBoltPort: Int = 0,
     /**
      * Host for the embedded Neo4j Bolt connector.
      * Defaults to "localhost" but can be set to "127.0.0.1" to force IPv4 on

@@ -5,6 +5,9 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.core.DatabaseSelectionProvider
+import org.springframework.data.neo4j.core.Neo4jClient
+import org.springframework.data.neo4j.core.Neo4jTemplate
+import org.springframework.data.neo4j.core.mapping.Neo4jMappingContext
 import org.springframework.data.neo4j.core.transaction.Neo4jTransactionManager
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
 
@@ -43,6 +46,15 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
     ],
 )
 class Neo4jPersistenceConfiguration {
+
+    @Bean
+    fun neo4jClient(driver: Driver): Neo4jClient = Neo4jClient.create(driver)
+
+    @Bean
+    fun neo4jTemplate(
+        neo4jClient: Neo4jClient,
+        neo4jMappingContext: Neo4jMappingContext,
+    ): Neo4jTemplate = Neo4jTemplate(neo4jClient, neo4jMappingContext)
 
     @Bean
     @Primary

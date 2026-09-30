@@ -203,7 +203,6 @@ openApi {
             listOf(
                 "--spring.profiles.active=openapi,embedded-neo4j",
                 "--server.port=$openApiGenPort",
-                "--factory.persistence.embedded-bolt-port=0",
             ),
         )
     }
