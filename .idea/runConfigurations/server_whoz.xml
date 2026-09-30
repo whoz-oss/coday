@@ -1,0 +1,20 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="server-whoz" type="js.build_tools.npm" nameIsGenerated="false">
+    <package-json value="$PROJECT_DIR$/package.json" />
+    <command value="run" />
+    <scripts>
+      <script value="server" />
+    </scripts>
+    <node-interpreter value="project" />
+    <envs>
+      <!-- External mode: Coday proxies to the AgentOSRegisteredOnWhoz instance (port 8125)
+           instead of downloading and managing its own AgentOS JARs. -->
+      <env name="AGENTOS_URL" value="http://localhost:8125" />
+      <!-- Injected as the X-External-User-Id header on every /api/agentos request.
+           AgentOS runs in `auth` security mode under the whoz profile and trusts this
+           header as the caller identity. Change to your own whoz account. -->
+      <env name="AGENTOS_EXTERNAL_USERID" value="62bd8e72b44618442e11d204" />
+    </envs>
+    <method v="2" />
+  </configuration>
+</component>
