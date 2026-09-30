@@ -526,7 +526,7 @@ class CaseRuntime(
     private fun findLegitimateAnswerIndex(question: QuestionEvent, events: List<CaseEvent>): Int {
         // Find the first LEGITIMATE answer: paired by questionId AND from the right recipient.
         // The recipient check is intentionally inside this predicate — see KDoc for why moving
-        // it outside causes a permanent-deadlock bug on sared cases.
+        // it outside causes a permanent-deadlock bug on shared cases.
         val legitimateAnswerIndex = events.indexOfFirst { event ->
             if (event !is AnswerEvent || event.questionId != question.id) return@indexOfFirst false
             val targetUserId = question.userId
