@@ -275,7 +275,7 @@ describe('CaseStateService', () => {
       expect(svc.cases()[0].runCostThreshold).toBe(20)
     })
 
-    it('queues renames using the confirmed threshold, independently of other cases', () => {
+    it('queues renames without resending a stale threshold, independently of other cases', () => {
       const first = new Subject<Case>()
       const svc = makeService(jest.fn().mockReturnValue(of([fieldCase('a'), fieldCase('b')])))
       svc.loadCases('ns')
@@ -287,10 +287,11 @@ describe('CaseStateService', () => {
       expect(controllerMock.updateCase).toHaveBeenCalledTimes(2)
       expect(svc.cases()[1].runCostThreshold).toBe(50)
 
+      controllerMock.updateCase.mockReturnValueOnce(of(fieldCase('a', { title: 'Renamed' })))
       first.error(new Error('threshold rejected'))
       expect(controllerMock.updateCase).toHaveBeenLastCalledWith(
         'a',
-        expect.objectContaining({ title: 'Renamed', runCostThreshold: 10 })
+        expect.objectContaining({ title: 'Renamed', runCostThreshold: undefined })
       )
       expect(svc.cases()[0]).toEqual(expect.objectContaining({ title: 'Renamed', runCostThreshold: 10 }))
     })
@@ -326,7 +327,7 @@ describe('CaseStateService', () => {
 
       expect(controllerMock.updateCase).toHaveBeenLastCalledWith(
         'a',
-        expect.objectContaining({ title: 'Renamed', runCostThreshold: 10 })
+        expect.objectContaining({ title: 'Renamed', runCostThreshold: undefined })
       )
       expect(svc.cases()).toEqual([fieldCase('b')])
     })

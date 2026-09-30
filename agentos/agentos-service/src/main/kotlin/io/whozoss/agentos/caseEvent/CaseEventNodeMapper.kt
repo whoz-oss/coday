@@ -8,6 +8,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
@@ -24,10 +25,10 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
-import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.usage.LlmUsage
 import java.util.UUID
 
 // Note: fromDomain does NOT set the `case` @Relationship field. The BELONGS_TO
@@ -174,6 +175,12 @@ class CaseEventNodeMapper(
                     node.agentName,
                     node.llmProvider,
                     node.llmModel,
+                    node.usageInputTokens,
+                    node.usageOutputTokens,
+                    node.usageCacheReadTokens,
+                    node.usageCacheWriteTokens,
+                    node.usageTotalTokens,
+                    node.usageEstimatedCostUsd,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -452,6 +459,19 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             llmProvider = n.llmProvider,
             llmModel = n.llmModel,
+            llmUsage =
+                if (n.usageTotalTokens != null) {
+                    LlmUsage(
+                        inputTokens = n.usageInputTokens ?: 0L,
+                        outputTokens = n.usageOutputTokens ?: 0L,
+                        cacheReadTokens = n.usageCacheReadTokens ?: 0L,
+                        cacheWriteTokens = n.usageCacheWriteTokens ?: 0L,
+                        totalTokens = n.usageTotalTokens,
+                        estimatedCostUsd = n.usageEstimatedCostUsd,
+                    )
+                } else {
+                    null
+                },
         )
 
     private fun toDomain(n: AgentRunningEventNode) =
@@ -503,9 +523,10 @@ class CaseEventNodeMapper(
             success = n.success,
             durationMs = n.durationMs,
             toolMetadata = n.metadataJson?.let { serializer.deserializeMetadata(it) } ?: emptyMap(),
-            images = n.imagesJson
-                ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
-                ?: emptyList(),
+            images =
+                n.imagesJson
+                    ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
+                    ?: emptyList(),
             structuredOutput = n.structuredOutputJson?.let { serializer.deserializeJsonNode(it) },
         )
 
@@ -527,7 +548,12 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             question = n.question,
             options = n.options?.let { serializer.deserializeStringList(it) },
-            questionType = try { QuestionType.valueOf(n.questionType) } catch (_: Exception) { QuestionType.FREE_TEXT },
+            questionType =
+                try {
+                    QuestionType.valueOf(n.questionType)
+                } catch (_: Exception) {
+                    QuestionType.FREE_TEXT
+                },
             userId = n.userId?.let { UUID.fromString(it) },
         )
 
@@ -674,6 +700,12 @@ class CaseEventNodeMapper(
             agentName = e.agentName,
             llmProvider = e.llmProvider,
             llmModel = e.llmModel,
+            usageInputTokens = e.llmUsage?.inputTokens,
+            usageOutputTokens = e.llmUsage?.outputTokens,
+            usageCacheReadTokens = e.llmUsage?.cacheReadTokens,
+            usageCacheWriteTokens = e.llmUsage?.cacheWriteTokens,
+            usageTotalTokens = e.llmUsage?.totalTokens,
+            usageEstimatedCostUsd = e.llmUsage?.estimatedCostUsd,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,

@@ -103,6 +103,10 @@ management:
 # datadog/agent:latest
 
 agentos:
+  usage:
+    # Opt in to LLM usage accounting, analytical records and the run-cost guard.
+    # Disabled by default in every profile, including Whoz.
+    enabled: ${AGENTOS_USAGE_ENABLED:false}
   encryption:
     key: ${AGENTOS_ENCRYPTION_KEY}
     salt: ${AGENTOS_ENCRYPTION_SALT}
