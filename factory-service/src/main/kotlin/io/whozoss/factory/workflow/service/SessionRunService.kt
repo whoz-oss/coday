@@ -251,8 +251,17 @@ class SessionRunService(
             }
         }
         val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else SessionSequencer.terminalStatus(steps, statuses.statuses)
-        persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+        val committedRevision = persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
+        sseHub.publish(
+            scope,
+            namespaceId,
+            buildMap<String, Any?> {
+                put("workflowId", workflowId)
+                put("namespaceId", namespaceId)
+                // The committed revision lets a client discard a stale REST re-read.
+                if (committedRevision != null) put("revision", committedRevision)
+            },
+        )
         return SessionRunResult(namespaceId, workflowId, sessionStatus, statusesOf(steps, statuses.statuses))
     }
 
@@ -719,8 +728,8 @@ class SessionRunService(
         progress: SessionProgress,
         sessionStatus: String,
         ticket: String?,
-    ) {
-        val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return
+    ): Int? {
+        val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return null
         val nextInstance = instance.instance.toMutableMap()
         nextInstance["status"] = sessionStatus
         nextInstance["steps"] = steps.map { mapOf("id" to it.id, "status" to (progress.statuses[it.id] ?: WorkflowStatuses.PENDING)) }
@@ -790,6 +799,7 @@ class SessionRunService(
                 expectedRevision = null,
             )
         }
+        return next.revision
     }
 
     private fun activeInstance(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowInstanceRecord {
