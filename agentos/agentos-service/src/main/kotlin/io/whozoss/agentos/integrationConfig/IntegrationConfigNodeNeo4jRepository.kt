@@ -79,6 +79,17 @@ interface IntegrationConfigNodeNeo4jRepository : Neo4jRepository<IntegrationConf
     )
     fun findActiveByTripleKey(tripleKey: String): IntegrationConfigNode?
 
+    /** Seek on `integration_config_singleton_key_unique`; see [IntegrationConfigNode.computeSingletonKey]. */
+    @Query(
+        $$"""
+            MATCH (c:IntegrationConfig {singletonKey: $singletonKey})
+            WHERE c.removed IS NULL OR c.removed = false
+            RETURN c
+            LIMIT 1
+            """,
+    )
+    fun findActiveBySingletonKey(singletonKey: String): IntegrationConfigNode?
+
     @Query(
         $$"""
             MATCH (c:IntegrationConfig)

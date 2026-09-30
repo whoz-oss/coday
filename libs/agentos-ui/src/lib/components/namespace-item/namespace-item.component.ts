@@ -14,6 +14,8 @@ import { UsageConfigurationService } from '../../services/usage-configuration.se
 export class NamespaceItemComponent {
   readonly usageConfiguration = inject(UsageConfigurationService)
   readonly namespace = input.required<Namespace>()
+  /** Git settings exist only while the GIT plugin is loaded on the server. */
+  readonly gitAvailable = input(false)
 
   readonly selected = output<Namespace>()
   readonly editRequested = output<Namespace>()
@@ -26,6 +28,7 @@ export class NamespaceItemComponent {
   readonly userGroupsRequested = output<Namespace>()
   readonly usageRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
+  readonly gitRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
@@ -63,6 +66,9 @@ export class NamespaceItemComponent {
   }
   protected onMembers(): void {
     this.membersRequested.emit(this.namespace())
+  }
+  protected onGit(): void {
+    this.gitRequested.emit(this.namespace())
   }
   protected onAuthSettings(): void {
     this.authSettingsRequested.emit(this.namespace())

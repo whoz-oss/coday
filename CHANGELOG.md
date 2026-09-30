@@ -1,3 +1,36 @@
+## 3.15.1 (2026-09-30)
+
+### 🩹 Fixes
+
+- #1271 Resume multiple answered questions sequentially ([#1273](https://github.com/whoz-oss/coday/pull/1273), [#1271](https://github.com/whoz-oss/coday/issues/1271))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 3.15.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** configure optional namespace Git repositories ([#1365](https://github.com/whoz-oss/coday/pull/1365))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.14.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** add managed Git execution and repository storage ([#1364](https://github.com/whoz-oss/coday/pull/1364))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.13.0 (2026-09-29)
 
 ### 🚀 Features
