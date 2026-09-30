@@ -31,7 +31,7 @@ import java.util.concurrent.TimeoutException
  * - **restricts transports** to [GitExecutionProperties.allowedRemoteProtocols], which also
  *   disarms `ext::` command execution and `url.<base>.insteadOf` rewrites to exotic schemes;
  * - **isolates network commands** in a temporary Git directory that never reads shared local
- *   configuration; fetch publishes its requested ref only after credentials have left the process;
+ *   configuration; fetch and push publish their ref only after credentials have left the process;
  * - **ignores global and system configuration** (`GIT_CONFIG_GLOBAL` / `GIT_CONFIG_SYSTEM`);
  * - **pins the repository** with explicit `--git-dir` / `--work-tree` from [GitInvocation], so the
  *   worktree's own `.git` pointer file is never an authority.
@@ -75,7 +75,7 @@ class GitCommandRunner(
         return when {
             networkCommand != null -> networkCommands.run(networkCommand, invocation)
             invocation.credentials !is GitCredentials.None ->
-                GitCommandResult.Failed("Service credentials are only permitted for managed network commands")
+                GitCommandResult.Failed("Credentials are only permitted for managed network commands")
             else -> runProcess(invocation)
         }
     }

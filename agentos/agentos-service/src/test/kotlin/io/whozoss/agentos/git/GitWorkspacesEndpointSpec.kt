@@ -18,6 +18,7 @@ class GitWorkspacesEndpointSpec : StringSpec({
         val endpoint = GitWorkspacesEndpoint(control, idleWorker())
         endpoint.status() shouldBe mapOf(
             "provisioningPaused" to false,
+            "monitorPaused" to false,
             "sweeping" to false,
             "currentItem" to null,
             "currentSince" to null,
@@ -45,6 +46,19 @@ class GitWorkspacesEndpointSpec : StringSpec({
             endpoint.control(phase, "resume")
             control.isProvisioningPaused() shouldBe false
         }
+    }
+
+    "the monitor phase pauses status polling alone, and all pauses both" {
+        val control = GitWorkspacesControl()
+        val endpoint = GitWorkspacesEndpoint(control, idleWorker())
+        endpoint.control("monitor", "pause")
+        control.isMonitorPaused() shouldBe true
+        control.isProvisioningPaused() shouldBe false
+        endpoint.control("all", "pause")
+        endpoint.status()["provisioningPaused"] shouldBe true
+        endpoint.control("all", "resume")
+        control.isMonitorPaused() shouldBe false
+        control.isProvisioningPaused() shouldBe false
     }
 
     "an unknown phase or action is rejected without changing anything" {

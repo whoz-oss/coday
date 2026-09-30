@@ -82,6 +82,8 @@
                 <!-- Title -->
                 <span class="mobile-drawer__case-title">{{ c.title ?? c.id }}</span>
 
+                <agentos-case-git-badge [view]="workspaces()[c.id!]" />
+
                 <!-- Actions: star + delete (always visible on mobile) -->
                 @if (confirmingDeleteId() !== c.id) {
                   <div class="mobile-drawer__case-actions">

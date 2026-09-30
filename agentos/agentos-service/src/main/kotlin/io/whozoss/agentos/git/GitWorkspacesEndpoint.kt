@@ -16,8 +16,8 @@ import org.springframework.stereotype.Component
  *   with body `{"action": "pause"}` or `{"action": "resume"}` (write)
  * - **JMX**: MBean `org.springframework.boot:type=Endpoint,name=Gitworkspaces`
  *
- * Phases: `provisioning` (the [CaseWorkspaceWorker] sweep) or `all`. See [GitWorkspacesControl]
- * for when a pause takes effect.
+ * Phases: `provisioning` (the [CaseWorkspaceWorker] sweep), `monitor` (the [GitWorkspaceMonitor]
+ * status polling) or `all`. See [GitWorkspacesControl] for when a pause takes effect.
  */
 @Component
 @ConditionalOnProperty(prefix = "agentos.git.worker", name = ["enabled"], havingValue = "true")
@@ -35,6 +35,7 @@ class GitWorkspacesEndpoint(
         val activity = worker.activity()
         return mapOf(
             "provisioningPaused" to control.isProvisioningPaused(),
+            "monitorPaused" to control.isMonitorPaused(),
             "sweeping" to activity.sweeping,
             "currentItem" to activity.currentItem,
             "currentSince" to activity.currentSince?.toString(),
@@ -45,7 +46,7 @@ class GitWorkspacesEndpoint(
      * - HTTP: `POST /management/gitworkspaces/{phase}` with body `{"action": "pause"}` or `{"action": "resume"}`
      * - JMX: `Endpoint.Gitworkspaces → control(phase, action)`
      *
-     * @param phase `provisioning` or `all`
+     * @param phase `provisioning`, `monitor` or `all`
      * @param action `pause` or `resume`
      * @return the status after applying the action
      */
@@ -54,11 +55,25 @@ class GitWorkspacesEndpoint(
         @Selector phase: String,
         action: String,
     ): Map<String, Any?> {
-        if (phase !in PHASES) throw invalid("Invalid phase '$phase' (expected: ${PHASES.joinToString()})")
-        when (action) {
-            ACTION_PAUSE -> control.pauseProvisioning()
-            ACTION_RESUME -> control.resumeProvisioning()
-            else -> throw invalid("Invalid action '$action' (expected: $ACTION_PAUSE, $ACTION_RESUME)")
+        val phases =
+            when (phase) {
+                PHASE_ALL -> listOf(PHASE_PROVISIONING, PHASE_MONITOR)
+                PHASE_PROVISIONING, PHASE_MONITOR -> listOf(phase)
+                else -> throw invalid("Invalid phase '$phase' (expected: $PHASE_PROVISIONING, $PHASE_MONITOR, $PHASE_ALL)")
+            }
+        val pause =
+            when (action) {
+                ACTION_PAUSE -> true
+                ACTION_RESUME -> false
+                else -> throw invalid("Invalid action '$action' (expected: $ACTION_PAUSE, $ACTION_RESUME)")
+            }
+        phases.forEach {
+            when {
+                it == PHASE_PROVISIONING && pause -> control.pauseProvisioning()
+                it == PHASE_PROVISIONING -> control.resumeProvisioning()
+                pause -> control.pauseMonitor()
+                else -> control.resumeMonitor()
+            }
         }
         return status()
     }
@@ -69,6 +84,8 @@ class GitWorkspacesEndpoint(
     private companion object {
         const val ACTION_PAUSE = "pause"
         const val ACTION_RESUME = "resume"
-        val PHASES = listOf("provisioning", "all")
+        const val PHASE_PROVISIONING = "provisioning"
+        const val PHASE_MONITOR = "monitor"
+        const val PHASE_ALL = "all"
     }
 }

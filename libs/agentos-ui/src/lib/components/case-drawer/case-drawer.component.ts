@@ -1,3 +1,5 @@
+import { CaseGitBadgeComponent } from '../case-workspace/case-git-badge.component'
+import { WorkspaceView } from '../../services/case-workspace.service'
 import {
   afterRenderEffect,
   ChangeDetectionStrategy,
@@ -46,12 +48,13 @@ export interface CaseTreeItem extends CaseListItem {
  */
 @Component({
   selector: 'agentos-case-drawer',
-  imports: [NgTemplateOutlet, CaseStatusGlyphComponent],
+  imports: [NgTemplateOutlet, CaseStatusGlyphComponent, CaseGitBadgeComponent],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CaseDrawerComponent {
+  readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly cases = input<Case[]>([])
   readonly activeCaseId = input<string | null>(null)
   readonly compact = input<boolean>(false)
