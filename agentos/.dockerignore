@@ -41,3 +41,6 @@ logs/
 plugins/
 !plugins/.gitkeep
 *.pid
+
+# Managed repositories and worktrees are runtime data, not build inputs.
+data/

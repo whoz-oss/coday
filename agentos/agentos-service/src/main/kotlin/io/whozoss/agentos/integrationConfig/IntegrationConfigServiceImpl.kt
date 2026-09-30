@@ -37,6 +37,7 @@ class IntegrationConfigServiceImpl(
                 conflictMessage(entity),
             )
         }
+        assertNamespaceSingletonRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         return saveOrConflict(entity)
     }
@@ -50,6 +51,7 @@ class IntegrationConfigServiceImpl(
                     conflictMessage(entity),
                 )
             }
+        assertNamespaceSingletonRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         return saveOrConflict(entity)
     }
@@ -81,6 +83,11 @@ class IntegrationConfigServiceImpl(
     override fun findPlatform(): List<IntegrationConfig> = repository.findPlatform()
 
     override fun findByNamespaceShared(namespaceId: UUID): List<IntegrationConfig> = repository.findByParent(namespaceId)
+
+    override fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig? = repository.findActiveNamespaceSingleton(namespaceId, integrationType)
 
     override fun findEffective(
         namespaceId: UUID?,
@@ -222,10 +229,48 @@ class IntegrationConfigServiceImpl(
         }
     }
 
+    /**
+     * The rules of [IntegrationTypeConstraints]: namespace-shared scope only, and one active row. The
+     * uniqueness check only gives a clear message; the database constraint is the guarantee.
+     */
+    private fun assertNamespaceSingletonRules(entity: IntegrationConfig) {
+        if (!IntegrationTypeConstraints.isNamespaceSingleton(entity.integrationType)) return
+
+        val namespaceId = entity.namespaceId
+        if (namespaceId == null || entity.userId != null) {
+            throw ResponseStatusException(
+                HttpStatus.UNPROCESSABLE_ENTITY,
+                "An integration of type '${entity.integrationType}' configures the namespace itself, so it must " +
+                    "be namespace-shared (namespaceId set, userId null). It was requested with " +
+                    "namespaceId=${entity.namespaceId}, userId=${entity.userId}. A personal or platform-level " +
+                    "row of this type would be merged by name into a member's effective configuration and could " +
+                    "redirect the namespace's provisioning.",
+            )
+        }
+
+        repository
+            .findActiveNamespaceSingleton(namespaceId, entity.integrationType)
+            ?.takeIf { it.id != entity.id }
+            ?.let { existing ->
+                throw ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Namespace $namespaceId already has an active '${entity.integrationType}' configuration " +
+                        "('${existing.name}'). Update that one, or remove it first.",
+                )
+            }
+    }
+
     private fun saveOrConflict(entity: IntegrationConfig): IntegrationConfig =
         try {
             repository.save(entity)
         } catch (e: DataIntegrityViolationException) {
+            if (isSingletonKeyConflict(e)) {
+                logger.warn {
+                    "[IntegrationConfigService] singletonKey unique-constraint violation on save " +
+                        "(namespaceId=${entity.namespaceId}, integrationType='${entity.integrationType}')"
+                }
+                throw ResponseStatusException(HttpStatus.CONFLICT, singletonConflictMessage(entity), e)
+            }
             // Catches the race window: two concurrent creates pass the applicative pre-check,
             // both reach `save`, the DB unique constraint on `tripleKey` rejects one of them.
             // We only translate to 409 when the violation is identifiably the triple-uniqueness
@@ -261,13 +306,28 @@ class IntegrationConfigServiceImpl(
         return TRIPLE_KEY_CONSTRAINT_NAME in haystack || TRIPLE_KEY_PROPERTY in haystack
     }
 
+    /** Same inspection as [isTripleKeyConflict], for the one-per-namespace constraint. */
+    private fun isSingletonKeyConflict(e: DataIntegrityViolationException): Boolean {
+        val haystack =
+            generateSequence<Throwable>(e) { it.cause }
+                .mapNotNull { it.message }
+                .joinToString(separator = " | ")
+        return SINGLETON_KEY_CONSTRAINT_NAME in haystack || SINGLETON_KEY_PROPERTY in haystack
+    }
+
     private fun conflictMessage(entity: IntegrationConfig): String =
         "An integration config named '${entity.name}' already exists for this scope " +
             "(namespaceId=${entity.namespaceId}, userId=${entity.userId})"
 
+    private fun singletonConflictMessage(entity: IntegrationConfig): String =
+        "Namespace ${entity.namespaceId} already has an active '${entity.integrationType}' configuration. " +
+            "Only one is allowed per namespace."
+
     companion object : KLogging() {
         private const val TRIPLE_KEY_CONSTRAINT_NAME = "integration_config_triple_key_unique"
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
+        private const val SINGLETON_KEY_CONSTRAINT_NAME = "integration_config_singleton_key_unique"
+        private const val SINGLETON_KEY_PROPERTY = "singletonKey"
 
         /**
          * Comparator defining the 4-tier overlay precedence (lowest → highest priority).

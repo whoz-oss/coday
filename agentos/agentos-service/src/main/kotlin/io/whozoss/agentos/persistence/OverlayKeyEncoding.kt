@@ -69,4 +69,10 @@ object OverlayKeyEncoding {
      * rows of the same entity type.
      */
     fun tombstoneKey(id: String): String = TOMBSTONE_PREFIX + id
+
+    /** Key of "at most one active row of [integrationType] per namespace"; rows exempt from it store none. */
+    fun namespaceSingletonKey(
+        namespaceId: UUID,
+        integrationType: String,
+    ): String = namespaceId.toString() + SEPARATOR + integrationType.uppercase()
 }

@@ -116,4 +116,13 @@ interface IntegrationConfigService :
         userRequested: Boolean,
         canReadNamespace: (UUID) -> Boolean,
     ): List<IntegrationConfig>
+
+    /**
+     * The active namespace-shared row of a singleton [integrationType], or null. Unlike [findEffective]
+     * it merges no layer and reads no YAML: see [IntegrationTypeConstraints].
+     */
+    fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig?
 }
