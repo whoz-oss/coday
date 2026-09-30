@@ -34,6 +34,7 @@ import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
+import io.whozoss.agentos.git.GitMetadataEntries
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
 import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.queryUser.QueryUserToolPlugin
@@ -486,6 +487,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 ExchangeToolGrantService(
                     properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true),
                     storageProperties = ExchangeStorageConfigProperties(),
+                    reservedEntries = listOf(GitMetadataEntries()),
                     toolRegistryService = toolRegistryService,
                     toolResolverService = toolResolverService,
                     objectMapper = testObjectMapper,

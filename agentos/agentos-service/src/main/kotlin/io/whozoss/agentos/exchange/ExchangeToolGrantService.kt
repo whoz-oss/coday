@@ -46,6 +46,7 @@ data class ExchangeGrant(
 class ExchangeToolGrantService(
     private val properties: ExchangeToolsConfigProperties,
     private val storageProperties: ExchangeStorageConfigProperties,
+    private val reservedEntries: List<ExchangeReservedEntries>,
     private val toolRegistryService: ToolRegistryService,
     private val toolResolverService: ToolResolverService,
     private val objectMapper: ObjectMapper,
@@ -175,10 +176,23 @@ class ExchangeToolGrantService(
                 // negative count, which throws; zero is a legal (if drastic) truncation.
                 .put("documentMaxCellChars", properties.documentMaxCellChars.coerceAtLeast(0))
         // The plugin reads this key with `takeIf { it.isArray }`, so it must be a real ArrayNode —
-        // an empty one when nothing is configured, never a missing key or a scalar. putArray returns
-        // the ArrayNode, hence the separate statement.
+        // never a missing key or a scalar. putArray returns the ArrayNode, hence the separate
+        // statement.
+        //
+        // Reserved entries lead and are not configurable: a feature running inside the scope owns
+        // them (a Git worktree's `.git` is a file the agent could otherwise rewrite to repoint the
+        // worktree). They are prepended here rather than defaulted on
+        // [ExchangeToolsConfigProperties.extraDenyPatterns] because a configured list replaces a
+        // default instead of extending it, which would silently reopen them on any instance that
+        // sets patterns of its own. The plugin matches every path segment, so this also covers
+        // everything below them. The REST path refuses the same names, so both views of a scope
+        // agree.
+        val reserved = reservedEntries.flatMap { it.names() }.distinct()
         val denyPatterns = node.putArray("extraDenyPatterns")
-        properties.extraDenyPatterns.forEach { denyPatterns.add(it) }
+        reserved.forEach { denyPatterns.add(it) }
+        properties.extraDenyPatterns
+            .filterNot { it in reserved }
+            .forEach { denyPatterns.add(it) }
         return node
     }
 

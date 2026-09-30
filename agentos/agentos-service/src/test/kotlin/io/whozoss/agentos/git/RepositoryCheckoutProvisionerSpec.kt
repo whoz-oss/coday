@@ -73,7 +73,7 @@ class RepositoryCheckoutProvisionerSpec :
             properties: GitExecutionProperties = gitProperties,
         ): Triple<ExchangeStorageService, RepositoryCheckoutProvisioner, UUID> {
             val mount = Files.createTempDirectory("agentos-mount-")
-            val storage = ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = mount.toString()))
+            val storage = ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = mount.toString()), listOf(GitMetadataEntries()))
             val namespaceId = UUID.randomUUID()
 
             // `findById` carries a default implementation on EntityService, but mockk intercepts it
@@ -247,7 +247,7 @@ class RepositoryCheckoutProvisionerSpec :
             // own, so the same relative string names two different places. Every other case here
             // uses createTempDirectory (absolute) and so never exercised the shipped default.
             val relativeMount = "build/test-exchange-${UUID.randomUUID()}"
-            val storage = ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = relativeMount))
+            val storage = ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = relativeMount), listOf(GitMetadataEntries()))
             val namespaceId = UUID.randomUUID()
             val authSettings =
                 mockk<AuthSettingService> {

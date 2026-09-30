@@ -1,5 +1,6 @@
 package io.whozoss.agentos.exchange
 
+import io.whozoss.agentos.sdk.api.exchange.ExchangeDirectoryEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileContent
 import io.whozoss.agentos.sdk.api.exchange.ExchangeFileEntry
 import io.whozoss.agentos.sdk.api.exchange.ExchangeScope
@@ -13,7 +14,9 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.FileAlreadyExistsException
 import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
+import java.nio.file.NotDirectoryException
 import java.nio.file.Path
 import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardOpenOption
@@ -37,6 +40,7 @@ import java.util.UUID
 @Service
 class ExchangeStorageService(
     private val config: ExchangeStorageConfigProperties,
+    private val reservedEntries: List<ExchangeReservedEntries>,
 ) {
     companion object : KLogging() {
         private const val MAX_SEGMENT_LENGTH = 255
@@ -113,10 +117,29 @@ class ExchangeStorageService(
             emptySet(),
             MANIFEST_MAX_DEPTH,
             object : SimpleFileVisitor<Path>() {
+                /**
+                 * Skip reserved entries wholesale. Besides keeping them out of a listing that users
+                 * can act on, this avoids walking a repository's object store, which is where the
+                 * overwhelming majority of its files live.
+                 */
+                override fun preVisitDirectory(
+                    dir: Path,
+                    attrs: BasicFileAttributes,
+                ): FileVisitResult =
+                    when {
+                        reservedEntries.reserves(dir.fileName?.toString()) -> FileVisitResult.SKIP_SUBTREE
+                        else -> FileVisitResult.CONTINUE
+                    }
+
                 override fun visitFile(
                     file: Path,
                     attrs: BasicFileAttributes,
                 ): FileVisitResult {
+                    // A reserved entry can be a file, such as a linked worktree's `.git`.
+                    if (reservedEntries.reserves(file.fileName?.toString())) {
+                            logger.debug { "Skipping reserved file entry in manifest: $file" }
+                        return FileVisitResult.CONTINUE
+                    }
                     if (attrs.isRegularFile) {
                         // A concurrent delete can make the file vanish before toEntry stats it: skip it.
                         // Any other stat failure is unexpected — skip it too, but log it (don't swallow silently).
@@ -282,6 +305,7 @@ class ExchangeStorageService(
         if (relativePath.split('/', '\\').any { it.length > MAX_SEGMENT_LENGTH }) {
             throw InvalidExchangePathException("Invalid path: path segment too long ($relativePath)")
         }
+        assertNotReserved(relativePath.split('/', '\\'), relativePath)
         // Does not create [root]: reads/deletes of a never-written scope surface as
         // NoSuchFileException (→ 404) instead of materialising empty shard directories. Writers
         // create the root before calling this (see writeNew).
@@ -302,10 +326,117 @@ class ExchangeStorageService(
         // still point outside it. Canonicalize the deepest existing ancestor (the file itself for a
         // read/delete, the parent dir for a create) and require it to stay within the canonical root.
         val deepestExisting = generateSequence(resolved) { it.parent }.first(Files::exists)
-        if (!deepestExisting.toRealPath().startsWith(canonicalRoot)) {
+        val canonicalTarget = deepestExisting.toRealPath()
+        if (!canonicalTarget.startsWith(canonicalRoot)) {
             throw InvalidExchangePathException("Invalid path: path traversal not allowed ($relativePath)")
         }
+        // Re-check on the canonical path, not just the requested one: a symlink inside the root
+        // (`docs -> .git`) resolves to a target that is legitimately within the root, so the
+        // lexical check above would not see the reserved entry it aliases.
+        assertNotReserved(canonicalRoot.relativize(canonicalTarget).map { it.toString() }, relativePath)
         return resolved
+    }
+
+    /**
+     * Refuse any path that reaches an entry reserved by a feature (see [ExchangeReservedEntries]).
+     *
+     * Applied to every scope: nothing legitimately manages such an entry through this API, so the
+     * rule needs no knowledge of whether the feature is configured.
+     */
+    private fun assertNotReserved(
+        segments: List<String>,
+        relativePath: String,
+    ) {
+        if (segments.any { reservedEntries.reserves(it) }) {
+            throw InvalidExchangePathException("Invalid path: reserved entry is not accessible ($relativePath)")
+        }
+    }
+
+    /**
+     * List one directory level under [root], sorted and paginated.
+     *
+     * The companion to [listManifest], and the only listing usable on a repository: a checkout with
+     * its dependencies holds tens of thousands of files, which is neither readable as a flat list
+     * nor cheap to walk on every open. Here the cost is bounded by the size of one directory.
+     *
+     * [relativePath] is the directory to list; empty (or `/`) means the scope root itself. Entries
+     * are sorted with directories first, then by name, which is what a browser shows.
+     *
+     * Symlinks are skipped, matching [listManifest]: attributes are read without following them, so
+     * an entry that is neither a regular file nor a directory is dropped rather than followed out
+     * of the scope. Reserved entries are excluded, as everywhere else in this API.
+     *
+     * @return the page of entries and the total number of entries in the directory.
+     * @throws InvalidExchangePathException if the path escapes the scope or reaches a reserved entry.
+     * @throws java.nio.file.NoSuchFileException if the directory does not exist.
+     * @throws java.nio.file.NotDirectoryException if the path denotes a file.
+     */
+    fun listDirectory(
+        root: Path,
+        relativePath: String,
+        page: Int,
+        pageSize: Int,
+    ): Pair<List<ExchangeDirectoryEntry>, Int> {
+        val normalizedRequest = relativePath.trim().trim('/')
+        val directory =
+            when {
+                normalizedRequest.isEmpty() -> root
+                else -> resolveWithin(root, normalizedRequest)
+            }
+
+        // A scope nobody has written to yet is empty, not an error — same contract as the manifest.
+        if (!Files.exists(root)) return emptyList<ExchangeDirectoryEntry>() to 0
+        if (!Files.exists(directory)) throw NoSuchFileException(normalizedRequest)
+        if (!Files.isDirectory(directory)) throw NotDirectoryException(normalizedRequest)
+
+        // Both sides must be canonical, and the stream must come from the canonical directory:
+        // on macOS `/var` is a symlink to `/private/var`, so relativising entries yielded by a
+        // non-canonical directory against a canonical root produces a path full of `..`.
+        val canonicalRoot = root.toRealPath()
+        val canonicalDirectory = directory.toRealPath()
+        val all =
+            Files.newDirectoryStream(canonicalDirectory).use { stream ->
+                stream.mapNotNull { entry -> toDirectoryEntry(canonicalRoot, entry) }
+            }
+
+        val sorted = all.sortedWith(compareByDescending<ExchangeDirectoryEntry> { it.directory }.thenBy { it.name.lowercase() })
+        val from = (page.coerceAtLeast(0).toLong() * pageSize.coerceAtLeast(1)).coerceAtMost(sorted.size.toLong()).toInt()
+        return sorted.drop(from).take(pageSize.coerceAtLeast(1)) to sorted.size
+    }
+
+    /**
+     * Map one directory child, or null when it must not be listed.
+     *
+     * Attributes are read with [LinkOption.NOFOLLOW_LINKS] so a symlink is recognised as such and
+     * dropped, rather than silently resolved — possibly to a target outside the scope.
+     */
+    private fun toDirectoryEntry(
+        canonicalRoot: Path,
+        entry: Path,
+    ): ExchangeDirectoryEntry? {
+        val name = entry.fileName?.toString() ?: return null
+        if (reservedEntries.reserves(name)) return null
+
+        val attributes =
+            runCatching {
+                Files.readAttributes(entry, BasicFileAttributes::class.java, LinkOption.NOFOLLOW_LINKS)
+            }.getOrElse { e ->
+                // A concurrent delete is expected; anything else is worth a line but not a failure
+                // of the whole listing.
+                if (e !is NoSuchFileException) logger.warn(e) { "Skipping exchange entry: $entry" }
+                return null
+            }
+        if (!attributes.isRegularFile && !attributes.isDirectory) return null
+
+        val relative = canonicalRoot.relativize(entry).joinToString("/") { it.toString() }
+        return ExchangeDirectoryEntry(
+            path = relative,
+            name = name,
+            directory = attributes.isDirectory,
+            size = attributes.size().takeUnless { attributes.isDirectory },
+            lastModified = attributes.lastModifiedTime().toInstant(),
+            mimeType = if (attributes.isDirectory) null else mimeTypeFor(name),
+        )
     }
 
     /** Map a regular file to an [ExchangeFileEntry], with its path relative to [baseRoot]. */
