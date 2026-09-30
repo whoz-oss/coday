@@ -40,7 +40,7 @@ class UsageFeatureControllerSpec :
             val records = mockk<UsageRecordService>()
             val cases = mockk<CaseService>()
             val costs = RunCostService(caseRepository, events, namespaces, records)
-            val mvc = MockMvcBuilders.standaloneSetup(RunCostController(costs, cases)).build()
+            val mvc = MockMvcBuilders.standaloneSetup(RunCostController(costs, cases, mockk(), mockk())).build()
             val caseId = UUID.randomUUID()
             val requests =
                 listOf(
@@ -96,7 +96,7 @@ class UsageFeatureControllerSpec :
             every { records.findByCaseId(caseId) } returns emptyList()
             val mvc =
                 MockMvcBuilders
-                    .standaloneSetup(UsageRecordController(records, config), RunCostController(costs, cases, config))
+                    .standaloneSetup(UsageRecordController(records, config), RunCostController(costs, cases, mockk(), mockk(), config))
                     .build()
 
             mvc.perform(get("/api/usage-records/by-case/$caseId")).andExpect(status().isOk)

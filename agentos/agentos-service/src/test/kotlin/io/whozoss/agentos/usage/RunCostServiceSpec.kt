@@ -147,6 +147,93 @@ class RunCostServiceSpec :
             usage.beforeCall().isDone shouldBe true
         }
 
+        "the child reports its ancestor's pause and resumes only when that ancestor is confirmed" {
+            val (service, parent, saved) = fixture()
+            val child = Case(namespaceId = parent.namespaceId, parentCaseId = parent.id, runCostThreshold = 100.0)
+            saved[child.id] = child
+            val usage = UsageAccumulator()
+            val registration = service.register(child.id, usage)
+            try {
+                usage.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 12.0))
+                val pending = usage.beforeCall()
+                pending.isDone shouldBe false
+                val state = service.state(child.id)
+                state.paused shouldBe true
+                state.runCostThreshold shouldBe 100.0
+                state.pausedCases.single().let {
+                    it.caseId shouldBe parent.id
+                    it.cost shouldBe 12.0
+                    it.threshold shouldBe 10.0
+                    it.ancestor shouldBe true
+                }
+                service.continueRun(parent.id, 10.0)
+                pending.isDone shouldBe true
+                service.state(child.id).paused shouldBe false
+                service.state(child.id).pausedCases shouldBe emptyList()
+                saved.getValue(child.id).runCostThreshold shouldBe 100.0
+            } finally {
+                service.stop(parent.id)
+                registration.finish {}
+            }
+        }
+
+        "a nested child reports every blocking ancestor without unrelated sibling limits" {
+            val (service, root, saved) = fixture(10.0)
+            val parent = Case(namespaceId = root.namespaceId, parentCaseId = root.id, runCostThreshold = 5.0)
+            val child = Case(namespaceId = root.namespaceId, parentCaseId = parent.id, runCostThreshold = 100.0)
+            val sibling = Case(namespaceId = root.namespaceId, parentCaseId = root.id, runCostThreshold = 1.0)
+            listOf(parent, child, sibling).forEach { saved[it.id] = it }
+            val childUsage = UsageAccumulator()
+            val siblingUsage = UsageAccumulator()
+            val childRegistration = service.register(child.id, childUsage)
+            val siblingRegistration = service.register(sibling.id, siblingUsage)
+            try {
+                childUsage.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 12.0))
+                siblingUsage.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 2.0))
+                val pending = childUsage.beforeCall()
+                siblingUsage.beforeCall()
+                service.state(child.id).pausedCases.map { it.caseId }.toSet() shouldBe setOf(parent.id, root.id)
+                service.state(child.id).pausedCases.all { it.ancestor } shouldBe true
+                service.continueRun(root.id, 10.0)
+                pending.isDone shouldBe false
+                service.state(child.id).pausedCases.map { it.caseId } shouldBe listOf(parent.id)
+                service.continueRun(parent.id, 5.0)
+                pending.isDone shouldBe false
+                service.continueRun(parent.id, 10.0)
+                pending.isDone shouldBe true
+                service.state(child.id).paused shouldBe false
+                service.state(sibling.id).paused shouldBe true
+            } finally {
+                service.stop(root.id)
+                childRegistration.finish {}
+                siblingRegistration.finish {}
+            }
+        }
+
+        "a stopped or finished child does not claim to be waiting on its still paused ancestor" {
+            val (service, parent, saved) = fixture()
+            val child = Case(namespaceId = parent.namespaceId, parentCaseId = parent.id, runCostThreshold = 100.0)
+            saved[child.id] = child
+            val parentRegistration = service.register(parent.id, UsageAccumulator())
+            val childUsage = UsageAccumulator()
+            val childRegistration = service.register(child.id, childUsage)
+            try {
+                childUsage.record(LlmUsage(totalTokens = 1, estimatedCostUsd = 12.0))
+                childUsage.beforeCall()
+                service.state(child.id).paused shouldBe true
+                service.stop(child.id)
+                service.state(child.id).paused shouldBe false
+                service.state(child.id).pausedCases shouldBe emptyList()
+                childRegistration.finish {}
+                service.state(child.id).paused shouldBe false
+                service.state(child.id).pausedCases shouldBe emptyList()
+                service.state(parent.id).paused shouldBe true
+            } finally {
+                service.stop(parent.id)
+                parentRegistration.finish {}
+            }
+        }
+
         "zero threshold requires an explicit positive edit" {
             val (service, case, saved) = fixture(0.0)
             val usage = UsageAccumulator()

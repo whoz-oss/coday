@@ -131,11 +131,17 @@ class RunCostService(
     fun state(caseId: UUID): RunCostDto {
         requireEnabled()
         val state = snapshot(sessions[caseId] ?: newSession(getCase(caseId)))
+        val blockingAncestors = sessions[caseId]?.takeUnless { it.stopped }?.ancestorIds.orEmpty() - caseId
         val paused =
             sessions.values
-                .filter { caseId in it.ancestorIds && it.confirmation != null && !it.stopped }
-                .map { PausedCostDto(it.caseId, snapshot(it).cost, it.threshold!!) }
-        return state.copy(pausedCases = paused)
+                .filter {
+                    (caseId in it.ancestorIds || it.caseId in blockingAncestors) &&
+                        it.confirmation != null && !it.stopped
+                }
+                .map {
+                    PausedCostDto(it.caseId, snapshot(it).cost, it.threshold!!, ancestor = it.caseId in blockingAncestors)
+                }
+        return state.copy(paused = state.paused || paused.any { it.ancestor }, pausedCases = paused)
     }
 
     /** Optimistic precondition prevents a retried/double-clicked request doubling twice. */

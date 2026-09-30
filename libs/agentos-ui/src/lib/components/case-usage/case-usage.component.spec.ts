@@ -12,7 +12,7 @@ import { of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { CaseUsageComponent } from './case-usage.component'
 
-const state = (caseId = 'case-a'): RunCostDto => ({
+const state = (caseId = 'case-a', canContinue = true): RunCostDto => ({
   caseId,
   since: '2026-09-22T10:00:00Z',
   cost: 12,
@@ -21,7 +21,12 @@ const state = (caseId = 'case-a'): RunCostDto => ({
   paused: true,
   active: true,
   liveTokens: 150,
-  pausedCases: [{ caseId, cost: 12, threshold: 10 }],
+  pausedCases: [{ caseId, cost: 12, threshold: 10, ancestor: false, canContinue }],
+})
+const parentPause = (canContinue = true): RunCostDto => ({
+  ...state(),
+  runCostThreshold: 100,
+  pausedCases: [{ caseId: 'parent-case', cost: 12, threshold: 10, ancestor: true, canContinue }],
 })
 const totals = {
   recordCount: 1,
@@ -171,9 +176,111 @@ describe('CaseUsageComponent', () => {
   }))
 
   it('does not offer confirmation controls to read-only viewers', fakeAsync(() => {
+    costs.getRunCost.mockReturnValue(of(state('case-a', false)))
     const fixture = render(false)
     expect(fixture.nativeElement.querySelector('button')).toBeNull()
-    fixture.componentInstance.continue(state().pausedCases[0])
+    fixture.componentInstance.continue(state('case-a', false).pausedCases[0])
+    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    fixture.destroy()
+  }))
+
+  it('identifies a parent pause and uses the parent threshold while showing the child run', fakeAsync(() => {
+    costs.getRunCost.mockReturnValue(of(parentPause()))
+    const fixture = render()
+    const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
+
+    expect(text).toContain('Paused · cost threshold reached')
+    expect(fixture.nativeElement.querySelector('details').open).toBe(true)
+    expect(text).toContain('100.00 threshold')
+    expect(text).toContain('Parent conversation: 12.00 consumed.')
+    expect(text).toContain('Continue · double threshold to 20.00')
+    expect(text).not.toContain('double threshold to 200.00')
+    expect(text).not.toContain('Delegated run:')
+    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    fixture.destroy()
+  }))
+
+  it('confirms the parent threshold and refreshes the child after the decision', fakeAsync(() => {
+    const pending = new Subject<RunCostDto>()
+    costs.getRunCost.mockReturnValue(of(parentPause()))
+    costs.continueCostRunRunCost.mockReturnValue(pending)
+    const fixture = render()
+    costs.getRunCost.mockClear()
+
+    fixture.nativeElement.querySelector('button').click()
+    fixture.detectChanges()
+    expect(costs.continueCostRunRunCost).toHaveBeenCalledTimes(1)
+    expect(costs.continueCostRunRunCost).toHaveBeenCalledWith('parent-case', { expectedThreshold: 10 })
+    expect(costs.getRunCost).not.toHaveBeenCalled()
+    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+    expect(buttons.every((button) => button.disabled)).toBe(true)
+
+    costs.getRunCost.mockReturnValue(of({ ...parentPause(), paused: false, pausedCases: [] }))
+    pending.next({ ...state('parent-case'), runCostThreshold: 20, paused: false, pausedCases: [] })
+    pending.complete()
+    fixture.detectChanges()
+
+    expect(costs.getRunCost).toHaveBeenCalledWith('case-a')
+    expect(costs.getRunCost).not.toHaveBeenCalledWith('parent-case')
+    expect(TestBed.inject(CaseStateService).refreshCaseThreshold).toHaveBeenCalledWith('parent-case')
+    expect(fixture.componentInstance.run()?.caseId).toBe('case-a')
+    expect(fixture.componentInstance.run()?.runCostThreshold).toBe(100)
+    expect(fixture.nativeElement.textContent).not.toContain('Paused')
+    fixture.destroy()
+  }))
+
+  it('shows a readable parent pause without continuation permission and stops only the writable child', fakeAsync(() => {
+    const paused = parentPause(false)
+    costs.getRunCost.mockReturnValue(of(paused))
+    const fixture = render(true)
+    const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
+    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+
+    expect(text).toContain('Parent conversation: 12.00 consumed.')
+    expect(text).toContain('A member with edit permission on the parent conversation must approve continuation.')
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Stop'])
+    fixture.componentInstance.continue(paused.pausedCases[0])
+    expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
+    buttons[0].click()
+    expect(costs.stopCostRunRunCost).toHaveBeenCalledTimes(1)
+    expect(costs.stopCostRunRunCost).toHaveBeenCalledWith('case-a')
+    expect(costs.stopCostRunRunCost).not.toHaveBeenCalledWith('parent-case')
+    fixture.destroy()
+  }))
+
+  it('allows parent continuation from a read-only child without offering child Stop', fakeAsync(() => {
+    costs.getRunCost.mockReturnValue(of(parentPause()))
+    costs.continueCostRunRunCost.mockReturnValue(of({ ...state('parent-case'), runCostThreshold: 20 }))
+    const fixture = render(false)
+    const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
+    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+
+    expect(text).toContain('Parent conversation: 12.00 consumed.')
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Continue · double threshold to 20.00'])
+    costs.getRunCost.mockClear()
+    costs.getRunCost.mockReturnValue(of({ ...parentPause(), paused: false, pausedCases: [] }))
+    buttons[0].click()
+    expect(costs.continueCostRunRunCost).toHaveBeenCalledWith('parent-case', { expectedThreshold: 10 })
+    expect(costs.getRunCost).toHaveBeenCalledWith('case-a')
+    fixture.componentInstance.stop()
+    expect(costs.stopCostRunRunCost).not.toHaveBeenCalled()
+    fixture.destroy()
+  }))
+
+  it('explains a hidden linked pause without inventing parent details or a confirmation action', fakeAsync(() => {
+    costs.getRunCost.mockReturnValue(of({ ...parentPause(), cost: 2, pausedCases: [] }))
+    usage.aggregateByCaseTreeUsageRecord.mockReturnValue(of({ ...totals, cost: 2 }))
+    const fixture = render()
+    const text = fixture.nativeElement.textContent.replace(/\s+/g, ' ')
+    const buttons = Array.from(fixture.nativeElement.querySelectorAll('button')) as HTMLButtonElement[]
+
+    expect(text).toContain('Paused · cost threshold reached')
+    expect(fixture.nativeElement.querySelector('details').open).toBe(true)
+    expect(text).toContain('This run is waiting for confirmation in a linked conversation you cannot access.')
+    expect(text).not.toContain('parent-case')
+    expect(text).not.toContain('12.00')
+    expect(text).not.toContain('double threshold')
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Stop'])
     expect(costs.continueCostRunRunCost).not.toHaveBeenCalled()
     fixture.destroy()
   }))

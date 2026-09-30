@@ -103,7 +103,7 @@ export class CaseUsageComponent {
   }
 
   continue(limit: PausedCostDto): void {
-    if (!this.configuration.enabled() || !this.canWrite() || this.saving()) return
+    if (!this.configuration.enabled() || !limit.canContinue || this.saving()) return
     this.saving.set(true)
     this.actions.add(
       this.costs

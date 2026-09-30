@@ -9,6 +9,8 @@
  */
 
 export interface PausedCostDto {
+  ancestor: boolean
+  canContinue: boolean
   caseId: string
   cost: number
   threshold: number
