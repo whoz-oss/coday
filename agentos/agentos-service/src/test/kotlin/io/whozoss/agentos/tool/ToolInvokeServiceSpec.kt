@@ -89,11 +89,12 @@ class ToolInvokeServiceSpec :
             val pluginManager = mockk<PluginManager>(relaxed = true)
             every { pluginManager.getExtensions(ToolPlugin::class.java) } returns plugins
             every { pluginManager.whichPlugin(any()) } returns null
-            val registry = ToolRegistryService(
-                pluginManager,
-                mockk<IntegrationTypeRegistry>(relaxed = true),
-                ExchangeToolsConfigProperties(),
-            )
+            val registry =
+                ToolRegistryService(
+                    pluginManager,
+                    mockk<IntegrationTypeRegistry>(relaxed = true),
+                    ExchangeToolsConfigProperties(),
+                )
             registry.initialize()
             return ToolResolverService(registry)
         }
@@ -103,12 +104,14 @@ class ToolInvokeServiceSpec :
             plugins: List<ToolPlugin>,
             user: User? = null,
         ): ToolInvokeService {
-            val integrationConfigService = mockk<IntegrationConfigService> {
-                every { findEffective(any(), any()) } returns configs
-            }
-            val userService = mockk<UserService> {
-                every { findById(any()) } returns user
-            }
+            val integrationConfigService =
+                mockk<IntegrationConfigService> {
+                    every { findEffective(any(), any()) } returns configs
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(any()) } returns user
+                }
             return ToolInvokeService(
                 integrationConfigService = integrationConfigService,
                 toolResolverService = buildResolver(plugins),
@@ -123,17 +126,19 @@ class ToolInvokeServiceSpec :
         "invoke returns the tool result when the tool is found" {
             val expectedOutput = "hello from tool"
             val tool = makeTool("MY_INT__doSomething", ToolExecutionResult.success(expectedOutput))
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-            )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
+                )
 
-            val result = service.invoke(
-                namespaceId = namespaceId,
-                userId = null,
-                toolName = "MY_INT__doSomething",
-                payloadJson = null,
-            )
+            val result =
+                service.invoke(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    toolName = "MY_INT__doSomething",
+                    payloadJson = null,
+                )
 
             result.success shouldBe true
             result.output shouldBe expectedOutput
@@ -141,20 +146,23 @@ class ToolInvokeServiceSpec :
 
         "invoke forwards the payload and context to the tool" {
             var capturedContext: ToolContext? = null
-            val tool = makeTool(
-                name = "MY_INT__doSomething",
-                captureContext = { capturedContext = it },
-            )
-            val user = User(
-                metadata = EntityMetadata(id = userId),
-                externalId = userExternalId,
-                email = userExternalId,
-            )
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-                user = user,
-            )
+            val tool =
+                makeTool(
+                    name = "MY_INT__doSomething",
+                    captureContext = { capturedContext = it },
+                )
+            val user =
+                User(
+                    metadata = EntityMetadata(id = userId),
+                    externalId = userExternalId,
+                    email = userExternalId,
+                )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
+                    user = user,
+                )
 
             service.invoke(
                 namespaceId = namespaceId,
@@ -171,21 +179,24 @@ class ToolInvokeServiceSpec :
         }
 
         "invoke returns a failed ToolExecutionResult when the tool signals an error" {
-            val tool = makeTool(
-                name = "MY_INT__doSomething",
-                result = ToolExecutionResult.error("something went wrong", errorType = "BOOM"),
-            )
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-            )
+            val tool =
+                makeTool(
+                    name = "MY_INT__doSomething",
+                    result = ToolExecutionResult.error("something went wrong", errorType = "BOOM"),
+                )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
+                )
 
-            val result = service.invoke(
-                namespaceId = namespaceId,
-                userId = null,
-                toolName = "MY_INT__doSomething",
-                payloadJson = null,
-            )
+            val result =
+                service.invoke(
+                    namespaceId = namespaceId,
+                    userId = null,
+                    toolName = "MY_INT__doSomething",
+                    payloadJson = null,
+                )
 
             result.success shouldBe false
             result.output shouldBe "something went wrong"
@@ -198,19 +209,21 @@ class ToolInvokeServiceSpec :
 
         "invoke throws ResourceNotFoundException when the tool name does not match" {
             val tool = makeTool("MY_INT__realTool")
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-            )
-
-            val ex = shouldThrow<ResourceNotFoundException> {
-                service.invoke(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    toolName = "MY_INT__nonExistent",
-                    payloadJson = null,
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
                 )
-            }
+
+            val ex =
+                shouldThrow<ResourceNotFoundException> {
+                    service.invoke(
+                        namespaceId = namespaceId,
+                        userId = null,
+                        toolName = "MY_INT__nonExistent",
+                        payloadJson = null,
+                    )
+                }
 
             ex.message shouldContain "MY_INT__nonExistent"
             ex.message shouldContain namespaceId.toString()
@@ -218,28 +231,31 @@ class ToolInvokeServiceSpec :
 
         "invoke includes available tool names in the not-found error message" {
             val tool = makeTool("MY_INT__realTool")
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-            )
-
-            val ex = shouldThrow<ResourceNotFoundException> {
-                service.invoke(
-                    namespaceId = namespaceId,
-                    userId = null,
-                    toolName = "MY_INT__nonExistent",
-                    payloadJson = null,
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
                 )
-            }
+
+            val ex =
+                shouldThrow<ResourceNotFoundException> {
+                    service.invoke(
+                        namespaceId = namespaceId,
+                        userId = null,
+                        toolName = "MY_INT__nonExistent",
+                        payloadJson = null,
+                    )
+                }
 
             ex.message shouldContain "MY_INT__realTool"
         }
 
         "invoke throws ResourceNotFoundException when no integration configs are resolved" {
-            val service = buildService(
-                configs = emptyList(),
-                plugins = emptyList(),
-            )
+            val service =
+                buildService(
+                    configs = emptyList(),
+                    plugins = emptyList(),
+                )
 
             shouldThrow<ResourceNotFoundException> {
                 service.invoke(
@@ -257,20 +273,23 @@ class ToolInvokeServiceSpec :
 
         "invoke resolves userExternalId from UserService when userId is provided" {
             var capturedContext: ToolContext? = null
-            val tool = makeTool(
-                name = "MY_INT__doSomething",
-                captureContext = { capturedContext = it },
-            )
-            val user = User(
-                metadata = EntityMetadata(id = userId),
-                externalId = userExternalId,
-                email = userExternalId,
-            )
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-                user = user,
-            )
+            val tool =
+                makeTool(
+                    name = "MY_INT__doSomething",
+                    captureContext = { capturedContext = it },
+                )
+            val user =
+                User(
+                    metadata = EntityMetadata(id = userId),
+                    externalId = userExternalId,
+                    email = userExternalId,
+                )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
+                    user = user,
+                )
 
             service.invoke(
                 namespaceId = namespaceId,
@@ -284,14 +303,16 @@ class ToolInvokeServiceSpec :
 
         "invoke sets userExternalId to null when userId is not provided" {
             var capturedContext: ToolContext? = null
-            val tool = makeTool(
-                name = "MY_INT__doSomething",
-                captureContext = { capturedContext = it },
-            )
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-            )
+            val tool =
+                makeTool(
+                    name = "MY_INT__doSomething",
+                    captureContext = { capturedContext = it },
+                )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
+                )
 
             service.invoke(
                 namespaceId = namespaceId,
@@ -305,16 +326,18 @@ class ToolInvokeServiceSpec :
 
         "invoke sets userExternalId to null when UserService cannot resolve the user" {
             var capturedContext: ToolContext? = null
-            val tool = makeTool(
-                name = "MY_INT__doSomething",
-                captureContext = { capturedContext = it },
-            )
+            val tool =
+                makeTool(
+                    name = "MY_INT__doSomething",
+                    captureContext = { capturedContext = it },
+                )
             // UserService returns null for the given userId (user not found)
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-                user = null,
-            )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
+                    user = null,
+                )
 
             service.invoke(
                 namespaceId = namespaceId,
@@ -333,16 +356,19 @@ class ToolInvokeServiceSpec :
         "listTools returns all tools from all effective integration configs" {
             val toolA = makeTool("INT_A__doAlpha")
             val toolB = makeTool("INT_B__doBeta")
-            val service = buildService(
-                configs = listOf(
-                    integrationConfig("INT_A", "TYPE_A"),
-                    integrationConfig("INT_B", "TYPE_B"),
-                ),
-                plugins = listOf(
-                    makePlugin("TYPE_A", toolA),
-                    makePlugin("TYPE_B", toolB),
-                ),
-            )
+            val service =
+                buildService(
+                    configs =
+                        listOf(
+                            integrationConfig("INT_A", "TYPE_A"),
+                            integrationConfig("INT_B", "TYPE_B"),
+                        ),
+                    plugins =
+                        listOf(
+                            makePlugin("TYPE_A", toolA),
+                            makePlugin("TYPE_B", toolB),
+                        ),
+                )
 
             val result = service.listTools(namespaceId, null)
 
@@ -351,24 +377,26 @@ class ToolInvokeServiceSpec :
 
         "listTools returns name, description and inputSchema for each tool" {
             val tool = makeTool("MY_INT__doSomething")
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", tool)),
-            )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", tool)),
+                )
 
             val result = service.listTools(namespaceId, null)
 
             result.size shouldBe 1
             result[0].name shouldBe "MY_INT__doSomething"
             result[0].description shouldBe "MY_INT__doSomething"
-            result[0].inputSchema shouldBe """"{"type":"object"}"""
+            result[0].inputSchema shouldBe """{"type":"object"}"""
         }
 
         "listTools returns an empty list when no integration configs resolve" {
-            val service = buildService(
-                configs = emptyList(),
-                plugins = emptyList(),
-            )
+            val service =
+                buildService(
+                    configs = emptyList(),
+                    plugins = emptyList(),
+                )
 
             val result = service.listTools(namespaceId, null)
 
@@ -379,10 +407,11 @@ class ToolInvokeServiceSpec :
             val toolZ = makeTool("MY_INT__zzz")
             val toolA = makeTool("MY_INT__aaa")
             val toolM = makeTool("MY_INT__mmm")
-            val service = buildService(
-                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
-                plugins = listOf(makePlugin("SOME_TYPE", toolZ, toolA, toolM)),
-            )
+            val service =
+                buildService(
+                    configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                    plugins = listOf(makePlugin("SOME_TYPE", toolZ, toolA, toolM)),
+                )
 
             val result = service.listTools(namespaceId, null)
 
