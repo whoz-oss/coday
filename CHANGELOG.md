@@ -1,3 +1,14 @@
+## 3.15.1 (2026-09-30)
+
+### 🩹 Fixes
+
+- #1271 Resume multiple answered questions sequentially ([#1273](https://github.com/whoz-oss/coday/pull/1273), [#1271](https://github.com/whoz-oss/coday/issues/1271))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+- vincent.couturier @vincent-couturier-whoz
+
 ## 3.15.0 (2026-09-30)
 
 ### 🚀 Features
