@@ -11,5 +11,11 @@ import java.util.UUID
 fun ExchangeStorageService.namespaceGitDirectory(namespaceId: UUID): Path =
     namespaceDirectory(namespaceId).resolve("repository.git")
 
+/** Workspace-owned setup state, outside both browsable Exchange roots and the Git checkout. */
+fun ExchangeStorageService.workspaceSupportDirectory(
+    namespaceId: UUID,
+    rootCaseId: UUID,
+): Path = namespaceDirectory(namespaceId).resolve("workspace-support").resolve(rootCaseId.toString())
+
 /** The namespace's directory, parent of its shared Exchange root. */
 private fun ExchangeStorageService.namespaceDirectory(namespaceId: UUID): Path = namespaceRoot(namespaceId).parent

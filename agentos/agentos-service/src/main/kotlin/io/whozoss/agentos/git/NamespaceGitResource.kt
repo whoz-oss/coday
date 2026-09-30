@@ -19,6 +19,9 @@ data class NamespaceGitResource(
     val mainBranch: String? = null,
     /** UUID of the namespace-shared auth setting used for every Git operation. Never the secret. */
     val serviceAuthSettingId: UUID? = null,
+    /** Whether a new root case gets a detached worktree. */
+    val autoWorktreeForRootCases: Boolean = false,
+    val setupCommand: String? = null,
     /** `PREPARING`, `READY` or `FAILED`; null while no clone has been attempted. */
     val checkoutStatus: String? = null,
     /** Operator-facing reason when the checkout failed. Never a secret. */

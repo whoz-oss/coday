@@ -21,6 +21,7 @@ interface CaseGroup {
 export class ShellCaseSwitcherMobileComponent {
   // ── Inputs ────────────────────────────────────────────
   readonly open = input.required<boolean>()
+  readonly subCaseCreateRequested = output<string>()
   readonly cases = input.required<(Case & { starred?: boolean })[]>()
   readonly activeCaseId = input.required<string | null>()
   readonly userInitials = input.required<string>()

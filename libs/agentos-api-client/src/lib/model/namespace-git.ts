@@ -10,10 +10,12 @@
 
 export interface NamespaceGit {
   associated: boolean
+  autoWorktreeForRootCases: boolean
   checkoutFailureReason?: string
   checkoutStatus?: string
   lastFetchedAt?: string
   mainBranch?: string
   repositoryUrl?: string
   serviceAuthSettingId?: string
+  setupCommand?: string
 }
