@@ -1,3 +1,14 @@
+## 3.15.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** configure optional namespace Git repositories ([#1365](https://github.com/whoz-oss/coday/pull/1365))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.14.0 (2026-09-30)
 
 ### 🚀 Features
