@@ -1,3 +1,15 @@
+## 3.16.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** browse Exchange directories reliably ([#1366](https://github.com/whoz-oss/coday/pull/1366))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.15.1 (2026-09-30)
 
 ### 🩹 Fixes
