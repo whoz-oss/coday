@@ -287,3 +287,145 @@ test('a stale revision conflict reloads the interaction and keeps the buttons', 
   assert.ok(container.innerHTML.includes('data-checkpoint-action="approve"'), 'expected the buttons back')
   handle.unmount()
 })
+
+// ------------------------------------------------------- convergence guards
+
+/** Minimal document double with a drivable `visibilitychange` event. */
+function fakeDocument(visibilityState = 'hidden') {
+  const listeners = new Map()
+  return {
+    visibilityState,
+    addEventListener(type, handler) {
+      if (!listeners.has(type)) listeners.set(type, new Set())
+      listeners.get(type).add(handler)
+    },
+    removeEventListener(type, handler) {
+      listeners.get(type)?.delete(handler)
+    },
+    dispatch(type) {
+      for (const handler of [...(listeners.get(type) ?? [])]) handler({ type })
+    },
+    listenerCount(type) {
+      return (listeners.get(type) ?? new Set()).size
+    },
+  }
+}
+
+function deferred() {
+  let resolve
+  let reject
+  const promise = new Promise((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+const BASE_PATH = '/api/factory/workflows/wf-1?namespaceId=ns-1'
+
+function detailPayload(revision, status) {
+  return {
+    state: 'existing',
+    revision,
+    projection: { status, workflowType: 'feature-session', title: `Run ${revision}`, steps: [] },
+  }
+}
+
+/** ApiClient whose base `GET` resolves from a FIFO queue controlled by tests. */
+function sequencedApiClient() {
+  const pending = []
+  const calls = { get: [] }
+  return {
+    pending,
+    calls,
+    get(path) {
+      calls.get.push(path)
+      if (path === BASE_PATH) {
+        const entry = deferred()
+        pending.push(entry)
+        return entry.promise
+      }
+      if (path.includes('/timing')) return Promise.resolve({ timing: null })
+      if (path.includes('/evidence')) return Promise.resolve({ items: [] })
+      if (path.includes('/metrics')) return Promise.resolve({})
+      if (path.includes('/interactions')) return Promise.resolve({ items: [] })
+      return Promise.resolve(null)
+    },
+    post: () => Promise.resolve({ ok: true }),
+  }
+}
+
+function baseFetches(apiClient) {
+  return apiClient.calls.get.filter((path) => path === BASE_PATH).length
+}
+
+test('a slow loadAll is discarded in favour of the most recent one', async () => {
+  const container = fakeContainer()
+  const apiClient = sequencedApiClient()
+
+  const mounting = mount(container, { workflowId: 'wf-1', namespaceId: 'ns-1', apiClient })
+  await flush()
+  apiClient.pending[0].resolve(detailPayload(1, 'running'))
+  const handle = await mounting
+  assert.equal(handle.getState().workflow.revision, 1)
+
+  const first = handle.refresh()
+  const second = handle.refresh()
+  await flush()
+
+  // The newest refresh is the 3rd base request; it resolves first with rev 9.
+  apiClient.pending[2].resolve(detailPayload(9, 'completed'))
+  await second
+  // The older refresh resolves afterwards with stale rev 2 and must be dropped.
+  apiClient.pending[1].resolve(detailPayload(2, 'running'))
+  await first
+
+  assert.equal(handle.getState().workflow.revision, 9)
+  assert.equal(handle.getState().workflow.projection.status, 'completed')
+  handle.unmount()
+})
+
+test('an SSE reconnect triggers an authoritative loadAll', async () => {
+  const container = fakeContainer()
+  const apiClient = fakeApiClient()
+  const handlers = new Map()
+  const sseClient = {
+    on(event, handler) {
+      if (!handlers.has(event)) handlers.set(event, new Set())
+      handlers.get(event).add(handler)
+      return () => handlers.get(event)?.delete(handler)
+    },
+  }
+  const handle = await mount(container, { workflowId: 'wf-1', namespaceId: 'ns-1', apiClient, sseClient })
+  const before = apiClient.calls.get.filter((path) => path.startsWith('/api/factory/workflows/wf-1?')).length
+
+  for (const handler of handlers.get('reconnect') ?? []) handler({ workflowId: 'wf-1' })
+  await flush()
+
+  const after = apiClient.calls.get.filter((path) => path.startsWith('/api/factory/workflows/wf-1?')).length
+  assert.ok(after > before, 'expected the reconnect to re-read the authoritative projection')
+  handle.unmount()
+})
+
+test('returning to the foreground triggers a loadAll and unmount removes the listener', async () => {
+  const container = fakeContainer()
+  const doc = fakeDocument('hidden')
+  const apiClient = fakeApiClient()
+  const handle = await mount(container, {
+    workflowId: 'wf-1',
+    namespaceId: 'ns-1',
+    apiClient,
+    document: doc,
+  })
+  const before = apiClient.calls.get.filter((path) => path.startsWith('/api/factory/workflows/wf-1?')).length
+
+  doc.visibilityState = 'visible'
+  doc.dispatch('visibilitychange')
+  await flush()
+
+  const after = apiClient.calls.get.filter((path) => path.startsWith('/api/factory/workflows/wf-1?')).length
+  assert.ok(after > before, 'expected visibilitychange to re-read the authoritative projection')
+
+  handle.unmount()
+  assert.equal(doc.listenerCount('visibilitychange'), 0)
+})

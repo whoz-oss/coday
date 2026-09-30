@@ -203,6 +203,10 @@ export class ProjectionController {
     this.loading = false
     this.lastError = null
     this.disposed = false
+    // Monotonic request sequence: every `load()` bumps it so a slow REST
+    // response that resolves after a newer one can be discarded instead of
+    // overwriting the authoritative (most recent) state.
+    this.requestSequence = 0
   }
 
   /** Workflows currently displayed for the active mode. */
@@ -323,16 +327,26 @@ export class ProjectionController {
       const unsubscribe = this.sse.on(event, (data) => this.handleSseEvent(event, data))
       if (typeof unsubscribe === 'function') this.unsubscribers.push(unsubscribe)
     }
+    // A recovered stream may have missed invalidations (e.g. a run that
+    // terminated during the outage): force an authoritative REST re-read on
+    // reconnect. `open` is intentionally NOT wired here — the initial load
+    // already covered the first connection.
+    const onReconnect = () => {
+      if (!this.disposed) this.runDetached(() => this.load(this.mode))
+    }
+    const unsubscribeReconnect = this.sse.on('reconnect', onReconnect)
+    if (typeof unsubscribeReconnect === 'function') this.unsubscribers.push(unsubscribeReconnect)
   }
 
   /** Fetch the list for a given state and replace local maps. */
   async load(state = this.mode) {
     if (this.disposed || !this.api?.get) return
+    const seq = ++this.requestSequence
     this.loading = true
     this.onChange()
     try {
       const payload = await this.api.get(this.listPath(state))
-      if (this.disposed) return
+      if (this.disposed || seq !== this.requestSequence) return
       const items = Array.isArray(payload?.items) ? payload.items : Array.isArray(payload) ? payload : []
       const target = new Map()
       for (const item of items) {
@@ -343,13 +357,16 @@ export class ProjectionController {
       else this.active = target
       this.lastError = null
     } catch (error) {
-      if (!this.disposed) {
+      if (!this.disposed && seq === this.requestSequence) {
         this.lastError = error
         this.onError(errorMessage(error), error)
       }
     } finally {
-      this.loading = false
-      if (!this.disposed) this.onChange()
+      // A stale response must not flip the loading flag of the newer request.
+      if (!this.disposed && seq === this.requestSequence) {
+        this.loading = false
+        this.onChange()
+      }
     }
   }
 
@@ -668,6 +685,17 @@ export function mountProjectionView(container, options = {}) {
     },
   })
 
+  // Re-read the authoritative REST state whenever the tab returns to the
+  // foreground: invalidations emitted while hidden (SSE may be throttled) are
+  // otherwise lost. Guarded by the controller's request sequence so a stale
+  // background response can never overwrite the fresh one.
+  const onVisibilityChange = () => {
+    if (doc?.visibilityState === 'visible') void controller.load(controller.mode)
+  }
+  if (doc && typeof doc.addEventListener === 'function') {
+    doc.addEventListener('visibilitychange', onVisibilityChange)
+  }
+
   const onClick = (event) => {
     const target = event?.target
     const modeButton = target?.closest?.('[data-projection-mode]')
@@ -710,6 +738,9 @@ export function mountProjectionView(container, options = {}) {
     if (disposed) return
     disposed = true
     container.removeEventListener('click', onClick)
+    if (doc && typeof doc.removeEventListener === 'function') {
+      doc.removeEventListener('visibilitychange', onVisibilityChange)
+    }
     controller.teardown()
   }
 
