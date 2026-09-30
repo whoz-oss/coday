@@ -1,6 +1,6 @@
 package io.whozoss.factory.workflow
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
@@ -28,7 +28,7 @@ import org.springframework.http.ResponseEntity
  * envelope, the `{ "error": { code, message } }` failure envelope and the
  * governed `start` / detail routes.
  */
-class WorkflowControllerHttpTest : DomainIntegrationTest() {
+class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -285,7 +285,6 @@ class WorkflowControllerHttpTest : DomainIntegrationTest() {
 
     @Test
     fun `tenant scope isolation keeps other scopes invisible to a scope-wide list`() {
-        jdbcTemplate.update("DELETE FROM workflow_projections WHERE organization_id = ?", "org-other")
         publish("wf-list-a", namespace)
 
         val otherScope = TenantScope("org-other", "ws-other")

@@ -197,6 +197,156 @@ class Neo4jSchemaInitializer(
                     "FOR (i:IdempotencyRecord) REQUIRE i.id IS UNIQUE",
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Constraint idempotency_record_id_unique ensured" }
+
+        // ── Workflow definitions ───────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workflow_definition_id_unique IF NOT EXISTS " +
+                    "FOR (d:WorkflowDefinition) REQUIRE d.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workflow_definition_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_definition_scope IF NOT EXISTS " +
+                    "FOR (d:WorkflowDefinition) ON (d.organizationId, d.workflowType)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_definition_scope created" }
+
+        // ── Workflow instances ─────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workflow_instance_id_unique IF NOT EXISTS " +
+                    "FOR (i:WorkflowInstance) REQUIRE i.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workflow_instance_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_instance_scope IF NOT EXISTS " +
+                    "FOR (i:WorkflowInstance) ON (i.organizationId, i.workstreamId, i.namespaceId, i.status)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_instance_scope created" }
+
+        // ── Workflow projections ───────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workflow_projection_id_unique IF NOT EXISTS " +
+                    "FOR (p:WorkflowProjection) REQUIRE p.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workflow_projection_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_projection_scope IF NOT EXISTS " +
+                    "FOR (p:WorkflowProjection) ON " +
+                    "(p.organizationId, p.workstreamId, p.namespaceId, p.lifecycleState)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_projection_scope created" }
+
+        // ── Workflow step states ───────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workflow_step_state_id_unique IF NOT EXISTS " +
+                    "FOR (s:WorkflowStepState) REQUIRE s.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workflow_step_state_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_step_state_instance IF NOT EXISTS " +
+                    "FOR (s:WorkflowStepState) ON " +
+                    "(s.organizationId, s.workstreamId, s.namespaceId, s.workflowId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_step_state_instance created" }
+
+        // ── Workflow transitions ───────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workflow_transition_id_unique IF NOT EXISTS " +
+                    "FOR (t:WorkflowTransition) REQUIRE t.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workflow_transition_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_transition_instance IF NOT EXISTS " +
+                    "FOR (t:WorkflowTransition) ON " +
+                    "(t.organizationId, t.workstreamId, t.namespaceId, t.workflowId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_transition_instance created" }
+
+        // ── Workflow code transitions ──────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workflow_code_transition_id_unique IF NOT EXISTS " +
+                    "FOR (t:WorkflowCodeTransition) REQUIRE t.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workflow_code_transition_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_code_transition_instance IF NOT EXISTS " +
+                    "FOR (t:WorkflowCodeTransition) ON " +
+                    "(t.organizationId, t.workstreamId, t.namespaceId, t.workflowId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_code_transition_instance created" }
+
+        // ── Workflow evidence ──────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workflow_evidence_id_unique IF NOT EXISTS " +
+                    "FOR (e:WorkflowEvidence) REQUIRE e.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workflow_evidence_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_evidence_instance IF NOT EXISTS " +
+                    "FOR (e:WorkflowEvidence) ON " +
+                    "(e.organizationId, e.workstreamId, e.namespaceId, e.workflowId, e.stepId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_evidence_instance created" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workflow_evidence_idempotency IF NOT EXISTS " +
+                    "FOR (e:WorkflowEvidence) ON " +
+                    "(e.organizationId, e.workstreamId, e.namespaceId, e.workflowId, e.idempotencyKey)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workflow_evidence_idempotency created" }
+
+        // ── Human interactions ─────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT human_interaction_id_unique IF NOT EXISTS " +
+                    "FOR (h:HumanInteraction) REQUIRE h.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint human_interaction_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX human_interaction_instance IF NOT EXISTS " +
+                    "FOR (h:HumanInteraction) ON " +
+                    "(h.organizationId, h.workstreamId, h.namespaceId, h.workflowId, h.status)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index human_interaction_instance created" }
+
+        // ── Human interaction events ───────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT human_interaction_event_id_unique IF NOT EXISTS " +
+                    "FOR (e:HumanInteractionEvent) REQUIRE e.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint human_interaction_event_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX human_interaction_event_instance IF NOT EXISTS " +
+                    "FOR (e:HumanInteractionEvent) ON " +
+                    "(e.organizationId, e.workstreamId, e.namespaceId, e.workflowId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index human_interaction_event_instance created" }
     }
 
     companion object : KLogging()

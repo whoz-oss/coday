@@ -1,6 +1,6 @@
 package io.whozoss.factory.workflow.web
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.web.TestJwt
 import org.assertj.core.api.Assertions.assertThat
@@ -28,7 +28,7 @@ import org.springframework.util.LinkedMultiValueMap
  *   - invalid JSON and non-conforming definitions are rejected with a clean
  *     `400` and a readable machine code.
  */
-class WorkflowDefinitionAdminIntegrationTest : DomainIntegrationTest() {
+class WorkflowDefinitionAdminIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate

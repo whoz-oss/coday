@@ -620,6 +620,10 @@ class SessionRunService(
             ).filterValues { it != null }
         }
         val next = instance.copy(revision = instance.revision + 1, instance = nextInstance, projection = projection)
+        // The instance document mirrors the row revision (the transition policy
+        // asserts `instance["revision"] == record.revision`), so keep the two in
+        // step on every projection refresh.
+        nextInstance["revision"] = next.revision
         repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)
 
         runCatching {

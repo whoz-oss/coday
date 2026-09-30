@@ -1,6 +1,6 @@
 package io.whozoss.factory.workflow
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.capability.AgentTurnCapability
 import io.whozoss.factory.capability.AgentTurnRequest
@@ -37,8 +37,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
  * Integration tests of the W8.4 declarative session import + multi-lane
  * projection.
  *
- * Extends the shared [DomainIntegrationTest] fixture (one Spring context, one
- * Testcontainers PostgreSQL) — no new `@SpringBootTest` variant. Covers:
+ * Extends the shared [Neo4jDomainIntegrationTest] fixture (one Spring context, one
+ * in-process embedded Neo4j) — no new `@SpringBootTest` variant. Covers:
  *  - the bundled `forge-story-fullstack-ux` definition loads, validates and
  *    registers through the definition service (import/upsert surface);
  *  - the seeder imports the bundled catalogue idempotently;
@@ -47,7 +47,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
  *    the `dependsOn` edges needed for a cockpit swimlane timeline;
  *  - the SSE stream emits a `workflow-projection-updated` event for the run.
  */
-class SessionDefinitionImportIntegrationTest : DomainIntegrationTest() {
+class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var workflowService: WorkflowService

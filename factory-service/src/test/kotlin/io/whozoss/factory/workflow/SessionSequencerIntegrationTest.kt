@@ -1,6 +1,6 @@
 package io.whozoss.factory.workflow
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.capability.AgentTurnCapability
 import io.whozoss.factory.capability.AgentTurnRequest
 import io.whozoss.factory.capability.AgentTurnResult
@@ -39,14 +39,14 @@ import org.springframework.beans.factory.annotation.Autowired
 /**
  * Integration tests of the W8.3 session DAG sequencer.
  *
- * Extends the shared [DomainIntegrationTest] fixture (one Spring context, one
- * Testcontainers PostgreSQL) — no new `@SpringBootTest` variant. `code` steps run
+ * Extends the shared [Neo4jDomainIntegrationTest] fixture (one Spring context, one
+ * in-process embedded Neo4j) — no new `@SpringBootTest` variant. `code` steps run
  * deterministic shell fixtures; `agent` steps use a fake [AgentTurnCapability]
  * (never a real AgentOS). Covers a linear DAG, parallel independent branches with
  * a failure + blocked propagation, a human suspension/resume, and the agent-turn
  * failure rule.
  */
-class SessionSequencerIntegrationTest : DomainIntegrationTest() {
+class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var workflowService: WorkflowService

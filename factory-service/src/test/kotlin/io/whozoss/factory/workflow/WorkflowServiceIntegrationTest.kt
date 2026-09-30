@@ -1,6 +1,6 @@
 package io.whozoss.factory.workflow
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
@@ -28,7 +28,7 @@ import org.springframework.beans.factory.annotation.Autowired
  * and the atomic interaction -> evidence -> transition transaction (including
  * rollback on a stale revision).
  */
-class WorkflowServiceIntegrationTest : DomainIntegrationTest() {
+class WorkflowServiceIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var service: WorkflowService
