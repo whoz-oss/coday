@@ -1,5 +1,6 @@
 package io.whozoss.agentos.chat
 
+import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.usage.LlmUsage
@@ -16,6 +17,7 @@ import org.springframework.ai.model.tool.ToolExecutionResult
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicReference
 
@@ -33,24 +35,23 @@ class UsageTrackingChatModel(
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
     private val maxToolRounds: Int = 20,
 ) : ChatModel by delegate {
-    override fun call(prompt: Prompt): ChatResponse = callRound(externalTools(prompt), 0)
+    override fun call(prompt: Prompt): ChatResponse =
+        try {
+            callRound(externalTools(prompt), 0)
+        } catch (e: Exception) {
+            markFailure(e)
+            throw e
+        }
 
     private fun callRound(
         prompt: Prompt,
         round: Int,
     ): ChatResponse {
         awaitPermission()
-        val response =
-            try {
-                delegate.call(prompt)
-            } catch (e: Exception) {
-                accumulator.failed = true
-                throw e
-            }
+        val response = delegate.call(prompt)
         accumulator.record(CostCalculator.extract(response, apiType, model))
         if (!response.hasToolCalls()) return response
         if (round >= maxToolRounds) {
-            accumulator.failed = true
             throw IllegalStateException("Maximum tool rounds reached")
         }
         awaitPermission()
@@ -62,7 +63,7 @@ class UsageTrackingChatModel(
         }
     }
 
-    override fun stream(prompt: Prompt): Flux<ChatResponse> = streamRound(externalTools(prompt), 0)
+    override fun stream(prompt: Prompt): Flux<ChatResponse> = streamRound(externalTools(prompt), 0).doOnError(::markFailure)
 
     private fun streamRound(
         prompt: Prompt,
@@ -79,16 +80,14 @@ class UsageTrackingChatModel(
                         val usage = CostCalculator.extract(response, apiType, model)
                         if (usage != LlmUsage.ZERO) lastUsage.set(usage)
                     }.doOnComplete { lastUsage.getAndSet(null)?.let(accumulator::record) }
-                    .doOnError { error ->
+                    .doOnError {
                         lastUsage.getAndSet(null)?.let(accumulator::record)
-                        if (generateSequence(error) { it.cause }.none { it is CostRunStopped }) accumulator.failed = true
                     }.doOnCancel { lastUsage.getAndSet(null)?.let(accumulator::record) }
             MessageAggregator().aggregate(raw, aggregated::set).concatWith(
                 Flux.defer {
                     val response = aggregated.get()
                     if (response == null || !response.hasToolCalls()) return@defer Flux.empty<ChatResponse>()
                     if (round >= maxToolRounds) {
-                        accumulator.failed = true
                         return@defer Flux.error<ChatResponse>(IllegalStateException("Maximum tool rounds reached"))
                     }
                     Mono
@@ -107,6 +106,14 @@ class UsageTrackingChatModel(
                 },
             )
         }
+
+    private fun markFailure(error: Throwable) {
+        val interrupted =
+            generateSequence(error) { it.cause }.any {
+                it is AgentInterrupt || it is CostRunStopped || it is CancellationException
+            }
+        if (!interrupted) accumulator.failed = true
+    }
 
     private fun externalTools(prompt: Prompt): Prompt {
         val copied: ChatOptions = (prompt.options ?: delegate.defaultOptions).copy()

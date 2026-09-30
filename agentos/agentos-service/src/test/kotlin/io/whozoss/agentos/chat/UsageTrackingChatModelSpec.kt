@@ -6,10 +6,12 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.ModelPricing
 import io.whozoss.agentos.sdk.usage.LlmUsage
+import io.whozoss.agentos.usage.CostRunStopped
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.UserMessage
@@ -26,7 +28,9 @@ import org.springframework.ai.tool.definition.ToolDefinition
 import reactor.core.publisher.Flux
 import java.time.Duration
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Duration.Companion.seconds
 
@@ -54,6 +58,19 @@ class UsageTrackingChatModelSpec :
             return ChatResponse(listOf(Generation(message)), metadata.build())
         }
 
+        fun toolCallback(action: () -> String): ToolCallback =
+            object : ToolCallback {
+                override fun getToolDefinition(): ToolDefinition =
+                    ToolDefinition
+                        .builder()
+                        .name("testTool")
+                        .description("Test tool")
+                        .inputSchema("{\"type\":\"object\",\"properties\":{}}")
+                        .build()
+
+                override fun call(input: String): String = action()
+            }
+
         "real ChatClient content terminal counts a synchronous response" {
             val raw = mockk<ChatModel>()
             every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
@@ -69,20 +86,9 @@ class UsageTrackingChatModelSpec :
             val toolsExecuted = AtomicInteger()
             val requests = AtomicInteger()
             val callback =
-                object : ToolCallback {
-                    override fun getToolDefinition(): ToolDefinition =
-                        ToolDefinition
-                            .builder()
-                            .name(
-                                "testTool",
-                            ).description("Test tool")
-                            .inputSchema("{\"type\":\"object\",\"properties\":{}}")
-                            .build()
-
-                    override fun call(input: String): String {
-                        toolsExecuted.incrementAndGet()
-                        return "ok"
-                    }
+                toolCallback {
+                    toolsExecuted.incrementAndGet()
+                    "ok"
                 }
             val raw = mockk<ChatModel>()
             val options = ToolCallingChatOptions.builder().toolCallbacks(callback).build()
@@ -134,6 +140,112 @@ class UsageTrackingChatModelSpec :
             }
             accumulator.total.totalTokens shouldBe 15L
             accumulator.failed shouldBe true
+        }
+
+        listOf(false, true).forEach { streaming ->
+            "unknown tool in ${if (streaming) "stream" else "call"} retains usage and marks the invocation failed" {
+                val raw = mockk<ChatModel>()
+                every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+                every { raw.call(any<Prompt>()) } returns response(tool = true)
+                every { raw.stream(any<Prompt>()) } returns Flux.just(response(tool = true))
+                val accumulator = UsageAccumulator()
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model)
+
+                shouldThrow<IllegalStateException> {
+                    if (streaming) {
+                        tracked.stream(Prompt("Hello")).blockLast(Duration.ofSeconds(2))
+                    } else {
+                        tracked.call(Prompt("Hello"))
+                    }
+                }
+
+                accumulator.total.totalTokens shouldBe 15L
+                accumulator.total.estimatedCostUsd shouldBe 15.0
+                accumulator.snapshot().calls shouldBe 1L
+                accumulator.failed shouldBe true
+            }
+        }
+
+        "wrapped tool interruption retains synchronous usage without marking a failure" {
+            val interruption = CompletionException(AgentInterrupt.AwaitAnswer("Continue?"))
+            val options = ToolCallingChatOptions.builder().toolCallbacks(toolCallback { throw interruption }).build()
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns options
+            every { raw.call(any<Prompt>()) } returns response(tool = true)
+            val accumulator = UsageAccumulator()
+
+            shouldThrow<CompletionException> {
+                UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model).call(Prompt("Hello"))
+            } shouldBe interruption
+
+            accumulator.total.totalTokens shouldBe 15L
+            accumulator.snapshot().calls shouldBe 1L
+            accumulator.failed shouldBe false
+        }
+
+        "wrapped cost stop before a streaming tool retains usage without marking a failure" {
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.stream(any<Prompt>()) } returns Flux.just(response(tool = true))
+            val accumulator = UsageAccumulator()
+            accumulator.beforeCall = {
+                if (accumulator.hasData) {
+                    CompletableFuture.failedFuture(CompletionException(CostRunStopped()))
+                } else {
+                    CompletableFuture.completedFuture(null)
+                }
+            }
+
+            shouldThrow<CostRunStopped> {
+                UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model).stream(Prompt("Hello")).blockLast(Duration.ofSeconds(2))
+            }
+
+            accumulator.total.totalTokens shouldBe 15L
+            accumulator.snapshot().calls shouldBe 1L
+            accumulator.failed shouldBe false
+        }
+
+        "wrapped stream cancellation retains received usage without marking a failure" {
+            val cancellation = CompletionException(CancellationException("cancelled"))
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().build()
+            every { raw.stream(any<Prompt>()) } returns Flux.concat(Flux.just(response()), Flux.error(cancellation))
+            val accumulator = UsageAccumulator()
+
+            shouldThrow<CompletionException> {
+                UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model).stream(Prompt("Hello")).blockLast(Duration.ofSeconds(2))
+            } shouldBe cancellation
+
+            accumulator.total.totalTokens shouldBe 15L
+            accumulator.snapshot().calls shouldBe 1L
+            accumulator.failed shouldBe false
+        }
+
+        "recoverable tool error returned to the model does not fail the invocation" {
+            val toolsExecuted = AtomicInteger()
+            val callback =
+                toolCallback {
+                    toolsExecuted.incrementAndGet()
+                    "Error executing tool: boom"
+                }
+            val raw = mockk<ChatModel>()
+            every { raw.defaultOptions } returns ToolCallingChatOptions.builder().toolCallbacks(callback).build()
+            val requests = AtomicInteger()
+            every { raw.stream(any<Prompt>()) } answers { Flux.just(response(tool = requests.getAndIncrement() == 0)) }
+            val accumulator = UsageAccumulator()
+
+            UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model)
+                .stream(Prompt("Hello"))
+                .blockLast(Duration.ofSeconds(2))
+                ?.result
+                ?.output
+                ?.text shouldBe "Done"
+
+            toolsExecuted.get() shouldBe 1
+            requests.get() shouldBe 2
+            accumulator.total.totalTokens shouldBe 30L
+            accumulator.snapshot().calls shouldBe 2L
+            accumulator.failed shouldBe false
         }
 
         "cancellation records the last usage exactly once" {
