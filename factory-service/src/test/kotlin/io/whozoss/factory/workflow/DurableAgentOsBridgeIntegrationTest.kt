@@ -8,6 +8,7 @@ import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.service.BridgeRecoveryWorker
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityResolver
@@ -27,6 +28,8 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
+import io.mockk.every
+import io.mockk.mockk
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -488,5 +491,155 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
 
         assertThat(failure.errorCode).isEqualTo("IDEMPOTENCY_KEY_COLLISION")
         assertThat(adapter.startTurns).isEmpty()
+    }
+
+    // ----- 9. A dependency blocked before A ⇒ no agent turn at all -----
+
+    @Test
+    fun `a blocked dependency prevents A and B from ever starting an agent turn`() {
+        val workflowId = "wf-bridge-blocked"
+        startSession(
+            "bridge-blocked",
+            workflowId,
+            listOf(
+                stepJson("pre", "code", "missing-verification", emptyList()),
+                stepJson("A", "agent", "architect", listOf("pre")),
+                stepJson("B", "agent", "architect", listOf("A")),
+            ),
+        )
+        val adapter = FakeAdapter { AgentOsExecutionVerdict.Succeeded(emptyMap()) }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(workflowId, "pre")).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.BLOCKED)
+        // B must never have started: the blocked A leaves it pending (never running/completed).
+        assertThat(statusOf(workflowId, "B")).isNotEqualTo(WorkflowStatuses.RUNNING)
+        assertThat(statusOf(workflowId, "B")).isNotEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(adapter.startTurns).isEmpty()
+    }
+
+    // ----- 10. B starts only after A's result evidence is durable -----
+
+    @Test
+    fun `B starts only after A's agent-result evidence and successful attempt are durably committed`() {
+        val workflowId = "wf-bridge-ordering"
+        startSession(
+            "bridge-ordering",
+            workflowId,
+            listOf(stepJson("A", "agent", "architect", emptyList()), stepJson("B", "agent", "architect", listOf("A"))),
+        )
+        val outputs = mapOf("summary" to "A durable output")
+        var evidenceCommittedWhenBStarted = false
+        var aStatusWhenBStarted: AgentAttemptStatus? = null
+        val adapter = object : AgentOsExecutionAdapter {
+            val started = CopyOnWriteArrayList<String>()
+
+            override fun createOrRecoverExecution(
+                namespaceId: String,
+                workflowId: String,
+                stepId: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+                caseId: String,
+            ): CaseHandle = CaseHandle(caseId, namespaceId, false)
+
+            override fun startTurn(
+                caseId: String,
+                persona: String,
+                brief: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+            ) {
+                started.add(caseId)
+                if (caseId.endsWith("#B")) {
+                    evidenceCommittedWhenBStarted = evidenceRepository
+                        .list(scope, namespace, workflowId, "A")
+                        .any { it.kind == CapabilityExecutionService.AGENT_RESULT_EVIDENCE_KIND && it.outcome == "pass" }
+                    aStatusWhenBStarted = durableAgentAttemptService.find(
+                        scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+                    )?.status
+                }
+            }
+
+            override fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict =
+                if (caseId.endsWith("#A")) AgentOsExecutionVerdict.Succeeded(outputs) else AgentOsExecutionVerdict.Succeeded(emptyMap())
+
+            override fun reconcile(caseId: String): AgentOsExecutionVerdict =
+                if (caseId.endsWith("#A")) AgentOsExecutionVerdict.Succeeded(outputs) else AgentOsExecutionVerdict.Succeeded(emptyMap())
+
+            override fun interrupt(caseId: String, reason: String) = Unit
+
+            override fun kill(caseId: String) = Unit
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        // B started exactly once, and at that instant A's durable result evidence
+        // and its SUCCEEDED attempt were already committed.
+        assertThat(adapter.started.filter { it.endsWith("#B") }).hasSize(1)
+        assertThat(evidenceCommittedWhenBStarted).isTrue()
+        assertThat(aStatusWhenBStarted).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+        assertThat(
+            evidenceRepository.list(scope, namespace, workflowId, "A")
+                .single { it.kind == CapabilityExecutionService.AGENT_RESULT_EVIDENCE_KIND }
+                .facts["outputs"],
+        ).isEqualTo(outputs)
+    }
+
+    // ----- 11. Finalization failure ⇒ reconcilable, no false success -----
+
+    @Test
+    fun `a finalization failure preserves the remote result for reconciliation and never reports success`() {
+        val workflowId = "wf-bridge-finalize-failure"
+        startSession("bridge-finalize-failure", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        val outputs = mapOf("summary" to "remote done")
+        val adapter = FakeAdapter { AgentOsExecutionVerdict.Succeeded(outputs) }
+
+        // Phase 3 (evidence append) blows up: a simulated DB commit error.
+        val failingEvidence = mockk<WorkflowEvidenceRepository>()
+        every { failingEvidence.append(any(), any(), any(), any()) } throws RuntimeException("simulated DB commit failure")
+        val service = CapabilityExecutionService(
+            CapabilityResolver(),
+            workflowRepository,
+            failingEvidence,
+            interactionRepository,
+            attemptRepository,
+            durableAgentAttemptService = durableAgentAttemptService,
+            agentOsExecutionAdapter = adapter,
+            transactionManager = transactionManager,
+            agentLeaseTtlMs = 0L,
+        )
+
+        assertThrows(RuntimeException::class.java) {
+            service.resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
+        }
+
+        // No false success and no committed result evidence.
+        assertThat(durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)!!.status)
+            .isNotEqualTo(AgentAttemptStatus.SUCCEEDED)
+        assertThat(
+            evidenceRepository.list(scope, namespace, workflowId, "A")
+                .filter { it.kind == CapabilityExecutionService.AGENT_RESULT_EVIDENCE_KIND },
+        ).isEmpty()
+
+        // The remote result is preserved at AgentOS: reconciliation finalizes once.
+        val recoveryAdapter = FakeAdapter { AgentOsExecutionVerdict.Succeeded(outputs) }
+        val report = BridgeRecoveryWorker(durableAgentAttemptService, recoveryAdapter, evidenceRepository).recover()
+
+        assertThat(report.finalized).isEqualTo(1)
+        assertThat(recoveryAdapter.reconcileCalls.get()).isEqualTo(1)
+        assertThat(recoveryAdapter.startTurns).isEmpty()
+        assertThat(durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)!!.status)
+            .isEqualTo(AgentAttemptStatus.SUCCEEDED)
+        assertThat(
+            evidenceRepository.list(scope, namespace, workflowId, "A")
+                .filter { it.kind == CapabilityExecutionService.AGENT_RESULT_EVIDENCE_KIND },
+        ).hasSize(1)
     }
 }

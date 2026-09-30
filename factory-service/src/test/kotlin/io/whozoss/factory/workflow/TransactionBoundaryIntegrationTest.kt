@@ -3,7 +3,10 @@ package io.whozoss.factory.workflow
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.capability.AgentTurnCapability
 import io.whozoss.factory.capability.AgentTurnRequest
 import io.whozoss.factory.capability.AgentTurnResult
@@ -135,8 +138,11 @@ class TransactionBoundaryIntegrationTest : Neo4jDomainIntegrationTest() {
                 evidenceRepository,
                 interactionRepository,
                 attemptRepository,
+                durableAgentAttemptService = mockk<DurableAgentAttemptService>(relaxed = true),
+                agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
                 agentStepResultService = null,
                 transactionManager = transactionManager,
+                agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
             ),
             sseHub,
             oracleDefinitionRegistry = null,
