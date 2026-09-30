@@ -1,3 +1,13 @@
+## 3.19.0 (2026-09-30)
+
+### 🚀 Features
+
+- wz-35088 - add test endpoint and UI for tool calls ([#1395](https://github.com/whoz-oss/coday/pull/1395))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.18.0 (2026-09-30)
 
 ### 🚀 Features
