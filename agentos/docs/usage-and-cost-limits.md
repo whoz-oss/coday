@@ -38,7 +38,7 @@ cannot be reconstructed from missing usage metadata.
 ## Setup
 
 1. Enable the platform switch, then configure model prices using the existing `AiModel.pricing` fields, per million tokens: input, output, cache read and cache write. Use one consistent currency across the platform. Historical records retain the estimate calculated when the call ran.
-2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace ancestry → platform. When the threshold environment variable is absent, the platform threshold is `null`; if the entire chain is unset, the monetary gate is disabled while enabled usage tracking continues. A positive value enables the check at that threshold. `0` is a zero threshold and therefore stops for confirmation immediately; it does not disable the check. Negative values are unsupported and do not mean unlimited. Existing iteration guards remain independent.
+2. Configure `agentos.limits.run-cost-threshold` (environment variable `AGENTOS_LIMITS_RUN_COST_THRESHOLD`) or a namespace/case override. Resolution remains case → namespace → platform. When the threshold environment variable is absent, the platform threshold is `null`; if the entire chain is unset, the monetary gate is disabled while enabled usage tracking continues. A positive value enables the check at that threshold. `0` is a zero threshold and therefore stops for confirmation immediately; it does not disable the check. Negative values are unsupported and do not mean unlimited. Existing iteration guards remain independent.
 3. Deploy the matching SDK, service and generated API client/UI together. No additional Copilot provider configuration shape is introduced by this PR; prices and thresholds must be populated through the configuration introduced by the prerequisite PRs.
 
 ## Runtime behavior
@@ -52,6 +52,8 @@ Before another provider request or an automatic tool round, the runtime checks k
 Stop interrupts the case and its active descendants and releases their cost waits. Stopping one child does not release an ancestor confirmation for its siblings. Time spent awaiting cost confirmation is excluded from the delegation execution deadline. Read permission permits monitoring; write permission is required to continue or stop. Each paused descendant is listed in the parent conversation and confirmed under that descendant's own write permission.
 
 These are estimates checked **between requests**, not a hard billing cap: a request already running, concurrent delegated calls or unknown prices can exceed the displayed threshold. The threshold is snapshotted for an active run; an edit is otherwise picked up by the next run. Monetary confirmation does not alter the separate iteration guards.
+
+When usage tracking is enabled and no threshold applies to a run or its ancestors, a failed historical cost query does not prevent execution. Live usage is still collected and persisted, but the affected run-cost endpoint returns an unavailable error rather than an incomplete total. It can recover after the active session ends and historical queries succeed again. If any applicable threshold is configured, including zero, unavailable history still prevents execution so that the limit cannot be bypassed.
 
 ## Monitoring and persistence
 

@@ -10,11 +10,13 @@ import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.usageRecord.PausedCostDto
 import io.whozoss.agentos.sdk.api.usageRecord.RunCostDto
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 
 class CostRunStopped : RuntimeException("Execution stopped by the user")
@@ -46,6 +48,7 @@ class RunCostService(
         var confirmation: CompletableFuture<Void>? = null,
         var stopped: Boolean = false,
         val cancellation: CompletableFuture<Void> = CompletableFuture(),
+        val historyUnavailable: Boolean = false,
     )
 
     inner class Registration internal constructor(
@@ -58,9 +61,8 @@ class RunCostService(
                     caseIds.map { id ->
                         val session = sessions.getValue(id)
                         if (session.stopped) return@synchronized CompletableFuture.failedFuture(CostRunStopped())
-                        val state = snapshot(session)
                         val threshold = session.threshold
-                        if (threshold != null && state.cost >= threshold) {
+                        if (threshold != null && snapshot(session).cost >= threshold) {
                             session.confirmation ?: CompletableFuture<Void>().also { session.confirmation = it }
                         } else {
                             CompletableFuture.completedFuture(null)
@@ -105,8 +107,22 @@ class RunCostService(
     ): Registration {
         requireEnabled()
         val lineage = ancestors(caseId)
-        lineage.forEach { case ->
-            sessions.getOrPut(case.id) { newSession(case) }.live.add(accumulator)
+        val thresholds = lineage.associate { case ->
+            val existing = sessions[case.id]
+            // A running session keeps its snapshot, including an unlimited (null) threshold.
+            case.id to if (existing != null) existing.threshold else resolveThreshold(case)
+        }
+        val allowHistoryFailure = thresholds.values.all { it == null }
+        if (!allowHistoryFailure) {
+            lineage.forEach { case -> sessions[case.id]?.let(::requireHistory) }
+        }
+        // Prepare the entire lineage before publishing any registration: a later read can fail.
+        val runSessions = lineage.map { case ->
+            sessions[case.id] ?: newSession(case, thresholds.getValue(case.id), allowHistoryFailure)
+        }
+        runSessions.forEach { session ->
+            sessions[session.caseId] = session
+            session.live.add(accumulator)
         }
         return Registration(accumulator, lineage.map { it.id }).also { accumulator.beforeCall = it::beforeCall }
     }
@@ -181,6 +197,7 @@ class RunCostService(
     }
 
     private fun snapshot(session: Session): RunCostDto {
+        requireHistory(session)
         val live = session.live.map { it.snapshot() }
         return RunCostDto(
             caseId = session.caseId,
@@ -194,21 +211,43 @@ class RunCostService(
         )
     }
 
-    private fun newSession(case: Case): Session {
+    private fun requireHistory(session: Session) {
+        if (session.historyUnavailable) {
+            throw ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Usage history is unavailable for this run")
+        }
+    }
+
+    private fun resolveThreshold(case: Case): Double? =
+        case.runCostThreshold ?: namespaces.resolveRunCostThreshold(case.namespaceId)
+
+    private fun newSession(
+        case: Case,
+        threshold: Double? = resolveThreshold(case),
+        allowHistoryFailure: Boolean = false,
+    ): Session {
         val since =
             events
                 .findByParent(case.id)
                 .filterIsInstance<MessageEvent>()
                 .lastOrNull { it.actor.role == ActorRole.USER }
                 ?.timestamp ?: case.metadata.created
-        val total = records.sumCostByCaseTreeSince(case.id, since)
+        var historyUnavailable = false
+        val total = try {
+            records.sumCostByCaseTreeSince(case.id, since)
+        } catch (failure: Exception) {
+            if (!allowHistoryFailure || failure is CancellationException || failure is InterruptedException) throw failure
+            historyUnavailable = true
+            logger.warn(failure) { "Usage history unavailable for unlimited case ${case.id}; run cost remains unavailable" }
+            null
+        }
         return Session(
             case.id,
             since,
             ancestors(case.id).map { it.id }.toSet(),
             total?.cost ?: 0.0,
             total?.unknownCostCount ?: 0,
-            case.runCostThreshold ?: namespaces.resolveRunCostThreshold(case.namespaceId),
+            threshold,
+            historyUnavailable = historyUnavailable,
         )
     }
 
@@ -229,4 +268,6 @@ class RunCostService(
         }
         return result
     }
+
+    companion object : KLogging()
 }
