@@ -5,7 +5,6 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.exception.ResourceNotFoundException
@@ -325,5 +324,68 @@ class ToolInvokeServiceSpec :
             )
 
             capturedContext!!.userExternalId shouldBe null
+        }
+
+        // -------------------------------------------------------------------------
+        // listTools
+        // -------------------------------------------------------------------------
+
+        "listTools returns all tools from all effective integration configs" {
+            val toolA = makeTool("INT_A__doAlpha")
+            val toolB = makeTool("INT_B__doBeta")
+            val service = buildService(
+                configs = listOf(
+                    integrationConfig("INT_A", "TYPE_A"),
+                    integrationConfig("INT_B", "TYPE_B"),
+                ),
+                plugins = listOf(
+                    makePlugin("TYPE_A", toolA),
+                    makePlugin("TYPE_B", toolB),
+                ),
+            )
+
+            val result = service.listTools(namespaceId, null)
+
+            result.map { it.name } shouldBe listOf("INT_A__doAlpha", "INT_B__doBeta")
+        }
+
+        "listTools returns name, description and inputSchema for each tool" {
+            val tool = makeTool("MY_INT__doSomething")
+            val service = buildService(
+                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                plugins = listOf(makePlugin("SOME_TYPE", tool)),
+            )
+
+            val result = service.listTools(namespaceId, null)
+
+            result.size shouldBe 1
+            result[0].name shouldBe "MY_INT__doSomething"
+            result[0].description shouldBe "MY_INT__doSomething"
+            result[0].inputSchema shouldBe """"{"type":"object"}"""
+        }
+
+        "listTools returns an empty list when no integration configs resolve" {
+            val service = buildService(
+                configs = emptyList(),
+                plugins = emptyList(),
+            )
+
+            val result = service.listTools(namespaceId, null)
+
+            result shouldBe emptyList()
+        }
+
+        "listTools returns tools sorted by name" {
+            val toolZ = makeTool("MY_INT__zzz")
+            val toolA = makeTool("MY_INT__aaa")
+            val toolM = makeTool("MY_INT__mmm")
+            val service = buildService(
+                configs = listOf(integrationConfig("MY_INT", "SOME_TYPE")),
+                plugins = listOf(makePlugin("SOME_TYPE", toolZ, toolA, toolM)),
+            )
+
+            val result = service.listTools(namespaceId, null)
+
+            result.map { it.name } shouldBe listOf("MY_INT__aaa", "MY_INT__mmm", "MY_INT__zzz")
         }
     })

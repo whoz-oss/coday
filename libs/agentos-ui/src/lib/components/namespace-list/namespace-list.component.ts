@@ -119,6 +119,10 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'members'])
   }
 
+  protected openToolInvoke(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'tool-invoke'])
+  }
+
   // --- Delete ---
 
   protected deleteNamespace(ns: Namespace): void {

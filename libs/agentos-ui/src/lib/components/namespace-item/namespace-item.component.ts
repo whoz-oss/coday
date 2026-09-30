@@ -24,6 +24,7 @@ export class NamespaceItemComponent {
   readonly userGroupsRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
+  readonly toolInvokeRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
   protected readonly pendingDelete = signal(false)
@@ -63,6 +64,9 @@ export class NamespaceItemComponent {
   }
   protected onAuthSettings(): void {
     this.authSettingsRequested.emit(this.namespace())
+  }
+  protected onToolInvoke(): void {
+    this.toolInvokeRequested.emit(this.namespace())
   }
 
   protected onMenuAction(key: string): void {

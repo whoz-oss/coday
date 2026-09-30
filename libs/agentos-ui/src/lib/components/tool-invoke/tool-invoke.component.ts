@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import { ActivatedRoute, Router } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { ToolInvokeStateService } from '../../services/tool-invoke-state.service'
 
@@ -8,14 +9,19 @@ import { ToolInvokeStateService } from '../../services/tool-invoke-state.service
 type NamespaceOption = Pick<NamespaceListItem, 'id' | 'name'>
 
 /**
- * ToolInvokeComponent — SUPER_ADMIN debug screen for calling a named tool directly.
+ * ToolInvokeComponent — debug screen for calling a named tool directly.
  *
- * The user selects a namespace, optionally enters a user UUID, types the exact tool name
- * (e.g. `MY_FILES__listFiles`), and provides an optional JSON payload. On submit the
- * component calls ToolInvokeStateService which POSTs to /api/tools/invoke and displays
- * the raw ToolExecutionResult.
+ * Supports two modes:
  *
- * Route: /agentos/admin/tool-invoke
+ * **Platform/admin mode** (route: `/agentos/admin/tool-invoke`)
+ *   No `namespaceId` in route params. Loads the full namespace list and renders
+ *   a `<select>` so a super-admin can target any namespace.
+ *
+ * **Namespace mode** (route: `/agentos/:namespaceId/tool-invoke`)
+ *   A `namespaceId` is present in route params. Skips the namespace list fetch
+ *   entirely (avoids a wasted HTTP call and avoids leaking the list into a
+ *   namespace-scoped screen). Resolves the namespace name for display only.
+ *   The namespace field is rendered as read-only context, not a `<select>`.
  */
 @Component({
   selector: 'agentos-tool-invoke',
@@ -26,11 +32,22 @@ type NamespaceOption = Pick<NamespaceListItem, 'id' | 'name'>
 })
 export class ToolInvokeComponent implements OnInit {
   private readonly destroyRef = inject(DestroyRef)
+  private readonly route = inject(ActivatedRoute)
+  private readonly router = inject(Router)
   private readonly namespaceController = inject(NamespaceControllerService)
   protected readonly state = inject(ToolInvokeStateService)
 
+  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+
+  /** True when accessed via /admin/tool-invoke (no namespaceId in route). */
+  protected readonly isPlatformMode = !this.namespaceId
+
+  /** Namespace list — populated only in platform mode. */
   protected readonly namespaces = signal<NamespaceOption[]>([])
   protected readonly namespacesLoading = signal(true)
+
+  /** Resolved namespace name — populated only in namespace mode. */
+  protected readonly namespaceName = signal<string | null>(null)
 
   protected readonly form = new FormGroup({
     namespaceId: new FormControl<string>('', { nonNullable: true, validators: [Validators.required] }),
@@ -40,16 +57,32 @@ export class ToolInvokeComponent implements OnInit {
   })
 
   ngOnInit(): void {
-    this.namespaceController
-      .listAllNamespace()
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (list) => {
-          this.namespaces.set(list.map((item): NamespaceOption => ({ id: item.id, name: item.name })))
-          this.namespacesLoading.set(false)
-        },
-        error: () => this.namespacesLoading.set(false),
-      })
+    if (this.isPlatformMode) {
+      // Platform mode: load the namespace list for the <select>.
+      this.namespaceController
+        .listAllNamespace()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (list) => {
+            this.namespaces.set(list.map((item): NamespaceOption => ({ id: item.id, name: item.name })))
+            this.namespacesLoading.set(false)
+          },
+          error: () => this.namespacesLoading.set(false),
+        })
+    } else {
+      // Namespace mode: patch the form immediately so it is valid without user interaction.
+      this.form.controls.namespaceId.patchValue(this.namespaceId!)
+      this.namespacesLoading.set(false)
+
+      // Resolve the namespace name for display only — fall back to the id on error.
+      this.namespaceController
+        .getByIdNamespace(this.namespaceId!)
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (ns) => this.namespaceName.set(ns.name),
+          error: () => this.namespaceName.set(this.namespaceId!),
+        })
+    }
   }
 
   protected submit(): void {
@@ -74,5 +107,16 @@ export class ToolInvokeComponent implements OnInit {
   protected formatMetadata(metadata: Record<string, unknown>): string | null {
     if (!metadata || Object.keys(metadata).length === 0) return null
     return JSON.stringify(metadata, null, 2)
+  }
+
+  protected back(): void {
+    if (this.isPlatformMode) {
+      // Platform mode: return to the admin hub.
+      this.router.navigate(['/agentos', 'admin'])
+    } else {
+      // Namespace mode: return to the namespace agent-configs list, which is the
+      // primary landing page for namespace admins navigating from the namespace card.
+      this.router.navigate(['/agentos', this.namespaceId, 'agent-configs'])
+    }
   }
 }

@@ -3,23 +3,33 @@ package io.whozoss.agentos.tool
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
 /**
- * Debug/test endpoint that resolves a named tool from the live integration-config overlay
- * and invokes it with a caller-supplied JSON payload.
+ * Debug/test endpoints that expose the live integration-config tool surface for a namespace.
  *
- * **Security**: requires namespace WRITE (= namespace admin or super-admin) on the
- * [ToolInvokeRequest.namespaceId] supplied in the request body. This grants any
- * namespace admin access to the endpoint for their own namespace, while super-admins
- * retain access to all namespaces via the standard permission bypass. The endpoint
- * bypasses the normal agent-run permission model and executes tools with a synthetic
- * [io.whozoss.agentos.sdk.tool.ToolContext]. It is intended exclusively for development
- * and troubleshooting.
+ * **Endpoints**:
+ * - `GET /api/tools` — lists all tools available in a namespace (and optional user overlay).
+ *   Returns a [List] of [ToolSummary] sorted by name. Useful for populating a UI dropdown
+ *   before invoking a specific tool.
+ * - `POST /api/tools/invoke` — resolves a named tool and executes it with a caller-supplied
+ *   JSON payload.
+ *
+ * **Security**: both endpoints require namespace WRITE (= namespace admin or super-admin) on
+ * the supplied `namespaceId`. The listing endpoint reveals the namespace's full integration
+ * surface and therefore must not be cheaper to obtain than the invocation itself — hence the
+ * same `WRITE` gate. Super-admins retain access to all namespaces via the standard permission
+ * bypass.
+ *
+ * Both endpoints bypass the normal agent-run permission model and operate with a synthetic
+ * [io.whozoss.agentos.sdk.tool.ToolContext] (no case events, no credential provider, no agent
+ * name). They are intended exclusively for development and troubleshooting.
  *
  * Business logic is delegated to [ToolInvokeService].
  */
@@ -28,6 +38,27 @@ import java.util.UUID
 class ToolInvokeController(
     private val toolInvokeService: ToolInvokeService,
 ) {
+    /**
+     * GET /api/tools?namespaceId={uuid}&userId={uuid}
+     *
+     * Lists all tools available in the given namespace (and optional user overlay), using the
+     * same four-layer integration-config resolution as a real agent run.
+     *
+     * The listing exists solely to serve the invoke screen and reveals the namespace's
+     * integration surface, so it requires the same namespace WRITE gate as [invoke].
+     *
+     * @param namespaceId Required. Namespace used to resolve effective integration configs.
+     * @param userId Optional. When provided, user-scoped overlay layers are included.
+     * @return List of [ToolSummary] sorted by name.
+     */
+    @GetMapping
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'WRITE')")
+    fun list(
+        @RequestParam namespaceId: UUID,
+        @RequestParam(required = false) userId: UUID?,
+    ): List<ToolSummary> =
+        toolInvokeService.listTools(namespaceId, userId)
+
     /**
      * POST /api/tools/invoke
      *
@@ -64,6 +95,18 @@ class ToolInvokeController(
 
     companion object : KLogging()
 }
+
+/**
+ * Summary of one tool available in a namespace. Mirrors [io.whozoss.agentos.sdk.api.agentConfig.AgentDefinitionDto.ToolSummary].
+ *
+ * [inputSchema] is the raw JSON-Schema string the tool declares; the UI uses it to
+ * pre-fill and document the payload field.
+ */
+data class ToolSummary(
+    val name: String,
+    val description: String,
+    val inputSchema: String,
+)
 
 /**
  * Request body for [ToolInvokeController.invoke].

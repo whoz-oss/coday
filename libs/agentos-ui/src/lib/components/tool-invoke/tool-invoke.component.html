@@ -1,8 +1,24 @@
 <div class="tool-invoke">
   <header class="tool-invoke__header">
+    <button class="tool-invoke__back" type="button" (click)="back()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M15 18l-6-6 6-6"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+      </svg>
+      Back
+    </button>
     <h1 class="tool-invoke__title">Tool invoke</h1>
     <p class="tool-invoke__subtitle">
-      Execute any registered tool directly — bypasses the normal agent-run pipeline. Restricted to super-admins.
+      @if (isPlatformMode) {
+        Execute any registered tool directly &mdash; bypasses the normal agent-run pipeline. Restricted to super-admins.
+      } @else {
+        Execute a registered tool directly in this namespace &mdash; bypasses the normal agent-run pipeline.
+      }
     </p>
   </header>
 
@@ -12,15 +28,22 @@
       <label class="tool-invoke__label" for="ti-namespace"
         >Namespace <span class="tool-invoke__required">*</span></label
       >
-      @if (namespacesLoading()) {
-        <p class="tool-invoke__hint">Loading namespaces&hellip;</p>
+      @if (isPlatformMode) {
+        @if (namespacesLoading()) {
+          <p class="tool-invoke__hint">Loading namespaces&hellip;</p>
+        } @else {
+          <select class="tool-invoke__select" id="ti-namespace" formControlName="namespaceId">
+            <option value="" disabled>Select a namespace</option>
+            @for (ns of namespaces(); track ns.id) {
+              <option [value]="ns.id">{{ ns.name }}</option>
+            }
+          </select>
+        }
       } @else {
-        <select class="tool-invoke__select" id="ti-namespace" formControlName="namespaceId">
-          <option value="" disabled>Select a namespace</option>
-          @for (ns of namespaces(); track ns.id) {
-            <option [value]="ns.id">{{ ns.name }}</option>
-          }
-        </select>
+        <!-- Namespace mode: render as static read-only context, no <select>. -->
+        <p class="tool-invoke__namespace-static" id="ti-namespace">
+          {{ namespaceName() ?? namespaceId }}
+        </p>
       }
     </div>
 
@@ -34,7 +57,7 @@
         id="ti-user"
         type="text"
         formControlName="userId"
-        placeholder="UUID of the user — adds user-scoped overlay layers"
+        placeholder="UUID of the user &mdash; adds user-scoped overlay layers"
         autocomplete="off"
       />
     </div>
@@ -98,7 +121,7 @@
   @if (state.result(); as res) {
     <section class="tool-invoke__result" [class.tool-invoke__result--failure]="!res.success">
       <header class="tool-invoke__result-header">
-        <h2 class="tool-invoke__result-title">Result — {{ res.toolName }}</h2>
+        <h2 class="tool-invoke__result-title">Result &mdash; {{ res.toolName }}</h2>
         <span
           class="tool-invoke__badge"
           [class.tool-invoke__badge--success]="res.success"

@@ -457,6 +457,13 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespaceUserGroupsComponent
               ),
           },
+          // --- Tool Invoke (namespace-scoped) ---
+          {
+            path: ':namespaceId/tool-invoke',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/tool-invoke/tool-invoke.component').then((m) => m.ToolInvokeComponent),
+          },
           // --- Members ---
           {
             path: ':namespaceId/members',
