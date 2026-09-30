@@ -4,19 +4,6 @@ server:
 spring:
   application:
     name: factory-service
-  # Interim embedded relational store for the repositories not yet migrated to
-  # Neo4j (Phases 2+ migrate them). PostgreSQL + Flyway were removed in Phase 1;
-  # the graph schema is owned by Neo4jSchemaInitializer. This in-memory H2
-  # database temporarily keeps the legacy JDBC adapters bootable without a
-  # PostgreSQL driver.
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:h2:mem:factory;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
-    username: ${SPRING_DATASOURCE_USERNAME:sa}
-    password: ${SPRING_DATASOURCE_PASSWORD:}
-    driver-class-name: ${SPRING_DATASOURCE_DRIVER:org.h2.Driver}
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
   # Spring Data Neo4j connection coordinates. In `embedded-neo4j` mode the
   # Driver bean is provided by EmbeddedNeo4jConfiguration, but Spring Boot's
   # Neo4j auto-configuration still needs a URI to build Neo4jConnectionDetails.

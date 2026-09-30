@@ -24,10 +24,9 @@ import java.time.Instant
 /**
  * Shared Spring Boot integration fixture for the Neo4j-backed aggregates.
  *
- * Unlike the retired [PostgresContainerSpec], this fixture needs no Docker: the
- * Neo4j engine is an in-process harness ([EmbeddedNeo4jTestConfiguration]) and
- * the interim relational store is the in-memory H2 datasource declared in
- * `application.yml` / `application-test.yml`.
+ * This fixture needs no Docker: the Neo4j engine is an in-process harness
+ * ([EmbeddedNeo4jTestConfiguration]). All persistence in the context is
+ * graph-backed, so there is no relational datasource to configure.
  *
  * All subclasses share the exact same `MergedContextConfiguration`, so Spring
  * Test caches ONE `ApplicationContext` for the whole group.

@@ -36,7 +36,6 @@ kotlin-test-junit5 = { module = "org.jetbrains.kotlin:kotlin-test-junit5" }
 # Spring Boot
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
-spring-boot-starter-data-jdbc = { module = "org.springframework.boot:spring-boot-starter-data-jdbc" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 # Spring Data Neo4j — Bolt-based repositories (embedded engine or standalone server).
 spring-boot-starter-data-neo4j = { module = "org.springframework.boot:spring-boot-starter-data-neo4j" }
@@ -45,10 +44,6 @@ spring-boot-starter-data-neo4j = { module = "org.springframework.boot:spring-boo
 # https://neo4j.com/docs/operations-manual/current/tools/neo4j-harness/
 neo4j-embedded = { module = "org.neo4j:neo4j", version.ref = "neo4jEmbedded" }
 neo4j-harness = { module = "org.neo4j.test:neo4j-harness", version.ref = "neo4jEmbedded" }
-# Embedded relational database used by the not-yet-migrated relational
-# repositories (Phases 2+ migrate them to Neo4j). Replaces PostgreSQL so the
-# service builds and boots without a PostgreSQL driver or Flyway.
-h2 = { module = "com.h2database:h2" }
 
 # OpenAPI
 springdoc-openapi-starter = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }

@@ -1,8 +1,7 @@
 # Profile used by the springdoc `generateOpenApiDocs` task.
 #
-# Spec generation boots on the interim embedded relational store (H2, configured
-# in application.yml) and the embedded Neo4j engine, with the workflow seed and
-# the outbox drain disabled so no background work interferes with spec
+# Spec generation boots on the embedded Neo4j engine, with the workflow seed
+# and the outbox drain disabled so no background work interferes with spec
 # generation. The generated OpenAPI document is a pure function of the
 # controllers/annotations, so the persistence state is irrelevant.
 spring:

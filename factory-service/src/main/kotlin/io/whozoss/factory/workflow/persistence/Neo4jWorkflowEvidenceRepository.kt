@@ -10,8 +10,8 @@ import org.springframework.stereotype.Repository
 /**
  * Neo4j implementation of [WorkflowEvidenceRepository].
  *
- * Replaces `JdbcWorkflowRepository`'s evidence surface (kept in place but
- * non-primary). The append-only log is one `:WorkflowEvidence` node per item;
+ * Replaces the retired `JdbcWorkflowRepository`'s evidence surface. The
+ * append-only log is one `:WorkflowEvidence` node per item;
  * an identical replay is detected by the `idempotencyKey` property and, failing
  * that, by the composite node id, so a replay never appends a second row.
  */

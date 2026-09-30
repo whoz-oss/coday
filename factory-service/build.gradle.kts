@@ -49,12 +49,11 @@ dependencies {
     // Spring Boot
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)
-    implementation(libs.spring.boot.starter.data.jdbc)
 
     // Persistence — Spring Data Neo4j (embedded engine or standalone server).
-    // Flyway and the PostgreSQL driver were removed as part of the Postgres →
-    // embedded Neo4j swap (Phase 1). The relational repositories that are not
-    // migrated yet run on H2 until later phases move them to the graph.
+    // Flyway, the PostgreSQL driver and the interim JDBC adapters were removed as
+    // part of the Postgres → embedded Neo4j swap: every factory aggregate is now
+    // graph-backed and there is no relational datasource left.
     implementation(libs.spring.boot.starter.data.neo4j)
 
     // Netty 4.2.x — explicit direct dependency to override Spring Boot BOM's 4.1.x pin.
@@ -84,8 +83,6 @@ dependencies {
         // Let Spring Boot's driver win to keep a single driver on the classpath.
         exclude(group = "org.neo4j.driver", module = "neo4j-java-driver")
     }
-    // Embedded relational DB for the repositories not yet migrated to Neo4j.
-    runtimeOnly(libs.h2)
 
     // OpenAPI / Swagger UI
     implementation(libs.springdoc.openapi.starter)

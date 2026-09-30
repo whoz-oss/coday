@@ -11,9 +11,9 @@ import java.time.Instant
 /**
  * Neo4j implementation of [HumanInteractionRepository].
  *
- * Replaces `JdbcWorkflowRepository`'s interaction surface (kept in place but
- * non-primary). The interaction is one `:HumanInteraction` node whose `revision`
- * is compare-and-swapped on update; its append-only lifecycle journal is the
+ * Replaces the retired `JdbcWorkflowRepository`'s interaction surface. The
+ * interaction is one `:HumanInteraction` node whose `revision` is
+ * compare-and-swapped on update; its append-only lifecycle journal is the
  * `:HumanInteractionEvent` label.
  */
 @Repository

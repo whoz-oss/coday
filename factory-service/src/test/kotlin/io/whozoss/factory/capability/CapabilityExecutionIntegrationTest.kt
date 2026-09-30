@@ -1,6 +1,6 @@
 package io.whozoss.factory.capability
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.verification.manifest.VERIFICATION_MANIFEST_MISSING
@@ -23,14 +23,14 @@ import org.springframework.beans.factory.annotation.Autowired
 /**
  * Integration tests of the capability resolution persistence boundary (W8.2).
  *
- * Extends the shared [DomainIntegrationTest] fixture (one Spring context, one
- * Testcontainers PostgreSQL) — no new `@SpringBootTest` variant. Verifies that a
+ * Extends the shared [Neo4jDomainIntegrationTest] fixture (one Spring context,
+ * one in-process Neo4j harness) — no new `@SpringBootTest` variant. Verifies that a
  * `code` step executes the destination-repo verification and records verdict +
  * evidence, that undeclared names are refused without execution, that an `agent`
  * step is `NOT_IMPLEMENTED_YET`, and that a `human` step opens a waiting
  * checkpoint.
  */
-class CapabilityExecutionIntegrationTest : DomainIntegrationTest() {
+class CapabilityExecutionIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var service: CapabilityExecutionService

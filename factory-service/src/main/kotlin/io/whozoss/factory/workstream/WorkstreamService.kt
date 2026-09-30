@@ -3,18 +3,18 @@ package io.whozoss.factory.workstream
 import io.whozoss.factory.error.BadRequestException
 import io.whozoss.factory.error.ConflictException
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.workstream.persistence.Neo4jWorkstreamRepository
 import org.springframework.stereotype.Service
 
 /**
  * Business logic of the `/api/factory/workstreams` surface.
  *
- * Unlike the Node TOML-backed reader, the Kotlin control plane reads and writes
- * the pre-existing `workstreams` table through
- * [JdbcWorkstreamRepository], always constrained by the caller's [TenantScope].
+ * The Kotlin control plane reads and writes workstream nodes through
+ * [Neo4jWorkstreamRepository], always constrained by the caller's [TenantScope].
  */
 @Service
 class WorkstreamService(
-    private val repository: JdbcWorkstreamRepository,
+    private val repository: Neo4jWorkstreamRepository,
 ) {
 
     private val slugPattern = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$")

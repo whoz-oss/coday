@@ -1,6 +1,6 @@
 package io.whozoss.factory.web
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.workflow.service.WorkflowService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -17,7 +17,7 @@ import org.springframework.http.MediaType
  * for `type="module"`), the bootstrap `/api/config` route, and that the
  * multi-lane projection (agent / code / human) is exposed over HTTP.
  */
-class CockpitStaticServingIntegrationTest : DomainIntegrationTest() {
+class CockpitStaticServingIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate

@@ -1,6 +1,6 @@
 package io.whozoss.factory.proxy
 
-import io.whozoss.factory.DomainIntegrationTest
+import io.whozoss.factory.Neo4jDomainIntegrationTest
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -22,7 +22,7 @@ import org.springframework.web.client.RestClient
  * Integration tests of the AgentOS proxy client (against a mock HTTP server)
  * and of the relay endpoint's fail-closed validation.
  */
-class AgentOsProxyMockTest : DomainIntegrationTest() {
+class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate

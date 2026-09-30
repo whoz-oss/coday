@@ -17,12 +17,11 @@ import java.time.Instant
 /**
  * Neo4j implementation of [WorkflowRepository].
  *
- * Replaces `JdbcWorkflowRepository` (which is kept in place but non-primary) for
- * every definition, instance, transition, step-state and projection call. The
- * durable surface is one node label per former table, the composite tenant key
- * is the node id, and optimistic locking is enforced by graph-native
- * compare-and-swap statements. The adapter is the `@Primary` bean for
- * [WorkflowRepository], so Spring DI selects it over the JDBC adapter.
+ * Replaces the retired `JdbcWorkflowRepository` for every definition, instance,
+ * transition, step-state and projection call. The durable surface is one node
+ * label per former table, the composite tenant key is the node id, and optimistic
+ * locking is enforced by graph-native compare-and-swap statements. This adapter is
+ * the authoritative bean for [WorkflowRepository].
  */
 @Repository
 @Primary

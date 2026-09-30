@@ -129,6 +129,21 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index work_environment_workflow created" }
 
+        // ── Workstreams ────────────────────────────────────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workstream_id_unique IF NOT EXISTS " +
+                    "FOR (w:Workstream) REQUIRE w.id IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint workstream_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX workstream_scope IF NOT EXISTS " +
+                    "FOR (w:Workstream) ON (w.organizationId, w.workstreamId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index workstream_scope created" }
+
         // ── Agent-step attempts ────────────────────────────────────────────
         neo4jClient
             .query(

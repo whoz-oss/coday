@@ -22,15 +22,10 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
  * repository interfaces they delegate to.
  *
  * ## Why the transaction manager is declared explicitly
- * Spring Boot's `Neo4jDataAutoConfiguration` only creates a
- * [Neo4jTransactionManager] when no other `PlatformTransactionManager` exists. The
- * interim H2 datasource (for the not-yet-migrated relational repositories) creates
- * a `DataSourceTransactionManager`, which makes Spring Boot skip the Neo4j one —
- * leaving `Neo4jTemplate` without a `transactionTemplate` and failing every
- * repository write. Declaring it here restores transactional repository
- * operations. It is intentionally named `transactionManager` so the default
- * `@Transactional` lookup resolves to Neo4j (now the authoritative store) and
- * Spring Boot's datasource manager backs off.
+ * Declaring it keeps transactional semantics deterministic and independent of
+ * auto-configuration ordering, and guarantees the default `@Transactional`
+ * lookup resolves to the Neo4j transaction manager — the only
+ * `PlatformTransactionManager` left now that the relational store is gone.
  */
 @Configuration
 @EnableNeo4jRepositories(
@@ -44,6 +39,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.factory.environment.persistence",
         "io.whozoss.factory.agentattempt.persistence",
         "io.whozoss.factory.workflow.persistence",
+        "io.whozoss.factory.workstream.persistence",
     ],
 )
 class Neo4jPersistenceConfiguration {
