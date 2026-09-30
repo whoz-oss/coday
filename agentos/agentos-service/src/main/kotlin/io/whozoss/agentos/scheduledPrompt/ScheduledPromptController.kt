@@ -180,6 +180,7 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
+            externalMetadata = resource.externalMetadata,
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -235,14 +236,26 @@ class ScheduledPromptController(
     // Mapping helpers
     // -------------------------------------------------------------------------
 
-    private fun toDomainForUpdate(resource: ScheduledPromptDto, existing: ScheduledPrompt): ScheduledPrompt =
-        existing.copy(
+    /**
+     * Merges [resource] fields onto [existing], treating [ScheduledPromptDto.externalMetadata] as opaque:
+     * - null incoming → existing value preserved unchanged
+     * - non-null incoming → existing keys + incoming keys, incoming wins on conflicts
+     *
+     * No key-specific semantics (e.g. `isStandard`) are applied here; callers own that logic.
+     */
+    private fun toDomainForUpdate(resource: ScheduledPromptDto, existing: ScheduledPrompt): ScheduledPrompt {
+        val mergedMetadata: Map<String, Any?>? = resource.externalMetadata
+            ?.let { incoming -> (existing.externalMetadata ?: emptyMap()) + incoming }
+            ?: existing.externalMetadata
+        return existing.copy(
             name = resource.name,
             description = resource.description,
             recurrence = resource.recurrence.toDomain(),
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
+            externalMetadata = mergedMetadata,
         )
+    }
 
     companion object : KLogging()
 }
@@ -292,4 +305,5 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         updatedBy = entity.metadata.modifiedBy,
         updatedOn = entity.metadata.modified,
         removed = entity.metadata.removed,
+        externalMetadata = entity.externalMetadata,
     )

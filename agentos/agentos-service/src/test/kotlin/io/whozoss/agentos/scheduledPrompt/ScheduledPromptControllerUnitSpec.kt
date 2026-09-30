@@ -78,6 +78,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         planning: Planning = Planning(startDate = today),
         nextRunAt: Instant = fixedNextRun,
         lastRunAt: Instant? = null,
+        externalMetadata: Map<String, Any?>? = null,
     ) = ScheduledPrompt(
         metadata = EntityMetadata(id = id),
         namespaceId = nsId,
@@ -90,6 +91,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         enabled = enabled,
         nextRunAt = nextRunAt,
         lastRunAt = lastRunAt,
+        externalMetadata = externalMetadata,
     )
 
     fun dto(
@@ -101,6 +103,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         recurrence: RecurrenceDto = recurrenceDto(),
         planning: PlanningDto = planningDto(),
         content: String = promptContent,
+        externalMetadata: Map<String, Any?>? = null,
     ) = ScheduledPromptDto(
         id = id,
         namespaceId = nsId,
@@ -111,6 +114,7 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         recurrence = recurrence,
         planning = planning,
         enabled = enabled,
+        externalMetadata = externalMetadata,
     )
 
     beforeTest {
@@ -509,5 +513,67 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         every { service.deleteWithPrompt(id) } returns true
         controller.delete(id)
         verify { service.deleteWithPrompt(id) }
+    }
+
+    // -------------------------------------------------------------------------
+    // externalMetadata — create, toDto, update merge
+    // -------------------------------------------------------------------------
+
+    "create propagates externalMetadata from DTO to domain entity" {
+        val incoming = mapOf("isStandard" to true, "source" to "integration")
+        var capturedEntity: ScheduledPrompt? = null
+        every { service.createWithPrompt(any(), any()) } answers {
+            capturedEntity = firstArg()
+            Pair(firstArg<ScheduledPrompt>().copy(promptTemplateId = promptId), secondArg())
+        }
+        controller.create(dto(externalMetadata = incoming))
+        capturedEntity?.externalMetadata shouldBe incoming
+    }
+
+    "toDto exposes externalMetadata from domain entity" {
+        val metadata = mapOf("isStandard" to false, "owner" to "team-a")
+        val id = UUID.randomUUID()
+        val entity = sp(id = id, externalMetadata = metadata)
+        every { service.findById(id, withRemoved = true) } returns entity
+        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
+        controller.getById(id).externalMetadata shouldBe metadata
+    }
+
+    "toDto exposes null externalMetadata when domain has none" {
+        val id = UUID.randomUUID()
+        val entity = sp(id = id, externalMetadata = null)
+        every { service.findById(id, withRemoved = true) } returns entity
+        every { service.findByIdWithContent(id, withRemoved = true) } returns Pair(entity, promptContent)
+        controller.getById(id).externalMetadata shouldBe null
+    }
+
+    "update with null incoming externalMetadata preserves existing value" {
+        val existing = mapOf("isStandard" to true)
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns sp(id = id, externalMetadata = existing)
+        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
+        // dto() defaults externalMetadata to null — triggers preserve rule
+        val result = controller.update(id, dto(id = id))
+        result.externalMetadata shouldBe existing
+    }
+
+    "update with non-null incoming externalMetadata merges with existing, incoming wins on conflicts" {
+        val existingMetadata = mapOf("isStandard" to true, "owner" to "team-a")
+        val incomingMetadata = mapOf("isStandard" to false, "region" to "eu")
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns sp(id = id, externalMetadata = existingMetadata)
+        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
+        val result = controller.update(id, dto(id = id, externalMetadata = incomingMetadata))
+        // existing keys + incoming keys; incoming wins on conflict ("isStandard" = false)
+        result.externalMetadata shouldBe mapOf("isStandard" to false, "owner" to "team-a", "region" to "eu")
+    }
+
+    "update with non-null incoming externalMetadata and no existing produces the incoming map" {
+        val incomingMetadata = mapOf("isStandard" to true)
+        val id = UUID.randomUUID()
+        every { service.findById(id) } returns sp(id = id, externalMetadata = null)
+        every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
+        val result = controller.update(id, dto(id = id, externalMetadata = incomingMetadata))
+        result.externalMetadata shouldBe incomingMetadata
     }
 })
