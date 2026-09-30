@@ -318,7 +318,7 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
         )
 
         val emitter = CapturingSseEmitter()
-        sseHub.register(namespace, emitter)
+        sseHub.register(scope, namespace, emitter)
 
         sessionRunService.runSession(scope, namespace, workflowId, repoRoot)
 

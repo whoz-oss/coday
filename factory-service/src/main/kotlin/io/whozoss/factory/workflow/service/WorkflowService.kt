@@ -247,7 +247,7 @@ class WorkflowService(
         )
         return when (val result = repository.publishProjection(scope, record, expectedRevision)) {
             is ProjectionPublishResult.Changed -> {
-                sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to result.record.revision))
+                sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to result.record.revision))
                 WorkflowHttpResult(
                     201.takeIf { result.record.revision == 1 } ?: 200,
                     mapOf("namespaceId" to namespaceId, "changed" to true) + publicSnapshot(result.record),
@@ -306,7 +306,7 @@ class WorkflowService(
         )
         repository.insertInstance(scope, record)
         publishProjectionRow(scope, namespaceId, command.workflowId, created.projection, command.workflowType, definitionRecord, controllerExecution)
-        sseHub.publish(namespaceId, mapOf("workflowId" to command.workflowId, "namespaceId" to namespaceId, "revision" to 1))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to command.workflowId, "namespaceId" to namespaceId, "revision" to 1))
         return WorkflowHttpResult(
             201,
             mapOf("namespaceId" to namespaceId, "created" to true, "idempotent" to false) + publicInstanceSnapshot(record),
@@ -392,7 +392,7 @@ class WorkflowService(
             toStepId = request.stepId,
             payload = mapOf("expectedRevision" to request.expectedRevision, "requestedStatus" to request.requestedStatus),
         )
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
         return WorkflowHttpResult(
             200,
             mapOf(
@@ -447,7 +447,7 @@ class WorkflowService(
                 createdAt = null,
             ),
         )
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
         return WorkflowHttpResult(
             200,
             mapOf(
@@ -597,7 +597,7 @@ class WorkflowService(
                 payload = mapOf("revision" to applied.revision),
             ),
         )
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
         return WorkflowHttpResult(
             201,
             mapOf(
@@ -759,7 +759,7 @@ class WorkflowService(
                 payload = mapOf("evidenceId" to recorded.evidenceId, "revision" to applied.revision),
             ),
         )
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to applied.revision))
         return HumanReplyOutcome(
             interaction = interaction,
             result = WorkflowHttpResult(
@@ -873,7 +873,7 @@ class WorkflowService(
             if (!repository.setInstanceStatus(scope, namespaceId, workflowId, "removed", "active")) {
                 throw workflowException(WorkflowErrorCodes.INVALID_LIFECYCLE_TRANSITION)
             }
-            sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId), WorkflowProjectionEvents.RESTORED)
+            sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to instance.revision), WorkflowProjectionEvents.RESTORED)
             return WorkflowHttpResult(200, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "state" to "active", "revision" to instance.revision))
         }
         if (projection.lifecycleState != "removed") throw workflowException(WorkflowErrorCodes.INVALID_LIFECYCLE_TRANSITION)
@@ -881,6 +881,7 @@ class WorkflowService(
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The projection lifecycle was changed concurrently.")
         }
         sseHub.publish(
+            scope,
             namespaceId,
             mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to projection.revision),
             WorkflowProjectionEvents.RESTORED,
@@ -900,7 +901,7 @@ class WorkflowService(
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The projection lifecycle was changed concurrently.")
         }
         repository.setInstanceStatus(scope, namespaceId, workflowId, "active", "removed")
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId), WorkflowProjectionEvents.REMOVED)
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to projection.revision), WorkflowProjectionEvents.REMOVED)
         return WorkflowHttpResult(200, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "state" to "removed"))
     }
 
@@ -913,7 +914,7 @@ class WorkflowService(
             throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The projection lifecycle was changed concurrently.")
         }
         repository.deleteInstance(scope, namespaceId, workflowId)
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId), WorkflowProjectionEvents.PURGED)
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to projection.revision), WorkflowProjectionEvents.PURGED)
         return WorkflowHttpResult(200, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "state" to "purged"))
     }
 
