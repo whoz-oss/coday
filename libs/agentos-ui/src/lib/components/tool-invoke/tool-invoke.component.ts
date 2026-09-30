@@ -4,6 +4,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 import { ActivatedRoute, Router } from '@angular/router'
 import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
 import { ToolInvokeStateService } from '../../services/tool-invoke-state.service'
+import { UserStateService } from '../../services/user-state.service'
 
 /** Minimal namespace shape needed by the select — id + name only. */
 type NamespaceOption = Pick<NamespaceListItem, 'id' | 'name'>
@@ -35,6 +36,7 @@ export class ToolInvokeComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly namespaceController = inject(NamespaceControllerService)
+  private readonly userState = inject(UserStateService)
   protected readonly state = inject(ToolInvokeStateService)
 
   protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
@@ -57,6 +59,23 @@ export class ToolInvokeComponent implements OnInit {
   })
 
   ngOnInit(): void {
+    // Pre-populate userId with the current user's id so the caller doesn't have to
+    // look it up manually. The field remains editable so a super-admin can override it.
+    const currentUserId = this.userState.currentUser()?.id
+    if (currentUserId) {
+      this.form.controls.userId.patchValue(currentUserId)
+    } else {
+      // User not yet loaded — fetch and patch once resolved.
+      this.userState
+        .loadMe()
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (user) => {
+            if (user.id) this.form.controls.userId.patchValue(user.id)
+          },
+        })
+    }
+
     if (this.isPlatformMode) {
       // Platform mode: load the namespace list for the <select>.
       this.namespaceController
