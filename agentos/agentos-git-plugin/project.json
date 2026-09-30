@@ -1,0 +1,11 @@
+{
+  "name": "agentos-git-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "agentos/agentos-git-plugin/src",
+  "tags": [
+    "type:lib",
+    "platform:jvm",
+    "scope:plugin"
+  ]
+}

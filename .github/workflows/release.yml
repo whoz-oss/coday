@@ -245,7 +245,7 @@ jobs:
       - name: Build AgentOS JARs
         working-directory: agentos
         run: |
-          ./gradlew :agentos-service:bootJar :agentos-bash-plugin:jar :agentos-file-plugin:jar :agentos-mcp-plugin:jar :agentos-http-plugin:jar :agentos-tmux-plugin:jar --no-daemon
+          ./gradlew :agentos-service:bootJar :agentos-bash-plugin:jar :agentos-file-plugin:jar :agentos-mcp-plugin:jar :agentos-http-plugin:jar :agentos-tmux-plugin:jar :agentos-git-plugin:jar --no-daemon
 
       - name: Upload JARs to GitHub Release
         env:
@@ -271,6 +271,7 @@ jobs:
           cp agentos/agentos-mcp-plugin/build/libs/agentos-mcp-plugin-*.jar /tmp/agentos-jars/
           cp agentos/agentos-http-plugin/build/libs/agentos-http-plugin-*.jar /tmp/agentos-jars/
           cp agentos/agentos-tmux-plugin/build/libs/agentos-tmux-plugin-*.jar /tmp/agentos-jars/
+          cp agentos/agentos-git-plugin/build/libs/agentos-git-plugin-*.jar /tmp/agentos-jars/
 
           # Generate checksums manifest keyed by the versioned filenames above
           cd /tmp/agentos-jars
@@ -285,6 +286,7 @@ jobs:
             /tmp/agentos-jars/agentos-mcp-plugin-*.jar \
             /tmp/agentos-jars/agentos-http-plugin-*.jar \
             /tmp/agentos-jars/agentos-tmux-plugin-*.jar \
+            /tmp/agentos-jars/agentos-git-plugin-*.jar \
             /tmp/agentos-jars/checksums.sha256 \
             --clobber
 

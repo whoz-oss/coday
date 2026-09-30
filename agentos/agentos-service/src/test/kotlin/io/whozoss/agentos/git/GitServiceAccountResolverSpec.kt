@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
+import io.mockk.verify
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.authSetting.AuthSettingService
@@ -49,4 +50,27 @@ class GitServiceAccountResolverSpec : StringSpec({
         every { authSettings.findById(settings.serviceAuthSettingId, any()) } returns shared.copy(token = secret)
         resolver.resolve(settings).secret shouldBe secret
     }
+    "existing workspace snapshots use a replacement namespace service account" {
+        val replacementId = UUID.randomUUID()
+        val associations = mockk<GitRepositoryAssociationService> {
+            every { findSettings(namespaceId) } returns settings.copy(serviceAuthSettingId = replacementId)
+        }
+        val store = mockk<AuthSettingService> {
+            every { findById(replacementId, any()) } returns shared.copy(token = "replacement-token")
+        }
+        GitServiceAccountResolver(store, associations).resolve(settings) shouldBe
+            GitCredentials.UsernamePassword("x-access-token", "replacement-token")
+        verify(exactly = 0) { store.findById(settings.serviceAuthSettingId, any()) }
+    }
+
+
+    "removed associations keep the historical account without borrowing a different repository identity" {
+        val associations = mockk<GitRepositoryAssociationService> { every { findSettings(namespaceId) } returns null }
+        val store = mockk<AuthSettingService> { every { findById(settings.serviceAuthSettingId, any()) } returns shared }
+        val currentResolver = GitServiceAccountResolver(store, associations)
+        currentResolver.resolve(settings) shouldBe GitCredentials.UsernamePassword("x-access-token", "fixture-token")
+        every { associations.findSettings(namespaceId) } returns settings.copy(repositoryUrl = "https://different.example/repo.git")
+        shouldThrow<BadRequestException> { currentResolver.resolve(settings) }
+    }
+
 })
