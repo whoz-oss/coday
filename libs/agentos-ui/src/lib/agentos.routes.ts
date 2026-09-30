@@ -464,6 +464,13 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/tool-invoke/tool-invoke.component').then((m) => m.ToolInvokeComponent),
           },
+          // --- Git repository ---
+          {
+            path: ':namespaceId/git',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-git/namespace-git.component').then((m) => m.NamespaceGitComponent),
+          },
           // --- Members ---
           {
             path: ':namespaceId/members',

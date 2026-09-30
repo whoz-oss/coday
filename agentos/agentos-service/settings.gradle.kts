@@ -22,3 +22,10 @@ includeBuild("../agentos-sdk") {
         substitute(module("whoz-oss.agentos:agentos-sdk")).using(project(":"))
     }
 }
+
+// Shared hardened Git execution, substituted like the SDK
+includeBuild("../agentos-git") {
+    dependencySubstitution {
+        substitute(module("whoz-oss.agentos:agentos-git")).using(project(":"))
+    }
+}

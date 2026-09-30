@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseEvent
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -18,6 +19,7 @@ import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
  * - Single [MessageContent]  — for [ToolResponseEventNode.outputJson]
  * - [List]<[String]>         — for [QuestionEventNode.options]
  * - [Map]<[String],[Any?]>   — for [ToolResponseEventNode.metadataJson]
+ * - [JsonNode]               — for [ToolResponseEventNode.structuredOutputJson]
  */
 class MessageContentSerializer(
     private val mapper: ObjectMapper,
@@ -52,4 +54,8 @@ class MessageContentSerializer(
     fun serializeEnrichmentPhases(phases: List<EnrichmentPhaseTrace>): String = mapper.writeValueAsString(phases)
 
     fun deserializeEnrichmentPhases(json: String): List<EnrichmentPhaseTrace> = mapper.readValue(json)
+
+    fun serializeJsonNode(node: JsonNode): String = mapper.writeValueAsString(node)
+
+    fun deserializeJsonNode(json: String): JsonNode = mapper.readTree(json)
 }
