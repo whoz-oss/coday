@@ -1,5 +1,6 @@
 package io.whozoss.agentos.plugins.file
 
+import io.whozoss.agentos.sdk.util.SensitiveFileDetector
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.NoSuchFileException
@@ -13,25 +14,10 @@ import kotlin.io.path.pathString
 
 /**
  * Default deny-list of sensitive file patterns.
- * These patterns block access to common credential and secret files.
+ * Delegates to [SensitiveFileDetector.DEFAULT_SENSITIVE_PATTERNS] as the single source of truth.
  */
 object SensitiveFilePatterns {
-    val DEFAULT_PATTERNS =
-        listOf(
-            ".env",
-            ".env.*",
-            "credentials.json",
-            "*.key",
-            "*.pem",
-            "token.json",
-            "auth-profiles.json",
-            "*.p12",
-            "*.pfx",
-            "id_rsa",
-            "id_dsa",
-            "id_ecdsa",
-            "id_ed25519",
-        )
+    val DEFAULT_PATTERNS: List<String> get() = SensitiveFileDetector.DEFAULT_SENSITIVE_PATTERNS
 }
 
 /**

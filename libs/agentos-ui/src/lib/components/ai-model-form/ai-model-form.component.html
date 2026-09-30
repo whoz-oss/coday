@@ -98,18 +98,95 @@
         </div>
 
         <div class="ai-model-form__field">
-          <label class="ai-model-form__label" for="model-max-tokens">Max tokens</label>
+          <label class="ai-model-form__label" for="model-context-window">Context window</label>
           <input
-            id="model-max-tokens"
+            id="model-context-window"
             class="ai-model-form__input"
             type="number"
-            placeholder="e.g. 4096"
+            placeholder="e.g. 128000"
             min="1"
             step="1"
-            [formControl]="maxTokensControl"
+            [formControl]="contextWindowControl"
           />
         </div>
       </div>
+
+      <div class="ai-model-form__field">
+        <label class="ai-model-form__label" for="model-max-completion-tokens">Max completion tokens</label>
+        <input
+          id="model-max-completion-tokens"
+          class="ai-model-form__input"
+          type="number"
+          placeholder="e.g. 4096"
+          min="1"
+          step="1"
+          [formControl]="maxCompletionTokensControl"
+        />
+      </div>
+
+      <!-- Pricing section (all values per million tokens) -->
+      <fieldset class="ai-model-form__section" [formGroup]="pricingGroup">
+        <legend class="ai-model-form__section-title">
+          Pricing
+          <span class="ai-model-form__section-hint">(per million tokens — leave blank to skip cost monitoring)</span>
+        </legend>
+
+        <div class="ai-model-form__row">
+          <div class="ai-model-form__field">
+            <label class="ai-model-form__label" for="pricing-input">Input</label>
+            <input
+              id="pricing-input"
+              class="ai-model-form__input"
+              type="number"
+              placeholder="e.g. 2.50"
+              min="0"
+              step="0.01"
+              formControlName="inputMTokens"
+            />
+          </div>
+
+          <div class="ai-model-form__field">
+            <label class="ai-model-form__label" for="pricing-output">Output</label>
+            <input
+              id="pricing-output"
+              class="ai-model-form__input"
+              type="number"
+              placeholder="e.g. 10.00"
+              min="0"
+              step="0.01"
+              formControlName="outputMTokens"
+            />
+          </div>
+        </div>
+
+        <div class="ai-model-form__row">
+          <div class="ai-model-form__field">
+            <label class="ai-model-form__label" for="pricing-cache-write">Cache write</label>
+            <input
+              id="pricing-cache-write"
+              class="ai-model-form__input"
+              type="number"
+              placeholder="e.g. 3.75"
+              min="0"
+              step="0.01"
+              formControlName="cacheWrite"
+            />
+          </div>
+
+          <div class="ai-model-form__field">
+            <label class="ai-model-form__label" for="pricing-cache-read">Cache read</label>
+            <input
+              id="pricing-cache-read"
+              class="ai-model-form__input"
+              type="number"
+              placeholder="e.g. 0.30"
+              min="0"
+              step="0.01"
+              formControlName="cacheRead"
+            />
+          </div>
+        </div>
+      </fieldset>
 
       <div class="ai-model-form__actions">
         <button

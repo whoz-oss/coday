@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api-client'
@@ -30,9 +30,14 @@ export class PlatformAgentConfigsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /** Raw platform configs, kept for delete lookups. */
   private readonly configs$ = this.refresh$.pipe(
-    switchMap(() => this.agentConfigController.listPlatformAgentsAgentConfig(true))
+    switchMap(() => {
+      this.isLoading.set(true)
+      return this.agentConfigController.listPlatformAgentsAgentConfig(true)
+    })
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
@@ -52,8 +57,12 @@ export class PlatformAgentConfigsComponent {
   private configsById = new Map<string, AgentConfig>()
 
   constructor() {
-    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((configs) => {
-      this.configsById = new Map(configs.map((c: AgentConfig) => [c.id ?? '', c]))
+    this.configs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (configs) => {
+        this.configsById = new Map(configs.map((c: AgentConfig) => [c.id ?? '', c]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

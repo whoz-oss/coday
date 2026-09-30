@@ -26,10 +26,20 @@ class ScheduledPromptUserRunSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {
     override fun run(args: ApplicationArguments) {
+        ensureIdUniqueConstraint()
         ensureUserRunUniqueConstraint()
         ensureStatusIndex()
         ensureRunIdIndex()
         ensureUserIdIndex()
+    }
+
+    private fun ensureIdUniqueConstraint() {
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT scheduled_prompt_user_run_id_unique IF NOT EXISTS " +
+                    "FOR (ur:ScheduledPromptUserRun) REQUIRE ur.id IS UNIQUE",
+            ).run()
+        logger.info { "[ScheduledPromptUserRunSchema] constraint 'scheduled_prompt_user_run_id_unique' ensured" }
     }
 
     private fun ensureUserRunUniqueConstraint() {

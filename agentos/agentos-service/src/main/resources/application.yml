@@ -174,6 +174,13 @@ agentos:
     # A single table cell longer than this is truncated by readDocument.
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
     # document-max-cell-chars: 5000
+  integrations:
+    # Comma-separated integration types that cannot be created or updated in a user scope
+    # (user-global or user x namespace), because a user overlay of a network-reaching type could
+    # redirect a shared credential to a host the user controls. Platform and namespace-shared
+    # configs are unaffected. Setting the list replaces the default entirely.
+    # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
+    # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
   query-user:
     # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
     # integrations map. On by default: asking a question is a primitive of conversation, not an
@@ -182,6 +189,26 @@ agentos:
     # autonomous agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     enabled-by-default: true
+  limits:
+    # Maximum number of internal steps per user message in the CaseRuntime before the case
+    # transitions to ERROR status. A "step" is one processNextStep() call covering agent
+    # selection, agent run, and redirect events. The counter resets to 0 on each
+    # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
+    # threshold across the full session without triggering it within a single turn.
+    # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
+    # case-max-iterations: 100
+    # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
+    # Each iteration consists of one intention-generation call followed by zero or one tool
+    # executions. When this limit is reached the agent emits a WarnEvent and breaks out
+    # of the loop, producing its final response based on what it has gathered so far.
+    # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
+    # agent-max-iterations: 20
+    # Maximum amount the platform accepts spending without a human check-in, in the platform's
+    # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
+    # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
+    # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
+    # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
+    # run-cost-threshold: 10.0
   defaults:
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
@@ -250,6 +277,16 @@ agentos:
       # Interval between claim ticks in milliseconds.
       # Override with env var: AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS
       tick-interval-ms: ${AGENTOS_PROMPT_SCHEDULER_TICK_INTERVAL_MS:30000}
+      # Optional execution time windows (UTC). When set, the scheduler only dispatches
+      # new claims during the specified windows; outside windows, due prompts accumulate
+      # and are processed at the next window open (including after a restart).
+      # Comma-separated 'DAYOFWEEK HH:mm' boundaries in UTC — alternating open/close.
+      # Spring binds the comma-separated env var value into a list automatically.
+      # Example (nightly Mon–Thu + continuous Fri–Mon weekend):
+      #   MONDAY 22:00,FRIDAY 05:00,FRIDAY 22:00,MONDAY 05:00
+      # When unset, the scheduler runs continuously (default behaviour).
+      # Override with env var: AGENTOS_PROMPT_SCHEDULER_WINDOWS=MONDAY 22:00,FRIDAY 05:00,...
+      # windows: ${AGENTOS_PROMPT_SCHEDULER_WINDOWS:}
 
 springdoc:
   writer-with-order-by-keys: true

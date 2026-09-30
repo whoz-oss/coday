@@ -44,6 +44,8 @@ export class ScheduledPromptListComponent {
   private readonly platformPrompts = signal<ScheduledPrompt[]>([])
   private readonly namespacePrompts = signal<ScheduledPrompt[]>([])
 
+  protected readonly isLoading = signal(true)
+
   /** Mapped to EntityListItem[] for ds-entity-list, platform group first. */
   protected readonly promptItems = computed<EntityListItem[]>(() => [
     ...this.platformPrompts().map(
@@ -84,9 +86,13 @@ export class ScheduledPromptListComponent {
       namespace: this.state.listByNamespace(this.namespaceId),
     })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe(({ platform, namespace }) => {
-        this.platformPrompts.set(platform)
-        this.namespacePrompts.set(namespace)
+      .subscribe({
+        next: ({ platform, namespace }) => {
+          this.platformPrompts.set(platform)
+          this.namespacePrompts.set(namespace)
+          this.isLoading.set(false)
+        },
+        error: () => this.isLoading.set(false),
       })
   }
 

@@ -34,6 +34,8 @@ export class PlatformScheduledPromptsComponent {
   /** Single source of truth for platform scheduled prompts, loaded once in the constructor. */
   private readonly prompts = signal<ScheduledPrompt[]>([])
 
+  protected readonly isLoading = signal(true)
+
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly promptItems = computed<EntityListItem[]>(() =>
     this.prompts().map(
@@ -55,7 +57,13 @@ export class PlatformScheduledPromptsComponent {
     this.state
       .listPlatform()
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((defs) => this.prompts.set(defs))
+      .subscribe({
+        next: (defs) => {
+          this.prompts.set(defs)
+          this.isLoading.set(false)
+        },
+        error: () => this.isLoading.set(false),
+      })
   }
 
   protected goBack(): void {

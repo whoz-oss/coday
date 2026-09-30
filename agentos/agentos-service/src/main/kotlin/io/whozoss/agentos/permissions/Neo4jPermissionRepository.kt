@@ -41,7 +41,8 @@ class Neo4jPermissionRepository(
          * [PermissionNodeNeo4jRepository.isPlatformScoped].
          *
          * Covers: [EntityType.PROMPT], [EntityType.AGENT_CONFIG],
-         * [EntityType.INTEGRATION_CONFIG], [EntityType.AI_PROVIDER], [EntityType.AI_MODEL].
+         * [EntityType.INTEGRATION_CONFIG], [EntityType.AI_PROVIDER], [EntityType.AI_MODEL],
+         * [EntityType.SKILL].
          */
         private val PLATFORM_SCOPABLE_ENTITY_TYPES: Set<EntityType> = setOf(
                 EntityType.PROMPT,
@@ -49,6 +50,7 @@ class Neo4jPermissionRepository(
                 EntityType.INTEGRATION_CONFIG,
                 EntityType.AI_PROVIDER,
                 EntityType.AI_MODEL,
+                EntityType.SKILL,
             )
     }
 
@@ -115,10 +117,10 @@ class Neo4jPermissionRepository(
                         )
                     } else {
                         // Shared entities (AgentConfig, IntegrationConfig, AiProvider,
-                        // AiModel, Prompt): namespace MEMBERs legitimately inherit READ
+                        // AiModel, Prompt, Skill): namespace MEMBERs legitimately inherit READ
                         // through the namespace (FR21, FR27, FR32, FR35).
                         //
-                        // For platform-scopable types (e.g. Prompt), also grant READ
+                        // For platform-scopable types (e.g. Prompt, Skill), also grant READ
                         // when the entity has no BELONGS_TO edge — i.e. it is
                         // platform-scoped and readable by any authenticated user.
                         val hasNamespaceAccess = permissionNodeRepository.hasReadAccessViaNamespace(
@@ -422,9 +424,9 @@ class Neo4jPermissionRepository(
      * Checks if the entity type is a child of Namespace in the hierarchy.
      * These entities support transitive permissions through their parent namespace.
      *
-     * [EntityType.PROMPT] is included because namespace-scoped prompts carry a
-     * BELONGS_TO edge to their parent Namespace and must be readable by namespace
-     * MEMBERs via transitive permission (the same rule as AgentConfig, etc.).
+     * [EntityType.PROMPT] and [EntityType.SKILL] are included because namespace-scoped
+     * entities carry a BELONGS_TO edge to their parent Namespace and must be readable
+     * by namespace MEMBERs via transitive permission (the same rule as AgentConfig, etc.).
      */
     private fun isNamespaceChildEntity(entityType: EntityType): Boolean =
         entityType in
@@ -437,5 +439,6 @@ class Neo4jPermissionRepository(
                 EntityType.USER_GROUP,
                 EntityType.PROMPT,
                 EntityType.SCHEDULED_PROMPT,
+                EntityType.SKILL,
             )
 }

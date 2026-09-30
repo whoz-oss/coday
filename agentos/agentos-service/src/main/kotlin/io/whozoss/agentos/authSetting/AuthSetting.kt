@@ -85,22 +85,19 @@ data class BearerTokenAuthSetting(
 /**
  * Authentication setting for HTTP Basic Auth (RFC 7617) — `username` / `password`.
  *
- * **Status: declared and persisted, not wired to any transport.**
+ * **How it reaches a plugin.** The service never builds an `Authorization` header itself.
+ * When an `IntegrationConfig` references a setting of this type, the `CredentialProvider`
+ * built by `AgentServiceImpl` first looks up a per-user `Credential` row and, failing that,
+ * asks [io.whozoss.agentos.auth.StaticCredentialFactory] to synthesise an in-memory
+ * `Credential` of type `BASIC_AUTH` whose `data` carries `username` and `password`. That
+ * credential is never persisted, and a blank password yields no credential at all.
+ * Mapping it to `Authorization: Basic base64(username:password)` is owned by each plugin's
+ * transport (see `docs/plugin-system.md`, "Credentials Delivered to Plugins"); transports
+ * that do not implement it yet are tracked in issue #1201.
  *
- * The type is fully modelled, persisted, and exposed in the OpenAPI spec and UI.
- * However, no transport layer currently constructs an `Authorization: Basic
- * <base64(username:password)>` header from this credential type. In particular,
- * `McpHttpToolProvider.resolveBearerToken` only extracts `accessToken`, `token`,
- * `key`, or `apiKey` from a resolved credential — a `BASIC_AUTH` credential carries
- * neither of those keys and is therefore silently treated as unauthenticated.
- *
- * A configuration using this type is accepted without error but produces no
- * authentication header at the HTTP level until the transport is updated.
- *
- * **This is not a vestige to remove.** `BASIC_AUTH` is a reserved extension point
- * for `AiProvider` configs that carry username/password credentials. Removing it
- * would be a breaking change on the public API contract. Full transport support is
- * tracked in issue #1201.
+ * **This is not a vestige to remove.** `BASIC_AUTH` is also the reserved extension point
+ * for `AiProvider` configs that carry username/password credentials. Removing it would be a
+ * breaking change on the public API contract.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class BasicAuthAuthSetting(

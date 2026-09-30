@@ -82,10 +82,10 @@ class InMemoryPromptRepository : PromptRepository {
                 (agentConfigIds.isNullOrEmpty() || p.agentConfigId in agentConfigIds)
         }
 
-    override fun softDeleteByAgentConfigId(agentConfigId: UUID) {
-        delegate.findAll()
-            .filter { it.agentConfigId == agentConfigId }
-            .forEach { delegate.delete(it.metadata.id) }
+    override fun softDeleteByAgentConfigId(agentConfigId: UUID): Int {
+        val toDelete = delegate.findAll().filter { it.agentConfigId == agentConfigId }
+        toDelete.forEach { delegate.delete(it.metadata.id) }
+        return toDelete.size
     }
 
     companion object {

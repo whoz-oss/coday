@@ -22,6 +22,14 @@ package io.whozoss.agentos.permissions
  * enum to a `$entityLabel` Cypher parameter. The conversion `entityType.label` happens
  * once at the boundary in [Neo4jPermissionRepository] before delegating to
  * [PermissionNodeNeo4jRepository].
+ *
+ * **The label is inlined verbatim into Cypher** : [PermissionNodeNeo4jRepository] no longer
+ * passes the label as a Bolt parameter (`WHERE $entityLabel IN labels(e)` forced an
+ * AllNodesScan). It is substituted as a Cypher *literal* via SDN's SpEL literal replacement,
+ * so the label becomes part of the query text — `MATCH (e:`Label`)`. `literal()` does not
+ * escape its argument, which makes this enum the security boundary: only [label] values
+ * originating from these constants may ever reach that parameter. Never pass an arbitrary
+ * or user-supplied string.
  */
 enum class EntityType(
     val label: String,
@@ -37,6 +45,7 @@ enum class EntityType(
     NAMESPACE("Namespace"),
     PROMPT("Prompt"),
     SCHEDULED_PROMPT("ScheduledPrompt"),
+    SKILL("Skill"),
     USER("User"),
     USER_GROUP("UserGroup"),
     ;

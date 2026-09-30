@@ -77,6 +77,13 @@
     gap: 0.35rem;
   }
 
+  &__field-hint {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+    margin: 0;
+    line-height: 1.4;
+  }
+
   &__label {
     font-size: 0.85rem;
     font-weight: 500;

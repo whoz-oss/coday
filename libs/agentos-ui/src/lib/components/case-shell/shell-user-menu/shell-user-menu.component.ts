@@ -29,6 +29,9 @@ export class ShellUserMenuComponent {
   /** Whether technical logs are currently shown — drives the active state of the menu item */
   readonly showTechnical = input.required<boolean>()
 
+  /** Whether tool calls are currently shown — drives the active state of the menu item. */
+  readonly showToolCalls = input.required<boolean>()
+
   /**
    * Visual variant:
    * - 'desktop': absolute positioned relative to the user button in the sidebar
@@ -52,6 +55,9 @@ export class ShellUserMenuComponent {
   /** Emits when the user toggles technical logs */
   readonly logsToggled = output<void>()
 
+  /** Emits when the user toggles tool calls. */
+  readonly toolCallsToggled = output<void>()
+
   /** Emits when the backdrop is clicked or Escape is pressed */
   readonly closed = output<Event>()
 
@@ -69,6 +75,10 @@ export class ShellUserMenuComponent {
 
   protected onLogsToggle(): void {
     this.logsToggled.emit()
+  }
+
+  protected onToolCallsToggle(): void {
+    this.toolCallsToggled.emit()
   }
 
   protected onClose(event: Event): void {

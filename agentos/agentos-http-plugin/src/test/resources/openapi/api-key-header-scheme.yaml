@@ -1,0 +1,22 @@
+openapi: 3.0.3
+info:
+  title: Header keyed
+  version: 1.0.0
+servers:
+  - url: https://keyed.example.com
+components:
+  securitySchemes:
+    HeaderKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+security:
+  - HeaderKey: []
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items
+      responses:
+        '200':
+          description: Items

@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.namespace
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotBlank
 import java.util.UUID
 
@@ -18,6 +19,9 @@ import java.util.UUID
  * @property defaultAgentName Logical name of the default agent for this namespace. Resolved at
  *   runtime against AgentConfig entries (case-insensitive). When null, messages without an
  *   @mention will produce an explicit error.
+ * @property runCostThreshold Namespace-level default for the run cost threshold. Null means
+ *   "inherit from the platform default", never "no limit" or "zero". When set, applies to
+ *   all cases in this namespace that do not declare their own threshold.
  */
 @Schema(name = "Namespace")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -38,4 +42,12 @@ data class NamespaceDto(
                 " When null, messages without an @mention will produce an explicit error.",
     )
     val defaultAgentName: String? = null,
+    @field:Schema(
+        description =
+            "Namespace-level default for the run cost threshold, in the platform currency unit. " +
+                "Null means inherit from the platform default. Applies to all cases in this namespace " +
+                "that do not declare their own threshold.",
+    )
+    @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
+    val runCostThreshold: Double? = null,
 )

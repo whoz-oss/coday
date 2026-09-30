@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { Router } from '@angular/router'
 import { AuthSettingDto } from '@whoz-oss/agentos-api-client'
@@ -30,8 +30,15 @@ export class PlatformAuthSettingsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /** Raw platform auth settings, kept for delete lookups. */
-  private readonly settings$ = this.refresh$.pipe(switchMap(() => this.state.loadPlatformSettings()))
+  private readonly settings$ = this.refresh$.pipe(
+    switchMap(() => {
+      this.isLoading.set(true)
+      return this.state.loadPlatformSettings()
+    })
+  )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly settingItems$ = this.settings$.pipe(
@@ -50,8 +57,12 @@ export class PlatformAuthSettingsComponent {
   private settingsById = new Map<string, AuthSettingDto>()
 
   constructor() {
-    this.settings$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((settings) => {
-      this.settingsById = new Map(settings.map((s: AuthSettingDto) => [s.id ?? '', s]))
+    this.settings$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (settings) => {
+        this.settingsById = new Map(settings.map((s: AuthSettingDto) => [s.id ?? '', s]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

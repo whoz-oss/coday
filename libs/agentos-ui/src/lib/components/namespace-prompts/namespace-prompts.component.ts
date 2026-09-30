@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { Prompt } from '@whoz-oss/agentos-api-client'
@@ -41,14 +41,17 @@ export class NamespacePromptsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /** Fetches both namespace-level and platform-level prompts in parallel. */
   private readonly allPrompts$ = this.refresh$.pipe(
-    switchMap(() =>
-      forkJoin({
+    switchMap(() => {
+      this.isLoading.set(true)
+      return forkJoin({
         platform: this.promptState.listPlatform().pipe(catchError(() => of([] as Prompt[]))),
         namespace: this.promptState.listByNamespace(this.namespaceId),
       })
-    )
+    })
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list, platform group first. */
@@ -80,9 +83,13 @@ export class NamespacePromptsComponent {
   private platformPromptsById = new Map<string, Prompt>()
 
   constructor() {
-    this.allPrompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(({ platform, namespace }) => {
-      this.platformPromptsById = new Map(platform.map((p: Prompt) => [p.id ?? '', p]))
-      this.namespacePromptsById = new Map(namespace.map((p: Prompt) => [p.id ?? '', p]))
+    this.allPrompts$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: ({ platform, namespace }) => {
+        this.platformPromptsById = new Map(platform.map((p: Prompt) => [p.id ?? '', p]))
+        this.namespacePromptsById = new Map(namespace.map((p: Prompt) => [p.id ?? '', p]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

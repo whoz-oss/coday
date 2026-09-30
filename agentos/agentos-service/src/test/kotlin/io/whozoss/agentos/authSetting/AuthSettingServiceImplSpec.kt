@@ -30,7 +30,7 @@ private val AuthSetting.data: Map<String, String> get() = toDataMap()
  */
 class AuthSettingServiceImplSpec : StringSpec() {
     // PermissionService and UserService are only used by findFiltered, which is not
-    // exercised in this spec (tested via controller + integration tests).
+    // exercised in this spec (AuthSettingScopeContractSpec uses the real controller and service).
     // Relaxed mocks satisfy the constructor without interfering with the tested methods.
     private fun newService(repository: AuthSettingRepository) =
         AuthSettingServiceImpl(

@@ -12,13 +12,15 @@ import {
   AnswerEvent,
   buildCodayEvent,
   CodayEvent,
+  DelegationEvent,
+  DelegationStatus,
+  DelegationStatusEvent,
   ErrorEvent,
   MessageEvent,
   TextEvent,
   ToolRequestEvent,
   ToolResponseEvent,
   TextChunkEvent,
-  DelegationEvent,
 } from '@coday/model'
 
 @Component({
@@ -37,6 +39,7 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
   isLoading = false
   subMessages: ChatMessage[] = []
   streamingText = ''
+  status: DelegationStatus = 'completed'
 
   private restLoaded = false
   private messageIds = new Set<string>()
@@ -154,6 +157,8 @@ export class DelegationInlineComponent implements OnInit, OnDestroy {
         type: 'technical',
         eventId: event.timestamp,
       })
+    } else if (event instanceof DelegationStatusEvent) {
+      this.status = event.status
     } else if (event instanceof DelegationEvent) {
       this.addMessage({
         id: event.timestamp,

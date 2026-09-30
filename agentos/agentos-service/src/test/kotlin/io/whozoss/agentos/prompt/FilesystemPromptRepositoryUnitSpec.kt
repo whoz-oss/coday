@@ -704,10 +704,11 @@ class FilesystemPromptRepositoryUnitSpec :
             val delegate = mockk<PromptRepository>()
             val nsRepo = mockk<NamespaceRepository>()
             val agentConfigId = UUID.randomUUID()
-            every { delegate.softDeleteByAgentConfigId(agentConfigId) } returns Unit
+            every { delegate.softDeleteByAgentConfigId(agentConfigId) } returns 3
 
-            buildRepo(delegate, nsRepo).softDeleteByAgentConfigId(agentConfigId)
+            val result = buildRepo(delegate, nsRepo).softDeleteByAgentConfigId(agentConfigId)
 
+            result shouldBe 3
             verify(exactly = 1) { delegate.softDeleteByAgentConfigId(agentConfigId) }
         }
     })

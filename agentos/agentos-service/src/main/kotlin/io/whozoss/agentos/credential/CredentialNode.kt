@@ -15,6 +15,8 @@ import java.util.UUID
  *
  * Uniqueness is on the `(userId, authSettingId)` pair — there is no tripleKey
  * discriminator, because credentials have a simpler identity model than [AuthSetting].
+ * This invariant is **enforced** by the composite constraint
+ * `credential_user_auth_setting_unique` created at startup by [CredentialSchemaInitializer].
  *
  * [dataJson] stores the [Credential.data] map serialised as JSON. Encryption and
  * decryption of individual values is handled by the caller ([Neo4jCredentialRepository]),

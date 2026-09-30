@@ -32,8 +32,15 @@ export class NamespaceListComponent {
   /** Trigger to refresh the list (emitting a new value forces re-subscription). */
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /** Raw namespaces, kept for delete lookups. */
-  private readonly namespaces$ = this.refresh$.pipe(switchMap(() => this.namespaceController.listAllNamespace()))
+  private readonly namespaces$ = this.refresh$.pipe(
+    switchMap(() => {
+      this.isLoading.set(true)
+      return this.namespaceController.listAllNamespace()
+    })
+  )
 
   /** Mapped to EntityListItem[] for ds-entity-list. */
   protected readonly namespaceItems$ = this.namespaces$.pipe(
@@ -53,8 +60,12 @@ export class NamespaceListComponent {
   protected readonly namespacesById = signal(new Map<string, Namespace>())
 
   constructor() {
-    this.namespaces$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((namespaces) => {
-      this.namespacesById.set(new Map(namespaces.map((ns) => [ns.id ?? '', ns])))
+    this.namespaces$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (namespaces) => {
+        this.namespacesById.set(new Map(namespaces.map((ns) => [ns.id ?? '', ns])))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

@@ -14,15 +14,23 @@ interface CredentialNodeNeo4jRepository : Neo4jRepository<CredentialNode, String
     /**
      * Find the credential for a specific (userId, authSettingId) pair.
      * Returns null if none exists.
+     *
+     * Uniqueness of the pair is enforced by the `credential_user_auth_setting_unique`
+     * constraint created by [CredentialSchemaInitializer], so this query returns at most
+     * one node. The former `LIMIT 1` defensive guard has been removed: it masked
+     * duplicate rows (reads succeeded, only writes surfaced the duplication) and would
+     * have silently hidden future storage inconsistencies.
      */
     @Query(
         $$"""
-            MATCH (c:Credential)
-            WHERE c.userId = $userId AND c.authSettingId = $authSettingId
-            RETURN c LIMIT 1
-            """,
+            MATCH (c:Credential) 
+            WHERE c.userId = $userId AND c.authSettingId = $authSettingId 
+            RETURN c""",
     )
-    fun findByUserIdAndAuthSettingId(userId: String, authSettingId: String): CredentialNode?
+    fun findByUserIdAndAuthSettingId(
+        userId: String,
+        authSettingId: String,
+    ): CredentialNode?
 
     /**
      * Find all credentials owned by a given user, ordered by authSettingId
@@ -93,7 +101,10 @@ interface CredentialNodeNeo4jRepository : Neo4jRepository<CredentialNode, String
             DETACH DELETE c
             """,
     )
-    fun deleteByUserIdAndAuthSettingId(userId: String, authSettingId: String)
+    fun deleteByUserIdAndAuthSettingId(
+        userId: String,
+        authSettingId: String,
+    )
 
     /**
      * Hard-delete all credentials associated with a given authSetting.

@@ -1,0 +1,31 @@
+openapi: 3.0.3
+info:
+  title: MY_CALENDAR
+  version: 1.0.0
+servers:
+  - url: https://www.googleapis.com/calendar/v3
+paths:
+  /calendars/{calendarId}/events:
+    get:
+      operationId: getEvents
+      summary: List events from a Google Calendar
+      parameters:
+        - name: calendarId
+          in: path
+          description: Calendar ID, use 'primary' for main calendar
+          required: true
+          schema:
+            type: string
+        - name: timeMin
+          in: query
+          description: Lower bound ISO 8601 (e.g. 2024-01-15T00:00:00Z)
+          schema:
+            type: string
+        - name: maxResults
+          in: query
+          description: Max events to return (default 10, max 250)
+          schema:
+            type: number
+      responses:
+        "200":
+          description: Successful response

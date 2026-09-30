@@ -117,6 +117,9 @@ class IntegrationConfigServiceImpl(
         canReadNamespace: (UUID) -> Boolean,
     ): List<IntegrationConfig> =
         when {
+            // Explicit platform scope, available to all authenticated users.
+            namespaceIsNone && !userRequested -> findPlatform()
+
             // NS-shared layer of a specific namespace (no userId param) : check READ permission
             namespaceId != null && !userRequested -> {
                 if (!canReadNamespace(namespaceId)) {
@@ -267,7 +270,7 @@ class IntegrationConfigServiceImpl(
         private const val TRIPLE_KEY_PROPERTY = "tripleKey"
 
         /**
-         * Comparator defining the 3-tier overlay precedence (lowest → highest priority).
+         * Comparator defining the 4-tier overlay precedence (lowest → highest priority).
          *
          * | Scope            | namespaceId | userId   | rank |
          * |------------------|-------------|----------|------|

@@ -2,7 +2,6 @@ package io.whozoss.agentos.sdk.api.case
 
 import io.swagger.v3.oas.annotations.Operation
 import io.whozoss.agentos.sdk.api.common.EntityCrudApi
-import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
 import java.util.UUID
 
 /**
@@ -17,22 +16,31 @@ import java.util.UUID
  * (`@Valid`) are service-layer concerns and are intentionally absent here.
  */
 interface CaseApi : EntityCrudApi<CaseDto> {
-
-    @Operation(summary = "List cases by namespace", description = "GET /api/cases/by-parentId/{parentId} — list all cases belonging to a namespace.")
+    @Operation(
+        summary = "List cases by namespace",
+        description = "GET /api/cases/by-parentId/{parentId} — list all cases belonging to a namespace.",
+    )
     fun listByParent(parentId: UUID): List<CaseDto>
 
     @Operation(
         summary = "List my cases by namespace",
-        description = "GET /api/cases/by-parentId/{parentId}/mine — list only the cases in the namespace the " +
-            "current user has a direct relation with. Unlike listByParent, admin transitivity is excluded: " +
-            "every returned case is one the caller can star.",
+        description =
+            "GET /api/cases/by-parentId/{parentId}/mine — list only the cases in the namespace the " +
+                "current user has a direct relation with. Unlike listByParent, admin transitivity is excluded: " +
+                "every returned case is one the caller can star.",
     )
     fun listMineByParent(parentId: UUID): List<CaseDto>
 
-    @Operation(summary = "List cases by user", description = "GET /api/cases/by-user/{userId} — list all cases concerning a specific user.")
+    @Operation(
+        summary = "List cases by user",
+        description = "GET /api/cases/by-user/{userId} — list all cases concerning a specific user.",
+    )
     fun listByUser(userId: UUID): List<CaseDto>
 
-    @Operation(summary = "List cases by user external ID", description = "GET /api/cases/by-user/external/{externalId} — list cases for a user identified by their IdP key.")
+    @Operation(
+        summary = "List cases by user external ID",
+        description = "GET /api/cases/by-user/external/{externalId} — list cases for a user identified by their IdP key.",
+    )
     fun listByUserExternalId(externalId: String): List<CaseDto>
 
     @Operation(
@@ -41,10 +49,19 @@ interface CaseApi : EntityCrudApi<CaseDto> {
     )
     fun listByUserInNamespace(request: ListByUserInNamespaceRequest): List<CaseDto>
 
-    @Operation(summary = "Add a message", description = "POST /api/cases/{caseId}/messages — add a user message to a running case.")
-    fun addMessage(caseId: UUID, request: AddMessageRequest)
+    @Operation(
+        summary = "Add a message",
+        description = "POST /api/cases/{caseId}/messages — add a user message to a running case.",
+    )
+    fun addMessage(
+        caseId: UUID,
+        request: AddMessageRequest,
+    )
 
-    @Operation(summary = "Interrupt a case", description = "POST /api/cases/{caseId}/interrupt — interrupt the current agent turn gracefully.")
+    @Operation(
+        summary = "Interrupt a case",
+        description = "POST /api/cases/{caseId}/interrupt — interrupt the current agent turn gracefully.",
+    )
     fun interruptCase(caseId: UUID)
 
     @Operation(summary = "Kill a case", description = "POST /api/cases/{caseId}/kill — permanently terminate a case.")
@@ -52,30 +69,35 @@ interface CaseApi : EntityCrudApi<CaseDto> {
 
     @Operation(
         summary = "Mark case as read",
-        description = "POST /api/cases/{caseId}/read — record that the current user has read this case. " +
-            "Sets readAt = now() on the User\u2194Case relation. Idempotent. Returns 200 with no body.",
+        description =
+            "POST /api/cases/{caseId}/read — record that the current user has read this case. " +
+                "Sets readAt on the User\u2194Case relation. Idempotent. " +
+                "Returns 200 with the updated Case DTO.",
     )
-    fun markCaseRead(caseId: UUID)
+    fun markCaseRead(caseId: UUID): CaseDto
 
     @Operation(
         summary = "Count unread cases",
-        description = "GET /api/cases/unread-count?namespaceId= — number of unread cases in the namespace " +
-            "for the current user. A case is unread when no readAt relation exists or the most recent " +
-            "event timestamp is after the user's readAt.",
+        description =
+            "GET /api/cases/unread-count?namespaceId= — number of unread cases in the namespace " +
+                "for the current user. A case is unread when no readAt relation exists or the most recent " +
+                "event timestamp is after the user's readAt.",
     )
     fun countUnread(namespaceId: UUID): UnreadCountResponse
 
     @Operation(
         summary = "Star a case",
-        description = "PUT /api/cases/{id}/star — mark the case as favorite for the current user. " +
-            "Requires a direct user↔case relation, otherwise the call is rejected.",
+        description =
+            "PUT /api/cases/{id}/star — mark the case as favorite for the current user. " +
+                "Requires a direct user↔case relation, otherwise the call is rejected.",
     )
     fun starCase(id: UUID)
 
     @Operation(
         summary = "Unstar a case",
-        description = "DELETE /api/cases/{id}/star — remove the case from the current user's favorites. " +
-            "Requires a direct user↔case relation, otherwise the call is rejected.",
+        description =
+            "DELETE /api/cases/{id}/star — remove the case from the current user's favorites. " +
+                "Requires a direct user↔case relation, otherwise the call is rejected.",
     )
     fun unstarCase(id: UUID)
 }

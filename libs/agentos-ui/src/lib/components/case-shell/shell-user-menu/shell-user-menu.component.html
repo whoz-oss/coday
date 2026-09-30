@@ -103,6 +103,32 @@
       }
     </button>
 
+    <button
+      class="shell-user-menu__item"
+      [class.shell-user-menu__item--active]="showToolCalls()"
+      type="button"
+      (click)="onToolCallsToggle()"
+    >
+      <svg
+        width="15"
+        height="15"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M9 18l6-6-6-6" />
+        <path d="M4 6h8M4 12h5M4 18h8" />
+      </svg>
+      Tool calls
+      @if (showToolCalls()) {
+        <span class="shell-user-menu__item-badge">On</span>
+      }
+    </button>
+
     <div class="shell-user-menu__separator"></div>
 
     <!-- Light / Dark toggle -->

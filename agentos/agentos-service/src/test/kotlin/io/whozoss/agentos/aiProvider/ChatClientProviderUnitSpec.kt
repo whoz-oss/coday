@@ -35,17 +35,17 @@ class ChatClientProviderUnitSpec :
         fun model(
             apiName: String = "claude-sonnet-4-5",
             temperature: Double? = 0.7,
-            maxTokens: Int? = null,
+            maxCompletionTokens: Int? = null,
         ) = AiModel(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             aiProviderId = aiProviderId,
             apiModelName = apiName,
             temperature = temperature,
-            maxTokens = maxTokens,
+            maxCompletionTokens = maxCompletionTokens,
         )
 
         "getChatClient forwards model and provider fields to ChatModelFactory" {
-            val m = model(apiName = "claude-sonnet-4-5", temperature = 0.3, maxTokens = 8192)
+            val m = model(apiName = "claude-sonnet-4-5", temperature = 0.3, maxCompletionTokens = 8192)
             val p = provider()
             val chatModel = mockk<ChatModel>(relaxed = true)
 
@@ -56,7 +56,7 @@ class ChatClientProviderUnitSpec :
                     apiKey = "sk-test",
                     modelName = "claude-sonnet-4-5",
                     temperature = 0.3,
-                    maxTokens = 8192,
+                    maxCompletionTokens = 8192,
                 )
             } returns chatModel
 
@@ -70,13 +70,13 @@ class ChatClientProviderUnitSpec :
                     apiKey = "sk-test",
                     modelName = "claude-sonnet-4-5",
                     temperature = 0.3,
-                    maxTokens = 8192,
+                    maxCompletionTokens = 8192,
                 )
             }
         }
 
-        "getChatClient passes null temperature and maxTokens when model does not specify them" {
-            val m = model(apiName = "gpt-4o", temperature = null, maxTokens = null)
+        "getChatClient passes null temperature and maxCompletionTokens when model does not specify them" {
+            val m = model(apiName = "gpt-4o", temperature = null, maxCompletionTokens = null)
             val p = provider()
             val chatModel = mockk<ChatModel>(relaxed = true)
 
@@ -87,7 +87,7 @@ class ChatClientProviderUnitSpec :
                     apiKey = "sk-test",
                     modelName = "gpt-4o",
                     temperature = null,
-                    maxTokens = null,
+                    maxCompletionTokens = null,
                 )
             } returns chatModel
 

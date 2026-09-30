@@ -24,20 +24,22 @@ import { NamespaceRoleStateService } from '../../services/namespace-role-state.s
 const VALID_SCOPES: ReadonlySet<AuthSettingScope> = new Set(['namespace', 'userOnNs', 'userGlobal'])
 
 const SCOPE_LABEL: Readonly<Record<AuthSettingScope, string>> = Object.freeze({
-  platform: 'Plateforme (lecture seule)',
-  namespace: 'Configuration du namespace',
-  userOnNs: 'Pour moi sur ce namespace',
-  userGlobal: 'Pour moi globalement',
+  platform: 'Platform (read-only)',
+  namespace: 'Namespace configuration',
+  userOnNs: 'Personal — this namespace only',
+  userGlobal: 'Personal — all namespaces',
 })
 
 /**
  * Credential fields per auth type.
  * `secret: true` → rendered as `type="password"` with masking-sentinel tracking.
+ * `hint` → optional helper text rendered below the input (aria-describedby linked).
  */
 interface CredentialField {
   key: string
   label: string
   placeholder: string
+  hint?: string
   secret: boolean
   required: boolean
 }
@@ -59,7 +61,14 @@ const CREDENTIAL_FIELDS: Readonly<Record<AuthSettingType, ReadonlyArray<Credenti
     },
     { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
     { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
-    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+    {
+      key: 'scopes',
+      label: 'Scopes',
+      placeholder: '',
+      hint: "Space-separated OAuth scopes to request (e.g. openid profile email). Check your provider's documentation for the exact values.",
+      secret: false,
+      required: false,
+    },
   ],
   OAuthCustomAuthSetting: [
     {
@@ -72,7 +81,14 @@ const CREDENTIAL_FIELDS: Readonly<Record<AuthSettingType, ReadonlyArray<Credenti
     { key: 'tokenUrl', label: 'Token URL', placeholder: 'https://…/token', secret: false, required: false },
     { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
     { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
-    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+    {
+      key: 'scopes',
+      label: 'Scopes',
+      placeholder: '',
+      hint: "Space-separated OAuth scopes to request (e.g. openid profile email). Check your provider's documentation for the exact values.",
+      secret: false,
+      required: false,
+    },
   ],
   OAuthRegisteredAuthSetting: [
     {
@@ -85,19 +101,41 @@ const CREDENTIAL_FIELDS: Readonly<Record<AuthSettingType, ReadonlyArray<Credenti
     { key: 'tokenUrl', label: 'Token URL', placeholder: 'https://…/token', secret: false, required: false },
     { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
     { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
-    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+    {
+      key: 'scopes',
+      label: 'Scopes',
+      placeholder: '',
+      hint: "Space-separated OAuth scopes to request (e.g. openid profile email). Check your provider's documentation for the exact values.",
+      secret: false,
+      required: false,
+    },
   ],
   OAuthMcpDiscoverableAuthSetting: [
     {
       key: 'resourceUrl',
       label: 'Resource URL',
-      placeholder: 'https://…/mcp',
+      placeholder: 'https://mcp.example.com',
+      hint: 'Use the base URL exactly as documented by your provider — do not append a path suffix. Examples: https://mcp.hubspot.com (HubSpot), https://mcp.atlassian.com/v1/mcp (Atlassian).',
       secret: false,
       required: false,
     },
-    { key: 'clientId', label: 'Client ID', placeholder: '', secret: false, required: false },
+    {
+      key: 'clientId',
+      label: 'Client ID',
+      placeholder: '',
+      hint: 'Leave empty to let the server register an OAuth client automatically (RFC 7591 dynamic registration). Fill in only if you have a pre-registered client ID from your provider.',
+      secret: false,
+      required: false,
+    },
     { key: 'clientSecret', label: 'Client secret', placeholder: '', secret: true, required: false },
-    { key: 'scopes', label: 'Scopes', placeholder: 'openid profile email', secret: false, required: false },
+    {
+      key: 'scopes',
+      label: 'Scopes',
+      placeholder: '',
+      hint: 'Leave empty in most cases — the MCP server declares the required scopes itself. Fill in only if your provider explicitly requires client-declared scopes.',
+      secret: false,
+      required: false,
+    },
   ],
 }
 

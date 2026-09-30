@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common'
-import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
 import { AgentConfig, AgentConfigControllerService } from '@whoz-oss/agentos-api-client'
@@ -40,20 +40,23 @@ export class NamespaceAgentConfigsComponent {
 
   private readonly refresh$ = new BehaviorSubject<void>(undefined)
 
+  protected readonly isLoading = signal(true)
+
   /**
    * Fetches both namespace-level and platform-level configs in parallel.
    * Platform configs are appended with a groupKey so ds-entity-list renders them
    * in a separate collapsed-by-default group.
    */
   private readonly allConfigs$ = this.refresh$.pipe(
-    switchMap(() =>
-      forkJoin({
+    switchMap(() => {
+      this.isLoading.set(true)
+      return forkJoin({
         namespace: this.agentConfigController.listByParentAgentConfig(this.namespaceId),
         platform: this.agentConfigController
           .listPlatformAgentsAgentConfig()
           .pipe(catchError(() => of([] as AgentConfig[]))),
       })
-    )
+    })
   )
 
   /** Mapped to EntityListItem[] for ds-entity-list, grouped by level. */
@@ -85,9 +88,13 @@ export class NamespaceAgentConfigsComponent {
   private platformConfigsById = new Map<string, AgentConfig>()
 
   constructor() {
-    this.allConfigs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(({ namespace, platform }) => {
-      this.namespaceConfigsById = new Map(namespace.map((c: AgentConfig) => [c.id ?? '', c]))
-      this.platformConfigsById = new Map(platform.map((c: AgentConfig) => [c.id ?? '', c]))
+    this.allConfigs$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: ({ namespace, platform }) => {
+        this.namespaceConfigsById = new Map(namespace.map((c: AgentConfig) => [c.id ?? '', c]))
+        this.platformConfigsById = new Map(platform.map((c: AgentConfig) => [c.id ?? '', c]))
+        this.isLoading.set(false)
+      },
+      error: () => this.isLoading.set(false),
     })
   }
 

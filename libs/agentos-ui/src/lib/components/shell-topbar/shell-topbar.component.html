@@ -21,11 +21,13 @@
       [isDark]="isDark()"
       [themeVariant]="themeVariant()"
       [showTechnical]="showTechnical()"
+      [showToolCalls]="showToolCalls()"
       variant="topbar"
       (navigateTo)="onNavigate($event)"
       (themeToggled)="onThemeToggle()"
       (themeVariantChanged)="onThemeVariantChanged($event)"
       (logsToggled)="onLogsToggle()"
+      (toolCallsToggled)="onToolCallsToggle()"
       (closed)="closeMenu($event)"
     />
   </div>

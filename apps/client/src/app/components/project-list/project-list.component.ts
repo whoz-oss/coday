@@ -47,6 +47,7 @@ export class ProjectListComponent {
 
   protected readonly projects = toSignal(this.projectStateService.projectList$)
   protected readonly forcedProject = toSignal(this.projectStateService.forcedProject$, { initialValue: null })
+  protected readonly isLoading = toSignal(this.projectStateService.isLoading$, { initialValue: false })
 
   /**
    * Maps the flat project list to EntityListItem[], with three kinds of groups:

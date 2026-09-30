@@ -10,74 +10,115 @@
   <div dsDrawerContent class="case-chat__host">
     <!-- ── Case header: glyph + title + status badge ─────────────────────── -->
     <header class="case-chat__header">
-      <!-- Title + status group — flex:1 pushes actions to the right -->
-      <div class="case-chat__header-title-group">
-        <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
-        <span class="case-chat__header-title">{{ activeCase()?.title ?? '' }}</span>
-        <span
-          class="case-chat__header-badge"
-          [class.case-chat__header-badge--running]="caseStatus() === CaseStatusEnum.RUNNING"
-          [class.case-chat__header-badge--error]="caseStatus() === CaseStatusEnum.ERROR"
-          [class.case-chat__header-badge--pending]="caseStatus() === CaseStatusEnum.PENDING"
-          [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
-          >{{ caseStatus().toLowerCase() }}</span
-        >
-      </div>
-
-      <!-- Exchange toggle -->
-      <div class="case-chat__header-exchange">
-        <ds-icon-button
-          icon="folder"
-          variant="default"
-          [title]="'Files (' + exchangeFileCount() + ')'"
-          (action)="openFilesPanel()"
-        />
-        @if (exchangeFileCount() > 0 && !exchangeOpen()) {
-          <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
-        }
-      </div>
-
-      <!-- Share case -->
-      <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
-
-      <!-- Separator -->
-      <span class="case-chat__header-sep"></span>
-
-      <!-- Header actions: attach + star + delete (or confirmation) -->
-      @if (!confirmingDelete()) {
-        <!-- Star -->
-        <ds-icon-button
-          [icon]="activeCase()?.favorite ? 'star' : 'star_border'"
-          variant="default"
-          [title]="activeCase()?.favorite ? 'Remove from favorites' : 'Add to favorites'"
-          class="case-chat__header-star"
-          [class.case-chat__header-star--active]="activeCase()?.favorite"
-          (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
-        />
-        <!-- Delete -->
-        <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
-      } @else {
-        <!-- Confirmation inline -->
-        <span class="case-chat__header-confirm">
-          <span class="case-chat__header-confirm-label">Delete this case?</span>
-          <button
-            type="button"
-            class="case-chat__header-confirm-yes"
-            title="Confirm delete"
-            (click)="deleteRequested.emit(caseId); confirmingDelete.set(false)"
-          >
+      @if (isEditing()) {
+        <!-- ── Edit mode ── -->
+        <div class="case-chat__header-edit">
+          <input
+            class="case-chat__header-edit-title"
+            type="text"
+            placeholder="Case title"
+            [value]="draftTitle()"
+            (input)="draftTitle.set($any($event.target).value)"
+            (keydown)="onEditKeydown($event)"
+            aria-label="Case title"
+            autocomplete="off"
+          />
+          <input
+            class="case-chat__header-edit-threshold"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Cost limit"
+            [value]="draftThreshold()"
+            (input)="draftThreshold.set($any($event.target).value)"
+            (keydown)="onEditKeydown($event)"
+            aria-label="Run cost threshold"
+          />
+          <button type="button" class="case-chat__header-edit-save" title="Save" (click)="commitEdit()">
             <span class="material-icons" aria-hidden="true">check</span>
-            Delete
           </button>
-          <button
-            type="button"
-            class="case-chat__header-confirm-no"
-            title="Cancel"
-            (click)="confirmingDelete.set(false)"
-          >
+          <button type="button" class="case-chat__header-edit-cancel" title="Cancel" (click)="cancelEdit()">
             <span class="material-icons" aria-hidden="true">close</span>
           </button>
-        </span>
+        </div>
+      } @else {
+        <!-- ── View mode ── -->
+        <!-- Title + status group — flex:1 pushes actions to the right -->
+        <div class="case-chat__header-title-group">
+          <agentos-case-status-glyph [status]="caseStatus()" [size]="16" />
+          <button type="button" class="case-chat__header-title" title="Edit title and cost limit" (click)="startEdit()">
+            {{ activeCase()?.title ?? '' }}
+          </button>
+          <span
+            class="case-chat__header-badge"
+            [class.case-chat__header-badge--running]="caseStatus() === CaseStatusEnum.RUNNING"
+            [class.case-chat__header-badge--error]="caseStatus() === CaseStatusEnum.ERROR"
+            [class.case-chat__header-badge--pending]="caseStatus() === CaseStatusEnum.PENDING"
+            [class.case-chat__header-badge--killed]="caseStatus() === CaseStatusEnum.KILLED"
+            >{{ caseStatus().toLowerCase() }}</span
+          >
+          @if (activeCase()?.runCostThreshold !== null && activeCase()?.runCostThreshold !== undefined) {
+            <span class="case-chat__header-cost-threshold" title="Run cost threshold">
+              max {{ activeCase()!.runCostThreshold }}
+            </span>
+          }
+        </div>
+
+        <!-- Exchange toggle -->
+        <div class="case-chat__header-exchange">
+          <ds-icon-button
+            icon="folder"
+            variant="default"
+            [title]="'Files (' + exchangeFileCount() + ')'"
+            (action)="openFilesPanel()"
+          />
+          @if (exchangeFileCount() > 0 && !exchangeOpen()) {
+            <span class="case-chat__exchange-badge" aria-hidden="true">{{ exchangeFileCount() }}</span>
+          }
+        </div>
+
+        <!-- Share case -->
+        <ds-icon-button icon="group_add" variant="default" title="Share case" (action)="openMembersPanel()" />
+
+        <!-- Separator -->
+        <span class="case-chat__header-sep"></span>
+
+        <!-- Header actions: star + delete (or confirmation) -->
+        @if (!confirmingDelete()) {
+          <!-- Star -->
+          <ds-icon-button
+            [icon]="activeCase()?.favorite ? 'star' : 'star_border'"
+            variant="default"
+            [title]="activeCase()?.favorite ? 'Remove from favorites' : 'Add to favorites'"
+            class="case-chat__header-star"
+            [class.case-chat__header-star--active]="activeCase()?.favorite"
+            (action)="starToggled.emit({ id: caseId, starred: !activeCase()?.favorite })"
+          />
+          <!-- Delete -->
+          <ds-icon-button icon="delete" variant="danger" title="Delete case" (action)="confirmingDelete.set(true)" />
+        } @else {
+          <!-- Confirmation inline -->
+          <span class="case-chat__header-confirm">
+            <span class="case-chat__header-confirm-label">Delete this case?</span>
+            <button
+              type="button"
+              class="case-chat__header-confirm-yes"
+              title="Confirm delete"
+              (click)="deleteRequested.emit(caseId); confirmingDelete.set(false)"
+            >
+              <span class="material-icons" aria-hidden="true">check</span>
+              Delete
+            </button>
+            <button
+              type="button"
+              class="case-chat__header-confirm-no"
+              title="Cancel"
+              (click)="confirmingDelete.set(false)"
+            >
+              <span class="material-icons" aria-hidden="true">close</span>
+            </button>
+          </span>
+        }
       }
     </header>
     <div
@@ -110,6 +151,9 @@
                 @if (item.isFirstInGroup) {
                   <span class="case-chat__role-label">
                     {{ item.event.actor.role === 'USER' ? 'You' : item.event.actor.displayName || 'Agent' }}
+                    @if (agentModelAttribution(item.event); as modelAttribution) {
+                      <span class="case-chat__role-model">({{ modelAttribution }})</span>
+                    }
                   </span>
                 }
                 @if (showTechnical() && item.event.sessionContext) {
@@ -129,6 +173,14 @@
                     <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="item.html"></div>
                   }
                   <ds-copy-button class="case-chat__bubble-copy" [text]="messageText(item)" title="Copy message" />
+                  @if (item.isLastInGroup) {
+                    <time
+                      class="case-chat__message-time"
+                      [attr.datetime]="item.event.timestamp"
+                      [title]="formatMessageTimestampTitle(item.event.timestamp)"
+                      >{{ formatMessageTime(item.event.timestamp) }}</time
+                    >
+                  }
                 </div>
               </div>
             } @else if (item.kind === 'streaming') {
@@ -136,11 +188,25 @@
                 <span class="case-chat__role-label">{{ agentDisplayName() }}</span>
                 <div class="case-chat__bubble case-chat__message-text--markdown" [innerHTML]="streamingHtml()"></div>
               </div>
+            } @else if (item.kind === 'notice') {
+              <div
+                class="case-chat__execution-notice"
+                [class.case-chat__execution-notice--warning]="item.notice.severity === 'warning'"
+                [class.case-chat__execution-notice--error]="
+                  item.notice.severity === 'error' || item.notice.severity === 'terminal'
+                "
+                role="status"
+              >
+                <span class="case-chat__execution-notice-title">{{ item.notice.title }}</span>
+                @if (item.notice.detail) {
+                  <span class="case-chat__execution-notice-detail">{{ item.notice.detail }}</span>
+                }
+              </div>
             } @else if (item.kind === 'technical') {
               <details class="case-chat__log">
                 <summary class="case-chat__log-summary">⚙ System log · {{ item.item.label }}</summary>
                 @if (item.item.detail) {
-                  <div class="case-chat__log-body">{{ item.item.detail }}</div>
+                  <pre class="case-chat__log-body">{{ item.item.detail }}</pre>
                 }
               </details>
             } @else if (item.kind === 'question') {
@@ -159,6 +225,8 @@
                   <span class="case-chat__question-answered-text">{{ item.event.question }}</span>
                 </div>
               }
+            } @else if (item.kind === 'delegation') {
+              <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />
             } @else {
               <div
                 class="case-chat__tool-call"
@@ -182,6 +250,23 @@
                     }
                   </span>
                   <span class="case-chat__tool-call-name">{{ item.call.toolName }}</span>
+                  <span class="case-chat__tool-call-status">
+                    @if (!item.call.response) {
+                      Running
+                    } @else if (item.call.response.success) {
+                      Completed
+                    } @else {
+                      Failed
+                    }
+                  </span>
+                  @if (item.call.timestamp) {
+                    <time
+                      class="case-chat__tool-call-time"
+                      [attr.datetime]="item.call.timestamp"
+                      [title]="formatMessageTimestampTitle(item.call.timestamp)"
+                      >{{ formatMessageTime(item.call.timestamp) }}</time
+                    >
+                  }
                   <span class="case-chat__tool-call-chevron">{{
                     isToolCallExpanded(item.call.requestId) ? '▼' : '▶'
                   }}</span>
@@ -189,52 +274,91 @@
 
                 @if (isToolCallExpanded(item.call.requestId)) {
                   <div class="case-chat__tool-call-output">
-                    @if (showTechnical() && item.call.enrichmentPhases?.length) {
+                    @if (showTechnical()) {
                       <div class="case-chat__tool-call-section case-chat__enrichment-section">
                         <span class="case-chat__tool-call-label">Enrichment phases</span>
-                        @for (phase of item.call.enrichmentPhases; track phase.phaseIndex) {
-                          <div
-                            class="case-chat__enrichment-phase"
-                            [class.case-chat__enrichment-phase--failed]="!phase.success"
-                          >
-                            <div class="case-chat__enrichment-phase-header">
-                              <span class="case-chat__enrichment-phase-index">Phase {{ phase.phaseIndex }}</span>
-                              <span class="case-chat__enrichment-phase-status">{{ phase.success ? '✅' : '❌' }}</span>
-                            </div>
-                            <div class="case-chat__enrichment-phase-row">
-                              <span class="case-chat__enrichment-phase-label">Prompt</span>
-                              <pre>{{ phase.prompt }}</pre>
-                            </div>
-                            <div class="case-chat__enrichment-phase-row">
-                              <span class="case-chat__enrichment-phase-label">LLM output</span>
-                              <pre>{{ phase.llmOutput }}</pre>
-                            </div>
-                            @if (phase.enrichmentContent) {
-                              <div class="case-chat__enrichment-phase-row">
-                                <span class="case-chat__enrichment-phase-label">Enrichment content</span>
-                                <pre>{{ phase.enrichmentContent }}</pre>
+                        @if (item.call.enrichmentPhases?.length) {
+                          @for (phase of item.call.enrichmentPhases; track phase.phaseIndex) {
+                            <div
+                              class="case-chat__enrichment-phase"
+                              [class.case-chat__enrichment-phase--failed]="!phase.success"
+                            >
+                              <div class="case-chat__enrichment-phase-header">
+                                <span class="case-chat__enrichment-phase-index">Phase {{ phase.phaseIndex }}</span>
+                                <span class="case-chat__enrichment-phase-status">{{
+                                  phase.success ? '✅' : '❌'
+                                }}</span>
                               </div>
-                            }
-                          </div>
+                              <div class="case-chat__enrichment-phase-row">
+                                <span class="case-chat__enrichment-phase-label">Prompt</span>
+                                <pre>{{ phase.prompt }}</pre>
+                              </div>
+                              <div class="case-chat__enrichment-phase-row">
+                                <span class="case-chat__enrichment-phase-label">LLM output</span>
+                                <pre>{{ phase.llmOutput }}</pre>
+                              </div>
+                              @if (phase.enrichmentContent) {
+                                <div class="case-chat__enrichment-phase-row">
+                                  <span class="case-chat__enrichment-phase-label">Enrichment content</span>
+                                  <pre>{{ phase.enrichmentContent }}</pre>
+                                </div>
+                              }
+                            </div>
+                          }
+                        } @else {
+                          <span class="case-chat__tool-call-empty">No enrichment trace was provided.</span>
                         }
                       </div>
                     }
-                    @if (item.call.args) {
+                    @if (formatToolArguments(item.call.args); as args) {
                       <div class="case-chat__tool-call-section">
-                        <span class="case-chat__tool-call-label">Payload</span>
-                        <pre>{{ item.call.args }}</pre>
+                        <span class="case-chat__tool-call-label">
+                          Arguments
+                          @if (!isStructuredPayload(item.call.args)) {
+                            · Text
+                          }
+                        </span>
+                        <pre [class.case-chat__tool-call-code--text]="!isStructuredPayload(item.call.args)">{{
+                          args
+                        }}</pre>
+                      </div>
+                    }
+                    @if (showTechnical() && formatToolDuration(item.call); as duration) {
+                      <div class="case-chat__tool-call-section">
+                        <span class="case-chat__tool-call-label">Duration</span>
+                        <span>{{ duration }}</span>
                       </div>
                     }
                     <div class="case-chat__tool-call-section">
-                      <span class="case-chat__tool-call-label">Output</span>
+                      <span class="case-chat__tool-call-label">
+                        {{ item.call.response?.success === false ? 'Error' : 'Output' }}
+                        @if (!isToolOutputStructured(item.call)) {
+                          · Text
+                        }
+                      </span>
                       @if (extractToolOutput(item.call); as output) {
-                        <pre>{{ output }}</pre>
+                        <pre [class.case-chat__tool-call-code--text]="!isToolOutputStructured(item.call)">{{
+                          output
+                        }}</pre>
                       } @else if (!item.call.response) {
                         <span class="case-chat__tool-call-pending">Running…</span>
                       } @else {
                         <span class="case-chat__tool-call-empty">No output</span>
                       }
                     </div>
+                    @if (showTechnical() && formatToolMetadata(item.call); as metadata) {
+                      <div class="case-chat__tool-call-section">
+                        <span class="case-chat__tool-call-label">
+                          Metadata
+                          @if (!isToolMetadataStructured(item.call)) {
+                            · Text
+                          }
+                        </span>
+                        <pre [class.case-chat__tool-call-code--text]="!isToolMetadataStructured(item.call)">{{
+                          metadata
+                        }}</pre>
+                      </div>
+                    }
                   </div>
                 }
               </div>
@@ -324,7 +448,6 @@
               (action)="submit()"
             />
           }
-          <ds-icon-button icon="cancel" variant="danger" title="Kill" [disabled]="isTerminal()" (action)="kill()" />
         </div>
       </div>
     </div>

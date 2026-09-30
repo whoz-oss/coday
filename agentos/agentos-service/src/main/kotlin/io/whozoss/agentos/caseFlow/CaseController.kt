@@ -5,9 +5,9 @@ import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.permissions.FavoriteService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.api.case.AddMessageRequest
@@ -139,7 +139,7 @@ class CaseController(
     }
 
     /**
-     * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
+     * Map domain [Case] to [CaseDto]s, enriching each with [userId]'s direct
      * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
@@ -178,12 +178,14 @@ class CaseController(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
             Case(
                 metadata = metadata,
                 namespaceId = resource.namespaceId,
                 status = resource.status,
                 title = resource.title ?: "Case ${metadata.id}",
+                runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
             )
         val saved = caseService.create(domain)
         val userId = userService.getCurrentUser().id.toString()
@@ -227,6 +229,12 @@ class CaseController(
                     // namespaceId is the transitivity key for permissions;
                     // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
+                    // runCostThreshold: keep the existing value when the caller omits the field
+                    // (null in DTO = not provided, not an explicit reset). An explicit reset to
+                    // the inherited regime is not supported via PUT — the value materialised at
+                    // creation is sticky. The enforcement mechanism raises the limit by writing
+                    // a concrete value here when the user chooses to continue after a breach.
+                    runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                 ),
             )
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
@@ -329,16 +337,17 @@ class CaseController(
         logger.info { "Case killed: $caseId" }
     }
 
-    /** POST /api/cases/{caseId}/read — record that the current user has read this case. */
-    @PostMapping("/{caseId}/read")
+    /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
+    @PostMapping("/{caseId}/read", consumes = [MediaType.APPLICATION_JSON_VALUE, MediaType.ALL_VALUE])
     @ResponseStatus(HttpStatus.OK)
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
     override fun markCaseRead(
         @PathVariable caseId: UUID,
-    ) {
+    ): CaseDto {
         val userId = userService.getCurrentUser().id.toString()
         caseReadService.markRead(userId, caseId)
         logger.debug { "User $userId marked case $caseId as read" }
+        return caseService.getById(caseId).withCallerMeta(userId)
     }
 
     /** GET /api/cases/unread-count?namespaceId= — count of unread cases for the current user. */
@@ -417,6 +426,7 @@ internal fun toDto(entity: Case) =
         title = entity.title,
         parentCaseId = entity.parentCaseId,
         scheduledPromptId = entity.scheduledPromptId,
+        runCostThreshold = entity.runCostThreshold,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by

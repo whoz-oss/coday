@@ -1,0 +1,166 @@
+openapi: 3.0.3
+info:
+  title: Petstore
+  version: 1.0.0
+servers:
+  - url: https://petstore.example.com/v1
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      summary: List all pets
+      description: |
+        Returns a **paginated** list of pets.
+
+        Use `limit` to bound the page.
+      tags: [pets]
+      parameters:
+        - name: limit
+          in: query
+          description: How many items to return at one time (max 100)
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [available, pending, sold]
+        - name: tags
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+      responses:
+        '200':
+          description: A paged array of pets
+    post:
+      operationId: createPet
+      summary: Create a pet
+      tags: [pets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NewPet'
+      responses:
+        '201':
+          description: Pet created
+  /pets/{petId}:
+    parameters:
+      - name: petId
+        in: path
+        required: true
+        description: path-level description
+        schema:
+          type: string
+    get:
+      operationId: showPetById
+      summary: Info for a specific pet
+      tags: [pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          description: operation-level description
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Expected response to a valid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pet'
+    put:
+      operationId: updatePet
+      summary: Update a pet
+      tags: [pets, admin]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Pet'
+      responses:
+        '200':
+          description: Pet updated
+    delete:
+      operationId: deletePet
+      summary: Delete a pet
+      tags: [admin]
+      responses:
+        '204':
+          description: Pet deleted
+  /pets/{petId}/legacy:
+    get:
+      operationId: legacyPet
+      deprecated: true
+      summary: Legacy pet endpoint
+      tags: [pets]
+      parameters:
+        - name: petId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+  /stores:
+    get:
+      operationId: listStores
+      summary: List stores
+      tags: [stores]
+      responses:
+        '200':
+          description: Stores
+    head:
+      operationId: headStores
+      responses:
+        '200':
+          description: ignored
+  x-vendor-path:
+    get:
+      operationId: vendorOp
+      responses:
+        '200':
+          description: ignored
+components:
+  schemas:
+    NewPet:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Rex
+        tag:
+          type: string
+          nullable: true
+    Pet:
+      allOf:
+        - $ref: '#/components/schemas/NewPet'
+        - type: object
+          required: [id]
+          properties:
+            id:
+              type: integer
+              format: int64
+              readOnly: true
+            owner:
+              $ref: '#/components/schemas/Owner'
+    Owner:
+      type: object
+      xml:
+        name: owner
+      properties:
+        email:
+          type: string
+          writeOnly: false
+          deprecated: true

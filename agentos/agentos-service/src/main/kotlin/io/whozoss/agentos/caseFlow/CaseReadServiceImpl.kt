@@ -24,7 +24,10 @@ class CaseReadServiceImpl(
 ) : CaseReadService {
     companion object : KLogging()
 
-    override fun markRead(userId: String, caseId: UUID) {
+    override fun markRead(
+        userId: String,
+        caseId: UUID,
+    ) {
         val now = Instant.now(clock)
         caseNodeNeo4jRepository.markRead(
             userId = userId,
@@ -34,7 +37,10 @@ class CaseReadServiceImpl(
         logger.debug { "markRead: user=$userId case=$caseId at=$now" }
     }
 
-    override fun countUnread(userId: String, namespaceId: UUID): Long =
+    override fun countUnread(
+        userId: String,
+        namespaceId: UUID,
+    ): Long =
         caseNodeNeo4jRepository.countUnread(
             userId = userId,
             namespaceId = namespaceId.toString(),

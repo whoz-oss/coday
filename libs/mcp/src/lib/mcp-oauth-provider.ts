@@ -172,9 +172,23 @@ export class McpOAuthProvider implements OAuthClientProvider {
     // If clientInfo exists but tokens are absent, the previous OAuth flow was interrupted
     // before the code exchange completed. Treat as unregistered to force a clean re-registration
     // rather than reusing a potentially stale/revoked client_id.
+    // EXCEPTION: when an OAuth flow is currently in progress (PKCE verifier set or pending
+    // auth promise), the clientInfo was just registered for THIS flow and is required by the
+    // SDK to exchange the authorization code — clearing it here would break the first-ever
+    // dynamic-registration flow with "Existing OAuth client information is required when
+    // exchanging an authorization code".
     if (!storage?.tokens) {
-      this.clearStorage()
-      return undefined
+      const flowInProgress = !!this._codeVerifier || !!this._pendingAuthPromise
+      if (!flowInProgress) {
+        this.interactor.debug(
+          `[MCP OAuth:${this.mcpId}] client info found without tokens and no flow in progress — clearing stale registration`
+        )
+        this.clearStorage()
+        return undefined
+      }
+      this.interactor.debug(
+        `[MCP OAuth:${this.mcpId}] client info found without tokens but OAuth flow in progress — keeping registration`
+      )
     }
 
     const parsed = OAuthClientInformationFullSchema.safeParse(raw)

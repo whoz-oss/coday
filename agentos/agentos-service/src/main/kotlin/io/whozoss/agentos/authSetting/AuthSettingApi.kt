@@ -10,6 +10,8 @@ import io.whozoss.agentos.sdk.api.common.EntityCrudApi
  * routing annotations. AgentOS does not prescribe the client technology or configuration.
  *
  * **Scope query parameters** on [list]:
+ * - (no params) — all caller's auth settings across scopes
+ * - `namespaceId=none` (no userId) — platform-level auth settings
  * - `namespaceId=<uuid>` — NS-shared auth settings for that namespace
  * - `namespaceId=<uuid>&userId=me` — user x namespace overlay
  * - `namespaceId=none&userId=me` — user-global auth settings
@@ -23,7 +25,8 @@ interface AuthSettingApi : EntityCrudApi<AuthSettingDto> {
      * GET /api/auth-settings — list auth settings by scope.
      *
      * Scope is inferred from the combination of query parameters:
-     * - (no params)                       → platform-level auth settings
+     * - (no params)                       → all caller's auth settings across scopes
+     * - `namespaceId=none` (no userId)    → platform-level auth settings
      * - `namespaceId=<uuid>`              → NS-shared auth settings for that namespace
      * - `namespaceId=<uuid>&userId=me`    → user × namespace overlay for the caller
      * - `namespaceId=none&userId=me`      → user-global auth settings (no namespace)

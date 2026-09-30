@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -454,5 +455,80 @@ class AgentIntentionGeneratorSpec :
             result.intention shouldContain "Failed to plan next step after"
             result.intention shouldContain "Missing <toolName> tag"
             result.isFailedIntention shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // redirect guideline — prompt rendering
+        // -------------------------------------------------------------------------
+
+        "generate — redirectGuideline present: prompt contains the guideline block" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>Redirect after task.</intention><toolName>Answer</toolName>"
+
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = emptyList(),
+                instructions = null,
+                agentId = UUID.randomUUID(),
+                confirmationManager = mockk(relaxed = true),
+                redirectGuideline = "When done, redirect to TRSharing.",
+            )
+
+            makeGenerator().generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+
+            // The guideline block (header + content) is injected only when redirectGuideline is non-blank.
+            promptSlot.captured.contents shouldContain "### Redirect Guideline"
+            promptSlot.captured.contents shouldContain "<redirect_guideline>"
+            promptSlot.captured.contents shouldContain "When done, redirect to TRSharing."
+        }
+
+        "generate — redirectGuideline null: prompt does not contain the guideline block" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>No redirect needed.</intention><toolName>Answer</toolName>"
+
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+
+            makeGenerator().generate("agent", makeContext(mockChatClient), makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+
+            // Reinforced: the reference to <redirect_guideline> in the Agent Handoff reasoning step
+            // is now conditional too, so absolutely no occurrence of "redirect_guideline" (tag or
+            // title) should leak into the prompt when no guideline is configured.
+            val contents = promptSlot.captured.contents
+            contents shouldNotContain "### Redirect Guideline"
+            contents shouldNotContain "redirect_guideline"
+        }
+
+        "generate — redirectGuideline blank: prompt does not contain the guideline block" {
+            val mockChatClient = mockk<ChatClient>(relaxed = true)
+            val promptSlot = slot<Prompt>()
+            every {
+                mockChatClient.prompt(capture(promptSlot)).call().content()
+            } returns "<intention>No redirect needed.</intention><toolName>Answer</toolName>"
+
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val context = AgentAdvancedContext(
+                chatClient = mockChatClient,
+                tools = emptyList(),
+                instructions = null,
+                agentId = UUID.randomUUID(),
+                confirmationManager = mockk(relaxed = true),
+                redirectGuideline = "   ",
+            )
+
+            makeGenerator().generate("agent", context, makeInitialEvents(namespaceId, caseId), namespaceId, caseId)
+
+            val contents = promptSlot.captured.contents
+            contents shouldNotContain "### Redirect Guideline"
+            contents shouldNotContain "redirect_guideline"
         }
     })

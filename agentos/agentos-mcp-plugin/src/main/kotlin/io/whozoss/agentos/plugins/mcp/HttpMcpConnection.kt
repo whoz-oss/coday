@@ -16,15 +16,21 @@ import java.time.Duration
  *
  * Unlike [StdioMcpConnection], HTTP connections are NOT pooled — each instance is
  * created per agent run and closed after tool resolution. The [CredentialProvider]
- * supplies per-user auth tokens, making connection sharing across users unsafe.
+ * supplies per-user credentials, making connection sharing across users unsafe.
  *
  * Uses [HttpClientStreamableHttpTransport] from the MCP Java SDK 2.0.
  *
  * The URL from [McpServerConfig.url] is automatically split into base URI and endpoint
- * path to work around the MCP Java SDK's `URI.resolve` behavior. When the URL includes
- * a path (e.g. `https://mcp.example.com/v1/mcp`), the path is extracted as the explicit
- * endpoint. When the URL has no path (e.g. `https://mcp.example.com`), the SDK's default
- * `/mcp` endpoint is used.
+ * path to work around the MCP Java SDK's `URI.resolve` behavior. The endpoint is **always**
+ * set explicitly — the SDK's implicit default `/mcp` is never used:
+ *
+ * - URL with a meaningful path (e.g. `https://mcp.atlassian.com/v1/mcp`): the path is
+ *   extracted as the explicit endpoint (`/v1/mcp`), and the origin becomes the base URI.
+ * - URL with no path or root path (e.g. `https://mcp.hubspot.com` or
+ *   `https://mcp.hubspot.com/`): the endpoint is set to `"/"` so the server root is hit.
+ *
+ * This matters because the default `/mcp` is not universal: HubSpot exposes the MCP
+ * endpoint at the root (`/`), while Atlassian uses `/v1/mcp`.
  */
 class HttpMcpConnection(
     private val config: McpServerConfig,
@@ -37,16 +43,18 @@ class HttpMcpConnection(
     /**
      * Connects to the remote MCP server, performs the MCP handshake, and discovers tools.
      *
-     * Bearer token injection uses [HttpClientStreamableHttpTransport.Builder.requestBuilder]:
+     * Header injection uses [HttpClientStreamableHttpTransport.Builder.requestBuilder]:
      * a pre-configured [HttpRequest.Builder] with the `Authorization` header is passed to
      * the transport. The builder is copied internally on every request, so the header
      * is applied consistently across all JSON-RPC calls (initialize, listTools, callTool).
      *
-     * @param bearerToken Optional Bearer token for the `Authorization` header.
-     *   When non-null, injected via a pre-configured [HttpRequest.Builder].
+     * @param authorization Optional `Authorization` header (Bearer or Basic). When non-null,
+     *   its [AuthorizationHeader.headerValue] is injected via a pre-configured [HttpRequest.Builder].
+     *   Sending it over plain `http` exposes the credential in cleartext and is logged as a warning
+     *   (this covers bound credentials; [McpConfigParser] already warns for a static `authToken`).
      * @throws McpConnectionException if the HTTP connection or MCP handshake fails.
      */
-    fun connect(bearerToken: String? = null) {
+    fun connect(authorization: AuthorizationHeader? = null) {
         require(config.transport == McpTransport.HTTP) {
             "HttpMcpConnection requires HTTP transport config"
         }
@@ -61,19 +69,20 @@ class HttpMcpConnection(
         // the SDK from producing a wrong URL like "https://host/v1/mcp" → "https://host/mcp".
         // URI.resolve("/mcp") replaces the entire path — it does NOT append.
         val (baseUrl, endpoint) = splitMcpUrl(url)
-        logger.debug { "[MCP-HTTP] Resolved baseUrl=$baseUrl, endpoint=$endpoint" }
+        logger.info { "[MCP-HTTP] Resolved baseUrl=$baseUrl, endpoint=$endpoint" }
 
         val transportBuilder = HttpClientStreamableHttpTransport
             .builder(baseUrl)
             .also { if (endpoint != null) it.endpoint(endpoint) }
             .connectTimeout(Duration.ofSeconds(config.timeoutSeconds))
 
-        // Inject Bearer token via a pre-configured request builder.
+        // Inject the Authorization header via a pre-configured request builder.
         // The transport copies this builder for each request, so the header is applied
         // to every JSON-RPC call without needing a per-request customizer.
-        if (bearerToken != null) {
+        if (authorization != null) {
+            warnIfCleartext(url)
             transportBuilder.requestBuilder(
-                HttpRequest.newBuilder().header("Authorization", "Bearer $bearerToken")
+                HttpRequest.newBuilder().header("Authorization", authorization.headerValue())
             )
         }
 
@@ -137,6 +146,13 @@ class HttpMcpConnection(
             .onFailure { runCatching { client.close() } }
     }
 
+    private fun warnIfCleartext(url: String) {
+        val uri = java.net.URI.create(url)
+        if (uri.scheme.equals("http", ignoreCase = true)) {
+            logger.warn { "[MCP-HTTP] Sending credentials over cleartext http to '${uri.host}' — use https" }
+        }
+    }
+
     private fun formatResult(result: McpSchema.CallToolResult): String {
         val content = result.content() ?: return "(no output)"
         val parts = content.mapNotNull { item ->
@@ -165,24 +181,28 @@ class HttpMcpConnection(
          *   endpoint = "/mcp"
          *   resolved = "https://mcp.atlassian.com/mcp"  ← WRONG
          *
-         * To work around this, when the configured URL already contains the full path to
-         * the MCP endpoint, we split it into a base (scheme + authority) and the path as
-         * the explicit endpoint. This way `URI.resolve` produces the correct result.
+         * To prevent this, we always split the URL into origin (scheme + authority) and
+         * an explicit endpoint path, so the SDK's implicit default `"/mcp"` never applies.
          *
-         * When the URL has no meaningful path (e.g. `https://mcp.example.com`), we return
-         * `null` for the endpoint and let the SDK use its default `"/mcp"`.
+         * The SDK's default is not universal: HubSpot exposes MCP at the root (`/`),
+         * while Atlassian uses `/v1/mcp`. Letting the SDK silently fall back to `/mcp`
+         * would make root-endpoint servers unreachable.
+         *
+         * @return a pair of (origin, endpoint) where:
+         *   - `origin` is always `scheme://authority` (port preserved when explicit)
+         *   - `endpoint` is the path from the URL, or `"/"` when the URL has no path
+         *     (the second element is typed as [String?] but is never null in practice)
          */
         internal fun splitMcpUrl(url: String): Pair<String, String?> {
             val uri = java.net.URI.create(url)
+            val origin = "${uri.scheme}://${uri.authority}"
             val path = uri.path
-            // If the URL has a meaningful path (more than just "/"), extract it as the endpoint
-            // and use the origin (scheme + authority) as the base URL.
+            // Always set an explicit endpoint so the SDK's implicit "/mcp" default never applies.
+            // Root-only URLs (empty path or bare "/") get endpoint="/" to target the server root.
             return if (!path.isNullOrBlank() && path != "/") {
-                val origin = "${uri.scheme}://${uri.authority}"
                 Pair(origin, path)
             } else {
-                // No path — let the SDK use its default "/mcp" endpoint
-                Pair(url, null)
+                Pair(origin, "/")
             }
         }
     }

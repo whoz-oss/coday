@@ -8,6 +8,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.CaseService
@@ -71,6 +72,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
         scheduledPromptRepo: InMemoryScheduledPromptRepository,
         runRepo: InMemoryScheduledPromptRunRepository,
         agentConfigService: AgentConfigService = defaultAgentConfigService(),
+        scannerProperties: SchedulerProperties = properties,
     ): SchedulerScanner {
         val userRunRepo = InMemoryScheduledPromptUserRunRepository()
         runRepo.userRunRepository = userRunRepo
@@ -83,7 +85,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             caseService = mockk(relaxed = true),
             permissionService = mockk(relaxed = true),
             userService = mockk(relaxed = true),
-            properties = properties,
+            properties = scannerProperties,
             clock = clock,
         )
         return SchedulerScanner(
@@ -91,10 +93,11 @@ class SchedulerScannerUnitSpec : StringSpec() {
             runRepository = runRepo,
             userRunRepository = userRunRepo,
             agentConfigService = agentConfigService,
-            properties = properties,
+            properties = scannerProperties,
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
             executor = executor,
+            executionWindowService = ExecutionWindowService(scannerProperties),
         )
     }
 
@@ -132,6 +135,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
             executor = executor,
+            executionWindowService = ExecutionWindowService(properties),
         )
         return scanner to userRunRepo
     }
@@ -718,7 +722,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             )
 
             // Insert a RUNNING run directly (simulates a run that was materialised but whose
-            // checkCompletion call was lost in a crash)
+            // parent closure was lost in a crash)
             val run = ScheduledPromptRun(
                 metadata = EntityMetadata(id = UUID.randomUUID(), created = Instant.parse("2026-01-01T08:00:00Z")),
                 scheduledPromptId = sp.id,
@@ -843,6 +847,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
                 executor = executor,
+                executionWindowService = ExecutionWindowService(properties),
             )
 
             // Must not throw — sp1 fails, sp2 must still be processed
@@ -925,6 +930,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
                 executor = executor,
+                executionWindowService = ExecutionWindowService(badProperties),
             )
             io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
                 sc.logStartup()
@@ -961,62 +967,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
         }
 
         // -------------------------------------------------------------------------
-        // Pause guards — tickConsume
+        // Startup invariant: leaseMinutes > launchTimeoutSeconds (valid case)
         // -------------------------------------------------------------------------
-
-        "tickConsume when paused: consumeAvailable not called" {
-            val scheduledPromptRepo = makeScheduledPromptRepo()
-            val runRepo = makeRunRepo()
-            val sc = scanner(scheduledPromptRepo, runRepo)
-            sc.pauseConsume()
-            // tickConsume is a no-op when paused — verify by checking isConsumePaused
-            sc.isConsumePaused().shouldBeTrue()
-            // Actual consume path is not exercised; this test asserts the guard is active
-            sc.tickConsume()
-            // No exception, no side-effects — the guard returned early
-        }
-
-        "tickConsume when resumed after pause: isConsumePaused returns false" {
-            val scheduledPromptRepo = makeScheduledPromptRepo()
-            val runRepo = makeRunRepo()
-            val sc = scanner(scheduledPromptRepo, runRepo)
-            sc.pauseConsume()
-            sc.isConsumePaused().shouldBeTrue()
-            sc.resumeConsume()
-            sc.isConsumePaused().shouldBeFalse()
-        }
-
-        "isConsumePaused returns false by default" {
-            val sc = scanner(makeScheduledPromptRepo(), makeRunRepo())
-            sc.isConsumePaused().shouldBeFalse()
-        }
-
-        "pauseConsume then resumeConsume: idempotent on multiple calls" {
-            val sc = scanner(makeScheduledPromptRepo(), makeRunRepo())
-            sc.pauseConsume()
-            sc.pauseConsume()
-            sc.isConsumePaused().shouldBeTrue()
-            sc.resumeConsume()
-            sc.resumeConsume()
-            sc.isConsumePaused().shouldBeFalse()
-        }
-
-        "pauseConsume does not affect tickClaim: runs still created" {
-            val scheduledPromptRepo = makeScheduledPromptRepo()
-            val runRepo = makeRunRepo()
-            val slot = Instant.parse("2026-01-01T08:00:00Z")
-            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
-            val sc = scanner(scheduledPromptRepo, runRepo)
-            sc.pauseConsume()
-            sc.tickClaim()
-            runRepo.all() shouldHaveSize 1
-        }
-
-        "pauseClaim does not affect isConsumePaused: consume guard independent" {
-            val sc = scanner(makeScheduledPromptRepo(), makeRunRepo())
-            sc.pauseClaim()
-            sc.isConsumePaused().shouldBeFalse()
-        }
 
         "SchedulerScanner startup: does not throw when leaseMinutes * 60 > launchTimeoutSeconds" {
             val goodProperties = SchedulerProperties(
@@ -1047,6 +999,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
                 executor = executor,
+                executionWindowService = ExecutionWindowService(goodProperties),
             )
             // Must not throw
             sc.logStartup()
@@ -1071,6 +1024,119 @@ class SchedulerScannerUnitSpec : StringSpec() {
             }
             scanner(scheduledPromptRepo, runRepo).tickClaim()
             scheduledPromptRepo.findById(sp.id)!!.enabled shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // Execution window guard (offpeak exclusion)
+        // -------------------------------------------------------------------------
+
+        "tickClaim outside execution window: no runs created" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z") // due
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            // nowInstant = 2026-01-01T09:00:00Z (Thursday)
+            // Window: FRIDAY 22:00 → MONDAY 05:00 (weekend only) — Thursday 09:00 is outside
+            scanner(scheduledPromptRepo, runRepo, scannerProperties = SchedulerProperties(windows = listOf("FRIDAY 22:00", "MONDAY 05:00"))).tickClaim()
+            runRepo.all().shouldBeEmpty()
+        }
+
+        "tickClaim inside execution window: runs created normally" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z") // due
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            // nowInstant = 2026-01-01T09:00:00Z (Thursday)
+            // Window: MONDAY 00:00 → FRIDAY 22:00 — Thursday 09:00 is inside
+            scanner(scheduledPromptRepo, runRepo, scannerProperties = SchedulerProperties(windows = listOf("MONDAY 00:00", "FRIDAY 22:00"))).tickClaim()
+            runRepo.all() shouldHaveSize 1
+        }
+
+        "tickClaim outside window: nextRunAt is NOT advanced (prompts accumulate)" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            val sp = scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            // Thursday 09:00 is outside the weekend-only window
+            scanner(scheduledPromptRepo, runRepo, scannerProperties = SchedulerProperties(windows = listOf("FRIDAY 22:00", "MONDAY 05:00"))).tickClaim()
+            // nextRunAt must be unchanged — the slot must accumulate until the window opens
+            scheduledPromptRepo.findById(sp.id)!!.nextRunAt shouldBe slot
+        }
+
+        "tickClaim pause takes precedence over window check" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            // Thursday 09:00 is inside this window — but pause takes precedence
+            val sc = scanner(scheduledPromptRepo, runRepo, scannerProperties = SchedulerProperties(windows = listOf("MONDAY 00:00", "FRIDAY 22:00")))
+            sc.pauseClaim()
+            sc.tickClaim()
+            runRepo.all().shouldBeEmpty()
+        }
+
+        "tickClaim no windows configured: runs created regardless of time" {
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val slot = Instant.parse("2026-01-01T08:00:00Z")
+            scheduledPromptRepo.insertScheduledPrompt(nextRunAt = slot)
+            // Default SchedulerProperties has windows = emptyList() → always-open
+            scanner(scheduledPromptRepo, runRepo).tickClaim()
+            runRepo.all() shouldHaveSize 1
+        }
+
+        // -------------------------------------------------------------------------
+        // Watchdog
+        // -------------------------------------------------------------------------
+
+        "tickWatchdog: executor running → no restart" {
+            // Build a scanner with a mocked executor that reports isRunning() = true
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            val mockExecutor = mockk<ScheduledPromptExecutor>(relaxed = true).also {
+                every { it.isRunning() } returns true
+            }
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = properties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = mockExecutor,
+                executionWindowService = ExecutionWindowService(properties),
+            )
+
+            sc.tickWatchdog()
+
+            verify(exactly = 0) { mockExecutor.restart() }
+        }
+
+        "tickWatchdog: executor dead → restart called" {
+            // Build a scanner with a mocked executor that reports isRunning() = false
+            val scheduledPromptRepo = makeScheduledPromptRepo()
+            val runRepo = makeRunRepo()
+            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
+            val mockExecutor = mockk<ScheduledPromptExecutor>(relaxed = true).also {
+                every { it.isRunning() } returns false
+            }
+            val sc = SchedulerScanner(
+                scheduledPromptRepository = scheduledPromptRepo,
+                runRepository = runRepo,
+                userRunRepository = userRunRepo,
+                agentConfigService = defaultAgentConfigService(),
+                properties = properties,
+                clock = clock,
+                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
+                executor = mockExecutor,
+                executionWindowService = ExecutionWindowService(properties),
+            )
+
+            sc.tickWatchdog()
+
+            verify(exactly = 1) { mockExecutor.restart() }
         }
     }
 }

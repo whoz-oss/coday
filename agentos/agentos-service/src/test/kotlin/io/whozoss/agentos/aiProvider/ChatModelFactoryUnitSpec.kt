@@ -22,7 +22,7 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "sk-test",
             modelName = "gpt-4",
             temperature = 0.7,
-            maxTokens = null,
+            maxCompletionTokens = null,
         )
 
         model.shouldNotBeNull()
@@ -48,7 +48,7 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "sk-ant-test",
             modelName = "claude-3",
             temperature = 0.5,
-            maxTokens = 4000,
+            maxCompletionTokens = 4000,
         )
 
         model.shouldNotBeNull()
@@ -62,7 +62,7 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "google-key",
             modelName = "gemini-pro",
             temperature = 0.5,
-            maxTokens = null,
+            maxCompletionTokens = null,
         )
 
         model.shouldNotBeNull()
@@ -100,7 +100,7 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "key",
             modelName = "gpt-4o",
             temperature = null,
-            maxTokens = null,
+            maxCompletionTokens = null,
         )
 
         model.shouldNotBeNull()

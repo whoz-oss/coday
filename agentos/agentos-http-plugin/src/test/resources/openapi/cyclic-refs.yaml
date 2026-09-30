@@ -1,0 +1,31 @@
+openapi: 3.0.0
+info:
+  title: Cyclic
+  version: 1.0.0
+paths:
+  /tree:
+    post:
+      operationId: createTree
+      summary: Create a tree
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Node'
+      responses:
+        '201':
+          description: Created
+components:
+  schemas:
+    Node:
+      type: object
+      properties:
+        label:
+          type: string
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        parent:
+          $ref: '#/components/schemas/Node'

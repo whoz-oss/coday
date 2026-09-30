@@ -61,9 +61,24 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
         )
 
     init {
+        "SSE protocol uses stable case-event channel" {
+            CaseEventSseController.CASE_EVENT_CHANNEL shouldBe "case-event"
+        }
+
         // -------------------------------------------------------------------------
         // Past / completed case — only history, no live instance
         // -------------------------------------------------------------------------
+
+        "omitted includePreviousEvents replays persisted events" {
+            val caseId = UUID.randomUUID()
+            val caseService = mockk<CaseService> { every { findActiveRuntime(caseId) } returns null }
+            val caseEventService = mockk<CaseEventService> { every { findByParent(caseId) } returns emptyList() }
+            val controller = CaseEventSseController(caseService, caseEventService, CaseConfigProperties(sseHeartbeatIntervalMs = Long.MAX_VALUE))
+
+            controller.streamEvents(caseId)
+
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
+        }
 
         "past case: replays persisted events and completes the emitter" {
             val caseId = UUID.randomUUID()
@@ -158,7 +173,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
-            verify(exactly = 1) { caseEventService.findByParent(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
             verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 
@@ -192,7 +207,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             controller.streamEvents(caseId)
 
             latch.await(2, TimeUnit.SECONDS)
-            verify(exactly = 1) { caseEventService.findByParent(caseId) }
+            verify(timeout = 2000, exactly = 1) { caseEventService.findByParent(caseId) }
             verify(exactly = 1) { caseService.findActiveRuntime(caseId) }
         }
 

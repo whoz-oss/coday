@@ -159,6 +159,21 @@ describe('AuthSettingConfigStateService — authType translation', () => {
   // ── Inbound: loadPlatformSettings / loadNamespaceSettings / loadUserSettings ──
 
   describe('list methods', () => {
+    it('loads platform settings instead of personal settings when both scopes exist', () => {
+      const platform = { authType: 'API_KEY', name: 'Company Jira' }
+      const personal = { authType: 'API_KEY', name: 'Personal Jira', userId: 'user-1' }
+      // Match the backend contract: only the explicit none sentinel selects platform scope.
+      controller.listAuthSetting.mockImplementation((namespaceId?: string, userId?: string) =>
+        of(namespaceId === 'none' && userId === undefined ? [platform] : [personal])
+      )
+      let result: any[] = []
+
+      service.loadPlatformSettings().subscribe((settings) => (result = settings))
+
+      expect(result.map((setting) => setting.name)).toEqual(['Company Jira'])
+      expect(controller.listAuthSetting).toHaveBeenCalledWith('none')
+    })
+
     it('loadPlatformSettings normalizes backend authType values in the array', () => {
       controller.listAuthSetting.mockReturnValue(
         of([

@@ -51,8 +51,9 @@ export class ShellTopbarComponent {
     return (first + last).toUpperCase() || user.email?.[0]?.toUpperCase() || ''
   })
 
-  // showTechnical n'a pas de sens hors du CaseShell — on le passe à false
+  // Technical display toggles have no effect outside the CaseShell.
   protected readonly showTechnical = signal(false)
+  protected readonly showToolCalls = signal(true)
 
   protected navigateHome(): void {
     const nsId = this.namespaceState.activeNamespaceId()
@@ -87,6 +88,11 @@ export class ShellTopbarComponent {
   }
 
   protected onLogsToggle(): void {
+    // no-op hors du CaseShell
+    this.menuOpen.set(false)
+  }
+
+  protected onToolCallsToggle(): void {
     // no-op hors du CaseShell
     this.menuOpen.set(false)
   }

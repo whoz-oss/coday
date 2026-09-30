@@ -1,0 +1,96 @@
+openapi: 3.0.3
+info:
+  title: Header params
+  version: 1.0.0
+paths:
+  /tenants:
+    get:
+      operationId: listTenants
+      parameters:
+        - name: X-Tenant
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Trace
+          in: header
+          description: Trace id
+          schema:
+            type: string
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Tenants
+  /auth-optional:
+    get:
+      operationId: authOptional
+      parameters:
+        - name: Authorization
+          in: header
+          schema:
+            type: string
+        - name: X-Custom-Key
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ok
+  /auth-required:
+    get:
+      operationId: authRequired
+      parameters:
+        - name: Authorization
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ok
+  /dup/{id}:
+    get:
+      operationId: duplicateName
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ok
+  /bad-names:
+    get:
+      operationId: badNames
+      parameters:
+        - name: X Tenant
+          in: header
+          schema:
+            type: string
+        - name: X-Ok
+          in: header
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ok
+  /bad-required:
+    get:
+      operationId: badRequired
+      parameters:
+        - name: Café
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Ok

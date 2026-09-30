@@ -19,7 +19,7 @@ import {
   ChangeDetectionStrategy,
 } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { DomSanitizer, SafeHtml } from '@angular/platform-browser'
+import { SafeHtml } from '@angular/platform-browser'
 import { ActivatedRoute } from '@angular/router'
 import {
   AgentFinishedEvent,
@@ -39,6 +39,7 @@ import {
   QuestionEventQuestionTypeEnum,
   ToolRequestEvent,
   ToolResponseEvent,
+  ToolSelectedEvent,
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
@@ -47,8 +48,13 @@ import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
 import { QuestionPanelComponent } from '../question-panel/question-panel.component'
-import DOMPurify from 'dompurify'
-import { marked, Renderer } from 'marked'
+import { MarkdownRendererService } from '../../services/markdown-renderer.service'
+import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
+import {
+  buildDelegations,
+  DelegationPresentation,
+  isCorrelatedDelegateTool,
+} from '../delegation/models/delegation.models'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
 import { AgentAutocompleteComponent } from '../agent-autocomplete/agent-autocomplete.component'
 import { ComposerAutocompleteService } from '../composer-autocomplete/composer-autocomplete.service'
@@ -65,6 +71,8 @@ export interface ToolCall {
   requestId: string
   toolName: string
   args: string | null
+  /** ISO timestamp from the ToolRequestEvent. */
+  timestamp?: string
   /** undefined = pending, defined = done */
   response?: ToolResponseEvent
   /** Enrichment phase traces from multi-step parameter generation (null when no enrichment). */
@@ -73,24 +81,30 @@ export interface ToolCall {
 
 /** A technical event displayed only when showTechnical is enabled. */
 export interface TechnicalItem {
-  type:
-    | 'WarnEvent'
-    | 'ErrorEvent'
-    | 'CaseStatusEvent'
-    | 'AgentRunningEvent'
-    | 'AgentFinishedEvent'
-    | 'AgentSelectedEvent'
-    | 'IntentionGeneratedEvent'
   label: string
   detail?: string
 }
 
+export interface ExecutionNotice {
+  severity: 'warning' | 'error' | 'terminal'
+  title: string
+  detail?: string
+}
+
 export type TimelineItem =
-  | { kind: 'message'; event: CaseMessageEvent; html: SafeHtml; isFirstInGroup: boolean }
+  | {
+      kind: 'message'
+      event: CaseMessageEvent
+      html: SafeHtml
+      isFirstInGroup: boolean
+      isLastInGroup: boolean
+    }
   | { kind: 'tool'; call: ToolCall }
   | { kind: 'streaming' }
+  | { kind: 'notice'; notice: ExecutionNotice; eventId: string }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
   | { kind: 'question'; event: QuestionEvent; answered: boolean }
+  | { kind: 'delegation'; delegation: DelegationPresentation }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
@@ -129,6 +143,7 @@ function hasActiveSelection(): boolean {
     CopyButtonComponent,
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
+    DelegationCardComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -140,7 +155,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
-  private readonly domSanitizer = inject(DomSanitizer)
+  private readonly markdown = inject(MarkdownRendererService)
   private readonly exchangeState = inject(ExchangeStateService)
 
   private readonly config = inject(Configuration)
@@ -173,11 +188,19 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   // caseId and namespaceId are read from query params (?case=...&ns=...).
   // The case-shell renders this component directly (not via router-outlet),
   // so route params are empty — all context comes through query params.
+  //
+  // caseId is kept as a plain field (updated in ngOnInit on queryParams changes) so that
+  // all SSE callbacks and HTTP calls always reference the current case without going
+  // through a signal read inside a zone.runOutsideAngular context.
   protected caseId = this.route.snapshot.queryParams['case'] as string
-  private readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
+  protected readonly namespaceId = this.route.snapshot.queryParams['ns'] as string
 
-  /** Markdown renderer shared across all message pre-computations. */
-  private readonly markdownRenderer = this.buildMarkdownRenderer()
+  /**
+   * Reactive case ID — updated in sync with the queryParams subscription so that
+   * computed signals that derive from it (e.g. activeCase) are always in sync with
+   * the currently displayed case, even when the case list has not changed (no SSE).
+   */
+  private readonly _activeCaseId = signal<string>(this.route.snapshot.queryParams['case'] as string)
 
   /** Display name used for the streaming assistant bubble (before final MessageEvent arrives). */
   protected readonly agentDisplayName = computed(() => {
@@ -220,7 +243,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   protected isTerminal = signal(false)
 
   /** Active case from the shared case list (title + stored status). */
-  protected readonly activeCase = computed(() => this.caseState.cases().find((c) => c.id === this.caseId) ?? null)
+  protected readonly activeCase = computed(
+    () => this.caseState.cases().find((c) => c.id === this._activeCaseId()) ?? null
+  )
 
   /**
    * Raw SSE status — empty string until a CaseStatusEvent arrives for this case.
@@ -254,9 +279,63 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly deleteRequested = output<string>()
   readonly logsToggled = output<void>()
+  readonly updateRequested = output<{ id: string; title?: string; runCostThreshold?: number | null }>()
+
+  // ---------------------------------------------------------------------------
+  // Inline header edit (title + runCostThreshold)
+  // ---------------------------------------------------------------------------
+
+  /** Whether the header is in edit mode. */
+  protected readonly isEditing = signal(false)
+  protected readonly draftTitle = signal('')
+  protected readonly draftThreshold = signal<string>('')
+
+  protected startEdit(): void {
+    const c = this.activeCase()
+    if (!c) return
+    this.draftTitle.set(c.title ?? '')
+    this.draftThreshold.set(c.runCostThreshold != null ? String(c.runCostThreshold) : '')
+    this.isEditing.set(true)
+  }
+
+  protected cancelEdit(): void {
+    this.isEditing.set(false)
+  }
+
+  protected commitEdit(): void {
+    const c = this.activeCase()
+    if (!c?.id) return
+    const title = this.draftTitle().trim()
+    if (!title) return // empty title not allowed
+    const rawThreshold = this.draftThreshold().trim()
+    // Empty threshold: the server does not support removing the threshold via this endpoint
+    // (a missing key is treated as "keep existing"). We simply omit the field from the patch
+    // so the server keeps its value and the UI stays coherent after the response is merged back.
+    // A non-empty value must be a valid positive number.
+    if (rawThreshold !== '') {
+      const parsed = parseFloat(rawThreshold)
+      if (isNaN(parsed) || parsed < 0) return
+    }
+    const parsedThreshold = rawThreshold === '' ? undefined : parseFloat(rawThreshold)
+    this.isEditing.set(false)
+    this.updateRequested.emit({ id: c.id, title, runCostThreshold: parsedThreshold })
+  }
+
+  protected onEditKeydown(event: KeyboardEvent): void {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      this.commitEdit()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      this.cancelEdit()
+    }
+  }
 
   readonly showTechnicalOverride = input(false)
   protected readonly showTechnical = computed(() => this.showTechnicalOverride())
+
+  readonly showToolCallsOverride = input(true)
+  protected readonly showToolCalls = computed(() => this.showToolCallsOverride())
 
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
@@ -290,13 +369,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.autocomplete.init(this.namespaceId)
 
     // Restore focus to the composer whenever we return to an interactive state,
-    // but only when the user has no active text selection (avoid clearing copy intent).
+    // but only when the user has no active text selection (avoid clearing copy intent)
+    // and only when the inline header editor is not open (isEditing). Checking isEditing
+    // inside the microtask covers the case where an edit is started after the callback
+    // was scheduled (e.g. AgentFinishedEvent arrives while the user opens the editor).
     effect(() => {
       if (this.isRunning() || this.isTerminal()) return
       queueMicrotask(() => {
+        if (this.isEditing()) return
         if (hasActiveSelection()) return
         this.composerInput()?.nativeElement.focus()
       })
+    })
+
+    // Keep the composer sized to its current content, including after a message is sent
+    // or an autocomplete selection changes the input programmatically.
+    effect(() => {
+      this.inputValue()
+      queueMicrotask(() => this.resizeComposer())
     })
 
     // Auto-scroll to bottom whenever the timeline or streaming text changes,
@@ -314,9 +404,10 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       }
     })
 
-    // Register scroll listener after the first render so the ViewChild is available.
+    // Register DOM-dependent behaviour after the first render.
     afterNextRender(() => {
       this.attachScrollListener()
+      this.resizeComposer()
     })
   }
 
@@ -330,9 +421,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * 2. Walk events in order to emit timeline items, deduplicating tool entries
    *    so TOOL_RESPONSE doesn't create a second item — it's already merged.
    */
+  protected readonly delegations = computed(() => buildDelegations(this.events()))
+
   private readonly baseTimeline = computed<TimelineItem[]>(() => {
     const allEvents = this.events()
     const showTechnical = this.showTechnical()
+    const showToolCalls = this.showToolCalls()
+    const delegations = this.delegations()
 
     // Pass 1: build complete tool call map (request + optional response)
     const toolCallMap = new Map<string, ToolCall>()
@@ -345,6 +440,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           requestId,
           toolName: req.toolName ?? 'unknown',
           args: req.args ?? null,
+          timestamp: req.timestamp ?? existing?.timestamp,
           response: existing?.response,
           enrichmentPhases: (req as ToolRequestEvent).enrichmentPhases ?? null,
         })
@@ -356,6 +452,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           requestId,
           toolName: existing?.toolName ?? res.toolName ?? 'unknown',
           args: existing?.args ?? null,
+          timestamp: existing?.timestamp,
           response: res,
           enrichmentPhases: existing?.enrichmentPhases ?? null,
         })
@@ -364,6 +461,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     const items: TimelineItem[] = []
     const seenToolIds = new Set<string>()
+    const emittedDelegationIds = new Set<string>()
     // Track the last role to detect group boundaries (consecutive same-role messages).
     // Any non-message item (tool call, technical event) resets the group.
     let lastMessageRole: string | null = null
@@ -378,26 +476,58 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           event: msg,
           html: this.messageHtmlCache.get(e.id) ?? '',
           isFirstInGroup,
+          isLastInGroup: false,
         })
       } else if (e.type === 'ToolRequestEvent' || e.type === 'ToolResponseEvent') {
         const requestId = e.toolRequestId ?? e.id
         if (!seenToolIds.has(requestId)) {
           seenToolIds.add(requestId)
-          items.push({ kind: 'tool', call: toolCallMap.get(requestId)! })
+          const call = toolCallMap.get(requestId)!
+          if (isCorrelatedDelegateTool(call.toolName, requestId, call.response, delegations)) {
+            for (const delegation of delegations.filter((candidate) => candidate.toolRequestId === requestId)) {
+              if (!emittedDelegationIds.has(delegation.delegationId)) {
+                emittedDelegationIds.add(delegation.delegationId)
+                items.push({ kind: 'delegation', delegation })
+              }
+            }
+          } else if (showToolCalls) {
+            items.push({ kind: 'tool', call })
+          }
         }
         lastMessageRole = null
+      } else if (e.type === 'SubCaseStartedEvent') {
+        const delegation = delegations.find((candidate) => candidate.delegationId === e.delegationId)
+        if (delegation && !emittedDelegationIds.has(delegation.delegationId)) {
+          emittedDelegationIds.add(delegation.delegationId)
+          items.push({ kind: 'delegation', delegation })
+        }
+        lastMessageRole = null
+      } else if (e.type === 'SubCaseFinishedEvent') {
+        // The corresponding Started event owns the single visual card.
       } else if (e.type === 'QuestionEvent') {
         const qe = e as QuestionEvent
         // A question is answered when there is a corresponding AnswerEvent in the stream.
         const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
         items.push({ kind: 'question', event: qe, answered })
-      } else if (showTechnical) {
-        const technical = this.toTechnicalItem(e)
-        if (technical) {
-          items.push({ kind: 'technical', item: technical, eventId: e.id })
-          lastMessageRole = null
+      } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
+        // Execution notices and the generic fallback are diagnostics: keep them entirely
+        // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
+        const notice = this.toExecutionNotice(e)
+        if (notice) {
+          items.push({ kind: 'notice', notice, eventId: e.id })
+        } else {
+          // Every event not already represented elsewhere remains inspectable in technical mode.
+          items.push({ kind: 'technical', item: this.toTechnicalItem(e), eventId: e.id })
         }
+        lastMessageRole = null
       }
+    }
+
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index]
+      if (item?.kind !== 'message') continue
+      const next = items[index + 1]
+      item.isLastInGroup = next?.kind !== 'message' || next.event.actor.role !== item.event.actor.role
     }
 
     return items
@@ -418,11 +548,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       case 'tool':
         return item.call.requestId
       case 'technical':
+      case 'notice':
         return item.eventId
       case 'streaming':
         return 'streaming'
       case 'question':
         return `question-${item.event.id}`
+      case 'delegation':
+        return `delegation-${item.delegation.delegationId}`
     }
   }
 
@@ -471,6 +604,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       const newCaseId = params['case'] as string
       if (newCaseId && newCaseId !== this.caseId) {
         this.caseId = newCaseId
+        this._activeCaseId.set(newCaseId)
         this.reinitialise()
       }
     })
@@ -534,8 +668,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
 
-    // NOTE: the backend sends named SSE events ("event: MessageEvent", "event: CaseStatusEvent", ...)
-    // In that case, `onmessage` is NOT called. We must subscribe to named events.
+    // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
+    // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
     const handler = (msg: globalThis.MessageEvent<string>) => {
       const receivedAt = performance.now()
       const sseEventName = (msg as unknown as { type?: string }).type
@@ -671,6 +805,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
     const eventNames = [
       'MessageEvent',
+      'case-event',
       'CaseStatusEvent',
       'CaseUpdatedEvent',
       'AgentSelectedEvent',
@@ -680,6 +815,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'TextChunkEvent',
       'ToolRequestEvent',
       'ToolResponseEvent',
+      'ToolSelectedEvent',
       'PendingConfirmationEvent',
       'ConfirmationResolvedEvent',
       'ErrorEvent',
@@ -702,14 +838,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       })
     }
 
-    // Note: onmessage only fires for unnamed events. Keep it for debugging.
-    this.eventSource.onmessage = (msg) => {
-      console.log('[AgentOS SSE] onmessage (unnamed event) received', {
-        dataLength: msg.data?.length ?? 0,
-        dataPreview: msg.data?.slice(0, 120),
-      })
-    }
-
     this.eventSource.onerror = (err) => {
       console.warn('[AgentOS SSE] connection error', {
         err,
@@ -727,8 +855,22 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private anyToolResponseThisTurn = false
 
   protected onInput(event: Event): void {
-    const value = (event.target as HTMLTextAreaElement).value
-    this.autocomplete.onInput(value, this.inputValue)
+    const input = event.target as HTMLTextAreaElement
+    this.autocomplete.onInput(input.value, this.inputValue)
+    // The browser has already updated the textarea value when input fires, so measure
+    // the actual element directly instead of relying on a later signal-effect cycle.
+    this.resizeComposer(input)
+  }
+
+  /**
+   * Grow to the content height and let the CSS max-height take over for long drafts.
+   * Resetting to auto first also lets the textarea shrink after text is removed.
+   */
+  private resizeComposer(input = this.composerInput()?.nativeElement): void {
+    if (!input) return
+
+    input.style.height = 'auto'
+    input.style.height = `${input.scrollHeight}px`
   }
 
   protected onKeydown(event: KeyboardEvent): void {
@@ -774,6 +916,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
+    this.isEditing.set(false)
     this.autocomplete.reset()
     this.attachments.reset()
     this.connectSse()
@@ -845,13 +988,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     })
   }
 
-  protected kill(): void {
-    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/kill`, {}).subscribe({
-      // Server transitions to KILLED; SSE handler will close the EventSource.
-      error: (err) => console.error('[CaseChat] Failed to kill case', err),
-    })
-  }
-
   protected extractText(event: CaseMessageEvent): string {
     return (
       event.content
@@ -861,11 +997,111 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     )
   }
 
+  protected formatToolArguments(args: string | null): string | null {
+    return args === null ? null : this.formatStructuredData(args)
+  }
+
+  protected formatToolDuration(call: ToolCall): string | null {
+    const durationMs = call.response?.durationMs
+    if (typeof durationMs !== 'number' || !Number.isFinite(durationMs)) return null
+    return durationMs < 1000 ? `${durationMs} ms` : `${(durationMs / 1000).toFixed(durationMs < 10_000 ? 1 : 0)} s`
+  }
+
+  protected formatToolMetadata(call: ToolCall): string | null {
+    const metadata = call.response?.toolMetadata
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) || Object.keys(metadata).length === 0) {
+      return null
+    }
+    return this.formatStructuredData(metadata)
+  }
+
+  protected isToolMetadataStructured(call: ToolCall): boolean {
+    return this.isStructuredPayload(call.response?.toolMetadata)
+  }
+
   protected extractToolOutput(call: ToolCall): string | null {
+    const output = this.extractToolOutputValue(call)
+    return output === null || output === undefined ? null : this.formatStructuredData(output)
+  }
+
+  protected isToolOutputStructured(call: ToolCall): boolean {
+    return this.isStructuredPayload(this.extractToolOutputValue(call))
+  }
+
+  private extractToolOutputValue(call: ToolCall): unknown {
     if (!call.response) return null
-    const output = call.response.output as { content?: string } | null
-    if (!output) return null
-    return output.content ?? null
+    const output = call.response.output as unknown
+    if (output === null || output === undefined) return null
+
+    // Most tools currently use { content }, but retain the complete payload when a tool
+    // returns another shape or a malformed value.
+    if (typeof output === 'object' && 'content' in output) {
+      const content = (output as { content?: unknown }).content
+      if (content !== undefined && content !== null) return content
+    }
+    return output
+  }
+
+  /** True when a payload can be displayed as formatted JSON rather than plain text. */
+  protected isStructuredPayload(value: unknown): boolean {
+    if (typeof value !== 'string') return value !== null && value !== undefined
+    try {
+      JSON.parse(value)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Recursively unescape string values in a parsed JSON structure.
+   * Handles backends that double-encode newlines (\\n → \n) inside JSON string values.
+   */
+  private unescapeStringValues(value: unknown): unknown {
+    if (typeof value === 'string') {
+      // Replace literal \n, \t, \r sequences with real whitespace characters
+      return value.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.unescapeStringValues(item))
+    }
+    if (value !== null && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, this.unescapeStringValues(v)])
+      )
+    }
+    return value
+  }
+
+  /** Pretty-print valid structured payloads without hiding malformed or plain-text values. */
+  protected formatStructuredData(value: unknown): string {
+    if (typeof value === 'string') {
+      try {
+        const parsed = this.unescapeStringValues(JSON.parse(value))
+        return JSON.stringify(parsed, null, 2)
+      } catch {
+        // Not valid JSON — unescape literal \n sequences so plain-text args render with line breaks
+        return value.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\r/g, '\r')
+      }
+    }
+    try {
+      const formatted = JSON.stringify(this.unescapeStringValues(value), null, 2)
+      return formatted ?? String(value)
+    } catch {
+      return String(value)
+    }
+  }
+
+  /** Local time for message cards; the full source timestamp remains available via title. */
+  protected formatMessageTime(timestamp: string): string {
+    const date = new Date(timestamp)
+    if (Number.isNaN(date.getTime())) return ''
+    return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
+  }
+
+  protected formatMessageTimestampTitle(timestamp: string): string {
+    const date = new Date(timestamp)
+    return Number.isNaN(date.getTime()) ? timestamp : date.toLocaleString()
   }
 
   protected toggleToolCall(requestId: string): void {
@@ -894,6 +1130,13 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     return this.extractText(item.event)
   }
 
+  /** Durable provider/model attribution carried by the agent MessageEvent itself. */
+  protected agentModelAttribution(message: CaseMessageEvent): string | null {
+    if (message.actor.role !== 'AGENT') return null
+    const parts = [message.llmProvider, message.llmModel].filter((part): part is string => !!part)
+    return parts.length ? parts.join(' · ') : null
+  }
+
   // ---------------------------------------------------------------------------
   // Markdown rendering
   // ---------------------------------------------------------------------------
@@ -903,84 +1146,72 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Called once per MessageEvent at SSE ingestion time.
    */
   private renderMarkdown(text: string): SafeHtml {
-    if (!text) return ''
-    const rawHtml = marked.parse(text, {
-      renderer: this.markdownRenderer,
-      breaks: true,
-      gfm: true,
-      async: false,
-    }) as string
-
-    const clean = DOMPurify.sanitize(rawHtml, {
-      ADD_TAGS: ['span'],
-      ADD_ATTR: ['aria-hidden', 'aria-label', 'target', 'rel'],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-    })
-
-    return this.domSanitizer.bypassSecurityTrustHtml(clean)
-  }
-
-  private buildMarkdownRenderer(): Renderer {
-    const renderer = new Renderer()
-    const originalLink = renderer.link.bind(renderer)
-    renderer.link = (token): string => {
-      let html = originalLink(token)
-      if (this.isExternalLink(token.href)) {
-        html = html
-          .replace('<a ', '<a target="_blank" rel="noopener noreferrer" ')
-          .replace('</a>', '<span class="external-link-icon" aria-hidden="true">↗</span></a>')
-      }
-      return html
-    }
-    return renderer
-  }
-
-  private isExternalLink(href: string): boolean {
-    if (!href || href.startsWith('/') || href.startsWith('#') || href.startsWith('?')) return false
-    if (href.startsWith('//')) return true
-    try {
-      return new URL(href, window.location.href).hostname !== window.location.hostname
-    } catch {
-      return false
-    }
+    return this.markdown.render(text)
   }
 
   // ---------------------------------------------------------------------------
   // Technical event mapping
   // ---------------------------------------------------------------------------
 
-  private toTechnicalItem(event: CaseEvent): TechnicalItem | null {
+  /**
+   * Events with a dedicated chat rendering or side effect must not also become fallback log
+   * rows. Keep orchestration events out of this list: they remain useful technical history.
+   */
+  private isEventConsumedElsewhere(event: CaseEvent): boolean {
     switch (event.type) {
-      case 'WarnEvent': {
-        const e = event as WarnEvent
-        return { type: 'WarnEvent', label: '⚠️ Warn', detail: e.message }
-      }
-      case 'ErrorEvent': {
-        const e = event as ErrorEvent
-        return { type: 'ErrorEvent', label: '❌ Error', detail: e.message }
-      }
+      case 'MessageEvent':
+      case 'ToolRequestEvent':
+      case 'ToolResponseEvent':
+      case 'QuestionEvent':
+      case 'AnswerEvent':
+      case 'CaseUpdatedEvent':
+      case 'TextChunkEvent':
+        return true
+      default:
+        return false
+    }
+  }
+
+  private toExecutionNotice(event: CaseEvent): ExecutionNotice | null {
+    switch (event.type) {
+      case 'WarnEvent':
+        return { severity: 'warning', title: 'Warning', detail: (event as WarnEvent).message }
+      case 'ErrorEvent':
+        return { severity: 'error', title: 'Execution error', detail: (event as ErrorEvent).message }
       case 'CaseStatusEvent': {
-        const e = event as CaseStatusEvent
-        return { type: 'CaseStatusEvent', label: `🟡 Status: ${e.status}` }
-      }
-      case 'AgentRunningEvent': {
-        const e = event as AgentRunningEvent
-        return { type: 'AgentRunningEvent', label: `▶️ Agent running: ${e.agentName}` }
-      }
-      case 'AgentFinishedEvent': {
-        const e = event as AgentFinishedEvent
-        return { type: 'AgentFinishedEvent', label: `✅ Agent finished: ${e.agentName}` }
-      }
-      case 'AgentSelectedEvent': {
-        const e = event as AgentSelectedEvent
-        return { type: 'AgentSelectedEvent', label: `🎯 Agent selected: ${e.agentName}` }
-      }
-      case 'IntentionGeneratedEvent': {
-        const e = event as IntentionGeneratedEvent
-        return { type: 'IntentionGeneratedEvent', label: `🧠 Intention → ${e.toolName}`, detail: e.intention }
+        const status = (event as CaseStatusEvent).status
+        if (status === 'ERROR') return { severity: 'terminal', title: 'Execution ended with an error' }
+        if (status === 'KILLED') return { severity: 'terminal', title: 'Execution was killed' }
+        return null
       }
       default:
         return null
+    }
+  }
+
+  private toTechnicalItem(event: CaseEvent): TechnicalItem {
+    switch (event.type) {
+      case 'CaseStatusEvent':
+        return { label: `Status: ${(event as CaseStatusEvent).status}` }
+      case 'AgentRunningEvent':
+        return { label: `Agent running: ${(event as AgentRunningEvent).agentName}` }
+      case 'AgentFinishedEvent':
+        return { label: `Agent finished: ${(event as AgentFinishedEvent).agentName}` }
+      case 'AgentSelectedEvent':
+        return { label: `Agent selected: ${(event as AgentSelectedEvent).agentName}` }
+      case 'IntentionGeneratedEvent': {
+        const e = event as IntentionGeneratedEvent
+        return { label: `Intention → ${e.toolName}`, detail: e.intention }
+      }
+      case 'ToolSelectedEvent':
+        return { label: `Tool selected: ${(event as ToolSelectedEvent).toolName}` }
+      default:
+        // Defensive fallback for known but not specifically formatted events, and for
+        // forward-compatible payloads received at runtime.
+        return {
+          label: `Event: ${(event as { type?: string }).type ?? 'unknown'}`,
+          detail: this.formatStructuredData(event),
+        }
     }
   }
 

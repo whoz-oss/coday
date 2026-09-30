@@ -9,7 +9,7 @@ import { AutocompleteInputComponent, AutocompleteItem } from '@whoz-oss/design-s
 import { Observable } from 'rxjs'
 import { UserGroupStateService } from '../../services/user-group-state.service'
 import { UserGroupMemberAutocompleteDataSource } from './user-group-member.data-source'
-import { computeMemberDiff, computeTakenElsewhere, memberLabel } from './user-group-form.util'
+import { computeMemberDiff, memberLabel } from './user-group-form.util'
 
 /** A user currently selected as a member, with a display label and their role in the group. */
 interface SelectedMember {
@@ -30,7 +30,7 @@ const MAX_NAME_LENGTH = 250
  * - /:namespaceId/user-groups/:userGroupId/edit → edit
  *
  * The form manages the group name, its deployed agents (a grouped checklist of platform +
- * namespace agent configs, disabling any already deployed to another group in the namespace),
+ * namespace agent configs, which can be shared across multiple groups),
  * and its members (an inline list with a per-member MEMBER/ADMIN role select + a type-ahead over
  * the namespace's users). On submit, member changes are diffed into the add/remove lists and the
  * full ADMIN set is sent as adminExternalIds.
@@ -77,8 +77,6 @@ export class UserGroupFormComponent implements OnInit {
   // --- Deployed agents ---
   protected readonly platformAgents = signal<AgentConfig[]>([])
   protected readonly namespaceAgents = signal<AgentConfig[]>([])
-  /** agentId -> owning group name, for agents deployed to another group in this namespace. */
-  protected readonly takenElsewhere = signal<Map<string, string>>(new Map())
   protected readonly selectedAgentIds = signal<Set<string>>(new Set())
 
   // --- Members ---
@@ -102,10 +100,9 @@ export class UserGroupFormComponent implements OnInit {
       .loadFormData(this.namespaceId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: ({ namespaceAgents, platformAgents, groups, users }) => {
+        next: ({ namespaceAgents, platformAgents, users }) => {
           this.namespaceAgents.set(namespaceAgents)
           this.platformAgents.set(platformAgents)
-          this.takenElsewhere.set(computeTakenElsewhere(groups, this.userGroupId))
           this.candidateUsers.set(users)
           if (this.userGroupId) {
             this.loadExistingGroup(this.userGroupId)
@@ -156,21 +153,13 @@ export class UserGroupFormComponent implements OnInit {
   // Agent selection
   // ---------------------------------------------------------------------------
 
-  protected isAgentDisabled(agent: AgentConfig): boolean {
-    return this.takenElsewhere().has(agent.id ?? '')
-  }
-
-  protected agentOwnerGroup(agent: AgentConfig): string | undefined {
-    return this.takenElsewhere().get(agent.id ?? '')
-  }
-
   protected isAgentSelected(agent: AgentConfig): boolean {
     return this.selectedAgentIds().has(agent.id ?? '')
   }
 
   protected toggleAgent(agent: AgentConfig): void {
     const id = agent.id
-    if (!id || this.isAgentDisabled(agent)) return
+    if (!id) return
     const next = new Set(this.selectedAgentIds())
     if (next.has(id)) {
       next.delete(id)

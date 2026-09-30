@@ -7,6 +7,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
 import mu.KLogging
 import java.nio.file.Path
 import java.time.Duration
@@ -180,7 +181,7 @@ class FilesystemAgentConfigRepository(
             modelName = model.modelName,
             integrations = model.integrations,
             advancedExecution = model.advancedExecution,
-            subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+            subAgents = model.subAgents.nullOrNotBlankItems(),
             docs =
                 model.docs
                     ?.filter { it.isNotBlank() }
@@ -201,6 +202,7 @@ class FilesystemAgentConfigRepository(
                             .normalize()
                             .toString() + suffix
                     }?.takeIf { it.isNotEmpty() },
+            skillSelectors = model.skillSelectors.nullOrNotBlankItems(),
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
@@ -236,6 +238,7 @@ private data class AgentConfigYamlModel(
     val integrations: Map<String, List<String>?>? = null,
     val subAgents: List<String>? = null,
     val docs: List<String>? = null,
+    val skillSelectors: List<String>? = null,
     // mandatoryDocs kept for backward compat with existing YAML files
     val mandatoryDocs: List<String>? = null,
 )

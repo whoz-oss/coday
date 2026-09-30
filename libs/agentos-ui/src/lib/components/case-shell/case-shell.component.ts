@@ -116,9 +116,13 @@ export class CaseShellComponent {
   protected readonly mobileDrawerOpen = signal(false)
 
   private static readonly SHOW_TECHNICAL_KEY = 'agentos.case-chat.showTechnical'
+  private static readonly SHOW_TOOL_CALLS_KEY = 'agentos.case-chat.showToolCalls'
 
   /** Global toggle for technical log events — persisted in localStorage. */
   protected readonly showTechnical = signal(localStorage.getItem(CaseShellComponent.SHOW_TECHNICAL_KEY) === 'true')
+
+  /** Global toggle for tool calls — visible by default and persisted in localStorage. */
+  protected readonly showToolCalls = signal(localStorage.getItem(CaseShellComponent.SHOW_TOOL_CALLS_KEY) !== 'false')
 
   /** Whether to show the namespace picker (admin or multiple namespaces) */
   protected readonly showNsPicker = computed(() => this.isAdmin() || this.namespaces().length > 1)
@@ -272,6 +276,26 @@ export class CaseShellComponent {
       })
   }
 
+  /**
+   * Persist field updates (title and/or runCostThreshold) requested from the chat header.
+   * Applied optimistically by the service; reverted on failure.
+   */
+  protected onCaseUpdateRequested(event: { id: string; title?: string; runCostThreshold?: number | null }): void {
+    this.caseState
+      .updateCaseFields(event.id, {
+        title: event.title,
+        // Convert null ("clear the threshold") to undefined (Case type doesn't carry null)
+        runCostThreshold: event.runCostThreshold ?? undefined,
+      })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        error: (err) => {
+          console.error(`[CaseShell] Failed to update case ${event.id}:`, err)
+          alert('Could not save the changes. Please try again.')
+        },
+      })
+  }
+
   // ---------------------------------------------------------------------------
   // Navigation
   // ---------------------------------------------------------------------------
@@ -328,6 +352,15 @@ export class CaseShellComponent {
     this.showTechnical.update((v) => {
       const next = !v
       localStorage.setItem(CaseShellComponent.SHOW_TECHNICAL_KEY, String(next))
+      return next
+    })
+  }
+
+  protected onMenuToggleToolCalls(): void {
+    this.menuOpen.set(false)
+    this.showToolCalls.update((v) => {
+      const next = !v
+      localStorage.setItem(CaseShellComponent.SHOW_TOOL_CALLS_KEY, String(next))
       return next
     })
   }

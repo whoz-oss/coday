@@ -33,6 +33,7 @@ val pluginBuilds =
         "agentos-bash-plugin",
         "agentos-file-plugin",
         "agentos-mcp-plugin",
+        "agentos-http-plugin",
     )
 
 // Resolve all paths at configuration time into plain File values
