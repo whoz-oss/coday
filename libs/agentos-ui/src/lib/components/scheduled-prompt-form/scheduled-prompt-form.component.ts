@@ -98,6 +98,12 @@ export class ScheduledPromptFormComponent implements OnInit {
 
       // State
       enabled: new FormControl<boolean>(true, { nonNullable: true }),
+
+      // External metadata
+      externalMetadataJson: new FormControl<string>('', {
+        nonNullable: true,
+        validators: [jsonValidator],
+      }),
     },
     { validators: [endDateRequiredValidator, occurrenceCountRequiredValidator] }
   )
@@ -137,6 +143,9 @@ export class ScheduledPromptFormComponent implements OnInit {
   }
   protected get enabledControl() {
     return this.form.controls.enabled
+  }
+  protected get externalMetadataJsonControl() {
+    return this.form.controls.externalMetadataJson
   }
 
   // ---------------------------------------------------------------------------
@@ -242,6 +251,7 @@ export class ScheduledPromptFormComponent implements OnInit {
     this.endDateControl.setValue(def.planning.endDate ?? null)
     this.occurrenceCountControl.setValue(def.planning.maxOccurrenceCount ?? null)
     this.enabledControl.setValue(def.enabled)
+    this.externalMetadataJsonControl.setValue(def.externalMetadata ? JSON.stringify(def.externalMetadata, null, 2) : '')
   }
 
   // ---------------------------------------------------------------------------
@@ -294,6 +304,10 @@ export class ScheduledPromptFormComponent implements OnInit {
           endType === SchedulerEndType.OCCURRENCES ? (this.occurrenceCountControl.value ?? undefined) : undefined,
       },
       enabled: this.enabledControl.value,
+      externalMetadata: (() => {
+        const raw = this.externalMetadataJsonControl.value.trim()
+        return raw ? JSON.parse(raw) : null
+      })(),
     }
 
     const call$ = isEdit ? this.state.update(this.existingPrompt!.id!, payload) : this.state.create(payload)
@@ -346,6 +360,17 @@ function occurrenceCountRequiredValidator(group: AbstractControl): ValidationErr
     return { occurrenceCountRequired: true }
   }
   return null
+}
+
+function jsonValidator(control: AbstractControl): ValidationErrors | null {
+  const value = (control.value as string)?.trim()
+  if (!value) return null
+  try {
+    JSON.parse(value)
+    return null
+  } catch {
+    return { invalidJson: true }
+  }
 }
 
 function todayIsoDate(): string {

@@ -236,26 +236,15 @@ class ScheduledPromptController(
     // Mapping helpers
     // -------------------------------------------------------------------------
 
-    /**
-     * Merges [resource] fields onto [existing], treating [ScheduledPromptDto.externalMetadata] as opaque:
-     * - null incoming → existing value preserved unchanged
-     * - non-null incoming → existing keys + incoming keys, incoming wins on conflicts
-     *
-     * No key-specific semantics (e.g. `isStandard`) are applied here; callers own that logic.
-     */
-    private fun toDomainForUpdate(resource: ScheduledPromptDto, existing: ScheduledPrompt): ScheduledPrompt {
-        val mergedMetadata: Map<String, Any?>? = resource.externalMetadata
-            ?.let { incoming -> (existing.externalMetadata ?: emptyMap()) + incoming }
-            ?: existing.externalMetadata
-        return existing.copy(
+    private fun toDomainForUpdate(resource: ScheduledPromptDto, existing: ScheduledPrompt): ScheduledPrompt =
+        existing.copy(
             name = resource.name,
             description = resource.description,
             recurrence = resource.recurrence.toDomain(),
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
-            externalMetadata = mergedMetadata,
+            externalMetadata = resource.externalMetadata,
         )
-    }
 
     companion object : KLogging()
 }

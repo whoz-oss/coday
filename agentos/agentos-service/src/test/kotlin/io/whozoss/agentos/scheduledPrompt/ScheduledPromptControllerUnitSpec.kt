@@ -547,25 +547,25 @@ class ScheduledPromptControllerUnitSpec : StringSpec({
         controller.getById(id).externalMetadata shouldBe null
     }
 
-    "update with null incoming externalMetadata preserves existing value" {
+    "update with null incoming externalMetadata clears existing value" {
         val existing = mapOf("isStandard" to true)
         val id = UUID.randomUUID()
         every { service.findById(id) } returns sp(id = id, externalMetadata = existing)
         every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
-        // dto() defaults externalMetadata to null — triggers preserve rule
+        // dto() defaults externalMetadata to null — replaces existing with null
         val result = controller.update(id, dto(id = id))
-        result.externalMetadata shouldBe existing
+        result.externalMetadata shouldBe null
     }
 
-    "update with non-null incoming externalMetadata merges with existing, incoming wins on conflicts" {
+    "update with non-null incoming externalMetadata replaces existing" {
         val existingMetadata = mapOf("isStandard" to true, "owner" to "team-a")
         val incomingMetadata = mapOf("isStandard" to false, "region" to "eu")
         val id = UUID.randomUUID()
         every { service.findById(id) } returns sp(id = id, externalMetadata = existingMetadata)
         every { service.updateWithPrompt(any(), any()) } answers { Pair(firstArg(), secondArg()) }
         val result = controller.update(id, dto(id = id, externalMetadata = incomingMetadata))
-        // existing keys + incoming keys; incoming wins on conflict ("isStandard" = false)
-        result.externalMetadata shouldBe mapOf("isStandard" to false, "owner" to "team-a", "region" to "eu")
+        // direct replacement — existing keys not preserved
+        result.externalMetadata shouldBe incomingMetadata
     }
 
     "update with non-null incoming externalMetadata and no existing produces the incoming map" {
