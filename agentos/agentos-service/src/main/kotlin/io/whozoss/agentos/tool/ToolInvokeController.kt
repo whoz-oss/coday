@@ -13,8 +13,11 @@ import java.util.UUID
  * Debug/test endpoint that resolves a named tool from the live integration-config overlay
  * and invokes it with a caller-supplied JSON payload.
  *
- * **Security**: restricted to SUPER_ADMIN — this endpoint bypasses the normal agent-run
- * permission model and executes tools with a synthetic
+ * **Security**: requires namespace WRITE (= namespace admin or super-admin) on the
+ * [ToolInvokeRequest.namespaceId] supplied in the request body. This grants any
+ * namespace admin access to the endpoint for their own namespace, while super-admins
+ * retain access to all namespaces via the standard permission bypass. The endpoint
+ * bypasses the normal agent-run permission model and executes tools with a synthetic
  * [io.whozoss.agentos.sdk.tool.ToolContext]. It is intended exclusively for development
  * and troubleshooting.
  *
@@ -36,10 +39,10 @@ class ToolInvokeController(
      * Responds with 404 when no tool matching [ToolInvokeRequest.toolName] is found.
      * The error message intentionally includes the full list of available tool names for
      * the resolved namespace/user context — this enumeration is acceptable because the
-     * endpoint is restricted to SUPER_ADMIN callers.
+     * endpoint requires namespace WRITE (admin rights) on the target namespace.
      */
     @PostMapping("/invoke", consumes = [MediaType.APPLICATION_JSON_VALUE])
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("hasPermission(#request.namespaceId, 'Namespace', 'WRITE')")
     suspend fun invoke(
         @RequestBody request: ToolInvokeRequest,
     ): ToolInvokeResponse {

@@ -61,7 +61,7 @@ class ToolInvokeService(
 
         // Grant all integrations (null value = all tools allowed) so every plugin
         // instantiates its full tool set — the caller picks the one they want by name.
-        val agentIntegrations: Map<String, List<String>?> =
+        val allToolsFromIntegrationByName: Map<String, List<String>?> =
             effectiveConfigs.associate { it.name to null }
 
         val context = ToolContext(
@@ -75,7 +75,7 @@ class ToolInvokeService(
         )
 
         val tools = toolResolverService.resolveToolsForRun(
-            agentIntegrations = agentIntegrations,
+            agentIntegrations = allToolsFromIntegrationByName,
             context = context,
             allIntegrationConfigs = effectiveConfigs,
         )
@@ -83,7 +83,7 @@ class ToolInvokeService(
         val tool = tools.firstOrNull { it.name == toolName }
             ?: run {
                 val available = tools.map { it.name }.sorted()
-                logger.warn { "[ToolInvoke] Tool '$toolName' not found. Available: $available" }
+                logger.warn { "[ToolInvoke] Tool '$toolName' not found. Available (first 10): ${available.take(10)}" }
                 throw ResourceNotFoundException(
                     "Tool '$toolName' not found in namespace $namespaceId. " +
                         "Available tools: $available",
