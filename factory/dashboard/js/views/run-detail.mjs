@@ -142,6 +142,7 @@ export async function mount(container, options = {}) {
   }
 
   const sseClient = options.sseClient ?? null
+  const doc = options.document ?? globalThis.document ?? null
   const now = typeof options.now === 'function' ? options.now : () => Date.now()
   const setTimeoutFn = options.setTimeoutFn ?? setTimeout
   const clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout
@@ -171,8 +172,15 @@ export async function mount(container, options = {}) {
     refreshTimer: null,
     abortController: null,
     unsubscribe: null,
+    sseUnsubscribers: [],
+    visListener: null,
     onClick: null,
   }
+
+  // Monotonic request sequence for `loadAll`: a slow REST response that
+  // resolves after a newer load was started is discarded rather than applied
+  // (out-of-order / race-condition network protection).
+  let currentFetchSequence = 0
 
   const steps = () => normalizeSteps(state.workflow, state.timing)
   const selectedStep = () => steps().find((step) => step.id === state.selectedStepId) ?? null
@@ -277,6 +285,7 @@ export async function mount(container, options = {}) {
 
   const loadAll = async () => {
     if (!state.mounted) return
+    const seq = ++currentFetchSequence
     state.abortController?.abort?.()
     const controller = typeof AbortController === 'function' ? new AbortController() : null
     state.abortController = controller
@@ -290,21 +299,21 @@ export async function mount(container, options = {}) {
     try {
       workflow = await apiClient.get(withScope(base), { signal })
     } catch (error) {
-      if (!state.mounted || controller !== state.abortController) return
+      if (!state.mounted || seq < currentFetchSequence) return
       state.phase = 'error'
       state.error = String(error?.message ?? error)
       state.workflow = null
       render()
       return
     }
-    if (!state.mounted || controller !== state.abortController) return
+    if (!state.mounted || seq < currentFetchSequence) return
 
     const [timingPayload, evidencePayload, metricsPayload] = await Promise.all([
       safeGet(withScope(`${base}/timing`), signal),
       safeGet(withScope(`${base}/evidence`), signal),
       safeGet(withScope(`${base}/metrics`), signal),
     ])
-    if (!state.mounted || controller !== state.abortController) return
+    if (!state.mounted || seq < currentFetchSequence) return
 
     state.workflow = workflow && typeof workflow === 'object' ? workflow : null
     state.timing = timingPayload?.timing ?? null
@@ -491,6 +500,26 @@ export async function mount(container, options = {}) {
       if (!matchesWorkflow(payload)) return
       scheduleRefresh()
     })
+    // On a stream recovery, invalidations emitted while the connection was
+    // down (e.g. a run that reached a terminal state) may be lost forever:
+    // `SseClient` re-emits `reconnect` on every re-open after the first
+    // connection, so re-read the authoritative REST state unconditionally.
+    const unsubscribeReconnect = sseClient.on('reconnect', () => {
+      if (state.mounted) void loadAll()
+    })
+    if (typeof unsubscribeReconnect === 'function') state.sseUnsubscribers.push(unsubscribeReconnect)
+  }
+
+  // Returning the tab to the foreground re-runs an authoritative `loadAll()`:
+  // SSE invalidations can be throttled/dropped while hidden. The request
+  // sequence guard keeps a slow hidden-tab response from clobbering the fresh
+  // one.
+  state.visListener = () => {
+    if (!state.mounted) return
+    if (doc?.visibilityState === 'visible') void loadAll()
+  }
+  if (doc && typeof doc.addEventListener === 'function') {
+    doc.addEventListener('visibilitychange', state.visListener)
   }
 
   let unmounted = false
@@ -506,6 +535,18 @@ export async function mount(container, options = {}) {
     state.abortController = null
     if (typeof state.unsubscribe === 'function') state.unsubscribe()
     state.unsubscribe = null
+    for (const unsubscribe of state.sseUnsubscribers) {
+      try {
+        unsubscribe()
+      } catch {
+        // A faulty unsubscribe must never block teardown.
+      }
+    }
+    state.sseUnsubscribers = []
+    if (state.visListener && doc && typeof doc.removeEventListener === 'function') {
+      doc.removeEventListener('visibilitychange', state.visListener)
+    }
+    state.visListener = null
     if (state.onClick) container.removeEventListener?.('click', state.onClick)
     state.onClick = null
     container.innerHTML = ''

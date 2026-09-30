@@ -1,7 +1,11 @@
 package io.whozoss.factory.workflow
 
+import io.mockk.mockk
 import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.capability.AgentTurnCapability
 import io.whozoss.factory.capability.AgentTurnRequest
 import io.whozoss.factory.capability.AgentTurnResult
@@ -162,6 +166,9 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
                 evidenceRepository,
                 interactionRepository,
                 attemptRepository,
+                durableAgentAttemptService = mockk<DurableAgentAttemptService>(relaxed = true),
+                agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
+                agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
             ),
             sseHub,
         )
@@ -318,7 +325,7 @@ class SessionDefinitionImportIntegrationTest : Neo4jDomainIntegrationTest() {
         )
 
         val emitter = CapturingSseEmitter()
-        sseHub.register(namespace, emitter)
+        sseHub.register(scope, namespace, emitter)
 
         sessionRunService.runSession(scope, namespace, workflowId, repoRoot)
 

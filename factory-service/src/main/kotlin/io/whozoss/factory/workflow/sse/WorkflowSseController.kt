@@ -27,6 +27,22 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
  *
  * The route is `@Operation(hidden = true)` so it is excluded from the generated
  * OpenAPI client (an infinite event stream is not a request/response operation).
+ *
+ * ## Explicit scope contract
+ *
+ * The subscription is always partitioned by the *verified* tenant scope derived
+ * from the trust context ([resolveWorkflowCaller]) — the scope is never read
+ * from client input. `namespaceId` is an optional filter that only narrows the
+ * subscription *within* that tenant:
+ *
+ *  - a concrete namespace → that namespace's invalidations (plus the tenant-wide
+ *    invalidation feed);
+ *  - absent/blank → the whole tenant scope, keyed by the caller's
+ *    `(organizationId, workstreamId)` — never an unpartitioned, cross-tenant
+ *    global bucket.
+ *
+ * A missing/unauthorized trust context fails closed with `401` before any SSE
+ * response is opened, so no connection is ever registered without a scope.
  */
 @RestController
 @RequestMapping("/api/factory/workflows")
@@ -43,17 +59,16 @@ class WorkflowSseController(
         @Parameter(hidden = true) trustContext: TrustContext?,
         response: HttpServletResponse,
     ): SseEmitter {
-        // Identity is resolved from the verified trust context; a missing context
-        // fails closed with 401 before any SSE response is opened. `namespaceId`
-        // is an OPTIONAL filter: absent/blank subscribes to the whole tenant
-        // scope (registered under `""`) instead of failing with
-        // INVALID_NAMESPACE_ID.
+        // Identity + tenant scope are resolved from the verified trust context; a
+        // missing context fails closed with 401 before any SSE response is opened.
+        // `namespaceId` is an OPTIONAL filter: absent/blank subscribes to the
+        // whole tenant scope (a scoped key, not the shared global `""` bucket).
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId, requireNamespace = false)
         // SSE framing headers: disable intermediary buffering/caching so events
         // reach the client immediately (byte-for-byte parity with the Node hub).
         response.setHeader("Cache-Control", "no-cache, no-transform")
         response.setHeader("Connection", "keep-alive")
         response.setHeader("X-Accel-Buffering", "no")
-        return hub.register(caller.namespaceId)
+        return hub.register(caller.scope, caller.namespaceId.ifBlank { null })
     }
 }

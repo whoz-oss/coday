@@ -317,4 +317,21 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(listIds(service.listProjections(otherScope, null, "active")))
             .containsExactly("wf-other-scope")
     }
+
+    @Test
+    fun `explicit cancellation is wired by default since the SSE cutover and reports an unknown attempt`() {
+        // Since the final cutover the durable SSE bridge is enabled by default, so
+        // the cancellation service is wired and the route no longer answers
+        // BRIDGE_CANCELLATION_UNAVAILABLE; an unknown attempt is reported as not found.
+        val body = mapOf("namespaceId" to namespace, "expectedRevision" to 1)
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/wf-cancel/attempts/attempt-1/cancel",
+            HttpMethod.POST,
+            HttpEntity(body, headers()),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        val error = response.body?.get("error") as? Map<*, *>
+        assertThat(error?.get("code")).isEqualTo("ATTEMPT_NOT_FOUND")
+    }
 }

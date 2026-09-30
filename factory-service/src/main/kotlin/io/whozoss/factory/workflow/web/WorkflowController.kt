@@ -3,6 +3,7 @@ package io.whozoss.factory.workflow.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.factory.agentattempt.service.BridgeCancellationService
 import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.web.TrustContext
@@ -10,8 +11,10 @@ import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowExecution
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.service.SessionRunService
+import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import io.whozoss.factory.workflow.service.WorkflowHttpResult
 import io.whozoss.factory.workflow.service.WorkflowService
 import org.springframework.http.MediaType
@@ -49,8 +52,15 @@ import java.util.UUID
 class WorkflowController(
     private val service: WorkflowService,
     private val sessionRunService: SessionRunService,
+    private val sessionRunSubmissionService: SessionRunSubmissionService,
     private val sessionProperties: SessionProperties,
     private val tenantScopeProvider: TenantScopeProvider,
+    /**
+     * Optional bridge cancellation command. Present only when the AgentOS
+     * execution adapter is enabled; the cancellation route reports a clean 503
+     * otherwise.
+     */
+    private val bridgeCancellationService: BridgeCancellationService? = null,
 ) {
 
     // ----- collection / detail ------------------------------------------
@@ -277,23 +287,26 @@ class WorkflowController(
     fun run(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestParam(name = "sync", required = false) sync: Boolean?,
         @Parameter(hidden = true) trustContext: TrustContext?,
-    ): WorkflowDataEnvelope<Any?> = runInternal(workflowId, body, trustContext, "run")
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> = runInternal(workflowId, body, trustContext, "run", sync ?: false)
 
     @PostMapping(path = ["/{workflowId}/continue"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Continue a paused workflow.")
     fun continueWorkflow(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestParam(name = "sync", required = false) sync: Boolean?,
         @Parameter(hidden = true) trustContext: TrustContext?,
-    ): WorkflowDataEnvelope<Any?> = runInternal(workflowId, body, trustContext, "continue")
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> = runInternal(workflowId, body, trustContext, "continue", sync ?: false)
 
     private fun runInternal(
         workflowId: String,
         body: Map<String, Any?>?,
         trustContext: TrustContext?,
         operation: String,
-    ): WorkflowDataEnvelope<Any?> {
+        sync: Boolean,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
         val projection = service.getProjection(caller.scope, caller.namespaceId, workflowId)
@@ -309,8 +322,36 @@ class WorkflowController(
                 "A repoRoot is required to run the session (body.repoRoot or factory.session.default-repo-root).",
             )
         val ticket = (request["ticket"] as? String)?.takeIf { it.isNotBlank() }
-        return WorkflowDataEnvelope(
-            runSession(caller.scope, caller.namespaceId, workflowId, Paths.get(repoRoot), operation, ticket),
+        if (!sync) {
+            // Asynchronous, durable submission: enqueue the run and answer 202 with
+            // the tracking identity. The bounded outbox worker drains it, so the
+            // HTTP connection is never held for the agent turn and an undrained
+            // submission survives a restart.
+            val submissionId = sessionRunSubmissionService.submit(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                repoRoot,
+                operation,
+                ticket,
+            )
+            return ResponseEntity.accepted().body(
+                WorkflowDataEnvelope(
+                    mapOf(
+                        "workflowId" to workflowId,
+                        "namespaceId" to caller.namespaceId,
+                        "operation" to operation,
+                        "status" to "accepted",
+                        "submissionId" to submissionId,
+                        "runtimeNotification" to "durable-outbox",
+                    ),
+                ),
+            )
+        }
+        return ResponseEntity.ok(
+            WorkflowDataEnvelope(
+                runSession(caller.scope, caller.namespaceId, workflowId, Paths.get(repoRoot), operation, ticket),
+            ),
         )
     }
 
@@ -330,6 +371,59 @@ class WorkflowController(
             "status" to result.status,
             "steps" to result.steps.map { mapOf("id" to it.stepId, "status" to it.status) },
             "runtimeNotification" to "not-configured",
+        )
+    }
+
+    // ----- attempts / explicit cancellation ------------------------------
+
+    /**
+     * Explicit business cancellation of a durable agent attempt.
+     *
+     * Closing the SSE stream (or a browser tab) only stops *observing* the run;
+     * it never cancels it. Cancellation requires this explicit, revision-fenced
+     * command, which interrupts/kills the AgentOS case, reconciles its post-kill
+     * state and moves the attempt to the durable terminal `interrupted` status.
+     */
+    @PostMapping(path = ["/{workflowId}/attempts/{attemptId}/cancel"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Explicitly cancel a durable agent attempt (revision-fenced, interrupt/kill + reconcile).")
+    fun cancelAttempt(
+        @PathVariable workflowId: String,
+        @PathVariable attemptId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("namespaceId", "expectedRevision", "reason") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain expectedRevision.")
+        }
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
+        val cancellation = bridgeCancellationService
+            ?: throw WorkflowException(
+                "BRIDGE_CANCELLATION_UNAVAILABLE",
+                "The AgentOS execution bridge is not enabled; explicit cancellation is unavailable.",
+                503,
+            )
+        val reason = (request["reason"] as? String)?.takeIf { it.isNotBlank() } ?: BridgeCancellationService.DEFAULT_REASON
+        val outcome = cancellation.requestCancel(
+            caller.scope,
+            caller.namespaceId,
+            workflowId,
+            attemptId,
+            expectedRevision,
+            reason,
+        )
+        return WorkflowDataEnvelope(
+            mapOf(
+                "workflowId" to outcome.workflowId,
+                "attemptId" to outcome.attemptId,
+                "stepId" to outcome.stepId,
+                "status" to outcome.status.dbValue,
+                "revision" to outcome.revision,
+                "idempotent" to outcome.idempotent,
+                "reconciledVerdict" to outcome.reconciledVerdict,
+            ),
         )
     }
 

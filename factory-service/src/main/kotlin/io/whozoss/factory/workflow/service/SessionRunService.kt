@@ -31,9 +31,14 @@ import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
 import mu.KotlinLogging
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.TransactionDefinition
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionTemplate
 
 /** The projected state of one session step. */
 data class SessionStepState(val stepId: String, val status: String)
@@ -116,9 +121,13 @@ private data class OracleEvaluation(
  * (`workflow_transitions`) and a `session-step` evidence item, then the instance
  * projection is refreshed for the cockpit timeline.
  *
- * Note: the run shares a single transaction with the HTTP agent-turn call; a long
- * agent turn therefore holds the transaction. This is acceptable for W8.3 and is
- * revisited with the projection/cockpit wave (W8.4).
+ * Note: the run is an orchestrator loop that is deliberately NOT transactional:
+ * each persistence step (step-state claim/update, transition, evidence, projection)
+ * opens its own short transaction, so a long external capability call (an agent
+ * turn or a local verification process) never holds — and never outlives — a Neo4j
+ * transaction. The in-process sequencer serialises runs of the same workflow with
+ * a process-local lock, which is exactly the guarantee the embedded, single-process
+ * engine provides (mirroring the lease claim).
  */
 @Service
 class SessionRunService(
@@ -139,13 +148,62 @@ class SessionRunService(
      * auto-oracle hook is a no-op.
      */
     private val oracleExecutionService: OracleExecutionService? = null,
+    /**
+     * Optional transaction manager used to bracket emergency failure-recovery
+     * writes in a FRESH short transaction, so they succeed even if a prior query
+     * or external operation failed. Injected in production; pure unit tests may
+     * omit it and the recovery then runs inline.
+     */
+    private val transactionManager: PlatformTransactionManager? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
 
+    private val failureTransaction: TransactionTemplate? = transactionManager?.let { manager ->
+        TransactionTemplate(manager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
+    }
+
+    /** Runs [block] in a fresh short transaction, or inline when none is configured. */
+    private fun <T : Any> newTransaction(block: () -> T): T {
+        val template = failureTransaction ?: return block()
+        return template.execute { block() }!!
+    }
+
     /** Runs (or resumes) the session DAG to a terminal state or to a human suspension. */
-    @Transactional
     fun runSession(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        repoRoot: Path,
+        ticket: String? = null,
+    ): SessionRunResult = withWorkflowLock(scope, namespaceId, workflowId) {
+        runSessionLocked(scope, namespaceId, workflowId, repoRoot, ticket)
+    }
+
+    /**
+     * Serialises concurrent runs of the same workflow: the in-process sequencer
+     * is the only owner of a step's `running` state, so two racing runs must not
+     * both execute the same ready step. This mirrors the lease-claim lock used by
+     * [io.whozoss.factory.lease.persistence.Neo4jLeaseRepository] for the embedded,
+     * single-process engine.
+     */
+    private inline fun <T> withWorkflowLock(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        block: () -> T,
+    ): T {
+        val key = "${scope.organizationId}|${scope.workstreamId}|$namespaceId|$workflowId"
+        val lock = runLocks.computeIfAbsent(key) { ReentrantLock() }
+        lock.lock()
+        try {
+            return block()
+        } finally {
+            lock.unlock()
+        }
+    }
+
+    private fun runSessionLocked(
         scope: TenantScope,
         namespaceId: String,
         workflowId: String,
@@ -193,8 +251,17 @@ class SessionRunService(
             }
         }
         val sessionStatus = if (suspended) WorkflowStatuses.WAITING_HUMAN else SessionSequencer.terminalStatus(steps, statuses.statuses)
-        persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
-        sseHub.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
+        val committedRevision = persistProjection(scope, namespaceId, workflowId, steps, statuses, sessionStatus, effectiveTicket)
+        sseHub.publish(
+            scope,
+            namespaceId,
+            buildMap<String, Any?> {
+                put("workflowId", workflowId)
+                put("namespaceId", namespaceId)
+                // The committed revision lets a client discard a stale REST re-read.
+                if (committedRevision != null) put("revision", committedRevision)
+            },
+        )
         return SessionRunResult(namespaceId, workflowId, sessionStatus, statusesOf(steps, statuses.statuses))
     }
 
@@ -250,8 +317,14 @@ class SessionRunService(
         for (step in steps) {
             val stored = byId[step.id]?.status ?: WorkflowStatuses.PENDING
             // A step left `running` by an interrupted run is re-scheduled: the
-            // in-process sequencer is the only owner of the `running` state.
-            progress.statuses[step.id] = if (stored == WorkflowStatuses.RUNNING) WorkflowStatuses.READY else stored
+            // in-process sequencer is the only owner of the `running` state. The
+            // reset is persisted (inside the workflow lock) so the atomic claim
+            // below can always transition from `ready`.
+            if (stored == WorkflowStatuses.RUNNING) {
+                setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, progress)
+            } else {
+                progress.statuses[step.id] = stored
+            }
         }
         progress.startedAt.putAll(restored.startedAt)
         progress.completedAt.putAll(restored.completedAt)
@@ -283,13 +356,17 @@ class SessionRunService(
         expectedRevision: Int,
         workflowType: String?,
     ): String? {
-        setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.RUNNING, statuses)
+        // Atomic claim: only the run that transitions the step `ready -> running`
+        // owns its external execution. A concurrent or stale run gets `false` and
+        // leaves the step alone. The claim is a short, isolated write.
+        if (!claimStep(scope, namespaceId, workflowId, step.id, statuses)) return null
         val execution = try {
             capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket)
         } catch (error: Exception) {
-            recordFailureEvidence(scope, namespaceId, workflowId, step, error)
-            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision)
-            setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
+            // The failure is handled OUTSIDE any (possibly dead) transaction: the
+            // recovery writes run in a FRESH short transaction so they succeed
+            // even when the prior query/operation failed.
+            recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision, statuses)
             return WorkflowStatuses.FAILED
         }
         var terminal = classify(execution.outcome)
@@ -452,6 +529,72 @@ class SessionRunService(
         )
     }
 
+    /**
+     * Atomic claim of a ready step: a graph-native compare-and-swap transitions
+     * the step to `running` only when it is currently `ready`/`pending`, so two
+     * racing runs can never both own the step. The in-memory progress is updated
+     * only once the CAS succeeded.
+     */
+    private fun claimStep(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        progress: SessionProgress,
+    ): Boolean {
+        val startedAt = progress.startedAt[stepId] ?: nowIso()
+        val claimed = repository.claimStep(
+            scope,
+            namespaceId,
+            workflowId,
+            stepId,
+            fromStatuses = listOf(WorkflowStatuses.READY, WorkflowStatuses.PENDING),
+            payload = progress.payload(stepId) + mapOf("startedAt" to startedAt),
+        )
+        if (!claimed) {
+            logger.warn { "Step '$stepId' of workflow '$workflowId' is already claimed; skipping execution." }
+            return false
+        }
+        progress.statuses[stepId] = WorkflowStatuses.RUNNING
+        progress.startedAt[stepId] = startedAt
+        return true
+    }
+
+    /**
+     * Emergency failure recovery: the failure evidence, the FAILED transition and
+     * the step status are written in ONE fresh short transaction so they succeed
+     * even when the prior query/operation failed (e.g. the external execution had
+     * outlived a transaction). The original cause is never masked by an unhandled
+     * 500.
+     */
+    private fun recordStepFailure(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        error: Exception,
+        expectedRevision: Int,
+        statuses: SessionProgress,
+    ) {
+        logger.warn(error) { "Step '${step.id}' of workflow '$workflowId' failed: ${error.message ?: error.toString()}" }
+        runCatching {
+            newTransaction {
+                recordFailureEvidence(scope, namespaceId, workflowId, step, error)
+                transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision)
+                setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
+            }
+        }.onFailure { recoveryError ->
+            logger.error(recoveryError) {
+                "Failure recovery for step '${step.id}' of workflow '$workflowId' could not be persisted: " +
+                    (error.message ?: error.toString())
+            }
+            // Keep the fail-closed in-memory classification even if the recovery
+            // write itself could not be persisted.
+            statuses.statuses[step.id] = WorkflowStatuses.FAILED
+            statuses.completedAt.putIfAbsent(step.id, nowIso())
+        }
+    }
+
     private fun transition(
         scope: TenantScope,
         namespaceId: String,
@@ -586,8 +729,8 @@ class SessionRunService(
         progress: SessionProgress,
         sessionStatus: String,
         ticket: String?,
-    ) {
-        val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return
+    ): Int? {
+        val instance = repository.findInstance(scope, namespaceId, workflowId) ?: return null
         val nextInstance = instance.instance.toMutableMap()
         nextInstance["status"] = sessionStatus
         nextInstance["steps"] = steps.map { mapOf("id" to it.id, "status" to (progress.statuses[it.id] ?: WorkflowStatuses.PENDING)) }
@@ -624,7 +767,13 @@ class SessionRunService(
         // asserts `instance["revision"] == record.revision`), so keep the two in
         // step on every projection refresh.
         nextInstance["revision"] = next.revision
-        repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)
+        // Strict CAS verification: the instance projection refresh must win its
+        // compare-and-swap. A stale revision means another writer (or a stale run)
+        // changed the instance concurrently; silently ignoring it would publish a
+        // projection that does not reflect the durable state.
+        if (!repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "Instance projection revision conflict.")
+        }
 
         runCatching {
             val existingProjection = repository.findProjection(scope, namespaceId, workflowId)
@@ -651,6 +800,7 @@ class SessionRunService(
                 expectedRevision = null,
             )
         }
+        return next.revision
     }
 
     private fun activeInstance(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowInstanceRecord {
@@ -680,5 +830,15 @@ class SessionRunService(
         if (startedAt == null || completedAt == null) return null
         return runCatching { Duration.between(Instant.parse(startedAt), Instant.parse(completedAt)).toMillis() }
             .getOrNull()
+    }
+
+    private companion object {
+        /**
+         * Serialises the runs of one workflow in this process (the embedded
+         * engine is single-process): the in-process sequencer is the only owner
+         * of a step's `running` state, so two racing runs must not both execute
+         * the same ready step.
+         */
+        val runLocks = ConcurrentHashMap<String, ReentrantLock>()
     }
 }

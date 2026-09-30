@@ -99,6 +99,22 @@ interface WorkflowRepository {
         payload: Map<String, Any?>,
     ): Boolean
 
+    /**
+     * Atomic step claim: transitions the step to `running` only when its current
+     * status is one of [fromStatuses], incrementing its revision and replacing its
+     * payload in the same statement. Returns `false` when the step is not
+     * claimable (already claimed, terminal, or absent), so two racing runs cannot
+     * both own it.
+     */
+    fun claimStep(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        fromStatuses: List<String>,
+        payload: Map<String, Any?>,
+    ): Boolean
+
     fun appendCodeTransition(
         scope: TenantScope,
         namespaceId: String,

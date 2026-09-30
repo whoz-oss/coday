@@ -52,6 +52,11 @@ export class SseClient {
     this.attachedHandlers = new Map()
     this.closed = false
     this.connected = false
+    // `hasEverConnected` distinguishes the very first successful connection
+    // (the view does not need a catch-up refetch: it just loaded) from a
+    // recovery after a drop, which must fan out a `reconnect` event so views
+    // can re-read the authoritative REST state and never miss a terminated run.
+    this.hasEverConnected = false
     this.reconnectTimer = null
   }
 
@@ -116,6 +121,11 @@ export class SseClient {
   handleEvent(event, evt) {
     if (event === 'open') {
       this.connected = true
+      // Emit `reconnect` on every re-open AFTER the first connection so views
+      // can catch up on invalidations missed while the stream was down. The
+      // initial connection stays a plain `open` to avoid a duplicate load.
+      if (this.hasEverConnected) this.emit('reconnect', evt)
+      this.hasEverConnected = true
       this.emit('open', evt)
       this.onOpen?.(evt)
       return

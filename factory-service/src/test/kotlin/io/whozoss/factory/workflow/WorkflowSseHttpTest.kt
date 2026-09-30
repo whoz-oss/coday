@@ -81,12 +81,13 @@ class WorkflowSseHttpTest : Neo4jDomainIntegrationTest() {
         val future = client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
 
         val deadline = System.currentTimeMillis() + 5_000
-        while (hub.size(namespace) == 0 && System.currentTimeMillis() < deadline) {
+        while (hub.size(scope, namespace) == 0 && System.currentTimeMillis() < deadline) {
             Thread.sleep(20)
         }
-        assertThat(hub.size(namespace)).isGreaterThan(0)
+        assertThat(hub.size(scope, namespace)).isGreaterThan(0)
 
         hub.publish(
+            scope,
             namespace,
             linkedMapOf("workflowId" to "wf-sse-http", "namespaceId" to namespace, "revision" to 1),
             WorkflowProjectionEvents.UPDATED,
@@ -114,8 +115,9 @@ class WorkflowSseHttpTest : Neo4jDomainIntegrationTest() {
 
     /**
      * A stream opened without `namespaceId` on a loopback-dev trust context must
-     * subscribe to the whole tenant scope (registered under `""`) instead of
-     * failing closed with `401 INVALID_NAMESPACE_ID`.
+     * subscribe to the whole tenant scope (a *scoped* tenant key, never the
+     * unpartitioned global `""` bucket) instead of failing closed with
+     * `401 INVALID_NAMESPACE_ID`.
      */
     @Test
     fun `stream without namespaceId opens on a loopback trust context`() {
@@ -129,14 +131,16 @@ class WorkflowSseHttpTest : Neo4jDomainIntegrationTest() {
         val future = client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
 
         val deadline = System.currentTimeMillis() + 5_000
-        while (hub.size("") == 0 && System.currentTimeMillis() < deadline) {
+        while (hub.size(scope, null) == 0 && System.currentTimeMillis() < deadline) {
             Thread.sleep(20)
         }
-        assertThat(hub.size("")).isGreaterThan(0)
+        // The blank namespace is keyed by the caller's tenant scope, not `""`.
+        assertThat(hub.size(scope, null)).isGreaterThan(0)
+        assertThat(hub.size("")).isEqualTo(0)
 
-        // Force one frame so the 200 response headers reach the client.
         hub.publish(
-            "",
+            scope,
+            null,
             linkedMapOf("workflowId" to "wf-sse-namespace-less", "revision" to 1),
             WorkflowProjectionEvents.UPDATED,
         )
