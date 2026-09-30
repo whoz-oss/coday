@@ -604,6 +604,7 @@ class AgentAdvanced(
                     durationMs = durationMs,
                     toolMetadata = result.metadata,
                     images = result.images,
+                    structuredOutput = result.structuredOutput,
                 )
             } catch (e: Exception) {
                 logger.warn(e) {
@@ -1587,6 +1588,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                         durationMs = durationMs,
                         toolMetadata = result.metadata,
                         images = result.images,
+                        structuredOutput = result.structuredOutput,
                     )
                 } catch (e: AgentInterrupt) {
                     // Re-throw so handleToolExecution() can emit a proper ToolResponseEvent

@@ -34,6 +34,7 @@ val pluginBuilds =
         "agentos-file-plugin",
         "agentos-mcp-plugin",
         "agentos-http-plugin",
+        "agentos-git-plugin",
         "agentos-factory-bridge-plugin",
     )
 

@@ -6,11 +6,13 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonValue
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
+import io.whozoss.agentos.sdk.usage.LlmUsage
 import java.time.Instant
 import java.util.UUID
 
@@ -155,6 +157,8 @@ data class AgentSelectedEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
+    /** Non-null only when this selection resumes a specific answered question. */
+    val questionId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_SELECTED
 }
@@ -168,6 +172,9 @@ data class AgentFinishedEvent(
     val agentName: String,
     val llmProvider: String? = null,
     val llmModel: String? = null,
+    /** Aggregated token usage for this agent run. Null when tracking is not configured. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val llmUsage: LlmUsage? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }
@@ -247,6 +254,9 @@ data class ToolRequestEvent(
  * [io.whozoss.agentos.sdk.tool.ToolExecutionResult.images]). [output] stays the textual
  * summary of the execution; provider tool responses are text-only, so images are delivered
  * to the LLM separately at prompt-build time.
+ *
+ * [structuredOutput] carries the machine-readable result when the tool declares an
+ * [io.whozoss.agentos.sdk.tool.StandardTool.outputSchema]. Null for text-only tools.
  */
 data class ToolResponseEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -263,6 +273,9 @@ data class ToolResponseEvent(
     val toolMetadata: Map<String, Any?> = emptyMap(),
     /** Images produced by the tool. Empty list when the tool produced no image. */
     val images: List<MessageContent.Image> = emptyList(),
+    /** Structured output conforming to [io.whozoss.agentos.sdk.tool.StandardTool.outputSchema], null for text-only tools. */
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val structuredOutput: JsonNode? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_RESPONSE
 }

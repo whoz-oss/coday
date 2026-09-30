@@ -15,6 +15,7 @@ import { IntentionGeneratedEvent } from './intention-generated-event'
 import { ThinkingEvent } from './thinking-event'
 import { MessageEvent } from './message-event'
 import { WarnEvent } from './warn-event'
+import { SubCaseStartedEvent } from './sub-case-started-event'
 import { TextChunkEvent } from './text-chunk-event'
 import { PendingConfirmationEvent } from './pending-confirmation-event'
 import { ToolResponseEvent } from './tool-response-event'
@@ -23,10 +24,9 @@ import { ToolSelectedEvent } from './tool-selected-event'
 import { AnswerEvent } from './answer-event'
 import { ErrorEvent } from './error-event'
 import { CaseStatusEvent } from './case-status-event'
+import { SubCaseFinishedEvent } from './sub-case-finished-event'
 import { CaseUpdatedEvent } from './case-updated-event'
 import { ToolRequestEvent } from './tool-request-event'
-import { SubCaseStartedEvent } from './sub-case-started-event'
-import { SubCaseFinishedEvent } from './sub-case-finished-event'
 
 export type CaseEvent =
   | AgentFinishedEvent
@@ -41,11 +41,11 @@ export type CaseEvent =
   | MessageEvent
   | PendingConfirmationEvent
   | QuestionEvent
+  | SubCaseFinishedEvent
+  | SubCaseStartedEvent
   | TextChunkEvent
   | ThinkingEvent
   | ToolRequestEvent
   | ToolResponseEvent
   | ToolSelectedEvent
-  | SubCaseStartedEvent
-  | SubCaseFinishedEvent
   | WarnEvent

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -28,6 +29,10 @@ import java.util.UUID
  *   Null when running outside a live case (e.g. definition resolution for a debug endpoint).
  * @param toolGrantPolicies Optional SPI policies evaluated against each resolved tool before
  *   the agent is granted it. Empty by default: pass-through, no filtering.
+ * @param usageAccumulator When non-null, [io.whozoss.agentos.chat.ChatClientProvider] wraps the model in
+ *   [io.whozoss.agentos.chat.UsageTrackingChatModel] to record each provider request.
+ *   The caller retrieves the totals at the end of the run and attaches them to [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent].
+ *   Null when usage tracking is not needed (e.g. definition resolution, tests).
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
@@ -38,6 +43,7 @@ data class AgentExecutionContext(
     val workflowId: String? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
+    val usageAccumulator: UsageAccumulator? = null,
     val toolGrantPolicies: List<ToolGrantPolicy> = emptyList(),
 ) {
     fun toToolContext(

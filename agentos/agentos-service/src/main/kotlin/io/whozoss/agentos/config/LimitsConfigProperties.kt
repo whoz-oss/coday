@@ -35,7 +35,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Override with environment variables (Spring Boot relaxed binding):
  * - `AGENTOS_LIMITS_CASE_MAX_ITERATIONS`  (default: 100)
  * - `AGENTOS_LIMITS_AGENT_MAX_ITERATIONS` (default: 20)
- * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: 10.0)
+ * - `AGENTOS_LIMITS_RUN_COST_THRESHOLD`   (default: unset)
  *
  * Example (`application.yml`):
  * ```yaml
@@ -71,6 +71,9 @@ data class LimitsConfigProperties(
      * a [io.whozoss.agentos.sdk.caseEvent.WarnEvent] and breaks out of the loop,
      * then produces its final response based on what it has gathered so far.
      *
+     * Also bounds automatic tool rounds for AgentSimple. At that bound the simple
+     * agent emits a warning and finishes; no further provider request is made.
+     *
      * Defaults to 20.
      */
     val agentMaxIterations: Int = 20,
@@ -92,7 +95,7 @@ data class LimitsConfigProperties(
      * stops. Spending beyond the threshold is a legitimate outcome of an explicit human
      * decision, not a failure.
      *
-     * ## Resolution chain (not implemented yet)
+     * ## Resolution chain
      *
      * `Case.runCostThreshold ?: Namespace.runCostThreshold ?: this platform default`
      *

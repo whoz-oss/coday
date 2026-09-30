@@ -2,7 +2,6 @@ package io.whozoss.agentos.plugins.file.tools
 
 import io.whozoss.agentos.plugins.file.BoundaryPathResolver
 import io.whozoss.agentos.plugins.file.SensitiveFilePatterns
-import io.whozoss.agentos.plugins.file.matchesPattern
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -121,22 +120,17 @@ class SearchFilesTool(
 
     private fun searchFiles(params: Input): String {
         val resolver = BoundaryPathResolver(projectRoot, denyPatterns)
-        val searchRoot =
-            if (params.path.isNullOrBlank()) {
-                projectRoot
-            } else {
-                resolver.resolve(params.path, createIntent = false)
-            }
+        val searchRoot = resolver.resolve(params.path?.takeUnless { it.isBlank() }.orEmpty(), createIntent = false)
 
         // Try ripgrep first if fileContent is provided
         val results =
             if (!params.fileContent.isNullOrBlank()) {
-                searchWithRipgrep(searchRoot, params) ?: searchWithNIO(searchRoot, params)
+                searchWithRipgrep(searchRoot, params) ?: searchWithNIO(searchRoot, params, resolver)
             } else {
-                searchWithNIO(searchRoot, params)
+                searchWithNIO(searchRoot, params, resolver)
             }
 
-        return buildSearchResult(results)
+        return buildSearchResult(results, resolver)
     }
 
     private fun searchWithRipgrep(
@@ -205,6 +199,7 @@ class SearchFilesTool(
     private fun searchWithNIO(
         searchRoot: Path,
         params: Input,
+        resolver: BoundaryPathResolver,
     ): List<Path> {
         val results = mutableListOf<Path>()
 
@@ -223,10 +218,13 @@ class SearchFilesTool(
                     if (!params.fileTypes.contains(ext)) return@forEach
                 }
 
+                // Validate parents and symlink targets before reading a candidate.
+                val allowed = resolveAllowed(path, resolver) ?: return@forEach
+
                 // Filter by fileContent
                 if (params.fileContent != null) {
                     try {
-                        val content = Files.readString(path)
+                        val content = Files.readString(allowed)
                         if (!content.contains(params.fileContent, ignoreCase = true)) {
                             return@forEach
                         }
@@ -243,24 +241,24 @@ class SearchFilesTool(
         return results
     }
 
-    private fun buildSearchResult(files: List<Path>): String {
+    private fun resolveAllowed(file: Path, resolver: BoundaryPathResolver): Path? =
+        try {
+            resolver.resolve(projectRoot.toRealPath().relativize(file).pathString, createIntent = false)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
+
+    private fun buildSearchResult(files: List<Path>, resolver: BoundaryPathResolver): String {
         if (files.isEmpty()) {
             return "No matching files found."
         }
 
-        // Filter out denied files first
+        // Resolve every result, including ripgrep matches: checking only the leaf would
+        // expose nested .git/config and symlinks to denied files or outside the scope.
         val allowedFiles =
             files.mapNotNull { file ->
-                val relPath = projectRoot.relativize(file).pathString
-                val fileName = file.name
-
-                // Check if filename matches any deny pattern
-                val isDenied = denyPatterns.any { pattern -> matchesPattern(fileName, pattern) }
-                if (isDenied) {
-                    null // Skip denied files (e.g., .env, credentials.json)
-                } else {
-                    file to relPath
-                }
+                val allowed = resolveAllowed(file, resolver) ?: return@mapNotNull null
+                allowed to projectRoot.toRealPath().relativize(file).pathString
             }
 
         if (allowedFiles.isEmpty()) {

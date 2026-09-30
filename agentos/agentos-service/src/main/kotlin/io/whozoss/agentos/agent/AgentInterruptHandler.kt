@@ -71,6 +71,19 @@ suspend fun FlowCollector<CaseEvent>.handleGenericAgentException(
     caseId: UUID,
     logger: KLogger,
 ) {
+    if (generateSequence<Throwable>(e) { it.cause }.any { it is io.whozoss.agentos.usage.CostRunStopped }) {
+        emit(
+            AgentFinishedEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = agent.id,
+                agentName = agent.name,
+                llmProvider = agent.llmProvider,
+                llmModel = agent.llmModel,
+            ),
+        )
+        return
+    }
     when (val providerException = e.unwrapToProviderAiException()) {
         is NonTransientAiException -> emitProviderErrorAndFinishEvents(agent, providerException, namespaceId, caseId, logger)
         is TransientAiException -> {

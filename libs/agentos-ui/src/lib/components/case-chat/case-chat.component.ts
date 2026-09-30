@@ -1,3 +1,4 @@
+import { CaseUsageComponent } from '../case-usage/case-usage.component'
 import { HttpClient } from '@angular/common/http'
 import { JsonPipe } from '@angular/common'
 import { firstValueFrom } from 'rxjs'
@@ -132,6 +133,7 @@ function hasActiveSelection(): boolean {
   selector: 'agentos-case-chat',
   imports: [
     IconButtonComponent,
+    CaseUsageComponent,
     JsonPipe,
     DrawerComponent,
     ExchangeShellComponent,
@@ -686,6 +688,20 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       try {
         const event = JSON.parse(raw) as CaseEvent
         this.zone.run(() => {
+          // Reconnection replays persisted history. The last known status restores the
+          // running indicator after a transport error; older statuses must not undo it.
+          // Timeline rows, file refreshes and streamed text remain deduplicated.
+          if (this.events().some((previous) => previous.id === event.id)) {
+            if (event.type === 'CaseStatusEvent') {
+              const latestStatus = [...this.events()]
+                .reverse()
+                .find((previous) => previous.type === 'CaseStatusEvent' || previous.type === 'AgentFinishedEvent')
+              if (latestStatus?.id === event.id) {
+                this.isRunning.set((event as CaseStatusEvent).status === 'RUNNING')
+              }
+            }
+            return
+          }
           const beforeLen = this.events().length
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
@@ -695,9 +711,12 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             if (!this.messageHtmlCache.has(event.id)) {
               this.messageHtmlCache.set(event.id, this.renderMarkdown(text))
             }
+            if (msg.actor.role === 'AGENT') {
+              this.caseState.notifyAgentMessageEvent(msg)
+            }
           }
 
-          this.events.update((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, event]))
+          this.events.update((prev) => [...prev, event])
           const afterLen = this.events().length
 
           console.log('[AgentOS SSE] event processed', {
@@ -731,8 +750,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             // Backend statuses: PENDING | RUNNING | IDLE | KILLED | ERROR
             const status = (event as CaseStatusEvent).status as string
             this._sseStatus.set(status)
-            // Sync the drawer list so both header and drawer show the same status
-            this.caseState.updateCaseStatus(this.caseId, status)
+            // Sync the drawer list; usage refreshes separately on persisted AGENT messages.
+            this.caseState.updateCaseStatus(event.caseId, status)
 
             const isTerminal = status === 'KILLED' || status === 'ERROR'
             this.isTerminal.set(isTerminal)

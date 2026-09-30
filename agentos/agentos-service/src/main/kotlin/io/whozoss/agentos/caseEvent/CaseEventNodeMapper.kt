@@ -8,6 +8,7 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
+import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.ConfirmationResolvedEvent
 import io.whozoss.agentos.sdk.caseEvent.ErrorEvent
 import io.whozoss.agentos.sdk.caseEvent.IntentionGeneratedEvent
@@ -24,10 +25,10 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolSelectedEvent
-import io.whozoss.agentos.sdk.caseEvent.CaseUpdatedEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.usage.LlmUsage
 import java.util.UUID
 
 // Note: fromDomain does NOT set the `case` @Relationship field. The BELONGS_TO
@@ -155,6 +156,7 @@ class CaseEventNodeMapper(
                     node.timestamp,
                     node.agentId,
                     node.agentName,
+                    node.questionId,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -173,6 +175,12 @@ class CaseEventNodeMapper(
                     node.agentName,
                     node.llmProvider,
                     node.llmModel,
+                    node.usageInputTokens,
+                    node.usageOutputTokens,
+                    node.usageCacheReadTokens,
+                    node.usageCacheWriteTokens,
+                    node.usageTotalTokens,
+                    node.usageEstimatedCostUsd,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -251,6 +259,7 @@ class CaseEventNodeMapper(
                     node.metadataJson,
                     node.durationMs,
                     node.imagesJson,
+                    node.structuredOutputJson,
                     node.created,
                     node.createdBy,
                     node.modified,
@@ -437,6 +446,7 @@ class CaseEventNodeMapper(
             timestamp = n.timestamp,
             agentId = UUID.fromString(n.agentId),
             agentName = n.agentName,
+            questionId = n.questionId?.let { UUID.fromString(it) },
         )
 
     private fun toDomain(n: AgentFinishedEventNode) =
@@ -449,6 +459,19 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             llmProvider = n.llmProvider,
             llmModel = n.llmModel,
+            llmUsage =
+                if (n.usageTotalTokens != null) {
+                    LlmUsage(
+                        inputTokens = n.usageInputTokens ?: 0L,
+                        outputTokens = n.usageOutputTokens ?: 0L,
+                        cacheReadTokens = n.usageCacheReadTokens ?: 0L,
+                        cacheWriteTokens = n.usageCacheWriteTokens ?: 0L,
+                        totalTokens = n.usageTotalTokens,
+                        estimatedCostUsd = n.usageEstimatedCostUsd,
+                    )
+                } else {
+                    null
+                },
         )
 
     private fun toDomain(n: AgentRunningEventNode) =
@@ -500,9 +523,11 @@ class CaseEventNodeMapper(
             success = n.success,
             durationMs = n.durationMs,
             toolMetadata = n.metadataJson?.let { serializer.deserializeMetadata(it) } ?: emptyMap(),
-            images = n.imagesJson
-                ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
-                ?: emptyList(),
+            images =
+                n.imagesJson
+                    ?.let { serializer.deserialize(it).filterIsInstance<MessageContent.Image>() }
+                    ?: emptyList(),
+            structuredOutput = n.structuredOutputJson?.let { serializer.deserializeJsonNode(it) },
         )
 
     private fun toDomain(n: ThinkingEventNode) =
@@ -523,7 +548,12 @@ class CaseEventNodeMapper(
             agentName = n.agentName,
             question = n.question,
             options = n.options?.let { serializer.deserializeStringList(it) },
-            questionType = try { QuestionType.valueOf(n.questionType) } catch (_: Exception) { QuestionType.FREE_TEXT },
+            questionType =
+                try {
+                    QuestionType.valueOf(n.questionType)
+                } catch (_: Exception) {
+                    QuestionType.FREE_TEXT
+                },
             userId = n.userId?.let { UUID.fromString(it) },
         )
 
@@ -652,6 +682,7 @@ class CaseEventNodeMapper(
             timestamp = e.timestamp,
             agentId = e.agentId.toString(),
             agentName = e.agentName,
+            questionId = e.questionId?.toString(),
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -669,6 +700,12 @@ class CaseEventNodeMapper(
             agentName = e.agentName,
             llmProvider = e.llmProvider,
             llmModel = e.llmModel,
+            usageInputTokens = e.llmUsage?.inputTokens,
+            usageOutputTokens = e.llmUsage?.outputTokens,
+            usageCacheReadTokens = e.llmUsage?.cacheReadTokens,
+            usageCacheWriteTokens = e.llmUsage?.cacheWriteTokens,
+            usageTotalTokens = e.llmUsage?.totalTokens,
+            usageEstimatedCostUsd = e.llmUsage?.estimatedCostUsd,
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
@@ -743,6 +780,7 @@ class CaseEventNodeMapper(
             metadataJson = e.toolMetadata.takeIf { it.isNotEmpty() }?.let { serializer.serializeMetadata(it) },
             durationMs = e.durationMs,
             imagesJson = e.images.takeIf { it.isNotEmpty() }?.let { serializer.serialize(it) },
+            structuredOutputJson = e.structuredOutput?.let { serializer.serializeJsonNode(it) },
             created = e.metadata.created,
             createdBy = e.metadata.createdBy,
             modified = e.metadata.modified,
