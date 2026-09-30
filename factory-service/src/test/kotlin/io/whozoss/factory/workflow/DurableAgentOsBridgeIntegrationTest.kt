@@ -1,0 +1,460 @@
+package io.whozoss.factory.workflow
+
+import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
+import io.whozoss.factory.adapter.agentos.CaseHandle
+import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.capability.CapabilityExecutionService
+import io.whozoss.factory.capability.CapabilityResolver
+import io.whozoss.factory.workflow.domain.ControllerExecutionInput
+import io.whozoss.factory.workflow.domain.ResponsibilityKind
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
+import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
+import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.WorkflowStatuses
+import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
+import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
+import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
+import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
+import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
+import io.whozoss.factory.workflow.service.SessionRunService
+import io.whozoss.factory.workflow.service.WorkflowService
+import io.whozoss.factory.workflow.sse.WorkflowSseHub
+import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
+import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.io.TempDir
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionSynchronizationManager
+
+/**
+ * Integration tests of the durable AgentOS-Factory bridge (Lot C / étapes 3, 6, 7).
+ *
+ * The bridge is exercised through the REAL Spring beans
+ * ([DurableAgentAttemptService], [WorkflowRepository], evidence/interaction
+ * repositories, the autowired [PlatformTransactionManager]) and a stateful fake
+ * [AgentOsExecutionAdapter], so the whole orchestration — short claim transaction,
+ * untransacted remote turn, short finalize transaction — runs exactly as in
+ * production.
+ *
+ * Acceptance criteria validated:
+ *  - A blocks/fails/waiting-human ⇒ B never starts;
+ *  - A succeeds with an identifiable output ⇒ B starts once, receiving exactly
+ *    that durable output (never the last free message);
+ *  - two concurrent executions ⇒ one single attempt owns the execution;
+ *  - a crash after case creation (before local persistence) recovers and reattaches
+ *    the case;
+ *  - a crash after the message was accepted (before the HTTP response) never sends
+ *    a second turn (idempotence by attemptId);
+ *  - a turn longer than the Neo4j transaction timeout runs with no open transaction.
+ */
+class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
+
+    @Autowired
+    private lateinit var workflowService: WorkflowService
+
+    @Autowired
+    private lateinit var workflowRepository: WorkflowRepository
+
+    @Autowired
+    private lateinit var evidenceRepository: WorkflowEvidenceRepository
+
+    @Autowired
+    private lateinit var interactionRepository: HumanInteractionRepository
+
+    @Autowired
+    private lateinit var attemptRepository: AgentStepAttemptRepository
+
+    @Autowired
+    private lateinit var durableAgentAttemptService: DurableAgentAttemptService
+
+    @Autowired
+    private lateinit var sseHub: WorkflowSseHub
+
+    @Autowired
+    private lateinit var transactionManager: PlatformTransactionManager
+
+    @TempDir
+    lateinit var repoRoot: Path
+
+    private val namespace = "2b6f8d2f-8d1a-4f0e-9b6e-agentos-bridge"
+
+    // ----- fixtures ------------------------------------------------------
+
+    private fun stepJson(id: String, kind: String, name: String, dependsOn: List<String>): Map<String, Any?> =
+        linkedMapOf(
+            "id" to id,
+            "name" to "Step $id",
+            "responsibility" to mapOf("kind" to kind, "name" to name),
+            "dependsOn" to dependsOn,
+        )
+
+    private fun startSession(workflowType: String, workflowId: String, steps: List<Map<String, Any?>>) {
+        val raw = linkedMapOf<String, Any?>(
+            "schemaVersion" to "1",
+            "workflowType" to workflowType,
+            "version" to "1.0.0",
+            "title" to "Session $workflowType",
+            "steps" to steps,
+        )
+        val valid = WorkflowDefinitionValidator.validate(raw) as WorkflowDefinitionValidation.Valid
+        workflowService.registerDefinition(
+            scope,
+            WorkflowDefinitionRecord(
+                workflowType = workflowType,
+                version = "1.0.0",
+                definitionHash = hashWorkflowDefinition(valid.definition),
+                definition = valid.definition,
+            ),
+        )
+        workflowService.start(
+            scope,
+            namespace,
+            WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType"),
+            ControllerExecutionInput(runtimeId = "test-runtime", kind = "agentos", agentId = "runner", namespaceId = namespace),
+        )
+    }
+
+    private fun statusOf(workflowId: String, stepId: String): String =
+        workflowRepository.findStepStates(scope, namespace, workflowId).first { it.stepId == stepId }.status
+
+    private fun agentStep(id: String, dependsOn: List<String> = emptyList()): WorkflowStepDefinition =
+        WorkflowStepDefinition(id, "Step $id", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "architect"), dependsOn)
+
+    private fun bridgeService(adapter: AgentOsExecutionAdapter, leaseTtlMs: Long? = 3_600_000L): CapabilityExecutionService =
+        CapabilityExecutionService(
+            CapabilityResolver(),
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            attemptRepository,
+            agentStepResultService = null,
+            transactionManager = transactionManager,
+            durableAgentAttemptService = durableAgentAttemptService,
+            agentOsExecutionAdapter = adapter,
+            agentLeaseTtlMs = leaseTtlMs,
+        )
+
+    private fun sessionRunner(adapter: AgentOsExecutionAdapter, leaseTtlMs: Long? = 3_600_000L): SessionRunService =
+        SessionRunService(
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            bridgeService(adapter, leaseTtlMs),
+            sseHub,
+            oracleDefinitionRegistry = null,
+            oracleExecutionService = null,
+            transactionManager = transactionManager,
+        )
+
+    // ----- fake adapter --------------------------------------------------
+
+    private data class StartTurn(val caseId: String, val persona: String, val brief: String, val attemptId: String)
+
+    /**
+     * Stateful fake of the AgentOS execution boundary. It records every start
+     * turn, remembers the cases it created (so a re-run recovers them), and
+     * derives the verdict from the step id embedded in the deterministic case id.
+     */
+    private class FakeAdapter(
+        private val verdictFor: (String) -> AgentOsExecutionVerdict,
+    ) : AgentOsExecutionAdapter {
+        val startTurns = CopyOnWriteArrayList<StartTurn>()
+        val createCalls = AtomicInteger()
+        val observeCalls = AtomicInteger()
+        val reconcileCalls = AtomicInteger()
+        val startedInTransaction = AtomicBoolean(false)
+        val observedInTransaction = AtomicBoolean(false)
+        private val knownCases = ConcurrentHashMap.newKeySet<String>()
+        private val recovered = ConcurrentHashMap.newKeySet<String>()
+
+        /** Pre-registers a case as if it had been created by a crashed prior run. */
+        fun preSeedCase(caseId: String) {
+            knownCases.add(caseId)
+        }
+
+        private fun stepOf(caseId: String): String = caseId.substringAfterLast('#')
+
+        override fun createOrRecoverExecution(
+            namespaceId: String,
+            workflowId: String,
+            stepId: String,
+            externalUserId: String?,
+            attemptId: String,
+            capabilityToken: String?,
+            caseId: String,
+        ): CaseHandle {
+            createCalls.incrementAndGet()
+            val alreadyKnown = !knownCases.add(caseId)
+            if (alreadyKnown) recovered.add(caseId)
+            return CaseHandle(caseId = caseId, namespaceId = namespaceId, recovered = alreadyKnown)
+        }
+
+        override fun startTurn(
+            caseId: String,
+            persona: String,
+            brief: String,
+            externalUserId: String?,
+            attemptId: String,
+            capabilityToken: String?,
+        ) {
+            if (TransactionSynchronizationManager.isActualTransactionActive()) startedInTransaction.set(true)
+            startTurns.add(StartTurn(caseId, persona, brief, attemptId))
+        }
+
+        override fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict {
+            observeCalls.incrementAndGet()
+            if (TransactionSynchronizationManager.isActualTransactionActive()) observedInTransaction.set(true)
+            return verdictFor(stepOf(caseId))
+        }
+
+        override fun reconcile(caseId: String): AgentOsExecutionVerdict {
+            reconcileCalls.incrementAndGet()
+            return verdictFor(stepOf(caseId))
+        }
+
+        override fun interrupt(caseId: String, reason: String) = Unit
+
+        override fun kill(caseId: String) = Unit
+    }
+
+    // ----- 1. A fails ⇒ B never starts ----------------------------------
+
+    @Test
+    fun `a failed agent step blocks B and B never starts`() {
+        val workflowId = "wf-bridge-fail"
+        startSession(
+            "bridge-fail",
+            workflowId,
+            listOf(stepJson("A", "agent", "architect", emptyList()), stepJson("B", "agent", "architect", listOf("A"))),
+        )
+        val adapter = FakeAdapter { stepId ->
+            if (stepId == "A") AgentOsExecutionVerdict.Failed("AGENT_CASE_ERROR", "boom")
+            else AgentOsExecutionVerdict.Succeeded(emptyMap())
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.FAILED)
+        assertThat(statusOf(workflowId, "B")).isEqualTo(WorkflowStatuses.BLOCKED)
+        assertThat(adapter.startTurns.map { it.caseId }).noneMatch { it.endsWith("#B") }
+    }
+
+    // ----- 2. A waits human ⇒ B never starts -----------------------------
+
+    @Test
+    fun `an agent step waiting for a human suspends the session and B never starts`() {
+        val workflowId = "wf-bridge-human"
+        startSession(
+            "bridge-human",
+            workflowId,
+            listOf(stepJson("A", "agent", "architect", emptyList()), stepJson("B", "agent", "architect", listOf("A"))),
+        )
+        val adapter = FakeAdapter { stepId ->
+            if (stepId == "A") AgentOsExecutionVerdict.WaitingHuman("question-1", "Which port?")
+            else AgentOsExecutionVerdict.Succeeded(emptyMap())
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.WAITING_HUMAN)
+        assertThat(statusOf(workflowId, "B")).isEqualTo(WorkflowStatuses.PENDING)
+        assertThat(adapter.startTurns.map { it.caseId }).noneMatch { it.endsWith("#B") }
+    }
+
+    // ----- 3. A succeeds with an identifiable output ⇒ B receives it -----
+
+    @Test
+    fun `a successful agent step releases B which receives exactly A's persisted output`() {
+        val workflowId = "wf-bridge-success"
+        startSession(
+            "bridge-success",
+            workflowId,
+            listOf(stepJson("A", "agent", "architect", emptyList()), stepJson("B", "agent", "architect", listOf("A"))),
+        )
+        val outputs = mapOf("artifactHash" to "sha256:1234", "summary" to "Build OK")
+        val adapter = FakeAdapter { stepId ->
+            if (stepId == "A") AgentOsExecutionVerdict.Succeeded(outputs) else AgentOsExecutionVerdict.Succeeded(emptyMap())
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "B")).isEqualTo(WorkflowStatuses.COMPLETED)
+
+        // A's structured outputs are durably persisted as `agent-result` evidence.
+        val aResult = evidenceRepository.list(scope, namespace, workflowId, "A")
+            .single { it.kind == "agent-result" }
+        assertThat(aResult.outcome).isEqualTo("pass")
+        assertThat(aResult.facts["outputs"]).isEqualTo(outputs)
+
+        // B started exactly once and its brief was built from A's PERSISTED outputs.
+        val bTurns = adapter.startTurns.filter { it.caseId.endsWith("#B") }
+        assertThat(bTurns).hasSize(1)
+        assertThat(bTurns.single().brief)
+            .contains("sha256:1234")
+            .contains("Build OK")
+        assertThat(adapter.startedInTransaction.get()).isFalse()
+        assertThat(adapter.observedInTransaction.get()).isFalse()
+    }
+
+    // ----- 4. Two concurrent executions ⇒ one attempt owns it ------------
+
+    @Test
+    fun `two concurrent executions yield exactly one owning attempt and one turn`() {
+        val workflowId = "wf-bridge-concurrency"
+        startSession("bridge-concurrency", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val adapter = FakeAdapter { AgentOsExecutionVerdict.Succeeded(emptyMap()) }
+        val service = bridgeService(adapter)
+        val step = agentStep("A")
+        val gate = CountDownLatch(1)
+        val pool = Executors.newFixedThreadPool(2)
+        try {
+            val futures = (1..2).map {
+                pool.submit<Any> {
+                    gate.await()
+                    service.resolveAndRecord(scope, namespace, workflowId, step, repoRoot)
+                }
+            }
+            gate.countDown()
+            futures.forEach { it.get(30, TimeUnit.SECONDS) }
+        } finally {
+            pool.shutdownNow()
+        }
+
+        // The atomic durable claim lets exactly one attempt own the execution.
+        assertThat(adapter.startTurns).hasSize(1)
+        assertThat(adapter.observeCalls.get()).isEqualTo(1)
+    }
+
+    // ----- 5. Crash after case creation ⇒ case recovered and reattached ---
+
+    @Test
+    fun `a case created before local persistence is recovered and reattached on replay`() {
+        val workflowId = "wf-bridge-recovery"
+        startSession("bridge-recovery", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val caseId = CapabilityExecutionService.stableCaseId(workflowId, "A")
+        val adapter = FakeAdapter { AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "recovered")) }
+        // The AgentOS case already exists (created by the crashed prior run).
+        adapter.preSeedCase(caseId)
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        // The very same case was recovered (no duplicate creation), and the turn ran on it.
+        assertThat(adapter.startTurns.map { it.caseId }).containsExactly(caseId)
+        assertThat(adapter.startTurns.single().attemptId)
+            .isEqualTo(CapabilityExecutionService.stableAttemptId(workflowId, "A"))
+        val attempt = durableAgentAttemptService.find(
+            scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+        )
+        assertThat(attempt!!.status).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+    }
+
+    // ----- 6. Crash after message accepted ⇒ no second turn --------------
+
+    @Test
+    fun `a crash after the message was accepted never sends a second turn`() {
+        val workflowId = "wf-bridge-idempotence"
+        startSession("bridge-idempotence", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        val caseId = CapabilityExecutionService.stableCaseId(workflowId, "A")
+        // Simulate the crashed prior run: the attempt was claimed and the turn was
+        // marked `starting` (i.e. the message had been accepted) but nothing was
+        // finalized. The lease has expired (ttl = 0).
+        durableAgentAttemptService.register(
+            scope,
+            DurableAgentAttempt(
+                attemptId = attemptId,
+                caseId = caseId,
+                namespaceId = namespace,
+                workflowId = workflowId,
+                stepId = "A",
+                attemptNumber = 1,
+                agentName = "architect",
+            ),
+        )
+        durableAgentAttemptService.claim(scope, namespace, workflowId, "A", attemptId, "crashed-owner", leaseTtlMs = 0)
+        durableAgentAttemptService.transition(scope, namespace, workflowId, "A", attemptId, "crashed-owner", AgentAttemptStatus.STARTING)
+
+        val adapter = FakeAdapter { AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "resumed")) }
+
+        val result = sessionRunner(adapter, leaseTtlMs = 0L).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        // The recovered attempt must NOT re-send the turn: only the durable
+        // observation/reconciliation runs.
+        assertThat(adapter.startTurns).isEmpty()
+        assertThat(adapter.observeCalls.get()).isEqualTo(1)
+        val attempt = durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)
+        assertThat(attempt!!.status).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+    }
+
+    // ----- 7. Turn longer than the Neo4j timeout ⇒ no open transaction ---
+
+    @Test
+    fun `a long remote turn runs with no open transaction and finalizes normally`() {
+        val workflowId = "wf-bridge-long-turn"
+        startSession("bridge-long-turn", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val adapter = object : AgentOsExecutionAdapter {
+            val turns = AtomicInteger()
+            override fun createOrRecoverExecution(
+                namespaceId: String,
+                workflowId: String,
+                stepId: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+                caseId: String,
+            ): CaseHandle = CaseHandle(caseId, namespaceId, false)
+
+            override fun startTurn(
+                caseId: String,
+                persona: String,
+                brief: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+            ) {
+                turns.incrementAndGet()
+                // Outlive any short transaction if one were (wrongly) held open.
+                Thread.sleep(400)
+            }
+
+            override fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict {
+                Thread.sleep(400)
+                return AgentOsExecutionVerdict.Succeeded(emptyMap())
+            }
+
+            override fun reconcile(caseId: String) = AgentOsExecutionVerdict.Succeeded(emptyMap())
+            override fun interrupt(caseId: String, reason: String) = Unit
+            override fun kill(caseId: String) = Unit
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "A")).isEqualTo(WorkflowStatuses.COMPLETED)
+        val attempt = durableAgentAttemptService.find(
+            scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+        )
+        assertThat(attempt!!.status).isEqualTo(AgentAttemptStatus.SUCCEEDED)
+    }
+}

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.workflow.service.SessionRunService
+import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import mu.KotlinLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
@@ -45,6 +46,7 @@ class OutboxDrainWorker(
         val namespaceId: String,
         val workflowId: String,
         val repoRoot: Path,
+        val ticket: String? = null,
     )
 
     @Scheduled(
@@ -72,6 +74,7 @@ class OutboxDrainWorker(
                     continuation.namespaceId,
                     continuation.workflowId,
                     continuation.repoRoot,
+                    continuation.ticket,
                 )
             }.onFailure {
                 logger.warn(it) {
@@ -82,12 +85,17 @@ class OutboxDrainWorker(
         }
     }
 
+    /** Maps a durable outbox event to its DAG continuation, or null for other event types. */
+    private fun parseContinuation(organizationId: String, event: OutboxEvent): Continuation? = when (event.eventType) {
+        RESULT_SUBMITTED -> parseResultSubmitted(organizationId, event)
+        SESSION_RUN_REQUESTED -> parseSessionRunRequested(organizationId, event)
+        else -> null
+    }
+
     /** Maps a `result_submitted` event to its DAG continuation, or null for other event types. */
-    private fun parseContinuation(organizationId: String, event: OutboxEvent): Continuation? {
+    private fun parseResultSubmitted(organizationId: String, event: OutboxEvent): Continuation? {
         if (event.eventType != RESULT_SUBMITTED) return null
-        val payload = runCatching { objectMapper.readTree(event.payload) }
-            .onFailure { logger.warn(it) { "Outbox event ${event.id} carries an invalid payload" } }
-            .getOrNull() ?: return null
+        val payload = parsePayload(event) ?: return null
         val namespaceId = payload.path("namespaceId").asText().takeIf { it.isNotBlank() } ?: return null
         val workflowId = payload.path("workflowId").asText().takeIf { it.isNotBlank() } ?: return null
         val workstreamId = event.workstreamId.takeIf { it.isNotBlank() } ?: return null
@@ -98,6 +106,32 @@ class OutboxDrainWorker(
             repoRoot = resolveRepoRoot(namespaceId),
         )
     }
+
+    /**
+     * Maps a `session_run_requested` event (durable HTTP `/run` submission) to its
+     * continuation. The repo root and ticket travel in the payload, so the drained
+     * run resumes exactly the submission the caller made.
+     */
+    private fun parseSessionRunRequested(organizationId: String, event: OutboxEvent): Continuation? {
+        val payload = parsePayload(event) ?: return null
+        val namespaceId = payload.path("namespaceId").asText().takeIf { it.isNotBlank() } ?: return null
+        val workflowId = payload.path("workflowId").asText().takeIf { it.isNotBlank() } ?: return null
+        val workstreamId = event.workstreamId.takeIf { it.isNotBlank() } ?: return null
+        val repoRoot = payload.path("repoRoot").asText().takeIf { it.isNotBlank() }
+            ?: return null
+        val ticket = payload.path("ticket").asText().takeIf { it.isNotBlank() }
+        return Continuation(
+            scope = TenantScope(organizationId, workstreamId),
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            repoRoot = Path.of(repoRoot),
+            ticket = ticket,
+        )
+    }
+
+    private fun parsePayload(event: OutboxEvent) = runCatching { objectMapper.readTree(event.payload) }
+        .onFailure { logger.warn(it) { "Outbox event ${event.id} carries an invalid payload" } }
+        .getOrNull()
 
     /**
      * The session repo root is used to resolve target-repo `factory/verification.json`
@@ -114,6 +148,7 @@ class OutboxDrainWorker(
 
     private companion object {
         const val RESULT_SUBMITTED = "result_submitted"
+        const val SESSION_RUN_REQUESTED = SessionRunSubmissionService.SESSION_RUN_REQUESTED
         const val DRAIN_LIMIT = 50
     }
 }
