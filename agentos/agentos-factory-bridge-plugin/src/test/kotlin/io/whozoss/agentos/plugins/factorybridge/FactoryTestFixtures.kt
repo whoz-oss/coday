@@ -13,7 +13,12 @@ internal object FactoryTestFixtures {
     fun services(
         baseUrl: String = "http://localhost:8141",
         runtimeId: String = "test-runtime",
-    ): FactoryBridgeServices = FactoryBridgeServices.create(FactoryBridgeConfig(baseUrl, runtimeId))
+        dataDir: String? = null,
+        secret: String? = null,
+    ): FactoryBridgeServices =
+        FactoryBridgeServices.create(
+            FactoryBridgeConfig(baseUrl = baseUrl, runtimeId = runtimeId, dataDir = dataDir, secret = secret),
+        )
 
     fun tools(baseUrl: String = "http://localhost:8141"): List<StandardTool<*>> = buildFactoryTools(services(baseUrl))
 

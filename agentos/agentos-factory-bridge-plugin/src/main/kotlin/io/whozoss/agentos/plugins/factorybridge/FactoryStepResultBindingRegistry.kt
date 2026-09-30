@@ -1,5 +1,7 @@
 package io.whozoss.agentos.plugins.factorybridge
 
+import io.whozoss.agentos.plugins.factorybridge.persistence.FactoryBridgeStateStore
+import io.whozoss.agentos.plugins.factorybridge.persistence.FactoryStepResultBindingState
 import mu.KLogging
 import java.time.Clock
 import java.time.Instant
@@ -12,6 +14,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * @property capabilityToken opaque bearer token issued by the Factory for exactly one
  *   step attempt; never derived from model input.
+ * @property agentName the agent identity allowed to redeem the binding. The wildcard
+ *   `"*"` matches any agent of the case: used when the Factory binds a capability at case
+ *   creation, before the agent identity is known.
  */
 data class FactoryStepResultBinding(
     val caseId: UUID,
@@ -24,24 +29,48 @@ data class FactoryStepResultBinding(
     val leased: AtomicBoolean = AtomicBoolean(false),
 )
 
+/** Agent-name wildcard: any agent of the case may redeem the binding. */
+const val FACTORY_AGENT_WILDCARD = "*"
+
 /**
- * Volatile, in-memory registry of Factory step-result bindings.
+ * Registry of Factory step-result bindings with **durable** backing state.
  *
- * By design the registry keeps no durable state: a restart loses every capability and
- * therefore fails closed. The plugin owns its own instance, while the host runtime
- * remains free to expose the binding endpoint that populates it.
+ * The registry keeps an in-memory working set for cheap lookups and single-flight CAS,
+ * but mirrors every mutation (bind, lease acquire/release, acknowledge, invalidate,
+ * expiry, removal) into a restart-safe [FactoryBridgeStateStore]. After an AgentOS
+ * restart the registry is reconstructed from the store, so an unfinished binding and its
+ * lease survive.
+ *
+ * By design the registry keeps no durable state when constructed without a store (unit
+ * tests): a restart then loses every capability and therefore fails closed.
+ *
+ * ### Fail-closed semantics
+ *
+ * A binding is only usable while it is unexpired and (for redemption) unleased. A case
+ * that reaches a terminal status invalidates its binding; the write-through store removes
+ * it durably so a stale capability can never be resurrected by a restart.
  */
 class FactoryStepResultBindingRegistry(
     private val clock: Clock = Clock.systemUTC(),
+    private val store: FactoryBridgeStateStore? = null,
 ) {
     companion object : KLogging()
 
     private val bindings = ConcurrentHashMap<UUID, FactoryStepResultBinding>()
 
+    init {
+        // Re-hydrate the working set from the durable store so an in-flight binding (and
+        // its lease) survives an AgentOS restart.
+        store?.bindings()?.forEach { state ->
+            bindings[state.caseId] = toBinding(state)
+        }
+    }
+
     fun bind(binding: FactoryStepResultBinding) {
         require(binding.expiresAt.isAfter(clock.instant()))
         require(binding.capabilityToken.length in 32..256)
         check(bindings.putIfAbsent(binding.caseId, binding) == null) { "FACTORY_BINDING_ALREADY_EXISTS" }
+        store?.putBinding(toState(binding, leased = false))
     }
 
     fun context(
@@ -71,7 +100,7 @@ class FactoryStepResultBindingRegistry(
     ): Map<String, Any?> {
         val binding = bindings[caseId] ?: return emptyMap()
         if (!binding.expiresAt.isAfter(clock.instant())) {
-            bindings.remove(caseId, binding)
+            expire(caseId, binding)
             return emptyMap()
         }
         if (binding.namespaceId != namespaceId || binding.leased.get()) return emptyMap()
@@ -88,12 +117,14 @@ class FactoryStepResultBindingRegistry(
             logger.warn { "Factory result binding acquire: already leased caseId=$caseId attemptId=${binding.attemptId}" }
             return null
         }
+        store?.setLease(caseId, true)
         logger.info { "Factory result binding acquire: accepted caseId=$caseId attemptId=${binding.attemptId} agent=$agentName" }
         return binding
     }
 
     fun acknowledge(binding: FactoryStepResultBinding) {
         if (bindings.remove(binding.caseId, binding)) {
+            store?.removeBinding(binding.caseId)
             logger.info { "Factory result binding acknowledge: removed caseId=${binding.caseId} attemptId=${binding.attemptId}" }
         }
         binding.leased.set(false)
@@ -102,12 +133,14 @@ class FactoryStepResultBindingRegistry(
     fun release(binding: FactoryStepResultBinding) {
         if (bindings[binding.caseId] === binding) {
             binding.leased.set(false)
+            store?.setLease(binding.caseId, false)
             logger.info { "Factory result binding release: available caseId=${binding.caseId} attemptId=${binding.attemptId}" }
         }
     }
 
     fun invalidate(binding: FactoryStepResultBinding) {
         if (bindings.remove(binding.caseId, binding)) {
+            store?.removeBinding(binding.caseId)
             logger.warn { "Factory result binding invalidate: removed caseId=${binding.caseId} attemptId=${binding.attemptId}" }
         }
         binding.leased.set(false)
@@ -115,9 +148,13 @@ class FactoryStepResultBindingRegistry(
 
     fun remove(caseId: UUID) {
         bindings.remove(caseId)
+        store?.removeBinding(caseId)
     }
 
     internal fun contains(caseId: UUID) = bindings.containsKey(caseId)
+
+    /** Test/observability accessor for the live binding of a case, or null when absent. */
+    internal fun find(caseId: UUID): FactoryStepResultBinding? = bindings[caseId]
 
     private fun validated(
         caseId: UUID,
@@ -131,7 +168,7 @@ class FactoryStepResultBindingRegistry(
             return null
         }
         if (!binding.expiresAt.isAfter(clock.instant())) {
-            bindings.remove(caseId, binding)
+            expire(caseId, binding)
             logger.warn { "Factory result binding $operation: expired caseId=$caseId attemptId=${binding.attemptId}" }
             return null
         }
@@ -139,7 +176,7 @@ class FactoryStepResultBindingRegistry(
             logger.warn { "Factory result binding $operation: namespace mismatch caseId=$caseId attemptId=${binding.attemptId}" }
             return null
         }
-        if (binding.agentName != agentName) {
+        if (binding.agentName != FACTORY_AGENT_WILDCARD && binding.agentName != agentName) {
             logger.warn {
                 "Factory result binding $operation: agent mismatch caseId=$caseId attemptId=${binding.attemptId} expected=${binding.agentName} actual=$agentName"
             }
@@ -147,4 +184,38 @@ class FactoryStepResultBindingRegistry(
         }
         return binding
     }
+
+    /** Removes an expired binding from memory and from the durable store (fail-closed). */
+    private fun expire(
+        caseId: UUID,
+        binding: FactoryStepResultBinding,
+    ) {
+        if (bindings.remove(caseId, binding)) store?.removeBinding(caseId)
+    }
+
+    private fun toBinding(state: FactoryStepResultBindingState) =
+        FactoryStepResultBinding(
+            caseId = state.caseId,
+            namespaceId = state.namespaceId,
+            agentName = state.agentName,
+            attemptId = state.attemptId,
+            runtimeId = state.runtimeId,
+            capabilityToken = state.capabilityToken,
+            expiresAt = state.expiresAt,
+            leased = AtomicBoolean(state.leased),
+        )
+
+    private fun toState(
+        binding: FactoryStepResultBinding,
+        leased: Boolean,
+    ) = FactoryStepResultBindingState(
+        caseId = binding.caseId,
+        namespaceId = binding.namespaceId,
+        agentName = binding.agentName,
+        attemptId = binding.attemptId,
+        runtimeId = binding.runtimeId,
+        capabilityToken = binding.capabilityToken,
+        expiresAt = binding.expiresAt,
+        leased = leased,
+    )
 }

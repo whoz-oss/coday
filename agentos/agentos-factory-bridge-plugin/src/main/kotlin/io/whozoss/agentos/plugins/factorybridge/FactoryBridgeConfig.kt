@@ -10,14 +10,27 @@ import java.util.concurrent.TimeUnit
  * The plugin runs inside the AgentOS host process and cannot rely on Spring's
  * `@Value` injection, so configuration is read from:
  *
- * | Value       | System property                | Environment variable            | Default                 |
- * |-------------|--------------------------------|---------------------------------|-------------------------|
- * | base URL    | `agentos.factory.base-url`     | `AGENTOS_FACTORY_BASE_URL`       | `http://localhost:8141` |
- * | runtime id  | `agentos.factory.runtime-id`   | `AGENTOS_FACTORY_RUNTIME_ID`     | `agentos-primary`       |
+ * | Value            | System property                     | Environment variable              | Default                 |
+ * |------------------|-------------------------------------|-----------------------------------|-------------------------|
+ * | base URL         | `agentos.factory.base-url`          | `AGENTOS_FACTORY_BASE_URL`        | `http://localhost:8141` |
+ * | runtime id       | `agentos.factory.runtime-id`        | `AGENTOS_FACTORY_RUNTIME_ID`      | `agentos-primary`       |
+ * | data dir         | `agentos.factory-bridge.data-dir`   | `AGENTOS_FACTORY_BRIDGE_DATA_DIR` | `data/factory-bridge`   |
+ * | shared secret    | `agentos.factory-bridge.secret`     | `AGENTOS_FACTORY_BRIDGE_SECRET`   | *(empty → disabled)*    |
+ * | binding TTL (s)  | `agentos.factory-bridge.binding-ttl`| `AGENTOS_FACTORY_BRIDGE_BINDING_TTL` | `3600`             |
+ *
+ * @property dataDir directory used for the restart-safe JSON state store. `null` keeps
+ *   all state in memory (useful for tests).
+ * @property secret pre-shared secret the Factory presents when it binds a case; an empty
+ *   secret disables the binding endpoint (fail-closed).
+ * @property bindingTtlSeconds fallback validity window applied when a binding is accepted
+ *   without an explicit expiry.
  */
 data class FactoryBridgeConfig(
     val baseUrl: String,
     val runtimeId: String,
+    val dataDir: String? = null,
+    val secret: String? = null,
+    val bindingTtlSeconds: Long = DEFAULT_BINDING_TTL_SECONDS,
 ) {
     /**
      * Shared OkHttp client with conservative timeouts matching the historical
@@ -35,11 +48,19 @@ data class FactoryBridgeConfig(
     companion object {
         const val DEFAULT_BASE_URL = "http://localhost:8141"
         const val DEFAULT_RUNTIME_ID = "agentos-primary"
+        const val DEFAULT_BINDING_TTL_SECONDS = 3600L
 
         fun fromEnvironment(): FactoryBridgeConfig =
             FactoryBridgeConfig(
                 baseUrl = resolve("agentos.factory.base-url", "AGENTOS_FACTORY_BASE_URL", DEFAULT_BASE_URL),
                 runtimeId = resolve("agentos.factory.runtime-id", "AGENTOS_FACTORY_RUNTIME_ID", DEFAULT_RUNTIME_ID),
+                dataDir = resolve("agentos.factory-bridge.data-dir", "AGENTOS_FACTORY_BRIDGE_DATA_DIR", "data/factory-bridge"),
+                secret = resolve("agentos.factory-bridge.secret", "AGENTOS_FACTORY_BRIDGE_SECRET", ""),
+                bindingTtlSeconds =
+                    resolve("agentos.factory-bridge.binding-ttl", "AGENTOS_FACTORY_BRIDGE_BINDING_TTL", DEFAULT_BINDING_TTL_SECONDS.toString())
+                        .toLongOrNull()
+                        ?.takeIf { it > 0 }
+                        ?: DEFAULT_BINDING_TTL_SECONDS,
             )
 
         private fun resolve(
