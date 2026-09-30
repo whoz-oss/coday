@@ -1,3 +1,13 @@
+## 3.17.0 (2026-09-30)
+
+### 🚀 Features
+
+- #WZ-35099 add externalMetadata to ScheduledPrompt ([#1400](https://github.com/whoz-oss/coday/pull/1400))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.16.0 (2026-09-30)
 
 ### 🚀 Features
