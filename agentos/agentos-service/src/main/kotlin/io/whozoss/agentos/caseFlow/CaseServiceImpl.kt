@@ -632,30 +632,27 @@ class CaseServiceImpl(
                 },
                 usageAccumulator = usageAccumulator,
             )
-        // agent is resolved before the try/finally so that if findAgentByName throws,
-        // the accumulator has no data (no LLM call was made) and the finally block writes
-        // nothing — rule 1 (hasData guard) covers this path naturally.
+        // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agent = agentService.findAgentByName(agentName, context, this)
-        val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         var outcome = UsageOutcome.COMPLETED
-
-        if (shouldEmitRunningEvent(events)) {
-            val runningEvent =
-                AgentRunningEvent(
-                    namespaceId = runtime.namespaceId,
-                    caseId = caseId,
-                    agentId = agent.id,
-                    agentName = agent.name,
-                    llmProvider = agent.llmProvider,
-                    llmModel = agent.llmModel,
-                )
-            storeEvent(runningEvent).also { saved ->
-                runtime.pushEvents(listOf(saved))
-                runtime.emitEvent(saved)
-            }
-        }
-
+        val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         try {
+            if (shouldEmitRunningEvent(events)) {
+                val runningEvent =
+                    AgentRunningEvent(
+                        namespaceId = runtime.namespaceId,
+                        caseId = caseId,
+                        agentId = agent.id,
+                        agentName = agent.name,
+                        llmProvider = agent.llmProvider,
+                        llmModel = agent.llmModel,
+                    )
+                storeEvent(runningEvent).also { saved ->
+                    runtime.pushEvents(listOf(saved))
+                    runtime.emitEvent(saved)
+                }
+            }
+
             agent
                 .run(events, shouldContinue)
                 .catch { error ->
