@@ -304,6 +304,7 @@ export class ScheduledPromptFormComponent implements OnInit {
           endType === SchedulerEndType.OCCURRENCES ? (this.occurrenceCountControl.value ?? undefined) : undefined,
       },
       enabled: this.enabledControl.value,
+      removed: this.existingPrompt?.removed ?? false,
       externalMetadata: (() => {
         const raw = this.externalMetadataJsonControl.value.trim()
         return raw ? JSON.parse(raw) : null
