@@ -1,12 +1,15 @@
 package io.whozoss.factory.workflow
 
 import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.capability.AgentTurnCapability
 import io.whozoss.factory.capability.AgentTurnRequest
 import io.whozoss.factory.capability.AgentTurnResult
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityResolver
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.oracle.domain.OracleApplicableCondition
 import io.whozoss.factory.oracle.domain.OracleDefinition
 import io.whozoss.factory.oracle.domain.OracleExecutionStatus
@@ -166,6 +169,9 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
                 evidenceRepository,
                 interactionRepository,
                 attemptRepository,
+                durableAgentAttemptService = mockk<DurableAgentAttemptService>(relaxed = true),
+                agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
+                agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
             ),
             sseHub,
         )
@@ -393,6 +399,9 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
                 evidenceRepository,
                 interactionRepository,
                 attemptRepository,
+                durableAgentAttemptService = mockk<DurableAgentAttemptService>(relaxed = true),
+                agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
+                agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
             ),
             sseHub,
         )
@@ -526,6 +535,9 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
                 evidenceRepository,
                 interactionRepository,
                 attemptRepository,
+                durableAgentAttemptService = mockk<DurableAgentAttemptService>(relaxed = true),
+                agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
+                agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
             ),
             sseHub,
             registry,

@@ -1,7 +1,11 @@
 package io.whozoss.factory.capability
 
+import io.mockk.mockk
 import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.verification.manifest.VERIFICATION_MANIFEST_MISSING
 import io.whozoss.factory.verification.manifest.VERIFICATION_NOT_DECLARED
@@ -218,6 +222,9 @@ class CapabilityExecutionIntegrationTest : Neo4jDomainIntegrationTest() {
             evidenceRepository,
             interactionRepository,
             attemptRepository,
+            durableAgentAttemptService = mockk(relaxed = true),
+            agentOsExecutionAdapter = mockk<AgentOsExecutionAdapter>(relaxed = true),
+            agentOsAdapterProperties = AgentOsAdapterProperties(enabled = false),
         )
 
     @Test

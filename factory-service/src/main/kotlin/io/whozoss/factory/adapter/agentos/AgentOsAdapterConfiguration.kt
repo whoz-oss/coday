@@ -1,7 +1,6 @@
 package io.whozoss.factory.adapter.agentos
 
 import io.whozoss.factory.proxy.ProxyProperties
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.client.RestClient
@@ -9,16 +8,17 @@ import org.springframework.web.client.RestClient
 /**
  * Wiring of the AgentOS execution adapter.
  *
- * The bean exists **only** when `factory.adapter.agentos.enabled=true`, so the
- * default build keeps `AgentOsAgentTurnCapability` → `HttpAgentOsProxyClient`
- * polling as the untouched, active turn driver. Nothing in
- * `SessionRunService` references this adapter.
+ * The bean is **always created** since the final cutover: the durable SSE bridge
+ * is the primary, mandatory execution driver of `CapabilityExecutionService`.
+ * `factory.adapter.agentos.enabled` (default `true`) no longer gates the bean —
+ * it selects the driver: when set to `false` the service explicitly falls back to
+ * the legacy `HttpAgentOsProxyClient` polling path while still depending on this
+ * adapter instance (which is then never invoked).
  */
 @Configuration
 class AgentOsAdapterConfiguration {
 
     @Bean
-    @ConditionalOnProperty(prefix = "factory.adapter.agentos", name = ["enabled"], havingValue = "true")
     fun agentOsExecutionAdapter(
         builder: RestClient.Builder,
         proxyProperties: ProxyProperties,

@@ -5,10 +5,13 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.IssuedCapability
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
@@ -40,6 +43,9 @@ class CapabilityExecutionCapabilityIssuanceTest {
     private val interactions = mockk<HumanInteractionRepository>(relaxed = true)
     private val workflows = mockk<WorkflowRepository>(relaxed = true)
     private val issuer = mockk<AgentStepResultService>()
+    private val durableAttempts = mockk<DurableAgentAttemptService>(relaxed = true)
+    private val adapter = mockk<AgentOsExecutionAdapter>(relaxed = true)
+    private val pollingProperties = AgentOsAdapterProperties(enabled = false)
 
     private val agentStep = WorkflowStepDefinition(
         id = "step-1",
@@ -92,7 +98,10 @@ class CapabilityExecutionCapabilityIssuanceTest {
             evidence,
             interactions,
             attempts,
+            durableAgentAttemptService = durableAttempts,
+            agentOsExecutionAdapter = adapter,
             agentStepResultService = null,
+            agentOsAdapterProperties = pollingProperties,
         )
 
         val execution = service.resolveAndRecord(scope, namespaceId, workflowId, agentStep, repoRoot)
@@ -117,6 +126,9 @@ class CapabilityExecutionCapabilityIssuanceTest {
             evidence,
             interactions,
             attempts,
+            durableAgentAttemptService = durableAttempts,
+            agentOsExecutionAdapter = adapter,
             agentStepResultService = issuer,
+            agentOsAdapterProperties = pollingProperties,
         )
 }

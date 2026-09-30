@@ -48,11 +48,11 @@ data class RecoveryReport(
  * fabricates a success — a `SUCCEEDED` finalization only happens when AgentOS
  * actually reports it.
  *
- * The bean exists only when the AgentOS execution adapter is enabled, so the
- * default (polling) build is untouched.
+ * The bean exists by default (and is absent only when `factory.adapter.agentos.enabled=false`),
+ * so the default build runs the SSE bridge recovery sweep.
  */
 @Component
-@ConditionalOnProperty(prefix = "factory.adapter.agentos", name = ["enabled"], havingValue = "true")
+@ConditionalOnProperty(prefix = "factory.adapter.agentos", name = ["enabled"], havingValue = "true", matchIfMissing = true)
 class BridgeRecoveryWorker(
     private val attempts: DurableAgentAttemptService,
     private val adapter: AgentOsExecutionAdapter,

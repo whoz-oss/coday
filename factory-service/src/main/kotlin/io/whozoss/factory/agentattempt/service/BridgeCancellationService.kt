@@ -41,7 +41,7 @@ data class CancellationOutcome(
  * is transactional.
  */
 @Component
-@ConditionalOnProperty(prefix = "factory.adapter.agentos", name = ["enabled"], havingValue = "true")
+@ConditionalOnProperty(prefix = "factory.adapter.agentos", name = ["enabled"], havingValue = "true", matchIfMissing = true)
 class BridgeCancellationService(
     private val attempts: DurableAgentAttemptService,
     private val adapter: AgentOsExecutionAdapter,

@@ -1,5 +1,6 @@
 package io.whozoss.factory.capability
 
+import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.ObservationEscalationPolicy
@@ -78,6 +79,19 @@ class CapabilityExecutionService(
     private val interactionRepository: HumanInteractionRepository,
     private val attemptRepository: AgentStepAttemptRepository,
     /**
+     * Durable-attempt service (Lot C) — **mandatory primary dependency** since
+     * the final cutover. Together with [agentOsExecutionAdapter] it drives `agent`
+     * steps through the durable AgentOS bridge: a short claim transaction, the
+     * untransacted remote turn and a short finalize transaction.
+     */
+    private val durableAgentAttemptService: DurableAgentAttemptService,
+    /**
+     * Explicit Factory -> AgentOS execution boundary (SSE/reconcile) —
+     * **mandatory primary dependency** since the final cutover. It is the primary
+     * observation mechanism for `agent` steps.
+     */
+    private val agentOsExecutionAdapter: AgentOsExecutionAdapter,
+    /**
      * Optional issuer of the single-use result-submission capability. It is
      * injected in production; pure unit tests that only exercise the DAG
      * persistence boundary may leave it `null` (capability issuance is then
@@ -90,16 +104,6 @@ class CapabilityExecutionService(
      * tests may omit it and the phases then run inline.
      */
     private val transactionManager: PlatformTransactionManager? = null,
-    /**
-     * Optional durable-attempt service (Lot C). Together with
-     * [agentOsExecutionAdapter] it activates the durable AgentOS bridge for
-     * `agent` steps: a short claim transaction, the untransacted remote turn and
-     * a short finalize transaction. When either is absent, the legacy polling
-     * turn driver (see [resolveAgentViaPolling]) stays the active path.
-     */
-    private val durableAgentAttemptService: DurableAgentAttemptService? = null,
-    /** Optional explicit Factory -> AgentOS execution boundary (SSE/reconcile). */
-    private val agentOsExecutionAdapter: AgentOsExecutionAdapter? = null,
     /** Wall-clock observation budget handed to the adapter turn observer. */
     private val agentObservationTimeoutMs: Long = 600_000L,
     /** Lease TTL of the durable attempt claim (a live lease fences a competing worker). */
@@ -110,6 +114,15 @@ class CapabilityExecutionService(
      * frozen Lot H policy; injectable so tests can pin the kill decision.
      */
     private val observationEscalation: ObservationEscalationPolicy = ObservationEscalationPolicy(),
+    /**
+     * Driver selection for `agent` steps. The durable SSE bridge is the primary,
+     * non-optional path: [agentOsExecutionAdapter] is always required and used
+     * whenever this flag is `true` (the default, bound from
+     * `factory.adapter.agentos.enabled`). Setting it to `false` explicitly demotes
+     * execution to the legacy polling turn driver ([resolveAgentViaPolling]) — a
+     * troubleshooting fallback only.
+     */
+    private val agentOsAdapterProperties: AgentOsAdapterProperties = AgentOsAdapterProperties(),
 ) {
 
     private val shortTransaction: TransactionTemplate? = transactionManager?.let { manager ->
@@ -320,10 +333,11 @@ class CapabilityExecutionService(
     }
 
     /**
-     * Agent capability dispatcher. When the durable-attempt service and the AgentOS
-     * execution adapter are both present, the step runs through the durable bridge
-     * (see [resolveAgentViaAdapter]); otherwise the legacy polling turn driver
-     * ([resolveAgentViaPolling]) is the active path.
+     * Agent capability dispatcher. The durable SSE bridge (see
+     * [resolveAgentViaAdapter]) is the primary, non-optional path: it always runs
+     * unless the operator explicitly disabled it (`factory.adapter.agentos.enabled=false`),
+     * in which case the legacy polling turn driver ([resolveAgentViaPolling]) is
+     * the explicit fallback.
      */
     private fun resolveAgent(
         scope: TenantScope,
@@ -333,10 +347,8 @@ class CapabilityExecutionService(
         repoRoot: Path,
         ticket: String?,
     ): CapabilityExecution {
-        val attempts = durableAgentAttemptService
-        val adapter = agentOsExecutionAdapter
-        return if (attempts != null && adapter != null) {
-            resolveAgentViaAdapter(scope, namespaceId, workflowId, step, ticket, attempts, adapter)
+        return if (agentOsAdapterProperties.enabled) {
+            resolveAgentViaAdapter(scope, namespaceId, workflowId, step, ticket, durableAgentAttemptService, agentOsExecutionAdapter)
         } else {
             resolveAgentViaPolling(scope, namespaceId, workflowId, step, repoRoot, ticket)
         }
@@ -624,7 +636,7 @@ class CapabilityExecutionService(
                     "pass",
                     mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence),
                 )
-                durableAgentAttemptService!!.finalize(
+                durableAgentAttemptService.finalize(
                     scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
                     AgentAttemptStatus.SUCCEEDED, resultEvidenceId = evidenceId,
                 )
@@ -639,7 +651,7 @@ class CapabilityExecutionService(
                     "fail",
                     mapOf("status" to "FAILED", "code" to verdict.code, "message" to verdict.message, "evidence" to verdict.evidence),
                 )
-                durableAgentAttemptService!!.finalize(
+                durableAgentAttemptService.finalize(
                     scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
                     AgentAttemptStatus.FAILED, failureCode = verdict.code, resultEvidenceId = evidenceId,
                 )
@@ -654,7 +666,7 @@ class CapabilityExecutionService(
                     "fail",
                     mapOf("status" to "INTERRUPTED", "reason" to verdict.reason, "evidence" to verdict.evidence),
                 )
-                durableAgentAttemptService!!.finalize(
+                durableAgentAttemptService.finalize(
                     scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
                     AgentAttemptStatus.INTERRUPTED, failureCode = "AGENT_INTERRUPTED", resultEvidenceId = evidenceId,
                 )
@@ -669,7 +681,7 @@ class CapabilityExecutionService(
                     "fail",
                     mapOf("status" to "INDETERMINATE", "reason" to verdict.reason, "evidence" to verdict.evidence),
                 )
-                durableAgentAttemptService!!.finalize(
+                durableAgentAttemptService.finalize(
                     scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
                     AgentAttemptStatus.INDETERMINATE, failureCode = "AGENT_INDETERMINATE", resultEvidenceId = evidenceId,
                 )
@@ -689,7 +701,7 @@ class CapabilityExecutionService(
                         "evidence" to verdict.evidence,
                     ),
                 )
-                durableAgentAttemptService!!.transition(
+                durableAgentAttemptService.transition(
                     scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
                     AgentAttemptStatus.WAITING_HUMAN,
                 )

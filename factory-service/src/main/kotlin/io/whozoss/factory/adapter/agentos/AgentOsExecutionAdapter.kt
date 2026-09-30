@@ -15,9 +15,12 @@ data class CaseHandle(
  * idempotency is keyed by `attemptId`: a retried Factory step with the same
  * `attemptId` recovers the existing case instead of re-driving it.
  *
- * This adapter is **additive**: the polling turn driver
- * (`HttpAgentOsProxyClient`) remains the active path; this boundary is wired
- * only when `factory.adapter.agentos.enabled=true`.
+ * Since the final cutover this adapter is the **primary, mandatory** execution
+ * driver of `agent` steps: the `CapabilityExecutionService` always depends on it
+ * (the bean is created unconditionally). Setting
+ * `factory.adapter.agentos.enabled=false` explicitly demotes execution to the
+ * legacy polling turn driver (`HttpAgentOsProxyClient`), a troubleshooting
+ * fallback only.
  */
 interface AgentOsExecutionAdapter {
 
