@@ -3,7 +3,7 @@
     @if (drawerPanel() === 'members') {
       <agentos-case-members [caseId]="caseId" (closeRequested)="exchangeOpen.set(false)" />
     } @else {
-      <agentos-exchange-shell (closeRequested)="exchangeOpen.set(false)" />
+      <agentos-exchange-shell [active]="exchangeOpen()" (closeRequested)="exchangeOpen.set(false)" />
     }
   </div>
 

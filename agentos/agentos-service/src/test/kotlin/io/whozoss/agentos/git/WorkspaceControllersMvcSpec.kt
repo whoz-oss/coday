@@ -62,6 +62,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var bindings: CaseResourceBindingService
     @MockkBean(relaxed = true) lateinit var storage: ExchangeStorageService
     @MockkBean(relaxed = true) lateinit var lifecycle: GitWorkspaceLifecycleService
+    @MockkBean(relaxed = true) lateinit var diffs: ExchangeGitDiff
     @MockkBean(relaxed = true) lateinit var associations: GitRepositoryAssociationService
     @MockkBean(relaxed = true) lateinit var integrationConfigs: IntegrationConfigService
     @MockkBean(relaxed = true) lateinit var checkoutProvisioner: RepositoryCheckoutProvisioner
@@ -119,9 +120,9 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(jsonPath("$.branchName").doesNotExist())
         }
 
-        "a caller without case READ cannot inspect a workspace" {
+        "a caller without case READ cannot inspect workspace environment or diff" {
             val caseId = UUID.randomUUID()
-            listOf("workspace").forEach { suffix ->
+            listOf("workspace", "workspace/changes", "workspace/diff?path=secret.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/$caseId/$suffix"))
                     .andExpect(status().isForbidden)
             }
@@ -181,6 +182,24 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { cases.findByIds(listOf(hidden.id), any()) }
         }
 
+        "the changes of a non-Git case report an unequipped workspace" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.READ)
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/changes"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(false))
+        }
+
+        "requesting a diff for a non-Git case returns not found" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.READ)
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/diff").param("path", "README.md"))
+                .andExpect(status().isNotFound)
+        }
+
         "a sub-case permission never grants access to its root's Exchange or Git metadata" {
             val root = Case(namespaceId = UUID.randomUUID())
             val child = Case(namespaceId = root.namespaceId, parentCaseId = root.id)
@@ -193,7 +212,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             listOf("manifest", "directory", "content?path=private.txt", "download?path=private.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/${child.id}/files/$suffix")).andExpect(status().isNotFound)
             }
-            listOf("workspace").forEach { suffix ->
+            listOf("workspace", "workspace/changes", "workspace/diff?path=private.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isForbidden)
             }
             mockMvc.perform(delete("/api/cases/${child.id}/files").param("path", "private.txt"))
