@@ -100,11 +100,13 @@
     <div class="shell-sidebar__cases-scroll">
       <agentos-case-drawer
         [cases]="cases()"
+        [workspaces]="workspaces()"
         [activeCaseId]="activeCaseId()"
         [compact]="false"
         [filterQuery]="caseFilter()"
         (caseSelected)="caseSelected.emit($event)"
         (createRequested)="createRequested.emit()"
+        (subCaseCreateRequested)="subCaseCreateRequested.emit($event)"
         (deleteRequested)="deleteRequested.emit($event)"
         (starToggled)="starToggled.emit($event)"
         (renameRequested)="renameRequested.emit($event)"
@@ -299,11 +301,13 @@
     <div class="shell-sidebar__cases-scroll">
       <agentos-case-drawer
         [cases]="cases()"
+        [workspaces]="workspaces()"
         [activeCaseId]="activeCaseId()"
         [compact]="true"
         [filterQuery]="caseFilter()"
         (caseSelected)="caseSelected.emit($event)"
         (createRequested)="createRequested.emit()"
+        (subCaseCreateRequested)="subCaseCreateRequested.emit($event)"
         (deleteRequested)="deleteRequested.emit($event)"
         (starToggled)="starToggled.emit($event)"
       />

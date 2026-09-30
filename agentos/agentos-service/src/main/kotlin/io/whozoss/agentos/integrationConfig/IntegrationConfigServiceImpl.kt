@@ -29,8 +29,13 @@ import java.util.UUID
 class IntegrationConfigServiceImpl(
     private val repository: IntegrationConfigRepository,
     private val mergeStrategy: IntegrationConfigMergeStrategy,
+    /**
+     * Type-specific policies, collected by Spring. Empty by default so a context without any
+     * — and every unit test building this service directly — behaves as before.
+     */
+    private val policies: List<IntegrationConfigPolicy> = emptyList(),
 ) : IntegrationConfigService {
-    override fun create(entity: IntegrationConfig): IntegrationConfig {
+    override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
             throw ResponseStatusException(
                 HttpStatus.CONFLICT,
@@ -38,11 +43,14 @@ class IntegrationConfigServiceImpl(
             )
         }
         assertNamespaceSingletonRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
     }
 
-    override fun update(entity: IntegrationConfig): IntegrationConfig {
+    override fun update(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
@@ -52,8 +60,18 @@ class IntegrationConfigServiceImpl(
                 )
             }
         assertNamespaceSingletonRules(entity)
+        assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
-        return saveOrConflict(entity)
+        saveOrConflict(entity).also { saved ->
+            policies.filter { it.supports(saved.integrationType) }.forEach { it.afterSave(saved) }
+        }
+    }
+
+    private fun <T> withSavePolicies(entity: IntegrationConfig, action: () -> T): T {
+        val applicable = policies.filter { it.supports(entity.integrationType) }
+        fun proceed(index: Int): T = if (index == applicable.size) action()
+            else applicable[index].aroundSave(entity) { proceed(index + 1) }
+        return proceed(0)
     }
 
     override fun findByIds(
@@ -258,6 +276,19 @@ class IntegrationConfigServiceImpl(
                         "('${existing.name}'). Update that one, or remove it first.",
                 )
             }
+    }
+
+    /**
+     * Apply the validation owned by this configuration's type.
+     *
+     * Without this, the generic CRUD accepts any JSON in `parameters` and a malformed association
+     * is stored with a 201, failing only when something later tries to use it. Validating here
+     * keeps the failure where the mistake was made.
+     */
+    private fun assertTypeSpecificRules(entity: IntegrationConfig) {
+        policies
+            .filter { it.supports(entity.integrationType) }
+            .forEach { it.validate(entity) }
     }
 
     private fun saveOrConflict(entity: IntegrationConfig): IntegrationConfig =

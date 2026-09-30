@@ -24,6 +24,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
@@ -256,6 +257,31 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe null
             verify(exactly = 1) { caseService.create(any()) }
             verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
+        }
+
+        "create under a parent case requires WRITE on that parent" {
+            val parentId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.hasPermission(callerId.toString(), EntityType.CASE, parentId.toString(), Action.WRITE) } returns false
+
+            shouldThrow<AccessDeniedException> { controller.create(caseResource(id = null).copy(parentCaseId = parentId)) }
+
+            verify(exactly = 0) { caseService.create(any()) }
+        }
+
+        "create under a writable parent case passes the parent to the service" {
+            val parentId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.hasPermission(callerId.toString(), EntityType.CASE, parentId.toString(), Action.WRITE) } returns true
+            every { caseService.create(any()) } answers {
+                firstArg<Case>().parentCaseId shouldBe parentId
+                caseEntity()
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(caseResource(id = null).copy(parentCaseId = parentId))
+
+            verify(exactly = 1) { caseService.create(any()) }
         }
 
         "create auto-grants ADMIN on the new case to the creator" {

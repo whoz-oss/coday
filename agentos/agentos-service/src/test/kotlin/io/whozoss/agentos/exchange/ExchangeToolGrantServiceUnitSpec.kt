@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.git.GitMetadataEntries
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
@@ -34,9 +36,11 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
     private fun service(
         properties: ExchangeToolsConfigProperties = ExchangeToolsConfigProperties(),
         storageProperties: ExchangeStorageConfigProperties = ExchangeStorageConfigProperties(),
+        reservedEntries: List<ExchangeReservedEntries> = listOf(GitMetadataEntries()),
     ) = ExchangeToolGrantService(
         properties = properties,
         storageProperties = storageProperties,
+        reservedEntries = reservedEntries,
         toolRegistryService = toolRegistryService,
         toolResolverService = toolResolverService,
         objectMapper = ObjectMapper(),
@@ -203,16 +207,37 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             val patterns = captureConfig(service(properties)).get("extraDenyPatterns")
 
             patterns.isArray shouldBe true
-            patterns.map { it.asText() } shouldBe listOf("*.bak", "internal-*")
+            patterns.map { it.asText() } shouldBe listOf(".git", "*.bak", "internal-*")
         }
 
-        "extraDenyPatterns is an empty array when nothing is configured" {
+        "extraDenyPatterns denies git metadata by default" {
             // The plugin reads the key with `takeIf { it.isArray }`: a missing key or a scalar would
             // silently mean "no extra pattern", so the array itself is the contract.
+            // `.git` is in it out of the box because a case scope can be a Git worktree that the
+            // agent holds write access to, and `.git` there is a file that repoints the worktree.
             val patterns = captureConfig(service()).get("extraDenyPatterns")
 
             patterns.isArray shouldBe true
-            patterns.size() shouldBe 0
+            patterns.map { it.asText() } shouldBe listOf(".git")
+        }
+
+        "a configured deny-list adds to the built-in git protection rather than replacing it" {
+            // An instance hardening the list for its own conventions must not silently reopen `.git`.
+            val properties = ExchangeToolsConfigProperties(extraDenyPatterns = listOf("*.bak"))
+
+            val patterns = captureConfig(service(properties)).get("extraDenyPatterns").map { it.asText() }
+
+            patterns shouldContain ".git"
+        }
+
+        "every reserved entry is denied first, whatever the instance configures" {
+            val reserved = listOf(ExchangeReservedEntries { setOf(".cache-owned") }, GitMetadataEntries())
+            val properties = ExchangeToolsConfigProperties(extraDenyPatterns = listOf(".git", "*.bak"))
+
+            val patterns =
+                captureConfig(service(properties, reservedEntries = reserved)).get("extraDenyPatterns").map { it.asText() }
+
+            patterns shouldBe listOf(".cache-owned", ".git", "*.bak")
         }
 
         "an out-of-range jpeg quality is clamped rather than handed to the JPEG writer" {

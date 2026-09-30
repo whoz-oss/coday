@@ -8,8 +8,10 @@ import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
 import io.whozoss.agentos.caseFlow.CaseServiceImpl.Companion.MAX_DELEGATION_DEPTH
 import io.whozoss.agentos.delegation.SubCaseManager
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -65,6 +67,13 @@ class CaseServiceImpl(
     private val permissionService: PermissionService,
     private val promptService: PromptService,
     private val caseNamingService: CaseNamingService,
+    /**
+     * Installed only by an optional capability (Git workspaces behind
+     * `agentos.git.workspaces.enabled`). Null: every run starts immediately, as it always did.
+     */
+    private val caseLaunchGate: CaseLaunchGate? = null,
+    /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
+    private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -83,6 +92,13 @@ class CaseServiceImpl(
      */
     private val watcherJobs = ConcurrentHashMap<UUID, Job>()
 
+    /** Turns held back by [caseLaunchGate]; null without a gate. */
+    private val gatedRuns =
+        caseLaunchGate?.let { GatedRunLauncher(it, scope, activeRuntimes::get, { id -> findById(id)?.status }, ::storeEvent) }
+
+    override fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean =
+        caseIds.any { gatedRuns?.isAdmitted(it) == true || activeRuntimes[it]?.isRunning() == true }
+
     /**
      * Number of active coroutines running in the service scope.
      * Counts all child jobs of the scope — watcher coroutines and any in-flight run() launches.
@@ -92,12 +108,32 @@ class CaseServiceImpl(
     internal val activeCoroutineCount: Int
         get() = scope.coroutineContext[Job]?.children?.count() ?: 0
 
+    /** Launches admitted by the gate that have not finished yet. Exposed for lifecycle tests. */
+    internal val trackedExecutionCount: Int
+        get() = gatedRuns?.trackedExecutionCount ?: 0
+
     // ======================================================
     // EntityService
     // ======================================================
 
-    override fun create(entity: Case): Case {
-        require(findById(entity.id) == null) { "Duplicate entity id: ${entity.id}" }
+    @Transactional
+    override fun create(entity: Case): Case =
+        caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
+
+    private fun createCase(entity: Case): Case {
+        // Soft-deleted ids count: reusing one would resurrect the old node with its existing
+        // relationships, including its place in another family.
+        require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
+        entity.parentCaseId?.let { parentId ->
+            val parent = getById(parentId)
+            if (caseRepository.countAncestorDepth(parentId) >= MAX_DELEGATION_DEPTH) {
+                throw UnprocessableEntityException("Case hierarchy depth limit reached")
+            }
+            if (parent.namespaceId != entity.namespaceId) {
+                throw BadRequestException("A sub-case must belong to its parent's namespace")
+            }
+            caseLaunchGate?.requireAccepting(parentId)
+        }
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -111,6 +147,10 @@ class CaseServiceImpl(
             entity.copy(runCostThreshold = resolvedThreshold)
 
         val saved = caseRepository.save(caseToSave)
+        // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
+        // transaction, so a failed link rolls the case back instead of leaving an orphan.
+        saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
+        caseWorkspaceProvisioning?.onCaseCreated(saved)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
@@ -301,6 +341,7 @@ class CaseServiceImpl(
         answerToEventId: UUID?,
         sessionContext: Map<String, Any?>?,
     ) {
+        caseLaunchGate?.requireAccepting(caseId)
         val runtime = getCaseRuntime(caseId)
         val userId = actor.id.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
@@ -337,7 +378,7 @@ class CaseServiceImpl(
                     // an AgentSelectedEvent. Without run(), the runtime has a pending
                     // AgentSelectedEvent in its history but no execution loop to process it,
                     // leaving the case blocked in PENDING status forever.
-                    scope.launch { runtime.run() }
+                    launchRun(runtime)
                     return
                 }
             } else {
@@ -385,7 +426,7 @@ class CaseServiceImpl(
         }
 
         // run() is self-guarding via an AtomicBoolean — launch unconditionally.
-        scope.launch { runtime.run() }
+        launchRun(runtime)
         // Trigger post-processing after each user message (e.g. automatic title generation).
         // Events are fetched fresh from the service so the newly stored MessageEvent is included.
         val case = findById(caseId) ?: return
@@ -689,6 +730,7 @@ class CaseServiceImpl(
     private fun handleStatusChange(
         caseId: UUID,
         newStatus: CaseStatus,
+        postProcess: Boolean = true,
     ) {
         val case = getById(caseId)
         val oldStatus = case.status
@@ -702,7 +744,7 @@ class CaseServiceImpl(
 
         // Trigger post-processing on turn completion so processors can refine their
         // work with the full agent response available (e.g. naming refinement on 2nd turn).
-        if (newStatus == CaseStatus.IDLE) {
+        if (newStatus == CaseStatus.IDLE && postProcess) {
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
                 triggerNamingIfNeeded(
@@ -746,6 +788,7 @@ class CaseServiceImpl(
             activeRuntimes[caseId]
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Interrupting case: $caseId" }
+        gatedRuns?.interrupt(runtime)
         runtime.requestInterrupt()
     }
 
@@ -768,7 +811,8 @@ class CaseServiceImpl(
 
     private fun killSingleCase(caseId: UUID) {
         logger.info { "Killing case: $caseId" }
-        activeRuntimes[caseId]?.requestKill()
+        val runtime = activeRuntimes[caseId]
+        if (gatedRuns != null) gatedRuns.kill(caseId, runtime) else runtime?.requestKill()
         handleStatusChange(caseId, CaseStatus.KILLED)
     }
 
@@ -835,8 +879,9 @@ class CaseServiceImpl(
 
         val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
+        caseLaunchGate?.requireAccepting(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
-        scope.launch { runtime.run() }
+        launchRun(runtime)
         logger.info { "Sub-case $subCaseId resumed under parent $parentCaseId, agent=$agentName" }
         return runtime
     }
@@ -868,11 +913,6 @@ class CaseServiceImpl(
                 ),
             )
 
-        // Create the [:PARENT_OF] graph edge so countAncestorDepth can traverse the chain.
-        // This runs inside the same @Transactional boundary as create() above: if the
-        // link fails, the sub-case node is rolled back too — no orphaned cases.
-        caseRepository.linkParentToChild(parentCaseId, subCase.id)
-
         // Grant the delegating user ADMIN on the sub-case so they can list, open, and
         // stream it — same grant that CaseController.create applies for user-created cases.
         // The permission write runs outside the Neo4j transaction boundary (it is a separate
@@ -897,9 +937,22 @@ class CaseServiceImpl(
 
         val runtime = activeRuntimes[subCase.id]!!
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))
-        scope.launch { runtime.run() }
+        launchRun(runtime)
         logger.info { "Sub-case ${subCase.id} started under parent $parentCaseId, agent=$agentName (depth=${ancestorDepth + 1})" }
         return runtime
+    }
+
+    // ======================================================
+    // Launch gate
+    // ======================================================
+
+    /** Start an agent turn: now without a [caseLaunchGate], once it admits the turn with one. */
+    private fun launchRun(runtime: CaseRuntime) {
+        if (gatedRuns != null) gatedRuns.launch(runtime) else scope.launch { runtime.run() }
+    }
+
+    override fun resumeIfPending(caseId: UUID) {
+        gatedRuns?.resumeIfPending(caseId)
     }
 
     // ======================================================
@@ -909,11 +962,21 @@ class CaseServiceImpl(
     @PreDestroy
     fun shutdown() {
         logger.info { "Shutting down CaseService..." }
-        activeRuntimes.keys.toList().forEach {
+        activeRuntimes.entries.toList().forEach { (caseId, runtime) ->
             try {
-                killSingleCase(it)
+                if (gatedRuns?.keepOpenOnShutdown(caseId) != true) {
+                    killSingleCase(caseId)
+                } else {
+                    gatedRuns.stopForShutdown(runtime) {
+                        // Stopping this process is not a user Kill: its workspace survives, so an
+                        // unfinished conversation accepts a fresh instruction after the restart.
+                        if (!getById(caseId).status.isTerminal()) handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+                        activeRuntimes.remove(caseId, runtime)
+                        watcherJobs.remove(caseId)?.cancel()
+                    }
+                }
             } catch (e: Exception) {
-                logger.warn(e) { "Error killing case $it during shutdown" }
+                logger.warn(e) { "Error killing case $caseId during shutdown" }
             }
         }
         activeRuntimes.clear()
