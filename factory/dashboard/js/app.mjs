@@ -91,6 +91,32 @@ export function resolveWorkflowId(win = globalThis.window) {
   return resolveRouteParam(win, 'workflowId') ?? resolveRouteParam(win, 'id')
 }
 
+/**
+ * Build the stable identity of a route transition: the normalized route path
+ * plus its full query string. Two navigations to the same path with different
+ * params (`#/detail?workflowId=A` vs `#/detail?workflowId=B`) therefore yield
+ * different identities and force an unmount/remount of the view with its new
+ * arguments, instead of a silent no-op. Pure and import-safe in Node.
+ */
+export function buildRouteIdentity(route, win = globalThis.window) {
+  const hash = typeof win?.location?.hash === 'string' ? win.location.hash : ''
+  const raw = hash.replace(/^#/, '')
+  const queryIndex = raw.indexOf('?')
+  if (queryIndex < 0) return route
+  const query = raw.slice(queryIndex + 1)
+  return query ? `${route}?${query}` : route
+}
+
+/** Build the namespace-scoped workflow SSE stream URL (param omitted when absent). */
+export function workflowStreamUrl(namespaceId) {
+  return namespaceId
+    ? `/api/factory/workflows/stream?namespaceId=${encodeURIComponent(namespaceId)}`
+    : `/api/factory/workflows/stream`
+}
+
+/** Routes that consume the shared workflow SSE stream. */
+export const SSE_ROUTES = Object.freeze(['/runs', '/projection', '/detail'])
+
 /** Build `#route?params` and navigate to it (shared by the view mounters). */
 export function navigateTo(win, route, params) {
   const query = params && Object.keys(params).length > 0 ? `?${new URLSearchParams(params).toString()}` : ''
@@ -155,6 +181,7 @@ export function closeModal(doc = globalThis.document) {
  */
 export function createRouter(win = globalThis.window, doc = globalThis.document, options = {}) {
   let currentRoute = null
+  let currentRouteIdentity = null
   let teardownHooks = []
   let viewGeneration = 0
 
@@ -181,6 +208,53 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
   // generic registry cannot supply, e.g. a freshly resolved namespace). The
   // generic mounter is skipped for them so a view never mounts twice.
   const onMountOwnedRoutes = new Set(options.onMountOwnedRoutes ?? [])
+  const sseRoutes = new Set(options.sseRoutes ?? SSE_ROUTES)
+  const SseClientImpl = options.SseClient ?? SseClient
+
+  // Resolve the ACTIVE namespace on every transition (never frozen at
+  // bootstrap) so the shared stream and every view stay scoped to the current
+  // view's namespace.
+  const resolveNamespace =
+    typeof options.resolveNamespace === 'function' ? options.resolveNamespace : () => options.namespaceId ?? null
+
+  // A single shared SSE stream per namespace: recreated (not frozen) whenever
+  // the active namespace changes, so subscriptions always follow the view.
+  let activeSseClient = options.sseClient ?? null
+  let activeSseNamespace
+
+  const releaseSseClient = () => {
+    if (options.sseClient || !activeSseClient) return
+    if (typeof activeSseClient.close === 'function') {
+      try {
+        activeSseClient.close()
+      } catch {
+        // close() must stay idempotent.
+      }
+    }
+    activeSseClient = null
+    activeSseNamespace = undefined
+  }
+
+  const getSseClient = (namespaceId) => {
+    const ns = namespaceId ?? null
+    if (options.sseClient) return options.sseClient
+    if (typeof SseClientImpl !== 'function') return null
+    if (activeSseClient && activeSseNamespace === ns) return activeSseClient
+    releaseSseClient()
+    activeSseClient = new SseClientImpl(workflowStreamUrl(ns))
+    activeSseNamespace = ns
+    activeSseClient.connect?.()
+    return activeSseClient
+  }
+
+  const sseClientForRoute = (route, namespaceId) => {
+    if (options.sseClient) return options.sseClient
+    if (!sseRoutes.has(route)) {
+      releaseSseClient()
+      return null
+    }
+    return getSseClient(namespaceId)
+  }
 
   // Default navigation: canonicalize into a hash so the browser router picks it
   // up. Callers may inject `onNavigate` (tests, embedded hosts).
@@ -189,7 +263,7 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
     if (win?.location) win.location.hash = `#${route}${query}`
   }
 
-  const mountView = (route) => {
+  const mountView = (route, namespaceId, sseClient) => {
     if (onMountOwnedRoutes.has(route)) return
     const mounter = mounters[route]
     if (typeof mounter !== 'function') return
@@ -208,8 +282,8 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
     try {
       const handle = mounter(host, {
         apiClient: options.apiClient,
-        sseClient: options.sseClient,
-        namespaceId: options.namespaceId,
+        sseClient,
+        namespaceId,
         onNavigate: options.onNavigate ?? defaultNavigate,
         registerTeardown,
       })
@@ -227,20 +301,23 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
     }
   }
 
-  const mount = (route) => {
-    if (route === currentRoute) return
+  const mount = (route, identity = route) => {
+    if (identity === currentRouteIdentity) return
     runTeardowns()
     currentRoute = route
+    currentRouteIdentity = identity
     const activeId = ROUTES[route].id
     for (const section of doc.querySelectorAll('.cockpit-view')) {
       section.classList.toggle('active', section.id === activeId)
     }
     updateNav(route)
     setLiveIndicator(doc, 'online')
-    mountView(route)
+    const namespaceId = resolveNamespace()
+    const sseClient = sseClientForRoute(route, namespaceId)
+    mountView(route, namespaceId, sseClient)
     if (typeof options.onMount === 'function') {
       try {
-        options.onMount(route, { registerTeardown, doc, win })
+        options.onMount(route, { registerTeardown, doc, win, namespaceId, sseClient })
       } catch {
         // A failing view mount must never break the shell navigation.
       }
@@ -254,7 +331,9 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
       // known route keeps its query string (e.g. `#/detail?workflowId=…`).
       win.history?.replaceState?.(null, '', `#${route}`)
     }
-    mount(route)
+    // The identity carries the query string so `#/detail?workflowId=A` and
+    // `#/detail?workflowId=B` are distinct transitions (teardown + remount).
+    mount(route, buildRouteIdentity(route, win))
   }
 
   const start = () => {
@@ -269,6 +348,8 @@ export function createRouter(win = globalThis.window, doc = globalThis.document,
     registerTeardown,
     runTeardowns,
     getCurrentRoute: () => currentRoute,
+    getCurrentRouteIdentity: () => currentRouteIdentity,
+    getSseClient,
     getTeardownCount: () => teardownHooks.length,
     getActiveSectionId: () => ROUTES[currentRoute ?? DEFAULT_ROUTE].id,
   }
@@ -285,7 +366,9 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
     apiClient: api,
     mounters: VIEW_MOUNTERS,
     onMountOwnedRoutes: ['/launch'],
+    resolveNamespace: () => resolveNamespaceId(win),
     onMount: (route, ctx) => {
+      const namespaceId = ctx.namespaceId ?? resolveNamespaceId(win)
       if (route === '/launch') {
         // Governed run launch: pick a definition, resolve the namespace (and
         // optional ticket / FACTORY_ROOT) then start + run the workflow. The
@@ -295,7 +378,7 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
         if (!container) return
         mountRunLaunchView(container, {
           apiClient: api,
-          namespaceId: resolveNamespaceId(win),
+          namespaceId,
           onNavigate: (target, params) => navigateTo(win, target, params),
           registerTeardown: ctx.registerTeardown,
         })
@@ -310,7 +393,8 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
         if (!listContainer) return
         mountProjectionView(listContainer, {
           api,
-          namespaceId: resolveNamespaceId(win),
+          namespaceId,
+          sse: ctx.sseClient,
           registerTeardown: ctx.registerTeardown,
           onNavigate: (target, params) => navigateTo(win, target, params),
           showModal: (content) => showModal(content, doc),
@@ -333,9 +417,9 @@ export function bootstrapCockpit(win = globalThis.window, doc = globalThis.docum
         Promise.resolve(
           mountRunDetailView(container, {
             workflowId,
-            namespaceId: resolveNamespaceId(win),
+            namespaceId,
             apiClient: api,
-            sseClient: null,
+            sseClient: ctx.sseClient,
           }),
         )
           .then((resolved) => {
