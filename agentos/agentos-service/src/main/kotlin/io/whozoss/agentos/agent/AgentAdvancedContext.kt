@@ -63,7 +63,7 @@ data class AgentAdvancedContext(
         prompt: String? = null,
     ): List<Message> {
         val history = convertEventsToMessages(events)
-        val operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
+        val operationalMessage = listOfNotNull("<instructions>$instructions</instructions>", prompt).joinToString("\n\n").takeUnless { it.isBlank() }
         val messages = if (operationalMessage != null) history + UserMessage(operationalMessage) else history
         return listOfNotNull(systemPrompt?.let { SystemMessage(it) }) + messages
     }
