@@ -4,15 +4,16 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEventType
 import mu.KLogging
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.stereotype.Component
 
+/**
+ * Central idempotent Neo4j schema initialiser: shared constraints and indexes.
+ *
+ * Always registered: every supported persistence mode (`embedded-neo4j`, `neo4j`) runs on a
+ * Neo4j engine, so a Driver bean is always provisioned.
+ */
 @Component
-@ConditionalOnExpression(
-    "'\${agentos.persistence.mode:embedded-neo4j}' == 'neo4j' " +
-        "or '\${agentos.persistence.mode:embedded-neo4j}' == 'embedded-neo4j'",
-)
 class Neo4jSchemaInitializer(
     private val neo4jClient: Neo4jClient,
 ) : ApplicationRunner {
