@@ -193,4 +193,36 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         )
         policy.evaluateToolGrant("Worker", "FACTORY__submit_step_result", context) shouldBe ToolGrantDecision.Neutral
     }
+
+    "tool grant policy stays neutral for unrelated tools when bridge lookup fails" {
+        val policy = FactoryToolGrantPolicy { error("bridge unavailable") }
+        val context = ToolContext(UUID.randomUUID(), UUID.randomUUID(), "user", emptyList(), "Worker")
+
+        policy.evaluateToolGrant("Worker", "OTHER__tool", context) shouldBe ToolGrantDecision.Neutral
+    }
+
+    "tool grant policy denies the reserved tool when bridge lookup fails" {
+        val policy = FactoryToolGrantPolicy { error("secret bridge detail") }
+        val namespaceId = UUID.randomUUID()
+        val caseId = UUID.randomUUID()
+        val context =
+            ToolContext(
+                namespaceId,
+                UUID.randomUUID(),
+                "user",
+                listOf(
+                    CaseStatusEvent(
+                        metadata = EntityMetadata(),
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        status = CaseStatus.RUNNING,
+                    ),
+                ),
+                "Worker",
+            )
+
+        val decision = policy.evaluateToolGrant("Worker", "FACTORY__submit_step_result", context)
+        decision.shouldBeInstanceOf<ToolGrantDecision.Deny>()
+        (decision as ToolGrantDecision.Deny).reason shouldBe "Factory result capability could not be verified"
+    }
 })

@@ -28,13 +28,17 @@ class FactoryToolGrantPolicy
             context: ToolContext,
         ): ToolGrantDecision {
             if (toolName != STEP_RESULT_TOOL) return ToolGrantDecision.Neutral
-            val caseId = context.caseEvents.map { it.caseId }.distinct().singleOrNull()
-                ?: return ToolGrantDecision.Deny(setOf(toolName), "no single controlling case")
-            val bound = services().stepResultBindings.contextForCase(caseId, context.namespaceId).isNotEmpty()
-            return if (bound) {
-                ToolGrantDecision.Neutral
-            } else {
-                ToolGrantDecision.Deny(setOf(toolName), "this case has no active Factory result capability")
+            return runCatching {
+                val caseId = context.caseEvents.map { it.caseId }.distinct().singleOrNull()
+                    ?: return@runCatching ToolGrantDecision.Deny(setOf(toolName), "no single controlling case")
+                val bound = services().stepResultBindings.contextForCase(caseId, context.namespaceId).isNotEmpty()
+                if (bound) {
+                    ToolGrantDecision.Neutral
+                } else {
+                    ToolGrantDecision.Deny(setOf(toolName), "this case has no active Factory result capability")
+                }
+            }.getOrElse {
+                ToolGrantDecision.Deny(setOf(toolName), "Factory result capability could not be verified")
             }
         }
 
