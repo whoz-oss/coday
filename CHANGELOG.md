@@ -1,3 +1,18 @@
+## 3.21.0 (2026-10-01)
+
+### 🚀 Features
+
+- **agentos-service:** improve thinking process for intention ([6858e570](https://github.com/whoz-oss/coday/commit/6858e570))
+- **agentos-service:** null safe ([9c47b185](https://github.com/whoz-oss/coday/commit/9c47b185))
+- **agentos-service:** and fix 's' in instructions ([910b00c6](https://github.com/whoz-oss/coday/commit/910b00c6))
+- **agentos-service:** null safe ([651a7965](https://github.com/whoz-oss/coday/commit/651a7965))
+- **agentos-service:** improve thinking process for intention ([#1404](https://github.com/whoz-oss/coday/pull/1404))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 3.20.0 (2026-10-01)
 
 ### 🚀 Features
