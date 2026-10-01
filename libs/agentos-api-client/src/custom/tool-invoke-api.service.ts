@@ -22,6 +22,11 @@ export interface ToolInvokeResponse {
   output: string
   success: boolean
   metadata: Record<string, unknown>
+  /**
+   * Machine-readable structured output conforming to the tool's declared outputSchema.
+   * Null for text-only tools.
+   */
+  structuredOutput?: unknown
   errorType?: string
   errorMessage?: string
 }
