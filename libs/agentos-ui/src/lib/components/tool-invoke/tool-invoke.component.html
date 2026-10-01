@@ -139,6 +139,9 @@
         <pre class="tool-invoke__output">{{ meta }}</pre>
       }
 
+      <h3 class="tool-invoke__section-label">Structured output</h3>
+      <pre class="tool-invoke__output">{{ formatStructuredOutput(res.structuredOutput) ?? 'null' }}</pre>
+
       @if (res.errorType || res.errorMessage) {
         <h3 class="tool-invoke__section-label">Tool error details</h3>
         <dl class="tool-invoke__dl">
