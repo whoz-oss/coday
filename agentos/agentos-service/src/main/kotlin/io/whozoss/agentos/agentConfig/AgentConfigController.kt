@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
 import io.whozoss.agentos.sdk.api.agentConfig.AgentDefinitionDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -76,6 +77,7 @@ class AgentConfigController(
             entityType = EntityType.AGENT_CONFIG,
             toResource = { toDto(it as AgentConfig) },
             toDomain = { resource ->
+                @Suppress("DEPRECATION")
                 AgentConfig(
                     metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
                     namespaceId = resource.namespaceId,
@@ -84,6 +86,7 @@ class AgentConfigController(
                     instructions = resource.instructions,
                     modelName = resource.modelName,
                     integrations = resource.integrations,
+                    executionMode = resource.executionMode,
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: false,
@@ -135,6 +138,7 @@ class AgentConfigController(
         val existing =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        @Suppress("DEPRECATION")
         return toDto(
             agentConfigService.update(
                 existing.copy(
@@ -143,6 +147,7 @@ class AgentConfigController(
                     instructions = resource.instructions,
                     modelName = resource.modelName,
                     integrations = resource.integrations,
+                    executionMode = resource.executionMode,
                     advancedExecution = resource.advancedExecution ?: false,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: existing.enabled,
@@ -251,7 +256,8 @@ class AgentConfigController(
                         inputSchema = tool.inputSchema,
                     )
                 },
-            advancedExecution = definition.advancedExecution,
+            executionMode = definition.executionMode,
+            advancedExecution = definition.executionMode == ExecutionMode.ADVANCED,
             namespaceId = definition.namespaceId,
             userId = definition.userId,
         )
@@ -260,6 +266,7 @@ class AgentConfigController(
     companion object : KLogging()
 }
 
+@Suppress("DEPRECATION")
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {
     val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
     return AgentConfig(
@@ -270,6 +277,7 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         instructions = resource.instructions,
         modelName = resource.modelName,
         integrations = resource.integrations,
+        executionMode = resource.executionMode,
         advancedExecution = resource.advancedExecution ?: false,
         externalMetadata = resource.externalMetadata,
         enabled = resource.enabled ?: false,
@@ -278,6 +286,7 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
     )
 }
 
+@Suppress("DEPRECATION")
 internal fun toDto(entity: AgentConfig) =
     AgentConfigDto(
         id = entity.metadata.id,
@@ -287,6 +296,7 @@ internal fun toDto(entity: AgentConfig) =
         instructions = entity.instructions,
         modelName = entity.modelName,
         integrations = entity.integrations,
+        executionMode = entity.executionMode,
         advancedExecution = entity.advancedExecution.takeIf { it },
         externalMetadata = entity.externalMetadata,
         createdBy = entity.metadata.createdBy,

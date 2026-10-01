@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import java.util.UUID
 
@@ -30,7 +31,7 @@ import java.util.UUID
  * @param resolvedModel The fully-resolved [AiModel], passed directly to the instantiation phase.
  * @param resolvedProvider The fully-resolved [AiProvider] (after overlay), passed directly to the instantiation phase.
  * @param tools The resolved tool set, filtered and scoped to this agent.
- * @param advancedExecution Whether the agent should run in advanced multi-step mode.
+ * @param executionMode The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP).
  * @param namespaceId The namespace this agent is scoped to.
  * @param userId The user the agent is built for, or null for anonymous / system runs.
  * @param redirectGuideline Merged redirect guideline text: the `guideline` parameter of every
@@ -53,7 +54,7 @@ data class ResolvedAgentDefinition(
     val resolvedModel: AiModel,
     val resolvedProvider: AiProvider,
     val tools: Collection<StandardTool<*>>,
-    val advancedExecution: Boolean,
+    val executionMode: ExecutionMode,
     val namespaceId: UUID,
     val userId: UUID?,
     val redirectGuideline: String? = null,

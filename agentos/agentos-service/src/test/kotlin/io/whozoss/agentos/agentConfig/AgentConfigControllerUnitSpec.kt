@@ -21,6 +21,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.api.common.GetByIdsRequest
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -113,7 +114,7 @@ class AgentConfigControllerUnitSpec :
             instructions: String? = "Be helpful.",
             resolvedModelApiName: String = "claude-sonnet-4-5",
             resolvedProviderName: String = "anthropic-prod",
-            advancedExecution: Boolean = false,
+            executionMode: ExecutionMode = ExecutionMode.SIMPLE,
             nsId: UUID = namespaceId,
             userId: UUID? = null,
         ) = ResolvedAgentDefinition(
@@ -142,7 +143,7 @@ class AgentConfigControllerUnitSpec :
                     apiKey = "sk-ant-test",
                 ),
             tools = emptyList(),
-            advancedExecution = advancedExecution,
+            executionMode = executionMode,
             namespaceId = nsId,
             userId = userId,
         )

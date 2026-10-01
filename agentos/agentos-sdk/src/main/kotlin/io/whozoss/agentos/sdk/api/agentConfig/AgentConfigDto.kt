@@ -40,6 +40,17 @@ data class AgentConfigDto(
     val instructions: String? = null,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
+    /**
+     * Execution mode for this agent. Replaces the legacy [advancedExecution] boolean.
+     * When both are present, [executionMode] takes precedence.
+     * When null, [advancedExecution] is used as a fallback for backward compatibility.
+     */
+    val executionMode: ExecutionMode? = null,
+    /**
+     * @deprecated Use [executionMode] instead. Kept for backward compatibility with existing configs.
+     * When [executionMode] is null: `true` → ADVANCED, `false`/null → SIMPLE.
+     */
+    @Deprecated("Use executionMode instead")
     val advancedExecution: Boolean? = null,
     val externalMetadata: Map<String, Any?>? = null,
     val createdBy: String? = null,

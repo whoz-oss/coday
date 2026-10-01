@@ -32,6 +32,7 @@ import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -407,7 +408,7 @@ class AgentServiceImpl(
             resolvedModel = modelConfig,
             resolvedProvider = providerConfig,
             tools = tools,
-            advancedExecution = agentConfig.advancedExecution,
+            executionMode = agentConfig.resolvedExecutionMode,
             namespaceId = context.namespaceId,
             userId = context.userId,
             redirectGuideline = redirectGuideline,
@@ -470,7 +471,7 @@ class AgentServiceImpl(
             agentId = definition.agentConfigId,
             resolvedInstructions = definition.instructions,
             resolvedSystemPrompt = definition.systemPrompt,
-            advancedExecution = definition.advancedExecution,
+            executionMode = definition.executionMode,
             modelConfig = modelConfig,
             providerConfig = providerConfig,
             context = context,
@@ -536,7 +537,7 @@ class AgentServiceImpl(
         agentId: UUID,
         resolvedInstructions: String?,
         resolvedSystemPrompt: String?,
-        advancedExecution: Boolean,
+        executionMode: ExecutionMode,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
@@ -544,7 +545,7 @@ class AgentServiceImpl(
         resolvedUser: User?,
         redirectGuideline: String? = null,
     ): Agent {
-        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
+        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
         logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
@@ -552,7 +553,7 @@ class AgentServiceImpl(
 
         val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
 
-        return if (advancedExecution) {
+        return if (executionMode == ExecutionMode.ADVANCED) {
             val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
             val advancedContext =
                 AgentAdvancedContext(
@@ -581,6 +582,9 @@ class AgentServiceImpl(
                 toolMetricsService = toolMetricsService,
             )
         } else {
+            // SIMPLE and LOOP both use AgentSimple for now.
+            // AgentLoop will be introduced in a follow-up and will intercept ExecutionMode.LOOP
+            // before reaching this branch.
             AgentSimple(
                 metadata = EntityMetadata(id = agentId),
                 name = agentName,

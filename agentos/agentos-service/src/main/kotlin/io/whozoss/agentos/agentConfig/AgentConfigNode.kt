@@ -3,6 +3,7 @@ package io.whozoss.agentos.agentConfig
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.data.annotation.CreatedBy
 import org.springframework.data.annotation.CreatedDate
@@ -41,6 +42,7 @@ data class AgentConfigNode(
     val integrationsJson: String? = null,
     val externalMetadataJson: String? = null,
     val advancedExecution: Boolean = false,
+    val executionMode: String? = null,
     val enabled: Boolean,
     val subAgentsJson: String? = null,
     val skillSelectorsJson: String? = null,
@@ -72,6 +74,7 @@ data class AgentConfigNode(
             instructions = instructions,
             modelName = modelName,
             integrations = integrationsJson?.let { MAPPER.readValue(it, INTEGRATIONS_TYPE) },
+            executionMode = executionMode?.let { runCatching { ExecutionMode.valueOf(it) }.getOrNull() },
             advancedExecution = advancedExecution,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
             enabled = enabled,
@@ -95,7 +98,8 @@ data class AgentConfigNode(
                 modelName = config.modelName,
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
                 externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
-                advancedExecution = config.advancedExecution,
+                executionMode = config.executionMode?.name,
+                advancedExecution = @Suppress("DEPRECATION") config.advancedExecution,
                 subAgentsJson = config.subAgents?.let { MAPPER.writeValueAsString(it) },
                 skillSelectorsJson = config.skillSelectors?.let { MAPPER.writeValueAsString(it) },
                 version = config.metadata.version,
