@@ -42,6 +42,12 @@ Inherited Git configuration and hostile local configuration are rejected or isol
 The sweep supports one AgentOS instance per workstream. Its in-process guard prevents overlapping
 passes in that JVM; multiple instances sharing the same database/storage would require a lease.
 
+Workspace-backed execution is single-instance **by construction**, not just by configuration.
+`WorkspaceLifecycleLocks` is a JVM singleton (`object`), and the admission model (`deferredRuns`,
+`executionJobs`, `whenAvailable` callbacks) is entirely in-process. Horizontal scaling would
+require a distributed lease *and* persisting the intent to run — which reopens the deliberate
+"nothing is replayed after a restart" trade-off.
+
 The sweep runs on a dedicated `git-workspace` thread pool, never on Spring's scheduler thread, so a
 long clone does not delay other scheduled work. An operator can pause it on a live instance through
 the `gitworkspaces` Actuator endpoint, registered only with the worker, over HTTP or JMX:

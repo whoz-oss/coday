@@ -179,13 +179,7 @@ class CaseController(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
         val userId = userService.getCurrentUser().id.toString()
-        resource.parentCaseId?.let { parentId ->
-            // Namespace READ lets a member create a case; attaching it under another case also
-            // needs WRITE on that parent, as delegation from it would.
-            if (!permissionService.hasPermission(userId, EntityType.CASE, parentId.toString(), Action.WRITE)) {
-                throw AccessDeniedException("No write permission on the parent case")
-            }
-        }
+        resource.parentCaseId?.let { checkParentCasePermission(userId, it) }
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
         val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
@@ -422,6 +416,16 @@ class CaseController(
     private fun List<Case>.withLastMessageAt(): List<CaseDto> {
         val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(map { it.id })
         return map { toDto(it).copy(lastMessageAt = lastMessageTimestamps[it.id]) }
+    }
+
+    /**
+     * Namespace READ lets a member create a case; attaching it under another case also
+     * needs WRITE on that parent, as delegation from it would.
+     */
+    private fun checkParentCasePermission(userId: String, parentCaseId: UUID) {
+        if (!permissionService.hasPermission(userId, EntityType.CASE, parentCaseId.toString(), Action.WRITE)) {
+            throw AccessDeniedException("No write permission on the parent case")
+        }
     }
 
     companion object : KLogging()

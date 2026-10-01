@@ -3,10 +3,12 @@ package io.whozoss.agentos.git
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.InMemoryCaseRepository
+import io.whozoss.agentos.caseFlow.LaunchDecision
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -34,7 +36,7 @@ class GitCaseLaunchGateSpec : StringSpec({
             cases.save(cases.findById(child)!!.copy(status = status))
             gate.requireAccepting(child)
             gate.keepOpenOnShutdown(child) shouldBe false
-            gate.canLaunch(child) shouldBe true
+            gate.launchDecision(child) shouldBe LaunchDecision.Admit
             var admitted = false
             gate.withAdmission(child, onAvailable = { error("No resource should defer this case") }) { admitted = true }
             admitted shouldBe true
@@ -44,30 +46,37 @@ class GitCaseLaunchGateSpec : StringSpec({
         every { roots.resolveGit(child) } throws IllegalStateException("Neo4j session expired")
 
         // A pending answer would park the turn forever: nothing resumes a case without a workspace.
-        shouldThrow<IllegalStateException> { gate.canLaunch(child) }
+        shouldThrow<IllegalStateException> { gate.launchDecision(child) }
     }
     "a child waits for its shared worktree while still accepting input" {
         every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), binding.copy(status = CaseResourceStatus.PREPARING), root)
         gate.requireAccepting(child)
         gate.keepOpenOnShutdown(child) shouldBe true
-        gate.canLaunch(child) shouldBe false
+        gate.launchDecision(child).shouldBeInstanceOf<LaunchDecision.Wait>()
         every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), binding.copy(status = CaseResourceStatus.READY), root)
-        gate.canLaunch(child) shouldBe true
+        gate.launchDecision(child) shouldBe LaunchDecision.Admit
     }
     "an equipped terminal case refuses fresh input and a previously admitted launch" {
         every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), binding.copy(status = CaseResourceStatus.READY), root)
         for (status in listOf(CaseStatus.KILLED, CaseStatus.ERROR)) {
             cases.save(cases.findById(child)!!.copy(status = status))
             shouldThrow<ConflictException> { gate.requireAccepting(child) }
-            gate.canLaunch(child) shouldBe false
+            gate.launchDecision(child).shouldBeInstanceOf<LaunchDecision.Refuse>()
         }
     }
-    "a deleted workspace refuses input and execution for all family members" {
+    "a deleted workspace permanently refuses execution for all family members" {
         for (status in listOf(CaseResourceStatus.DELETING, CaseResourceStatus.REMOVED)) {
             every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), binding.copy(status = status), root)
             shouldThrow<ConflictException> { gate.requireAccepting(child) }
-            gate.canLaunch(child) shouldBe false
+            // Refuse (not Wait): these states will never become usable on their own.
+            gate.launchDecision(child).shouldBeInstanceOf<LaunchDecision.Refuse>()
         }
+    }
+    "a FAILED workspace is permanently refused, not held waiting" {
+        every { roots.resolveGit(child) } returns GitExchangeRoot(Path.of("/tmp/case"), binding.copy(status = CaseResourceStatus.FAILED), root)
+        // FAILED must return Refuse so the caller emits a WarnEvent and returns to IDLE
+        // instead of keeping the case PENDING indefinitely with nothing to resume it.
+        gate.launchDecision(child).shouldBeInstanceOf<LaunchDecision.Refuse>()
     }
     "an admission deferred by cleanup rechecks readiness when the resource lock becomes available" {
         val entered = CountDownLatch(1)
@@ -89,7 +98,7 @@ class GitCaseLaunchGateSpec : StringSpec({
             gate.withAdmission(child, onAvailable = {
                 gate.withAdmission(child, onAvailable = { error("Lock already released") }) {
                     attempts.incrementAndGet()
-                    if (gate.canLaunch(child)) admitted.incrementAndGet()
+                    if (gate.launchDecision(child) == LaunchDecision.Admit) admitted.incrementAndGet()
                     completed.countDown()
                 }
             }) { admitted.incrementAndGet() }

@@ -280,7 +280,8 @@ class CaseServiceImplSpec :
         class TestLaunchGate : CaseLaunchGate {
             var open: Boolean = false
 
-            override fun canLaunch(caseId: UUID): Boolean = open
+            override fun launchDecision(caseId: UUID): LaunchDecision =
+                if (open) LaunchDecision.Admit else LaunchDecision.Wait("workspace not ready")
         }
 
         fun gitGate(repository: CaseRepository, bindings: InMemoryCaseResourceBindingService): GitCaseLaunchGate =
@@ -509,13 +510,13 @@ class CaseServiceImplSpec :
             val releaseLaunch = CountDownLatch(1)
             val checks = AtomicInteger()
             val gate = object : CaseLaunchGate {
-                override fun canLaunch(caseId: UUID): Boolean {
+                override fun launchDecision(caseId: UUID): LaunchDecision {
                     // First check: admission, under the runtime lock. Second: the launched job.
                     when (checks.incrementAndGet()) {
                         1 -> admitting.countDown().also { check(releaseAdmission.await(5, TimeUnit.SECONDS)) }
                         2 -> check(releaseLaunch.await(5, TimeUnit.SECONDS))
                     }
-                    return true
+                    return LaunchDecision.Admit
                 }
             }
             val agent = finishingAgent()
@@ -548,13 +549,13 @@ class CaseServiceImplSpec :
             val release = CountDownLatch(1)
             val checks = AtomicInteger()
             val gate = object : CaseLaunchGate by realGate {
-                override fun canLaunch(caseId: UUID): Boolean {
-                    val canLaunch = realGate.canLaunch(caseId)
+                override fun launchDecision(caseId: UUID): LaunchDecision {
+                    val decision = realGate.launchDecision(caseId)
                     if (checks.incrementAndGet() == 2) {
                         entered.countDown()
                         check(release.await(5, TimeUnit.SECONDS))
                     }
-                    return canLaunch
+                    return decision
                 }
             }
             val agent = finishingAgent()
@@ -587,8 +588,8 @@ class CaseServiceImplSpec :
         listOf("coordination", "launch check").forEach { failing ->
             "a failing $failing warns the user once, returns the case to IDLE and never runs the message" {
                 val gate = object : CaseLaunchGate {
-                    override fun canLaunch(caseId: UUID): Boolean =
-                        if (failing == "launch check") throw IllegalStateException("Neo4j unavailable") else true
+                    override fun launchDecision(caseId: UUID): LaunchDecision =
+                        if (failing == "launch check") throw IllegalStateException("Neo4j unavailable") else LaunchDecision.Admit
 
                     override fun withAdmission(caseId: UUID, onAvailable: () -> Unit, action: () -> Unit) {
                         if (failing == "coordination") throw IllegalStateException("Neo4j session expired")
@@ -619,7 +620,7 @@ class CaseServiceImplSpec :
 
         "completed execution jobs are released after idle eviction and a later message still runs" {
             val agent = finishingAgent()
-            val gate = TestLaunchGate().also { it.open = true }
+            val gate = TestLaunchGate().also { it.open = true } // Admit immediately
             val service = buildService(agent = agent, idleEvictionGraceMs = 25L, caseLaunchGate = gate)
             try {
                 val case = service.create(Case(namespaceId = namespaceId))
@@ -642,11 +643,11 @@ class CaseServiceImplSpec :
             val releaseGate = CountDownLatch(1)
             val checks = AtomicInteger()
             val gate = object : CaseLaunchGate {
-                override fun canLaunch(caseId: UUID): Boolean {
-                    if (checks.incrementAndGet() != 2) return true
+                override fun launchDecision(caseId: UUID): LaunchDecision {
+                    if (checks.incrementAndGet() != 2) return LaunchDecision.Admit
                     enteredGate.countDown()
                     check(releaseGate.await(5, TimeUnit.SECONDS))
-                    return false
+                    return LaunchDecision.Wait("gate blocked for test")
                 }
             }
             val agent = finishingAgent()
@@ -679,9 +680,9 @@ class CaseServiceImplSpec :
         "shutdown during admission does not retain a job cancelled before insertion" {
             lateinit var service: CaseServiceImpl
             val gate = object : CaseLaunchGate {
-                override fun canLaunch(caseId: UUID): Boolean {
+                override fun launchDecision(caseId: UUID): LaunchDecision {
                     service.shutdown()
-                    return true
+                    return LaunchDecision.Admit
                 }
             }
             val agent = finishingAgent()
@@ -695,6 +696,122 @@ class CaseServiceImplSpec :
                 service.hasRunningExecutions(listOf(case.id)) shouldBe false
                 verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
             } finally {
+                service.shutdown()
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // LaunchDecision.Refuse: FAILED workspace emits WarnEvent and returns to IDLE
+        // -------------------------------------------------------------------------
+
+        "a FAILED workspace is permanently refused: WarnEvent emitted and case returns to IDLE" {
+            // Before LaunchDecision, canLaunch returned false for both FAILED and PREPARING.
+            // A FAILED binding would keep the case PENDING indefinitely with no warning.
+            // After the fix, Refuse triggers failAdmission-like behaviour: WarnEvent + IDLE.
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val agent = finishingAgent()
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision =
+                    LaunchDecision.Refuse("workspace preparation failed: disk quota exceeded")
+            }
+            val service = buildService(agent = agent, caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                // The message is stored: a gate Refuse must not become an HTTP failure.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+
+                withTimeout(3_000) { while (events.findByParent(case.id).none { it is WarnEvent }) delay(10) }
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                events.findByParent(case.id).filterIsInstance<WarnEvent>().size shouldBe 1
+                service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                // A second resumeIfPending must not re-run the message: deferredRuns was cleared.
+                service.resumeIfPending(case.id)
+                delay(100)
+                coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Concurrent message during a running turn with gate installed
+        // -------------------------------------------------------------------------
+
+        "a second message sent while a gated turn is running is silently dropped (policy: no queue during run)" {
+            // ## Policy: no turn queue while a turn is running
+            //
+            // Sequence (gate permissive, always Admit):
+            //
+            // 1. Turn 1 starts: runInFlight = true, status RUNNING.
+            // 2. Message 2 arrives → launch() → claimPending() returns null because
+            //    isRunning() is true; deferredRuns += id but status stays RUNNING.
+            // 3. admitRun sees J1 still running, re-adds id to deferredRuns and registers
+            //    J1.invokeOnCompletion { resumeIfPending }.
+            // 4. J1 completes, status persisted to IDLE.
+            // 5. resumeIfPending: id is in deferredRuns but statusOf(id) != PENDING →
+            //    deferredRuns.remove(id); return. Turn 2 is silently dropped.
+            //
+            // This is the deliberate policy: the gate's deferredRuns set tracks process-local
+            // intent, not a persistent queue. A turn that cannot claim PENDING because
+            // another turn is already running is lost. The invariant is pinned here so a
+            // future refactor of resumeIfPending cannot change it unnoticed.
+
+            val runStarted = CountDownLatch(1)
+            val releaseRun = CountDownLatch(1)
+
+            val blockingAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        runStarted.countDown()
+                        check(releaseRun.await(5, TimeUnit.SECONDS))
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = agentId,
+                                agentName = agentName,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            // Gate always admits: the test is about what happens when message 2 arrives
+            // while turn 1 is already running (not about gate deferral).
+            val gate = TestLaunchGate().also { it.open = true }
+            val service = buildService(agent = blockingAgent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                // Send message 1 and wait until the agent is actually running.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("message 1")))
+                runStarted.await(5, TimeUnit.SECONDS) shouldBe true
+                service.findActiveRuntime(case.id)!!.isRunning() shouldBe true
+
+                // Send message 2 while turn 1 is blocking. claimPending() returns null
+                // (isRunning() is true), so deferredRuns gets the id but status stays RUNNING.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("message 2")))
+
+                // Release turn 1.
+                releaseRun.countDown()
+
+                // Wait for the case to settle to IDLE.
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                withTimeout(3_000) { while (service.hasRunningExecutions(listOf(case.id))) delay(10) }
+
+                // Policy: turn 2 is dropped. The agent ran exactly once (for message 1).
+                // deferredRuns is empty — resumeIfPending cleaned it up.
+                verify(exactly = 1) { blockingAgent.run(any<List<CaseEvent>>(), any()) }
+                service.trackedExecutionCount shouldBe 0
+            } finally {
+                releaseRun.countDown()
                 service.shutdown()
             }
         }
