@@ -252,7 +252,6 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 scheduledPromptId = sp.id,
                 scheduledFor = Instant.parse("2025-12-31T08:00:00Z"),
                 status = RunStatus.CLAIMED,
-                correlationId = "orphaned-claimed",
             )
             runRepo.insert(orphanedRun)
 
@@ -284,7 +283,6 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                     scheduledPromptId = sp.id,
                     scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
                     status = RunStatus.RUNNING,
-                    correlationId = "orphaned-running",
                 ),
             )
             userRunRepo.materialize(orphanedRun.id, agentId, namespaceId)
@@ -390,7 +388,6 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                     scheduledPromptId = sp.id,
                     scheduledFor = Instant.parse("2026-01-01T08:00:00Z"),
                     status = RunStatus.RUNNING,
-                    correlationId = "orphaned-running-failed",
                 ),
             )
             userRunRepo.materialize(orphanedRun.id, agentId, namespaceId)
