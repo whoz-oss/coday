@@ -1,3 +1,13 @@
+## 3.20.0 (2026-10-01)
+
+### 🚀 Features
+
+- wz-35088 - structured output in tool invoke UI and endpoint ([#1403](https://github.com/whoz-oss/coday/pull/1403))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.19.0 (2026-09-30)
 
 ### 🚀 Features
