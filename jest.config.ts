@@ -1,3 +1,9 @@
+import { pathsToModuleNameMapper } from 'ts-jest'
+import { createRequire } from 'node:module'
+
+const require = createRequire(import.meta.url)
+const { compilerOptions } = require('./tsconfig.base.json')
+
 /** @type {import('ts-jest').JestConfigWithTsJest} */
 export default {
   preset: 'ts-jest',
@@ -9,13 +15,14 @@ export default {
   },
   moduleFileExtensions: ['cjs', 'js', 'json', 'jsx', 'mjs', 'node', 'ts', 'tsx'],
   extensionsToTreatAsEsm: ['.ts'],
+  moduleNameMapper: pathsToModuleNameMapper(compilerOptions.paths, { prefix: '<rootDir>/' }),
   collectCoverage: true,
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov'],
   coveragePathIgnorePatterns: ['/node_modules/', '/__tests__/', '/dist/'],
 
   // FORCE IGNORE PROBLEMATIC DIRECTORIES
-  modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/.nx/', '<rootDir>/libs/coday-events/dist/'],
+  modulePathIgnorePatterns: ['<rootDir>/dist/', '<rootDir>/.nx/', '<rootDir>/libs/coday-events/dist/', '/dist/'],
 
   testPathIgnorePatterns: [
     '/node_modules/',
