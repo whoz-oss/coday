@@ -91,7 +91,7 @@ $executionState
 $redirectGuidelineBlock
 
 ### Objective
-Based on the full conversation and current context, choose the **single best next action** to advance the user’s goal. Follow all applicable guidance in `<instruction>`, resolving conflicts by priority and relevance. Applying one instruction does not excuse you from applying the others. If an intermediate step is needed to decide what to do or to produce a high-quality result, choose that step as the next action.
+Based on the full conversation and current context, choose the **single best next action** to advance the user’s goal. Follow all applicable guidance in `<instructions>`, resolving conflicts by priority and relevance. Applying one instruction does not excuse you from applying the others. If an intermediate step is needed to decide what to do or to produce a high-quality result, choose that step as the next action.
 
 ### Reasoning Guidelines
 Before generating the output, analyze the situation using the following logic:
