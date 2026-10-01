@@ -128,6 +128,15 @@ export class ToolInvokeComponent implements OnInit {
     return JSON.stringify(metadata, null, 2)
   }
 
+  /**
+   * Pretty-print the structuredOutput value for display.
+   * Returns null when the value is absent or undefined (rendered as 'null' in the template).
+   */
+  protected formatStructuredOutput(value: unknown): string | null {
+    if (value === undefined) return null
+    return JSON.stringify(value, null, 2)
+  }
+
   protected back(): void {
     if (this.isPlatformMode) {
       // Platform mode: return to the admin hub.

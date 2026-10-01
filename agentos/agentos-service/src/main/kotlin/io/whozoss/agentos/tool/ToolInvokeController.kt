@@ -1,5 +1,6 @@
 package io.whozoss.agentos.tool
 
+import com.fasterxml.jackson.databind.JsonNode
 import mu.KLogging
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -56,8 +57,7 @@ class ToolInvokeController(
     fun list(
         @RequestParam namespaceId: UUID,
         @RequestParam(required = false) userId: UUID?,
-    ): List<ToolSummary> =
-        toolInvokeService.listTools(namespaceId, userId)
+    ): List<ToolSummary> = toolInvokeService.listTools(namespaceId, userId)
 
     /**
      * POST /api/tools/invoke
@@ -77,12 +77,13 @@ class ToolInvokeController(
     suspend fun invoke(
         @RequestBody request: ToolInvokeRequest,
     ): ToolInvokeResponse {
-        val result = toolInvokeService.invoke(
-            namespaceId = request.namespaceId,
-            userId = request.userId,
-            toolName = request.toolName,
-            payloadJson = request.payload,
-        )
+        val result =
+            toolInvokeService.invoke(
+                namespaceId = request.namespaceId,
+                userId = request.userId,
+                toolName = request.toolName,
+                payloadJson = request.payload,
+            )
         return ToolInvokeResponse(
             toolName = request.toolName,
             output = result.output,
@@ -90,6 +91,7 @@ class ToolInvokeController(
             metadata = result.metadata,
             errorType = result.errorType,
             errorMessage = result.errorMessage,
+            structuredOutput = result.structuredOutput,
         )
     }
 
@@ -140,4 +142,5 @@ data class ToolInvokeResponse(
     val metadata: Map<String, Any?> = emptyMap(),
     val errorType: String? = null,
     val errorMessage: String? = null,
+    val structuredOutput: JsonNode?,
 )
