@@ -16,6 +16,8 @@ import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +37,12 @@ private data class PendingCommand(
  *
  * Owns only execution state: the event list, the SSE flow, and the kill flag.
  * All business logic is delegated back to [CaseService] through four callbacks:
+ *
+ * ## Admission lock
+ * This instance's monitor is the admission lock, shared with [GatedRunLauncher]:
+ * it serialises claiming a run against Stop and Kill. Anything holding it must be
+ * short and non-blocking — no I/O, no network call, no suspension. Persisting a
+ * status transition happens outside it (see [claimPending]/[publishStatus]).
  *
  * @param updateStatusCallback called whenever the runtime transitions to a new [CaseStatus].
  * @param storeEvent called for every event produced by this runtime.
@@ -181,6 +189,46 @@ class CaseRuntime(
 
     fun isRunning(): Boolean = runInFlight.get()
 
+    /**
+     * Claim the PENDING transition atomically, in memory only.
+     *
+     * Must be called under this instance's monitor (the admission lock). Returns the
+     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
+     * already running or already PENDING. The caller is responsible for calling
+     * [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
+     */
+    fun claimPending(): CaseStatus? = synchronized(this) {
+        if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
+            _statusFlow.value = CaseStatus.PENDING
+            CaseStatus.PENDING
+        } else null
+    }
+
+    /**
+     * Claim the IDLE transition atomically, in memory only, for a turn that was held
+     * back and never started (mirror of [claimPending] for the cancel path).
+     *
+     * Must be called under this instance's monitor (the admission lock). Returns the
+     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
+     * running or not in PENDING state. The caller is responsible for calling
+     * [publishStatus] **outside** the monitor.
+     */
+    fun claimCancelPending(): CaseStatus? = synchronized(this) {
+        if (!isRunning() && _statusFlow.value == CaseStatus.PENDING) {
+            _statusFlow.value = CaseStatus.IDLE
+            CaseStatus.IDLE
+        } else null
+    }
+
+    /**
+     * Persist and broadcast a status transition that was previously claimed atomically
+     * via [claimPending] or [claimCancelPending].
+     *
+     * **Must be called outside the admission lock** — the callback reaches
+     * [CaseServiceImpl.handleStatusChange] which performs blocking Neo4j round-trips.
+     */
+    fun publishStatus(status: CaseStatus) = updateStatusCallback(id, status)
+
     /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
     val subscriptionCount get() = emitter.subscriptionCount
 
@@ -290,14 +338,26 @@ class CaseRuntime(
      * - Max iterations reached: transitions to [CaseStatus.ERROR]. Terminal.
      */
     suspend fun run() {
-        if (!runInFlight.compareAndSet(false, true)) {
+        val context = currentCoroutineContext()
+        val claimed =
+            synchronized(this) {
+                // A launch admitted by a CaseLaunchGate can be cancelled by Stop or Kill before it
+                // starts. Claiming the runtime and clearing those flags must be atomic with that.
+                context.ensureActive()
+                if (!runInFlight.compareAndSet(false, true)) {
+                    false
+                } else {
+                    interruptRequested.set(false)
+                    killRequested.set(false)
+                    true
+                }
+            }
+        if (!claimed) {
             logger.debug { "[CaseRuntime $id] run() already in-flight, skipping" }
             return
         }
 
         logger.info { "[CaseRuntime $id] run() started" }
-        interruptRequested.set(false)
-        killRequested.set(false)
         updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 

@@ -9,6 +9,7 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.api.exchange.ExchangeApi
 import io.whozoss.agentos.sdk.api.exchange.ExchangeCapability
@@ -70,6 +71,7 @@ class ExchangeController(
     private val caseService: CaseService,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val userService: UserService,
+    private val exchangeRootResolver: ExchangeRootResolver,
 ) : ExchangeApi {
     // ========================================
     // Case scope
@@ -80,7 +82,11 @@ class ExchangeController(
     @HideOnAccessDenied
     override fun getCaseFilesManifest(
         @PathVariable caseId: UUID,
-    ): ExchangeManifest = manifestFor(caseRootFor(caseId), ExchangeScope.CASE, EntityType.CASE, caseId)
+    ): ExchangeManifest {
+        val root = resolvedCase(caseId)
+        val manifest = manifestFor(root.requireUsable(), ExchangeScope.CASE, EntityType.CASE, caseId)
+        return if (root.ownerCaseId == caseId) manifest else manifest.copy(capability = sharedCapability(caseId, root))
+    }
 
     /**
      * Browse one directory level of a case's files.
@@ -96,7 +102,11 @@ class ExchangeController(
         @RequestParam(required = false, defaultValue = "") path: String,
         @RequestParam(required = false, defaultValue = "0") page: Int,
         @RequestParam(required = false, defaultValue = "200") size: Int,
-    ): ExchangeDirectoryListing = listingFor(caseRootFor(caseId), path, page, size, EntityType.CASE, caseId)
+    ): ExchangeDirectoryListing {
+        val root = resolvedCase(caseId)
+        val listing = listingFor(root.requireUsable(), path, page, size, EntityType.CASE, caseId)
+        return if (root.ownerCaseId == caseId) listing else listing.copy(capability = sharedCapability(caseId, root))
+    }
 
     @GetMapping("/api/cases/{caseId}/files/content", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
@@ -132,14 +142,14 @@ class ExchangeController(
     fun uploadCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam("file") file: MultipartFile,
-    ): ExchangeFileEntry = uploadTo(caseRootFor(caseId), ExchangeScope.CASE, file, "case $caseId")
+    ): ExchangeFileEntry = withCaseMutation(caseId) { root -> uploadTo(root, ExchangeScope.CASE, file, "case $caseId") }
 
     @DeleteMapping("/api/cases/{caseId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     override fun deleteCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
-    ): ExchangeDeleteResponse = deleteFrom(caseRootFor(caseId), path, "case $caseId")
+    ): ExchangeDeleteResponse = withCaseMutation(caseId) { root -> deleteFrom(root, path, "case $caseId") }
 
     // ========================================
     // Namespace scope (reads for any member; writes gated on Namespace WRITE = namespace admin / super-admin)
@@ -316,11 +326,41 @@ class ExchangeController(
         return ExchangeDeleteResponse(true, "Deleted $path")
     }
 
-    /** Resolve the existing per-case date-sharded Exchange directory. */
-    private fun caseRootFor(caseId: UUID): Path {
-        val case = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
-        return exchangeStorageService.caseRoot(case.namespaceId, caseId, case.metadata.created)
+    /**
+     * Where this case's files live; 404 when the case does not exist.
+     *
+     * Goes through [ExchangeRootResolver] so REST and the agent tools always agree. `@PreAuthorize`
+     * already checked the case itself; a directory owned by another case (shared storage) also
+     * requires access to that owner, since sharing a directory never grants its owner's rights.
+     */
+    private fun resolvedCase(caseId: UUID): ResolvedExchangeRoot =
+        exchangeRootResolver.resolve(findCase(caseId)).also { requireOwnerAccess(caseId, it, Action.READ) }
+
+    private fun <T> withCaseMutation(
+        caseId: UUID,
+        action: (Path) -> T,
+    ): T =
+        exchangeRootResolver.withCaseMutation(findCase(caseId)) { root ->
+            requireOwnerAccess(caseId, root, Action.WRITE)
+            action(root.requireUsable())
+        }
+
+    private fun findCase(caseId: UUID) = caseService.findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+
+    private fun caseRootFor(caseId: UUID): Path = resolvedCase(caseId).requireUsable()
+
+    private fun requireOwnerAccess(
+        caseId: UUID,
+        root: ResolvedExchangeRoot,
+        action: Action,
+    ) {
+        if (root.ownerCaseId != caseId) exchangeCapabilityService.requireCaseAccess(currentUserId(), caseId, root, action)
     }
+
+    private fun sharedCapability(
+        caseId: UUID,
+        root: ResolvedExchangeRoot,
+    ) = exchangeCapabilityService.caseCapability(currentUserId(), caseId, root)
 
     private fun currentUserId(): String = userService.getCurrentUser().id.toString()
 
