@@ -1993,6 +1993,28 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // redirectGuideline wiring seam — findAgentByName → AgentAdvancedContext
         // -------------------------------------------------------------------------
 
+        // -------------------------------------------------------------------------
+        // ExecutionMode.LOOP wiring — AgentLoop instantiation
+        // -------------------------------------------------------------------------
+
+        "findAgentByName with executionMode=LOOP returns an AgentLoop without calling getChatClient" {
+            val config = agentConfig(name = "loop-agent", modelName = "sonnet")
+                .copy(executionMode = io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+
+            every { agentConfigService.findByName(namespaceId, "loop-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+
+            val agent = agentService.findAgentByName("loop-agent", context)
+
+            (agent is AgentLoop) shouldBe true
+            agent.name shouldBe "loop-agent"
+            // LOOP mode must never create a chat client — no LLM provider is involved.
+            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any(), any()) }
+        }
+
         "findAgentByName with advancedExecution=true wires redirectGuideline into AgentAdvancedContext" {
             val redirectConfig = IntegrationConfig(
                 metadata = EntityMetadata(id = UUID.randomUUID()),

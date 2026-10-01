@@ -551,55 +551,62 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
-
-        return if (executionMode == ExecutionMode.ADVANCED) {
-            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
-            val advancedContext =
-                AgentAdvancedContext(
-                    chatClient = compressingChatClient,
-                    tools = resolvedTools.toList(),
-                    instructions = resolvedInstructions,
-                    agentId = agentId,
-                    confirmationManager = confirmationManager,
-                    systemPrompt = resolvedSystemPrompt,
-                    imageCharCost = agentConfigProperties.imageCharCost,
-                    maxAttachedImages = agentConfigProperties.maxAttachedImages,
-                    redirectGuideline = redirectGuideline,
+        return when (executionMode) {
+            ExecutionMode.LOOP ->
+                AgentLoop(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    objectMapper = objectMapper,
                 )
-            AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = agentName,
-                context = advancedContext,
-                intentionGenerator = intentionGenerator,
-                objectMapper = objectMapper,
-                userId = resolvedUser?.metadata?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEventsProvider = context.caseEventsProvider,
-                maxIterations = limitsConfig.agentMaxIterations,
-                llmProvider = providerConfig.name,
-                llmModel = modelConfig.apiModelName,
-                toolMetricsService = toolMetricsService,
-            )
-        } else {
-            // SIMPLE and LOOP both use AgentSimple for now.
-            // AgentLoop will be introduced in a follow-up and will intercept ExecutionMode.LOOP
-            // before reaching this branch.
-            AgentSimple(
-                metadata = EntityMetadata(id = agentId),
-                name = agentName,
-                chatClient = chatClient,
-                tools = resolvedTools,
-                systemPrompt = resolvedSystemPrompt,
-                instructions = withRedirectGuideline(resolvedInstructions, redirectGuideline),
-                userId = resolvedUser?.metadata?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEventsProvider = context.caseEventsProvider,
-                llmProvider = providerConfig.name,
-                llmModel = modelConfig.apiModelName,
-                toolMetricsService = toolMetricsService,
-                maxAttachedImages = agentConfigProperties.maxAttachedImages,
-            )
+
+            ExecutionMode.ADVANCED -> {
+                val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
+                val advancedContext =
+                    AgentAdvancedContext(
+                        chatClient = CompressingChatClient(chatClient, idCompressorService),
+                        tools = resolvedTools.toList(),
+                        instructions = resolvedInstructions,
+                        agentId = agentId,
+                        confirmationManager = confirmationManager,
+                        systemPrompt = resolvedSystemPrompt,
+                        imageCharCost = agentConfigProperties.imageCharCost,
+                        maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                        redirectGuideline = redirectGuideline,
+                    )
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    context = advancedContext,
+                    intentionGenerator = intentionGenerator,
+                    objectMapper = objectMapper,
+                    userId = resolvedUser?.metadata?.id,
+                    userExternalId = resolvedUser?.externalId,
+                    caseEventsProvider = context.caseEventsProvider,
+                    maxIterations = limitsConfig.agentMaxIterations,
+                    llmProvider = providerConfig.name,
+                    llmModel = modelConfig.apiModelName,
+                    toolMetricsService = toolMetricsService,
+                )
+            }
+
+            ExecutionMode.SIMPLE -> {
+                val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
+                AgentSimple(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    chatClient = chatClient,
+                    tools = resolvedTools,
+                    systemPrompt = resolvedSystemPrompt,
+                    instructions = withRedirectGuideline(resolvedInstructions, redirectGuideline),
+                    userId = resolvedUser?.metadata?.id,
+                    userExternalId = resolvedUser?.externalId,
+                    caseEventsProvider = context.caseEventsProvider,
+                    llmProvider = providerConfig.name,
+                    llmModel = modelConfig.apiModelName,
+                    toolMetricsService = toolMetricsService,
+                    maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                )
+            }
         }
     }
 
