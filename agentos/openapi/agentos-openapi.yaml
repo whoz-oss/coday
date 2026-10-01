@@ -5696,6 +5696,8 @@ components:
           additionalProperties: {}
         output:
           type: string
+        structuredOutput:
+          $ref: "#/components/schemas/JsonNode"
         success:
           type: boolean
         toolName:
