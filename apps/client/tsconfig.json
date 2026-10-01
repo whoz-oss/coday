@@ -8,13 +8,13 @@
   },
   "compilerOptions": {
     "emitDecoratorMetadata": false,
+    "ignoreDeprecations": "6.0",
     "isolatedModules": true,
     "module": "preserve",
     "moduleResolution": "bundler",
     "noFallthroughCasesInSwitch": true,
     "noImplicitOverride": true,
-    "target": "es2022",
-    "ignoreDeprecations": "6.0"
+    "target": "es2022"
   },
   "extends": "../../tsconfig.base.json",
   "files": [],

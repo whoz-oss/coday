@@ -37,6 +37,7 @@
     "yargs": "catalog:"
   },
   "devDependencies": {
+    "@actions/cache": "catalog:dev",
     "@angular/build": "catalog:dev",
     "@commitlint/cli": "catalog:dev",
     "@commitlint/config-conventional": "catalog:dev",
