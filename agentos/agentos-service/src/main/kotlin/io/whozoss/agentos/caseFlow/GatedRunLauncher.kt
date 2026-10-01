@@ -40,12 +40,16 @@ internal class GatedRunLauncher(
     /**
      * Mark the turn PENDING and start it once the gate admits it. The user's message is already
      * persisted, and [resumeIfPending] picks the turn up when the obstacle clears.
+     *
+     * The claim (in-memory status + deferredRuns) is atomic with the admission lock so a
+     * concurrent Stop or Kill cannot fall between the two. Persistence via [publishStatus]
+     * runs outside the lock — no blocking I/O under the monitor.
      */
     fun launch(runtime: CaseRuntime) {
-        synchronized(runtime) {
-            runtime.markPending()
-            deferredRuns.add(runtime.id)
+        val claimed = synchronized(runtime) {
+            runtime.claimPending().also { deferredRuns.add(runtime.id) }
         }
+        claimed?.let(runtime::publishStatus)
         admit(runtime)
     }
 
@@ -62,15 +66,20 @@ internal class GatedRunLauncher(
     /**
      * A launch can be admitted before run() starts: Stop cancels only that launch. An agent already
      * running keeps the runtime's cooperative interruption.
+     *
+     * The IDLE claim is atomic with deferredRuns removal under the admission lock.
+     * Persistence via [publishStatus] runs outside the lock.
      */
-    fun interrupt(runtime: CaseRuntime): Unit =
-        synchronized(runtime) {
+    fun interrupt(runtime: CaseRuntime) {
+        val claimed = synchronized(runtime) {
             deferredRuns.remove(runtime.id)
             if (!runtime.isRunning()) {
                 executionJobs[runtime.id]?.cancel()
-                runtime.cancelPending()
-            }
+                runtime.claimCancelPending()
+            } else null
         }
+        claimed?.let(runtime::publishStatus)
+    }
 
     fun kill(
         caseId: UUID,
@@ -169,7 +178,9 @@ internal class GatedRunLauncher(
                 ),
             ),
         )
-        runtime.cancelPending()
+        // Claim the IDLE transition atomically (no lock needed here — deferredRuns is already
+        // removed and we are the only caller on this path), then persist outside any lock.
+        runtime.claimCancelPending()?.let(runtime::publishStatus)
     }
 
     companion object : KLogging()

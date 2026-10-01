@@ -38,6 +38,12 @@ private data class PendingCommand(
  * Owns only execution state: the event list, the SSE flow, and the kill flag.
  * All business logic is delegated back to [CaseService] through four callbacks:
  *
+ * ## Admission lock
+ * This instance's monitor is the admission lock, shared with [GatedRunLauncher]:
+ * it serialises claiming a run against Stop and Kill. Anything holding it must be
+ * short and non-blocking — no I/O, no network call, no suspension. Persisting a
+ * status transition happens outside it (see [claimPending]/[publishStatus]).
+ *
  * @param updateStatusCallback called whenever the runtime transitions to a new [CaseStatus].
  * @param storeEvent called for every event produced by this runtime.
  *   The service persists the event and returns the saved copy (with stable id).
@@ -184,19 +190,44 @@ class CaseRuntime(
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
-     * Mark a turn held back by a [CaseLaunchGate] as queued (PENDING) until the gate admits it.
-     * Does nothing while a turn is running.
+     * Claim the PENDING transition atomically, in memory only.
+     *
+     * Must be called under this instance's monitor (the admission lock). Returns the
+     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
+     * already running or already PENDING. The caller is responsible for calling
+     * [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
      */
-    @Synchronized
-    fun markPending() {
-        if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) updateStatus(CaseStatus.PENDING)
+    fun claimPending(): CaseStatus? = synchronized(this) {
+        if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
+            _statusFlow.value = CaseStatus.PENDING
+            CaseStatus.PENDING
+        } else null
     }
 
-    /** Return a turn that was held back and never started to IDLE, as Stop does for a running one. */
-    @Synchronized
-    fun cancelPending() {
-        if (!isRunning() && _statusFlow.value == CaseStatus.PENDING) updateStatus(CaseStatus.IDLE)
+    /**
+     * Claim the IDLE transition atomically, in memory only, for a turn that was held
+     * back and never started (mirror of [claimPending] for the cancel path).
+     *
+     * Must be called under this instance's monitor (the admission lock). Returns the
+     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
+     * running or not in PENDING state. The caller is responsible for calling
+     * [publishStatus] **outside** the monitor.
+     */
+    fun claimCancelPending(): CaseStatus? = synchronized(this) {
+        if (!isRunning() && _statusFlow.value == CaseStatus.PENDING) {
+            _statusFlow.value = CaseStatus.IDLE
+            CaseStatus.IDLE
+        } else null
     }
+
+    /**
+     * Persist and broadcast a status transition that was previously claimed atomically
+     * via [claimPending] or [claimCancelPending].
+     *
+     * **Must be called outside the admission lock** — the callback reaches
+     * [CaseServiceImpl.handleStatusChange] which performs blocking Neo4j round-trips.
+     */
+    fun publishStatus(status: CaseStatus) = updateStatusCallback(id, status)
 
     /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
     val subscriptionCount get() = emitter.subscriptionCount
