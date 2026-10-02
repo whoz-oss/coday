@@ -21,8 +21,7 @@ export const routes: Routes = [
   },
   {
     path: 'historique',
-    loadComponent: () =>
-      import('./features/placeholders/history-placeholder.component').then((m) => m.HistoryPlaceholderComponent),
+    loadComponent: () => import('./features/history/history-page.component').then((m) => m.HistoryPageComponent),
   },
   { path: '**', redirectTo: 'sandboxes' },
 ]
