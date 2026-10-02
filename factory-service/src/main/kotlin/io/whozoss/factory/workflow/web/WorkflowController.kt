@@ -3,7 +3,10 @@ package io.whozoss.factory.workflow.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptDto
+import io.whozoss.factory.agentattempt.domain.toDto
 import io.whozoss.factory.agentattempt.service.BridgeCancellationService
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.proxy.AgentOsProxyClient
@@ -60,6 +63,11 @@ class WorkflowController(
     private val sessionProperties: SessionProperties,
     private val tenantScopeProvider: TenantScopeProvider,
     private val agentOsProxyClient: AgentOsProxyClient,
+    /**
+     * Read side of the durable execution attempts, used by the Cockpit V2
+     * attempts listing route.
+     */
+    private val durableAgentAttemptService: DurableAgentAttemptService,
     /**
      * Optional bridge cancellation command. Present only when the AgentOS
      * execution adapter is enabled; the cancellation route reports a clean 503
@@ -409,6 +417,25 @@ class WorkflowController(
     }
 
     // ----- attempts / explicit cancellation ------------------------------
+
+    /**
+     * List every durable execution attempt of a workflow (Cockpit V2).
+     *
+     * Returns a bounded, secret-free read model per attempt. An unknown or
+     * attempt-less workflow degrades cleanly to an empty `{ "data": [] }` with
+     * HTTP 200 (never an error).
+     */
+    @GetMapping(path = ["/{workflowId}/attempts"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "List durable execution attempts of a workflow.")
+    fun listAttempts(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<List<DurableAgentAttemptDto>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        val attempts = durableAgentAttemptService.findByWorkflow(caller.scope, caller.namespaceId, workflowId)
+        return WorkflowDataEnvelope(attempts.map { it.toDto() })
+    }
 
     /**
      * Explicit business cancellation of a durable agent attempt.

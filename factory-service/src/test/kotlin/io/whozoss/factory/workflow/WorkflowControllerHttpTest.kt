@@ -1,6 +1,9 @@
 package io.whozoss.factory.workflow
 
 import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
@@ -35,6 +38,9 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
     private lateinit var service: WorkflowService
+
+    @Autowired
+    private lateinit var durableAgentAttemptService: DurableAgentAttemptService
 
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
     private val secondNamespace = "1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
@@ -76,6 +82,111 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Suppress("UNCHECKED_CAST")
     private fun data(body: Map<String, Any?>?): Map<String, Any?> = body?.get("data") as? Map<String, Any?> ?: emptyMap()
+
+    @Test
+    fun `attempts lists bounded attempts of a workflow and never exposes sensitive fields`() {
+        val workflowId = "wf-attempts-http"
+        val secretOwner = "owner-token-secret"
+        // attempt-1 goes through claim + transition so ownerToken, leaseExpiresAt
+        // and lastObservedEventId are actually persisted and could leak if the DTO
+        // were too wide.
+        durableAgentAttemptService.register(scope, attempt("attempt-1", workflowId, "step-1"))
+        durableAgentAttemptService.claim(
+            scope,
+            namespaceId = namespace,
+            workflowId = workflowId,
+            stepId = "step-1",
+            attemptId = "attempt-1",
+            ownerToken = secretOwner,
+            leaseTtlMs = 60_000,
+        )
+        durableAgentAttemptService.transition(
+            scope,
+            namespaceId = namespace,
+            workflowId = workflowId,
+            stepId = "step-1",
+            attemptId = "attempt-1",
+            ownerToken = secretOwner,
+            target = AgentAttemptStatus.STARTING,
+        )
+        durableAgentAttemptService.transition(
+            scope,
+            namespaceId = namespace,
+            workflowId = workflowId,
+            stepId = "step-1",
+            attemptId = "attempt-1",
+            ownerToken = secretOwner,
+            target = AgentAttemptStatus.RUNNING,
+            lastObservedEventId = "evt-secret",
+        )
+        durableAgentAttemptService.register(scope, attempt("attempt-2", workflowId, "step-2"))
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId/attempts?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        val data = response.body?.get("data") as? List<*>
+        assertThat(data).isNotNull
+        val attempts = data!!.filterIsInstance<Map<String, Any?>>()
+        assertThat(attempts).hasSize(2)
+        val byId = attempts.associateBy { it["attemptId"] }
+        val first = byId.getValue("attempt-1")
+        // Exactly the bounded public fields are exposed.
+        assertThat(first.keys).containsExactlyInAnyOrderElementsOf(
+            setOf(
+                "attemptId", "stepId", "attemptNumber", "agentName", "status", "caseId",
+                "failureCode", "resultEvidenceId", "revision", "createdAt", "startedAt", "completedAt",
+            ),
+        )
+        assertThat(first["status"]).isEqualTo("running")
+        assertThat(first["stepId"]).isEqualTo("step-1")
+        assertThat(first["agentName"]).isEqualTo("builder")
+        assertThat(first["attemptNumber"]).isEqualTo(1)
+        assertThat(byId.getValue("attempt-2")["status"]).isEqualTo("pending")
+
+        // No secret or internal execution field ever crosses the boundary.
+        val serialized = response.body.toString()
+        assertThat(serialized).doesNotContain(secretOwner)
+        assertThat(serialized).doesNotContain("ownerToken")
+        assertThat(serialized).doesNotContain("capabilityToken")
+        assertThat(serialized).doesNotContain("brief")
+        assertThat(serialized).doesNotContain("leaseExpiresAt")
+        assertThat(serialized).doesNotContain("commandId")
+        assertThat(serialized).doesNotContain("lastObservedEventId")
+        assertThat(serialized).doesNotContain("turnCorrelation")
+    }
+
+    @Test
+    fun `attempts degrades to an empty data array when the workflow has no attempt`() {
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/wf-without-attempts/attempts?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        val data = response.body?.get("data") as? List<*>
+        assertThat(data).isNotNull
+        assertThat(data).isEmpty()
+    }
+
+    private fun attempt(attemptId: String, workflowId: String, stepId: String): DurableAgentAttempt =
+        DurableAgentAttempt(
+            attemptId = attemptId,
+            caseId = "case-$attemptId",
+            namespaceId = namespace,
+            workflowId = workflowId,
+            stepId = stepId,
+            attemptNumber = 1,
+            agentName = "builder",
+            capabilityToken = "cap-secret",
+            turnCorrelation = "turn-secret",
+            commandId = "cmd-secret",
+            brief = "brief-secret",
+        )
 
     @Test
     fun `anonymous non-loopback caller yields 401 TRUST_CONTEXT_UNAVAILABLE`() {
