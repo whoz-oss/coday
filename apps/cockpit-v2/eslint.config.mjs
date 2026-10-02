@@ -15,7 +15,7 @@ export default [
         'error',
         {
           type: 'attribute',
-          prefix: 'cockpit-v2',
+          prefix: 'sf',
           style: 'camelCase',
         },
       ],
@@ -23,7 +23,7 @@ export default [
         'error',
         {
           type: 'element',
-          prefix: 'cockpit-v2',
+          prefix: 'sf',
           style: 'kebab-case',
         },
       ],

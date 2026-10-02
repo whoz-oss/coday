@@ -1,15 +1,30 @@
-import { Route } from '@angular/router'
+import { Routes } from '@angular/router'
 
 /**
  * Cockpit V2 client-side routes.
  *
- * The shell component renders the shared header and a router outlet; feature
- * views are lazily loaded into that outlet.
+ * Only the three top-level screens are routed for now, each pointing at a
+ * minimal placeholder component. The full port of the mockups'
+ * `sandboxes-page`, `session-page` and `history-page` components (with their
+ * `agent-timeline`, `event-log`, `sandbox-card`, … children) is reserved for the
+ * next waves.
  */
-export const appRoutes: Route[] = [
+export const routes: Routes = [
+  { path: '', pathMatch: 'full', redirectTo: 'sandboxes' },
   {
-    path: '',
-    loadComponent: () => import('./features/dashboard/dashboard.component').then((m) => m.DashboardComponent),
+    path: 'sandboxes',
+    loadComponent: () =>
+      import('./features/placeholders/sandboxes-placeholder.component').then((m) => m.SandboxesPlaceholderComponent),
   },
-  { path: '**', redirectTo: '' },
+  {
+    path: 'sessions/:runId',
+    loadComponent: () =>
+      import('./features/placeholders/session-placeholder.component').then((m) => m.SessionPlaceholderComponent),
+  },
+  {
+    path: 'historique',
+    loadComponent: () =>
+      import('./features/placeholders/history-placeholder.component').then((m) => m.HistoryPlaceholderComponent),
+  },
+  { path: '**', redirectTo: 'sandboxes' },
 ]

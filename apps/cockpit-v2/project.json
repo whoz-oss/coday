@@ -2,7 +2,7 @@
   "name": "cockpit-v2",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "prefix": "cockpit-v2",
+  "prefix": "sf",
   "sourceRoot": "apps/cockpit-v2/src",
   "tags": ["platform:npm", "scope:cockpit-v2"],
   "targets": {
@@ -26,7 +26,7 @@
         "outputPath": "{projectRoot}/dist",
         "baseHref": "/cockpit-v2/",
         "browser": "apps/cockpit-v2/src/main.ts",
-        "polyfills": ["zone.js"],
+        "polyfills": [],
         "tsConfig": "apps/cockpit-v2/tsconfig.app.json",
         "inlineStyleLanguage": "scss",
         "assets": [
