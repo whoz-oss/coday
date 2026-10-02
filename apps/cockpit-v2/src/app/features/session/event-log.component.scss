@@ -1,0 +1,136 @@
+:host {
+  display: block;
+  min-height: 0;
+}
+
+.log {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.log-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #1d2331;
+  mat-icon {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+    color: var(--sf-text-muted);
+  }
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .count {
+    font-size: 13px;
+    color: var(--sf-text-muted);
+  }
+}
+
+.filters {
+  --mat-standard-button-toggle-height: 30px;
+  --mat-standard-button-toggle-shape: 8px;
+  --mat-standard-button-toggle-divider-color: var(--sf-outline);
+  --mat-standard-button-toggle-selected-state-background-color: #2a2145;
+  --mat-standard-button-toggle-selected-state-text-color: #e3d6ff;
+  font-family: var(--sf-mono);
+  .f-thinking {
+    color: #c9a8ff;
+  }
+  .f-tool_call {
+    color: #7fd8c5;
+  }
+  .f-agent_message {
+    color: var(--sf-running);
+  }
+}
+
+.viewport {
+  flex: 1;
+  min-height: 360px;
+}
+
+.ev {
+  display: grid;
+  grid-template-columns: 80px 130px minmax(0, 1fr) 56px;
+  gap: 12px;
+  align-items: center;
+  height: 33px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #171c28;
+  font-family: var(--sf-mono);
+  font-size: 12.5px;
+}
+.ev--message {
+  background: #121a2b;
+  .text {
+    color: var(--sf-text);
+  }
+}
+.time {
+  color: var(--sf-text-faint);
+}
+.text {
+  color: var(--sf-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.text b {
+  color: var(--sf-text);
+  margin-right: 6px;
+}
+.text b.write {
+  color: var(--sf-success);
+}
+.dur {
+  text-align: right;
+  color: var(--sf-text-faint);
+}
+.dur.slow {
+  color: var(--sf-tertiary);
+}
+
+.type {
+  color: var(--sf-text-muted);
+}
+.t-phase_start {
+  color: var(--sf-text);
+}
+.t-agent_start {
+  color: var(--sf-secondary);
+}
+.t-thinking {
+  color: #c9a8ff;
+}
+.t-tool_call {
+  color: #7fd8c5;
+}
+.t-agent_message {
+  color: var(--sf-running);
+}
+
+.activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 20px;
+  color: var(--sf-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sf-secondary);
+  box-shadow: 0 0 0 4px rgba(95, 212, 224, 0.15);
+}
