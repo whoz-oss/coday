@@ -90,4 +90,51 @@ describe('FactoryApiService', () => {
 
     expect(result).toEqual([])
   })
+
+  describe('getInteractions', () => {
+    it('unwraps the { data } envelope and sends state=all by default', () => {
+      let result: unknown[] | undefined
+      service.getInteractions('wf-1').subscribe((items) => (result = items))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions')
+      expect(request.request.method).toBe('GET')
+      expect(request.request.params.get('state')).toBe('all')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: [{ interactionId: 'i-1' }] })
+
+      expect(result).toEqual([{ interactionId: 'i-1' }])
+    })
+
+    it('unwraps a nested { data: { items: [...] } } payload and forwards namespace/state', () => {
+      let result: unknown[] | undefined
+      service.getInteractions('wf-1', '  ns-42  ', 'open').subscribe((items) => (result = items))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions')
+      expect(request.request.params.get('state')).toBe('open')
+      expect(request.request.params.get('namespaceId')).toBe('ns-42')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-42')
+      request.flush({ data: { items: [{ interactionId: 'i-2' }] } })
+
+      expect(result).toEqual([{ interactionId: 'i-2' }])
+    })
+
+    it('returns raw arrays and empty arrays for malformed payloads', () => {
+      let raw: unknown[] | undefined
+      service.getInteractions('wf-1').subscribe((items) => (raw = items))
+      http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions').flush([{ interactionId: 'i-3' }])
+      expect(raw).toEqual([{ interactionId: 'i-3' }])
+
+      let empty: unknown[] | undefined
+      service.getInteractions('wf-1').subscribe((items) => (empty = items))
+      http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions').flush({ data: { foo: 'bar' } })
+      expect(empty).toEqual([])
+    })
+
+    it('encodes the workflow id in the path', () => {
+      service.getInteractions('wf/1 2').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1%202/interactions')
+      request.flush({ data: [] })
+    })
+  })
 })
