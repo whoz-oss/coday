@@ -1,0 +1,93 @@
+@let s = sandbox();
+<mat-card
+  appearance="outlined"
+  class="card"
+  [class.card--working]="s.status === 'working'"
+  [class.card--destroyed]="s.status === 'destroyed'"
+>
+  <!-- En-tête : nom, statut, vague, coût orchestrateur -->
+  <header class="head">
+    <h3 class="name">
+      @if (s.run) {
+        <a [routerLink]="['/sessions', s.run.id]">{{ s.name }}</a>
+      } @else {
+        {{ s.name }}
+      }
+    </h3>
+
+    @switch (s.status) {
+      @case ('working') {
+        <sf-status-chip tone="blue" icon="progress_activity" spin>au travail</sf-status-chip>
+      }
+      @case ('idle') {
+        <sf-status-chip tone="neutral" icon="pause">en attente</sf-status-chip>
+      }
+      @case ('destroyed') {
+        <sf-status-chip tone="neutral" dot>détruite</sf-status-chip>
+      }
+    }
+
+    @if (s.wave) {
+      <sf-status-chip tone="amber" icon="waves">{{ s.wave }}</sf-status-chip>
+    }
+
+    <span class="sf-spacer"></span>
+    <sf-metric icon="chat_bubble" label="Coût orchestrateur Archay">Archay {{ s.archayCostUsd | usd }}</sf-metric>
+  </header>
+
+  <!-- Méta : projet › branche · roster + liens services -->
+  <div class="meta">
+    <mat-icon class="branch-icon" aria-hidden="true">account_tree</mat-icon>
+    <span class="sf-workflow">{{ s.project }}</span>
+    @if (s.branch) {
+      <span>›</span><span class="sf-workflow">{{ s.branch }}</span>
+    }
+    <span>·</span>
+    <span
+      >roster <span class="sf-workflow">{{ s.roster }}</span></span
+    >
+    <span class="sf-spacer"></span>
+    <a class="service-link" href="#" (click)="$event.preventDefault()"><span class="dot"></span>Coday · Archay</a>
+    @if (s.run) {
+      <a class="service-link" [routerLink]="['/sessions', s.run.id]"><span class="dot"></span>Trace factory</a>
+    }
+  </div>
+
+  <!-- Run en cours -->
+  @if (s.run; as run) {
+    <section class="run" aria-label="Run en cours">
+      <div class="run-head">
+        <a class="sf-id" [routerLink]="['/sessions', run.id]">{{ run.id }}</a>
+        <span class="sf-workflow">{{ run.workflow }}</span>
+        @if (run.status === 'running') {
+          <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>
+            en cours{{ run.currentPhase ? ' · ' + run.currentPhase : '' }}
+          </sf-status-chip>
+        }
+        <span class="sf-spacer"></span>
+        <sf-metric icon="paid" label="Coût du run">{{ run.costUsd | usd }}</sf-metric>
+        <sf-metric icon="timer" label="Durée">{{ run.durationSec | duration }}</sf-metric>
+        <sf-metric icon="link" label="Tokens">{{ run.tokens | tokens }}</sf-metric>
+      </div>
+      <p class="goal">{{ run.goal }}</p>
+      <sf-phase-bar [phases]="run.phases" />
+    </section>
+  } @else if (s.status === 'destroyed') {
+    <p class="final-cost">
+      Coût final · workflows <b>{{ s.finalCostUsd | usd }}</b>
+    </p>
+  }
+
+  <!-- Actions -->
+  @if (s.status !== 'destroyed') {
+    <footer class="actions">
+      <button mat-flat-button class="sf-primary" (click)="action.emit('ask')">Demander à Archay…</button>
+      <button mat-stroked-button class="sf-secondary" (click)="action.emit('workflow')">Lancer un workflow…</button>
+      <button mat-button class="sf-ghost" (click)="action.emit('conversation')">Conversation</button>
+      <button mat-button class="sf-ghost" (click)="action.emit('log')">Log</button>
+      <button mat-button class="sf-ghost" (click)="action.emit('commits')">Récupérer les commits</button>
+      <span class="sf-spacer"></span>
+      <button mat-stroked-button class="sf-danger" (click)="action.emit('destroy')">Détruire</button>
+    </footer>
+  }
+</mat-card>
