@@ -99,6 +99,26 @@ export interface RunEvent {
   durationSec?: number
 }
 
+/**
+ * A single real agent execution attempt, mapped from the backend
+ * `DurableAgentAttemptDto` exposed by
+ * `GET /api/factory/workflows/:id/attempts`.
+ */
+export interface AgentAttempt {
+  attemptId: string
+  stepId: string
+  attemptNumber: number
+  agentName: string
+  status: string
+  caseId: string
+  failureCode?: string
+  resultEvidenceId?: string
+  revision?: number
+  createdAt?: string
+  startedAt?: string
+  completedAt?: string
+}
+
 export interface PhaseDetail {
   name: string
   status: RunStatus
@@ -106,6 +126,20 @@ export interface PhaseDetail {
   owner: string
   kind: string
   attempt: string
+  /** Highest `attemptNumber` observed for the active step (real attempts only). */
+  currentAttemptNumber?: number
+  /** Number of real attempts recorded for the active step. */
+  totalAttempts?: number
+  /** Real attempts recorded for the active step. */
+  attempts?: AgentAttempt[]
+  /** Agent name of the current attempt, when known. */
+  agentName?: string
+  /** Status of the current attempt (e.g. running, completed, failed). */
+  attemptStatus?: string
+  /** Case id of the current attempt, when known. */
+  caseId?: string
+  /** Failure code of the current attempt, when it failed. */
+  failureCode?: string
   sections: { label: string; count?: number; body?: string }[]
 }
 
@@ -148,4 +182,9 @@ export interface SessionDetail {
    * enrichment call failed and degraded gracefully).
    */
   interactions?: HumanInteraction[]
+  /**
+   * Real agent execution attempts attached to the workflow, surfaced read-only.
+   * Absent when the backend exposes none (or when the enrichment failed).
+   */
+  attempts?: AgentAttempt[]
 }

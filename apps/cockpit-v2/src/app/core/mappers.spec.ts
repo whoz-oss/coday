@@ -1,6 +1,7 @@
 import {
   classifyActorKind,
   classifyLane,
+  extractAttempts,
   extractInteractions,
   extractRealCost,
   mapProjectionToLanes,
@@ -279,6 +280,66 @@ describe('mappers', () => {
     })
   })
 
+  describe('extractAttempts', () => {
+    it('maps a bare array of records defensively', () => {
+      const result = extractAttempts([
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'builder',
+          status: 'failed',
+          caseId: 'case-1',
+          failureCode: 'TEST_FAILED',
+          resultEvidenceId: 'ev-1',
+          revision: 3,
+          createdAt: startedAt,
+          startedAt,
+          completedAt: isoOffset(10),
+        },
+      ])
+
+      expect(result).toEqual([
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'builder',
+          status: 'failed',
+          caseId: 'case-1',
+          failureCode: 'TEST_FAILED',
+          resultEvidenceId: 'ev-1',
+          revision: 3,
+          createdAt: startedAt,
+          startedAt,
+          completedAt: isoOffset(10),
+        },
+      ])
+    })
+
+    it('accepts { items: [...] } and { data: [...] } wrappers', () => {
+      expect(extractAttempts({ items: [{ attemptId: 'a' }] }).map((a) => a.attemptId)).toEqual(['a'])
+      expect(extractAttempts({ data: [{ attemptId: 'b' }] }).map((a) => a.attemptId)).toEqual(['b'])
+    })
+
+    it('degrades gracefully on empty and malformed payloads', () => {
+      expect(extractAttempts(undefined)).toEqual([])
+      expect(extractAttempts(null)).toEqual([])
+      expect(extractAttempts({ foo: 'bar' })).toEqual([])
+      expect(extractAttempts('nope')).toEqual([])
+
+      const [fallback] = extractAttempts([{}])
+      expect(fallback).toMatchObject({
+        attemptId: 'attempt-1',
+        stepId: '',
+        attemptNumber: 0,
+        agentName: '',
+        status: 'unknown',
+        caseId: '',
+      })
+    })
+  })
+
   describe('mapProjectionToSessionDetail', () => {
     it('builds a complete session from projection + enrichment payloads', () => {
       const session = mapProjectionToSessionDetail(
@@ -384,6 +445,68 @@ describe('mappers', () => {
       const gates = session.phase.sections.find((section) => section.label === 'Gates')
       expect(gates?.count).toBe(0)
       expect(session.interactions).toEqual([])
+    })
+
+    it('surfaces the real attempts of the active step and a dynamic attempt string', () => {
+      const attempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'builder',
+          status: 'failed',
+          caseId: 'case-1',
+          failureCode: 'TEST_FAILED',
+        },
+        {
+          attemptId: 'a-2',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'builder',
+          status: 'running',
+          caseId: 'case-2',
+        },
+        // Another step's attempt must be ignored for the active phase detail.
+        { attemptId: 'a-3', stepId: 'plan', attemptNumber: 1, agentName: 'planner', status: 'completed', caseId: 'c' },
+      ]
+
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, attempts)
+
+      expect(session.attempts).toHaveLength(3)
+      expect(session.phase.attempt).toBe('2/2')
+      expect(session.phase.currentAttemptNumber).toBe(2)
+      expect(session.phase.totalAttempts).toBe(2)
+      expect(session.phase.attempts?.map((a) => a.attemptId)).toEqual(['a-1', 'a-2'])
+      expect(session.phase.agentName).toBe('builder')
+      expect(session.phase.attemptStatus).toBe('running')
+      expect(session.phase.caseId).toBe('case-2')
+    })
+
+    it('never emits an impossible empty attempt string when there is no attempt', () => {
+      const noAttempts = mapProjectionToSessionDetail(snapshot)
+      expect(noAttempts.phase.attempt).toBe('1/1')
+      expect(noAttempts.phase.attempts).toBeUndefined()
+
+      const emptyAttempts = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, [])
+      expect(emptyAttempts.phase.attempt).toBe('1/1')
+      expect(emptyAttempts.attempts).toEqual([])
+    })
+
+    it('exposes the failure code of the current attempt when it failed', () => {
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'builder',
+          status: 'failed',
+          caseId: 'case-1',
+          failureCode: 'TEST_FAILED',
+        },
+      ])
+      expect(session.phase.attempt).toBe('1/1')
+      expect(session.phase.failureCode).toBe('TEST_FAILED')
+      expect(session.phase.attemptStatus).toBe('failed')
     })
   })
 })

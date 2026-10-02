@@ -65,7 +65,7 @@ export class FactoryStore {
   private readonly sessions = signal<Map<string, SessionDetail>>(new Map())
   private readonly enrichment = new Map<
     string,
-    { timing?: unknown; evidence?: unknown; metrics?: unknown; interactions?: unknown }
+    { timing?: unknown; evidence?: unknown; metrics?: unknown; interactions?: unknown; attempts?: unknown }
   >()
   private readonly subscriptions = new Subscription()
 
@@ -148,10 +148,18 @@ export class FactoryStore {
       evidence?: unknown
       metrics?: unknown
       interactions?: unknown
+      attempts?: unknown
     }): void => {
       const next = { ...(this.enrichment.get(id) ?? {}), ...partial }
       this.enrichment.set(id, next)
-      const detail = mapProjectionToSessionDetail(snapshot, next.timing, next.evidence, next.metrics, next.interactions)
+      const detail = mapProjectionToSessionDetail(
+        snapshot,
+        next.timing,
+        next.evidence,
+        next.metrics,
+        next.interactions,
+        next.attempts
+      )
       this.sessions.update((map) => {
         const updated = new Map(map)
         updated.set(detail.id, detail)
@@ -173,6 +181,9 @@ export class FactoryStore {
     this.api
       .getInteractions(id, namespaceId)
       .subscribe({ next: (interactions) => merge({ interactions }), error: () => undefined })
+    // Read-only real agent attempts: a failed fetch degrades silently (the
+    // session keeps its projection and other enrichments).
+    this.api.getAttempts(id, namespaceId).subscribe({ next: (attempts) => merge({ attempts }), error: () => undefined })
   }
 
   /** Replace the run attached to a sandbox once its real cost is known. */
