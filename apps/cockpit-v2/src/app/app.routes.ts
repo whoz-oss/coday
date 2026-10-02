@@ -13,8 +13,7 @@ export const routes: Routes = [
   { path: '', pathMatch: 'full', redirectTo: 'sandboxes' },
   {
     path: 'sandboxes',
-    loadComponent: () =>
-      import('./features/placeholders/sandboxes-placeholder.component').then((m) => m.SandboxesPlaceholderComponent),
+    loadComponent: () => import('./features/sandboxes/sandboxes-page.component').then((m) => m.SandboxesPageComponent),
   },
   {
     path: 'sessions/:runId',
