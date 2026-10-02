@@ -24,8 +24,8 @@
     <span class="live-dot" aria-hidden="true"></span>
     <span class="strong">{{ c.active }} actives</span>
     <span>·</span
-    ><span
-      >workflows <b>{{ c.workflowsUsd | usd: 2 }}</b></span
+    ><span [attr.title]="c.unknownCostCount ? c.unknownCostCount + ' tour(s) au coût inconnu' : null"
+      >workflows <b>{{ c.workflowsUsd | usd: 2 : c.unknownCostCount }}</b></span
     >
     <span class="opt">·</span
     ><span class="opt"

@@ -245,15 +245,70 @@ function currentPhaseName(steps: unknown[]): string | undefined {
 }
 
 // ---------------------------------------------------------------------------
+// Real cost (metrics.realCost)
+// ---------------------------------------------------------------------------
+
+/**
+ * Additive real-cost block exposed by `factory-service` under
+ * `metrics.realCost` (see `WorkflowService.metrics`). Every field is optional
+ * here because the cockpit must survive a partially-migrated backend.
+ */
+export interface RealCost {
+  cost?: number
+  unknownCostCount?: number
+  liveTokens?: number
+  paused?: boolean
+  active?: boolean
+  runCostThreshold?: number | null
+}
+
+function getBoolean(obj: JsonObject | undefined, key: string): boolean | undefined {
+  const value = obj?.[key]
+  return typeof value === 'boolean' ? value : undefined
+}
+
+/**
+ * Defensively extract the `realCost` block from a metrics payload.
+ *
+ * The backend nests it under `metrics.realCost`; for robustness we also accept
+ * the block flattened directly on `metrics` (or the metrics payload itself
+ * already being the block). Returns `undefined` when no usable cost field is
+ * present so callers can fall back to the projection/snapshot cost.
+ */
+export function extractRealCost(metrics: unknown): RealCost | undefined {
+  const metricsObj = asObject(metrics)
+  if (!metricsObj) return undefined
+  const source = asObject(metricsObj['realCost']) ?? metricsObj
+
+  const cost = getNumber(source, 'cost')
+  const unknownCostCount = getNumber(source, 'unknownCostCount')
+  const liveTokens = getNumber(source, 'liveTokens')
+  if (cost === undefined && unknownCostCount === undefined && liveTokens === undefined) return undefined
+
+  const thresholdRaw = source['runCostThreshold']
+  const runCostThreshold = thresholdRaw === null ? null : (getNumber(source, 'runCostThreshold') ?? null)
+
+  return {
+    cost,
+    unknownCostCount,
+    liveTokens,
+    paused: getBoolean(source, 'paused'),
+    active: getBoolean(source, 'active'),
+    runCostThreshold,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // RunSummary
 // ---------------------------------------------------------------------------
 
 /** Map a `/api/factory/workflows` snapshot to a {@link RunSummary}. */
-export function mapProjectionToRunSummary(item: unknown): RunSummary {
+export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): RunSummary {
   const snapshot = asObject(item) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
   const relations = asObject(snapshot['relations'])
   const steps = asArray(projection['steps'])
+  const realCost = extractRealCost(metrics)
 
   const durations = steps.map((step) => stepDurationSec(step)).filter((value): value is number => value !== null)
   const durationSec = Math.round(durations.reduce((sum, value) => sum + value, 0))
@@ -271,7 +326,10 @@ export function mapProjectionToRunSummary(item: unknown): RunSummary {
     status: mapWorkflowStateToRunStatus(getString(projection, 'status'), steps),
     currentPhase: currentPhaseName(steps),
     goal,
-    costUsd: getNumber(projection, 'costUsd') ?? getNumber(snapshot, 'costUsd') ?? 0,
+    // Real cost wins; otherwise fall back to the projection/snapshot cost, else 0.
+    costUsd: realCost?.cost ?? getNumber(projection, 'costUsd') ?? getNumber(snapshot, 'costUsd') ?? 0,
+    // `unknownCostCount` is preserved verbatim (never folded into cost as 0).
+    unknownCostCount: realCost?.unknownCostCount ?? 0,
     durationSec,
     tokens: getNumber(projection, 'tokens') ?? 0,
     phases: mapStepsToPhaseSegments(steps, durationSec),
@@ -528,6 +586,7 @@ export function mapProjectionToSessionDetail(
   const controller = asObject(snapshot['controllerExecution'])
   const timingObj = asObject(timing)
   const metricsObj = asObject(metrics)
+  const realCost = extractRealCost(metricsObj)
   const evidenceItems = asArray(asObject(evidence)?.['items'])
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
@@ -543,7 +602,9 @@ export function mapProjectionToSessionDetail(
   const summedDuration = durations.reduce((sum, value) => sum + value, 0)
   const tokensRead = sumFacts(evidenceItems, 'tokensRead')
   const tokensWritten = sumFacts(evidenceItems, 'tokensWritten')
-  const tokens = getNumber(projection, 'tokens') ?? getNumber(metricsObj, 'tokens') ?? tokensRead + tokensWritten
+  const liveTokens = realCost?.liveTokens && realCost.liveTokens > 0 ? realCost.liveTokens : undefined
+  const tokens =
+    getNumber(projection, 'tokens') ?? liveTokens ?? getNumber(metricsObj, 'tokens') ?? tokensRead + tokensWritten
 
   return {
     id,
@@ -557,8 +618,15 @@ export function mapProjectionToSessionDetail(
       firstStartedAt(steps) ??
       new Date().toISOString(),
     workflow: getString(projection, 'workflowType') ?? getString(projection, 'title') ?? 'workflow',
+    // Real cost wins; otherwise fall back to projection/metrics/snapshot cost, else 0.
     costUsd:
-      getNumber(projection, 'costUsd') ?? getNumber(metricsObj, 'costUsd') ?? getNumber(snapshot, 'costUsd') ?? 0,
+      realCost?.cost ??
+      getNumber(projection, 'costUsd') ??
+      getNumber(metricsObj, 'costUsd') ??
+      getNumber(snapshot, 'costUsd') ??
+      0,
+    // `unknownCostCount` is preserved verbatim (never folded into cost as 0).
+    unknownCostCount: realCost?.unknownCostCount ?? 0,
     durationSec: Math.max(Math.round(summedDuration), Math.round(laneEnd)),
     tokens,
     tokensRead,

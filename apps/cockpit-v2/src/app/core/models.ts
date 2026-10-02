@@ -17,6 +17,12 @@ export interface RunSummary {
   currentPhase?: string
   goal: string
   costUsd: number
+  /**
+   * Number of cost-incurring units whose price is unknown. When > 0 the
+   * displayed `costUsd` is only a LOWER BOUND: it must never be shown as an
+   * exact figure. Absent/0 means the cost is considered complete.
+   */
+  unknownCostCount?: number
   durationSec: number
   tokens: number
   phases: PhaseSegment[]
@@ -46,6 +52,11 @@ export interface CostSummary {
   archayUsd: number
   destroyedUsd: number
   totalUsd: number
+  /**
+   * Sum of the {@link RunSummary.unknownCostCount} of the active runs. When
+   * > 0 the aggregated `workflowsUsd`/`totalUsd` are lower bounds.
+   */
+  unknownCostCount?: number
 }
 
 /* ───── Session ───── */
@@ -106,6 +117,11 @@ export interface SessionDetail {
   startedAt: string // ISO
   workflow: string
   costUsd: number
+  /**
+   * Number of cost-incurring units whose price is unknown (see
+   * {@link RunSummary.unknownCostCount}). When > 0 `costUsd` is a lower bound.
+   */
+  unknownCostCount?: number
   durationSec: number
   tokens: number
   tokensRead: number

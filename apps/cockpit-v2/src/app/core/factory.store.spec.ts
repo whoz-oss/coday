@@ -95,10 +95,10 @@ describe('FactoryStore', () => {
       .flush({ data: { namespaceId: '', state: 'active', items } })
   }
 
-  function flushEnrichment(): void {
+  function flushEnrichment(metrics: unknown = { workflowId: 'wf-1' }): void {
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
-    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: metrics })
   }
 
   it('exposes the mock sandboxes before/without real data', () => {
@@ -159,6 +159,41 @@ describe('FactoryStore', () => {
     expect(session?.id).toBe('wf-1')
     expect(session?.workflow).toBe('Real workflow')
     expect(session?.status).toBe('running')
+  })
+
+  it('enriches the session and its sandbox run with the real cost from metrics', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: {
+        cost: 1.0723,
+        unknownCostCount: 0,
+        liveTokens: 150,
+        paused: false,
+        active: true,
+        runCostThreshold: null,
+      },
+    })
+
+    expect(store.session('wf-1')?.costUsd).toBe(1.0723)
+    expect(store.activeSandboxes()[0]?.run?.costUsd).toBe(1.0723)
+    expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(0)
+    expect(store.costs().workflowsUsd).toBeCloseTo(
+      store.activeSandboxes().reduce((sum, sandbox) => sum + (sandbox.run?.costUsd ?? 0), 0),
+      6
+    )
+  })
+
+  it('propagates a partially unknown workflow cost into the summary', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: { cost: 0.5, unknownCostCount: 3, liveTokens: 0, paused: false, active: true, runCostThreshold: null },
+    })
+
+    expect(store.session('wf-1')?.unknownCostCount).toBe(3)
+    expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(3)
+    expect(store.costs().unknownCostCount).toBe(3)
   })
 
   it('refetches the workflow list on an SSE invalidation', () => {

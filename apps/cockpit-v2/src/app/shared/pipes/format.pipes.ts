@@ -1,10 +1,17 @@
 import { Pipe, PipeTransform } from '@angular/core'
 
-/** 1.0723 → "$1.0723" (format des captures, indépendant de la locale) */
+/**
+ * 1.0723 → "$1.0723" (format des captures, indépendant de la locale).
+ *
+ * When the value is a lower bound (`unknownCostCount > 0`) the output is
+ * prefixed with `≥` so an incomplete cost is never displayed as exact.
+ */
 @Pipe({ name: 'usd' })
 export class UsdPipe implements PipeTransform {
-  transform(value: number | null | undefined, digits = 4): string {
-    return value == null ? '—' : `$${value.toFixed(digits)}`
+  transform(value: number | null | undefined, digits = 4, unknownCostCount = 0): string {
+    if (value == null) return '—'
+    const formatted = `$${value.toFixed(digits)}`
+    return unknownCostCount > 0 ? `≥ ${formatted}` : formatted
   }
 }
 
