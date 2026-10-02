@@ -33,6 +33,7 @@ class AgentOsAdapterConfiguration {
                 backoffMaxMs = properties.backoffMaxMs,
                 maxReconnects = properties.maxReconnects,
                 stallTimeoutMs = properties.stallTimeoutMs,
+                humanWaitTimeoutMs = properties.humanWaitTimeoutMs,
             )
         },
     )

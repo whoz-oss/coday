@@ -1,5 +1,9 @@
 package io.whozoss.factory.workflow.service
 
+import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
+import io.whozoss.factory.adapter.agentos.CaseEventView
+import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.workflow.domain.CanonicalHash
@@ -84,6 +88,8 @@ class WorkflowService(
      * starts. Injected in production; pure unit tests may omit it.
      */
     private val transactionManager: PlatformTransactionManager? = null,
+    private val durableAgentAttemptService: DurableAgentAttemptService? = null,
+    private val agentOsExecutionAdapter: AgentOsExecutionAdapter? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -191,6 +197,13 @@ class WorkflowService(
         } else {
             put("relations", mapOf("rootWorkflowId" to record.workflowId))
         }
+        val controllerRequest = (record.instance?.get("controllerRequest") as? Map<*, *>)
+            ?.entries
+            ?.associate { it.key.toString() to it.value }
+            ?: (record.projection["controllerRequest"] as? Map<*, *>)
+                ?.entries
+                ?.associate { it.key.toString() to it.value }
+        if (controllerRequest != null) put("controllerRequest", controllerRequest)
         val activeController = (record.instance?.get("controllerExecution") as? Map<*, *>)
             ?.entries
             ?.associate { it.key.toString() to it.value }
@@ -209,6 +222,10 @@ class WorkflowService(
         put("definitionHash", record.instance["definitionHash"])
         put("relations", record.instance["relations"] ?: mapOf("rootWorkflowId" to record.workflowId))
         put("instance", record.instance)
+        val controllerRequest = (record.instance["controllerRequest"] as? Map<*, *>)
+            ?.entries
+            ?.associate { it.key.toString() to it.value }
+        if (controllerRequest != null) put("controllerRequest", controllerRequest)
         val activeController = (record.instance["controllerExecution"] as? Map<*, *>)
             ?.entries
             ?.associate { it.key.toString() to it.value }
@@ -512,6 +529,81 @@ class WorkflowService(
                 "The idempotency key was already used for different evidence.",
             )
         }
+    }
+
+    // ------------------------------------------------------------------
+    // AgentOS question answers
+    // ------------------------------------------------------------------
+
+    fun submitAgentQuestionAnswer(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        questionEventId: String,
+        answer: String,
+        actorId: String,
+    ): WorkflowHttpResult {
+        val attempts = durableAgentAttemptService
+            ?: throw workflowException("AGENT_ANSWER_UNAVAILABLE", "The AgentOS execution bridge is unavailable.")
+        val adapter = agentOsExecutionAdapter
+            ?: throw workflowException("AGENT_ANSWER_UNAVAILABLE", "The AgentOS execution bridge is unavailable.")
+        val attemptId = io.whozoss.factory.capability.CapabilityExecutionService.stableAttemptId(workflowId, stepId)
+        val attempt = attempts.find(scope, namespaceId, workflowId, stepId, attemptId)
+            ?: throw workflowException("AGENT_ATTEMPT_NOT_FOUND", "No AgentOS attempt belongs to this workflow step.")
+        if (attempt.status != AgentAttemptStatus.WAITING_HUMAN) {
+            throw workflowException("AGENT_QUESTION_STALE", "The AgentOS attempt is not awaiting a human answer.")
+        }
+        val events = adapter.persistedEvents(attempt.caseId)
+        val question = events.lastOrNull { it.type == CaseEventView.QUESTION_EVENT && it.eventId == questionEventId }
+            ?: throw workflowException("AGENT_QUESTION_NOT_FOUND", "The projected question is not present in persisted AgentOS history.")
+        if (question.caseId != attempt.caseId) {
+            throw workflowException("AGENT_QUESTION_MISMATCH", "The question does not belong to the authoritative AgentOS case.")
+        }
+        if (events.any { it.type == CaseEventView.ANSWER_EVENT && it.answeredQuestionId == questionEventId }) {
+            throw workflowException("AGENT_QUESTION_ALREADY_ANSWERED", "The AgentOS question was already answered.")
+        }
+        val activeQuestion = events.lastOrNull { event ->
+            event.type == CaseEventView.QUESTION_EVENT &&
+                events.none { it.type == CaseEventView.ANSWER_EVENT && it.answeredQuestionId == event.eventId }
+        }
+        if (activeQuestion?.eventId != questionEventId) {
+            throw workflowException("AGENT_QUESTION_STALE", "The AgentOS question is no longer active.")
+        }
+        // question.userId is an AgentOS-internal UUID while actorId is the
+        // authenticated external identity resolved at the Factory boundary.
+        // Comparing those two identity domains as strings rejects legitimate
+        // users. Forward the trusted external identity and let AgentOS resolve
+        // it to its internal user and enforce the QuestionEvent recipient.
+        if (actorId.isBlank()) {
+            throw workflowException("AGENT_ANSWER_IDENTITY_REQUIRED", "An authenticated user is required to answer this question.")
+        }
+        val normalized = answer.trim()
+        if (normalized.isEmpty() || normalized.length > MAX_AGENT_ANSWER_LENGTH) {
+            throw workflowException("INVALID_AGENT_ANSWER", "answer must contain 1 to $MAX_AGENT_ANSWER_LENGTH characters.")
+        }
+        when (question.questionType ?: "FREE_TEXT") {
+            "FREE_TEXT", "OPEN_CHOICE" -> Unit
+            "SINGLE_CHOICE" -> if (normalized !in question.questionOptions) {
+                throw workflowException("INVALID_AGENT_ANSWER", "answer must be one of the persisted question options.")
+            }
+            "OAUTH_AUTHORIZE" -> throw workflowException(
+                "UNSUPPORTED_AGENT_QUESTION_TYPE",
+                "OAuth authorization questions cannot be answered from Factory.",
+            )
+            else -> throw workflowException("UNSUPPORTED_AGENT_QUESTION_TYPE", "Unsupported AgentOS question type.")
+        }
+        adapter.answerQuestion(attempt.caseId, questionEventId, normalized, attemptId, actorId)
+        return WorkflowHttpResult(
+            202,
+            mapOf(
+                "workflowId" to workflowId,
+                "stepId" to stepId,
+                "attemptId" to attemptId,
+                "questionEventId" to questionEventId,
+                "status" to "accepted",
+            ),
+        )
     }
 
     // ------------------------------------------------------------------
@@ -1013,6 +1105,7 @@ class WorkflowService(
     private companion object {
         /** Interaction type of a DAG-owned human checkpoint (opened by the capability resolver). */
         const val CHECKPOINT_INTERACTION_TYPE = "checkpoint"
+        const val MAX_AGENT_ANSWER_LENGTH = 2_000
     }
 }
 

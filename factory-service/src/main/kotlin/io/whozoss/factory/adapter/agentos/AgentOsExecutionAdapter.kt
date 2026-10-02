@@ -58,13 +58,56 @@ interface AgentOsExecutionAdapter {
      * reconnection) until a verdict is derivable or the budget elapses.
      * Never returns a verdict derived from silence.
      */
-    fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict
+    /**
+     * Compatibility entry point for adapters that only need terminal
+     * observation. Existing implementations may keep overriding this method.
+     */
+    fun observeTurn(
+        caseId: String,
+        attemptId: String,
+        timeoutMs: Long,
+    ): AgentOsExecutionVerdict
+
+    /**
+     * Observe with intermediate human-wait notifications. The default delegates
+     * to the historical three-argument contract so existing adapters remain
+     * source-compatible; the production AgentOS adapter overrides this overload
+     * to keep the logical observation alive across WAITING_HUMAN.
+     */
+    fun observeTurn(
+        caseId: String,
+        attemptId: String,
+        timeoutMs: Long,
+        onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
+    ): AgentOsExecutionVerdict = observeTurn(caseId, attemptId, timeoutMs)
 
     /**
      * REST-only catch-up: pull the durable events and derive the verdict. A
      * case that is not yet quiescent yields [AgentOsExecutionVerdict.Indeterminate].
      */
     fun reconcile(caseId: String): AgentOsExecutionVerdict
+
+    /** Durable, non-transient case history used for strict human-answer reconciliation. */
+    fun persistedEvents(caseId: String): List<CaseEventView> = emptyList()
+
+    /**
+     * Forward a bounded human answer to AgentOS. This command only requests the
+     * answer; callers must confirm it from the persisted correlated AnswerEvent.
+     */
+    fun answerQuestion(caseId: String, questionEventId: String, answer: String, attemptId: String): Unit {
+        throw UnsupportedOperationException("AgentOS answer forwarding requires an authenticated answering identity")
+    }
+
+    fun answerQuestion(
+        caseId: String,
+        questionEventId: String,
+        answer: String,
+        attemptId: String,
+        answeringUserId: String,
+    ): Unit {
+        require(answeringUserId.isNotBlank()) { "answeringUserId must not be blank" }
+        throw UnsupportedOperationException("AgentOS answer forwarding with identity is not supported by this adapter")
+    }
 
     /**
      * Request an interruption (best-effort stop; the AgentOS contract exposes

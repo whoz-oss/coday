@@ -26,12 +26,17 @@ class AgentOsSseClientTest {
         server.close()
     }
 
-    private fun client(maxReconnects: Int = 3, stallTimeoutMs: Long = 150) = AgentOsSseClient(
+    private fun client(
+        maxReconnects: Int = 3,
+        stallTimeoutMs: Long = 150,
+        humanWaitTimeoutMs: Long = 5_000,
+    ) = AgentOsSseClient(
         baseUrl = server.baseUrl,
         backoffBaseMs = 5,
         backoffMaxMs = 20,
         maxReconnects = maxReconnects,
         stallTimeoutMs = stallTimeoutMs,
+        humanWaitTimeoutMs = humanWaitTimeoutMs,
     )
 
     private fun processedIdsCounter(): Pair<(CaseEventView) -> Unit, ConcurrentHashMap<String, AtomicInteger>> {
@@ -162,7 +167,33 @@ class AgentOsSseClientTest {
     }
 
     @Test
-    fun `IDLE with an unanswered question is WaitingHuman`() {
+    fun `WAITING_HUMAN is intermediate and observation continues to final success`() {
+        val intermediate = mutableListOf<AgentOsExecutionVerdict.WaitingHuman>()
+        server.enqueueEvents(
+            FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
+            FakeAgentOsSseServer.questionEvent("q1", "case-1", "Which branch?"),
+            FakeAgentOsSseServer.statusEvent("e2", "case-1", "IDLE", "2026-01-01T00:00:02Z"),
+            FakeAgentOsSseServer.answerEvent("a1", "case-1", "q1", "2026-01-01T00:00:03Z"),
+            FakeAgentOsSseServer.statusEvent("e3", "case-1", "RUNNING", "2026-01-01T00:00:04Z"),
+            FakeAgentOsSseServer.agentMessageEvent("m1", "case-1", "final result", "2026-01-01T00:00:05Z"),
+            FakeAgentOsSseServer.statusEvent("e4", "case-1", "IDLE", "2026-01-01T00:00:06Z"),
+            holdAfterMs = 1_000,
+        )
+
+        val verdict = client().observe(
+            caseId = "case-1",
+            timeoutMs = 5_000,
+            onIntermediateVerdict = intermediate::add,
+        )
+
+        assertThat(intermediate).hasSize(1)
+        assertThat(intermediate.single().questionRef).isEqualTo("q1")
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
+        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("final result")
+    }
+
+    @Test
+    fun `IDLE with an unanswered question exits when the human wait budget expires`() {
         server.enqueueEvents(
             FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
             FakeAgentOsSseServer.questionEvent("q1", "case-1", "Which branch?"),
@@ -170,12 +201,37 @@ class AgentOsSseClientTest {
             holdAfterMs = 1_000,
         )
 
-        val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000)
+        val verdict = client(humanWaitTimeoutMs = 100).observe(caseId = "case-1", timeoutMs = 5_000)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.WaitingHuman::class.java)
-        verdict as AgentOsExecutionVerdict.WaitingHuman
-        assertThat(verdict.questionRef).isEqualTo("q1")
-        assertThat(verdict.questionText).isEqualTo("Which branch?")
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        verdict as AgentOsExecutionVerdict.Indeterminate
+        assertThat(verdict.reason).isEqualTo(VerdictDeriver.HUMAN_WAIT_TIMEOUT)
+        assertThat(verdict.evidence["questionRef"]).isEqualTo("q1")
+    }
+
+    @Test
+    fun `active timeout remains paused while waiting for a human answer`() {
+        server.enqueue(
+            FakeAgentOsSseServer.Script(
+                frames = FakeAgentOsSseServer.sseEvent(FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING")) +
+                    FakeAgentOsSseServer.sseEvent(FakeAgentOsSseServer.questionEvent("q1", "case-1", "Which branch?")) +
+                    FakeAgentOsSseServer.sseEvent(FakeAgentOsSseServer.statusEvent("e2", "case-1", "IDLE", "2026-01-01T00:00:02Z")) +
+                    listOf(FakeAgentOsSseServer.heartbeat(delayAfterMs = 150)) +
+                    FakeAgentOsSseServer.sseEvent(
+                        FakeAgentOsSseServer.answerEvent("a1", "case-1", "q1", "2026-01-01T00:00:03Z"),
+                        delayAfterMs = 150,
+                    ) +
+                    FakeAgentOsSseServer.sseEvent(FakeAgentOsSseServer.statusEvent("e3", "case-1", "RUNNING", "2026-01-01T00:00:04Z")) +
+                    FakeAgentOsSseServer.sseEvent(FakeAgentOsSseServer.agentMessageEvent("m1", "case-1", "final result", "2026-01-01T00:00:05Z")) +
+                    FakeAgentOsSseServer.sseEvent(FakeAgentOsSseServer.statusEvent("e4", "case-1", "IDLE", "2026-01-01T00:00:06Z")),
+                holdAfterMs = 1_000,
+            ),
+        )
+
+        val verdict = client(stallTimeoutMs = 500, humanWaitTimeoutMs = 1_000)
+            .observe(caseId = "case-1", timeoutMs = 200)
+
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
     }
 
     @Test
@@ -220,6 +276,27 @@ class AgentOsSseClientTest {
 
         assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Failed::class.java)
         assertThat((verdict as AgentOsExecutionVerdict.Failed).code).isEqualTo("AGENT_CASE_KILLED")
+    }
+
+    @Test
+    fun `observation interruption exits instead of waiting for shutdown`() {
+        server.enqueue(
+            FakeAgentOsSseServer.Script(
+                frames = (1..100).map { FakeAgentOsSseServer.heartbeat(delayAfterMs = 25) },
+            ),
+        )
+        val result = arrayOfNulls<AgentOsExecutionVerdict>(1)
+        val observer = Thread {
+            result[0] = client(stallTimeoutMs = 1_000).observe(caseId = "case-1", timeoutMs = 5_000)
+        }
+        observer.start()
+        Thread.sleep(75)
+
+        observer.interrupt()
+        observer.join(1_000)
+
+        assertThat(observer.isAlive).isFalse()
+        assertThat(result[0]).isInstanceOf(AgentOsExecutionVerdict.Interrupted::class.java)
     }
 
     @Test

@@ -61,7 +61,24 @@ function humanGateStep(overrides = {}) {
   }
 }
 
-function workflowPayload() {
+function agentQuestionStep(overrides = {}) {
+  return {
+    id: 'agent',
+    name: 'Agent work',
+    status: 'running',
+    lane: 'agent',
+    startedAt: '2026-01-01T00:00:00.000Z',
+    waitingQuestion: {
+      questionRef: 'q-1',
+      text: 'Votre choix ?',
+      type: 'FREE_TEXT',
+      options: [],
+    },
+    ...overrides,
+  }
+}
+
+function workflowPayload(step = humanGateStep()) {
   return {
     state: 'existing',
     revision: 4,
@@ -70,7 +87,7 @@ function workflowPayload() {
       workflowType: 'feature-session',
       title: 'Run 1',
       startedAt: '2026-01-01T00:00:00.000Z',
-      steps: [humanGateStep()],
+      steps: [step],
     },
   }
 }
@@ -93,14 +110,14 @@ function waitingInteraction(overrides = {}) {
 }
 
 /** Build an ApiClient fake whose interactions list is pluggable. */
-function fakeApiClient({ interactions = [waitingInteraction()], replyError = null } = {}) {
+function fakeApiClient({ interactions = [waitingInteraction()], replyError = null, step = humanGateStep(), agentAnswerPost = null } = {}) {
   const calls = { get: [], post: [] }
   return {
     calls,
     get(path) {
       calls.get.push(path)
       if (path.startsWith('/api/factory/workflows/wf-1?') || path === '/api/factory/workflows/wf-1') {
-        return Promise.resolve(workflowPayload())
+        return Promise.resolve(workflowPayload(step))
       }
       if (path.includes('/interactions')) return Promise.resolve({ items: interactions })
       if (path.includes('/timing')) return Promise.resolve({ timing: null })
@@ -111,8 +128,21 @@ function fakeApiClient({ interactions = [waitingInteraction()], replyError = nul
     post(path, body, options) {
       calls.post.push({ path, body, options })
       if (replyError && path.includes('/reply')) return Promise.reject(replyError)
+      if (path.includes('/agent-questions/') && agentAnswerPost) return agentAnswerPost(path, body, options)
       return Promise.resolve({ ok: true })
     },
+  }
+}
+
+function agentAnswerClick() {
+  return {
+    target: {
+      closest(selector) {
+        if (selector === '[data-agent-answer-submit]') return { dataset: {} }
+        return null
+      },
+    },
+    preventDefault() {},
   }
 }
 
@@ -285,6 +315,57 @@ test('a stale revision conflict reloads the interaction and keeps the buttons', 
   assert.ok(interactionsFetches > interactionsFetchesAfterSelect, 'expected a reload of the interactions')
   assert.ok(container.innerHTML.includes('Conflit de révision'), 'expected the conflict feedback')
   assert.ok(container.innerHTML.includes('data-checkpoint-action="approve"'), 'expected the buttons back')
+  handle.unmount()
+})
+
+// --------------------------------------------------------- AgentOS answers
+
+test('accepted AgentOS answer hides controls, survives rerender, and blocks duplicate clicks', async () => {
+  const container = fakeContainer()
+  const accepted = deferred()
+  const apiClient = fakeApiClient({ step: agentQuestionStep(), agentAnswerPost: () => accepted.promise })
+  const handle = await mountWith(container, apiClient)
+  handle.selectStep('agent')
+  await flush()
+  container.setField('#agent-answer-text', { value: 'draft answer', focus() {} })
+
+  container.fire('click', agentAnswerClick())
+  container.fire('click', agentAnswerClick())
+  assert.equal(apiClient.calls.post.filter((call) => call.path.includes('/agent-questions/')).length, 1)
+  assert.ok(container.innerHTML.includes('data-agent-answer-submit="true" disabled'))
+
+  accepted.resolve({ status: 202 })
+  await flush()
+  assert.ok(container.innerHTML.includes('confirmation AgentOS en attente'))
+  assert.ok(!container.innerHTML.includes('data-agent-answer-submit'))
+  assert.ok(!container.innerHTML.includes('id="agent-answer-text"'))
+
+  await handle.refresh()
+  assert.ok(container.innerHTML.includes('confirmation AgentOS en attente'))
+  container.fire('click', agentAnswerClick())
+  await flush()
+  assert.equal(apiClient.calls.post.filter((call) => call.path.includes('/agent-questions/')).length, 1)
+  handle.unmount()
+})
+
+test('failed AgentOS answer restores controls, draft, focus intent, and error', async () => {
+  const container = fakeContainer()
+  const error = new Error('network down')
+  const apiClient = fakeApiClient({ step: agentQuestionStep(), agentAnswerPost: () => Promise.reject(error) })
+  const handle = await mountWith(container, apiClient)
+  handle.selectStep('agent')
+  await flush()
+  const field = { value: 'kept draft', focus() {} }
+  container.setField('#agent-answer-text', field)
+
+  container.fire('click', agentAnswerClick())
+  await flush()
+
+  assert.ok(container.innerHTML.includes('Échec de l’envoi'))
+  assert.ok(container.innerHTML.includes('kept draft'))
+  assert.ok(container.innerHTML.includes('data-agent-answer-submit="true"'))
+  assert.ok(!container.innerHTML.includes('data-agent-answer-submit="true" disabled'))
+  assert.equal(handle.getState().agentAnswerDrafts.get('agent'), 'kept draft')
   handle.unmount()
 })
 

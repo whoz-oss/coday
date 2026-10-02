@@ -32,6 +32,7 @@ object VerdictDeriver {
 
     const val IDLE_WITHOUT_OUTPUT = "Turn reached IDLE without structured output"
     const val OBSERVATION_TIMEOUT = "SSE observation timeout"
+    const val HUMAN_WAIT_TIMEOUT = "HUMAN_WAIT_TIMEOUT"
     const val RECONNECT_BUDGET_EXHAUSTED = "SSE reconnection budget exhausted"
     const val NOT_QUIESCENT = "Case has not reached a terminal or quiescent status"
 
@@ -45,7 +46,12 @@ object VerdictDeriver {
     )
 
     /** A `QuestionEvent` still waiting for its `AnswerEvent`. */
-    data class PendingQuestion(val questionRef: String, val questionText: String?)
+    data class PendingQuestion(
+        val questionRef: String,
+        val questionText: String?,
+        val questionType: String?,
+        val options: List<String>,
+    )
 
     /**
      * Derive a verdict from the durable events of a case, or return null when
@@ -84,6 +90,8 @@ object VerdictDeriver {
                         evidence = facts + mapOf(
                             "questionRef" to pending.questionRef,
                             "question" to pending.questionText,
+                            "questionType" to pending.questionType,
+                            "options" to pending.options,
                         ),
                     )
                     else -> {
@@ -110,7 +118,14 @@ object VerdictDeriver {
         return events
             .filter { it.type == CaseEventView.QUESTION_EVENT && it.eventId !in answered }
             .lastOrNull()
-            ?.let { PendingQuestion(it.eventId, it.questionText) }
+            ?.let {
+                PendingQuestion(
+                    questionRef = it.eventId,
+                    questionText = it.questionText,
+                    questionType = it.questionType,
+                    options = it.questionOptions,
+                )
+            }
     }
 
     /** The flattened text of the last agent `MessageEvent`, null when absent/blank-less. */

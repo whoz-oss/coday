@@ -4,6 +4,7 @@ import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseHandle
+import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptLeaseFencingException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
@@ -35,6 +36,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
     private class FakeAdapter(
         private val reconcileVerdict: (String) -> AgentOsExecutionVerdict,
         private val observeVerdict: (String) -> AgentOsExecutionVerdict,
+        private val history: List<CaseEventView> = emptyList(),
     ) : AgentOsExecutionAdapter {
         val startTurns = CopyOnWriteArrayList<StartTurn>()
         val reconcileCalls = AtomicInteger()
@@ -74,6 +76,8 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
             reconcileCalls.incrementAndGet()
             return reconcileVerdict(caseId)
         }
+
+        override fun persistedEvents(caseId: String): List<CaseEventView> = history
 
         override fun interrupt(caseId: String, reason: String) = Unit
 
@@ -167,6 +171,52 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         assertThat(adapter.startTurns).hasSize(1)
         assertThat(adapter.startTurns.single().attemptId).isEqualTo("attempt-redrive")
         assertThat(adapter.startTurns.single().brief).isEqualTo("recover me")
+    }
+
+    @Test
+    fun `waiting human resumes only from persisted correlated answer`() {
+        attempts.register(scope, attempt("attempt-answered"))
+        claimToRunning("attempt-answered", "crashed-worker", leaseTtlMs = 0)
+        attempts.transition(scope, namespace, "wf-recovery", "step-1", "attempt-answered", "crashed-worker", AgentAttemptStatus.WAITING_HUMAN)
+        // claimToRunning already created an immediately expired lease. The
+        // attempt remains WAITING_HUMAN and is therefore safely preemptible by
+        // the recovery owner without any second transition in the fixture.
+        val caseId = "case:attempt-answered"
+        val adapter = FakeAdapter(
+            reconcileVerdict = { AgentOsExecutionVerdict.WaitingHuman("question-1") },
+            observeVerdict = { error("observation must not run") },
+            history = listOf(
+                CaseEventView("question-1", CaseEventView.QUESTION_EVENT, caseId, null, mapOf("id" to "question-1", "type" to CaseEventView.QUESTION_EVENT, "caseId" to caseId)),
+                CaseEventView("answer-1", CaseEventView.ANSWER_EVENT, caseId, null, mapOf("id" to "answer-1", "type" to CaseEventView.ANSWER_EVENT, "caseId" to caseId, "questionId" to "question-1")),
+            ),
+        )
+
+        val report = BridgeRecoveryWorker(attempts, adapter).recover()
+
+        assertThat(report.resumed).isEqualTo(1)
+        assertThat(status("attempt-answered")).isEqualTo(AgentAttemptStatus.RUNNING)
+        assertThat(attempts.find(scope, namespace, "wf-recovery", "step-1", "attempt-answered")!!.lastObservedEventId)
+            .isEqualTo("answer-1")
+    }
+
+    @Test
+    fun `waiting human remains waiting without persisted correlated answer`() {
+        attempts.register(scope, attempt("attempt-unanswered"))
+        claimToRunning("attempt-unanswered", "crashed-worker", leaseTtlMs = 0)
+        attempts.transition(scope, namespace, "wf-recovery", "step-1", "attempt-unanswered", "crashed-worker", AgentAttemptStatus.WAITING_HUMAN)
+        val caseId = "case:attempt-unanswered"
+        val adapter = FakeAdapter(
+            reconcileVerdict = { AgentOsExecutionVerdict.WaitingHuman("question-1") },
+            observeVerdict = { error("observation must not run") },
+            history = listOf(
+                CaseEventView("question-1", CaseEventView.QUESTION_EVENT, caseId, null, mapOf("id" to "question-1", "type" to CaseEventView.QUESTION_EVENT, "caseId" to caseId)),
+            ),
+        )
+
+        val report = BridgeRecoveryWorker(attempts, adapter).recover()
+
+        assertThat(report.finalized).isEqualTo(1)
+        assertThat(status("attempt-unanswered")).isEqualTo(AgentAttemptStatus.WAITING_HUMAN)
     }
 
     @Test

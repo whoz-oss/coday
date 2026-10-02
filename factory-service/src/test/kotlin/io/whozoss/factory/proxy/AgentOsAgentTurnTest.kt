@@ -216,6 +216,7 @@ class AgentOsAgentTurnTest {
 
     private fun fakeClient(result: AgentTurnExecutionResult): AgentOsProxyClient = object : AgentOsProxyClient {
         override fun fetchAgents(namespaceId: String, externalUserId: String?): Any? = error("unused")
+        override fun fetchNamespaces(externalUserId: String?): Any? = error("unused")
         override fun fetchNamespace(namespaceId: String, externalUserId: String?): Map<String, Any?>? = error("unused")
         override fun fetchCaseEvents(caseId: String, externalUserId: String?): Any? = error("unused")
         override fun resolveRepoRoot(namespaceId: String, externalUserId: String?): String? = error("unused")

@@ -14,6 +14,9 @@ interface AgentOsProxyClient {
     /** List agent configs for a namespace. */
     fun fetchAgents(namespaceId: String, externalUserId: String?): Any?
 
+    /** List AgentOS namespaces visible to the trusted external user. */
+    fun fetchNamespaces(externalUserId: String?): Any?
+
     /** Fetch a namespace record. Returns null when AgentOS answers 404. */
     fun fetchNamespace(namespaceId: String, externalUserId: String?): Map<String, Any?>?
 

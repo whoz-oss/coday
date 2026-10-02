@@ -24,6 +24,8 @@ data class AgentOsAdapterProperties(
     val maxReconnects: Int = AgentOsSseClient.DEFAULT_MAX_RECONNECTS,
     /** No frame and no `:keep-alive` within this window ⇒ the stream is treated as dropped. */
     val stallTimeoutMs: Long = AgentOsSseClient.DEFAULT_STALL_TIMEOUT_MS,
-    /** Default wall-clock observation budget for a turn. */
+    /** Default active-execution observation budget for a turn. */
     val observationTimeoutMs: Long = 600_000L,
+    /** Wall-clock budget for each unanswered human question. */
+    val humanWaitTimeoutMs: Long = AgentOsSseClient.DEFAULT_HUMAN_WAIT_TIMEOUT_MS,
 )

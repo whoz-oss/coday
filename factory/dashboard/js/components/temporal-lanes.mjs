@@ -64,7 +64,20 @@ export const STATE_GLYPHS = Object.freeze({
 const CODE_HINTS = /(oracle|build|test|lint|scan|typecheck|type-check|compile|deterministic|verify|code)/i
 const HUMAN_HINTS = /(human|humain|approv|validat|decision|manual|confirm|review|gate|revue)/i
 
-const RUNNING_STATUSES = new Set(['running', 'waiting_human', 'ready'])
+const TERMINAL_STEP_STATUSES = new Set(['completed', 'failed', 'cancelled', 'succeeded'])
+
+/** Normalize wire statuses before lifecycle comparisons. */
+function normalizedStatus(value) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : ''
+}
+
+/** A started step remains temporal until an authoritative end/final duration exists. */
+export function isTemporalStep(step) {
+  if (toEpochMs(step?.startedAt) === null) return false
+  if (toEpochMs(step?.completedAt ?? step?.endedAt) !== null) return false
+  if (Number.isFinite(step?.durationMs)) return false
+  return !TERMINAL_STEP_STATUSES.has(normalizedStatus(step?.status))
+}
 
 /** Escape a value for safe HTML text interpolation. */
 export function escapeHtml(value) {
@@ -145,8 +158,8 @@ export function classifyLane(step) {
  * @returns {'completed'|'active'|'pending'|'failed'}
  */
 export function resolveStepState(step, activeStepId) {
-  const status = step?.status ?? 'pending'
-  const terminal = status === 'completed' || status === 'failed' || status === 'cancelled'
+  const status = normalizedStatus(step?.status) || 'pending'
+  const terminal = TERMINAL_STEP_STATUSES.has(status)
   if (activeStepId && step?.id === activeStepId && !terminal) return 'active'
   switch (status) {
     case 'completed':
@@ -163,11 +176,14 @@ export function resolveStepState(step, activeStepId) {
 }
 
 /** Duration of a step in ms, or `null` when the projection does not provide it. */
-export function stepDurationMs(step) {
-  if (Number.isFinite(step?.durationMs)) return Number(step.durationMs)
+export function stepDurationMs(step, now = Date.now(), state = resolveStepState(step, null)) {
   const start = toEpochMs(step?.startedAt)
   const end = toEpochMs(step?.completedAt ?? step?.endedAt)
   if (start !== null && end !== null) return Math.max(end - start, 0)
+  // Active blocks are elapsed/runtime displays, not completion percentages.
+  // Their authoritative start is extended only to the caller's local clock.
+  if (state === 'active' && start !== null && Number.isFinite(now)) return Math.max(now - start, 0)
+  if (Number.isFinite(step?.durationMs)) return Number(step.durationMs)
   return null
 }
 
@@ -330,7 +346,10 @@ export function renderTemporalLanes(layout, options = {}) {
 // SSSF-style horizontal waterfall (run detail).
 // ---------------------------------------------------------------------------
 
-/** Normalize the flexible waterfall input into `{ steps, meta }`. */
+/** Synthetic non-governed timeline identity for the persisted engineer request. */
+export const CONTROLLER_REQUEST_ACTIVITY_ID = 'controller-request'
+
+/** Normalize the flexible waterfall input into `{ steps, meta, controllerRequest }`. */
 function extractInput(input, options = {}) {
   if (Array.isArray(input)) {
     return {
@@ -341,6 +360,7 @@ function extractInput(input, options = {}) {
         workflowType: options.workflowType ?? null,
         startedAt: options.startedAt ?? null,
       },
+      controllerRequest: options.controllerRequest ?? null,
     }
   }
   const projection = input?.projection && typeof input.projection === 'object' ? input.projection : input
@@ -353,6 +373,7 @@ function extractInput(input, options = {}) {
       workflowType: options.workflowType ?? projection?.workflowType ?? input?.workflowType ?? null,
       startedAt: options.startedAt ?? projection?.startedAt ?? input?.startedAt ?? null,
     },
+    controllerRequest: options.controllerRequest ?? input?.controllerRequest ?? projection?.controllerRequest ?? input?.instance?.controllerRequest ?? null,
   }
 }
 
@@ -403,14 +424,30 @@ export function buildTicks(spanMs, target = 5) {
  * @returns {object} structured waterfall layout
  */
 export function buildWaterfallLayout(input, options = {}) {
-  const { steps: rawSteps, meta } = extractInput(input, options)
+  const { steps: rawSteps, meta, controllerRequest } = extractInput(input, options)
   const now = Number.isFinite(options.now) ? options.now : Date.now()
+  const requestStart = toEpochMs(controllerRequest?.observedAt)
+  const firstStepStart = rawSteps.map((step) => toEpochMs(step?.startedAt)).filter((value) => value !== null).sort((a, b) => a - b)[0] ?? null
+  const controllerActivity = controllerRequest && requestStart !== null
+    ? {
+        id: CONTROLLER_REQUEST_ACTIVITY_ID,
+        name: 'Demande ingénieur',
+        lane: 'human',
+        responsibility: { kind: 'human', name: controllerRequest.actorId ?? 'engineer' },
+        status: 'completed',
+        startedAt: controllerRequest.observedAt,
+        durationMs: firstStepStart !== null && firstStepStart >= requestStart ? firstStepStart - requestStart : 0,
+        nonGoverned: true,
+        controllerRequest,
+      }
+    : null
+  const timelineSteps = controllerActivity ? [controllerActivity, ...rawSteps] : rawSteps
   const minBlockPct = Number.isFinite(options.minBlockPct) ? Math.max(Number(options.minBlockPct), 0.5) : 3
 
-  const enriched = rawSteps.map((step, index) => {
+  const enriched = timelineSteps.map((step, index) => {
     const start = toEpochMs(step?.startedAt)
-    const duration = stepDurationMs(step)
     const state = resolveStepState(step, options.activeStepId ?? null)
+    const duration = stepDurationMs(step, now, state)
     const lane = classifyLane(step)
     return {
       raw: step,
@@ -423,6 +460,8 @@ export function buildWaterfallLayout(input, options = {}) {
       start,
       duration,
       pending: start === null,
+      nonGoverned: step?.nonGoverned === true,
+      controllerRequest: step?.controllerRequest ?? null,
     }
   })
 
@@ -430,7 +469,12 @@ export function buildWaterfallLayout(input, options = {}) {
   const metaStart = toEpochMs(meta.startedAt)
   const t0 = starts.length ? Math.min(...starts) : (metaStart ?? now)
   const ends = enriched.filter((entry) => entry.start !== null).map((entry) => entry.start + (entry.duration ?? 0))
-  const tEnd = ends.length ? Math.max(...ends) : t0
+  const measuredEnd = ends.length ? Math.max(...ends) : t0
+  // A workflow-level status can lag or be terminal while a projected step still
+  // has an authoritative open interval. Step chronology therefore owns ticking.
+  const running = rawSteps.some(isTemporalStep)
+  // Keep the open block, runtime strip and axis on the same local-now bound.
+  const tEnd = running ? Math.max(measuredEnd, now) : measuredEnd
   const span = Math.max(tEnd - t0, 1)
 
   const timed = enriched.filter((entry) => entry.start !== null).sort((a, b) => a.start - b.start || a.index - b.index)
@@ -481,6 +525,8 @@ export function buildWaterfallLayout(input, options = {}) {
       durationLabel: entry.duration !== null ? fmtDur(entry.duration) : DASH,
       pending: entry.pending,
       laneId: entry.lane.id,
+      nonGoverned: entry.nonGoverned,
+      controllerRequest: entry.controllerRequest,
       leftPct: round(entry.leftPct * scale, 4),
       widthPct: round(entry.widthPct * scale, 4),
     })
@@ -505,8 +551,7 @@ export function buildWaterfallLayout(input, options = {}) {
     }
   }
 
-  const running = RUNNING_STATUSES.has(meta.status) || placed.some((entry) => entry.state === 'active')
-  const runtimeEnd = running ? now : tEnd
+  const runtimeEnd = running ? Math.max(now, t0) : tEnd
   const runtimeMs = runtimeEnd >= t0 ? runtimeEnd - t0 : 0
 
   const strip = {
@@ -530,8 +575,9 @@ export function buildWaterfallLayout(input, options = {}) {
     axis: { ticks: buildTicks(span) },
     lanes: ordered,
     bounds: { t0, tEnd, span, runtimeMs, running },
+    controllerRequest,
     summary: {
-      totalSteps: placed.length,
+      totalSteps: rawSteps.length,
       laneCount: ordered.length,
       completed: placed.filter((entry) => entry.state === 'completed').length,
       failed: placed.filter((entry) => entry.state === 'failed').length,
@@ -578,9 +624,9 @@ function renderBlock(block) {
   const title = `${block.name} (${block.state}) — ${block.durationLabel}`
   const queued = block.pending ? '<span class="block-queued">queued</span>' : ''
   return (
-    `<div class="waterfall-block state-${esc(block.state)}${block.pending ? ' is-queued' : ''}" ` +
+    `<div class="waterfall-block state-${esc(block.state)}${block.pending ? ' is-queued' : ''}${block.nonGoverned ? ' is-non-governed' : ''}" ` +
     `data-step-id="${esc(block.id)}" data-lane="${esc(block.laneId)}" ` +
-    `data-status="${esc(block.status)}" data-state="${esc(block.state)}" ` +
+    `data-status="${esc(block.status)}" data-state="${esc(block.state)}" data-non-governed="${block.nonGoverned ? 'true' : 'false'}" ` +
     `style="left:${block.leftPct}%;width:${block.widthPct}%" title="${esc(title)}">` +
     `<span class="block-glyph" aria-hidden="true">${esc(block.glyph)}</span>` +
     `<span class="block-name">${esc(block.name)}</span>` +

@@ -27,6 +27,7 @@ import { esc, fmtDur, collectFlags, emptySuccess, EMPTY_SUCCESS_FLAG, renderFact
  * in sync with the server contract so the UI never sends a rejected payload.
  */
 export const CHECKPOINT_COMMENT_MAX = 2000
+export const AGENT_ANSWER_MAX = 2000
 
 /** Status badge class, aligned with the dockyard chip palette. */
 const STATUS_CHIP = Object.freeze({
@@ -400,6 +401,60 @@ function renderTicketColumn(enrichment) {
 export function renderPhasePanel(options = {}) {
   const { step = null, workflow = null, evidence = [], enrichment = null, loading = false, checkpoint = null } = options
 
+  if (step?.nonGoverned && step?.controllerRequest) {
+    const request = step.controllerRequest
+    return (
+      `<div class="panel" data-phase-panel="true" data-step-id="${esc(step.id)}">` +
+      '<div class="panel-head" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px">' +
+      '<span class="chip">activité non gouvernée</span><span class="pname" style="font-weight:600">Demande ingénieur</span>' +
+      '<button type="button" class="btn" data-phase-panel-close="true" aria-label="Fermer le détail" title="Fermer" style="margin-left:auto;padding:2px 8px;font-size:18px;line-height:1">×</button></div>' +
+      '<div class="panel-body" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px">' +
+      '<div class="panel-col"><h4 style="font-size:11px;text-transform:uppercase;color:var(--faint)">Demande enregistrée</h4>' +
+      `<pre style="white-space:pre-wrap;word-break:break-word">${esc(request.text ?? '')}</pre></div>` +
+      '<div class="panel-col"><h4 style="font-size:11px;text-transform:uppercase;color:var(--faint)">Attribution</h4>' +
+      `<div class="mono">observedAt: ${esc(request.observedAt ?? '')}<br>actorId: ${esc(request.actorId ?? '')}<br>source: ${esc(request.source ?? '')}<br>namespaceId: ${esc(request.namespaceId ?? '')}</div></div>` +
+      '</div></div>'
+    )
+  }
+
+  if (step?.waitingQuestion) {
+    const question = step.waitingQuestion
+    const answer = options.agentAnswer ?? null
+    const accepted = answer?.accepted === true
+    const disabled = answer?.submitting ? ' disabled' : ''
+    const selected = answer?.draft ?? ''
+    const questionType = String(question.type ?? 'FREE_TEXT').toUpperCase()
+    const choices = Array.isArray(question.options) ? question.options : []
+    const radios = choices.length
+      ? `<fieldset data-agent-answer-options="true"${disabled}><legend>Choisir une réponse</legend>` +
+        choices.map((option, index) => {
+          const value = String(option)
+          const checked = selected === value ? ' checked' : ''
+          return `<label for="agent-answer-${index}"><input id="agent-answer-${index}" type="radio" name="agent-answer" value="${esc(value)}"${checked}${disabled}> ${esc(value)}</label>`
+        }).join('') + '</fieldset>'
+      : ''
+    const text = questionType === 'FREE_TEXT' || questionType === 'OPEN_CHOICE'
+      ? `<label for="agent-answer-text">Votre réponse${questionType === 'OPEN_CHOICE' ? ' personnalisée' : ''}</label><textarea id="agent-answer-text" name="agent-answer-text" maxlength="${AGENT_ANSWER_MAX}" rows="4"${disabled}>${esc(selected)}</textarea>`
+      : ''
+    const supported = questionType !== 'OAUTH_AUTHORIZE' && ['FREE_TEXT', 'SINGLE_CHOICE', 'OPEN_CHOICE'].includes(questionType)
+    const controls = supported ? radios + text : '<p class="nil">Ce type de question ne peut pas être traité depuis Factory.</p>'
+    const feedback = answer?.feedback
+      ? `<div data-agent-answer-feedback="${esc(answer.feedback.type ?? 'info')}">${esc(answer.feedback.message ?? '')}</div>`
+      : ''
+    const answerContent = accepted
+      ? feedback
+      : controls +
+        (supported ? `<button type="button" class="btn btn-primary" data-agent-answer-submit="true"${disabled}>${answer?.submitting ? 'Envoi…' : 'Envoyer la réponse'}</button>` : '') +
+        feedback
+    return (
+      `<div class="panel" data-phase-panel="true" data-step-id="${esc(step.id)}">` +
+      '<div class="panel-head"><span class="chip">waiting human</span><span class="pname">Question AgentOS</span></div>' +
+      `<div class="panel-body"><p>${esc(question.text ?? '')}</p>` +
+      `<div class="agent-answer" data-agent-question-ref="${esc(question.questionRef ?? '')}">${answerContent}</div>` +
+      `<div class="mono">questionRef: ${esc(question.questionRef ?? '')}<br>type: ${esc(question.type ?? '')}</div></div></div>`
+    )
+  }
+
   if (!step) {
     return (
       '<div class="panel" data-phase-panel="true"><p class="placeholder">' +
@@ -494,4 +549,5 @@ export default {
   findWaitingInteraction,
   humanCheckpoint,
   CHECKPOINT_COMMENT_MAX,
+  AGENT_ANSWER_MAX,
 }

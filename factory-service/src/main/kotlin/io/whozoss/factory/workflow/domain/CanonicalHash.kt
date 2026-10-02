@@ -77,6 +77,10 @@ object CanonicalHash {
             "definitionVersion" to definition.version,
             "definitionHash" to definition.definitionHash,
         )
+        // Preserve the legacy digest for callers that do not yet carry a
+        // controller request; when present, its full trusted snapshot is part of
+        // the identity so a divergent retry is rejected, never overwritten.
+        command.controllerRequest?.let { payload["controllerRequest"] = it.toJson() }
         return canonicalHash(payload)
     }
 

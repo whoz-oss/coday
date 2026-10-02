@@ -30,6 +30,7 @@ import { esc } from '../components/facts.mjs'
 
 /** Cockpit route that hosts this view. */
 export const LAUNCH_ROUTE = '/launch'
+export const CONTROLLER_REQUEST_MAX = 4000
 /** Cockpit route the view transitions to on a successful launch. */
 export const DETAIL_ROUTE = '/detail'
 
@@ -100,6 +101,16 @@ export function normalizeDefinitions(payload) {
     .filter((definition) => definition.id)
 }
 
+/** Normalize AgentOS namespace listings without exposing their configuration. */
+export function normalizeNamespaces(payload) {
+  return listOf(payload, ['items', 'namespaces', 'content'])
+    .map((namespace) => ({
+      id: namespace?.id ?? namespace?.namespaceId ?? '',
+      name: namespace?.name ?? namespace?.title ?? namespace?.id ?? namespace?.namespaceId ?? '',
+    }))
+    .filter((namespace) => namespace.id)
+}
+
 /** Turn any launch failure into a clear, user-facing message. */
 export function describeLaunchError(error) {
   const status = Number(error?.status)
@@ -138,7 +149,7 @@ export function renderRunLaunch(state) {
     return (
       '<div class="run-launch" data-run-launch="true">' +
       head +
-      '<div class="panel" data-launch-loading="true"><p class="placeholder">Chargement des définitions…</p></div></div>'
+      '<div class="panel" data-launch-loading="true"><p class="placeholder">Chargement des définitions et namespaces…</p></div></div>'
     )
   }
   if (state.phase === 'error') {
@@ -146,7 +157,7 @@ export function renderRunLaunch(state) {
       '<div class="run-launch" data-run-launch="true">' +
       head +
       '<div class="panel" data-launch-error="true">' +
-      '<h2 class="panel-title">Définitions indisponibles</h2>' +
+      '<h2 class="panel-title">Données de lancement indisponibles</h2>' +
       `<p class="placeholder">${esc(state.error)}</p></div></div>`
     )
   }
@@ -155,6 +166,12 @@ export function renderRunLaunch(state) {
     .map((definition) => {
       const selected = definition.id === state.workflowId ? ' selected' : ''
       return `<option value="${esc(definition.id)}"${selected}>${esc(definition.name)}</option>`
+    })
+    .join('')
+  const namespaceOptions = state.namespaces
+    .map((namespace) => {
+      const selected = namespace.id === state.namespaceId ? ' selected' : ''
+      return `<option value="${esc(namespace.id)}"${selected}>${esc(namespace.name)}</option>`
     })
     .join('')
 
@@ -177,7 +194,14 @@ export function renderRunLaunch(state) {
     '</div>' +
     '<div class="form-group">' +
     '<label for="launch-namespace-id">Namespace (workstream)</label>' +
-    `<input id="launch-namespace-id" name="namespaceId" data-launch-namespace-id="true" class="mono" required value="${esc(state.namespaceId)}" />` +
+    `<select id="launch-namespace-id" name="namespaceId" data-launch-namespace-id="true" class="mono" required>` +
+    '<option value="">Sélectionner un namespace…</option>' + namespaceOptions + '</select>' +
+    (state.namespaces.length === 0 ? '<p class="placeholder" data-launch-namespace-empty="true">Aucun namespace AgentOS disponible.</p>' : '') +
+    '</div>' +
+    '<div class="form-group">' +
+    '<label for="launch-controller-request">Demande de l’ingénieur</label>' +
+    `<textarea id="launch-controller-request" name="controllerRequest" data-launch-controller-request="true" required maxlength="${CONTROLLER_REQUEST_MAX}" rows="6" placeholder="Décrivez précisément ce que vous voulez que la Software Factory réalise.">${esc(state.controllerRequest)}</textarea>` +
+    `<p class="placeholder">${CONTROLLER_REQUEST_MAX} caractères maximum.</p>` +
     '</div>' +
     '<div class="form-group">' +
     '<label for="launch-factory-root">Racine du dépôt (optionnelle)</label>' +
@@ -235,8 +259,10 @@ export async function mountRunLaunchView(container, options = {}) {
     phase: 'loading',
     error: null,
     definitions: [],
+    namespaces: [],
     namespaceId: options.namespaceId ?? '',
     workflowId: options.workflowId ?? '',
+    controllerRequest: options.controllerRequest ?? '',
     ticket: options.ticket ?? '',
     factoryRoot: options.factoryRoot ?? '',
     submitting: false,
@@ -273,9 +299,13 @@ export async function mountRunLaunchView(container, options = {}) {
     state.error = null
     render()
 
-    let payload
+    let definitionsPayload
+    let namespacesPayload
     try {
-      payload = await apiClient.get('/api/factory/workflow-definitions', { signal })
+      ;[definitionsPayload, namespacesPayload] = await Promise.all([
+        apiClient.get('/api/factory/workflow-definitions', { signal }),
+        apiClient.get('/api/namespaces', { signal }),
+      ])
     } catch (error) {
       if (!state.mounted || controller !== state.abortController) return
       state.phase = 'error'
@@ -285,8 +315,10 @@ export async function mountRunLaunchView(container, options = {}) {
     }
     if (!state.mounted || controller !== state.abortController) return
 
-    state.definitions = normalizeDefinitions(payload)
+    state.definitions = normalizeDefinitions(definitionsPayload)
+    state.namespaces = normalizeNamespaces(namespacesPayload)
     if (!state.workflowId && state.definitions.length > 0) state.workflowId = state.definitions[0].id
+    if (state.namespaceId && !state.namespaces.some((namespace) => namespace.id === state.namespaceId)) state.namespaceId = ''
     state.phase = 'ready'
     render()
   }
@@ -295,6 +327,7 @@ export async function mountRunLaunchView(container, options = {}) {
     if (!state.mounted || state.submitting) return
     const workflowType = String(state.workflowId ?? '').trim()
     const namespaceId = String(state.namespaceId ?? '').trim()
+    const controllerRequest = String(state.controllerRequest ?? '').trim()
     if (!workflowType) {
       state.submitError = 'Sélectionnez une définition de workflow.'
       render()
@@ -302,6 +335,16 @@ export async function mountRunLaunchView(container, options = {}) {
     }
     if (!namespaceId) {
       state.submitError = 'Le namespace est requis.'
+      render()
+      return
+    }
+    if (!controllerRequest) {
+      state.submitError = 'La demande de l’ingénieur est requise.'
+      render()
+      return
+    }
+    if (controllerRequest.length > CONTROLLER_REQUEST_MAX) {
+      state.submitError = `La demande est limitée à ${CONTROLLER_REQUEST_MAX} caractères.`
       render()
       return
     }
@@ -336,6 +379,7 @@ export async function mountRunLaunchView(container, options = {}) {
         kind: 'agentos',
         agentId: 'factory-agent',
       },
+      controllerRequest,
     }
     try {
       await apiClient.post(buildStartUrl(workflowId), startBody)
@@ -398,6 +442,10 @@ export async function mountRunLaunchView(container, options = {}) {
       state.workflowId = field.value
       return
     }
+    if (field.name === 'controllerRequest') {
+      state.controllerRequest = field.value
+      return
+    }
     if (field.name === 'ticket') {
       state.ticket = field.value
       return
@@ -421,6 +469,7 @@ export async function mountRunLaunchView(container, options = {}) {
     state.submitError = null
     state.submitSuccess = null
     state.ticket = ''
+    state.controllerRequest = ''
     render()
   }
 
@@ -450,6 +499,7 @@ export async function mountRunLaunchView(container, options = {}) {
     state.onClick = null
     container.innerHTML = ''
     state.definitions = []
+    state.namespaces = []
     state.submitError = null
     state.submitSuccess = null
   }

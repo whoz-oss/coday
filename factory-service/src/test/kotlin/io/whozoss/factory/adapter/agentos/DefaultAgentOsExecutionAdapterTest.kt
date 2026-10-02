@@ -120,6 +120,31 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
+    fun `answerQuestion forwards bounded correlated answer metadata`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1/messages"))
+            .andExpect(header("X-Factory-Attempt-Id", "attempt-1"))
+            .andExpect(header("X-External-User-Id", "actual-answerer"))
+            .andExpect(jsonPath("$.content").value("use main"))
+            .andExpect(jsonPath("$.answerToEventId").value("question-1"))
+            .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
+
+        adapter.answerQuestion("case-1", "question-1", "use main", "attempt-1", "actual-answerer")
+
+        server.verify()
+    }
+
+    @Test
+    fun `legacy answer overload fails closed instead of dropping answering identity`() {
+        val (adapter, _) = build()
+
+        assertThatThrownBy {
+            adapter.answerQuestion("case-1", "question-1", "use main", "attempt-1")
+        }.isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("answeringUserId is required")
+    }
+
+    @Test
     fun `startTurn refuses a busy case`() {
         val (adapter, server) = build()
         server.expect(requestTo(eventsUrl)).andRespond(

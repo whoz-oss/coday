@@ -33,8 +33,9 @@ import kotlin.concurrent.thread
  * - A verdict is **never** derived from silence: when the reconnection budget
  *   is exhausted the result is
  *   `Indeterminate("SSE reconnection budget exhausted")`, and when the
- *   wall-clock observation budget elapses it is
- *   `Indeterminate("SSE observation timeout")`.
+ *   active-execution budget elapses it is
+ *   `Indeterminate("SSE observation timeout")`. Waiting for a human pauses
+ *   that budget and uses the separate bounded [humanWaitTimeoutMs].
  */
 class AgentOsSseClient(
     private val baseUrl: String,
@@ -44,6 +45,7 @@ class AgentOsSseClient(
     private val backoffMaxMs: Long = DEFAULT_BACKOFF_MAX_MS,
     private val maxReconnects: Int = DEFAULT_MAX_RECONNECTS,
     private val stallTimeoutMs: Long = DEFAULT_STALL_TIMEOUT_MS,
+    private val humanWaitTimeoutMs: Long = DEFAULT_HUMAN_WAIT_TIMEOUT_MS,
     private val now: () -> Long = System::currentTimeMillis,
     private val sleep: (Long) -> Unit = { Thread.sleep(it) },
 ) {
@@ -57,7 +59,7 @@ class AgentOsSseClient(
     /**
      * Observe [caseId] until a verdict is derivable or a budget elapses.
      *
-     * @param timeoutMs wall-clock observation budget.
+     * @param timeoutMs active-execution budget; paused while a human answer is pending.
      * @param checkpoint per-`(caseId, attemptId)` dedup/high-water state; a
      *   fresh instance means "full replay + eventId dedup".
      * @param reconcile REST catch-up invoked on every reconnection (before
@@ -75,10 +77,56 @@ class AgentOsSseClient(
         context: VerdictDeriver.DerivationContext = VerdictDeriver.DerivationContext(caseId),
         reconcile: (String) -> ReconcileResult? = { null },
         onEvent: (CaseEventView) -> Unit = {},
+        onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit = {},
     ): AgentOsExecutionVerdict {
-        val deadline = now() + timeoutMs
+        var activeBudgetMs = timeoutMs
+        var deadline = now() + activeBudgetMs
+        var phase: HumanWaitPhase = HumanWaitPhase.Active
+        fun handleIntermediate(verdict: AgentOsExecutionVerdict.WaitingHuman) {
+            val current = phase
+            if (current is HumanWaitPhase.WaitingHuman && current.questionRef == verdict.questionRef) return
+            val observedAt = now()
+            if (current is HumanWaitPhase.Active) {
+                activeBudgetMs = (deadline - observedAt).coerceAtLeast(0)
+            }
+            phase = HumanWaitPhase.WaitingHuman(verdict.questionRef, observedAt + humanWaitTimeoutMs)
+            onIntermediateVerdict(verdict)
+        }
+        fun applyLifecycleEvent(event: CaseEventView) {
+            when (val current = phase) {
+                is HumanWaitPhase.WaitingHuman -> if (event.answeredQuestionId == current.questionRef) {
+                    phase = HumanWaitPhase.WaitingForResume(current.questionRef)
+                    deadline = now() + activeBudgetMs
+                }
+                is HumanWaitPhase.WaitingForResume -> {
+                    val resumedBySelection = event.selectedQuestionId == current.questionRef
+                    val resumedByStatus = event.type == CaseEventView.CASE_STATUS_EVENT && event.status == "RUNNING"
+                    if (resumedBySelection || resumedByStatus) phase = HumanWaitPhase.Active
+                }
+                HumanWaitPhase.Active -> Unit
+            }
+        }
+        fun currentDeadline(): Long = when (val current = phase) {
+            is HumanWaitPhase.WaitingHuman -> current.deadline
+            else -> deadline
+        }
+        fun timeoutVerdict(): AgentOsExecutionVerdict = when (val current = phase) {
+            is HumanWaitPhase.WaitingHuman -> humanWaitTimeout(caseId, current.questionRef)
+            else -> observationTimeout(caseId)
+        }
         // Seed from the warm checkpoint (fresh start ⇒ empty ⇒ full replay + dedup).
         val observed = checkpoint.events().toMutableList()
+        fun evaluateVerdict(): AgentOsExecutionVerdict? {
+            val verdict = VerdictDeriver.derive(observed, context) ?: return null
+            return when (verdict) {
+                is AgentOsExecutionVerdict.WaitingHuman -> {
+                    handleIntermediate(verdict)
+                    null
+                }
+                else -> if (phase is HumanWaitPhase.WaitingForResume) null else verdict
+            }
+        }
+        observed.forEach(::applyLifecycleEvent)
         var reconnects = 0
         var connectedOnce = false
         while (true) {
@@ -96,26 +144,41 @@ class AgentOsSseClient(
                         if (checkpoint.record(event)) {
                             observed.add(event)
                             onEvent(event)
+                            applyLifecycleEvent(event)
                         }
                     }
-                    if (catchUp.verdict != null) return catchUp.verdict
+                    evaluateVerdict()?.let { return it }
                 }
+                if (now() >= currentDeadline()) return timeoutVerdict()
                 if (reconnects >= maxReconnects) {
-                    return AgentOsExecutionVerdict.Indeterminate(
-                        VerdictDeriver.RECONNECT_BUDGET_EXHAUSTED,
-                        mapOf("caseId" to caseId, "reconnects" to reconnects),
-                    )
+                    if (phase is HumanWaitPhase.WaitingHuman) {
+                        reconnects = 0
+                    } else {
+                        return AgentOsExecutionVerdict.Indeterminate(
+                            VerdictDeriver.RECONNECT_BUDGET_EXHAUSTED,
+                            mapOf("caseId" to caseId, "reconnects" to reconnects),
+                        )
+                    }
                 }
                 val delay = backoffDelay(reconnects)
                 reconnects++
-                if (now() + delay >= deadline) return observationTimeout(caseId)
-                sleep(delay)
+                if (now() + delay >= currentDeadline()) return timeoutVerdict()
+                try {
+                    sleep(delay)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return interruptedObservation(caseId)
+                }
             }
             when (
-                val outcome = streamOnce(caseId, externalUserId, attemptId, capabilityToken, checkpoint, context, deadline, observed, onEvent)
+                val outcome = streamOnce(
+                    caseId, externalUserId, attemptId, capabilityToken, checkpoint,
+                    ::currentDeadline, observed, onEvent, ::applyLifecycleEvent, ::evaluateVerdict,
+                )
             ) {
                 is StreamOutcome.Verdict -> return outcome.verdict
-                StreamOutcome.Timeout -> return observationTimeout(caseId)
+                StreamOutcome.Timeout -> return timeoutVerdict()
+                StreamOutcome.Interrupted -> return interruptedObservation(caseId)
                 StreamOutcome.Dropped -> connectedOnce = true
             }
         }
@@ -127,10 +190,29 @@ class AgentOsSseClient(
             mapOf("caseId" to caseId),
         )
 
+    private fun humanWaitTimeout(caseId: String, questionRef: String?): AgentOsExecutionVerdict =
+        AgentOsExecutionVerdict.Indeterminate(
+            VerdictDeriver.HUMAN_WAIT_TIMEOUT,
+            mapOf("caseId" to caseId, "questionRef" to questionRef, "humanWaitTimeoutMs" to humanWaitTimeoutMs),
+        )
+
+    private fun interruptedObservation(caseId: String): AgentOsExecutionVerdict =
+        AgentOsExecutionVerdict.Interrupted(
+            "SSE observation interrupted",
+            mapOf("caseId" to caseId),
+        )
+
+    private sealed interface HumanWaitPhase {
+        data object Active : HumanWaitPhase
+        data class WaitingHuman(val questionRef: String, val deadline: Long) : HumanWaitPhase
+        data class WaitingForResume(val questionRef: String) : HumanWaitPhase
+    }
+
     private sealed interface StreamOutcome {
         data class Verdict(val verdict: AgentOsExecutionVerdict) : StreamOutcome
         data object Dropped : StreamOutcome
         data object Timeout : StreamOutcome
+        data object Interrupted : StreamOutcome
     }
 
     private sealed interface Signal {
@@ -144,10 +226,11 @@ class AgentOsSseClient(
         attemptId: String?,
         capabilityToken: String?,
         checkpoint: EventCheckpoint,
-        context: VerdictDeriver.DerivationContext,
-        deadline: Long,
+        deadline: () -> Long,
         observed: MutableList<CaseEventView>,
         onEvent: (CaseEventView) -> Unit,
+        onLifecycleEvent: (CaseEventView) -> Unit,
+        evaluateVerdict: () -> AgentOsExecutionVerdict?,
     ): StreamOutcome {
         val requestBuilder = HttpRequest.newBuilder()
             .uri(URI.create("${baseUrl.trimEnd('/')}/api/cases/$caseId/events?includePreviousEvents=true"))
@@ -192,23 +275,31 @@ class AgentOsSseClient(
         try {
             val parser = SseFrameParser()
             while (true) {
-                val remaining = deadline - now()
+                val remaining = deadline() - now()
                 if (remaining <= 0) return StreamOutcome.Timeout
-                val signal = signals.poll(minOf(stallTimeoutMs, remaining), TimeUnit.MILLISECONDS)
-                    ?: return if (now() >= deadline) StreamOutcome.Timeout else StreamOutcome.Dropped
+                val signal = try {
+                    signals.poll(minOf(stallTimeoutMs, remaining), TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return StreamOutcome.Interrupted
+                } ?: return if (now() >= deadline()) StreamOutcome.Timeout else StreamOutcome.Dropped
                 when (signal) {
                     Signal.End -> {
                         // Flush any unterminated trailing frame before treating
                         // the close as a dropped connection.
                         val frame = parser.finish()
                         if (frame != null) {
-                            handleFrame(frame, caseId, checkpoint, context, observed, onEvent)?.let { return it }
+                            handleFrame(
+                                frame, caseId, checkpoint, observed, onEvent, onLifecycleEvent, evaluateVerdict,
+                            )?.let { return it }
                         }
                         return StreamOutcome.Dropped
                     }
                     is Signal.Line -> {
                         val frame = parser.feedLine(signal.value) ?: continue
-                        handleFrame(frame, caseId, checkpoint, context, observed, onEvent)?.let { return it }
+                        handleFrame(
+                            frame, caseId, checkpoint, observed, onEvent, onLifecycleEvent, evaluateVerdict,
+                        )?.let { return it }
                     }
                 }
             }
@@ -230,9 +321,10 @@ class AgentOsSseClient(
         frame: SseFrame,
         caseId: String,
         checkpoint: EventCheckpoint,
-        context: VerdictDeriver.DerivationContext,
         observed: MutableList<CaseEventView>,
         onEvent: (CaseEventView) -> Unit,
+        onLifecycleEvent: (CaseEventView) -> Unit,
+        evaluateVerdict: () -> AgentOsExecutionVerdict?,
     ): StreamOutcome.Verdict? {
         if (frame.isHeartbeat) return null // :keep-alive — liveness only
         val view = decode(frame) ?: return null
@@ -241,8 +333,8 @@ class AgentOsSseClient(
         if (!checkpoint.record(view)) return null // duplicate eventId
         observed.add(view)
         onEvent(view)
-        val verdict = VerdictDeriver.derive(observed, context) ?: return null
-        return StreamOutcome.Verdict(verdict)
+        onLifecycleEvent(view)
+        return evaluateVerdict()?.let(StreamOutcome::Verdict)
     }
 
     private fun decode(frame: SseFrame): CaseEventView? {
@@ -270,6 +362,7 @@ class AgentOsSseClient(
         const val DEFAULT_BACKOFF_MAX_MS = 30_000L
         const val DEFAULT_MAX_RECONNECTS = 5
         const val DEFAULT_STALL_TIMEOUT_MS = 60_000L
+        const val DEFAULT_HUMAN_WAIT_TIMEOUT_MS = 86_400_000L
         private const val SIGNAL_QUEUE_CAPACITY = 1_024
     }
 }

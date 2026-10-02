@@ -2,12 +2,14 @@ package io.whozoss.factory.agentattempt.service
 
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
+import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
+import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import java.util.UUID
 import mu.KotlinLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -57,6 +59,7 @@ class BridgeRecoveryWorker(
     private val attempts: DurableAgentAttemptService,
     private val adapter: AgentOsExecutionAdapter,
     private val evidenceRepository: WorkflowEvidenceRepository? = null,
+    private val sseHub: WorkflowSseHub? = null,
     private val observationTimeoutMs: Long = DEFAULT_OBSERVATION_TIMEOUT_MS,
     private val leaseTtlMs: Long = DEFAULT_LEASE_TTL_MS,
 ) {
@@ -112,7 +115,7 @@ class BridgeRecoveryWorker(
             is AgentOsExecutionVerdict.Interrupted,
             -> finalizeWithFreshLease(candidate, snapshot)
 
-            is AgentOsExecutionVerdict.WaitingHuman -> resumeWaitingHuman(candidate)
+            is AgentOsExecutionVerdict.WaitingHuman -> reconcileWaitingHuman(candidate, snapshot)
 
             is AgentOsExecutionVerdict.Indeterminate -> when {
                 // Never claimed ⇒ `startTurn` could not have been accepted: the
@@ -172,18 +175,69 @@ class BridgeRecoveryWorker(
         return Outcome.FINALIZED
     }
 
-    private fun resumeWaitingHuman(candidate: ScopedDurableAgentAttempt): Outcome {
+    private fun reconcileWaitingHuman(
+        candidate: ScopedDurableAgentAttempt,
+        verdict: AgentOsExecutionVerdict.WaitingHuman,
+    ): Outcome {
         val attempt = candidate.attempt
+        val questionId = (verdict.evidence["questionId"] as? String) ?: verdict.questionRef
+        val events = runCatching { adapter.persistedEvents(attempt.caseId) }
+            .getOrElse { error ->
+                logger.warn(error) { waitingDiagnostic(attempt, questionId, "CASE_HISTORY_UNAVAILABLE") }
+                return Outcome.SKIPPED
+            }
+        val question = questionId?.let { id ->
+            events.lastOrNull { it.type == CaseEventView.QUESTION_EVENT && it.eventId == id }
+        }
+        val answer = question?.let { persistedQuestion ->
+            events.lastOrNull {
+                it.type == CaseEventView.ANSWER_EVENT && it.answeredQuestionId == persistedQuestion.eventId
+            }
+        }
+        if (answer == null) {
+            logger.warn { waitingDiagnostic(attempt, questionId, if (question == null) "QUESTION_EVENT_NOT_FOUND" else "ANSWER_EVENT_NOT_FOUND") }
+            return ensureWaiting(candidate)
+        }
+
+        if (attempt.status != AgentAttemptStatus.WAITING_HUMAN) return ensureWaiting(candidate)
+        // Recovery may only mutate an orphaned attempt after its previous lease
+        // expires. claimFresh deliberately preserves that fencing invariant.
+        val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
+        // Claiming rotates the lease and deliberately resets the aggregate to
+        // CLAIMING. Re-enter the normal lifecycle before resuming; skipping
+        // STARTING would violate the attempt state machine.
+        attempts.transition(
+            candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId,
+            owner, AgentAttemptStatus.STARTING,
+        )
+        attempts.transition(
+            candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId,
+            owner, AgentAttemptStatus.RUNNING, lastObservedEventId = answer.eventId,
+        )
+        sseHub?.publish(
+            candidate.scope,
+            attempt.namespaceId,
+            mapOf("workflowId" to attempt.workflowId, "namespaceId" to attempt.namespaceId),
+        )
+        return Outcome.RESUMED
+    }
+
+    private fun ensureWaiting(candidate: ScopedDurableAgentAttempt): Outcome {
+        val attempt = candidate.attempt
+        if (attempt.status == AgentAttemptStatus.WAITING_HUMAN) return Outcome.WAITING
         val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
         val row = { target: AgentAttemptStatus ->
             attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, target)
         }
-        // claiming -> starting -> running -> waiting_human (the only legal path).
         row(AgentAttemptStatus.STARTING)
         row(AgentAttemptStatus.RUNNING)
         row(AgentAttemptStatus.WAITING_HUMAN)
         return Outcome.WAITING
     }
+
+    private fun waitingDiagnostic(attempt: DurableAgentAttempt, questionId: String?, reason: String): String =
+        "FACTORY_WAITING_HUMAN_RECONCILIATION_FAILED reason=$reason attemptId=${attempt.attemptId} " +
+            "caseId=${attempt.caseId} questionId=${questionId ?: "<missing>"}"
 
     private fun observeAndFinalize(candidate: ScopedDurableAgentAttempt): Outcome {
         val attempt = candidate.attempt

@@ -95,6 +95,106 @@ test('humanCheckpoint flags a human step waiting on an open interaction', () => 
 
 // ----------------------------------------------------------------- rendering
 
+test('controller request detail renders escaped full text and trusted metadata', () => {
+  const html = renderPhasePanel({
+    step: {
+      id: 'controller-request',
+      nonGoverned: true,
+      controllerRequest: {
+        text: '<script>alert(1)</script> full request',
+        observedAt: '2026-01-01T00:00:00.000Z',
+        actorId: 'engineer-1',
+        source: 'factory-cockpit',
+        namespaceId: 'ns-1',
+      },
+    },
+  })
+  assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt; full request'))
+  assert.ok(!html.includes('<script>'))
+  assert.ok(html.includes('2026-01-01T00:00:00.000Z'))
+  assert.ok(html.includes('engineer-1'))
+  assert.ok(html.includes('factory-cockpit'))
+  assert.ok(html.includes('ns-1'))
+})
+
+test('projected AgentOS question renders escaped text and accessible answer controls', () => {
+  const html = renderPhasePanel({ step: {
+    id: 'agent',
+    waitingQuestion: {
+      questionRef: 'q-1',
+      text: '<script>alert(1)</script> choose',
+      type: 'SINGLE_CHOICE',
+      options: ['<unsafe>', 'safe'],
+    },
+  } })
+  assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt; choose'))
+  assert.ok(html.includes('&lt;unsafe&gt;'))
+  assert.ok(!html.includes('<script>'))
+  assert.ok(!html.includes('data-checkpoint-action'))
+  assert.ok(html.includes('data-agent-answer-submit="true"'))
+  assert.ok(html.includes('name="agent-answer"'))
+})
+
+test('single-choice AgentOS question only renders persisted options', () => {
+  const html = renderPhasePanel({ step: {
+    id: 'agent',
+    waitingQuestion: { questionRef: 'q-single', text: 'Pick', type: 'SINGLE_CHOICE', options: ['A', 'B'] },
+  } })
+  assert.ok(html.includes('data-agent-answer-options="true"'))
+  assert.ok(!html.includes('id="agent-answer-text"'))
+  assert.ok(html.includes('data-agent-answer-submit="true"'))
+})
+
+test('open-choice AgentOS question permits options and custom free text', () => {
+  const html = renderPhasePanel({ step: {
+    id: 'agent',
+    waitingQuestion: { questionRef: 'q-open', text: 'Pick or type', type: 'OPEN_CHOICE', options: ['A'] },
+  } })
+  assert.ok(html.includes('data-agent-answer-options="true"'))
+  assert.ok(html.includes('id="agent-answer-text"'))
+  assert.ok(html.includes('data-agent-answer-submit="true"'))
+})
+
+test('accepted AgentOS answer hides every answer control and shows pending confirmation', () => {
+  const html = renderPhasePanel({
+    step: {
+      id: 'agent',
+      waitingQuestion: { questionRef: 'q-accepted', text: 'Pick', type: 'OPEN_CHOICE', options: ['A'] },
+    },
+    agentAnswer: {
+      accepted: true,
+      feedback: { type: 'pending', message: 'Réponse envoyée, confirmation AgentOS en attente…' },
+      draft: 'draft',
+    },
+  })
+  assert.ok(html.includes('confirmation AgentOS en attente'))
+  assert.ok(!html.includes('data-agent-answer-submit'))
+  assert.ok(!html.includes('name="agent-answer"'))
+  assert.ok(!html.includes('id="agent-answer-text"'))
+})
+
+test('submitting AgentOS answer disables every rendered control', () => {
+  const html = renderPhasePanel({
+    step: {
+      id: 'agent',
+      waitingQuestion: { questionRef: 'q-sending', text: 'Pick', type: 'OPEN_CHOICE', options: ['A'] },
+    },
+    agentAnswer: { submitting: true, draft: 'draft' },
+  })
+  assert.ok(html.includes('data-agent-answer-submit="true" disabled'))
+  assert.ok(html.includes('name="agent-answer" value="A" disabled'))
+  assert.ok(html.includes('name="agent-answer-text" maxlength="2000" rows="4" disabled'))
+})
+
+test('OAuth AgentOS question fails closed without an answer submit control', () => {
+  const html = renderPhasePanel({ step: {
+    id: 'agent',
+    waitingQuestion: { questionRef: 'q-oauth', text: 'Authorize', type: 'OAUTH_AUTHORIZE', options: [] },
+  } })
+  assert.ok(html.includes('ne peut pas être traité depuis Factory'))
+  assert.ok(!html.includes('data-agent-answer-submit="true"'))
+})
+
 test('a human waiting step with an open interaction renders Approuver / Rejeter', () => {
   const html = renderPhasePanel({
     step: humanWaitingStep(),

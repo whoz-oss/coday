@@ -101,6 +101,34 @@ export function snapshotWorkflowId(snapshot) {
   return snapshot?.workflowId ?? snapshot?.projection?.workflowId ?? null
 }
 
+/** Authoritative chronology only; revision is deliberately never considered. */
+export function workflowTimestamp(snapshot) {
+  const candidates = [
+    snapshot?.updatedAt,
+    snapshot?.projection?.updatedAt,
+    snapshot?.createdAt,
+    snapshot?.projection?.createdAt,
+    snapshot?.instance?.updatedAt,
+    snapshot?.instance?.createdAt,
+  ]
+  for (const value of candidates) {
+    const parsed = typeof value === 'number' && Number.isFinite(value) ? value : Date.parse(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+export function compareWorkflowNodesNewestFirst(a, b) {
+  const aTime = workflowTimestamp(a?.snapshot)
+  const bTime = workflowTimestamp(b?.snapshot)
+  if (aTime !== null || bTime !== null) {
+    if (aTime === null) return 1
+    if (bTime === null) return -1
+    if (aTime !== bTime) return bTime - aTime
+  }
+  return String(a?.workflowId ?? '').localeCompare(String(b?.workflowId ?? ''))
+}
+
 /**
  * Group workflow snapshots by case/ticket and nest sub-cases by parent relation.
  *
@@ -148,13 +176,26 @@ export function groupWorkflows(snapshots = []) {
       walk(node)
     }
 
+    const sortTree = (nodes) => {
+      nodes.sort(compareWorkflowNodesNewestFirst)
+      for (const node of nodes) sortTree(node.children)
+    }
+    sortTree(roots)
     group.roots = roots
+    group.nodes.sort(compareWorkflowNodesNewestFirst)
+    group.newestTimestamp = group.nodes.reduce((latest, node) => {
+      const value = workflowTimestamp(node.snapshot)
+      return value === null ? latest : Math.max(latest ?? value, value)
+    }, null)
     delete group.byId
   }
 
   return [...groups.values()].sort((a, b) => {
-    if (a.key === FALLBACK_GROUP_KEY) return 1
-    if (b.key === FALLBACK_GROUP_KEY) return -1
+    if (a.newestTimestamp !== null || b.newestTimestamp !== null) {
+      if (a.newestTimestamp === null) return 1
+      if (b.newestTimestamp === null) return -1
+      if (a.newestTimestamp !== b.newestTimestamp) return b.newestTimestamp - a.newestTimestamp
+    }
     return a.key.localeCompare(b.key)
   })
 }

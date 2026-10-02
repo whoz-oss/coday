@@ -30,6 +30,22 @@ data class CaseEventView(
     val questionText: String?
         get() = if (type == QUESTION_EVENT) raw["question"] as? String else null
 
+    /** Question input kind (`FREE_TEXT` or `OPEN_CHOICE`), null otherwise. */
+    val questionType: String?
+        get() = if (type == QUESTION_EVENT) raw["questionType"] as? String else null
+
+    /** Bounded choices carried by an `OPEN_CHOICE` question. */
+    val questionOptions: List<String>
+        get() = if (type == QUESTION_EVENT) {
+            (raw["options"] as? List<*>)?.mapNotNull { it as? String }.orEmpty()
+        } else {
+            emptyList()
+        }
+
+    /** Optional recipient selected by AgentOS for this question. */
+    val questionUserId: String?
+        get() = if (type == QUESTION_EVENT) raw["userId"] as? String else null
+
     /**
      * The `QuestionEvent.id` this `AnswerEvent` resolves, null for any other
      * event type. (The AgentOS correlation is `AnswerEvent.questionId` →
@@ -37,6 +53,14 @@ data class CaseEventView(
      */
     val answeredQuestionId: String?
         get() = if (type == ANSWER_EVENT) raw["questionId"] as? String else null
+
+    /** Question selected by an `AgentSelectedEvent`, when AgentOS supplies the correlation. */
+    val selectedQuestionId: String?
+        get() = if (type == AGENT_SELECTED_EVENT) {
+            (raw["questionId"] as? String) ?: (raw["questionEventId"] as? String)
+        } else {
+            null
+        }
 
     /** True for an agent-authored `MessageEvent` (`actor.role == "AGENT"`). */
     fun isAgentMessage(): Boolean =
@@ -64,6 +88,7 @@ data class CaseEventView(
         const val MESSAGE_EVENT = "MessageEvent"
         const val QUESTION_EVENT = "QuestionEvent"
         const val ANSWER_EVENT = "AnswerEvent"
+        const val AGENT_SELECTED_EVENT = "AgentSelectedEvent"
         const val AGENT_FINISHED_EVENT = "AgentFinishedEvent"
         const val TOOL_RESPONSE_EVENT = "ToolResponseEvent"
 

@@ -24,7 +24,7 @@
 
 import { WORKFLOW_PROJECTION_EVENTS } from '../services/sse-client.mjs'
 import { normalizeSteps } from '../components/gantt.mjs'
-import { buildWaterfallLayout, renderWaterfallTimeline } from '../components/temporal-lanes.mjs'
+import { buildWaterfallLayout, renderWaterfallTimeline, isTemporalStep, CONTROLLER_REQUEST_ACTIVITY_ID } from '../components/temporal-lanes.mjs'
 import { renderPhasePanel, loadPhaseEnrichment, findWaitingInteraction } from '../components/phase-panel.mjs'
 import { esc, fmtDur } from '../components/facts.mjs'
 import { buildCaseLinkHtml } from '../components/case-link.mjs'
@@ -34,6 +34,7 @@ export const WORKFLOW_UPDATED_EVENT =
   WORKFLOW_PROJECTION_EVENTS.find((event) => event === 'workflow-projection-updated') ?? 'workflow-projection-updated'
 
 const DEFAULT_REFRESH_DEBOUNCE_MS = 150
+const DEFAULT_ELAPSED_TICK_MS = 30_000
 
 /**
  * Default human actor attributed to a cockpit decision. Matches the loopback
@@ -128,6 +129,9 @@ function renderMetricsStrip(metrics) {
  *   actorId?: string | null,
  *   setTimeoutFn?: typeof setTimeout,
  *   clearTimeoutFn?: typeof clearTimeout,
+ *   setIntervalFn?: typeof setInterval,
+ *   clearIntervalFn?: typeof clearInterval,
+ *   elapsedTickMs?: number,
  *   refreshDebounceMs?: number,
  * }} options
  * @returns {Promise<{ unmount: () => void, refresh: () => Promise<void>, selectStep: (id: string|null) => void,
@@ -146,6 +150,11 @@ export async function mount(container, options = {}) {
   const now = typeof options.now === 'function' ? options.now : () => Date.now()
   const setTimeoutFn = options.setTimeoutFn ?? setTimeout
   const clearTimeoutFn = options.clearTimeoutFn ?? clearTimeout
+  const setIntervalFn = options.setIntervalFn ?? setInterval
+  const clearIntervalFn = options.clearIntervalFn ?? clearInterval
+  const elapsedTickMs = Number.isFinite(options.elapsedTickMs)
+    ? Math.max(options.elapsedTickMs, 1000)
+    : DEFAULT_ELAPSED_TICK_MS
   const refreshDebounceMs = Number.isFinite(options.refreshDebounceMs)
     ? options.refreshDebounceMs
     : DEFAULT_REFRESH_DEBOUNCE_MS
@@ -169,7 +178,12 @@ export async function mount(container, options = {}) {
     enrichmentLoading: false,
     checkpointSubmitting: false,
     checkpointFeedback: null,
+    agentAnswerSubmitting: false,
+    agentAnswerFeedback: null,
+    acceptedAgentQuestionRef: null,
+    agentAnswerDrafts: new Map(),
     refreshTimer: null,
+    elapsedTimer: null,
     abortController: null,
     unsubscribe: null,
     sseUnsubscribers: [],
@@ -183,7 +197,19 @@ export async function mount(container, options = {}) {
   let currentFetchSequence = 0
 
   const steps = () => normalizeSteps(state.workflow, state.timing)
-  const selectedStep = () => steps().find((step) => step.id === state.selectedStepId) ?? null
+  const selectedStep = () => {
+    if (state.selectedStepId === CONTROLLER_REQUEST_ACTIVITY_ID && state.workflow?.controllerRequest) {
+      return {
+        id: CONTROLLER_REQUEST_ACTIVITY_ID,
+        name: 'Demande ingénieur',
+        phaseKind: 'human',
+        lane: 'human',
+        nonGoverned: true,
+        controllerRequest: state.workflow.controllerRequest,
+      }
+    }
+    return steps().find((step) => step.id === state.selectedStepId) ?? null
+  }
 
   const renderHeader = () => {
     if (state.phase === 'loading') return ''
@@ -262,6 +288,11 @@ export async function mount(container, options = {}) {
     // This is the SINGLE timeline of the detail view; the former Gantt block
     // ("ACTEUR · TEMPS") was a redundant duplicate and has been removed.
     const lanes = renderTimeline(state, now())
+    const activeElement = doc?.activeElement
+    const hadAnswerFocus = activeElement?.id === 'agent-answer-text'
+    if (hadAnswerFocus && state.selectedStepId && typeof activeElement.value === 'string') {
+      state.agentAnswerDrafts.set(state.selectedStepId, activeElement.value)
+    }
     const panel = renderPhasePanel({
       step: selectedStep(),
       workflow: state.workflow,
@@ -269,11 +300,18 @@ export async function mount(container, options = {}) {
       enrichment: state.enrichment,
       loading: state.enrichmentLoading,
       checkpoint: { submitting: state.checkpointSubmitting, feedback: state.checkpointFeedback },
+      agentAnswer: {
+        submitting: state.agentAnswerSubmitting,
+        accepted: state.acceptedAgentQuestionRef === selectedStep()?.waitingQuestion?.questionRef,
+        feedback: state.agentAnswerFeedback,
+        draft: state.agentAnswerDrafts.get(state.selectedStepId) ?? '',
+      },
     })
 
     container.innerHTML = `<div class="run-detail" data-run-detail="true">${renderHeader()}${renderSwimlanes(
       lanes
     )}${panel}${renderMetricsStrip(state.metrics)}</div>`
+    if (hadAnswerFocus) container.querySelector?.('#agent-answer-text')?.focus?.()
   }
 
   const safeGet = async (path, signal) => {
@@ -317,18 +355,28 @@ export async function mount(container, options = {}) {
     if (!state.mounted || seq < currentFetchSequence) return
 
     state.workflow = workflow && typeof workflow === 'object' ? workflow : null
+    if (state.acceptedAgentQuestionRef) {
+      const projectedQuestionStillWaiting = normalizeSteps(state.workflow, timingPayload?.timing ?? null).some(
+        (step) => step.waitingQuestion?.questionRef === state.acceptedAgentQuestionRef,
+      )
+      if (!projectedQuestionStillWaiting) {
+        state.acceptedAgentQuestionRef = null
+        state.agentAnswerFeedback = null
+      }
+    }
     state.timing = timingPayload?.timing ?? null
     state.evidence = Array.isArray(evidencePayload?.items) ? evidencePayload.items : []
     state.metrics = metricsPayload ?? null
     state.phase = 'ready'
     render()
+    syncElapsedTicker()
 
     if (state.selectedStepId) await loadEnrichment(state.selectedStepId)
   }
 
   const loadEnrichment = async (stepId) => {
-    const step = steps().find((entry) => entry.id === stepId) ?? null
-    if (!step) return
+    const step = selectedStep()
+    if (!step || step.nonGoverned) return
     const controller = state.abortController
     state.enrichmentLoading = true
     state.enrichment = null
@@ -353,6 +401,8 @@ export async function mount(container, options = {}) {
     state.enrichmentLoading = false
     state.checkpointSubmitting = false
     state.checkpointFeedback = null
+    state.agentAnswerSubmitting = false
+    state.agentAnswerFeedback = null
     render()
     if (state.selectedStepId) void loadEnrichment(state.selectedStepId)
   }
@@ -454,6 +504,65 @@ export async function mount(container, options = {}) {
     await loadAll()
   }
 
+  const submitAgentAnswer = async () => {
+    if (!state.mounted || state.agentAnswerSubmitting) return
+    const step = selectedStep()
+    const question = step?.waitingQuestion
+    if (!step || !question?.questionRef || state.acceptedAgentQuestionRef === question.questionRef) return
+    const textEl = container.querySelector?.('#agent-answer-text')
+    const checked = container.querySelector?.('input[name="agent-answer"]:checked')
+    const answer = String(textEl?.value?.trim() || checked?.value || '').trim()
+    state.agentAnswerDrafts.set(step.id, answer)
+    if (!answer) {
+      state.agentAnswerFeedback = { type: 'error', message: 'Une réponse est requise.' }
+      render()
+      return
+    }
+    state.agentAnswerSubmitting = true
+    state.agentAnswerFeedback = null
+    render()
+    try {
+      await apiClient.post(
+        `${base}/agent-questions/${encodeURIComponent(question.questionRef)}/answer`,
+        { ...(namespaceId ? { namespaceId } : {}), stepId: step.id, answer },
+        { signal: state.abortController?.signal },
+      )
+      if (!state.mounted) return
+      state.agentAnswerSubmitting = false
+      state.acceptedAgentQuestionRef = question.questionRef
+      state.agentAnswerFeedback = { type: 'pending', message: 'Réponse envoyée, confirmation AgentOS en attente…' }
+      render()
+      await loadAll()
+    } catch (error) {
+      if (!state.mounted) return
+      state.agentAnswerSubmitting = false
+      const conflict = error?.status === 409 || ['AGENT_QUESTION_STALE', 'AGENT_QUESTION_ALREADY_ANSWERED'].includes(error?.code)
+      state.agentAnswerFeedback = {
+        type: 'error',
+        message: conflict ? 'Question déjà traitée ou périmée. État rechargé.' : `Échec de l’envoi : ${String(error?.message ?? error)}`,
+      }
+      render()
+      if (conflict) await loadAll()
+    }
+  }
+
+  const hasOpenTemporalStep = () => isExistingWorkflow(state.workflow) && steps().some(isTemporalStep)
+
+  const stopElapsedTicker = () => {
+    if (state.elapsedTimer !== null) clearIntervalFn(state.elapsedTimer)
+    state.elapsedTimer = null
+  }
+
+  const syncElapsedTicker = () => {
+    stopElapsedTicker()
+    if (!state.mounted || doc?.visibilityState === 'hidden' || !hasOpenTemporalStep()) return
+    state.elapsedTimer = setIntervalFn(() => {
+      // Rendering local elapsed/runtime only: deliberately no REST polling.
+      if (state.mounted && doc?.visibilityState !== 'hidden' && hasOpenTemporalStep()) render()
+      else stopElapsedTicker()
+    }, elapsedTickMs)
+  }
+
   const scheduleRefresh = () => {
     if (!state.mounted || state.refreshTimer !== null) return
     state.refreshTimer = setTimeoutFn(() => {
@@ -472,6 +581,12 @@ export async function mount(container, options = {}) {
   state.onClick = (event) => {
     const target = event?.target
     const closest = typeof target?.closest === 'function' ? target.closest.bind(target) : null
+    const answerEl = closest?.('[data-agent-answer-submit]') ?? null
+    if (answerEl) {
+      event?.preventDefault?.()
+      void submitAgentAnswer()
+      return
+    }
     const checkpointEl = closest?.('[data-checkpoint-action]') ?? null
     if (checkpointEl) {
       event?.preventDefault?.()
@@ -517,7 +632,12 @@ export async function mount(container, options = {}) {
   // one.
   state.visListener = () => {
     if (!state.mounted) return
-    if (doc?.visibilityState === 'visible') void loadAll()
+    if (doc?.visibilityState === 'visible') {
+      syncElapsedTicker()
+      void loadAll()
+    } else {
+      stopElapsedTicker()
+    }
   }
   if (doc && typeof doc.addEventListener === 'function') {
     doc.addEventListener('visibilitychange', state.visListener)
@@ -532,6 +652,7 @@ export async function mount(container, options = {}) {
       clearTimeoutFn(state.refreshTimer)
       state.refreshTimer = null
     }
+    stopElapsedTicker()
     state.abortController?.abort?.()
     state.abortController = null
     if (typeof state.unsubscribe === 'function') state.unsubscribe()
@@ -559,6 +680,10 @@ export async function mount(container, options = {}) {
     state.selectedStepId = null
     state.checkpointSubmitting = false
     state.checkpointFeedback = null
+    state.agentAnswerSubmitting = false
+    state.agentAnswerFeedback = null
+    state.acceptedAgentQuestionRef = null
+    state.agentAnswerDrafts.clear()
   }
 
   await loadAll()

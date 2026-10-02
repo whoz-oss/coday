@@ -185,7 +185,7 @@ class TransactionBoundaryIntegrationTest : Neo4jDomainIntegrationTest() {
         // sequencer must persist the failure evidence in a fresh short
         // transaction and return FAILED, not surface an unhandled 500.
         val failingCapabilities = mockk<CapabilityExecutionService>()
-        every { failingCapabilities.resolveAndRecord(any(), any(), any(), any(), any(), any()) } throws
+        every { failingCapabilities.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } throws
             RuntimeException("Cannot run more queries in this transaction (simulated)")
         val runner = SessionRunService(
             workflowRepository,

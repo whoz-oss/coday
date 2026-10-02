@@ -121,6 +121,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
                 "agentId" to "runner",
                 "caseId" to "case-http",
             ),
+            "controllerRequest" to "Implement the engineer request.",
         )
         val start = restTemplate.exchange(
             "/api/factory/workflows/wf-http-1/start",
@@ -131,6 +132,12 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(start.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(data(start.body)["created"]).isEqualTo(true)
         assertThat(data(start.body)["revision"]).isEqualTo(1)
+        val controllerRequest = data(start.body)["controllerRequest"] as Map<*, *>
+        assertThat(controllerRequest["text"]).isEqualTo("Implement the engineer request.")
+        assertThat(controllerRequest["namespaceId"]).isEqualTo(namespace)
+        assertThat(controllerRequest["actorId"]).isEqualTo("local-dev-user")
+        assertThat(controllerRequest["source"]).isEqualTo("factory-cockpit")
+        assertThat(controllerRequest["observedAt"]).isNotNull
 
         val detail = restTemplate.exchange(
             "/api/factory/workflows/wf-http-1?namespaceId=$namespace",
@@ -159,6 +166,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
                 "kind" to "agentos",
                 "agentId" to "runner",
             ),
+            "controllerRequest" to "Implement ticket JIRA-7.",
         )
         val start = restTemplate.exchange(
             "/api/factory/workflows/wf-http-ticket/start",
@@ -172,6 +180,33 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(instance["ticket"]).isEqualTo("JIRA-7")
         val relations = payload["relations"] as Map<String, Any?>
         assertThat(relations["ticket"]).isEqualTo("JIRA-7")
+    }
+
+    @Test
+    fun `start requires a bounded controller request`() {
+        registerDefinition()
+        val startBody = mapOf(
+            "workflow" to mapOf(
+                "workflowId" to "wf-http-no-request",
+                "workflowType" to "wf-http",
+                "title" to "HTTP start",
+            ),
+            "execution" to mapOf(
+                "namespaceId" to namespace,
+                "runtimeId" to "factory-dashboard",
+                "kind" to "agentos",
+                "agentId" to "factory-agent",
+            ),
+        )
+        val start = restTemplate.exchange(
+            "/api/factory/workflows/wf-http-no-request/start",
+            HttpMethod.POST,
+            HttpEntity(startBody, headers()),
+            jsonType(),
+        )
+        assertThat(start.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        val error = start.body?.get("error") as? Map<*, *>
+        assertThat(error?.get("code")).isEqualTo("INVALID_START_REQUEST")
     }
 
     @Test
@@ -189,6 +224,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
                 "kind" to "agentos",
                 "agentId" to "runner",
             ),
+            "controllerRequest" to "Implement the engineer request.",
         )
         val start = restTemplate.exchange(
             "/api/factory/workflows/wf-http-2/start",

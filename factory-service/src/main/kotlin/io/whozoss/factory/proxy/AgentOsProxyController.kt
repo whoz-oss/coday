@@ -28,6 +28,15 @@ class AgentOsProxyController(
     private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
+    @GetMapping(path = ["/namespaces"])
+    @Operation(summary = "List AgentOS namespaces visible to the trusted caller.")
+    fun namespaces(
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): Any? {
+        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        return proxy.fetchNamespaces(caller.externalUserId)
+    }
+
     @GetMapping(path = ["/agents"])
     @Operation(summary = "List AgentOS agent configs for a namespace.")
     fun agents(

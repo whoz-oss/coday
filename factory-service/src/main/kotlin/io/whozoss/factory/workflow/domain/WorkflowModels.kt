@@ -90,6 +90,23 @@ data class WorkflowDefinitionRecord(
     val schemaVersion: String = WORKFLOW_DEFINITION_SCHEMA_VERSION,
 )
 
+/** Trusted attribution captured by Factory for the engineer's launch request. */
+data class ControllerRequestInput(
+    val text: String,
+    val namespaceId: String,
+    val observedAt: String,
+    val actorId: String,
+    val source: String,
+) {
+    fun toJson(): Map<String, Any?> = linkedMapOf(
+        "text" to text,
+        "observedAt" to observedAt,
+        "actorId" to actorId,
+        "source" to source,
+        "namespaceId" to namespaceId,
+    )
+}
+
 /** `POST /workflows/{id}/start` command. */
 data class WorkflowStartCommand(
     val workflowId: String,
@@ -98,6 +115,7 @@ data class WorkflowStartCommand(
     val relations: Map<String, Any?>? = null,
     /** Optional Jira/issue ticket carried through the session (brief, branch naming, relations). */
     val ticket: String? = null,
+    val controllerRequest: ControllerRequestInput? = null,
 )
 
 /** The trusted controlling runtime of a governed workflow. */

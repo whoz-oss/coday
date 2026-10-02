@@ -58,6 +58,9 @@ class HttpAgentOsProxyClient(
     override fun fetchAgents(namespaceId: String, externalUserId: String?): Any? =
         relay("/api/agent-configs/by-parentId/$namespaceId", externalUserId, object : ParameterizedTypeReference<Any>() {})
 
+    override fun fetchNamespaces(externalUserId: String?): Any? =
+        relay("/api/namespaces", externalUserId, object : ParameterizedTypeReference<Any>() {})
+
     override fun fetchNamespace(namespaceId: String, externalUserId: String?): Map<String, Any?>? =
         try {
             relay(

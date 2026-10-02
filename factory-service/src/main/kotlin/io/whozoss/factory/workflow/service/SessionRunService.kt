@@ -1,5 +1,6 @@
 package io.whozoss.factory.workflow.service
 
+import io.whozoss.factory.capability.AgentObservationUpdate
 import io.whozoss.factory.capability.CapabilityExecution
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityOutcome
@@ -62,11 +63,13 @@ private class SessionProgress {
     val statuses = LinkedHashMap<String, String>()
     val startedAt = HashMap<String, String>()
     val completedAt = HashMap<String, String>()
+    val waitingQuestions = HashMap<String, Map<String, Any?>>()
 
-    /** Persisted payload of a step state: only the timing facts, never the status. */
+    /** Persisted payload of a step state: timings plus bounded intermediate question. */
     fun payload(stepId: String): Map<String, Any?> = buildMap {
         startedAt[stepId]?.let { put("startedAt", it) }
         completedAt[stepId]?.let { put("completedAt", it) }
+        waitingQuestions[stepId]?.let { put("waitingQuestion", it) }
     }
 
     companion object {
@@ -76,6 +79,8 @@ private class SessionProgress {
             for ((stepId, state) in states) {
                 (state.payload["startedAt"] as? String)?.let { progress.startedAt[stepId] = it }
                 (state.payload["completedAt"] as? String)?.let { progress.completedAt[stepId] = it }
+                @Suppress("UNCHECKED_CAST")
+                (state.payload["waitingQuestion"] as? Map<String, Any?>)?.let { progress.waitingQuestions[stepId] = it }
             }
             return progress
         }
@@ -328,6 +333,7 @@ class SessionRunService(
         }
         progress.startedAt.putAll(restored.startedAt)
         progress.completedAt.putAll(restored.completedAt)
+        progress.waitingQuestions.putAll(restored.waitingQuestions)
         return progress
     }
 
@@ -361,7 +367,9 @@ class SessionRunService(
         // leaves the step alone. The claim is a short, isolated write.
         if (!claimStep(scope, namespaceId, workflowId, step.id, statuses)) return null
         val execution = try {
-            capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket)
+            capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket) { update ->
+                projectAgentObservation(scope, namespaceId, workflowId, step.id, statuses, update)
+            }
         } catch (error: Exception) {
             // The failure is handled OUTSIDE any (possibly dead) transaction: the
             // recovery writes run in a FRESH short transaction so they succeed
@@ -514,6 +522,7 @@ class SessionRunService(
             -> {
                 progress.startedAt.putIfAbsent(stepId, now)
                 progress.completedAt.putIfAbsent(stepId, now)
+                progress.waitingQuestions.remove(stepId)
             }
         }
         repository.upsertStepState(
@@ -562,7 +571,46 @@ class SessionRunService(
         }
         progress.statuses[stepId] = WorkflowStatuses.RUNNING
         progress.startedAt[stepId] = startedAt
+        progress.waitingQuestions.remove(stepId)
+        // The successful CAS owns execution; publish the authoritative RUNNING
+        // projection before any remote case creation/message dispatch occurs.
+        persistProgressProjection(scope, namespaceId, workflowId, progress)
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
         return true
+    }
+
+    private fun projectAgentObservation(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        progress: SessionProgress,
+        update: AgentObservationUpdate,
+    ) {
+        when (update.status) {
+            WorkflowStatuses.WAITING_HUMAN -> {
+                progress.statuses[stepId] = WorkflowStatuses.WAITING_HUMAN
+                progress.waitingQuestions[stepId] = buildMap {
+                    update.questionRef?.let { put("questionRef", it) }
+                    update.text?.let { put("text", it) }
+                    update.type?.let { put("type", it) }
+                    if (update.options.isNotEmpty()) put("options", update.options)
+                    put("attemptId", CapabilityExecutionService.stableAttemptId(workflowId, stepId))
+                    put("caseId", CapabilityExecutionService.stableCaseId(workflowId, stepId))
+                }
+            }
+            WorkflowStatuses.RUNNING -> {
+                progress.statuses[stepId] = WorkflowStatuses.RUNNING
+                progress.waitingQuestions.remove(stepId)
+            }
+            else -> return
+        }
+        repository.upsertStepState(
+            scope,
+            WorkflowStepStateRecord(namespaceId, workflowId, stepId, 1, progress.statuses.getValue(stepId), progress.payload(stepId)),
+        )
+        persistProgressProjection(scope, namespaceId, workflowId, progress)
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
     }
 
     /**
@@ -743,13 +791,14 @@ class SessionRunService(
             progress.startedAt[stepId]?.let { step["startedAt"] = it }
             progress.completedAt[stepId]?.let { step["completedAt"] = it }
             elapsedMs(progress.startedAt[stepId], progress.completedAt[stepId])?.let { step["durationMs"] = it }
+            progress.waitingQuestions[stepId]?.let { step["waitingQuestion"] = it } ?: step.remove("waitingQuestion")
             step
         } ?: return
         projection["steps"] = projectedSteps
-        projection["status"] = if (progress.statuses.values.any { it == WorkflowStatuses.RUNNING }) {
-            WorkflowStatuses.RUNNING
-        } else {
-            projection["status"] ?: WorkflowStatuses.PENDING
+        projection["status"] = when {
+            progress.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN } -> WorkflowStatuses.WAITING_HUMAN
+            progress.statuses.values.any { it == WorkflowStatuses.RUNNING } -> WorkflowStatuses.RUNNING
+            else -> projection["status"] ?: WorkflowStatuses.PENDING
         }
         val nextInstance = instance.instance.toMutableMap()
         nextInstance["steps"] = projectedSteps.map { mapOf("id" to it["id"], "status" to it["status"]) }
@@ -761,7 +810,9 @@ class SessionRunService(
             projection = projection,
         )
         nextInstance["revision"] = next.revision
-        repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)
+        if (!repository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "Intermediate projection revision conflict.")
+        }
         val existingProjection = repository.findProjection(scope, namespaceId, workflowId)
         repository.publishProjection(
             scope,
@@ -824,6 +875,7 @@ class SessionRunService(
                 "startedAt" to startedAt,
                 "completedAt" to completedAt,
                 "durationMs" to elapsedMs(startedAt, completedAt),
+                "waitingQuestion" to progress.waitingQuestions[step.id],
             ).filterValues { it != null }
         }
         val next = instance.copy(revision = instance.revision + 1, instance = nextInstance, projection = projection)

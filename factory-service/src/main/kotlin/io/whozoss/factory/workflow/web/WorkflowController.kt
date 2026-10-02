@@ -9,6 +9,7 @@ import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.web.TrustContext
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
+import io.whozoss.factory.workflow.domain.ControllerRequestInput
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowExecution
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
@@ -31,6 +32,8 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /**
@@ -173,8 +176,8 @@ class WorkflowController(
         trustContext: TrustContext?,
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
-        if (request.keys.any { it !in setOf("workflow", "execution") }) {
-            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain workflow and execution.")
+        if (request.keys.any { it !in setOf("workflow", "execution", "controllerRequest") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain workflow, execution and controllerRequest.")
         }
         val workflow = (request["workflow"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
@@ -198,12 +201,30 @@ class WorkflowController(
             ticket != null -> mapOf("rootWorkflowId" to workflowId, "ticket" to ticket)
             else -> null
         }
+        val requestText = (request["controllerRequest"] as? String)?.trim()
+            ?: if (isFactoryCockpitExecution(execution)) {
+                throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "controllerRequest is required.")
+            } else {
+                null
+            }
+        if (requestText != null && (requestText.isEmpty() || requestText.length > CONTROLLER_REQUEST_MAX)) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "controllerRequest must contain 1 to $CONTROLLER_REQUEST_MAX characters.")
+        }
         val command = WorkflowStartCommand(
             workflowId = workflowId,
             workflowType = workflow["workflowType"] as String,
             title = workflow["title"] as String,
             relations = relations,
             ticket = ticket,
+            controllerRequest = requestText?.let {
+                ControllerRequestInput(
+                    text = it,
+                    namespaceId = caller.namespaceId,
+                    observedAt = Instant.now().truncatedTo(ChronoUnit.MILLIS).toString(),
+                    actorId = caller.actorId,
+                    source = CONTROLLER_REQUEST_SOURCE,
+                )
+            },
         )
         return respond(service.start(caller.scope, caller.namespaceId, command, execution))
     }
@@ -592,6 +613,39 @@ class WorkflowController(
 
     // ----- interactions --------------------------------------------------
 
+    @PostMapping(path = ["/{workflowId}/agent-questions/{questionEventId}/answer"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Submit an authenticated answer to the active AgentOS question.")
+    fun answerAgentQuestion(
+        @PathVariable workflowId: String,
+        @PathVariable questionEventId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("namespaceId", "stepId", "answer") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only namespaceId, stepId and answer are accepted.")
+        }
+        val stepId = (request["stepId"] as? String)?.takeIf { it.isNotBlank() }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "stepId is required.")
+        val answer = request["answer"] as? String
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "answer is required.")
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
+        if (!trustContext?.authenticated.orFalse() || trustContext?.principalType != TrustContext.PRINCIPAL_TYPE_HUMAN || !isSafeActor(caller.actorId)) {
+            throw workflowException(WorkflowErrorCodes.UNAUTHENTICATED_ACTOR)
+        }
+        return respond(
+            service.submitAgentQuestionAnswer(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                stepId,
+                questionEventId,
+                answer,
+                caller.actorId,
+            ),
+        )
+    }
+
     @GetMapping(path = ["/{workflowId}/interactions"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "List human interactions for a workflow.")
     fun listInteractions(
@@ -764,6 +818,16 @@ class WorkflowController(
         )
     }
 
+    private fun isFactoryCockpitExecution(execution: ControllerExecutionInput): Boolean =
+        execution.runtimeId == "factory-dashboard" && execution.agentId == "factory-agent"
+
     private fun respond(result: WorkflowHttpResult): ResponseEntity<WorkflowDataEnvelope<Any?>> =
         ResponseEntity.status(result.status).body(WorkflowDataEnvelope(result.data))
+
+    private fun Boolean?.orFalse(): Boolean = this == true
+
+    private companion object {
+        const val CONTROLLER_REQUEST_MAX = 4000
+        const val CONTROLLER_REQUEST_SOURCE = "factory-cockpit"
+    }
 }

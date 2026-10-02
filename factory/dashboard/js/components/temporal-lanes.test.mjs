@@ -141,6 +141,33 @@ test('the whole strip is normalized into [0, 100]', () => {
   assert.ok(Math.abs(maxRight - 100) < 0.01, `expected a full strip, got ${maxRight}`)
 })
 
+test('controller request is the first non-governed engineer activity and ends at the first real start', () => {
+  const request = {
+    text: '<implement safely>',
+    observedAt: at(0),
+    actorId: 'engineer-1',
+    source: 'factory-cockpit',
+    namespaceId: 'ns-1',
+  }
+  const layout = buildWaterfallLayout({ controllerRequest: request, steps: [step({ id: 'first', startedAt: at(10), durationMs: 1000 })] })
+  const engineer = layout.lanes.find((lane) => lane.id === 'engineer')
+  assert.equal(engineer.blocks[0].id, 'controller-request')
+  assert.equal(engineer.blocks[0].durationMs, 10000)
+  assert.equal(engineer.blocks[0].nonGoverned, true)
+  assert.ok(renderWaterfall(layout).includes('data-non-governed="true"'))
+})
+
+test('controller request without a started workflow step stays a minimum-width milestone', () => {
+  const layout = buildWaterfallLayout({
+    controllerRequest: { text: 'request', observedAt: at(0), actorId: 'engineer', source: 'factory-cockpit', namespaceId: 'ns-1' },
+    steps: [step({ id: 'pending', status: 'pending', startedAt: undefined, durationMs: undefined })],
+  }, { now: Date.parse(at(999)) })
+  const request = layout.lanes.find((lane) => lane.id === 'engineer').blocks[0]
+  assert.equal(request.durationMs, 0)
+  assert.ok(request.widthPct >= 3)
+  assert.equal(layout.bounds.running, false)
+})
+
 test('pending steps are queued as dashed blocks', () => {
   const layout = buildWaterfallLayout([
     step({ id: 'done', startedAt: at(0), durationMs: 10000 }),

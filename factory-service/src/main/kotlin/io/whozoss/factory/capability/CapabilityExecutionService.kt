@@ -24,7 +24,6 @@ import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
-import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -47,6 +46,15 @@ data class CapabilityExecution(
     val evidenceId: String? = null,
     val interactionId: String? = null,
     val attemptId: String? = null,
+)
+
+/** Bounded intermediate state emitted synchronously by an AgentOS observation. */
+data class AgentObservationUpdate(
+    val status: String,
+    val questionRef: String? = null,
+    val text: String? = null,
+    val type: String? = null,
+    val options: List<String> = emptyList(),
 )
 
 /**
@@ -99,7 +107,6 @@ class CapabilityExecutionService(
      * skipped and the turn runs without a delegate token).
      */
     private val agentStepResultService: AgentStepResultService? = null,
-    private val sseHub: WorkflowSseHub? = null,
     /**
      * Optional transaction manager used to isolate each persistence phase in its
      * own short `REQUIRES_NEW` transaction. Injected in production; pure unit
@@ -147,9 +154,10 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         repoRoot: Path,
         ticket: String? = null,
+        onAgentObservation: (AgentObservationUpdate) -> Unit = {},
     ): CapabilityExecution {
         return when (step.responsibility.kind) {
-            ResponsibilityKind.AGENT -> resolveAgent(scope, namespaceId, workflowId, step, repoRoot, ticket)
+            ResponsibilityKind.AGENT -> resolveAgent(scope, namespaceId, workflowId, step, repoRoot, ticket, onAgentObservation)
 
             ResponsibilityKind.HUMAN -> resolveHuman(scope, namespaceId, workflowId, step, repoRoot)
             ResponsibilityKind.CODE -> resolveCode(scope, namespaceId, workflowId, step, repoRoot)
@@ -207,18 +215,44 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         ticket: String?,
     ): String {
-        val base = briefFromTicket(ticket) ?: "Execute Factory session step '${step.id}'."
-        if (step.dependsOn.isEmpty()) return base
-        val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
+        val legacyBase = briefFromTicket(ticket) ?: "Execute Factory session step '${step.id}'."
         val inputs = LinkedHashMap<String, Any?>()
-        for (dependency in step.dependsOn) {
-            val item = evidence.lastOrNull {
-                it.stepId == dependency && it.kind == AGENT_RESULT_EVIDENCE_KIND && it.outcome == "pass"
-            } ?: continue
-            inputs[dependency] = item.facts["outputs"] ?: item.facts
+        if (step.dependsOn.isNotEmpty()) {
+            val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
+            for (dependency in step.dependsOn) {
+                val item = evidence.lastOrNull {
+                    it.stepId == dependency && it.kind == AGENT_RESULT_EVIDENCE_KIND && it.outcome == "pass"
+                } ?: continue
+                inputs[dependency] = item.facts["outputs"] ?: item.facts
+            }
         }
-        if (inputs.isEmpty()) return base
-        return "$base Inputs:${renderValue(inputs)}"
+        val legacyBrief = if (inputs.isEmpty()) legacyBase else "$legacyBase Inputs:${renderValue(inputs)}"
+        val controllerRequest = workflowRepository.findInstance(scope, namespaceId, workflowId)
+            ?.instance
+            ?.get("controllerRequest")
+            .let { it as? Map<*, *> }
+            ?.get("text")
+            .let { it as? String }
+            ?.takeIf { it.isNotBlank() }
+            ?: return legacyBrief
+
+        // Some older/custom launch paths may already have embedded the request in
+        // their step context. Keep that command byte-for-byte instead of adding a
+        // second copy of the same user request.
+        if (legacyBrief.contains(controllerRequest)) return legacyBrief
+
+        return buildString {
+            appendLine("## Global user request")
+            appendLine(controllerRequest)
+            appendLine()
+            appendLine("## Current step")
+            appendLine("Name: ${step.name}")
+            appendLine("Instructions: $legacyBase")
+            appendLine()
+            appendLine("## Scope and structured result")
+            append("Work only on this step. Return a structured result for downstream Factory steps.")
+            if (inputs.isNotEmpty()) append(" Inputs:${renderValue(inputs)}")
+        }
     }
 
     /** Renders a nested fact value as compact JSON so a brief stays readable. */
@@ -348,9 +382,10 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         repoRoot: Path,
         ticket: String?,
+        onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): CapabilityExecution {
         return if (agentOsAdapterProperties.enabled) {
-            resolveAgentViaAdapter(scope, namespaceId, workflowId, step, ticket, durableAgentAttemptService, agentOsExecutionAdapter)
+            resolveAgentViaAdapter(scope, namespaceId, workflowId, step, ticket, durableAgentAttemptService, agentOsExecutionAdapter, onAgentObservation)
         } else {
             resolveAgentViaPolling(scope, namespaceId, workflowId, step, repoRoot, ticket)
         }
@@ -388,6 +423,7 @@ class CapabilityExecutionService(
         ticket: String?,
         attempts: DurableAgentAttemptService,
         adapter: AgentOsExecutionAdapter,
+        onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
         val attemptId = stableAttemptId(workflowId, step.id)
@@ -420,7 +456,7 @@ class CapabilityExecutionService(
 
         // Phase 2 - no transaction: create/recover + start (once) + observe.
         val verdict = executeRemoteTurn(
-            adapter, attempts, scope, namespaceId, workflowId, step, reservation, agentId, brief,
+            adapter, attempts, scope, namespaceId, workflowId, step, reservation, agentId, brief, onAgentObservation,
         )
 
         // Phase 3 - short transaction: persist outputs + finalize the attempt.
@@ -549,6 +585,7 @@ class CapabilityExecutionService(
         reservation: AgentReservation,
         agentId: String,
         brief: String,
+        onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): AgentOsExecutionVerdict {
         val handle = adapter.createOrRecoverExecution(
             namespaceId = namespaceId,
@@ -579,14 +616,54 @@ class CapabilityExecutionService(
         newTransaction {
             attempts.transition(scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken, AgentAttemptStatus.RUNNING)
         }
+        var waitingQuestion: String? = null
         val observed = try {
-            adapter.observeTurn(caseId, reservation.attemptId, agentObservationTimeoutMs)
+            adapter.observeTurn(caseId, reservation.attemptId, agentObservationTimeoutMs) { waiting ->
+                if (waitingQuestion != waiting.questionRef) {
+                    waitingQuestion = waiting.questionRef
+                    newTransaction {
+                        attempts.transition(
+                            scope, namespaceId, workflowId, step.id, reservation.attemptId,
+                            reservation.ownerToken, AgentAttemptStatus.WAITING_HUMAN,
+                        )
+                    }
+                    onAgentObservation(
+                        AgentObservationUpdate(
+                            status = "waiting_human",
+                            questionRef = waiting.questionRef,
+                            text = waiting.questionText?.take(MAX_QUESTION_TEXT),
+                            type = waiting.evidence["questionType"]?.toString()?.take(MAX_QUESTION_TYPE),
+                            options = (waiting.evidence["options"] as? List<*>)
+                                .orEmpty().mapNotNull { it?.toString()?.take(MAX_QUESTION_OPTION) }.take(MAX_QUESTION_OPTIONS),
+                        ),
+                    )
+                }
+            }
         } catch (error: Exception) {
             runCatching { adapter.reconcile(caseId) }.getOrElse {
                 AgentOsExecutionVerdict.Indeterminate(
                     reason = "AGENT_OBSERVATION_ERROR: ${error.message ?: error.toString()}",
                     evidence = mapOf("caseId" to caseId, "attemptId" to reservation.attemptId),
                 )
+            }
+        }
+        if (waitingQuestion != null && observed !is AgentOsExecutionVerdict.WaitingHuman) {
+            newTransaction {
+                val current = attempts.find(scope, namespaceId, workflowId, step.id, reservation.attemptId)
+                if (current?.status == AgentAttemptStatus.WAITING_HUMAN) {
+                    val persistedAnswer = adapter.persistedEvents(caseId).lastOrNull {
+                        it.type == io.whozoss.factory.adapter.agentos.CaseEventView.ANSWER_EVENT &&
+                            it.answeredQuestionId == waitingQuestion
+                    }
+                    if (persistedAnswer != null) {
+                        attempts.transition(
+                            scope, namespaceId, workflowId, step.id, reservation.attemptId,
+                            reservation.ownerToken, AgentAttemptStatus.RUNNING,
+                            lastObservedEventId = persistedAnswer.eventId,
+                        )
+                        onAgentObservation(AgentObservationUpdate(status = "running"))
+                    }
+                }
             }
         }
         // An indeterminate observation is only the START of the escalation
@@ -873,9 +950,7 @@ class CapabilityExecutionService(
             instance = nextInstance,
         )
         nextInstance["revision"] = next.revision
-        if (workflowRepository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)) {
-            sseHub?.publish(namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
-        }
+        workflowRepository.updateInstance(scope, namespaceId, workflowId, instance.revision, next)
     }
 
     /**
@@ -947,5 +1022,9 @@ class CapabilityExecutionService(
 
         /** Process-local locks serialising the register+claim of one attempt. */
         private val reservationLocks = ConcurrentHashMap<String, ReentrantLock>()
+        private const val MAX_QUESTION_TEXT = 2_000
+        private const val MAX_QUESTION_TYPE = 100
+        private const val MAX_QUESTION_OPTIONS = 20
+        private const val MAX_QUESTION_OPTION = 500
     }
 }

@@ -35,15 +35,15 @@ function fakeContainer() {
   }
 }
 
-/** Recording fake ApiClient: definitions/agents GETs succeed, POSTs are captured. */
-function fakeApiClient({ definitions = [{ workflowType: 'feature-session', title: 'Feature session' }], postError = null, postErrors = {} } = {}) {
+/** Recording fake ApiClient: definitions/namespaces GETs succeed, POSTs are captured. */
+function fakeApiClient({ definitions = [{ workflowType: 'feature-session', title: 'Feature session' }], namespaces = [{ id: 'ns-1', name: 'Engineering' }], postError = null, postErrors = {} } = {}) {
   const calls = { get: [], post: [] }
   return {
     calls,
     get(path) {
       calls.get.push(path)
       if (path.startsWith('/api/factory/workflow-definitions')) return Promise.resolve({ items: definitions })
-      if (path.startsWith('/api/agents')) return Promise.resolve({ items: [] })
+      if (path === '/api/namespaces') return Promise.resolve({ items: namespaces })
       return Promise.resolve(null)
     },
     post(path, body, options) {
@@ -84,6 +84,7 @@ test('launching starts a fresh instance then runs it with ticket and repoRoot', 
     namespaceId: 'ns-1',
     factoryRoot: '/repo',
     ticket: 'JIRA-1',
+    controllerRequest: 'Build the requested feature safely.',
     onNavigate: (route, params) => nav.push([route, params]),
   })
 
@@ -97,6 +98,7 @@ test('launching starts a fresh instance then runs it with ticket and repoRoot', 
   assert.equal(start.body.workflow.title, 'Run feature-session')
   assert.equal(start.body.workflow.ticket, 'JIRA-1')
   assert.equal(start.body.workflow.workflowId, start.path.split('/')[4])
+  assert.equal(start.body.controllerRequest, 'Build the requested feature safely.')
   assert.deepEqual(start.body.execution, {
     namespaceId: 'ns-1',
     runtimeId: 'factory-dashboard',
@@ -119,7 +121,7 @@ test('launching starts a fresh instance then runs it with ticket and repoRoot', 
 test('omitting ticket and repoRoot keeps those fields off the run payload', async () => {
   const container = fakeContainer()
   const apiClient = fakeApiClient()
-  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1' })
+  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1', controllerRequest: 'Do the work.' })
 
   await handle.submit()
   await flush()
@@ -134,7 +136,7 @@ test('an already-existing instance still proceeds to the run call', async () => 
   const container = fakeContainer()
   const conflict = Object.assign(new Error('exists'), { code: 'WORKFLOW_IDENTITY_CONFLICT', status: 409 })
   const apiClient = fakeApiClient({ postErrors: { start: conflict } })
-  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1' })
+  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1', controllerRequest: 'Do the work.' })
 
   await handle.submit()
   await flush()
@@ -149,7 +151,7 @@ test('an already-existing instance still proceeds to the run call', async () => 
 test('submitting without a selected definition reports an error and does not post', async () => {
   const container = fakeContainer()
   const apiClient = fakeApiClient({ definitions: [] })
-  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1' })
+  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1', controllerRequest: 'Do the work.' })
 
   await handle.submit()
   await flush()
@@ -162,7 +164,7 @@ test('submitting without a selected definition reports an error and does not pos
 test('submitting without a namespace reports an error and does not post', async () => {
   const container = fakeContainer()
   const apiClient = fakeApiClient()
-  const handle = await mountWith(container, apiClient, { namespaceId: '' })
+  const handle = await mountWith(container, apiClient, { namespaceId: '', controllerRequest: 'Do the work.' })
 
   await handle.submit()
   await flush()
@@ -172,13 +174,26 @@ test('submitting without a namespace reports an error and does not post', async 
   handle.unmount()
 })
 
+test('submitting without an engineer request reports an error and does not post', async () => {
+  const container = fakeContainer()
+  const apiClient = fakeApiClient()
+  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1', controllerRequest: '   ' })
+
+  await handle.submit()
+  await flush()
+
+  assert.equal(apiClient.calls.post.length, 0)
+  assert.equal(handle.getState().submitError, 'La demande de l’ingénieur est requise.')
+  handle.unmount()
+})
+
 // ------------------------------------------------------------- failures
 
 test('a start failure other than an identity conflict is surfaced and skips the run', async () => {
   const container = fakeContainer()
   const failure = Object.assign(new Error('boom'), { code: 'WORKFLOW_DEFINITION_NOT_FOUND', status: 404 })
   const apiClient = fakeApiClient({ postErrors: { start: failure } })
-  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1' })
+  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1', controllerRequest: 'Do the work.' })
 
   await handle.submit()
   await flush()
@@ -193,7 +208,7 @@ test('a run failure is surfaced and leaves the view mounted', async () => {
   const container = fakeContainer()
   const failure = Object.assign(new Error('conflict'), { code: 'REVISION_CONFLICT', status: 409 })
   const apiClient = fakeApiClient({ postErrors: { run: failure } })
-  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1' })
+  const handle = await mountWith(container, apiClient, { namespaceId: 'ns-1', controllerRequest: 'Do the work.' })
 
   await handle.submit()
   await flush()
@@ -211,6 +226,7 @@ test('registerTeardown receives the unmount hook', async () => {
   const teardowns = []
   const handle = await mountWith(container, fakeApiClient(), {
     namespaceId: 'ns-1',
+    controllerRequest: 'Do the work.',
     registerTeardown: (fn) => teardowns.push(fn),
   })
 

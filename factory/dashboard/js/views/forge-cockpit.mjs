@@ -195,6 +195,8 @@ export function mapForgeRunToEpicRun(run) {
       run?.startedAt ? new Date(run.startedAt).toLocaleDateString('fr-FR') : '?'
     }`,
     stories: (run?.stories ?? []).map((story) => mapStoryToStoryRun(story, g1Status)),
+    createdAt: run?.createdAt ?? null,
+    updatedAt: run?.updatedAt ?? null,
     gates,
     raw: run,
   }
@@ -700,18 +702,26 @@ export class ForgeCockpitController {
     )
   }
 
-  /** Mapped EpicRun list, sorted with active/waiting runs first then completed. */
+  /** Mapped EpicRun list, newest first from authoritative timestamps. */
   epicRuns() {
     const mapped = (this.state.runs ?? []).map((run) => mapForgeRunToEpicRun(run))
-    const priority = (epic) => {
-      if (epic.status === 'waiting_human') return 0
-      if (epic.status === 'approved') return 3
-      const started = epic.stories.some((story) =>
-        Object.values(story.states).some((v) => v && v !== 'pending' && v !== 'na')
-      )
-      return started ? 1 : 2
+    const timestamp = (epic) => {
+      for (const value of [epic.updatedAt, epic.createdAt]) {
+        const parsed = typeof value === 'number' && Number.isFinite(value) ? value : Date.parse(value)
+        if (Number.isFinite(parsed)) return parsed
+      }
+      return null
     }
-    return [...mapped].sort((a, b) => priority(a) - priority(b))
+    return [...mapped].sort((a, b) => {
+      const aTime = timestamp(a)
+      const bTime = timestamp(b)
+      if (aTime !== null || bTime !== null) {
+        if (aTime === null) return 1
+        if (bTime === null) return -1
+        if (aTime !== bTime) return bTime - aTime
+      }
+      return String(a.runId ?? a.key ?? '').localeCompare(String(b.runId ?? b.key ?? ''))
+    })
   }
 
   currentEpic() {

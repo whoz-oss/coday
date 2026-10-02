@@ -105,7 +105,18 @@ class DefaultAgentOsExecutionAdapter(
         spec.retrieve().toBodilessEntity()
     }
 
-    override fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict {
+    override fun observeTurn(
+        caseId: String,
+        attemptId: String,
+        timeoutMs: Long,
+    ): AgentOsExecutionVerdict = observeTurn(caseId, attemptId, timeoutMs) { }
+
+    override fun observeTurn(
+        caseId: String,
+        attemptId: String,
+        timeoutMs: Long,
+        onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
+    ): AgentOsExecutionVerdict {
         val record = executions[attemptId] ?: executions.values.firstOrNull { it.caseId == caseId }
         val checkpoint = checkpointStore.checkpoint(caseId, attemptId)
         return sseClientFactory(baseUrl).observe(
@@ -117,7 +128,14 @@ class DefaultAgentOsExecutionAdapter(
             checkpoint = checkpoint,
             context = contextFor(caseId),
             reconcile = { reconcileResult(it, record?.externalUserId) },
+            onIntermediateVerdict = onIntermediateVerdict,
         )
+    }
+
+    override fun persistedEvents(caseId: String): List<CaseEventView> {
+        val record = executions.values.firstOrNull { it.caseId == caseId }
+        return listEvents(caseId, record?.externalUserId)
+            .filter { it.caseId == caseId && !it.isTransient() }
     }
 
     override fun reconcile(caseId: String): AgentOsExecutionVerdict {
@@ -132,6 +150,32 @@ class DefaultAgentOsExecutionAdapter(
                     ?.status,
             ),
         )
+    }
+
+    @Deprecated("Authenticated answers must supply answeringUserId")
+    override fun answerQuestion(caseId: String, questionEventId: String, answer: String, attemptId: String) {
+        throw IllegalArgumentException("answeringUserId is required")
+    }
+
+    override fun answerQuestion(
+        caseId: String,
+        questionEventId: String,
+        answer: String,
+        attemptId: String,
+        answeringUserId: String,
+    ) {
+        require(answer.isNotBlank()) { "answer must not be blank" }
+        require(answer.length <= MAX_ANSWER_LENGTH) { "answer must contain at most $MAX_ANSWER_LENGTH characters" }
+        val record = executions[attemptId] ?: executions.values.firstOrNull { it.caseId == caseId }
+        val spec = client.post()
+            .uri("/api/cases/$caseId/messages")
+            .contentType(MediaType.APPLICATION_JSON)
+            .body(mapOf("content" to answer, "answerToEventId" to questionEventId))
+        require(answeringUserId.isNotBlank()) { "answeringUserId must not be blank" }
+        spec.header("X-External-User-Id", answeringUserId)
+        spec.header("X-Factory-Attempt-Id", attemptId)
+        record?.capabilityToken?.takeIf { it.isNotBlank() }?.let { spec.header("X-Factory-Capability-Token", it) }
+        spec.retrieve().toBodilessEntity()
     }
 
     override fun interrupt(caseId: String, reason: String) {
@@ -158,7 +202,7 @@ class DefaultAgentOsExecutionAdapter(
      * is not yet quiescent).
      */
     private fun reconcileResult(caseId: String, externalUserId: String?): AgentOsSseClient.ReconcileResult {
-        val events = listEvents(caseId, externalUserId)
+        val events = if (externalUserId == null) persistedEvents(caseId) else listEvents(caseId, externalUserId)
             .filter { it.caseId == caseId && !it.isTransient() }
         return AgentOsSseClient.ReconcileResult(
             events = events,
@@ -178,5 +222,9 @@ class DefaultAgentOsExecutionAdapter(
         val raw = spec.retrieve()
             .body(object : ParameterizedTypeReference<List<Map<String, Any?>>>() {}) ?: emptyList()
         return raw.mapNotNull { CaseEventView.fromJson(it) }
+    }
+
+    private companion object {
+        const val MAX_ANSWER_LENGTH = 2_000
     }
 }

@@ -121,6 +121,18 @@ export function normalizeSteps(workflow, timing) {
       responsibility: isPlainObject(raw.responsibility) ? raw.responsibility : null,
       description: raw.description ?? null,
       facts,
+      waitingQuestion: isPlainObject(raw.waitingQuestion)
+        ? {
+            questionRef: raw.waitingQuestion.questionRef == null ? null : String(raw.waitingQuestion.questionRef),
+            text: raw.waitingQuestion.text == null ? '' : String(raw.waitingQuestion.text),
+            type: raw.waitingQuestion.type == null ? 'FREE_TEXT' : String(raw.waitingQuestion.type),
+            options: Array.isArray(raw.waitingQuestion.options)
+              ? raw.waitingQuestion.options.map((option) => String(option))
+              : [],
+            attemptId: raw.waitingQuestion.attemptId == null ? null : String(raw.waitingQuestion.attemptId),
+            caseId: raw.waitingQuestion.caseId == null ? null : String(raw.waitingQuestion.caseId),
+          }
+        : null,
       startedAt: raw.startedAt ?? timingStep?.firstStartedAt ?? timingStep?.currentStatusSince ?? null,
       durationMs: Number.isFinite(raw.durationMs) ? raw.durationMs : timingDuration(timingStep),
       status,
