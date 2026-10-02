@@ -1,0 +1,83 @@
+<mat-toolbar class="topbar">
+  <a class="brand" routerLink="/sandboxes" aria-label="Software Factory, accueil">
+    <span class="logo" aria-hidden="true"><i></i><i></i><i></i></span>
+    Software Factory
+  </a>
+
+  <nav class="crumbs" aria-label="Fil d'Ariane">
+    @for (crumb of shell.crumbs(); track $index; let last = $last) {
+      <mat-icon class="sep" aria-hidden="true">chevron_right</mat-icon>
+      @if (crumb.link && !last) {
+        <a [routerLink]="crumb.link" [class.sf-mono]="crumb.mono">{{ crumb.label }}</a>
+      } @else {
+        <span [class.sf-mono]="crumb.mono" [class.current]="last" [attr.aria-current]="last ? 'page' : null">
+          {{ crumb.label }}
+        </span>
+      }
+    }
+  </nav>
+
+  <span class="sf-spacer"></span>
+
+  @let c = store.costs();
+  <div class="cost-pill" aria-label="Résumé des coûts">
+    <span class="live-dot" aria-hidden="true"></span>
+    <span class="strong">{{ c.active }} actives</span>
+    <span>·</span
+    ><span
+      >workflows <b>{{ c.workflowsUsd | usd: 2 }}</b></span
+    >
+    <span class="opt">·</span
+    ><span class="opt"
+      >Archay <b>{{ c.archayUsd | usd: 2 }}</b></span
+    >
+    <span class="opt">·</span
+    ><span class="opt"
+      >détruites <b>{{ c.destroyedUsd | usd: 2 }}</b></span
+    >
+    <span>·</span
+    ><span
+      >total <b class="total">{{ c.totalUsd | usd: 2 }}</b></span
+    >
+  </div>
+
+  <mat-slide-toggle
+    class="destroyed-toggle"
+    [checked]="store.showDestroyed()"
+    (change)="store.showDestroyed.set($event.checked)"
+  >
+    Sandboxes détruites
+  </mat-slide-toggle>
+
+  <span class="avatar" aria-label="Benjamin Valdes">BV</span>
+</mat-toolbar>
+
+<mat-sidenav-container class="body">
+  <mat-sidenav mode="side" opened disableClose class="rail">
+    <nav aria-label="Navigation principale" class="rail-nav">
+      @for (item of nav; track item.link) {
+        <a
+          class="rail-item"
+          [routerLink]="item.link"
+          routerLinkActive="active"
+          #rla="routerLinkActive"
+          [attr.aria-current]="rla.isActive ? 'page' : null"
+        >
+          <span class="rail-icon"
+            ><mat-icon aria-hidden="true">{{ item.icon }}</mat-icon></span
+          >
+          {{ item.label }}
+        </a>
+      }
+      <span class="sf-spacer"></span>
+      <a class="rail-item" routerLink="/reglages" routerLinkActive="active">
+        <span class="rail-icon"><mat-icon aria-hidden="true">tune</mat-icon></span>
+        Réglages
+      </a>
+    </nav>
+  </mat-sidenav>
+
+  <mat-sidenav-content class="content">
+    <router-outlet />
+  </mat-sidenav-content>
+</mat-sidenav-container>
