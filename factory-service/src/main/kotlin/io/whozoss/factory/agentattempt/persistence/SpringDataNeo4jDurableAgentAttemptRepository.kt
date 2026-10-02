@@ -98,6 +98,27 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
     ): List<DurableAgentAttemptNode>
 
     /**
+     * Every attempt of a workflow, across all its steps. Used by the workflow
+     * real-cost aggregation to collect the case ids the workflow produced.
+     */
+    @Query(
+        """
+        MATCH (a:DurableAgentAttempt)
+        WHERE a.organizationId = ${'$'}organizationId
+          AND a.workstreamId = ${'$'}workstreamId
+          AND a.namespaceId = ${'$'}namespaceId
+          AND a.workflowId = ${'$'}workflowId
+        RETURN a
+        """,
+    )
+    fun findByWorkflowId(
+        organizationId: String,
+        workstreamId: String,
+        namespaceId: String,
+        workflowId: String,
+    ): List<DurableAgentAttemptNode>
+
+    /**
      * Explicit business cancellation: a revision-fenced CAS that moves a
      * non-terminal attempt to `interrupted` and rotates the lease owner token so
      * any in-flight worker is fenced out of finalization. Returns 0 when the

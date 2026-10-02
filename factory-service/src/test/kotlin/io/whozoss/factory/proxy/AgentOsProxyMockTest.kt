@@ -62,6 +62,52 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `getRunCost parses the run-cost reply into the local dto`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/case-1/run-cost"))
+            .andRespond(
+                withSuccess(
+                    """{"caseId":"case-1","since":"2026-01-01T00:00:00Z","cost":12.5,""" +
+                        """"unknownCostCount":2,"runCostThreshold":50.0,"paused":true,""" +
+                        """"active":true,"liveTokens":1234,"pausedCases":[]}""",
+                    MediaType.APPLICATION_JSON,
+                ),
+            )
+
+        val runCost = client.getRunCost("case-1", null)
+
+        assertThat(runCost).isEqualTo(
+            RunCostDto(
+                caseId = "case-1",
+                cost = 12.5,
+                unknownCostCount = 2L,
+                runCostThreshold = 50.0,
+                paused = true,
+                active = true,
+                liveTokens = 1234L,
+            ),
+        )
+        server.verify()
+    }
+
+    @Test
+    fun `getRunCost degrades to null on 404 and on AgentOS failure without throwing`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/missing/run-cost"))
+            .andRespond(withStatus(HttpStatus.NOT_FOUND))
+        assertThat(client.getRunCost("missing", null)).isNull()
+        server.verify()
+
+        val (failing, failingServer) = buildClient()
+        failingServer.expect(requestTo("http://agentos.test/api/cases/broken/run-cost"))
+            .andRespond(withStatus(HttpStatus.INTERNAL_SERVER_ERROR))
+        // Unlike fetchNamespace (which throws a 502 on non-404), getRunCost
+        // swallows every failure: the metrics endpoint must still answer 200.
+        assertThat(failing.getRunCost("broken", null)).isNull()
+        failingServer.verify()
+    }
+
+    @Test
     fun `resolveRunStoreRoot derives the run store from the namespace configPath`() {
         val (client, server) = buildClient()
         server.expect(requestTo("http://agentos.test/api/namespaces/ns-2"))
