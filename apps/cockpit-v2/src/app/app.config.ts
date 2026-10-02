@@ -5,6 +5,7 @@ import {
   provideAppInitializer,
   provideZonelessChangeDetection,
 } from '@angular/core'
+import { provideHttpClient } from '@angular/common/http'
 import { provideRouter, withComponentInputBinding } from '@angular/router'
 import { MatIconRegistry } from '@angular/material/icon'
 import { MatPaginatorIntl } from '@angular/material/paginator'
@@ -18,6 +19,7 @@ registerLocaleData(localeFr)
 export const appConfig: ApplicationConfig = {
   providers: [
     provideZonelessChangeDetection(),
+    provideHttpClient(),
     { provide: LOCALE_ID, useValue: 'fr' },
     { provide: MatPaginatorIntl, useClass: FrPaginatorIntl },
     provideRouter(routes, withComponentInputBinding()),
