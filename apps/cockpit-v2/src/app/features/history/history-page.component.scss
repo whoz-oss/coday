@@ -1,0 +1,208 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1400px;
+}
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+.titles {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.titles p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.search {
+  width: 380px;
+}
+.project {
+  width: 160px;
+}
+
+mat-chip-listbox {
+  --mat-chip-selected-container-color: #2a2145;
+  --mat-chip-selected-label-text-color: #e3d6ff;
+  --mat-chip-outline-color: var(--sf-outline-strong);
+}
+
+/* Table */
+.table-wrap {
+  overflow: hidden;
+}
+table {
+  width: 100%;
+}
+th.mat-mdc-header-cell {
+  background: var(--sf-chrome);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+td.mat-mdc-cell {
+  height: 60px;
+}
+tr.row--active {
+  background: #111827;
+}
+tr.mat-mdc-row:hover {
+  background: #141a26;
+}
+
+.name {
+  font-family: var(--sf-mono);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sf-text-2);
+}
+.name--active {
+  color: var(--sf-primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+.name--active:hover {
+  text-decoration: underline;
+}
+.mono-cell {
+  font-family: var(--sf-mono);
+  font-size: 12.5px;
+  color: var(--sf-text-muted);
+}
+.mono-cell.cyan {
+  color: var(--sf-secondary);
+}
+.run-cell {
+  display: inline-flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+td.mat-column-branch {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+.plain {
+  font-family: var(--sf-font);
+  font-size: 13px;
+}
+.num {
+  text-align: right;
+}
+td.num {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--sf-text);
+}
+td.num.zero {
+  color: var(--sf-text-faint);
+}
+sf-phase-bar {
+  width: 140px;
+}
+.empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--sf-text-muted);
+}
+
+.table-foot {
+  display: flex;
+  align-items: center;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--sf-text-muted);
+  border-top: 1px solid #1a1f2c;
+  b {
+    color: var(--sf-text);
+  }
+}
+
+/* Barres de coût */
+.costs {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.costs-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--sf-text-muted);
+}
+.sw {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: #7a68b8;
+}
+.sw--active {
+  background: var(--sf-secondary);
+}
+
+.bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.bar-row {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr) 70px;
+  gap: 14px;
+  align-items: center;
+  font-family: var(--sf-mono);
+  font-size: 12.5px;
+}
+.bar-name {
+  color: var(--sf-text-2);
+}
+.bar-track {
+  display: flex;
+  height: 14px;
+}
+.bar-fill {
+  border-radius: 0 4px 4px 0;
+  background: #7a68b8;
+}
+.bar-val {
+  text-align: right;
+}
+.bar-row.active .bar-name {
+  color: var(--sf-text);
+}
+.bar-row.active .bar-fill {
+  background: var(--sf-secondary);
+}
+.bar-row.active .bar-val {
+  color: var(--sf-secondary);
+}
