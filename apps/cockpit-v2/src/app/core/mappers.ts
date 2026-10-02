@@ -1,4 +1,5 @@
 import {
+  AgentAttempt,
   HumanInteraction,
   PhaseDetail,
   PhaseSegment,
@@ -599,20 +600,83 @@ export function mapInteractionsToEvents(interactions: HumanInteraction[]): RunEv
   }))
 }
 
-function buildPhaseDetail(steps: unknown[], fallbackStatus: RunStatus, interactionsCount = 0): PhaseDetail {
+// ---------------------------------------------------------------------------
+// Real agent attempts (read-only)
+// ---------------------------------------------------------------------------
+
+function asAttemptArray(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload
+  const obj = asObject(payload)
+  if (!obj) return []
+  if (Array.isArray(obj['items'])) return obj['items'] as unknown[]
+  if (Array.isArray(obj['data'])) return obj['data'] as unknown[]
+  return []
+}
+
+/**
+ * Defensively extract the real agent execution attempts carried by a
+ * `getAttempts` payload (backend `DurableAgentAttemptDto`). Accepts a bare
+ * array or an `{ items: [...] }` / `{ data: [...] }` wrapper; anything else
+ * degrades to `[]`. Each record is mapped with graceful defaults so a
+ * partially-migrated backend never throws.
+ */
+export function extractAttempts(payload: unknown): AgentAttempt[] {
+  return asAttemptArray(payload).map((item, index) => {
+    const obj = asObject(item) ?? {}
+    const attempt: AgentAttempt = {
+      attemptId: getString(obj, 'attemptId') ?? getString(obj, 'id') ?? `attempt-${index + 1}`,
+      stepId: getString(obj, 'stepId') ?? '',
+      attemptNumber: getNumber(obj, 'attemptNumber') ?? 0,
+      agentName: getString(obj, 'agentName') ?? '',
+      status: getString(obj, 'status') ?? 'unknown',
+      caseId: getString(obj, 'caseId') ?? '',
+    }
+    const failureCode = getString(obj, 'failureCode')
+    if (failureCode) attempt.failureCode = failureCode
+    const resultEvidenceId = getString(obj, 'resultEvidenceId')
+    if (resultEvidenceId) attempt.resultEvidenceId = resultEvidenceId
+    const revision = getNumber(obj, 'revision')
+    if (revision !== undefined) attempt.revision = revision
+    const createdAt = getString(obj, 'createdAt')
+    if (createdAt) attempt.createdAt = createdAt
+    const startedAt = getString(obj, 'startedAt')
+    if (startedAt) attempt.startedAt = startedAt
+    const completedAt = getString(obj, 'completedAt')
+    if (completedAt) attempt.completedAt = completedAt
+    return attempt
+  })
+}
+
+function pickCurrentAttempt(stepAttempts: AgentAttempt[]): AgentAttempt | undefined {
+  if (stepAttempts.length === 0) return undefined
+  return stepAttempts.reduce((latest, attempt) => (attempt.attemptNumber >= latest.attemptNumber ? attempt : latest))
+}
+
+function buildPhaseDetail(
+  steps: unknown[],
+  fallbackStatus: RunStatus,
+  interactionsCount = 0,
+  attempts: AgentAttempt[] = []
+): PhaseDetail {
   const active = steps.find((step) => resolveStepState(step) === 'active') ?? steps[steps.length - 1]
   const obj = asObject(active) ?? {}
   const responsibility = asObject(obj['responsibility'])
   const duration = stepDurationSec(obj) ?? 0
   const description = getString(obj, 'description')
+  const stepId = getString(obj, 'id') ?? getString(obj, 'key')
 
-  return {
+  const stepAttempts = stepId ? attempts.filter((attempt) => attempt.stepId === stepId) : []
+  const currentAttempt = pickCurrentAttempt(stepAttempts)
+
+  const detail: PhaseDetail = {
     name: getString(obj, 'name') ?? getString(obj, 'id') ?? 'phase',
     status: getString(obj, 'status') ? mapWorkflowStateToRunStatus(getString(obj, 'status'), [obj]) : fallbackStatus,
     durationSec: Math.round(duration),
     owner: getString(responsibility, 'name') ?? actorName(obj),
     kind: getString(responsibility, 'kind') ?? classifyActorKind(obj),
-    attempt: '0/0',
+    // Real attempts are surfaced when available; a neutral `1/1` fallback is
+    // used when the backend exposes none.
+    attempt: '1/1',
     sections: [
       { label: "Configuration de l'agent" },
       { label: 'Description', ...(description ? { body: description } : {}) },
@@ -621,6 +685,19 @@ function buildPhaseDetail(steps: unknown[], fallbackStatus: RunStatus, interacti
       { label: 'Sorties', count: 0 },
     ],
   }
+
+  if (stepAttempts.length > 0 && currentAttempt) {
+    detail.attempt = `${currentAttempt.attemptNumber}/${stepAttempts.length}`
+    detail.currentAttemptNumber = currentAttempt.attemptNumber
+    detail.totalAttempts = stepAttempts.length
+    detail.attempts = stepAttempts
+    detail.agentName = currentAttempt.agentName
+    detail.attemptStatus = currentAttempt.status
+    detail.caseId = currentAttempt.caseId
+    if (currentAttempt.failureCode) detail.failureCode = currentAttempt.failureCode
+  }
+
+  return detail
 }
 
 /** Resolve the workflow id carried by a list/detail snapshot. */
@@ -646,7 +723,8 @@ export function mapProjectionToSessionDetail(
   timing?: unknown,
   evidence?: unknown,
   metrics?: unknown,
-  interactions?: unknown
+  interactions?: unknown,
+  attempts?: unknown
 ): SessionDetail {
   const snapshot = asObject(workflow) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
@@ -659,6 +737,7 @@ export function mapProjectionToSessionDetail(
   const realCost = extractRealCost(metricsObj)
   const evidenceItems = asArray(asObject(evidence)?.['items'])
   const mappedInteractions = extractInteractions(interactions)
+  const mappedAttempts = extractAttempts(attempts)
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
@@ -706,7 +785,8 @@ export function mapProjectionToSessionDetail(
     lanes,
     nowSec: Math.round(laneEnd),
     events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
-    phase: buildPhaseDetail(steps, status, mappedInteractions.length),
+    phase: buildPhaseDetail(steps, status, mappedInteractions.length, mappedAttempts),
     interactions: mappedInteractions,
+    attempts: mappedAttempts,
   }
 }
