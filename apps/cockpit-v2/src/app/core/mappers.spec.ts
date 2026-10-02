@@ -1,6 +1,7 @@
 import {
   classifyActorKind,
   classifyLane,
+  extractRealCost,
   mapProjectionToLanes,
   mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
@@ -135,6 +136,59 @@ describe('mappers', () => {
       expect(run.goal).toBe('Deliver the AgentOS adapter')
       expect(run.durationSec).toBe(180)
       expect(run.phases.map((phase) => phase.key)).toEqual(['request', 'plan', 'build'])
+      expect(run.unknownCostCount).toBe(0)
+    })
+
+    it('maps the real cost from the metrics payload', () => {
+      const run = mapProjectionToRunSummary(snapshot, {
+        realCost: {
+          cost: 1.0723,
+          unknownCostCount: 0,
+          liveTokens: 150,
+          paused: false,
+          active: true,
+          runCostThreshold: null,
+        },
+      })
+      expect(run.costUsd).toBe(1.0723)
+      expect(run.unknownCostCount).toBe(0)
+    })
+
+    it('preserves a partially unknown cost (unknownCostCount > 0)', () => {
+      const run = mapProjectionToRunSummary(snapshot, {
+        realCost: { cost: 0.42, unknownCostCount: 3, liveTokens: 0 },
+      })
+      expect(run.costUsd).toBe(0.42)
+      expect(run.unknownCostCount).toBe(3)
+    })
+
+    it('falls back to the projection cost when metrics carry no realCost', () => {
+      const run = mapProjectionToRunSummary(
+        { ...snapshot, projection: { ...projection, costUsd: 9.99 } },
+        { tokens: 10 }
+      )
+      expect(run.costUsd).toBe(9.99)
+      expect(run.unknownCostCount).toBe(0)
+    })
+  })
+
+  describe('extractRealCost', () => {
+    it('extracts a nested realCost block', () => {
+      expect(extractRealCost({ realCost: { cost: 1, unknownCostCount: 2, liveTokens: 3 } })).toEqual(
+        expect.objectContaining({ cost: 1, unknownCostCount: 2, liveTokens: 3 })
+      )
+    })
+
+    it('falls back to a flattened metrics payload', () => {
+      expect(extractRealCost({ cost: 5, unknownCostCount: 1 })).toEqual(
+        expect.objectContaining({ cost: 5, unknownCostCount: 1 })
+      )
+    })
+
+    it('returns undefined without any usable cost field', () => {
+      expect(extractRealCost({ tokens: 10 })).toBeUndefined()
+      expect(extractRealCost(undefined)).toBeUndefined()
+      expect(extractRealCost(null)).toBeUndefined()
     })
   })
 
@@ -204,6 +258,44 @@ describe('mappers', () => {
       expect(session.id).toBe('unknown')
       expect(session.lanes).toEqual([])
       expect(session.events).toEqual([])
+      expect(session.costUsd).toBe(0)
+      expect(session.unknownCostCount).toBe(0)
+    })
+
+    it('maps the real cost and live tokens from metrics', () => {
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, {
+        realCost: {
+          cost: 1.0723,
+          unknownCostCount: 0,
+          liveTokens: 150,
+          paused: false,
+          active: true,
+          runCostThreshold: 10,
+        },
+      })
+      expect(session.costUsd).toBe(1.0723)
+      expect(session.unknownCostCount).toBe(0)
+      expect(session.tokens).toBe(150)
+    })
+
+    it('keeps a partially unknown cost as a stored lower bound', () => {
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, {
+        realCost: { cost: 0, unknownCostCount: 4, liveTokens: 0 },
+      })
+      expect(session.costUsd).toBe(0)
+      expect(session.unknownCostCount).toBe(4)
+    })
+
+    it('falls back to the projection cost and metrics tokens without realCost', () => {
+      const session = mapProjectionToSessionDetail(
+        { ...snapshot, projection: { ...projection, costUsd: 2.5 } },
+        undefined,
+        undefined,
+        { tokens: 99 }
+      )
+      expect(session.costUsd).toBe(2.5)
+      expect(session.unknownCostCount).toBe(0)
+      expect(session.tokens).toBe(99)
     })
   })
 })

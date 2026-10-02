@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, input } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core'
 import { MatIconModule } from '@angular/material/icon'
 import { MatTooltipModule } from '@angular/material/tooltip'
 
@@ -8,7 +8,7 @@ import { MatTooltipModule } from '@angular/material/tooltip'
   imports: [MatIconModule, MatTooltipModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <span class="metric" [matTooltip]="label()" [attr.aria-label]="label()">
+    <span class="metric" [matTooltip]="tooltip()" [attr.aria-label]="tooltip()">
       <mat-icon aria-hidden="true">{{ icon() }}</mat-icon>
       <ng-content />
     </span>
@@ -39,4 +39,12 @@ import { MatTooltipModule } from '@angular/material/tooltip'
 export class MetricChipComponent {
   readonly icon = input.required<string>()
   readonly label = input('')
+  /** Number of sub-costs with an unknown price; > 0 marks the value as uncertain. */
+  readonly unknownCostCount = input(0)
+
+  protected readonly tooltip = computed(() => {
+    const base = this.label()
+    const unknown = this.unknownCostCount()
+    return unknown > 0 ? `${base} · ${unknown} tour(s) au coût inconnu (valeur plancher)` : base
+  })
 }

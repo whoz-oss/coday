@@ -41,7 +41,13 @@ export class FactoryStore {
 
   readonly costs = computed<CostSummary>(() => {
     const active = this.activeSandboxes()
+    // REAL: the active workflows' costs are the `realCost.cost` values mapped
+    // from each run's `/metrics` payload (0 when the backend has no run-cost).
     const workflowsUsd = active.reduce((sum, s) => sum + (s.run?.costUsd ?? 0), 0)
+    // Uncertainty is propagated verbatim: sum of the runs' unknownCostCount.
+    const unknownCostCount = active.reduce((sum, s) => sum + (s.run?.unknownCostCount ?? 0), 0)
+    // MOCK: sandbox container fleet has no backend API yet, so the archay
+    // cost and the destroyed-sandbox total remain hard-coded placeholders.
     const archayUsd = active.reduce((sum, s) => sum + s.archayCostUsd, 0)
     const destroyedUsd = 179.28 // MOCK: aggregated server cost of every destroyed sandbox.
     return {
@@ -50,6 +56,7 @@ export class FactoryStore {
       archayUsd,
       destroyedUsd,
       totalUsd: workflowsUsd + archayUsd + destroyedUsd,
+      unknownCostCount,
     }
   })
 
@@ -142,10 +149,21 @@ export class FactoryStore {
         updated.set(detail.id, detail)
         return updated
       })
+      // The metrics payload carries the additive `realCost` block: once it is
+      // known, re-map the run attached to its sandbox so the fleet reflects the
+      // real cost (and its uncertainty) instead of the projection-only fallback.
+      if (partial.metrics !== undefined) {
+        this.updateSandboxRun(mapProjectionToRunSummary(snapshot, partial.metrics))
+      }
     }
 
     this.api.getTiming(id, namespaceId).subscribe({ next: (timing) => merge({ timing }), error: () => undefined })
     this.api.getEvidence(id, namespaceId).subscribe({ next: (evidence) => merge({ evidence }), error: () => undefined })
     this.api.getMetrics(id, namespaceId).subscribe({ next: (metrics) => merge({ metrics }), error: () => undefined })
+  }
+
+  /** Replace the run attached to a sandbox once its real cost is known. */
+  private updateSandboxRun(run: RunSummary): void {
+    this.sandboxes.update((list) => list.map((sandbox) => (sandbox.run?.id === run.id ? { ...sandbox, run } : sandbox)))
   }
 }

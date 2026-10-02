@@ -140,6 +140,17 @@ class DurableAgentAttemptService(
     ): DurableAgentAttempt? = repository.findByAttemptId(scope, namespaceId, workflowId, attemptId)
 
     /**
+     * Every attempt of a workflow, across all its steps. Used by the workflow
+     * real-cost aggregation to resolve the case ids the workflow produced.
+     */
+    @Transactional(readOnly = true)
+    fun findByWorkflow(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+    ): List<DurableAgentAttempt> = repository.findByWorkflow(scope, namespaceId, workflowId)
+
+    /**
      * Every non-terminal attempt of the whole graph, across all tenant scopes and
      * namespaces. The startup recovery worker sweeps this list to reconcile or
      * resume attempts orphaned by a crash.

@@ -1,5 +1,6 @@
 package io.whozoss.factory.proxy
 
+import mu.KotlinLogging
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
@@ -36,6 +37,8 @@ class HttpAgentOsProxyClient(
 ) : AgentOsProxyClient {
 
     private val client: RestClient = builder.baseUrl(baseUrl).build()
+
+    private val logger = KotlinLogging.logger {}
 
     @Suppress("UNCHECKED_CAST")
     private fun <T> relay(path: String, namespaceUserId: String?, type: ParameterizedTypeReference<T>): T {
@@ -74,6 +77,40 @@ class HttpAgentOsProxyClient(
 
     override fun fetchCaseEvents(caseId: String, externalUserId: String?): Any? =
         relay("/api/case-events/by-parentId/$caseId", externalUserId, object : ParameterizedTypeReference<Any>() {})
+
+    /**
+     * Run-cost read (W-metrics). Unlike the other relays this NEVER throws: an
+     * unknown case (404), an unreachable AgentOS or any error degrades to null
+     * so a caller like the workflow metrics endpoint still answers.
+     */
+    override fun getRunCost(caseId: String, externalUserId: String?): RunCostDto? =
+        try {
+            val raw: Map<String, Any?>? = relay(
+                "/api/cases/$caseId/run-cost",
+                externalUserId,
+                object : ParameterizedTypeReference<Map<String, Any?>>() {},
+            )
+            if (raw == null) {
+                null
+            } else {
+                RunCostDto(
+                    caseId = (raw["caseId"] as? String) ?: caseId,
+                    cost = (raw["cost"] as? Number)?.toDouble() ?: 0.0,
+                    unknownCostCount = (raw["unknownCostCount"] as? Number)?.toLong() ?: 0L,
+                    runCostThreshold = (raw["runCostThreshold"] as? Number)?.toDouble(),
+                    paused = raw["paused"] as? Boolean ?: false,
+                    active = raw["active"] as? Boolean ?: false,
+                    liveTokens = (raw["liveTokens"] as? Number)?.toLong() ?: 0L,
+                )
+            }
+        } catch (_: AgentOsNotFound) {
+            null
+        } catch (error: Exception) {
+            // AgentOsUnavailableException or any transport failure: degrade, do
+            // not propagate — /metrics must still answer 200.
+            logger.warn(error) { "run-cost unavailable for case $caseId; degrading" }
+            null
+        }
 
     override fun resolveRepoRoot(namespaceId: String, externalUserId: String?): String? {
         val namespace = fetchNamespace(namespaceId, externalUserId) ?: return null

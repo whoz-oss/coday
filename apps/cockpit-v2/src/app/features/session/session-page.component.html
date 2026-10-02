@@ -31,7 +31,9 @@
         >
         <span class="sf-workflow">{{ s.workflow }}</span>
         <span class="sf-spacer"></span>
-        <sf-metric icon="paid" label="Coût">{{ s.costUsd | usd: 2 }}</sf-metric>
+        <sf-metric icon="paid" label="Coût" [unknownCostCount]="s.unknownCostCount ?? 0">{{
+          s.costUsd | usd: 2 : s.unknownCostCount
+        }}</sf-metric>
         <sf-metric icon="timer" label="Durée">{{ s.durationSec | duration }}</sf-metric>
         <sf-metric icon="link" label="Tokens contexte">{{ s.tokens | tokens }}</sf-metric>
         <sf-metric icon="menu_book" label="Tokens lus">{{ s.tokensRead | tokens }}</sf-metric>

@@ -65,7 +65,9 @@
           </sf-status-chip>
         }
         <span class="sf-spacer"></span>
-        <sf-metric icon="paid" label="Coût du run">{{ run.costUsd | usd }}</sf-metric>
+        <sf-metric icon="paid" label="Coût du run" [unknownCostCount]="run.unknownCostCount ?? 0">{{
+          run.costUsd | usd: 4 : run.unknownCostCount
+        }}</sf-metric>
         <sf-metric icon="timer" label="Durée">{{ run.durationSec | duration }}</sf-metric>
         <sf-metric icon="link" label="Tokens">{{ run.tokens | tokens }}</sf-metric>
       </div>

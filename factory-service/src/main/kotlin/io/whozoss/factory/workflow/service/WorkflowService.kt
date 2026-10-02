@@ -1065,6 +1065,7 @@ class WorkflowService(
         val retries = retries(scope, namespaceId, workflowId)
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
         val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = false)
+        val realCost = aggregateRealCost(scope, namespaceId, workflowId)
         return mapOf(
             "namespaceId" to namespaceId,
             "workflowId" to workflowId,
@@ -1074,7 +1075,85 @@ class WorkflowService(
             "retries" to retries,
             "evidenceCount" to evidence.size,
             "interactionCount" to interactions.size,
+            "realCost" to realCost.toJson(),
         )
+    }
+
+    /** Aggregated real run cost of a workflow, as exposed under `realCost` in [metrics]. */
+    private data class RealCostAggregate(
+        val cost: Double = 0.0,
+        val unknownCostCount: Long = 0L,
+        val liveTokens: Long = 0L,
+        val paused: Boolean = false,
+        val active: Boolean = false,
+        val runCostThreshold: Double? = null,
+    ) {
+        fun toJson(): Map<String, Any?> = mapOf(
+            "cost" to cost,
+            "unknownCostCount" to unknownCostCount,
+            "liveTokens" to liveTokens,
+            "paused" to paused,
+            "active" to active,
+            "runCostThreshold" to runCostThreshold,
+        )
+    }
+
+    /**
+     * Aggregates the real run cost of the workflow over its distinct case ids,
+     * read from AgentOS `GET /api/cases/{caseId}/run-cost`.
+     *
+     * Root-case resolution (trusted boundary only — persisted state, never
+     * client input):
+     * 1. `controllerExecution.caseId` of the persisted workflow instance,
+     * 2. the `caseId` of every persisted durable agent attempt of the workflow.
+     *
+     * Ids are deduped by exact value: AgentOS already rolls up the whole
+     * descendant tree of each case it is asked about (delegations included),
+     * so querying each distinct persisted case id once is the faithful root
+     * set — a case and one of its own sub-cases must never be summed twice.
+     *
+     * Degradation is total: a disabled proxy, an unreachable AgentOS, an
+     * unknown case or any unexpected error yields the zero aggregate and never
+     * breaks `metrics`. `unknownCostCount` is summed verbatim — an unpriced
+     * cost is never folded into `cost` as 0.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun aggregateRealCost(scope: TenantScope, namespaceId: String, workflowId: String): RealCostAggregate {
+        val proxy = agentOsProxyClient ?: return RealCostAggregate()
+        return try {
+            val caseIds = LinkedHashSet<String>()
+            repository.findInstance(scope, namespaceId, workflowId)?.let { record ->
+                ((record.instance["controllerExecution"] as? Map<*, *>)?.get("caseId") as? String)
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(caseIds::add)
+            }
+            durableAgentAttemptService
+                ?.findByWorkflow(scope, namespaceId, workflowId)
+                ?.forEach { attempt -> attempt.caseId.takeIf { it.isNotBlank() }?.let(caseIds::add) }
+            var aggregate = RealCostAggregate()
+            for (caseId in caseIds) {
+                val runCost = proxy.getRunCost(caseId, null) ?: continue
+                aggregate = RealCostAggregate(
+                    cost = aggregate.cost + runCost.cost,
+                    unknownCostCount = aggregate.unknownCostCount + runCost.unknownCostCount,
+                    liveTokens = aggregate.liveTokens + runCost.liveTokens,
+                    paused = aggregate.paused || runCost.paused,
+                    active = aggregate.active || runCost.active,
+                    runCostThreshold = maxThreshold(aggregate.runCostThreshold, runCost.runCostThreshold),
+                )
+            }
+            aggregate
+        } catch (error: Exception) {
+            logger.warn(error) { "real-cost aggregation failed for workflow $workflowId; degrading to zero" }
+            RealCostAggregate()
+        }
+    }
+
+    /** Greatest of two nullable thresholds, ignoring nulls (null when both are). */
+    private fun maxThreshold(a: Double?, b: Double?): Double? = when {
+        a == null -> b
+        b == null -> a
+        else -> maxOf(a, b)
     }
 
     // ------------------------------------------------------------------

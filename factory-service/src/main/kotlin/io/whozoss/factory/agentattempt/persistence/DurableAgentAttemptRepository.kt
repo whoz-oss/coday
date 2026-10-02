@@ -57,6 +57,16 @@ interface DurableAgentAttemptRepository {
     ): DurableAgentAttempt?
 
     /**
+     * Every attempt of a workflow, across all its steps. Used by the workflow
+     * real-cost aggregation to resolve the case ids the workflow produced.
+     */
+    fun findByWorkflow(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+    ): List<DurableAgentAttempt>
+
+    /**
      * Every non-terminal attempt of the whole graph (all tenant scopes and
      * namespaces), bounded by [limit]. The startup recovery worker sweeps it to
      * reconcile attempts orphaned by a crash.

@@ -24,6 +24,16 @@ interface AgentOsProxyClient {
     fun fetchCaseEvents(caseId: String, externalUserId: String?): Any?
 
     /**
+     * Read the aggregated run cost of a case tree
+     * (`GET /api/cases/{caseId}/run-cost`). AgentOS already aggregates the
+     * whole descendant tree (delegations included), so the caller must pass
+     * ROOT case ids only. Returns null when the case is unknown (404) or
+     * AgentOS is unreachable / errors — the caller degrades gracefully and
+     * never fails.
+     */
+    fun getRunCost(caseId: String, externalUserId: String? = null): RunCostDto?
+
+    /**
      * Resolve the repo root from the namespace configPath. Returns null when the
      * namespace is not found or has no configPath.
      */
