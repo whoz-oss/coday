@@ -1,0 +1,106 @@
+<div class="page">
+  <!-- En-tête de page -->
+  <header class="page-head">
+    <div class="titles">
+      <h1>Sandboxes</h1>
+      <p class="sf-muted">Environnements isolés où tournent vos workflows d'agents, orchestrés par Archay.</p>
+    </div>
+    <button mat-stroked-button class="sf-secondary" (click)="bestOfN()">Best-of-N…</button>
+    <button mat-flat-button class="sf-primary" (click)="mount()"><mat-icon>add</mat-icon>Monter une sandbox</button>
+  </header>
+
+  <!-- Indicateurs -->
+  @let c = store.costs();
+  <section class="kpis" aria-label="Indicateurs">
+    <article class="kpi sf-panel">
+      <h2 class="sf-overline">Sandboxes actives</h2>
+      <span class="kpi-value">{{ c.active }}</span>
+      <span class="kpi-sub"><span class="ok-dot"></span>{{ c.active }} au travail</span>
+    </article>
+    <article class="kpi sf-panel">
+      <h2 class="sf-overline">Workflows en cours</h2>
+      <span class="kpi-value kpi-value--cyan">{{ c.workflowsUsd | usd: 2 }}</span>
+      <span class="kpi-sub">{{ c.active }} runs actifs</span>
+    </article>
+    <article class="kpi sf-panel">
+      <h2 class="sf-overline">Sandboxes détruites</h2>
+      <span class="kpi-value">{{ c.destroyedUsd | usd: 2 }}</span>
+      <span class="kpi-sub">coût final cumulé</span>
+    </article>
+    <article class="kpi sf-panel kpi--total">
+      <h2 class="sf-overline">Total</h2>
+      <span class="kpi-value kpi-value--violet">{{ c.totalUsd | usd: 2 }}</span>
+      <span class="kpi-sub">workflows + Archay + détruites</span>
+    </article>
+  </section>
+
+  <div class="split">
+    <!-- Nouvelle sandbox -->
+    <section class="new sf-panel" aria-labelledby="new-title">
+      <h2 id="new-title" class="sf-overline">Nouvelle sandbox</h2>
+      <form [formGroup]="form" (ngSubmit)="mount()" class="new-form">
+        <mat-form-field appearance="outline">
+          <mat-label>Projet</mat-label>
+          <mat-select formControlName="project">
+            @for (p of projects; track p) {
+              <mat-option [value]="p">{{ p }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Branche de départ</mat-label>
+          <input matInput formControlName="branch" placeholder="sandbox/ma-copie" class="sf-mono" />
+          <mat-hint>Vide = branche du profil</mat-hint>
+        </mat-form-field>
+
+        <mat-form-field appearance="outline">
+          <mat-label>Roster de modèles</mat-label>
+          <mat-select formControlName="roster">
+            @for (r of rosters; track r) {
+              <mat-option [value]="r">{{ r }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <mat-checkbox formControlName="orchestrator">Orchestrateur Coday (Archay)</mat-checkbox>
+
+        <div class="form-actions">
+          <button mat-flat-button class="sf-primary" type="submit">Monter</button>
+          <button mat-stroked-button class="sf-secondary" type="button" (click)="bestOfN()">Best-of-N…</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Tâches récentes -->
+    <section class="tasks sf-panel" aria-labelledby="tasks-title">
+      <div class="tasks-head">
+        <h2 id="tasks-title" class="sf-overline">Tâches récentes</h2>
+        <span class="sf-spacer"></span>
+        <a routerLink="/historique" class="link">Tout l'historique</a>
+      </div>
+      <ul class="task-grid">
+        @for (t of store.recentTasks(); track t.title) {
+          <li class="task">
+            <span class="task-title sf-ellipsis"><span class="ok-dot"></span>{{ t.title }}</span>
+            <span class="task-log sf-mono sf-ellipsis">{{ t.log }}</span>
+            <span class="task-cost sf-mono"
+              >coût final · workflows <b>{{ t.costUsd | usd }}</b></span
+            >
+          </li>
+        } @empty {
+          <li class="empty sf-muted">Aucune tâche récente.</li>
+        }
+      </ul>
+    </section>
+  </div>
+
+  <!-- Sandboxes -->
+  <section class="cards" aria-label="Sandboxes">
+    @for (s of store.visibleSandboxes(); track s.name) {
+      <sf-sandbox-card [sandbox]="s" (action)="onAction(s.name, $event)" />
+    } @empty {
+      <p class="empty sf-panel sf-muted">Aucune sandbox active. Montez-en une pour lancer un workflow.</p>
+    }
+  </section>
+</div>
