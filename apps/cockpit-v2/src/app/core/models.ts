@@ -109,6 +109,17 @@ export interface PhaseDetail {
   sections: { label: string; count?: number; body?: string }[]
 }
 
+export interface HumanInteraction {
+  interactionId: string
+  stepId: string
+  interactionType: string
+  status: string
+  prompt?: string
+  actions?: Array<{ id: string; label: string }>
+  recipient?: string
+  createdAt?: string
+}
+
 export interface SessionDetail {
   id: string
   sandbox: string
@@ -131,4 +142,10 @@ export interface SessionDetail {
   nowSec: number
   events: RunEvent[]
   phase: PhaseDetail
+  /**
+   * Human interactions (gates/approvals/checkpoints) attached to the workflow,
+   * surfaced read-only. Absent when the backend exposes none (or when the
+   * enrichment call failed and degraded gracefully).
+   */
+  interactions?: HumanInteraction[]
 }

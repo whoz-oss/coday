@@ -63,7 +63,10 @@ export class FactoryStore {
   // REAL: latest workflow snapshots from REST, and their mapped session details.
   private readonly workflows = signal<unknown[]>([])
   private readonly sessions = signal<Map<string, SessionDetail>>(new Map())
-  private readonly enrichment = new Map<string, { timing?: unknown; evidence?: unknown; metrics?: unknown }>()
+  private readonly enrichment = new Map<
+    string,
+    { timing?: unknown; evidence?: unknown; metrics?: unknown; interactions?: unknown }
+  >()
   private readonly subscriptions = new Subscription()
 
   constructor() {
@@ -140,10 +143,15 @@ export class FactoryStore {
     const id = workflowIdOf(snapshot)
     if (!id) return
     const namespaceId = namespaceOf(snapshot)
-    const merge = (partial: { timing?: unknown; evidence?: unknown; metrics?: unknown }): void => {
+    const merge = (partial: {
+      timing?: unknown
+      evidence?: unknown
+      metrics?: unknown
+      interactions?: unknown
+    }): void => {
       const next = { ...(this.enrichment.get(id) ?? {}), ...partial }
       this.enrichment.set(id, next)
-      const detail = mapProjectionToSessionDetail(snapshot, next.timing, next.evidence, next.metrics)
+      const detail = mapProjectionToSessionDetail(snapshot, next.timing, next.evidence, next.metrics, next.interactions)
       this.sessions.update((map) => {
         const updated = new Map(map)
         updated.set(detail.id, detail)
@@ -160,6 +168,11 @@ export class FactoryStore {
     this.api.getTiming(id, namespaceId).subscribe({ next: (timing) => merge({ timing }), error: () => undefined })
     this.api.getEvidence(id, namespaceId).subscribe({ next: (evidence) => merge({ evidence }), error: () => undefined })
     this.api.getMetrics(id, namespaceId).subscribe({ next: (metrics) => merge({ metrics }), error: () => undefined })
+    // Read-only human interactions: a failed fetch degrades silently (the session
+    // keeps its projection/evidence/metrics data and simply has no interactions).
+    this.api
+      .getInteractions(id, namespaceId)
+      .subscribe({ next: (interactions) => merge({ interactions }), error: () => undefined })
   }
 
   /** Replace the run attached to a sandbox once its real cost is known. */

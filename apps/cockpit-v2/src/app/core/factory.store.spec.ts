@@ -95,10 +95,14 @@ describe('FactoryStore', () => {
       .flush({ data: { namespaceId: '', state: 'active', items } })
   }
 
-  function flushEnrichment(metrics: unknown = { workflowId: 'wf-1' }): void {
+  function flushEnrichment(
+    metrics: unknown = { workflowId: 'wf-1' },
+    interactions: unknown = { workflowId: 'wf-1', items: [] }
+  ): void {
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: metrics })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: interactions })
   }
 
   it('exposes the mock sandboxes before/without real data', () => {
@@ -194,6 +198,47 @@ describe('FactoryStore', () => {
     expect(store.session('wf-1')?.unknownCostCount).toBe(3)
     expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(3)
     expect(store.costs().unknownCostCount).toBe(3)
+  })
+
+  it('enriches the session with read-only human interactions', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      {
+        workflowId: 'wf-1',
+        items: [
+          {
+            interactionId: 'i-1',
+            stepId: 'build',
+            interactionType: 'approval',
+            status: 'waiting',
+            payload: { prompt: 'Approve the deploy?' },
+          },
+        ],
+      }
+    )
+
+    const session = store.session('wf-1')
+    expect(session?.interactions).toHaveLength(1)
+    expect(session?.interactions?.[0]?.interactionId).toBe('i-1')
+    expect(session?.phase.sections.find((section) => section.label === 'Gates')?.count).toBe(1)
+    expect(session?.events.some((event) => event.text.includes('Approve the deploy?'))).toBe(true)
+  })
+
+  it('degrades gracefully when the interactions fetch fails', () => {
+    flushInitialWorkflows([snapshot])
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/interactions'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.interactions).toEqual([])
+    // The other enrichments still landed despite the failed interaction fetch.
+    expect(session?.workflow).toBe('Real workflow')
   })
 
   it('refetches the workflow list on an SSE invalidation', () => {

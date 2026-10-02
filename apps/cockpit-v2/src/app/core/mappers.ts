@@ -1,4 +1,5 @@
 import {
+  HumanInteraction,
   PhaseDetail,
   PhaseSegment,
   RunEvent,
@@ -530,7 +531,75 @@ function mapStepsToSessionSteps(steps: unknown[]): SessionStep[] {
   })
 }
 
-function buildPhaseDetail(steps: unknown[], fallbackStatus: RunStatus): PhaseDetail {
+// ---------------------------------------------------------------------------
+// Human interactions (read-only)
+// ---------------------------------------------------------------------------
+
+function asInteractionArray(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload
+  const obj = asObject(payload)
+  if (!obj) return []
+  if (Array.isArray(obj['items'])) return obj['items'] as unknown[]
+  if (Array.isArray(obj['data'])) return obj['data'] as unknown[]
+  return []
+}
+
+function extractActions(value: unknown): Array<{ id: string; label: string }> | undefined {
+  if (!Array.isArray(value)) return undefined
+  const actions: Array<{ id: string; label: string }> = []
+  value.forEach((entry, index) => {
+    if (typeof entry === 'string' && entry.length > 0) {
+      actions.push({ id: entry, label: entry })
+      return
+    }
+    const obj = asObject(entry)
+    if (!obj) return
+    const id = getString(obj, 'id') ?? getString(obj, 'actionId') ?? String(index + 1)
+    const label = getString(obj, 'label') ?? getString(obj, 'name') ?? getString(obj, 'title') ?? id
+    actions.push({ id, label })
+  })
+  return actions.length > 0 ? actions : undefined
+}
+
+/**
+ * Defensively extract the human interactions carried by a `getInteractions`
+ * payload. Accepts a bare array, an `{ items: [...] }` wrapper or a
+ * `{ data: [...] }` wrapper; anything else degrades to `[]`. Each record is
+ * mapped to a {@link HumanInteraction} with graceful defaults so a
+ * partially-migrated backend never throws.
+ */
+export function extractInteractions(payload: unknown): HumanInteraction[] {
+  return asInteractionArray(payload).map((item, index) => {
+    const obj = asObject(item) ?? {}
+    const payloadObj = asObject(obj['payload']) ?? {}
+    const interaction: HumanInteraction = {
+      interactionId: getString(obj, 'interactionId') ?? getString(obj, 'id') ?? `interaction-${index + 1}`,
+      stepId: getString(obj, 'stepId') ?? getString(payloadObj, 'stepId') ?? '',
+      interactionType: getString(obj, 'interactionType') ?? getString(obj, 'type') ?? 'unknown',
+      status: getString(obj, 'status') ?? 'unknown',
+    }
+    const prompt = getString(payloadObj, 'prompt') ?? getString(payloadObj, 'question') ?? getString(obj, 'prompt')
+    if (prompt) interaction.prompt = prompt
+    const actions = extractActions(payloadObj['actions'] ?? obj['actions'])
+    if (actions) interaction.actions = actions
+    const recipient = getString(payloadObj, 'recipient') ?? getString(obj, 'recipient')
+    if (recipient) interaction.recipient = recipient
+    const createdAt = getString(obj, 'createdAt') ?? getString(payloadObj, 'createdAt')
+    if (createdAt) interaction.createdAt = createdAt
+    return interaction
+  })
+}
+
+/** Surface each human interaction as a read-only {@link RunEvent}. */
+export function mapInteractionsToEvents(interactions: HumanInteraction[]): RunEvent[] {
+  return interactions.map((interaction) => ({
+    time: formatClock(interaction.createdAt),
+    type: 'agent_message',
+    text: `[Human Gate - ${interaction.interactionType}] ${interaction.prompt ?? interaction.status}`,
+  }))
+}
+
+function buildPhaseDetail(steps: unknown[], fallbackStatus: RunStatus, interactionsCount = 0): PhaseDetail {
   const active = steps.find((step) => resolveStepState(step) === 'active') ?? steps[steps.length - 1]
   const obj = asObject(active) ?? {}
   const responsibility = asObject(obj['responsibility'])
@@ -548,7 +617,7 @@ function buildPhaseDetail(steps: unknown[], fallbackStatus: RunStatus): PhaseDet
       { label: "Configuration de l'agent" },
       { label: 'Description', ...(description ? { body: description } : {}) },
       { label: 'Prompts compilés', count: 0 },
-      { label: 'Gates', count: 0 },
+      { label: 'Gates', count: interactionsCount },
       { label: 'Sorties', count: 0 },
     ],
   }
@@ -576,7 +645,8 @@ export function mapProjectionToSessionDetail(
   workflow: unknown,
   timing?: unknown,
   evidence?: unknown,
-  metrics?: unknown
+  metrics?: unknown,
+  interactions?: unknown
 ): SessionDetail {
   const snapshot = asObject(workflow) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
@@ -588,6 +658,7 @@ export function mapProjectionToSessionDetail(
   const metricsObj = asObject(metrics)
   const realCost = extractRealCost(metricsObj)
   const evidenceItems = asArray(asObject(evidence)?.['items'])
+  const mappedInteractions = extractInteractions(interactions)
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
@@ -634,7 +705,8 @@ export function mapProjectionToSessionDetail(
     steps: mapStepsToSessionSteps(steps),
     lanes,
     nowSec: Math.round(laneEnd),
-    events: mapEvidenceToEvents(evidenceItems, steps),
-    phase: buildPhaseDetail(steps, status),
+    events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
+    phase: buildPhaseDetail(steps, status, mappedInteractions.length),
+    interactions: mappedInteractions,
   }
 }

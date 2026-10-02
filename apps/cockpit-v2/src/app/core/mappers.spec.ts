@@ -1,6 +1,7 @@
 import {
   classifyActorKind,
   classifyLane,
+  extractInteractions,
   extractRealCost,
   mapProjectionToLanes,
   mapProjectionToRunSummary,
@@ -223,6 +224,61 @@ describe('mappers', () => {
     })
   })
 
+  describe('extractInteractions', () => {
+    it('maps a bare array of records defensively', () => {
+      const result = extractInteractions([
+        {
+          interactionId: 'i-1',
+          stepId: 'build',
+          interactionType: 'approval',
+          status: 'waiting',
+          createdAt: startedAt,
+          payload: {
+            prompt: 'Approve the deploy?',
+            actions: [{ id: 'approve', label: 'Approve' }, { id: 'reject' }],
+            recipient: 'benjamin',
+          },
+        },
+      ])
+
+      expect(result).toEqual([
+        {
+          interactionId: 'i-1',
+          stepId: 'build',
+          interactionType: 'approval',
+          status: 'waiting',
+          prompt: 'Approve the deploy?',
+          actions: [
+            { id: 'approve', label: 'Approve' },
+            { id: 'reject', label: 'reject' },
+          ],
+          recipient: 'benjamin',
+          createdAt: startedAt,
+        },
+      ])
+    })
+
+    it('accepts { items: [...] } and { data: [...] } wrappers', () => {
+      expect(extractInteractions({ items: [{ interactionId: 'a' }] }).map((i) => i.interactionId)).toEqual(['a'])
+      expect(extractInteractions({ data: [{ interactionId: 'b' }] }).map((i) => i.interactionId)).toEqual(['b'])
+    })
+
+    it('degrades gracefully on empty and malformed payloads', () => {
+      expect(extractInteractions(undefined)).toEqual([])
+      expect(extractInteractions(null)).toEqual([])
+      expect(extractInteractions({ foo: 'bar' })).toEqual([])
+      expect(extractInteractions('nope')).toEqual([])
+
+      const [fallback] = extractInteractions([{}])
+      expect(fallback).toMatchObject({
+        interactionId: 'interaction-1',
+        stepId: '',
+        interactionType: 'unknown',
+        status: 'unknown',
+      })
+    })
+  })
+
   describe('mapProjectionToSessionDetail', () => {
     it('builds a complete session from projection + enrichment payloads', () => {
       const session = mapProjectionToSessionDetail(
@@ -296,6 +352,38 @@ describe('mappers', () => {
       expect(session.costUsd).toBe(2.5)
       expect(session.unknownCostCount).toBe(0)
       expect(session.tokens).toBe(99)
+    })
+
+    it('surfaces read-only interactions in the session (list, Gates count and events)', () => {
+      const interactions = [
+        {
+          interactionId: 'i-1',
+          stepId: 'build',
+          interactionType: 'approval',
+          status: 'waiting',
+          createdAt: startedAt,
+          payload: { prompt: 'Approve the deploy?' },
+        },
+      ]
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, interactions)
+
+      expect(session.interactions).toHaveLength(1)
+      expect(session.interactions?.[0]?.interactionId).toBe('i-1')
+      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      expect(gates?.count).toBe(1)
+
+      const interactionEvents = session.events.filter((event) => event.text.includes('Approve the deploy?'))
+      expect(interactionEvents).toHaveLength(1)
+      expect(interactionEvents[0]).toMatchObject({ time: '16:00:00', type: 'agent_message' })
+      // The interaction event is additive: the projection step events survive.
+      expect(session.events.some((event) => event.type === 'phase_start')).toBe(true)
+    })
+
+    it('reports zero gates when no interaction is available', () => {
+      const session = mapProjectionToSessionDetail(snapshot)
+      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      expect(gates?.count).toBe(0)
+      expect(session.interactions).toEqual([])
     })
   })
 })
