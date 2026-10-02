@@ -64,6 +64,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
+import { findLegitimateAnswer } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -104,7 +105,7 @@ export type TimelineItem =
   | { kind: 'streaming' }
   | { kind: 'notice'; notice: ExecutionNotice; eventId: string }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
-  | { kind: 'question'; event: QuestionEvent; answered: boolean }
+  | { kind: 'question'; event: QuestionEvent; answer?: AnswerEvent }
   | { kind: 'delegation'; delegation: DelegationPresentation }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
@@ -508,9 +509,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // The corresponding Started event owns the single visual card.
       } else if (e.type === 'QuestionEvent') {
         const qe = e as QuestionEvent
-        // A question is answered when there is a corresponding AnswerEvent in the stream.
-        const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
-        items.push({ kind: 'question', event: qe, answered })
+        // A question is answered when a legitimate AnswerEvent exists in the stream (same rule as the backend).
+        items.push({ kind: 'question', event: qe, answer: findLegitimateAnswer(qe, allEvents) })
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
         // Execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.

@@ -219,7 +219,7 @@
               </details>
             } @else if (item.kind === 'question') {
               @if (
-                !item.answered &&
+                !item.answer &&
                 (item.event.questionType !== 'OAUTH_AUTHORIZE' || oauthPendingQuestion()?.id === item.event.id)
               ) {
                 <agentos-question-panel
@@ -227,10 +227,14 @@
                   (answered)="onQuestionAnswered(item.event, $event)"
                   (cancelled)="onQuestionCancelled()"
                 />
-              } @else if (item.answered) {
+              } @else if (item.answer; as answer) {
                 <div class="case-chat__question-answered">
                   <span class="case-chat__question-answered-label">✅ Question answered</span>
                   <span class="case-chat__question-answered-text">{{ item.event.question }}</span>
+                  <div class="case-chat__question-answered-answer">
+                    <span class="case-chat__question-answered-respondent">{{ answer.actor.displayName || 'You' }}</span>
+                    <span class="case-chat__question-answered-answer-text">{{ answer.answer }}</span>
+                  </div>
                 </div>
               }
             } @else if (item.kind === 'delegation') {

@@ -782,6 +782,28 @@
     font-size: 0.82rem;
   }
 
+  &__question-answered-answer {
+    color: var(--color-text, #1d1d1f);
+    font-size: 0.82rem;
+    font-weight: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+  }
+
+  &__question-answered-answer-text {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  &__question-answered-respondent {
+    color: var(--color-text-secondary, #6e6e73);
+    font-weight: 600;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   // Thinking indicator (three bouncing dots)
 
   &__thinking {
