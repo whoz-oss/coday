@@ -1,0 +1,26 @@
+/* Global styles for the Cockpit V2 application. */
+:root {
+  --cockpit-bg: #0a0d13;
+  --cockpit-surface: #10141d;
+  --cockpit-surface-2: #151a25;
+  --cockpit-outline: #242b3b;
+  --cockpit-text: #e7eaf2;
+  --cockpit-text-muted: #9199ad;
+  --cockpit-primary: #c4a1ff;
+  --cockpit-success: #4ade80;
+  --cockpit-font: 'Manrope', system-ui, -apple-system, sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--cockpit-bg);
+  color: var(--cockpit-text);
+  font-family: var(--cockpit-font);
+}
+
+* {
+  box-sizing: border-box;
+}

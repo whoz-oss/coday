@@ -1,0 +1,99 @@
+{
+  "name": "cockpit-v2",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "prefix": "cockpit-v2",
+  "sourceRoot": "apps/cockpit-v2/src",
+  "tags": ["platform:npm", "scope:cockpit-v2"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        {
+          "target": "build-angular"
+        }
+      ],
+      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "commands": ["cp apps/cockpit-v2/package.json apps/cockpit-v2/dist/package.json"],
+        "parallel": false
+      }
+    },
+    "build-angular": {
+      "executor": "@angular/build:application",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "baseHref": "/cockpit-v2/",
+        "browser": "apps/cockpit-v2/src/main.ts",
+        "polyfills": ["zone.js"],
+        "tsConfig": "apps/cockpit-v2/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/cockpit-v2/public"
+          }
+        ],
+        "styles": ["apps/cockpit-v2/src/styles.scss"],
+        "stylePreprocessorOptions": {
+          "includePaths": [".", "libs", "libs/design-system/src"]
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "1mb",
+              "maximumError": "1.5mb"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "12kb",
+              "maximumError": "50kb"
+            }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@angular/build:dev-server",
+      "options": {
+        "port": 4300,
+        "host": "localhost"
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "cockpit-v2:build-angular:production"
+        },
+        "development": {
+          "buildTarget": "cockpit-v2:build-angular:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "apps/cockpit-v2/jest.config.ts"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/cockpit-v2",
+        "command": "eslint ."
+      }
+    }
+  }
+}

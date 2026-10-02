@@ -30,6 +30,7 @@ import { registerPromptExecutionRoutes } from './lib/prompt-execution.routes'
 import { registerTokenUsageRoutes } from './lib/token-usage.routes'
 import { registerProjectPreviewRoutes } from './lib/project-preview.routes'
 import { registerTranscribeRoutes } from './lib/transcribe.routes'
+import { registerCockpitV2Routes } from './app/cockpit-v2/cockpit-v2.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
@@ -326,6 +327,9 @@ function getUsername(req: express.Request): string {
 
 // Register user information routes
 registerUserRoutes(app, getUsername, codayOptions.configDir, !!codayOptions.auth)
+
+// Register Cockpit V2 API routes (/api/cockpit-v2)
+registerCockpitV2Routes(app, getUsername)
 
 // Register configuration management routes
 registerConfigRoutes(app, configRegistry, getUsername)
