@@ -5,6 +5,10 @@
       <h1>Sandboxes</h1>
       <p class="sf-muted">Workflows d'agents actifs, dérivés des runs réels exposés par factory-service.</p>
     </div>
+    <a mat-flat-button class="sf-primary" routerLink="/lancer" data-sandboxes-launch="true">
+      <mat-icon>play_arrow</mat-icon>
+      Lancer un run
+    </a>
   </header>
 
   <!-- Indicateurs -->
@@ -28,45 +32,19 @@
   </section>
 
   <div class="split">
-    <!-- Nouvelle sandbox (informatif : aucun backend de flotte de conteneurs) -->
+    <!-- Nouveau run : point d'entrée vers le formulaire de lancement réel -->
     <section class="new sf-panel" aria-labelledby="new-title">
-      <h2 id="new-title" class="sf-overline">Nouvelle sandbox</h2>
+      <h2 id="new-title" class="sf-overline">Nouveau run</h2>
       <p class="sf-muted note">
-        La création de sandbox n'est pas disponible : factory-service n'expose pas de flotte de conteneurs. Les cartes
-        ci-dessous reflètent les workflows actifs réels.
+        La flotte de conteneurs n'a pas de backend : les cartes ci-dessous reflètent les workflows actifs réels. Pour
+        démarrer un workflow, lancez un run depuis factory-service.
       </p>
-      <form [formGroup]="form" (ngSubmit)="mount()" class="new-form">
-        <mat-form-field appearance="outline">
-          <mat-label>Projet</mat-label>
-          <mat-select formControlName="project">
-            @for (p of projects; track p) {
-              <mat-option [value]="p">{{ p }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Branche de départ</mat-label>
-          <input matInput formControlName="branch" placeholder="sandbox/ma-copie" class="sf-mono" />
-          <mat-hint>Vide = branche du profil</mat-hint>
-        </mat-form-field>
-
-        <mat-form-field appearance="outline">
-          <mat-label>Roster de modèles</mat-label>
-          <mat-select formControlName="roster">
-            @for (r of rosters; track r) {
-              <mat-option [value]="r">{{ r }}</mat-option>
-            }
-          </mat-select>
-        </mat-form-field>
-
-        <mat-checkbox formControlName="orchestrator">Orchestrateur Coday (Archay)</mat-checkbox>
-
-        <div class="form-actions">
-          <button mat-flat-button class="sf-primary" type="submit" disabled>Monter</button>
-          <button mat-stroked-button class="sf-secondary" type="button" disabled>Best-of-N…</button>
-        </div>
-      </form>
+      <div class="form-actions">
+        <a mat-flat-button class="sf-primary" routerLink="/lancer" data-sandboxes-launch-panel="true">
+          <mat-icon>play_arrow</mat-icon>
+          Lancer un run
+        </a>
+      </div>
     </section>
 
     <!-- Tâches récentes -->

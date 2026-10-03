@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Observable, catchError, map, throwError } from 'rxjs'
+import { Observable, catchError, map, of, throwError } from 'rxjs'
 import { AllowedAction, GetActionsResponse, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
@@ -58,6 +58,60 @@ export interface WorkflowDefinition {
   version?: string
   definitionHash?: string
   [key: string]: unknown
+}
+
+/** One AgentOS namespace exposed by `GET /api/namespaces`. */
+export interface NamespaceItem {
+  id?: string
+  name?: string
+  namespaceId?: string
+  [key: string]: unknown
+}
+
+/** Body of `POST /api/factory/workflows/:id/start` (materializes an instance). */
+export interface StartWorkflowRequest {
+  workflow: {
+    workflowId: string
+    workflowType: string
+    title: string
+    ticket?: string
+  }
+  execution: {
+    namespaceId: string
+    runtimeId: string
+    kind: string
+    agentId: string
+  }
+  controllerRequest: string
+}
+
+/** Body of `POST /api/factory/workflows/:id/run` (triggers the durable run). */
+export interface RunWorkflowRequest {
+  namespaceId: string
+  ticket?: string
+  repoRoot?: string
+}
+
+/** Unwrapped `{ data }` payload of `POST /api/factory/workflows/:id/run`. */
+export interface RunWorkflowResponse {
+  status?: string
+  submissionId?: string
+  workflowId?: string
+  [key: string]: unknown
+}
+
+/** Machine codes meaning the workflow instance already exists (start is idempotent). */
+export const WORKFLOW_CONFLICT_CODES = ['WORKFLOW_IDENTITY_CONFLICT', 'WORKFLOW_ALREADY_EXISTS'] as const
+
+/**
+ * True when a start failure only means the instance is already materialized
+ * (identity conflict / already exists / HTTP 409), in which case the /run phase
+ * may proceed for that existing instance.
+ */
+export function isWorkflowConflict(error: FactoryApiError | null | undefined): boolean {
+  if (!error) return false
+  if (error.status === 409) return true
+  return (WORKFLOW_CONFLICT_CODES as readonly string[]).includes(error.code)
 }
 
 /**
@@ -259,6 +313,41 @@ export class FactoryApiService {
   /** GET `/api/factory/workflow-definitions[?namespaceId=…]`. */
   getWorkflowDefinitions(namespaceId?: string): Observable<unknown> {
     return this.request<unknown>('/api/factory/workflow-definitions', {}, namespaceId)
+  }
+
+  /**
+   * GET `/api/namespaces` → AgentOS namespaces. Unwraps a raw array or a
+   * `{ items: […] }` payload and degrades gracefully to `[]` when the endpoint
+   * is missing, unavailable or returns an error.
+   */
+  getNamespaces(): Observable<NamespaceItem[]> {
+    return this.request<unknown>('/api/namespaces', {}).pipe(
+      map((payload) => {
+        if (Array.isArray(payload)) return payload as NamespaceItem[]
+        const items = (payload as { items?: unknown } | null)?.items
+        return Array.isArray(items) ? (items as NamespaceItem[]) : []
+      }),
+      catchError(() => of([] as NamespaceItem[]))
+    )
+  }
+
+  /**
+   * POST `/api/factory/workflows/:id/start` — materializes the workflow instance
+   * from a definition. A `WORKFLOW_IDENTITY_CONFLICT` / `WORKFLOW_ALREADY_EXISTS`
+   * (or HTTP 409) failure is NOT swallowed here; the caller decides, via
+   * {@link isWorkflowConflict}, whether it can proceed to the /run phase.
+   */
+  startWorkflow(workflowId: string, payload: StartWorkflowRequest, namespaceId?: string): Observable<unknown> {
+    return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/start`, payload, namespaceId)
+  }
+
+  /** POST `/api/factory/workflows/:id/run` — triggers the durable async run (202 Accepted). */
+  runWorkflow(workflowId: string, payload: RunWorkflowRequest, namespaceId?: string): Observable<RunWorkflowResponse> {
+    return this.post<RunWorkflowResponse>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/run`,
+      payload,
+      namespaceId
+    )
   }
 
   /**
