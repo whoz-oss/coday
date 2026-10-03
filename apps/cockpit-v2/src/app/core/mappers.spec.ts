@@ -1,7 +1,9 @@
 import {
   classifyActorKind,
   classifyLane,
+  extractAllowedActions,
   extractAttempts,
+  extractBlockers,
   extractInteractions,
   extractRealCost,
   mapProjectionToLanes,
@@ -507,6 +509,98 @@ describe('mappers', () => {
       expect(session.phase.attempt).toBe('1/1')
       expect(session.phase.failureCode).toBe('TEST_FAILED')
       expect(session.phase.attemptStatus).toBe('failed')
+    })
+
+    it('maps governed allowedActions and blockers into the session', () => {
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, undefined, {
+        allowedActions: [
+          { type: 'reply', interactionId: 'i-1', stepId: 'build', expectedRevision: 3, label: 'Approve?' },
+          { type: 'retry', stepId: 'build', expectedRevision: 5 },
+        ],
+        blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Step build blocked' }],
+      })
+
+      expect(session.allowedActions).toEqual([
+        { type: 'reply', interactionId: 'i-1', stepId: 'build', expectedRevision: 3, label: 'Approve?' },
+        { type: 'retry', stepId: 'build', expectedRevision: 5 },
+      ])
+      expect(session.blockers).toEqual([
+        { code: 'STEP_BLOCKED', stepId: 'build', label: 'Step build blocked', message: 'Step build blocked' },
+      ])
+    })
+
+    it('degrades to empty action/blocker lists without an actions payload', () => {
+      const session = mapProjectionToSessionDetail(snapshot)
+      expect(session.allowedActions).toEqual([])
+      expect(session.blockers).toEqual([])
+    })
+  })
+
+  describe('extractAllowedActions', () => {
+    it('maps a bare array defensively and copies identity fields verbatim', () => {
+      expect(
+        extractAllowedActions([
+          {
+            type: 'cancel_attempt',
+            attemptId: 'a-1',
+            stepId: 'build',
+            caseId: 'c-1',
+            expectedRevision: 2,
+            label: 'Cancel',
+          },
+          { type: 'reply', interactionId: 'i-1', questionEventId: 'q-1', expectedRevision: 3 },
+        ])
+      ).toEqual([
+        {
+          type: 'cancel_attempt',
+          attemptId: 'a-1',
+          stepId: 'build',
+          caseId: 'c-1',
+          expectedRevision: 2,
+          label: 'Cancel',
+        },
+        { type: 'reply', interactionId: 'i-1', questionEventId: 'q-1', expectedRevision: 3 },
+      ])
+    })
+
+    it('accepts the { allowedActions } block and drops entries without a type', () => {
+      expect(extractAllowedActions({ allowedActions: [{ type: 'retry', stepId: 'x' }, { stepId: 'y' }] })).toEqual([
+        { type: 'retry', stepId: 'x' },
+      ])
+    })
+
+    it('degrades gracefully on empty/malformed payloads', () => {
+      expect(extractAllowedActions(undefined)).toEqual([])
+      expect(extractAllowedActions(null)).toEqual([])
+      expect(extractAllowedActions({ foo: 'bar' })).toEqual([])
+      expect(extractAllowedActions('nope')).toEqual([])
+    })
+  })
+
+  describe('extractBlockers', () => {
+    it('maps the backend message to label and keeps code/stepId', () => {
+      expect(
+        extractBlockers([{ code: 'WAITING_HUMAN_INTERACTION', stepId: 'build', message: 'Waiting for human' }])
+      ).toEqual([
+        {
+          code: 'WAITING_HUMAN_INTERACTION',
+          stepId: 'build',
+          label: 'Waiting for human',
+          message: 'Waiting for human',
+        },
+      ])
+    })
+
+    it('accepts the { blockers } block and falls back to the code as label', () => {
+      expect(extractBlockers({ blockers: [{ code: 'UNKNOWN_RUNTIME' }] })).toEqual([
+        { code: 'UNKNOWN_RUNTIME', label: 'UNKNOWN_RUNTIME' },
+      ])
+    })
+
+    it('degrades gracefully on empty/malformed payloads', () => {
+      expect(extractBlockers(undefined)).toEqual([])
+      expect(extractBlockers(null)).toEqual([])
+      expect(extractBlockers({ foo: 'bar' })).toEqual([])
     })
   })
 })

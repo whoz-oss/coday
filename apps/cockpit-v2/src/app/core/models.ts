@@ -154,6 +154,54 @@ export interface HumanInteraction {
   createdAt?: string
 }
 
+/* ───── Governed actions & blockers (backend authority) ───── */
+
+/** Stable `type` values of an {@link AllowedAction} (backend `WorkflowActionTypes`). */
+export type AllowedActionType = 'reply' | 'retry' | 'cancel_attempt' | 'continue_cost' | 'stop_cost'
+
+/**
+ * One action the backend explicitly authorizes from the workflow's current
+ * state. The cockpit may ONLY display/trigger actions present in
+ * `allowedActions`; it never derives one itself and never fabricates the target
+ * identity or the expected revision it must be fenced on.
+ */
+export interface AllowedAction {
+  type: AllowedActionType
+  label?: string
+  interactionId?: string
+  stepId?: string
+  attemptId?: string
+  caseId?: string
+  questionEventId?: string
+  /** Revision the executing command must carry (interaction/attempt/workflow). */
+  expectedRevision?: number
+}
+
+/** Stable `code` values of a {@link WorkflowBlocker} (backend `WorkflowBlockerCodes`). */
+export type BlockerCode =
+  | 'WAITING_HUMAN_INTERACTION'
+  | 'STEP_BLOCKED'
+  | 'ATTEMPT_FAILED'
+  | 'REAL_COST_PAUSED'
+  | 'VERIFICATION_FAILED'
+  | 'UNKNOWN_RUNTIME'
+
+/** One active blocker preventing a workflow from progressing unattended. */
+export interface WorkflowBlocker {
+  code: BlockerCode
+  /** Human-readable label (backend `message`, falling back to the code). */
+  label: string
+  stepId?: string
+  message?: string
+  details?: string
+}
+
+/** Normalized payload of `GET /api/factory/workflows/:id/actions`. */
+export interface GetActionsResponse {
+  allowedActions: AllowedAction[]
+  blockers: WorkflowBlocker[]
+}
+
 export interface SessionDetail {
   id: string
   sandbox: string
@@ -187,4 +235,15 @@ export interface SessionDetail {
    * Absent when the backend exposes none (or when the enrichment failed).
    */
   attempts?: AgentAttempt[]
+  /**
+   * Actions the backend explicitly authorizes from the current state (see
+   * `GET /api/factory/workflows/:id/actions`). The cockpit renders an action
+   * button ONLY when it is present here. Absent/empty means nothing is allowed.
+   */
+  allowedActions?: AllowedAction[]
+  /**
+   * Active blockers that prevent the workflow from progressing unattended.
+   * Empty when none are active or when the fetch degraded gracefully.
+   */
+  blockers?: WorkflowBlocker[]
 }

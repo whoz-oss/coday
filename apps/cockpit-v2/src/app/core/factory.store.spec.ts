@@ -98,13 +98,15 @@ describe('FactoryStore', () => {
   function flushEnrichment(
     metrics: unknown = { workflowId: 'wf-1' },
     interactions: unknown = { workflowId: 'wf-1', items: [] },
-    attempts: unknown = { workflowId: 'wf-1', data: [] }
+    attempts: unknown = { workflowId: 'wf-1', data: [] },
+    actions: unknown = { allowedActions: [], blockers: [] }
   ): void {
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: metrics })
     http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: interactions })
     http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush(attempts)
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: actions })
   }
 
   it('exposes the mock sandboxes before/without real data', () => {
@@ -236,6 +238,7 @@ describe('FactoryStore', () => {
       .expectOne((r) => r.url.endsWith('/wf-1/interactions'))
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
     http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
 
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')
@@ -291,6 +294,7 @@ describe('FactoryStore', () => {
     http
       .expectOne((r) => r.url.endsWith('/wf-1/attempts'))
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
 
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')
@@ -326,5 +330,122 @@ describe('FactoryStore', () => {
     flushInitialWorkflows()
     const session = store.session('unknown-run')
     expect(session?.id).toBe('unknown-run')
+  })
+
+  it('enriches the session with backend allowedActions and blockers', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      { workflowId: 'wf-1', data: [] },
+      {
+        allowedActions: [
+          { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relancer' },
+          { type: 'stop_cost', expectedRevision: 7 },
+        ],
+        blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Step build blocked' }],
+      }
+    )
+
+    const session = store.session('wf-1')
+    expect(session?.allowedActions).toEqual([
+      { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relancer' },
+      { type: 'stop_cost', expectedRevision: 7 },
+    ])
+    expect(session?.blockers).toEqual([
+      { code: 'STEP_BLOCKED', stepId: 'build', label: 'Step build blocked', message: 'Step build blocked' },
+    ])
+  })
+
+  it('degrades gracefully when the actions fetch fails', () => {
+    flushInitialWorkflows([snapshot])
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/actions'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.allowedActions).toEqual([])
+    expect(session?.blockers).toEqual([])
+    expect(session?.workflow).toBe('Real workflow')
+  })
+
+  it('replyInteraction posts the reply, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.replyInteraction('wf-1', 'i-1', { actionId: 'approve', text: 'ok', expectedRevision: 3 })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions/i-1/reply')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ actionId: 'approve', text: 'ok', expectedRevision: 3 })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+    request.flush({ data: { ok: true } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('retry opens a retry, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.retry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/retries')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { ok: true } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('cancelAttempt cancels an attempt, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.cancelAttempt('wf-1', 'a-2', { expectedRevision: 4, reason: 'operator' })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-2/cancel')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator' })
+    request.flush({ data: { ok: true } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('continueCost relays a threshold, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.continueCost('wf-1', { expectedThreshold: 12 })
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/cost/continue')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ expectedThreshold: 12 })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { ok: true } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('stopCost relays a stop, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.stopCost('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/cost/stop')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({})
+    request.flush({ data: { ok: true } })
+
+    flushInitialWorkflows([])
   })
 })

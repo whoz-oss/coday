@@ -194,4 +194,135 @@ describe('FactoryApiService', () => {
       expect(error).toEqual(expect.objectContaining({ code: 'WORKFLOW_NOT_FOUND', status: 404 }))
     })
   })
+
+  describe('getActions', () => {
+    it('unwraps { data: { allowedActions, blockers } } and forwards the namespace', () => {
+      let result: { allowedActions: unknown[]; blockers: unknown[] } | undefined
+      service.getActions('wf-1', '  ns-42  ').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/actions')
+      expect(request.request.method).toBe('GET')
+      expect(request.request.params.get('namespaceId')).toBe('ns-42')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-42')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({
+        data: {
+          allowedActions: [{ type: 'retry', stepId: 'build', expectedRevision: 7 }],
+          blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Step build blocked' }],
+        },
+      })
+
+      expect(result).toEqual({
+        allowedActions: [{ type: 'retry', stepId: 'build', expectedRevision: 7 }],
+        blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Step build blocked' }],
+      })
+    })
+
+    it('normalizes malformed payloads to empty arrays', () => {
+      let result: { allowedActions: unknown[]; blockers: unknown[] } | undefined
+      service.getActions('wf-1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/actions')
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      expect(request.request.headers.has('X-Namespace-Id')).toBe(false)
+      request.flush({ data: { foo: 'bar' } })
+
+      expect(result).toEqual({ allowedActions: [], blockers: [] })
+    })
+
+    it('encodes the workflow id and normalizes failures', () => {
+      let error: FactoryApiError | undefined
+      service.getActions('wf/1 2').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === '/api/factory/workflows/wf%2F1%202/actions')
+        .flush({ error: { code: 'WORKFLOW_NOT_FOUND' } }, { status: 404, statusText: 'Not Found' })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'WORKFLOW_NOT_FOUND', status: 404 }))
+    })
+  })
+
+  describe('governed action POSTs', () => {
+    it('replyInteraction posts to the reply route with the payload, namespace and correlation id', () => {
+      let result: unknown
+      service
+        .replyInteraction('wf-1', 'i/1', { actionId: 'approve', text: 'ok', expectedRevision: 3 }, 'ns-1')
+        .subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions/i%2F1/reply')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ actionId: 'approve', text: 'ok', expectedRevision: 3 })
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { interactionId: 'i/1' } })
+
+      expect(result).toEqual({ interactionId: 'i/1' })
+    })
+
+    it('openRetry posts to /retries', () => {
+      let result: unknown
+      service
+        .openRetry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+        .subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/retries')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      request.flush({ data: { ok: true } })
+
+      expect(result).toEqual({ ok: true })
+    })
+
+    it('cancelAttempt posts to /attempts/:id/cancel and encodes ids', () => {
+      service.cancelAttempt('wf/1', 'a/2', { expectedRevision: 4, reason: 'operator' }, 'ns-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1/attempts/a%2F2/cancel')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator' })
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      request.flush({ data: { status: 'interrupted' } })
+    })
+
+    it('continueCost posts an optional threshold to /cost/continue', () => {
+      service.continueCost('wf-1', { expectedThreshold: 12 }, 'ns-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/cost/continue')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ expectedThreshold: 12 })
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      request.flush({ data: { ok: true } })
+    })
+
+    it('continueCost omits the body when no payload is given', () => {
+      service.continueCost('wf-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/cost/continue')
+      expect(request.request.body).toEqual({})
+      request.flush({ data: { ok: true } })
+    })
+
+    it('stopCost posts an empty body to /cost/stop', () => {
+      service.stopCost('wf-1', 'ns-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/cost/stop')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({})
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      request.flush({ data: { ok: true } })
+    })
+
+    it('normalizes HTTP failures for a POST', () => {
+      let error: FactoryApiError | undefined
+      service.stopCost('missing').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === '/api/factory/workflows/missing/cost/stop')
+        .flush({ error: { code: 'SERVICE_UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'SERVICE_UNAVAILABLE', status: 503 }))
+    })
+  })
 })

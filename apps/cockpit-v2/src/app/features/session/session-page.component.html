@@ -5,9 +5,6 @@
       <div class="title-row">
         <h1>{{ s.goal }}</h1>
         <button mat-stroked-button class="sf-secondary">Conversation</button>
-        @if (s.status === 'running') {
-          <button mat-stroked-button class="sf-danger" (click)="stop()">Arrêter le run</button>
-        }
       </div>
 
       <div class="meta-row">
@@ -69,6 +66,18 @@
         }
       </ol>
     </section>
+
+    <!-- Actions pilotées par le backend (allowedActions / blockers) -->
+    <sf-action-bar
+      [allowedActions]="s.allowedActions ?? []"
+      [blockers]="s.blockers ?? []"
+      [interactions]="s.interactions ?? []"
+      (reply)="onReply($event)"
+      (retryRequested)="onRetry($event)"
+      (cancelAttempt)="onCancelAttempt($event)"
+      (continueCost)="onContinueCost()"
+      (stopCost)="onStopCost()"
+    />
 
     <!-- Chronologie -->
     <sf-agent-timeline

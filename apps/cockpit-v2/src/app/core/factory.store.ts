@@ -2,7 +2,7 @@ import { Injectable, computed, inject, signal } from '@angular/core'
 import { Subscription } from 'rxjs'
 import { FactoryApiService } from './factory-api.service'
 import { mapProjectionToRunSummary, mapProjectionToSessionDetail, namespaceOf, workflowIdOf } from './mappers'
-import { CostSummary, RecentTask, RunSummary, Sandbox, SessionDetail } from './models'
+import { CostSummary, GetActionsResponse, RecentTask, RunSummary, Sandbox, SessionDetail } from './models'
 import { RECENT_TASKS, SANDBOXES, SESSION_872641A8 } from './mock-data'
 import { SseService } from './sse.service'
 
@@ -65,7 +65,14 @@ export class FactoryStore {
   private readonly sessions = signal<Map<string, SessionDetail>>(new Map())
   private readonly enrichment = new Map<
     string,
-    { timing?: unknown; evidence?: unknown; metrics?: unknown; interactions?: unknown; attempts?: unknown }
+    {
+      timing?: unknown
+      evidence?: unknown
+      metrics?: unknown
+      interactions?: unknown
+      attempts?: unknown
+      actions?: GetActionsResponse
+    }
   >()
   private readonly subscriptions = new Subscription()
 
@@ -149,6 +156,7 @@ export class FactoryStore {
       metrics?: unknown
       interactions?: unknown
       attempts?: unknown
+      actions?: GetActionsResponse
     }): void => {
       const next = { ...(this.enrichment.get(id) ?? {}), ...partial }
       this.enrichment.set(id, next)
@@ -158,7 +166,8 @@ export class FactoryStore {
         next.evidence,
         next.metrics,
         next.interactions,
-        next.attempts
+        next.attempts,
+        next.actions
       )
       this.sessions.update((map) => {
         const updated = new Map(map)
@@ -184,6 +193,70 @@ export class FactoryStore {
     // Read-only real agent attempts: a failed fetch degrades silently (the
     // session keeps its projection and other enrichments).
     this.api.getAttempts(id, namespaceId).subscribe({ next: (attempts) => merge({ attempts }), error: () => undefined })
+    // Governed actions/blockers: the backend is the single authority, so a
+    // failed fetch degrades to an empty action set (never crashes the store and
+    // never lets the UI decide an action on its own).
+    this.api.getActions(id, namespaceId).subscribe({ next: (actions) => merge({ actions }), error: () => undefined })
+  }
+
+  // ---------------------------------------------------------------------------
+  // Governed actions: only ever triggered from `allowedActions`
+  // ---------------------------------------------------------------------------
+
+  /** Resolve the namespace bound to a loaded workflow snapshot, when known. */
+  private namespaceFor(workflowId: string): string | undefined {
+    const snapshot = this.workflows().find((item) => workflowIdOf(item) === workflowId)
+    return snapshot ? namespaceOf(snapshot) : undefined
+  }
+
+  /** Reply to a human interaction, then re-fetch the authoritative state. */
+  replyInteraction(
+    workflowId: string,
+    interactionId: string,
+    payload: { actionId?: string; text?: string; expectedRevision?: number },
+    namespaceId?: string
+  ): void {
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    this.api.replyInteraction(workflowId, interactionId, payload, ns).subscribe({
+      next: () => this.load(),
+      error: () => undefined,
+    })
+  }
+
+  /** Open a retry for a blocked step, then re-fetch the authoritative state. */
+  retry(
+    workflowId: string,
+    payload: { stepId: string; expectedRevision?: number; reasonCode?: string },
+    namespaceId?: string
+  ): void {
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    this.api.openRetry(workflowId, payload, ns).subscribe({ next: () => this.load(), error: () => undefined })
+  }
+
+  /** Cancel a durable agent attempt, then re-fetch the authoritative state. */
+  cancelAttempt(
+    workflowId: string,
+    attemptId: string,
+    payload: { expectedRevision?: number; reason?: string },
+    namespaceId?: string
+  ): void {
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    this.api.cancelAttempt(workflowId, attemptId, payload, ns).subscribe({
+      next: () => this.load(),
+      error: () => undefined,
+    })
+  }
+
+  /** Continue a paused run cost, then re-fetch the authoritative state. */
+  continueCost(workflowId: string, payload?: { expectedThreshold?: number }, namespaceId?: string): void {
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    this.api.continueCost(workflowId, payload, ns).subscribe({ next: () => this.load(), error: () => undefined })
+  }
+
+  /** Stop a paused run cost, then re-fetch the authoritative state. */
+  stopCost(workflowId: string, namespaceId?: string): void {
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    this.api.stopCost(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
   }
 
   /** Replace the run attached to a sandbox once its real cost is known. */
