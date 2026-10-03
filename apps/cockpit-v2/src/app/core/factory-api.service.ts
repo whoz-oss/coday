@@ -21,6 +21,45 @@ export interface WorkflowListPayload {
   [key: string]: unknown
 }
 
+/** Report returned by the admin garbage-collection command. */
+export interface GcReport {
+  reclaimedStagingKeys?: string[]
+  scannedBlobKeys?: string[]
+  scannedMetadataRows?: number
+  anomalies?: string[]
+  timestamp?: string
+  [key: string]: unknown
+}
+
+/** Result of an admin artifact purge. */
+export interface PurgeResult {
+  status?: string
+  artifactId?: string
+  id?: string
+  reason?: string
+  metadata?: { size?: number; [key: string]: unknown }
+  [key: string]: unknown
+}
+
+/** Result of an admin legal-hold command. */
+export interface LegalHoldResult {
+  status?: string
+  id?: string
+  artifactId?: string
+  legalHold?: boolean
+  legalHoldReason?: string
+  reason?: string
+  [key: string]: unknown
+}
+
+/** One registered workflow definition. */
+export interface WorkflowDefinition {
+  workflowType?: string
+  version?: string
+  definitionHash?: string
+  [key: string]: unknown
+}
+
 /**
  * Angular HTTP client for the Spring/Kotlin factory-service workflow surface.
  *
@@ -196,6 +235,49 @@ export class FactoryApiService {
     return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/cost/stop`, {}, namespaceId)
   }
 
+  /** POST `/api/factory/admin/artifacts/gc` (admin-only garbage collection). */
+  runGarbageCollection(body?: { dryRun?: boolean }, namespaceId?: string): Observable<unknown> {
+    return this.post<unknown>('/api/factory/admin/artifacts/gc', body ?? {}, namespaceId)
+  }
+
+  /** POST `/api/factory/admin/artifacts/:artifactId/purge` (admin-only, destructive). */
+  purgeArtifact(artifactId: string, body?: { reason?: string }, namespaceId?: string): Observable<unknown> {
+    const path = `/api/factory/admin/artifacts/${encodeURIComponent(artifactId)}/purge`
+    return this.post<unknown>(path, body ?? {}, namespaceId)
+  }
+
+  /** POST `/api/factory/admin/artifacts/:artifactId/legal-hold` (admin-only). */
+  setLegalHold(
+    artifactId: string,
+    body: { legalHold: boolean; reason?: string },
+    namespaceId?: string
+  ): Observable<unknown> {
+    const path = `/api/factory/admin/artifacts/${encodeURIComponent(artifactId)}/legal-hold`
+    return this.post<unknown>(path, body, namespaceId)
+  }
+
+  /** GET `/api/factory/workflow-definitions[?namespaceId=…]`. */
+  getWorkflowDefinitions(namespaceId?: string): Observable<unknown> {
+    return this.request<unknown>('/api/factory/workflow-definitions', {}, namespaceId)
+  }
+
+  /**
+   * POST `/api/factory/workflow-definitions/upload` as `multipart/form-data`.
+   * The `Content-Type` header is deliberately NOT set so the browser/HttpClient
+   * can attach the multipart boundary itself.
+   */
+  uploadWorkflowDefinition(file: File, namespaceId?: string): Observable<unknown> {
+    const formData = new FormData()
+    formData.append('file', file, file.name || 'definition.json')
+    return this.postFormData<unknown>('/api/factory/workflow-definitions/upload', formData, namespaceId)
+  }
+
+  /** DELETE `/api/factory/workflow-definitions/:workflowType/:version[?namespaceId=…]`. */
+  deleteWorkflowDefinition(workflowType: string, version: string, namespaceId?: string): Observable<unknown> {
+    const path = `/api/factory/workflow-definitions/${encodeURIComponent(workflowType)}/${encodeURIComponent(version)}`
+    return this.delete<unknown>(path, namespaceId)
+  }
+
   /**
    * Issue a POST request and unwrap the response. Mirrors {@link request}:
    * an `X-Correlation-Id` is always sent, the optional namespace is threaded
@@ -214,6 +296,42 @@ export class FactoryApiService {
     }
 
     return this.http.post<unknown>(path, body, { params, headers }).pipe(
+      map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
+      catchError((error: unknown) => throwError(() => normalizeError(error)))
+    )
+  }
+
+  /**
+   * Issue a `multipart/form-data` POST and unwrap the response. Mirrors
+   * {@link post} but never sets `Content-Type` (the boundary is owned by the
+   * browser/HttpClient FormData handling).
+   */
+  private postFormData<T>(path: string, formData: FormData, namespaceId?: string): Observable<T> {
+    let params = new HttpParams()
+    let headers = new HttpHeaders().set('X-Correlation-Id', generateCorrelationId())
+    const namespace = namespaceId?.trim()
+    if (namespace) {
+      headers = headers.set('X-Namespace-Id', namespace)
+      params = params.set('namespaceId', namespace)
+    }
+
+    return this.http.post<unknown>(path, formData, { params, headers }).pipe(
+      map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
+      catchError((error: unknown) => throwError(() => normalizeError(error)))
+    )
+  }
+
+  /** Issue a DELETE request and unwrap the response. */
+  private delete<T>(path: string, namespaceId?: string): Observable<T> {
+    let params = new HttpParams()
+    let headers = new HttpHeaders().set('X-Correlation-Id', generateCorrelationId())
+    const namespace = namespaceId?.trim()
+    if (namespace) {
+      headers = headers.set('X-Namespace-Id', namespace)
+      params = params.set('namespaceId', namespace)
+    }
+
+    return this.http.delete<unknown>(path, { params, headers }).pipe(
       map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
       catchError((error: unknown) => throwError(() => normalizeError(error)))
     )
