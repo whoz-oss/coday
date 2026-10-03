@@ -84,6 +84,8 @@ class Neo4jDurableAgentAttemptRepository(
             turnCorrelation = attempt.turnCorrelation,
             commandId = attempt.commandId,
             brief = attempt.brief,
+            environmentRef = attempt.environmentRef,
+            expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
             now = now,
         )
         if (isNew) {

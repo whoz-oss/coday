@@ -14,6 +14,7 @@ import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -134,6 +135,15 @@ class CapabilityExecutionService(
      * troubleshooting fallback only.
      */
     private val agentOsAdapterProperties: AgentOsAdapterProperties = AgentOsAdapterProperties(),
+    /**
+     * Optional work-environment read port used to bind a freshly reserved
+     * attempt to the environment it runs against (`environmentRef` +
+     * `expectedEnvironmentRevision` captured at reservation). Injected in
+     * production; pure unit tests may leave it `null` and attempts then carry
+     * no environment link (same nullable-dependency pattern as
+     * [agentStepResultService]).
+     */
+    private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -532,6 +542,9 @@ class CapabilityExecutionService(
         }
         val newAttempt = existing == null
         if (newAttempt) {
+            // Bind the attempt to the environment it runs against, captured at
+            // reservation time (Req 8). Null when no environment exists yet.
+            val environment = workEnvironmentRepository?.findLatestByWorkflowId(scope, workflowId)
             attempts.register(
                 scope,
                 DurableAgentAttempt(
@@ -543,6 +556,8 @@ class CapabilityExecutionService(
                     attemptNumber = 1,
                     agentName = agentId,
                     brief = brief,
+                    environmentRef = environment?.environmentId,
+                    expectedEnvironmentRevision = environment?.revision,
                 ),
             )
         }
