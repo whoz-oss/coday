@@ -32,8 +32,22 @@ export type BlockerCode =
   | 'VERIFICATION_FAILED'
   | 'UNKNOWN_RUNTIME'
 
-/** §6.1 get_workflow — projection lifecycle state enum. */
-export type WorkflowState = 'absent' | 'existing' | 'removed' | 'purged'
+/**
+ * §6.1 get_workflow — projection lifecycle state enum, extended with the Phase 10
+ * terminal/sealing vocabulary.
+ *
+ * `completed` = executed successfully (Factory sealed); `archived` = retired from the
+ * active surface but still readable; `runtime-closed` = the AgentOS runtime closed the
+ * case without a Factory success verdict (e.g. killed/closed-by-user). The cockpit MUST
+ * render these distinctly — they are NOT interchangeable.
+ */
+export type WorkflowState = 'absent' | 'existing' | 'removed' | 'purged' | 'completed' | 'archived' | 'runtime-closed'
+
+/**
+ * Stable `type` values of an {@link AllowedActionDto} (Factory `WorkflowActionTypes`).
+ * The cockpit derives its controls strictly from these — never from a hardcoded list.
+ */
+export type AllowedActionType = 'reply' | 'retry' | 'cancel_attempt' | 'continue_cost' | 'stop_cost'
 
 /** §6.1 get_required_human_actions — allowed human action ids. */
 export type HumanActionId = 'approve' | 'reject'
@@ -173,3 +187,87 @@ export interface ControllerHistoryDto {
  * metadata until Phase 6 defines a real source.
  */
 export type StepLane = 'human' | 'agent' | 'code'
+
+/**
+ * Factory success envelope (§2.3): every `/api/factory/**` success payload is
+ * wrapped in `{ "data": ... }`. The client unwraps it before mapping.
+ */
+export interface FactoryDataEnvelope<T> {
+  data: T
+}
+
+/** Error payload carried by the Factory error envelope (§2.3, §7). */
+export interface FactoryErrorPayload {
+  code: string
+  message: string
+  details?: Record<string, unknown>
+}
+
+/** Factory error envelope: `{ "error": { code, message, details } }`. */
+export interface FactoryErrorEnvelope {
+  error: FactoryErrorPayload
+}
+
+/**
+ * One action the backend explicitly authorizes from the current state
+ * (`GET /api/factory/workflows/{workflowId}/actions`).
+ *
+ * `expectedRevision` is the revision the executing command must be fenced on.
+ * Older/alternate DTO shapes may use `id`/`kind` instead of `type` — both are
+ * accepted so the mapping never fabricates an action.
+ */
+export interface AllowedActionDto {
+  /** Stable action type used for gating (`reply`, `retry`, `cancel_attempt`, `continue_cost`, `stop_cost`). */
+  type?: AllowedActionType | string
+  /** Alternate id form (legacy/mock DTO shape). */
+  id?: string
+  label?: string
+  kind?: string
+  enabled?: boolean
+  reason?: string
+  interactionId?: string
+  stepId?: string
+  attemptId?: string
+  caseId?: string
+  questionEventId?: string
+  expectedRevision?: number
+}
+
+/** Unwrapped payload of `GET /api/factory/workflows/{workflowId}/actions`. */
+export interface WorkflowActionsResponseDto {
+  workflowId?: string
+  revision?: number
+  allowedActions: AllowedActionDto[]
+  blockers: WorkflowBlockerDto[]
+}
+
+/**
+ * Unwrapped payload of `GET /api/factory/workstreams/{workstreamId}/projection`
+ * (Phase 5). `workstreamRevision` is a stable ETag-like hash over the aggregated
+ * state; `asOf` is the freshness anchor.
+ */
+export interface WorkstreamProjectionResponseDto {
+  workstreamId?: string
+  workstreamRevision?: number | string
+  revision?: number | string
+  asOf?: string
+  workflows?: WorkflowSummaryDto[]
+  items?: WorkflowSummaryDto[]
+  [key: string]: unknown
+}
+
+/**
+ * Standardized command acknowledgement (Phase 7 output contract). Returned by
+ * retry / reply / plan-change decision commands; `allowedActions` may be present
+ * as a best-effort refresh of the authoritative action set.
+ */
+export interface FactoryCommandAckDto {
+  status?: string
+  revision?: number
+  reasonCode?: string | null
+  interactionId?: string | null
+  proposalId?: string | null
+  allowedActions?: AllowedActionDto[]
+  message?: string | null
+  [key: string]: unknown
+}

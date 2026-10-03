@@ -24,16 +24,20 @@
             }
           </p>
           <div class="ws-interactions__actions">
-            @for (action of interaction.actions; track action.id) {
-              <button
-                mat-stroked-button
-                type="button"
-                [class.ws-interactions__approve]="action.id === 'approve'"
-                [class.ws-interactions__reject]="action.id === 'reject'"
-                (click)="onRespond(interaction, action)"
-              >
-                {{ action.label }}
-              </button>
+            @if (canRespond(interaction)) {
+              @for (action of interaction.actions; track action.id) {
+                <button
+                  mat-stroked-button
+                  type="button"
+                  [class.ws-interactions__approve]="action.id === 'approve'"
+                  [class.ws-interactions__reject]="action.id === 'reject'"
+                  (click)="onRespond(interaction, action)"
+                >
+                  {{ action.label }}
+                </button>
+              }
+            } @else {
+              <span class="ws-interactions__denied">Reply not authorized for this caller</span>
             }
           </div>
         </li>

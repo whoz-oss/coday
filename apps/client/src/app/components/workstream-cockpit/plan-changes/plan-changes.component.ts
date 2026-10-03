@@ -6,6 +6,8 @@ import { PlanChangeProposalDto } from '../../../core/models/workstream.model'
 /** Plan-change decision intent emitted by the view. */
 export interface PlanChangeDecision {
   proposalId: string
+  workflowId?: string
+  expectedRevision?: number
   decision: 'approve' | 'reject'
 }
 
@@ -31,6 +33,11 @@ export class PlanChangesComponent {
 
   // TODO(Phase 6): wire the decision to the real plan-change decision endpoint (TBD in Phase 0 doc).
   protected onDecide(proposal: PlanChangeProposalDto, decision: 'approve' | 'reject'): void {
-    this.decide.emit({ proposalId: proposal.proposalId, decision })
+    this.decide.emit({
+      proposalId: proposal.proposalId,
+      workflowId: proposal.workflowId,
+      expectedRevision: proposal.revision,
+      decision,
+    })
   }
 }

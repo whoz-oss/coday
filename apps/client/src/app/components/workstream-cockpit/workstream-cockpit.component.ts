@@ -2,18 +2,22 @@ import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signa
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute } from '@angular/router'
 import { MatIconModule } from '@angular/material/icon'
+import { catchError, of } from 'rxjs'
 import {
+  AllowedActionDto,
   ControllerHistoryDto,
   HumanActionRequiredDto,
   PlanChangeProposalDto,
   StepAttemptDto,
   StepLane,
+  WorkflowActionsResponseDto,
   WorkflowBlockerDto,
   WorkflowDetailDto,
   WorkflowListDto,
   WorkstreamDto,
 } from '../../core/models/workstream.model'
-import { MOCK_AS_OF, WorkstreamMockService } from '../../core/services/workstream-mock.service'
+import { FactoryApiError, FactoryWorkstreamService } from '../../core/services/factory-workstream.service'
+import { MOCK_AS_OF } from '../../core/services/workstream-mock.service'
 import { WorkstreamAgentLinkComponent } from './agent-link-tile/workstream-agent-link.component'
 import { ControllerHistoryComponent } from './controller-history/controller-history.component'
 import { HumanInteractionsComponent, InteractionResponse } from './human-interactions/human-interactions.component'
@@ -25,16 +29,15 @@ import { WorkflowDetailComponent } from './workflow-detail/workflow-detail.compo
 const DEFAULT_WORKSTREAM_ID = 'ws-demo'
 
 /**
- * Workstream Cockpit container (Phase 11 scaffold).
+ * Workstream Cockpit container (Phase 11 — real HTTP wiring).
  *
  * Routes: `/workstream` and `/project/:projectName/workstream`.
  *
- * Backed exclusively by the injectable `WorkstreamMockService` (mock DTO data
- * matching the Phase 0 contracts). Phase 6 will swap the mock for real
- * `/api/factory/**` HTTP calls — see the TODO(Phase 6) markers in the service.
- *
- * Only retry / decision actions derived from DTO fields are exposed; the browser
- * never launches workers nor transitions workflows directly (§5 capability matrix).
+ * Data flows exclusively through {@link FactoryWorkstreamService}, which either calls the
+ * real `/api/factory/**` endpoints (default) or the in-memory `WorkstreamMockService`
+ * (dev/test toggle). Actions are derived strictly from the backend `allowedActions`
+ * read — the browser never launches workers nor transitions workflows directly (§5
+ * capability matrix).
  */
 @Component({
   selector: 'app-workstream-cockpit',
@@ -55,7 +58,7 @@ const DEFAULT_WORKSTREAM_ID = 'ws-demo'
 })
 export class WorkstreamCockpitComponent {
   private readonly route = inject(ActivatedRoute)
-  private readonly mock = inject(WorkstreamMockService)
+  private readonly factory = inject(FactoryWorkstreamService)
   private readonly destroyRef = inject(DestroyRef)
 
   protected readonly projectName = this.route.snapshot.paramMap.get('projectName')
@@ -74,15 +77,25 @@ export class WorkstreamCockpitComponent {
   protected readonly proposals = signal<PlanChangeProposalDto[]>([])
   protected readonly controllerHistory = signal<ControllerHistoryDto | null>(null)
 
+  /** Authoritative actions the backend authorizes for the selected workflow. */
+  protected readonly allowedActions = signal<AllowedActionDto[]>([])
+
   protected readonly selectedStepId = signal<string | null>(null)
   protected readonly stepAttempts = signal<StepAttemptDto[]>([])
 
-  /** Freshness anchor for the mock dataset displayed in the top badge. */
-  protected readonly asOf = MOCK_AS_OF
+  /** UI state. */
+  protected readonly isLoading = signal<boolean>(false)
+  protected readonly errorMessage = signal<string | null>(null)
+
+  /** True when the cockpit is backed by the in-memory mock rather than real HTTP. */
+  protected readonly isMock = this.factory.useMock
+
+  /** Freshness anchor: last real HTTP sync, falling back to the mock anchor. */
+  protected readonly asOf = computed(() => this.factory.lastSyncAsOf() ?? MOCK_AS_OF)
 
   /** Current revision shown by the freshness badge (selected workflow, else workstream). */
   protected readonly currentRevision = computed(
-    () => this.workflowDetail()?.revision ?? this.workstream()?.revision ?? 0
+    () => this.workflowDetail()?.revision ?? this.workstream()?.revision ?? this.factory.lastRevision() ?? 0
   )
 
   constructor() {
@@ -93,28 +106,51 @@ export class WorkstreamCockpitComponent {
     this.selectedWorkflowId.set(workflowId)
     this.selectedStepId.set(null)
     this.stepAttempts.set([])
-    this.mock
+    this.isLoading.set(true)
+    this.errorMessage.set(null)
+
+    this.factory
       .getWorkflow(workflowId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((detail) => this.workflowDetail.set(detail))
-    this.mock
+      .pipe(
+        catchError((error) => {
+          this.errorMessage.set(this.messageOf(error))
+          return of<WorkflowDetailDto | null>(null)
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((detail) => {
+        this.workflowDetail.set(detail)
+        this.isLoading.set(false)
+      })
+
+    this.factory
       .getStepLanes(workflowId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((lanes) => this.stepLanes.set(lanes))
-    this.mock
-      .getBlockers(workflowId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((blockers) => this.blockers.set(blockers))
-    this.mock
+
+    this.factory
+      .getAllowedActions(workflowId)
+      .pipe(
+        catchError(() => of<WorkflowActionsResponseDto>({ allowedActions: [], blockers: [] })),
+        takeUntilDestroyed(this.destroyRef)
+      )
+      .subscribe((actions) => {
+        this.allowedActions.set(actions.allowedActions)
+        this.blockers.set(actions.blockers)
+      })
+
+    this.factory
       .getRequiredHumanActions(workflowId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((interactions) => this.interactions.set(interactions))
-    this.mock
+
+    this.factory
       .getPlanChangeProposals(workflowId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((proposals) => this.proposals.set(proposals))
-    this.mock
-      .getControllerHistory(workflowId)
+
+    this.factory
+      .getControllerHistory(workflowId, this.workstreamId)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((history) => this.controllerHistory.set(history))
   }
@@ -123,53 +159,101 @@ export class WorkstreamCockpitComponent {
     const workflowId = this.selectedWorkflowId()
     if (!workflowId) return
     this.selectedStepId.set(stepId)
-    this.mock
+    this.stepAttempts.set([])
+    this.factory
       .getStepAttempts(workflowId, stepId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        catchError(() => of([] as StepAttemptDto[])),
+        takeUntilDestroyed(this.destroyRef)
+      )
       .subscribe((attempts) => this.stepAttempts.set(attempts))
   }
 
-  /** Retry intent — forwarded to the request_agent_retry command stub (mock). */
+  /** Retry intent — forwarded to the request_agent_retry command. */
   protected onRetry(request: StepRetryRequest): void {
-    this.mock
+    this.factory
       .requestAgentRetry(request.workflowId, request.stepId, request.expectedRevision, 'COCKPIT_MANUAL_RETRY')
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((ack) => console.log('[WORKSTREAM-COCKPIT] retry acknowledgement (mock)', ack))
+      .subscribe({
+        next: (ack) => {
+          if (ack.allowedActions) this.allowedActions.set(ack.allowedActions)
+          this.refreshSelectedWorkflow()
+        },
+        error: (error) => this.errorMessage.set(this.messageOf(error)),
+      })
   }
 
-  /** Human decision on an open interaction — forwarded to the reply command stub (mock). */
+  /** Human decision on an open interaction — forwarded to the reply command. */
   protected onRespond(response: InteractionResponse): void {
-    this.mock
-      .respondToInteraction(response.workflowId, response.interactionId, response.actionId)
+    this.factory
+      .respondToInteraction(response.workflowId, response.interactionId, response.actionId, response.expectedRevision)
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((ack) => console.log('[WORKSTREAM-COCKPIT] interaction reply acknowledgement (mock)', ack))
+      .subscribe({
+        next: (ack) => {
+          if (ack.allowedActions) this.allowedActions.set(ack.allowedActions)
+          this.refreshSelectedWorkflow()
+        },
+        error: (error) => this.errorMessage.set(this.messageOf(error)),
+      })
   }
 
-  /** Plan-change decision — forwarded to the decision command stub (mock). */
+  /** Plan-change decision — forwarded to the decision command. */
   protected onDecide(decision: PlanChangeDecision): void {
-    this.mock
-      .decidePlanChange(decision.proposalId, decision.decision)
+    this.factory
+      .decidePlanChange(decision.proposalId, decision.decision, {
+        workflowId: decision.workflowId,
+        expectedRevision: decision.expectedRevision,
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((ack) => console.log('[WORKSTREAM-COCKPIT] plan-change decision acknowledgement (mock)', ack))
+      .subscribe({
+        next: (ack) => {
+          if (ack.allowedActions) this.allowedActions.set(ack.allowedActions)
+          this.refreshSelectedWorkflow()
+        },
+        error: (error) => this.errorMessage.set(this.messageOf(error)),
+      })
   }
 
   private loadWorkstream(): void {
-    this.mock
+    this.isLoading.set(true)
+    this.errorMessage.set(null)
+
+    this.factory
       .getWorkstream(this.workstreamId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        catchError((error) => {
+          this.errorMessage.set(this.messageOf(error))
+          return of<WorkstreamDto | null>(null)
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
       .subscribe((workstream) => this.workstream.set(workstream))
-    this.mock
+
+    this.factory
       .listWorkflows(this.workstreamId)
-      .pipe(takeUntilDestroyed(this.destroyRef))
+      .pipe(
+        catchError((error) => {
+          this.errorMessage.set(this.messageOf(error))
+          return of<WorkflowListDto>({ items: [], nextCursor: null })
+        }),
+        takeUntilDestroyed(this.destroyRef)
+      )
       .subscribe((list) => {
         this.workflowList.set(list)
+        this.isLoading.set(false)
         // Preload details + pending actions per workflow for the summary view.
         for (const item of list.items) {
-          this.mock
+          this.factory
             .getWorkflow(item.workflowId)
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((detail) => this.detailsById.update((byId) => ({ ...byId, [detail.workflowId]: detail })))
-          this.mock
+            .pipe(
+              catchError(() => of<WorkflowDetailDto | null>(null)),
+              takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe((detail) => {
+              if (!detail) return
+              this.detailsById.update((byId) => ({ ...byId, [detail.workflowId]: detail }))
+            })
+          this.factory
             .getRequiredHumanActions(item.workflowId)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((actions) => this.pendingActions.update((all) => [...all, ...actions]))
@@ -177,5 +261,21 @@ export class WorkstreamCockpitComponent {
         const first = list.items[0]
         if (first) this.onSelectWorkflow(first.workflowId)
       })
+  }
+
+  /** Re-read the selected workflow's authoritative state after a command. */
+  private refreshSelectedWorkflow(): void {
+    const workflowId = this.selectedWorkflowId()
+    if (workflowId) this.onSelectWorkflow(workflowId)
+  }
+
+  private messageOf(error: unknown): string {
+    const factoryError = error as FactoryApiError | undefined
+    if (factoryError?.message) {
+      return factoryError.code && factoryError.code !== `HTTP_${factoryError.status}`
+        ? `${factoryError.code}: ${factoryError.message}`
+        : factoryError.message
+    }
+    return error instanceof Error ? error.message : 'Factory request failed'
   }
 }

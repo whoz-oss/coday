@@ -11,10 +11,28 @@
     </div>
     <div class="ws-cockpit__freshness" title="Data freshness / revision">
       <span class="ws-badge ws-badge--info">rev {{ currentRevision() }}</span>
-      <span class="ws-badge ws-badge--neutral">mock data</span>
-      <span class="ws-cockpit__asof">as of {{ asOf }}</span>
+      @if (isMock()) {
+        <span class="ws-badge ws-badge--neutral">mock data</span>
+      } @else {
+        <span class="ws-badge ws-badge--success">live</span>
+      }
+      <span class="ws-cockpit__asof">as of {{ asOf() }}</span>
     </div>
   </header>
+
+  @if (errorMessage(); as error) {
+    <div class="ws-cockpit__error" role="alert">
+      <mat-icon>error_outline</mat-icon>
+      <span>{{ error }}</span>
+    </div>
+  }
+
+  @if (isLoading()) {
+    <div class="ws-cockpit__loading" aria-live="polite">
+      <mat-icon>hourglass_top</mat-icon>
+      <span>Loading workstream state…</span>
+    </div>
+  }
 
   <app-workstream-agent-link [workstreamId]="workstreamId" [projectName]="projectName"></app-workstream-agent-link>
 
@@ -41,6 +59,7 @@
       [attempts]="stepAttempts()"
       [workflowId]="selectedWorkflowId()"
       [stepId]="selectedStepId()"
+      [allowedActions]="allowedActions()"
       (retry)="onRetry($event)"
     ></app-step-attempts>
 
@@ -48,6 +67,7 @@
       class="ws-cockpit__panel"
       [interactions]="interactions()"
       [workflowId]="selectedWorkflowId()"
+      [allowedActions]="allowedActions()"
       (respond)="onRespond($event)"
     ></app-human-interactions>
 

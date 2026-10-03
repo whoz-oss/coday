@@ -1,12 +1,14 @@
 import { Injectable } from '@angular/core'
 import { Observable, of } from 'rxjs'
 import {
+  AllowedActionDto,
   ControllerHistoryDto,
   HumanActionId,
   HumanActionRequiredDto,
   PlanChangeProposalDto,
   StepAttemptDto,
   StepLane,
+  WorkflowActionsResponseDto,
   WorkflowBlockerDto,
   WorkflowDetailDto,
   WorkflowListDto,
@@ -418,6 +420,48 @@ export class WorkstreamMockService {
   getBlockers(workflowId: string): Observable<WorkflowBlockerDto[]> {
     console.log('[WORKSTREAM-MOCK] getBlockers', workflowId)
     return of(MOCK_WORKFLOW_DETAILS[workflowId]?.blockers ?? [])
+  }
+
+  /**
+   * Authoritative allowed actions (`GET /api/factory/workflows/{workflowId}/actions`).
+   *
+   * Mock mode derives the same shape as the real endpoint from the fixtures:
+   * a `reply` action per open interaction and a `retry` action per failed /
+   * indeterminate attempt. Components gate their controls on this list, never
+   * on a hardcoded action set.
+   */
+  getAllowedActions(workflowId: string): Observable<WorkflowActionsResponseDto> {
+    console.log('[WORKSTREAM-MOCK] getAllowedActions', workflowId)
+    const allowedActions: AllowedActionDto[] = []
+    for (const interaction of MOCK_HUMAN_ACTIONS[workflowId] ?? []) {
+      allowedActions.push({
+        type: 'reply',
+        interactionId: interaction.interactionId,
+        stepId: interaction.stepId,
+        questionEventId: interaction.questionEventId ?? undefined,
+        expectedRevision: interaction.expectedRevision,
+        label: 'Reply',
+      })
+    }
+    const attempts = Object.entries(MOCK_STEP_ATTEMPTS)
+      .filter(([key]) => key.startsWith(`${workflowId}/`))
+      .flatMap(([, list]) => list)
+    for (const attempt of attempts) {
+      if (attempt.status === 'failed' || attempt.status === 'indeterminate') {
+        allowedActions.push({
+          type: 'retry',
+          stepId: attempt.stepId,
+          expectedRevision: attempt.revision,
+          label: 'Retry step',
+        })
+      }
+    }
+    return of({
+      workflowId,
+      revision: MOCK_WORKFLOW_DETAILS[workflowId]?.revision ?? 0,
+      allowedActions,
+      blockers: MOCK_WORKFLOW_DETAILS[workflowId]?.blockers ?? [],
+    })
   }
 
   /** Phase 0 tool: get_required_human_actions. */

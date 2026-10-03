@@ -27,6 +27,11 @@
   list-style: none;
 }
 
+.ws-summary__empty {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
 .ws-summary__item {
   padding: 0.75rem;
   border: 1px solid var(--color-border);
@@ -138,6 +143,12 @@
     background: rgba(124, 108, 168, 0.15);
     color: #6b6196;
     border: 1px solid rgba(124, 108, 168, 0.4);
+  }
+
+  &--muted {
+    background: rgba(100, 116, 139, 0.12);
+    color: #64748b;
+    border: 1px solid rgba(100, 116, 139, 0.4);
   }
 
   &--success {

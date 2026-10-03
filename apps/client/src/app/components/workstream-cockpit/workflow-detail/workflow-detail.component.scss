@@ -131,6 +131,12 @@
     border: 1px solid rgba(124, 108, 168, 0.4);
   }
 
+  &--muted {
+    background: rgba(100, 116, 139, 0.12);
+    color: #64748b;
+    border: 1px solid rgba(100, 116, 139, 0.4);
+  }
+
   &--success {
     background: rgba(22, 163, 74, 0.12);
     color: #15803d;
