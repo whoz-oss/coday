@@ -419,6 +419,72 @@ Work only on this step. Return a structured result for downstream Factory steps.
         assertThat(brief.split(requestText)).hasSize(2)
     }
 
+    // ----- 3b. Reservation BEFORE case creation; caseId BEFORE the turn ----
+
+    /**
+     * Reqs 3 & 4 attestation: the durable attempt is idempotently reserved
+     * BEFORE the AgentOS case is created, and the `caseId` is persisted on the
+     * attempt BEFORE the useful work (the turn brief) is dispatched.
+     */
+    @Test
+    fun `the attempt is reserved before case creation and the caseId is persisted before the turn is sent`() {
+        val workflowId = isolatedWorkflowId("wf-bridge-reserve-order")
+        startSession("bridge-reserve-order", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        val expectedCaseId = CapabilityExecutionService.stableCaseId(workflowId, "A")
+        var statusAtCaseCreation: AgentAttemptStatus? = null
+        var statusAtStartTurn: AgentAttemptStatus? = null
+        var caseIdAtStartTurn: String? = null
+        val adapter = object : FakeAdapter(caseSteps(workflowId, "A"), { AgentOsExecutionVerdict.Succeeded(emptyMap()) }) {
+            override fun createOrRecoverExecution(
+                namespaceId: String,
+                workflowId: String,
+                stepId: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+                caseId: String,
+            ): CaseHandle {
+                // Req 3: at the very first AgentOS case creation, the durable
+                // attempt already exists AND is reserved (claimed), not pending.
+                statusAtCaseCreation = durableAgentAttemptService.find(
+                    scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+                )?.status
+                return super.createOrRecoverExecution(namespaceId, workflowId, stepId, externalUserId, attemptId, capabilityToken, caseId)
+            }
+
+            override fun startTurn(
+                caseId: String,
+                persona: String,
+                brief: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+            ) {
+                // Req 4: at the instant the useful work is dispatched, the
+                // deterministic caseId is already persisted on the attempt and
+                // the attempt is durably marked `starting`.
+                val attempt = durableAgentAttemptService.find(
+                    scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+                )
+                statusAtStartTurn = attempt?.status
+                caseIdAtStartTurn = attempt?.caseId
+                super.startTurn(caseId, persona, brief, externalUserId, attemptId, capabilityToken)
+            }
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(adapter.createCalls.get()).isEqualTo(1)
+        assertThat(adapter.startTurns).hasSize(1)
+        assertThat(statusAtCaseCreation).isEqualTo(AgentAttemptStatus.CLAIMING)
+        assertThat(statusAtStartTurn).isEqualTo(AgentAttemptStatus.STARTING)
+        assertThat(caseIdAtStartTurn).isEqualTo(expectedCaseId)
+        val attempt = durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)
+        assertThat(attempt!!.caseId).isEqualTo(expectedCaseId)
+    }
+
     // ----- 4. Two concurrent executions ⇒ one attempt owns it ------------
 
     @Test
