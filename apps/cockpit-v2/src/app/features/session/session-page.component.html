@@ -83,6 +83,8 @@
     <sf-agent-timeline
       [lanes]="s.lanes"
       [nowSec]="s.nowSec"
+      [status]="s.status"
+      [startedAt]="s.startedAt"
       [selected]="selectedBlock()"
       (blockSelect)="selectBlock($event)"
     />
@@ -111,13 +113,45 @@
             <mat-expansion-panel>
               <mat-expansion-panel-header>
                 <mat-panel-title>{{ sec.label }}</mat-panel-title>
-                @if (sec.count !== undefined) {
+                @if (sec.notAvailable) {
+                  <mat-panel-description>
+                    <span class="badge badge--off">indisponible</span>
+                  </mat-panel-description>
+                } @else if (sec.count !== undefined) {
                   <mat-panel-description>
                     <span class="badge" [class.badge--on]="sec.count > 0">{{ sec.count }}</span>
                   </mat-panel-description>
                 }
               </mat-expansion-panel-header>
-              <p class="sf-muted section-body">{{ sec.body ?? 'Aucun contenu pour le moment.' }}</p>
+              <div class="section-content">
+                @if (sec.items?.length) {
+                  <ul class="section-items">
+                    @for (item of sec.items; track $index) {
+                      <li class="section-item">
+                        <span class="item-title">{{ item.title }}</span>
+                        @if (item.status) {
+                          <span class="item-status">{{ item.status }}</span>
+                        }
+                        @if (item.subtitle) {
+                          <span class="item-subtitle">{{ item.subtitle }}</span>
+                        }
+                        @if (item.actions?.length) {
+                          <span class="item-actions">
+                            @for (action of item.actions; track action.id) {
+                              <span class="item-action">{{ action.label }}</span>
+                            }
+                          </span>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+                @if (sec.body) {
+                  <p class="sf-muted section-body">{{ sec.body }}</p>
+                } @else if (!sec.items?.length) {
+                  <p class="sf-muted section-body">Aucun contenu pour le moment.</p>
+                }
+              </div>
             </mat-expansion-panel>
           }
         </mat-accordion>
