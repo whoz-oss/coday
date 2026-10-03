@@ -67,8 +67,12 @@ class FactoryRequestTransitionToolSpec : StringSpec({
         var requestedBody = ""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange ->
-            requestedPath = exchange.requestURI.toString()
-            requestedBody = exchange.requestBody.bufferedReader().readText()
+            if (exchange.requestMethod == "POST") {
+                requestedPath = exchange.requestURI.toString()
+                requestedBody = exchange.requestBody.bufferedReader().readText()
+            } else {
+                exchange.requestBody.close()
+            }
             val bytes =
                 """{"data":{"workflowId":"wf-1","requestId":"factory-id","revision":5,"changed":true,"idempotent":false,"projection":{}}}"""
                     .toByteArray()
@@ -82,6 +86,12 @@ class FactoryRequestTransitionToolSpec : StringSpec({
                 FactoryRequestTransitionTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, "runtime-configured")
                     .execute(input, toolContext)
             result.success shouldBe true
+            // Phase 7 standardized command output.
+            val output = mapper.readTree(result.output)
+            output.path("status").asText() shouldBe "accepted"
+            output.path("revision").asLong() shouldBe 5L
+            output.path("changed").asBoolean() shouldBe true
+            output.path("allowedActions").isArray shouldBe true
             requestedPath shouldBe "/api/factory/workflows/wf-1/transitions"
             val sent = mapper.readTree(requestedBody)
             sent.path("transition").fieldNames().asSequence().toSet() shouldBe setOf(
