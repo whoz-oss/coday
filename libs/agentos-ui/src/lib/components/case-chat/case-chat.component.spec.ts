@@ -445,6 +445,35 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(item?.kind === 'question' && item.answer).toBe(fromA)
     })
 
+    it('labels the answer with the respondent name, falling back to You for an unnamed user', () => {
+      const ref = makeComponent()
+      const named = answer('a-1', 'u-1', 'blue')
+      const unnamed = { ...named, actor: { id: 'u-1', role: ActorRoleEnum.USER } }
+      expect(ref.instance['answerLabel'](named)).toBe('Someone')
+      expect(ref.instance['answerLabel'](unnamed)).toBe('You')
+    })
+
+    it('only treats an unanswered, non-OAuth question as pending (focus target)', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([question()])
+      expect(ref.instance['pendingQuestionId']()).toBe('q-1')
+
+      ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
+      expect(ref.instance['pendingQuestionId']()).toBeNull()
+
+      ref.instance['events'].set([{ ...question(), questionType: QuestionEventQuestionTypeEnum.OAUTH_AUTHORIZE }])
+      expect(ref.instance['pendingQuestionId']()).toBeNull()
+    })
+
+    it('does not post a second answer while one is in flight', () => {
+      const ref = makeComponent()
+      ref.instance['onQuestionAnswered'](question(), 'blue')
+      ref.instance['onQuestionAnswered'](question(), 'blue')
+
+      expect(http.post).toHaveBeenCalledTimes(1)
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'blue', answerToEventId: 'q-1' })
+    })
+
     it('does not render the AnswerEvent as its own timeline item, even in technical mode', () => {
       const ref = makeComponent()
       ref.setInput('showTechnicalOverride', true)
