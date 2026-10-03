@@ -11,8 +11,12 @@ import java.time.Instant
  * is the composite business key `(organizationId, workstreamId)` encoded as a
  * single string, so a scope-less access is impossible by construction.
  *
- * The former JSONB `payload` column only ever held `{ "status": … }`; the status
- * is promoted to a first-class property here.
+ * The node is the versioned workstream registry entry: besides the display
+ * [name] and lifecycle [status] it carries the optional governance metadata
+ * ([namespaceId], [controllerAgentRef], [allowedWorkflowTypes],
+ * [governancePolicyRef]) and the optimistic-locking [revision] with its audit
+ * timestamps. New properties are defaulted so pre-existing nodes load without
+ * any migration.
  */
 @Node("Workstream")
 data class WorkstreamNode(
@@ -22,6 +26,14 @@ data class WorkstreamNode(
     val workstreamId: String,
     val name: String,
     val status: String,
+    /** Namespace the workstream is bound to, when it declares one. */
+    val namespaceId: String? = null,
+    /** Optional reference to the agent controlling this workstream. */
+    val controllerAgentRef: String? = null,
+    /** Workflow types allowed inside this workstream; empty means unrestricted. */
+    val allowedWorkflowTypes: List<String> = emptyList(),
+    /** Optional reference to the governance policy applied to this workstream. */
+    val governancePolicyRef: String? = null,
     val revision: Int = 1,
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
