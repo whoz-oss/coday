@@ -1,0 +1,19 @@
+<div class="ws-agent-link" aria-label="Workstream Agent conversation">
+  <div class="ws-agent-link__info">
+    <mat-icon>smart_toy</mat-icon>
+    <div>
+      <p class="ws-agent-link__title">Workstream Agent</p>
+      <p class="ws-agent-link__subtitle">Supervision thread for {{ workstreamId ?? 'this workstream' }}</p>
+    </div>
+  </div>
+  <button
+    mat-stroked-button
+    type="button"
+    class="ws-agent-link__cta"
+    [disabled]="true"
+    title="Available in Phase 6 — the Workstream Agent thread is not wired yet"
+    (click)="onOpenAgentThread()"
+  >
+    Open conversation
+  </button>
+</div>

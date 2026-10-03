@@ -1,0 +1,46 @@
+<section class="ws-plans" aria-label="Plan change proposals">
+  <h2 class="ws-section-title">
+    <mat-icon>edit_note</mat-icon>
+    Plan change proposals
+  </h2>
+
+  @if (proposals.length === 0) {
+    <p class="ws-plans__empty">No plan change proposal on this workflow.</p>
+  } @else {
+    <ul class="ws-plans__list">
+      @for (proposal of proposals; track proposal.proposalId) {
+        <li class="ws-plans__item">
+          <div class="ws-plans__row">
+            <span class="ws-plans__id">{{ proposal.proposalId }}</span>
+            <span class="ws-badge ws-badge--info">{{ proposal.status }}</span>
+            <span class="ws-plans__rev">rev {{ proposal.revision }}</span>
+          </div>
+          <p class="ws-plans__summary">{{ proposal.summary }}</p>
+          <ul class="ws-plans__ops">
+            @for (operation of proposal.operations; track operation.op + operation.stepId) {
+              <li class="ws-plans__op">
+                <span class="ws-plans__op-kind">{{ operation.op }}</span>
+                <span class="ws-plans__op-step">{{ operation.stepId }}</span>
+                @if (operation.target) {
+                  <span class="ws-plans__op-target">→ {{ operation.target }}</span>
+                }
+              </li>
+            }
+          </ul>
+          <p class="ws-plans__impact">
+            Reason: Workstream Agent proposal — applies nothing until validated by the Factory. Impact: changes the
+            remaining plan of workflow {{ proposal.workflowId }}.
+          </p>
+          <div class="ws-plans__actions">
+            <button mat-stroked-button type="button" class="ws-plans__approve" (click)="onDecide(proposal, 'approve')">
+              Approve
+            </button>
+            <button mat-stroked-button type="button" class="ws-plans__reject" (click)="onDecide(proposal, 'reject')">
+              Reject
+            </button>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</section>

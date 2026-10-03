@@ -288,6 +288,28 @@
               </div>
             }
 
+            <!-- Workstream Cockpit - Available for all users -->
+            @if (selectedProjectName()) {
+              <div class="section-container">
+                <a
+                  class="section-toggle"
+                  (click)="openWorkstream(); $event.preventDefault(); $event.stopPropagation()"
+                  role="button"
+                  tabindex="0"
+                >
+                  <mat-icon class="section-icon">account_tree</mat-icon>
+                  <span class="section-label">Workstream</span>
+                </a>
+              </div>
+            } @else {
+              <div class="section-container">
+                <a class="section-toggle disabled" role="button" tabindex="-1" aria-disabled="true">
+                  <mat-icon class="section-icon">account_tree</mat-icon>
+                  <span class="section-label">Workstream (No project)</span>
+                </a>
+              </div>
+            }
+
             <!-- Preview Server - visible when project has preview.command configured -->
             @if (hasPreviewConfig()) {
               <div class="section-container" [class.expanded]="expandedSections['preview']">
