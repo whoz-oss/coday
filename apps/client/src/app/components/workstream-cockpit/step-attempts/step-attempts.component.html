@@ -1,0 +1,66 @@
+<section class="ws-attempts" aria-label="Step attempts">
+  <h2 class="ws-section-title">
+    <mat-icon>history</mat-icon>
+    Step attempts
+    @if (stepId) {
+      — {{ stepId }}
+    }
+  </h2>
+
+  @if (!stepId) {
+    <p class="ws-attempts__empty">Select a step in the lanes view to inspect its attempts.</p>
+  } @else if (attempts.length === 0) {
+    <p class="ws-attempts__empty">No durable attempt recorded for this step yet.</p>
+  } @else {
+    <ul class="ws-attempts__list">
+      @for (attempt of attempts; track attempt.attemptId) {
+        <li class="ws-attempts__item">
+          <div class="ws-attempts__row">
+            <span class="ws-attempts__id">#{{ attempt.attemptNumber }} · {{ attempt.attemptId }}</span>
+            <span [class]="attemptBadgeClass(attempt.status)">{{ attempt.status }}</span>
+          </div>
+          <dl class="ws-attempts__facts">
+            <div>
+              <dt>Agent</dt>
+              <dd>{{ attempt.agentName }}</dd>
+            </div>
+            <div>
+              <dt>Case</dt>
+              <dd>{{ attempt.caseId }}</dd>
+            </div>
+            <div>
+              <dt>Environment</dt>
+              <dd>{{ attempt.status }}</dd>
+            </div>
+            <div>
+              <dt>Evidence</dt>
+              <dd>{{ attempt.resultEvidenceId ?? '—' }}</dd>
+            </div>
+            @if (attempt.failureCode) {
+              <div>
+                <dt>Failure</dt>
+                <dd class="ws-attempts__failure">{{ attempt.failureCode }}</dd>
+              </div>
+            }
+            <div>
+              <dt>Revision</dt>
+              <dd>{{ attempt.revision }}</dd>
+            </div>
+          </dl>
+          <div class="ws-attempts__actions">
+            <button
+              mat-stroked-button
+              type="button"
+              [disabled]="!canRetry(attempt.status)"
+              title="Request an agent retry (control-plane action)"
+              (click)="onRetry(attempt)"
+            >
+              <mat-icon>replay</mat-icon>
+              Retry
+            </button>
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</section>

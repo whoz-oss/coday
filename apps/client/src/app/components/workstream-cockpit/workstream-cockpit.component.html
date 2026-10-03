@@ -1,0 +1,62 @@
+<div class="ws-cockpit">
+  <header class="ws-cockpit__header">
+    <div class="ws-cockpit__title-block">
+      <h1 class="ws-cockpit__title">
+        <mat-icon>account_tree</mat-icon>
+        Workstream Cockpit
+      </h1>
+      @if (workstream(); as ws) {
+        <p class="ws-cockpit__subtitle">{{ ws.name }} · {{ ws.organizationId }} · {{ ws.status }}</p>
+      }
+    </div>
+    <div class="ws-cockpit__freshness" title="Data freshness / revision">
+      <span class="ws-badge ws-badge--info">rev {{ currentRevision() }}</span>
+      <span class="ws-badge ws-badge--neutral">mock data</span>
+      <span class="ws-cockpit__asof">as of {{ asOf }}</span>
+    </div>
+  </header>
+
+  <app-workstream-agent-link [workstreamId]="workstreamId" [projectName]="projectName"></app-workstream-agent-link>
+
+  <div class="ws-cockpit__grid">
+    <app-workstream-summary
+      class="ws-cockpit__panel"
+      [workflows]="workflowList().items"
+      [detailsById]="detailsById()"
+      [selectedWorkflowId]="selectedWorkflowId()"
+      [pendingActions]="pendingActions()"
+      (selectWorkflow)="onSelectWorkflow($event)"
+    ></app-workstream-summary>
+
+    <app-workflow-detail
+      class="ws-cockpit__panel"
+      [detail]="workflowDetail()"
+      [lanes]="stepLanes()"
+      [selectedStepId]="selectedStepId()"
+      (selectStep)="onSelectStep($event)"
+    ></app-workflow-detail>
+
+    <app-step-attempts
+      class="ws-cockpit__panel"
+      [attempts]="stepAttempts()"
+      [workflowId]="selectedWorkflowId()"
+      [stepId]="selectedStepId()"
+      (retry)="onRetry($event)"
+    ></app-step-attempts>
+
+    <app-human-interactions
+      class="ws-cockpit__panel"
+      [interactions]="interactions()"
+      [workflowId]="selectedWorkflowId()"
+      (respond)="onRespond($event)"
+    ></app-human-interactions>
+
+    <app-plan-changes
+      class="ws-cockpit__panel"
+      [proposals]="proposals()"
+      (decide)="onDecide($event)"
+    ></app-plan-changes>
+
+    <app-controller-history class="ws-cockpit__panel" [history]="controllerHistory()"></app-controller-history>
+  </div>
+</div>

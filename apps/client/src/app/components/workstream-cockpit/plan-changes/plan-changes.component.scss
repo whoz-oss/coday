@@ -1,0 +1,133 @@
+:host {
+  display: block;
+}
+
+.ws-plans {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.ws-section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ws-plans__empty {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.ws-plans__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-plans__item {
+  padding: 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+}
+
+.ws-plans__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ws-plans__id {
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--color-text);
+}
+
+.ws-plans__rev {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+}
+
+.ws-plans__summary {
+  margin: 0.5rem 0 0;
+  color: var(--color-text);
+}
+
+.ws-plans__ops {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ws-plans__op {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+}
+
+.ws-plans__op-kind {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ws-plans__op-step {
+  font-family: monospace;
+  color: var(--color-text);
+}
+
+.ws-plans__op-target {
+  color: var(--color-text-secondary);
+}
+
+.ws-plans__impact {
+  margin: 0.5rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+}
+
+.ws-plans__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.ws-plans__approve {
+  border-color: rgba(22, 163, 74, 0.5);
+  color: #15803d;
+}
+
+.ws-plans__reject {
+  border-color: rgba(220, 38, 38, 0.5);
+  color: #b91c1c;
+}
+
+.ws-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+
+  &--info {
+    background: rgba(70, 94, 122, 0.15);
+    color: #465e7a;
+    border: 1px solid rgba(70, 94, 122, 0.4);
+  }
+}
