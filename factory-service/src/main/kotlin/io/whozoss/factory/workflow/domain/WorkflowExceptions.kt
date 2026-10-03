@@ -35,6 +35,15 @@ object WorkflowErrorCodes {
     const val DECLARATIVE_WORKFLOW = "DECLARATIVE_WORKFLOW"
     const val GOVERNED_WORKFLOW_REQUIRES_TRANSITION = "GOVERNED_WORKFLOW_REQUIRES_TRANSITION"
     const val REVISION_CONFLICT = "REVISION_CONFLICT"
+
+    /**
+     * 409 — Phase 10 terminal governance: the overall run status of the
+     * governed instance is terminal (`completed` / `failed` / `cancelled`),
+     * so the workflow is SEALED. Reopening or mutating a sealed workflow is
+     * strictly forbidden; resuming the requirement requires a NEW workflow
+     * linked to the sealed predecessor.
+     */
+    const val WORKFLOW_SEALED = "WORKFLOW_SEALED"
     const val INVALID_LIFECYCLE_TRANSITION = "INVALID_LIFECYCLE_TRANSITION"
     const val WORKFLOW_STORAGE_FAILURE = "WORKFLOW_STORAGE_FAILURE"
     const val EVIDENCE_STORAGE_FAILURE = "EVIDENCE_STORAGE_FAILURE"
@@ -113,6 +122,9 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.WORKFLOW_PURGED,
     -> 410
     WorkflowErrorCodes.METRICS_DATA_INCOMPLETE -> 422
+    // Explicit: a sealed (terminal-run) workflow rejects any further mutation
+    // as a conflict, like every other optimistic-locking / state-machine code.
+    WorkflowErrorCodes.WORKFLOW_SEALED -> 409
     else -> 409
 }
 

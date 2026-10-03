@@ -364,8 +364,16 @@ class HttpAgentOsProxyClient(
                         facts + ("question" to pendingQuestion),
                     )
                 } else {
+                    // Legacy troubleshooting path only: even here a raw agent
+                    // message is NOT an authoritative success. Only a structured
+                    // result submitted through the capability channel may make
+                    // an agent step succeed — never a success from free text.
                     val summary = lastAgentMessage(events)
-                    AgentTurnExecutionResult.Completed(summary, facts + ("summary" to summary))
+                    AgentTurnExecutionResult.Failed(
+                        AGENT_NO_STRUCTURED_RESULT,
+                        "Case $caseId reached IDLE without a structured capability-backed result.",
+                        facts + ("summary" to summary),
+                    )
                 }
             }
             else -> AgentTurnExecutionResult.Failed(
@@ -449,6 +457,13 @@ class HttpAgentOsProxyClient(
 
     companion object {
         const val CASE_STATUS_EVENT = "CaseStatusEvent"
+
+        /**
+         * Failure code of an IDLE turn with no pending question and no
+         * structured capability-backed result. Same vocabulary as
+         * [io.whozoss.factory.adapter.agentos.VerdictDeriver.AGENT_NO_STRUCTURED_RESULT].
+         */
+        const val AGENT_NO_STRUCTURED_RESULT = "AGENT_NO_STRUCTURED_RESULT"
         val QUIESCENT_STATUSES: List<String> = listOf("IDLE", "KILLED", "ERROR")
 
         private const val STATUS_RUNNING = "RUNNING"

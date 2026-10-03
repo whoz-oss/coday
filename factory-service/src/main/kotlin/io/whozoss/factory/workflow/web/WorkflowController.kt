@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptDto
 import io.whozoss.factory.agentattempt.domain.toDto
+import io.whozoss.factory.agentattempt.service.AgentStepQuestionService
 import io.whozoss.factory.agentattempt.service.BridgeCancellationService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.config.SessionProperties
@@ -70,6 +71,11 @@ class WorkflowController(
      */
     private val durableAgentAttemptService: DurableAgentAttemptService,
     /**
+     * Phase 4 ask-step-question channel: the human answer to a worker step
+     * question supersedes attempt N and registers the resumption attempt N+1.
+     */
+    private val agentStepQuestionService: AgentStepQuestionService,
+    /**
      * Optional bridge cancellation command. Present only when the AgentOS
      * execution adapter is enabled; the cancellation route reports a clean 503
      * otherwise.
@@ -84,12 +90,16 @@ class WorkflowController(
     fun list(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestParam(name = "state", required = false) state: String?,
+        @RequestParam(name = "workflowType", required = false) workflowType: String?,
+        @RequestParam(name = "limit", required = false) limit: Int?,
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
         // `namespaceId` is an OPTIONAL filter: absent/blank lists every namespace
         // of the caller's trusted tenant scope.
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId, requireNamespace = false)
-        return WorkflowDataEnvelope(service.listProjections(caller.scope, caller.namespaceId, state ?: "active"))
+        return WorkflowDataEnvelope(
+            service.listProjections(caller.scope, caller.namespaceId, state ?: "active", workflowType, limit),
+        )
     }
 
     @GetMapping(path = ["/{workflowId}"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -431,11 +441,16 @@ class WorkflowController(
     fun listAttempts(
         @PathVariable workflowId: String,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "stepId", required = false) stepId: String?,
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): WorkflowDataEnvelope<List<DurableAgentAttemptDto>> {
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
-        val attempts = durableAgentAttemptService.findByWorkflow(caller.scope, caller.namespaceId, workflowId)
-        return WorkflowDataEnvelope(attempts.map { it.toDto() })
+        val attempts = durableAgentAttemptService.findByWorkflow(caller.scope, caller.namespaceId, workflowId).map { it.toDto() }
+        // Optional read-only step filter (Phase 6 Workstream Agent reads): a pure
+        // in-memory filter over the bounded DTO list; an unknown step degrades to
+        // an empty `{ "data": [] }` with HTTP 200, never an error.
+        val stepFilter = stepId?.takeIf { it.isNotBlank() }
+        return WorkflowDataEnvelope(stepFilter?.let { wanted -> attempts.filter { it.stepId == wanted } } ?: attempts)
     }
 
     /**
@@ -685,6 +700,62 @@ class WorkflowController(
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
         return WorkflowDataEnvelope(
             service.listInteractions(caller.scope, caller.namespaceId, workflowId, openOnly = state != "all").data,
+        )
+    }
+
+    /**
+     * Human answer to a worker step question (Phase 4 ask-step-question).
+     *
+     * Deliberately a DEDICATED endpoint rather than an overload of
+     * `/interactions/{interactionId}/reply`: the approve/reject reply contract
+     * resolves a checkpoint through the governed transition policy, whereas a
+     * step-question answer supersedes attempt N and registers the resumption
+     * attempt N+1 with its bounded resumption context — a distinct, auditable
+     * lifecycle. Revision-safe (optimistic lock on `expectedRevision`),
+     * audited (`actorId` from the verified human principal) and single-use.
+     */
+    @PostMapping(path = ["/{workflowId}/agent-step-questions/{interactionId}/answer"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Submit an authenticated human answer to a worker step question (supersedes attempt N, resumes as N+1).")
+    fun answerAgentStepQuestion(
+        @PathVariable workflowId: String,
+        @PathVariable interactionId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("namespaceId", "expectedRevision", "answer") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only namespaceId, expectedRevision and answer are accepted.")
+        }
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
+        val answer = request["answer"] as? String
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "answer is required.")
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
+        if (!trustContext?.authenticated.orFalse() || trustContext?.principalType != TrustContext.PRINCIPAL_TYPE_HUMAN || !isSafeActor(caller.actorId)) {
+            throw workflowException(WorkflowErrorCodes.UNAUTHENTICATED_ACTOR)
+        }
+        val answered = agentStepQuestionService.answer(
+            caller.scope,
+            caller.namespaceId,
+            workflowId,
+            interactionId,
+            expectedRevision,
+            answer,
+            caller.actorId,
+        )
+        return respond(
+            WorkflowHttpResult(
+                200,
+                mapOf(
+                    "workflowId" to workflowId,
+                    "interactionId" to answered.interactionId,
+                    "status" to answered.status,
+                    "supersededAttemptId" to answered.supersededAttemptId,
+                    "successorAttemptId" to answered.successorAttemptId,
+                    "successorAttemptNumber" to answered.successorAttemptNumber,
+                    "actorId" to caller.actorId,
+                ),
+            ),
         )
     }
 

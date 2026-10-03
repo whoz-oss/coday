@@ -136,6 +136,45 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `a trusted namespace diverging from the capability yields 400 RESULT_IDENTITY_MISMATCH`() {
+        val token = issueToken("attempt-http-1")
+
+        val response = post(body("attempt-http-1"), token, trustedNamespace = "other-namespace")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("RESULT_IDENTITY_MISMATCH")
+    }
+
+    @Test
+    fun `a trusted namespace matching the capability is accepted`() {
+        val token = issueToken("attempt-http-1")
+
+        val response = post(body("attempt-http-1"), token, trustedNamespace = namespace)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+    }
+
+    @Test
+    fun `a trusted case id contradicting the declared case yields 400 RESULT_IDENTITY_MISMATCH`() {
+        val token = issueToken("attempt-http-1")
+
+        val response = post(body("attempt-http-1"), token, trustedCaseId = "other-case")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("RESULT_IDENTITY_MISMATCH")
+    }
+
+    @Test
+    fun `a trusted case id overrides the declared case and is accepted when coherent`() {
+        val token = issueToken("attempt-http-1")
+
+        // No X-AgentOS-Case-Id header: the submission inherits the trusted case.
+        val response = post(body("attempt-http-1"), token, caseId = null, trustedCaseId = caseId)
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+    }
+
+    @Test
     fun `a missing attempt id yields 400 INVALID_RESULT_REQUEST`() {
         val token = issueToken("attempt-http-1")
 
@@ -192,6 +231,8 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
         caseId: String? = this.caseId,
         agentName: String? = this.agentName,
         idempotencyKey: String? = null,
+        trustedNamespace: String? = null,
+        trustedCaseId: String? = null,
     ): ResponseEntity<Map<String, Any?>> {
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
@@ -199,6 +240,10 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
             if (caseId != null) set("X-AgentOS-Case-Id", caseId)
             if (agentName != null) set("X-AgentOS-Agent-Name", agentName)
             if (idempotencyKey != null) set("X-Idempotency-Key", idempotencyKey)
+            // Loopback-dev trust boundary: the verified TrustContext reads the
+            // trusted execution identity from these headers on a loopback socket.
+            if (trustedNamespace != null) set("x-factory-namespace-id", trustedNamespace)
+            if (trustedCaseId != null) set("x-factory-case-id", trustedCaseId)
         }
         return restTemplate.exchange(
             "/api/factory/agent-step-results",

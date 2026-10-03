@@ -4,11 +4,28 @@ import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapability
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
+import io.whozoss.factory.agentattempt.domain.AgentStepResultRow
 import io.whozoss.factory.agentattempt.domain.AgentStepResultSubmitted
 import io.whozoss.factory.agentattempt.domain.IssuedCapability
 import io.whozoss.factory.agentattempt.domain.SubmitOutcome
 import io.whozoss.factory.persistence.TenantScope
 import java.time.Instant
+
+/**
+ * A submitted result whose attempt is not terminal yet, together with the
+ * tenant scope it belongs to (the startup reconciliation sweeps the whole
+ * graph, so the scope is reconstructed from the node).
+ */
+data class ScopedSubmittedResult(
+    val scope: TenantScope,
+    val result: AgentStepResultRow,
+)
+
+/** A capability still backed by an unredeemed reservation row, with its tenant scope. */
+data class ScopedReservedCapability(
+    val scope: TenantScope,
+    val capability: AgentStepResultCapability,
+)
 
 /**
  * Persistence port of the AGENT-STEP result context (V6 `agent_step_results` /
@@ -53,4 +70,18 @@ interface AgentStepResultRepository {
         stepId: String,
         attemptId: String,
     ): AgentStepResultSubmitted?
+
+    /**
+     * Every submitted result (payload `result-submitted`) whose attempt is NOT
+     * in a terminal status, across all tenant scopes — the crash window the
+     * startup reconciliation closes. Read-only sweep.
+     */
+    fun findSubmittedWithNonTerminalAttempt(): List<ScopedSubmittedResult>
+
+    /**
+     * Every capability still backed by an unredeemed reservation row (payload
+     * `capability-reserved`), across all tenant scopes. Read-only sweep used
+     * by the startup reconciliation to observe expired capabilities.
+     */
+    fun findUnredeemedReservedCapabilities(): List<ScopedReservedCapability>
 }

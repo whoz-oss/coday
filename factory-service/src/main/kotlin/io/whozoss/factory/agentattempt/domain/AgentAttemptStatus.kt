@@ -11,6 +11,13 @@ package io.whozoss.factory.agentattempt.domain
  * [SUCCEEDED] is reachable **only** from [RUNNING] or [WAITING_HUMAN]. A
  * timeout, a lost lease or an unknown/incomplete outcome must be expressed as
  * [INDETERMINATE] (or [FAILED] / [INTERRUPTED]) — never as [SUCCEEDED].
+ *
+ * ## Superseding (Phase 4 ask-step-question)
+ * [SUPERSEDED] is the terminal record of an attempt that asked a human
+ * question (`waiting_human`) and whose answer was received: the step resumes
+ * as a brand-new attempt `N+1` carrying the bounded resumption context, while
+ * attempt `N` stays an immutable `superseded` record. It is NEVER reactivated
+ * or rewritten, and it is not a success.
  */
 enum class AgentAttemptStatus(val dbValue: String) {
     PENDING("pending"),
@@ -22,11 +29,12 @@ enum class AgentAttemptStatus(val dbValue: String) {
     FAILED("failed"),
     INDETERMINATE("indeterminate"),
     INTERRUPTED("interrupted"),
+    SUPERSEDED("superseded"),
     ;
 
     /** Terminal states: no transition leaves them. */
     val terminal: Boolean
-        get() = this == SUCCEEDED || this == FAILED || this == INDETERMINATE || this == INTERRUPTED
+        get() = this == SUCCEEDED || this == FAILED || this == INDETERMINATE || this == INTERRUPTED || this == SUPERSEDED
 
     /** True only for [SUCCEEDED]; an incomplete or unknown outcome is never a success. */
     val isSuccess: Boolean
@@ -49,11 +57,12 @@ enum class AgentAttemptStatus(val dbValue: String) {
             CLAIMING to setOf(STARTING, FAILED, INDETERMINATE, INTERRUPTED),
             STARTING to setOf(RUNNING, FAILED, INDETERMINATE, INTERRUPTED),
             RUNNING to setOf(WAITING_HUMAN, SUCCEEDED, FAILED, INDETERMINATE, INTERRUPTED),
-            WAITING_HUMAN to setOf(RUNNING, SUCCEEDED, FAILED, INDETERMINATE, INTERRUPTED),
+            WAITING_HUMAN to setOf(RUNNING, SUCCEEDED, FAILED, INDETERMINATE, INTERRUPTED, SUPERSEDED),
             SUCCEEDED to emptySet(),
             FAILED to emptySet(),
             INDETERMINATE to emptySet(),
             INTERRUPTED to emptySet(),
+            SUPERSEDED to emptySet(),
         )
 
         /** Parse a persisted state, case-insensitively. */

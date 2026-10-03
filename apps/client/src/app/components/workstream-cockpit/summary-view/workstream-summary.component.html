@@ -1,0 +1,39 @@
+<section class="ws-summary" aria-label="Workstream summary">
+  <h2 class="ws-section-title">
+    <mat-icon>dashboard</mat-icon>
+    Active workflows
+  </h2>
+
+  <ul class="ws-summary__list">
+    @for (workflow of workflows; track workflow.workflowId) {
+      <li class="ws-summary__item" [class.ws-summary__item--selected]="workflow.workflowId === selectedWorkflowId">
+        <button type="button" class="ws-summary__row" (click)="onSelect(workflow.workflowId)">
+          <span class="ws-summary__title">{{ workflow.title }}</span>
+          <span class="ws-summary__meta">{{ workflow.workflowType }} · rev {{ workflow.revision }}</span>
+          <span class="ws-summary__status">{{ workflow.status }}</span>
+        </button>
+        <div class="ws-summary__progress">
+          <mat-progress-bar mode="determinate" [value]="progressOf(workflow.workflowId)"></mat-progress-bar>
+          <span class="ws-summary__progress-label">{{ completedStepsOf(workflow.workflowId) }} steps</span>
+        </div>
+        @if (blockersOf(workflow.workflowId).length > 0) {
+          <ul class="ws-summary__blockers">
+            @for (blocker of blockersOf(workflow.workflowId); track blocker.code + blocker.stepId) {
+              <li class="ws-summary__blocker">
+                <span [class]="blockerBadgeClass(blocker.code)">{{ blockerLabel(blocker.code) }}</span>
+                <span class="ws-summary__blocker-message">{{ blocker.message }}</span>
+              </li>
+            }
+          </ul>
+        }
+      </li>
+    } @empty {
+      <li class="ws-summary__empty">No active workflow for this workstream.</li>
+    }
+  </ul>
+
+  <div class="ws-summary__human-actions">
+    <mat-icon>pending_actions</mat-icon>
+    <span>{{ pendingActions.length }} pending human action(s)</span>
+  </div>
+</section>

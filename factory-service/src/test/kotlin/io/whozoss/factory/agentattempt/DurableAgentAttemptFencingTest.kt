@@ -129,6 +129,73 @@ class DurableAgentAttemptFencingTest : Neo4jDomainIntegrationTest() {
         assertThat(replayed.completedAt).isEqualTo(finalized.completedAt)
     }
 
+    /**
+     * Req 5 attestation: the attempt carries Factory-side timestamps
+     * (`createdAt` at registration, `startedAt` at claim, `completedAt` at
+     * finalization), a machine-readable `failureCode` and the structured
+     * result reference (`resultEvidenceId`).
+     */
+    @Test
+    fun `factory timestamps failure codes and result references are persisted along the lifecycle`() {
+        val registered = service.register(scope, attempt("attempt-timestamps"))
+        assertThat(registered.createdAt).isNotNull
+        assertThat(registered.updatedAt).isNotNull
+        assertThat(registered.startedAt).isNull()
+        assertThat(registered.completedAt).isNull()
+
+        val claimed = service.claim(
+            scope,
+            namespaceId = NAMESPACE_ID,
+            workflowId = WORKFLOW_ID,
+            stepId = STEP_ID,
+            attemptId = "attempt-timestamps",
+            ownerToken = "owner-a",
+            leaseTtlMs = 60_000,
+        )
+        assertThat(claimed.startedAt).isNotNull
+        assertThat(claimed.completedAt).isNull()
+
+        service.transition(
+            scope,
+            namespaceId = NAMESPACE_ID,
+            workflowId = WORKFLOW_ID,
+            stepId = STEP_ID,
+            attemptId = "attempt-timestamps",
+            ownerToken = "owner-a",
+            target = AgentAttemptStatus.STARTING,
+        )
+        service.transition(
+            scope,
+            namespaceId = NAMESPACE_ID,
+            workflowId = WORKFLOW_ID,
+            stepId = STEP_ID,
+            attemptId = "attempt-timestamps",
+            ownerToken = "owner-a",
+            target = AgentAttemptStatus.RUNNING,
+        )
+        val failed = service.finalize(
+            scope,
+            namespaceId = NAMESPACE_ID,
+            workflowId = WORKFLOW_ID,
+            stepId = STEP_ID,
+            attemptId = "attempt-timestamps",
+            ownerToken = "owner-a",
+            target = AgentAttemptStatus.FAILED,
+            failureCode = "AGENT_CASE_ERROR",
+            resultEvidenceId = "evidence-fail-1",
+        )
+        assertThat(failed.completedAt).isNotNull
+        assertThat(failed.failureCode).isEqualTo("AGENT_CASE_ERROR")
+        assertThat(failed.resultEvidenceId).isEqualTo("evidence-fail-1")
+
+        val persisted = service.find(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, "attempt-timestamps")
+        assertThat(persisted!!.createdAt).isEqualTo(registered.createdAt)
+        assertThat(persisted.startedAt).isEqualTo(claimed.startedAt)
+        assertThat(persisted.completedAt).isEqualTo(failed.completedAt)
+        assertThat(persisted.failureCode).isEqualTo("AGENT_CASE_ERROR")
+        assertThat(persisted.resultEvidenceId).isEqualTo("evidence-fail-1")
+    }
+
     @Test
     fun `an incomplete or never-run attempt can never finalize as succeeded`() {
         service.register(scope, attempt("attempt-pending"))
@@ -191,6 +258,47 @@ class DurableAgentAttemptFencingTest : Neo4jDomainIntegrationTest() {
         )
         assertThat(indeterminate.status).isEqualTo(AgentAttemptStatus.INDETERMINATE)
         assertThat(indeterminate.failureCode).isEqualTo("timeout")
+    }
+
+    /**
+     * Req 6 attestation: the observation-timeout path of a RUNNING attempt
+     * finalizes as `indeterminate` (never `succeeded`), and the terminal
+     * `indeterminate` record can never be flipped to `succeeded` afterwards.
+     */
+    @Test
+    fun `a running attempt that times out finalizes as indeterminate and can never flip to succeeded`() {
+        service.register(scope, attempt("attempt-timeout"))
+        claimToRunning("attempt-timeout", "owner-a")
+
+        val indeterminate = service.finalize(
+            scope,
+            namespaceId = NAMESPACE_ID,
+            workflowId = WORKFLOW_ID,
+            stepId = STEP_ID,
+            attemptId = "attempt-timeout",
+            ownerToken = "owner-a",
+            target = AgentAttemptStatus.INDETERMINATE,
+            failureCode = "timeout",
+        )
+        assertThat(indeterminate.status).isEqualTo(AgentAttemptStatus.INDETERMINATE)
+        assertThat(indeterminate.failureCode).isEqualTo("timeout")
+        assertThat(indeterminate.completedAt).isNotNull
+
+        val failure = assertThrows(InvalidAttemptTransitionException::class.java) {
+            service.finalize(
+                scope,
+                namespaceId = NAMESPACE_ID,
+                workflowId = WORKFLOW_ID,
+                stepId = STEP_ID,
+                attemptId = "attempt-timeout",
+                ownerToken = "owner-a",
+                target = AgentAttemptStatus.SUCCEEDED,
+            )
+        }
+        assertThat(failure.errorCode).isEqualTo("ATTEMPT_INVALID_TRANSITION")
+        val persisted = service.find(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, "attempt-timeout")
+        assertThat(persisted!!.status).isEqualTo(AgentAttemptStatus.INDETERMINATE)
+        assertThat(persisted.failureCode).isEqualTo("timeout")
     }
 
     @Test

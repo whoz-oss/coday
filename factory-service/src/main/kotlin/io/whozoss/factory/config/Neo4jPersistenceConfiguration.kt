@@ -43,6 +43,7 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
         "io.whozoss.factory.agentattempt.persistence",
         "io.whozoss.factory.workflow.persistence",
         "io.whozoss.factory.workstream.persistence",
+        "io.whozoss.factory.planchange.persistence",
     ],
 )
 class Neo4jPersistenceConfiguration {

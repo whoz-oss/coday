@@ -1,0 +1,36 @@
+:host {
+  display: block;
+}
+
+.ws-agent-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+}
+
+.ws-agent-link__info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: var(--color-text);
+}
+
+.ws-agent-link__title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ws-agent-link__subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.ws-agent-link__cta {
+  flex-shrink: 0;
+}

@@ -21,8 +21,12 @@ class FactoryStartWorkflowToolSpec : StringSpec({
         var body = ""
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { ex ->
-            path = ex.requestURI.toString()
-            body = ex.requestBody.bufferedReader().readText()
+            if (ex.requestMethod == "POST") {
+                path = ex.requestURI.toString()
+                body = ex.requestBody.bufferedReader().readText()
+            } else {
+                ex.requestBody.close()
+            }
             val bytes =
                 """{"data":{"workflowId":"wf-1","revision":1,"created":true,"idempotent":false,"governanceMode":"governed","definitionVersion":"1.0.0","definitionHash":"hash","projection":{}}}"""
                     .toByteArray()
@@ -39,7 +43,14 @@ class FactoryStartWorkflowToolSpec : StringSpec({
             val case = UUID.randomUUID()
             val context =
                 ToolContext(ns, UUID.randomUUID(), "actor-external", listOf(CaseStatusEvent(metadata = EntityMetadata(), namespaceId = ns, caseId = case, status = CaseStatus.PENDING)), "ProductEngineer")
-            tool.execute(FactoryStartWorkflowTool.Input("wf-1", "bmad-story", "Story"), context).success shouldBe true
+            val result = tool.execute(FactoryStartWorkflowTool.Input("wf-1", "bmad-story", "Story"), context)
+            result.success shouldBe true
+            val output = mapper.readTree(result.output)
+            // Phase 7 standardized command output.
+            output.path("status").asText() shouldBe "accepted"
+            output.path("revision").asLong() shouldBe 1L
+            output.path("allowedActions").isArray shouldBe true
+            output.path("created").asBoolean() shouldBe true
             path shouldBe "/api/factory/workflows/wf-1/start"
             val sent = mapper.readTree(body)
             sent.path("workflow").fieldNames().asSequence().toSet() shouldBe setOf("workflowId", "workflowType", "title")

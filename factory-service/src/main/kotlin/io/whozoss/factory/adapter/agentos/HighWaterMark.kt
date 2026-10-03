@@ -12,7 +12,10 @@ import java.util.concurrent.ConcurrentHashMap
 data class HighWaterMark(
     val timestamp: String?,
     val lastEventId: String?,
-)
+) {
+    /** True when the mark points at a concrete event; an empty mark covers nothing. */
+    fun isPositioned(): Boolean = timestamp != null && lastEventId != null
+}
 
 /** Identity of an observed execution attempt; checkpoints are keyed by it. */
 data class CheckpointKey(val caseId: String, val attemptId: String)
@@ -29,14 +32,35 @@ data class CheckpointKey(val caseId: String, val attemptId: String)
  * - A fresh/empty checkpoint means "full replay + eventId dedup" — never a
  *   verdict by silence.
  */
-class EventCheckpoint(private val windowSize: Int = DEFAULT_SEEN_WINDOW) {
+class EventCheckpoint(
+    private val windowSize: Int = DEFAULT_SEEN_WINDOW,
+    baseline: HighWaterMark = HighWaterMark(null, null),
+) {
 
     private val lock = Any()
     private val seen = LinkedHashMap<String, CaseEventView>()
 
+    /**
+     * The dedup high-water mark, pre-positioned on the per-turn [baseline]
+     * when one was captured: every pre-turn event of a reused case is then
+     * `covered` and ignored at replay — it can never close the new turn.
+     */
     @Volatile
-    var mark: HighWaterMark = HighWaterMark(null, null)
+    var mark: HighWaterMark = baseline
         private set
+
+    /**
+     * Seed the per-turn baseline on a fresh checkpoint (no-op once the mark
+     * is positioned: the mark only moves forward). Lets an observer that
+     * started before [HighWaterMarkStore.setBaseline] still fence out the
+     * pre-turn events.
+     */
+    fun seedBaseline(baseline: HighWaterMark) {
+        if (!baseline.isPositioned()) return
+        synchronized(lock) {
+            if (!mark.isPositioned()) mark = baseline
+        }
+    }
 
     /**
      * Record [event]. Returns true when this is the first sight of the event
@@ -95,6 +119,16 @@ class EventCheckpoint(private val windowSize: Int = DEFAULT_SEEN_WINDOW) {
                 mark
             }
         }
+
+        /**
+         * Capture the per-turn baseline: the high-water mark covering the
+         * whole durable, non-transient history present **before** a new turn
+         * starts. Events without a timestamp cannot be ordered and never
+         * move the mark.
+         */
+        fun baselineOf(events: List<CaseEventView>): HighWaterMark =
+            events.filter { !it.isTransient() }
+                .fold(HighWaterMark(null, null)) { mark, event -> advance(mark, event) }
     }
 }
 
@@ -110,10 +144,40 @@ class EventCheckpoint(private val windowSize: Int = DEFAULT_SEEN_WINDOW) {
 class HighWaterMarkStore {
     private val checkpoints = ConcurrentHashMap<CheckpointKey, EventCheckpoint>()
 
+    /** (caseId, attemptId) → per-turn baseline captured before that turn started. */
+    private val baselines = ConcurrentHashMap<CheckpointKey, HighWaterMark>()
+
+    /** caseId → most recently captured baseline of any of its turns. */
+    private val latestBaselineByCase = ConcurrentHashMap<String, HighWaterMark>()
+
     fun checkpoint(caseId: String, attemptId: String): EventCheckpoint =
         checkpoints.getOrPut(CheckpointKey(caseId, attemptId)) { EventCheckpoint() }
 
+    /**
+     * The checkpoint of a turn, seeded with the turn [baseline] so the full
+     * SSE replay of a reused case skips every pre-turn event instead of
+     * deriving a premature verdict from it.
+     */
+    fun checkpointWithBaseline(caseId: String, attemptId: String, baseline: HighWaterMark): EventCheckpoint {
+        val checkpoint = checkpoints.getOrPut(CheckpointKey(caseId, attemptId)) { EventCheckpoint(baseline = baseline) }
+        checkpoint.seedBaseline(baseline)
+        return checkpoint
+    }
+
+    /** Record the baseline captured before the `(caseId, attemptId)` turn started. */
+    fun setBaseline(caseId: String, attemptId: String, baseline: HighWaterMark) {
+        baselines[CheckpointKey(caseId, attemptId)] = baseline
+        latestBaselineByCase[caseId] = baseline
+    }
+
+    /** The baseline of the `(caseId, attemptId)` turn, when one was captured. */
+    fun baseline(caseId: String, attemptId: String): HighWaterMark? = baselines[CheckpointKey(caseId, attemptId)]
+
+    /** The most recently captured baseline of any turn of [caseId], when known. */
+    fun latestBaseline(caseId: String): HighWaterMark? = latestBaselineByCase[caseId]
+
     fun clear(caseId: String, attemptId: String) {
         checkpoints.remove(CheckpointKey(caseId, attemptId))
+        baselines.remove(CheckpointKey(caseId, attemptId))
     }
 }

@@ -35,6 +35,9 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
                       a.turnCorrelation = ${'$'}turnCorrelation,
                       a.commandId = ${'$'}commandId,
                       a.brief = ${'$'}brief,
+                      a.environmentRef = ${'$'}environmentRef,
+                      a.expectedEnvironmentRevision = ${'$'}expectedEnvironmentRevision,
+                      a.resumptionContext = ${'$'}resumptionContext,
                       a.status = 'pending',
                       a.revision = 1,
                       a.createdAt = ${'$'}now,
@@ -57,6 +60,9 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         turnCorrelation: String?,
         commandId: String?,
         brief: String?,
+        environmentRef: String?,
+        expectedEnvironmentRevision: Int?,
+        resumptionContext: String?,
         now: Instant,
     ): DurableAgentAttemptNode
 
@@ -69,7 +75,7 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
     @Query(
         """
         MATCH (a:DurableAgentAttempt)
-        WHERE NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted']
+        WHERE NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted', 'superseded']
         RETURN a
         ORDER BY a.updatedAt ASC
         LIMIT ${'$'}limit
@@ -119,6 +125,31 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
     ): List<DurableAgentAttemptNode>
 
     /**
+     * The highest `attemptNumber` registered for a workflow step, or 0 when the
+     * step has no attempt yet. The retry path derives the next attempt number
+     * as `maxAttemptNumber + 1`, so a retry is always a brand-new attempt and
+     * never a reactivation of a prior (terminal) one.
+     */
+    @Query(
+        """
+        MATCH (a:DurableAgentAttempt)
+        WHERE a.organizationId = ${'$'}organizationId
+          AND a.workstreamId = ${'$'}workstreamId
+          AND a.namespaceId = ${'$'}namespaceId
+          AND a.workflowId = ${'$'}workflowId
+          AND a.stepId = ${'$'}stepId
+        RETURN coalesce(max(a.attemptNumber), 0) AS maxAttemptNumber
+        """,
+    )
+    fun maxAttemptNumber(
+        organizationId: String,
+        workstreamId: String,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Long
+
+    /**
      * Explicit business cancellation: a revision-fenced CAS that moves a
      * non-terminal attempt to `interrupted` and rotates the lease owner token so
      * any in-flight worker is fenced out of finalization. Returns 0 when the
@@ -128,7 +159,7 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         """
         MATCH (a:DurableAgentAttempt {id: ${'$'}id})
         WHERE a.revision = ${'$'}expectedRevision
-          AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted']
+          AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted', 'superseded']
         SET a.status = 'interrupted',
             a.ownerToken = ${'$'}ownerToken,
             a.failureCode = ${'$'}failureCode,
@@ -143,6 +174,34 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         expectedRevision: Int,
         ownerToken: String,
         failureCode: String?,
+        now: Instant,
+    ): Long
+
+    /**
+     * Supersede a `waiting_human` attempt (Phase 4 ask-step-question): a
+     * revision-fenced CAS that moves the attempt to the terminal `superseded`
+     * status and rotates the lease owner token so any in-flight worker is
+     * fenced out of finalization. Returns 0 when the revision diverged, the
+     * attempt is not `waiting_human`, or it is already terminal — a superseded
+     * attempt is immutable and is never reactivated or rewritten.
+     */
+    @Query(
+        """
+        MATCH (a:DurableAgentAttempt {id: ${'$'}id})
+        WHERE a.revision = ${'$'}expectedRevision
+          AND a.status = 'waiting_human'
+        SET a.status = 'superseded',
+            a.ownerToken = ${'$'}ownerToken,
+            a.completedAt = ${'$'}now,
+            a.updatedAt = ${'$'}now,
+            a.revision = a.revision + 1
+        RETURN count(a) AS superseded
+        """,
+    )
+    fun supersede(
+        id: String,
+        expectedRevision: Int,
+        ownerToken: String,
         now: Instant,
     ): Long
 
@@ -165,7 +224,7 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
            OR (a.status = 'claiming' AND a.ownerToken = ${'$'}ownerToken)
            OR (a.leaseExpiresAt IS NOT NULL
                AND a.leaseExpiresAt <= ${'$'}now
-               AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted'])
+               AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted', 'superseded'])
         SET a.status = 'claiming',
             a.ownerToken = ${'$'}ownerToken,
             a.leaseExpiresAt = ${'$'}leaseExpiresAt,
@@ -186,7 +245,7 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         """
         MATCH (a:DurableAgentAttempt {id: ${'$'}id})
         WHERE a.ownerToken = ${'$'}ownerToken
-          AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted']
+          AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted', 'superseded']
         SET a.status = ${'$'}status,
             a.lastObservedEventId = coalesce(${'$'}lastObservedEventId, a.lastObservedEventId),
             a.updatedAt = ${'$'}now,
@@ -213,7 +272,7 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         """
         MATCH (a:DurableAgentAttempt {id: ${'$'}id})
         WHERE a.ownerToken = ${'$'}ownerToken
-          AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted']
+          AND NOT a.status IN ['succeeded', 'failed', 'indeterminate', 'interrupted', 'superseded']
         SET a.status = ${'$'}status,
             a.failureCode = ${'$'}failureCode,
             a.resultEvidenceId = ${'$'}resultEvidenceId,

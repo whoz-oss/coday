@@ -14,6 +14,7 @@ import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -27,7 +28,9 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
+import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
@@ -132,7 +135,21 @@ class CapabilityExecutionService(
      * troubleshooting fallback only.
      */
     private val agentOsAdapterProperties: AgentOsAdapterProperties = AgentOsAdapterProperties(),
+    /**
+     * Optional work-environment read port used to bind a freshly reserved
+     * attempt to the environment it runs against (`environmentRef` +
+     * `expectedEnvironmentRevision` captured at reservation). Injected in
+     * production; pure unit tests may leave it `null` and attempts then carry
+     * no environment link (same nullable-dependency pattern as
+     * [agentStepResultService]).
+     */
+    private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
 ) {
+
+    private val logger = KotlinLogging.logger {}
+
+    /** Guards the one-shot WARN logged when no capability issuer is wired. */
+    private val issuerAbsenceLogged = AtomicBoolean(false)
 
     private val shortTransaction: TransactionTemplate? = transactionManager?.let { manager ->
         TransactionTemplate(manager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
@@ -525,6 +542,9 @@ class CapabilityExecutionService(
         }
         val newAttempt = existing == null
         if (newAttempt) {
+            // Bind the attempt to the environment it runs against, captured at
+            // reservation time (Req 8). Null when no environment exists yet.
+            val environment = workEnvironmentRepository?.findLatestByWorkflowId(scope, workflowId)
             attempts.register(
                 scope,
                 DurableAgentAttempt(
@@ -536,6 +556,8 @@ class CapabilityExecutionService(
                     attemptNumber = 1,
                     agentName = agentId,
                     brief = brief,
+                    environmentRef = environment?.environmentId,
+                    expectedEnvironmentRevision = environment?.revision,
                 ),
             )
         }
@@ -678,6 +700,14 @@ class CapabilityExecutionService(
     /**
      * Phase 3 of the bridge: validates the verdict, persists the durable outputs as
      * `agent-result` evidence and finalizes the attempt (fenced on the owner token).
+     *
+     * Authority note: a `pass` evidence is persisted here only on
+     * [AgentOsExecutionVerdict.Succeeded]. The SSE verdict itself never derives
+     * `Succeeded` from a free-text agent message (see
+     * [io.whozoss.factory.adapter.agentos.VerdictDeriver]): the authoritative
+     * success of an agent step is a structured result submitted through the
+     * `agent-step-results` capability channel; the SSE verdict only observes
+     * the lifecycle, explicit failures and human checkpoints.
      */
     private fun finalizeAgentAttempt(
         scope: TenantScope,
@@ -969,7 +999,20 @@ class CapabilityExecutionService(
         agentName: String,
         brief: String?,
     ): String? {
-        val issuer = agentStepResultService ?: return null
+        val issuer = agentStepResultService
+        if (issuer == null) {
+            // An absent issuer is an explicit fact, never a silent skip: only
+            // pure unit tests may construct this service without the shared
+            // AgentStepResultService. In production a missing issuer means a
+            // broken composition root and must be observable.
+            if (issuerAbsenceLogged.compareAndSet(false, true)) {
+                logger.warn {
+                    "RESULT_CAPABILITY_ISSUER_ABSENT: no AgentStepResultService is wired — " +
+                        "agent steps run without a structured result-submission capability"
+                }
+            }
+            return null
+        }
         return runCatching {
             issuer.issue(
                 scope,
@@ -1010,6 +1053,18 @@ class CapabilityExecutionService(
          * instead of creating a duplicate.
          */
         fun stableAttemptId(workflowId: String, stepId: String): String = "$workflowId#$stepId"
+
+        /**
+         * Deterministic durable attempt id of the [attemptNumber]-th execution
+         * of a step, used by the retry path. Attempt #1 keeps the historical
+         * [stableAttemptId] form (so existing replay/idempotence behaviour is
+         * unchanged); a retry allocates
+         * [io.whozoss.factory.agentattempt.service.DurableAgentAttemptService.nextAttemptNumber]
+         * (>= 2) and registers a brand-new attempt under this id — the prior
+         * terminal attempt stays an immutable record of the earlier try.
+         */
+        fun retryAttemptId(workflowId: String, stepId: String, attemptNumber: Int): String =
+            if (attemptNumber <= 1) stableAttemptId(workflowId, stepId) else "$workflowId#$stepId#$attemptNumber"
 
         /**
          * Deterministic AgentOS case UUID bound to a workflow step.
