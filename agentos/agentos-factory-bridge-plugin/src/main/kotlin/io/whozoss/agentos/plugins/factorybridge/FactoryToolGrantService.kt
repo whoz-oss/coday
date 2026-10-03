@@ -30,7 +30,14 @@ class FactoryToolGrantService(
         if (integrations?.containsKey(FactoryToolPlugin.INTEGRATION_TYPE) != true) return emptySet()
         return integrations[FactoryToolPlugin.INTEGRATION_TYPE].orEmpty().mapNotNull {
             when (it) {
+                // Phase 6 read-only Workstream Agent reads: grantable to the
+                // Workstream Agent persona, never capability-bound.
                 "get_workflow", "FACTORY__get_workflow" -> "get_workflow"
+                "get_workstream", "FACTORY__get_workstream" -> "get_workstream"
+                "list_workflows", "FACTORY__list_workflows" -> "list_workflows"
+                "get_step_attempts", "FACTORY__get_step_attempts" -> "get_step_attempts"
+                "get_blockers", "FACTORY__get_blockers" -> "get_blockers"
+                "get_required_human_actions", "FACTORY__get_required_human_actions" -> "get_required_human_actions"
                 "provision_environment", "FACTORY__provision_environment" -> "provision_environment"
                 "start_workflow", "FACTORY__start_workflow" -> "start_workflow"
                 "publish_projection", "FACTORY__publish_projection" -> "publish_projection"
