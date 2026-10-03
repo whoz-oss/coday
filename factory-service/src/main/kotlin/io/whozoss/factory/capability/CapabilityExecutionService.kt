@@ -27,7 +27,9 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.locks.ReentrantLock
+import mu.KotlinLogging
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
@@ -133,6 +135,11 @@ class CapabilityExecutionService(
      */
     private val agentOsAdapterProperties: AgentOsAdapterProperties = AgentOsAdapterProperties(),
 ) {
+
+    private val logger = KotlinLogging.logger {}
+
+    /** Guards the one-shot WARN logged when no capability issuer is wired. */
+    private val issuerAbsenceLogged = AtomicBoolean(false)
 
     private val shortTransaction: TransactionTemplate? = transactionManager?.let { manager ->
         TransactionTemplate(manager).apply { propagationBehavior = TransactionDefinition.PROPAGATION_REQUIRES_NEW }
@@ -969,7 +976,20 @@ class CapabilityExecutionService(
         agentName: String,
         brief: String?,
     ): String? {
-        val issuer = agentStepResultService ?: return null
+        val issuer = agentStepResultService
+        if (issuer == null) {
+            // An absent issuer is an explicit fact, never a silent skip: only
+            // pure unit tests may construct this service without the shared
+            // AgentStepResultService. In production a missing issuer means a
+            // broken composition root and must be observable.
+            if (issuerAbsenceLogged.compareAndSet(false, true)) {
+                logger.warn {
+                    "RESULT_CAPABILITY_ISSUER_ABSENT: no AgentStepResultService is wired — " +
+                        "agent steps run without a structured result-submission capability"
+                }
+            }
+            return null
+        }
         return runCatching {
             issuer.issue(
                 scope,
