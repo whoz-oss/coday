@@ -9,7 +9,7 @@ import { MetricChipComponent } from '../../../shared/ui/metric-chip.component'
 import { PhaseBarComponent } from '../../../shared/ui/phase-bar.component'
 import { DurationPipe, TokensPipe, UsdPipe } from '../../../shared/pipes/format.pipes'
 
-export type SandboxAction = 'ask' | 'workflow' | 'conversation' | 'log' | 'commits' | 'destroy'
+export type SandboxAction = 'ask' | 'workflow' | 'conversation' | 'log' | 'commits'
 
 @Component({
   selector: 'sf-sandbox-card',

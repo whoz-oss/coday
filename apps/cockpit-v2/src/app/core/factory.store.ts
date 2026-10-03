@@ -2,36 +2,43 @@ import { Injectable, computed, inject, signal } from '@angular/core'
 import { Subscription } from 'rxjs'
 import { FactoryApiService } from './factory-api.service'
 import { mapProjectionToRunSummary, mapProjectionToSessionDetail, namespaceOf, workflowIdOf } from './mappers'
-import { CostSummary, GetActionsResponse, RecentTask, RunSummary, Sandbox, SessionDetail } from './models'
-import { RECENT_TASKS, SANDBOXES, SESSION_872641A8 } from './mock-data'
+import {
+  CostSummary,
+  GetActionsResponse,
+  RecentTask,
+  RunStatus,
+  RunSummary,
+  Sandbox,
+  SandboxStatus,
+  SessionDetail,
+} from './models'
+import { SESSION_872641A8 } from './mock-data'
 import { SseService } from './sse.service'
 
 /**
  * Application state exposed as Angular signals.
  *
- * DATA PROVENANCE (what is real vs mocked):
+ * DATA PROVENANCE (everything surfaced is real):
  *
- *  - REAL (Spring/Kotlin `factory-service` via `/api/factory/workflows`):
- *      • the workflow RUNS mapped onto active sandboxes (`RunnerSummary`);
- *      • the per-workflow {@link SessionDetail} (projection + timing/evidence/metrics);
- *      • live invalidation + reconnect signals from `/api/factory/workflows/stream`.
+ *  - the sandbox CARDS are derived directly from the active workflow snapshots
+ *    returned by `/api/factory/workflows?state=active` (the container fleet has
+ *    no backend API, the active workflows ARE the available truth);
+ *  - the per-workflow {@link SessionDetail} (projection + timing/evidence/metrics);
+ *  - live invalidation + reconnect signals from `/api/factory/workflows/stream`.
  *
- *  - MOCKED (no Sandbox API exists yet):
- *      • the sandbox CONTAINER FLEET itself (`SANDBOXES` names/status/archay cost);
- *      • the aggregated archay / destroyed costs surfaced by `costs()`.
- *
- * When the REST backend is unreachable the store degrades gracefully: it keeps
- * the mocked fleet and clears the real run enrichment instead of throwing, so
- * the Angular application never crashes on a cold/offline backend.
+ * When the REST backend is unreachable the store degrades gracefully: it clears
+ * the derived sandboxes/sessions and never falls back onto fabricated mock data,
+ * so the Angular application never crashes on a cold/offline backend.
  */
 @Injectable({ providedIn: 'root' })
 export class FactoryStore {
   private readonly api = inject(FactoryApiService)
   private readonly sse = inject(SseService)
 
-  // MOCKED fleet: the container lifecycle has no backend yet.
-  readonly sandboxes = signal<Sandbox[]>(SANDBOXES)
-  readonly recentTasks = signal<RecentTask[]>(RECENT_TASKS)
+  /** Sandbox cards derived from the real active workflows (empty until loaded). */
+  readonly sandboxes = signal<Sandbox[]>([])
+  /** No real recent-teardown API exists yet; kept empty for backwards-compat. */
+  readonly recentTasks = signal<RecentTask[]>([])
   readonly showDestroyed = signal(false)
 
   readonly activeSandboxes = computed(() => this.sandboxes().filter((s) => s.status !== 'destroyed'))
@@ -41,21 +48,16 @@ export class FactoryStore {
 
   readonly costs = computed<CostSummary>(() => {
     const active = this.activeSandboxes()
-    // REAL: the active workflows' costs are the `realCost.cost` values mapped
-    // from each run's `/metrics` payload (0 when the backend has no run-cost).
+    // REAL: the active workflows' costs, mapped from each run's `/metrics`
+    // payload (0 when the backend exposes no run-cost).
     const workflowsUsd = active.reduce((sum, s) => sum + (s.run?.costUsd ?? 0), 0)
     // Uncertainty is propagated verbatim: sum of the runs' unknownCostCount.
     const unknownCostCount = active.reduce((sum, s) => sum + (s.run?.unknownCostCount ?? 0), 0)
-    // MOCK: sandbox container fleet has no backend API yet, so the archay
-    // cost and the destroyed-sandbox total remain hard-coded placeholders.
-    const archayUsd = active.reduce((sum, s) => sum + s.archayCostUsd, 0)
-    const destroyedUsd = 179.28 // MOCK: aggregated server cost of every destroyed sandbox.
+    // No other real cost source exists (no Archay/destroyed fleet API).
     return {
       active: active.length,
       workflowsUsd,
-      archayUsd,
-      destroyedUsd,
-      totalUsd: workflowsUsd + archayUsd + destroyedUsd,
+      totalUsd: workflowsUsd,
       unknownCostCount,
     }
   })
@@ -91,22 +93,16 @@ export class FactoryStore {
     return runId === SESSION_872641A8.id ? SESSION_872641A8 : { ...SESSION_872641A8, id: runId }
   }
 
-  destroy(name: string): void {
-    this.sandboxes.update((list) =>
-      list.map(
-        (s): Sandbox =>
-          s.name === name ? { ...s, status: 'destroyed', finalCostUsd: s.run?.costUsd ?? 0, run: undefined } : s
-      )
-    )
-  }
-
-  /** Re-fetch the active workflow projections and re-map the derived state. */
+  /** Re-fetch the active workflow projections and re-derive the state. */
   private load(): void {
     this.api.getWorkflows('active').subscribe({
       next: (items) => this.applyWorkflows(items),
       error: () => {
-        // Graceful degradation: no real runs, but keep the mocked fleet intact.
+        // Graceful degradation: the backend is unavailable, so there is no real
+        // active workflow to show. Clear everything instead of crashing or
+        // falling back onto fabricated mock data.
         this.workflows.set([])
+        this.sandboxes.set([])
         this.sessions.set(new Map())
         this.enrichment.clear()
       },
@@ -117,7 +113,8 @@ export class FactoryStore {
     const snapshots = Array.isArray(items) ? items : []
     this.workflows.set(snapshots)
     this.enrichment.clear()
-    this.attachRunsToSandboxes(snapshots.map((snapshot) => mapProjectionToRunSummary(snapshot)))
+    // Derive one sandbox card per real active workflow snapshot.
+    this.sandboxes.set(snapshots.map((snapshot) => this.toSandbox(snapshot)))
 
     const sessionMap = new Map<string, SessionDetail>()
     for (const snapshot of snapshots) {
@@ -131,19 +128,35 @@ export class FactoryStore {
     for (const snapshot of snapshots) this.enrichSession(snapshot)
   }
 
-  /** Attach the mapped real runs to the active (mock) sandboxes, in order. */
-  private attachRunsToSandboxes(runs: RunSummary[]): void {
-    if (runs.length === 0) return
-    this.sandboxes.update((list) => {
-      let index = 0
-      return list.map((sandbox) => {
-        if (sandbox.status === 'destroyed') return sandbox
-        const run = runs[index]
-        if (!run) return sandbox
-        index += 1
-        return { ...sandbox, run }
-      })
-    })
+  /**
+   * Map one real active workflow snapshot onto a displayable {@link Sandbox}.
+   * Every field comes from the snapshot/relations; nothing is fabricated.
+   */
+  private toSandbox(snapshot: unknown): Sandbox {
+    const run = mapProjectionToRunSummary(snapshot)
+    const obj = asRecord(snapshot)
+    const projection = asRecord(obj?.['projection']) ?? obj
+    const relations = asRecord(obj?.['relations']) ?? asRecord(asRecord(obj?.['instance'])?.['relations'])
+    const namespace = namespaceOf(snapshot)
+    const ticket = readString(relations, 'ticket')
+    const branch = readString(relations, 'branch') ?? ticket
+    const workflowType = readString(projection, 'workflowType')
+    const title = readString(projection, 'title')
+    const goal = readString(projection, 'goal')
+    const state = readString(projection, 'status')
+    const name = run.id !== 'unknown' ? run.id : (ticket ?? title ?? goal ?? 'workflow')
+
+    const sandbox: Sandbox = {
+      name,
+      project: namespace ?? ticket ?? 'coday',
+      status: deriveSandboxStatus(state, run.status),
+      run,
+    }
+    if (namespace) sandbox.namespace = namespace
+    if (workflowType) sandbox.workflowType = workflowType
+    if (ticket) sandbox.ticket = ticket
+    if (branch) sandbox.branch = branch
+    return sandbox
   }
 
   private enrichSession(snapshot: unknown): void {
@@ -263,4 +276,26 @@ export class FactoryStore {
   private updateSandboxRun(run: RunSummary): void {
     this.sandboxes.update((list) => list.map((sandbox) => (sandbox.run?.id === run.id ? { ...sandbox, run } : sandbox)))
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+function readString(obj: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = obj?.[key]
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+const WORKING_STATES = new Set(['running', 'active', 'waiting_human'])
+const IDLE_STATES = new Set(['idle', 'ready', 'pending', 'queued'])
+
+/** Map a real workflow state onto the cockpit sandbox status. */
+function deriveSandboxStatus(state: string | undefined, runStatus: RunStatus): SandboxStatus {
+  const normalized = (state ?? '').toLowerCase()
+  if (WORKING_STATES.has(normalized)) return 'working'
+  if (IDLE_STATES.has(normalized)) return 'idle'
+  return runStatus === 'running' ? 'working' : 'idle'
 }

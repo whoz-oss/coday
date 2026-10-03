@@ -4,7 +4,6 @@ import { RouterLink } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
 import { MatCheckboxModule } from '@angular/material/checkbox'
 import { MatFormFieldModule } from '@angular/material/form-field'
-import { MatIconModule } from '@angular/material/icon'
 import { MatInputModule } from '@angular/material/input'
 import { MatSelectModule } from '@angular/material/select'
 import { FactoryStore } from '../../core/factory.store'
@@ -20,7 +19,6 @@ import { SandboxAction, SandboxCardComponent } from './sandbox-card/sandbox-card
     MatButtonModule,
     MatCheckboxModule,
     MatFormFieldModule,
-    MatIconModule,
     MatInputModule,
     MatSelectModule,
     SandboxCardComponent,
@@ -48,18 +46,15 @@ export class SandboxesPageComponent {
   }
 
   protected mount(): void {
-    console.log('monter', this.form.getRawValue())
+    // No container-fleet backend exists: the form is informational only.
   }
 
   protected bestOfN(): void {
-    console.log('best-of-N', this.form.getRawValue())
+    // No best-of-N backend exists: the control is informational only.
   }
 
   protected onAction(name: string, action: SandboxAction): void {
-    if (action === 'destroy') {
-      this.store.destroy(name)
-      return
-    }
-    console.log(action, name)
+    void name
+    void action
   }
 }
