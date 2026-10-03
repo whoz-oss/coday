@@ -19,6 +19,14 @@ import java.net.URLEncoder
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Phase 7 command tool: open a governed human checkpoint (approve/reject).
+ *
+ * Under the Phase 7 standardized command-output contract this tool is inherently
+ * `pending-human`: on success it registers the checkpoint and suspends the run via
+ * the awaiter (throws — never returns a success result), so no standardized success
+ * JSON is ever emitted. Error paths carry the stable bridge/Factory codes verbatim.
+ */
 class FactoryRequestHumanDecisionTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,

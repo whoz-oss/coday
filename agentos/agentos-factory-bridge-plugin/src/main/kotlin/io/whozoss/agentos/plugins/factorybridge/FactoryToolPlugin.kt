@@ -6,12 +6,15 @@ import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetBlockersTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetRequiredHumanActionsTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetStepAttemptsTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetWorkflowTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryInterruptAttemptTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetWorkstreamTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryListWorkflowsTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryProvisionEnvironmentTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryProposePlanChangeTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryPublishProjectionTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryRecordAgentResultTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryRecordArtifactTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryRequestAgentRetryTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryRequestHumanDecisionTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryRequestTransitionTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryStartWorkflowTool
@@ -49,6 +52,11 @@ internal fun buildFactoryTools(services: FactoryBridgeServices): List<StandardTo
         FactoryAskStepQuestionTool(baseUrl, httpClient, objectMapper, services.stepResultBindings),
         FactoryRequestHumanDecisionTool(baseUrl, httpClient, objectMapper, runtimeId, services.pendingCheckpoints),
         FactoryRequestTransitionTool(baseUrl, httpClient, objectMapper, runtimeId),
+        // Phase 7 Workstream Agent command tools (propose/command only — the
+        // Factory stays the sole authority under revision fences and policy).
+        FactoryRequestAgentRetryTool(baseUrl, httpClient, objectMapper, runtimeId),
+        FactoryInterruptAttemptTool(baseUrl, httpClient, objectMapper, runtimeId),
+        FactoryProposePlanChangeTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryTransitionWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryPublishProjectionTool(baseUrl, httpClient, objectMapper, runtimeId),
     )

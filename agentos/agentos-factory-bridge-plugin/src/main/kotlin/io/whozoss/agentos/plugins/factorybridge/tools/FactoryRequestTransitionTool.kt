@@ -1,5 +1,6 @@
 package io.whozoss.agentos.plugins.factorybridge.tools
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -83,13 +84,57 @@ class FactoryRequestTransitionTool(
                     if (!data.path("revision").isIntegralNumber || !data.path("changed").isBoolean) {
                         return@use fail("MALFORMED_FACTORY_RESPONSE", "Factory returned invalid response.")
                     }
-                    ToolExecutionResult.success(mapper.writeValueAsString(data))
+                    val revision = data.path("revision").asLong()
+                    val changed = data.path("changed").asBoolean()
+                    // Phase 7 standardized command output: the policy/control plane
+                    // decided (changed or idempotent) — the agent only proposed.
+                    val output =
+                        linkedMapOf<String, Any?>(
+                            "status" to "accepted",
+                            "revision" to revision,
+                            "reasonCode" to null,
+                            "interactionId" to null,
+                            "proposalId" to null,
+                            "allowedActions" to fetchAllowedActions(input.workflowId, context),
+                            "message" to
+                                if (changed) {
+                                    "Transition to ${input.requestedStatus} applied for step ${input.stepId}."
+                                } else {
+                                    "Transition already applied (idempotent)."
+                                },
+                            "workflowId" to data.path("workflowId").asText(input.workflowId),
+                            "stepId" to input.stepId,
+                            "requestedStatus" to input.requestedStatus,
+                            "changed" to changed,
+                        )
+                    ToolExecutionResult.success(mapper.writeValueAsString(output))
                 }
             }
         } catch (_: Exception) {
             fail("FACTORY_UNAVAILABLE", "Factory is unavailable.")
         }
     }
+
+    /** Best-effort enrichment: a failed actions read never fails the command. */
+    private fun fetchAllowedActions(
+        workflowId: String,
+        context: ToolContext,
+    ): JsonNode =
+        try {
+            val id = URLEncoder.encode(workflowId, Charsets.UTF_8).replace("+", "%20")
+            val ns = URLEncoder.encode(context.namespaceId.toString(), Charsets.UTF_8).replace("+", "%20")
+            http
+                .newCall(Request.Builder().url("${baseUrl.trimEnd('/')}/api/factory/workflows/$id/actions?namespaceId=$ns").get().build())
+                .execute()
+                .use { response ->
+                    if (!response.isSuccessful) return@use mapper.createArrayNode()
+                    val root = mapper.readTree(response.body?.string())
+                    root.path("data").path("allowedActions").takeIf { it.isArray }
+                        ?: mapper.createArrayNode()
+                }
+        } catch (_: Exception) {
+            mapper.createArrayNode()
+        }
 
     private fun fail(
         code: String,

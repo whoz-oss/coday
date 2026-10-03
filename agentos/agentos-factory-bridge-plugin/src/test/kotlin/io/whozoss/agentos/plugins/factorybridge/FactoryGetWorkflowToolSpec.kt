@@ -227,6 +227,9 @@ class FactoryGetWorkflowToolSpec : StringSpec({
                 "FACTORY__ask_step_question",
                 "FACTORY__request_human_decision",
                 "FACTORY__request_transition",
+                "FACTORY__request_agent_retry",
+                "FACTORY__interrupt_attempt",
+                "FACTORY__propose_plan_change",
                 "FACTORY__transition_workflow",
                 "FACTORY__publish_projection",
             )

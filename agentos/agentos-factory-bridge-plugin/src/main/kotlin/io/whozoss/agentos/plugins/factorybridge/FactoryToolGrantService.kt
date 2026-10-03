@@ -45,6 +45,17 @@ class FactoryToolGrantService(
                 "record_artifact", "FACTORY__record_artifact" -> "record_artifact"
                 "request_human_decision", "FACTORY__request_human_decision" -> "request_human_decision"
                 "request_transition", "FACTORY__request_transition" -> "request_transition"
+                // Phase 7 Workstream Agent command tools. Per the §5 capability matrix
+                // of app_docs/workstream_agent_cartography_and_contracts.md, the
+                // Workstream Agent persona may be granted: the get_* reads above,
+                // request_human_decision, propose_plan_change and request_agent_retry.
+                // It must NEVER be granted start_workflow, request_transition,
+                // interrupt_attempt, submit_step_result, ask_step_question, record_*,
+                // provision_environment or publish_projection — those stay reserved to
+                // workers (capability-bound) and the human control-plane.
+                "request_agent_retry", "FACTORY__request_agent_retry" -> "request_agent_retry"
+                "interrupt_attempt", "FACTORY__interrupt_attempt" -> "interrupt_attempt"
+                "propose_plan_change", "FACTORY__propose_plan_change" -> "propose_plan_change"
                 "transition_workflow", "FACTORY__transition_workflow" -> "transition_workflow"
                 "submit_step_result", "FACTORY__submit_step_result" -> "submit_step_result"
                 // Phase 4 ask-step-question: a WORKER capability, grantable only

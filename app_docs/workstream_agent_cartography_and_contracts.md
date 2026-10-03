@@ -74,13 +74,16 @@ si le grant explicite `FACTORY` les liste via `FactoryToolGrantService` (absence
 | Tool (nom wire) | Classe | Endpoint HTTP appelé | Callers |
 |---|---|---|---|
 | `FACTORY__get_workflow` | `FactoryGetWorkflowTool` | `GET /api/factory/workflows/{workflowId}?namespaceId={ns}` | agents/personas granteés |
-| `FACTORY__start_workflow` | `FactoryStartWorkflowTool` | `POST /api/factory/workflows/{workflowId}/start` | agents/personas granteés |
+| `FACTORY__start_workflow` | `FactoryStartWorkflowTool` | `POST /api/factory/workflows/{workflowId}/start` | agents/personas granteés (implémenté, sortie standardisée Phase 7) |
 | `FACTORY__provision_environment` | `FactoryProvisionEnvironmentTool` | `POST /api/factory/workflows/{workflowId}/environment/provision` | agents/personas granteés |
 | `FACTORY__record_agent_result` | `FactoryRecordAgentResultTool` | `POST /api/factory/workflows/{workflowId}/evidence` | agents/personas granteés |
 | `FACTORY__record_artifact` | `FactoryRecordArtifactTool` | `POST /api/factory/workflows/{workflowId}/evidence` | agents/personas granteés |
 | `FACTORY__submit_step_result` | `FactorySubmitStepResultTool` | `POST /api/factory/agent-step-results` (binding via `FactoryStepResultBindingRegistry`) | workers / agents porteurs d'un capability token |
-| `FACTORY__request_human_decision` | `FactoryRequestHumanDecisionTool` | `POST /api/factory/workflows/{workflowId}/interactions` | agents/personas granteés |
-| `FACTORY__request_transition` | `FactoryRequestTransitionTool` | `POST /api/factory/workflows/{workflowId}/transitions` | agents/personas granteés |
+| `FACTORY__request_human_decision` | `FactoryRequestHumanDecisionTool` | `POST /api/factory/workflows/{workflowId}/interactions` | agents/personas granteés (implémenté Phase 7 ; succès = suspension `pending-human`) |
+| `FACTORY__request_transition` | `FactoryRequestTransitionTool` | `POST /api/factory/workflows/{workflowId}/transitions` | agents/personas granteés (implémenté, sortie standardisée Phase 7) |
+| `FACTORY__request_agent_retry` | `FactoryRequestAgentRetryTool` | `POST /api/factory/workflows/{workflowId}/retries` | agents/personas granteés (implémenté Phase 7) |
+| `FACTORY__interrupt_attempt` | `FactoryInterruptAttemptTool` | `POST /api/factory/workflows/{workflowId}/attempts/{attemptId}/cancel` | agents/personas granteés (implémenté Phase 7) |
+| `FACTORY__propose_plan_change` | `FactoryProposePlanChangeTool` | `POST /api/factory/plan-change-proposals` | agents/personas granteés (implémenté Phase 7, append-only) |
 | `FACTORY__transition_workflow` | `FactoryTransitionWorkflowTool` (délégué) | `POST /api/factory/workflows/{workflowId}/transitions` | **alias legacy** — voir §3 |
 | `FACTORY__publish_projection` | `FactoryPublishProjectionTool` | `PUT /api/factory/workflows/{workflowId}/projection` | **legacy** (workflows déclaratifs) — voir §3 |
 
@@ -304,6 +307,38 @@ Principes communs :
 
 ### 6.2 Tools de commande
 
+> **Phase 7 — tools de commande implémentés** (`agentos-factory-bridge-plugin`).
+> Les six tools de commande (`start_workflow`, `request_transition`, `request_human_decision`,
+> `request_agent_retry`, `interrupt_attempt`, `propose_plan_change`) sont câblés dans
+> `buildFactoryTools` et `FactoryToolGrantService`. Toute réponse de commande retournée par un
+> tool suit le contrat de sortie standardisé :
+>
+> ```jsonc
+> { "status": "accepted|rejected|pending-human",   // décision de la Factory, jamais de l'agent
+>   "revision": 1,                                  // révision courante (workflow / attempt / proposal)
+>   "reasonCode": "string|null",                    // code machine (verdict recommandé, retry_requested, ...)
+>   "interactionId": "string|null",                 // interaction créée (retry)
+>   "proposalId": "string|null",                    // proposal créée (plan-change)
+>   "allowedActions": [ /* GET /{workflowId}/actions, best-effort ; [] si indisponible */ ],
+>   "message": "string|null" }
+> ```
+>
+> - `request_human_decision` est intrinsèquement `pending-human` : son succès suspend le run
+>   (aucun JSON de succès n'est retourné).
+> - `request_agent_retry` ouvre une interaction `retry` ⇒ `pending-human` ; `interrupt_attempt` ⇒
+>   `accepted` ; `propose_plan_change` mappe `AUTO_APPLIED` ⇒ `accepted`,
+>   `GATE_REQUIRED` / `PENDING_VALIDATION` / `REQUIRES_NEW_DEFINITION` ⇒ `pending-human`,
+>   `REJECTED` ⇒ `rejected`.
+> - Les rejets/échecs de transport restent des `ToolExecutionResult.error` portant le code Factory
+>   verbatim (§7) ou un code bridge stable (`FACTORY_UNAVAILABLE`, `MALFORMED_FACTORY_RESPONSE`, ...).
+> - Aucun tool n'accepte `namespaceId` / `caseId` / `agentId` / `actorId` / token / URL runtime depuis
+>   l'input du modèle : l'identité d'exécution est dérivée du `ToolContext` et transportée par les
+>   headers `x-factory-*` (+ hint `namespaceId` accepté dans le corps).
+> - Grants Workstream Agent (§5) : lectures `get_*` + `request_human_decision` +
+>   `propose_plan_change` + `request_agent_retry`. Jamais `start_workflow`, `request_transition`,
+>   `interrupt_attempt`, `submit_step_result`, `ask_step_question`, `record_*`,
+>   `provision_environment`, `publish_projection`.
+
 #### `request_transition`
 ```jsonc
 { "type": "object", "additionalProperties": false,
@@ -315,7 +350,10 @@ Principes communs :
     "evidenceIds": { "type": "array", "maxItems": 100, "uniqueItems": true, "items": { "type": "string", "maxLength": 128 } },
     "idempotencyKey": { "type": "string", "maxLength": 128 } },
   "required": ["workflowId","stepId","expectedRevision","requestedStatus","evidenceIds"] }
-// output (data) : { "workflowId": "string", "stepId": "string", "revision": 1, "changed": true }
+// output : contrat standardisé Phase 7 — { "status": "accepted", "revision": 1,
+//          "reasonCode": null, "interactionId": null, "proposalId": null,
+//          "allowedActions": [...], "message": "string",
+//          "workflowId": "string", "stepId": "string", "requestedStatus": "string", "changed": true }
 ```
 
 #### `request_human_decision`
@@ -338,22 +376,41 @@ Principes communs :
 
 #### `propose_plan_change`
 ```jsonc
+// Schéma livré (Phase 7) — aligné sur SubmitPlanChangeRequest de PlanChangeProposalController.
+// `namespaceId` n'est PAS exposé : il est injecté depuis le ToolContext côté tool.
 { "type": "object", "additionalProperties": false,
   "properties": {
     "workflowId": { "type": "string", "maxLength": 128 },
     "expectedRevision": { "type": "integer", "minimum": 1 },
-    "summary": { "type": "string", "maxLength": 2000 },
-    "operations": { "type": "array", "maxItems": 50,
+    "reasonCode": { "type": "string", "maxLength": 64 },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "proposalType": { "enum": ["RETRY","PATH_SELECTION","OPTIONAL_STEP","DEPENDENCY","SCOPE","NEW_STEP","CONTRACT_OR_ORACLE"] },
+    "affectedStepIds": { "type": "array", "maxItems": 100, "uniqueItems": true,
+                         "items": { "type": "string", "maxLength": 128 } },
+    "proposedDependencyChanges": { "type": "array", "maxItems": 50,
                     "items": { "type": "object", "additionalProperties": false,
-                               "properties": { "op": { "enum": ["add_step","remove_step","reorder_step","change_responsibility"] },
-                                               "stepId": { "type": "string", "maxLength": 128 },
-                                               "target": { "type": "string", "maxLength": 128 } },
-                               "required": ["op","stepId"] } },
-    "idempotencyKey": { "type": "string", "maxLength": 128 } },
-  "required": ["workflowId","expectedRevision","summary","operations","idempotencyKey"] }
-// output (data) : { "proposalId": "string", "workflowId": "string", "status": "pending_validation", "revision": 1 }
+                               "properties": { "op": { "enum": ["ADD","REMOVE"] },
+                                               "fromStepId": { "type": "string", "maxLength": 128 },
+                                               "toStepId": { "type": "string", "maxLength": 128 } },
+                               "required": ["op","fromStepId","toStepId"] } },
+    "proposedScopeChanges": { "type": "array", "maxItems": 50,
+                    "items": { "type": "object", "additionalProperties": false,
+                               "properties": { "op": { "enum": ["EXPAND","REDUCE","MODIFY"] },
+                                               "target": { "type": "string", "maxLength": 128 },
+                                               "detail": { "type": "string", "maxLength": 2000 } },
+                               "required": ["op","target"] } },
+    "evidenceRefs": { "type": "array", "maxItems": 100, "items": { "type": "string", "maxLength": 512 } },
+    "idempotencyKey": { "type": "string", "minLength": 1, "maxLength": 128 } },
+  "required": ["workflowId","expectedRevision","reasonCode","summary","proposalType","idempotencyKey"] }
+// output : contrat standardisé Phase 7 — { "status": "accepted|pending-human|rejected"
+//          (AUTO_APPLIED ⇒ accepted ; GATE_REQUIRED / PENDING_VALIDATION / REQUIRES_NEW_DEFINITION
+//           ⇒ pending-human ; REJECTED ⇒ rejected), "revision": 1,
+//          "reasonCode": recommendedVerdict, "proposalId": "string", "interactionId": null,
+//          "allowedActions": [...], "message": "string", "workflowId": "string",
+//          "proposalStatus": "string", "idempotent": false }
 ```
-> `propose_plan_change` n'applique **rien** : la Factory valide et décide. Le Workstream Agent ne modifie jamais le plan directement.
+> `propose_plan_change` n'applique **rien** : la Factory valide, classifie et décide (store append-only).
+> Le Workstream Agent ne modifie jamais le plan directement.
 
 #### `request_agent_retry`
 ```jsonc
@@ -365,7 +422,11 @@ Principes communs :
     "reasonCode": { "type": "string", "maxLength": 64 },
     "idempotencyKey": { "type": "string", "maxLength": 128 } },
   "required": ["workflowId","stepId","expectedRevision","reasonCode"] }
-// output (data) : { "workflowId": "string", "stepId": "string", "revision": 1, "status": "retry_requested" }
+// NB : le endpoint `POST /{workflowId}/retries` n'accepte que {namespaceId, stepId,
+// expectedRevision, reasonCode} dans le corps — l'idempotencyKey du modèle n'est jamais forwardée.
+// output : contrat standardisé Phase 7 — { "status": "pending-human", "revision": 1,
+//          "reasonCode": "retry_requested", "interactionId": "string", "proposalId": null,
+//          "allowedActions": [...], "message": "string", "workflowId": "string", "stepId": "string" }
 ```
 
 #### `interrupt_attempt`
@@ -378,9 +439,13 @@ Principes communs :
     "reason": { "type": "string", "maxLength": 500 },
     "idempotencyKey": { "type": "string", "maxLength": 128 } },
   "required": ["workflowId","attemptId","expectedRevision"] }
-// output (data) : { "workflowId": "string", "attemptId": "string", "stepId": "string",
-//                   "status": "interrupted", "revision": 1, "idempotent": false,
-//                   "reconciledVerdict": "string|null" }
+// NB : le endpoint `POST /{workflowId}/attempts/{attemptId}/cancel` n'accepte que
+// {namespaceId, expectedRevision, reason} — attemptId est en path, idempotencyKey jamais forwardée.
+// output : contrat standardisé Phase 7 — { "status": "accepted", "revision": 1,
+//          "reasonCode": "interrupted", "interactionId": null, "proposalId": null,
+//          "allowedActions": [...], "message": "string", "workflowId": "string",
+//          "attemptId": "string", "stepId": "string", "idempotent": false,
+//          "reconciledVerdict": "string|null" }
 ```
 
 ---
