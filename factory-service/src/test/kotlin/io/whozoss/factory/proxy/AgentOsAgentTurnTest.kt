@@ -220,6 +220,8 @@ class AgentOsAgentTurnTest {
         override fun fetchNamespace(namespaceId: String, externalUserId: String?): Map<String, Any?>? = error("unused")
         override fun fetchCaseEvents(caseId: String, externalUserId: String?): Any? = error("unused")
         override fun getRunCost(caseId: String, externalUserId: String?): RunCostDto? = error("unused")
+        override fun continueRunCost(caseId: String, expectedThreshold: Double?, externalUserId: String?): Boolean = error("unused")
+        override fun stopRunCost(caseId: String, externalUserId: String?): Boolean = error("unused")
         override fun resolveRepoRoot(namespaceId: String, externalUserId: String?): String? = error("unused")
         override fun resolveRunStoreRoot(namespaceId: String, externalUserId: String?): String? = error("unused")
         override fun executeAgentTurn(
