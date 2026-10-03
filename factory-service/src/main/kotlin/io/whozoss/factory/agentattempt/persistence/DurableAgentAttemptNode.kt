@@ -43,6 +43,10 @@ data class DurableAgentAttemptNode(
     val commandId: String? = null,
     /** Durable turn brief captured at registration (see [DurableAgentAttempt.brief]). */
     val brief: String? = null,
+    /** Work environment the attempt ran against (see [DurableAgentAttempt.environmentRef]). */
+    val environmentRef: String? = null,
+    /** Environment revision captured at reservation (see [DurableAgentAttempt.expectedEnvironmentRevision]). */
+    val expectedEnvironmentRevision: Int? = null,
     val failureCode: String? = null,
     val resultEvidenceId: String? = null,
     val lastObservedEventId: String? = null,
@@ -65,6 +69,8 @@ data class DurableAgentAttemptNode(
         turnCorrelation = turnCorrelation,
         commandId = commandId,
         brief = brief,
+        environmentRef = environmentRef,
+        expectedEnvironmentRevision = expectedEnvironmentRevision,
         status = AgentAttemptStatus.fromDbValue(status),
         failureCode = failureCode,
         resultEvidenceId = resultEvidenceId,
@@ -113,6 +119,8 @@ data class DurableAgentAttemptNode(
                 turnCorrelation = attempt.turnCorrelation,
                 commandId = attempt.commandId,
                 brief = attempt.brief,
+                environmentRef = attempt.environmentRef,
+                expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
                 failureCode = attempt.failureCode,
                 resultEvidenceId = attempt.resultEvidenceId,
                 lastObservedEventId = attempt.lastObservedEventId,

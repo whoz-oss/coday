@@ -5,6 +5,7 @@ import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.AttemptLeaseFencingException
 import io.whozoss.factory.agentattempt.domain.AttemptNotFoundException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptJournalEntry
 import io.whozoss.factory.agentattempt.domain.InvalidAttemptTransitionException
 import io.whozoss.factory.error.RevisionConflictException
 import io.whozoss.factory.persistence.TenantScope
@@ -37,10 +38,20 @@ import kotlin.concurrent.withLock
  * [AttemptLeaseFencingException] (the lease was lost, expired or preempted),
  * an identical terminal target yields the existing record (idempotent replay),
  * anything else yields [InvalidAttemptTransitionException].
+ *
+ * ## Append-only transition journal
+ * Every successful state change (`register` initial entry, `claim`,
+ * `transition`, `finalize`, `cancel`) appends exactly one
+ * [DurableAgentAttemptJournalNode] entry inside the same transaction as the
+ * CAS — but only when the CAS actually matched (count > 0): a fenced or
+ * conflicted no-op, and every idempotent replay, writes no journal entry. The
+ * mutable attempt node stays the authoritative current state; the journal is
+ * its durable transition history.
  */
 @Repository
 class Neo4jDurableAgentAttemptRepository(
     private val attempts: SpringDataNeo4jDurableAgentAttemptRepository,
+    private val journalEntries: SpringDataNeo4jDurableAgentAttemptJournalRepository,
     transactionManager: PlatformTransactionManager,
 ) : DurableAgentAttemptRepository {
 
@@ -49,8 +60,9 @@ class Neo4jDurableAgentAttemptRepository(
     }
 
     @Transactional
-    override fun register(scope: TenantScope, attempt: DurableAgentAttempt, now: Instant): DurableAgentAttempt =
-        attempts.register(
+    override fun register(scope: TenantScope, attempt: DurableAgentAttempt, now: Instant): DurableAgentAttempt {
+        val isNew = scoped(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId) == null
+        val registered = attempts.register(
             id = DurableAgentAttemptNode.compositeId(
                 scope.organizationId,
                 scope.workstreamId,
@@ -72,8 +84,59 @@ class Neo4jDurableAgentAttemptRepository(
             turnCorrelation = attempt.turnCorrelation,
             commandId = attempt.commandId,
             brief = attempt.brief,
+            environmentRef = attempt.environmentRef,
+            expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
             now = now,
-        ).toDomain()
+        )
+        if (isNew) {
+            // Initial journal entry of the attempt: registration itself is the
+            // first recorded transition (null -> pending). A re-registration is
+            // an idempotent replay and appends nothing.
+            appendJournal(
+                scope = scope,
+                namespaceId = attempt.namespaceId,
+                workflowId = attempt.workflowId,
+                stepId = attempt.stepId,
+                attemptId = attempt.attemptId,
+                fromStatus = null,
+                toStatus = AgentAttemptStatus.PENDING,
+                ownerToken = null,
+                revisionAfter = registered.revision,
+                now = now,
+            )
+        }
+        return registered.toDomain()
+    }
+
+    override fun nextAttemptNumber(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Int =
+        attempts.maxAttemptNumber(
+            organizationId = scope.organizationId,
+            workstreamId = scope.workstreamId,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            stepId = stepId,
+        ).toInt() + 1
+
+    override fun journal(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ): List<DurableAgentAttemptJournalEntry> =
+        journalEntries.findByAttempt(
+            organizationId = scope.organizationId,
+            workstreamId = scope.workstreamId,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            stepId = stepId,
+            attemptId = attemptId,
+        ).map { it.toDomain() }
 
     override fun findNonTerminal(limit: Int): List<ScopedDurableAgentAttempt> =
         attempts.findNonTerminal(limit.toLong()).map { node ->
@@ -127,7 +190,23 @@ class Neo4jDurableAgentAttemptRepository(
         val id = requireId(scope, namespaceId, workflowId, stepId, attemptId)
         val claimed = claimLock.withLock {
             claimTransaction.execute {
-                attempts.claim(id, ownerToken, leaseExpiresAt, now)
+                val before = attempts.findById(id).orElse(null)
+                val matched = attempts.claim(id, ownerToken, leaseExpiresAt, now)
+                if (matched > 0L && before != null) {
+                    appendJournal(
+                        scope = scope,
+                        namespaceId = namespaceId,
+                        workflowId = workflowId,
+                        stepId = stepId,
+                        attemptId = attemptId,
+                        fromStatus = AgentAttemptStatus.fromDbValue(before.status),
+                        toStatus = AgentAttemptStatus.CLAIMING,
+                        ownerToken = ownerToken,
+                        revisionAfter = before.revision + 1,
+                        now = now,
+                    )
+                }
+                matched
             }
         } ?: 0L
         if (claimed > 0L) {
@@ -174,7 +253,21 @@ class Neo4jDurableAgentAttemptRepository(
         val id = requireId(scope, namespaceId, workflowId, stepId, attemptId)
         val transitioned = attempts.transition(id, ownerToken, target.dbValue, lastObservedEventId, now)
         if (transitioned > 0L) {
-            return requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+            val after = requireNode(scope, namespaceId, workflowId, stepId, attemptId)
+            appendJournal(
+                scope = scope,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = stepId,
+                attemptId = attemptId,
+                fromStatus = current.status,
+                toStatus = target,
+                ownerToken = ownerToken,
+                lastObservedEventId = lastObservedEventId ?: current.lastObservedEventId,
+                revisionAfter = after.revision,
+                now = now,
+            )
+            return after.toDomain()
         }
         return disambiguateFailedCas(scope, namespaceId, workflowId, stepId, attemptId, ownerToken, target)
     }
@@ -222,7 +315,23 @@ class Neo4jDurableAgentAttemptRepository(
             now,
         )
         if (finalized > 0L) {
-            return requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+            val after = requireNode(scope, namespaceId, workflowId, stepId, attemptId)
+            appendJournal(
+                scope = scope,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = stepId,
+                attemptId = attemptId,
+                fromStatus = current.status,
+                toStatus = target,
+                ownerToken = ownerToken,
+                failureCode = failureCode,
+                resultEvidenceId = resultEvidenceId,
+                lastObservedEventId = lastObservedEventId ?: current.lastObservedEventId,
+                revisionAfter = after.revision,
+                now = now,
+            )
+            return after.toDomain()
         }
         return disambiguateFailedCas(scope, namespaceId, workflowId, stepId, attemptId, ownerToken, target)
     }
@@ -257,7 +366,21 @@ class Neo4jDurableAgentAttemptRepository(
         val id = requireId(scope, namespaceId, workflowId, stepId, attemptId)
         val cancelled = attempts.cancel(id, revision, "cancel:$attemptId", failureCode, now)
         if (cancelled > 0L) {
-            return requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+            val after = requireNode(scope, namespaceId, workflowId, stepId, attemptId)
+            appendJournal(
+                scope = scope,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = stepId,
+                attemptId = attemptId,
+                fromStatus = current.status,
+                toStatus = AgentAttemptStatus.INTERRUPTED,
+                ownerToken = "cancel:$attemptId",
+                failureCode = failureCode,
+                revisionAfter = after.revision,
+                now = now,
+            )
+            return after.toDomain()
         }
         // The CAS matched nothing: the attempt changed (terminal or revision bump)
         // between the read and the write — surface the precise conflict.
@@ -273,6 +396,64 @@ class Neo4jDurableAgentAttemptRepository(
                 details = mapOf("attemptId" to attemptId, "currentRevision" to after.revision, "expectedRevision" to revision),
             )
         }
+    }
+
+    /**
+     * Append one entry to the attempt transition journal. Called only after a
+     * state change actually landed (the CAS matched), inside the same
+     * transaction, so the journal and the mutable snapshot never diverge.
+     */
+    private fun appendJournal(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        fromStatus: AgentAttemptStatus?,
+        toStatus: AgentAttemptStatus,
+        ownerToken: String?,
+        failureCode: String? = null,
+        resultEvidenceId: String? = null,
+        lastObservedEventId: String? = null,
+        revisionAfter: Int,
+        now: Instant,
+    ) {
+        val sequence = journalEntries.maxSequence(
+            organizationId = scope.organizationId,
+            workstreamId = scope.workstreamId,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            stepId = stepId,
+            attemptId = attemptId,
+        ) + 1
+        journalEntries.save(
+            DurableAgentAttemptJournalNode(
+                id = DurableAgentAttemptJournalNode.compositeId(
+                    scope.organizationId,
+                    scope.workstreamId,
+                    namespaceId,
+                    workflowId,
+                    stepId,
+                    attemptId,
+                    sequence,
+                ),
+                organizationId = scope.organizationId,
+                workstreamId = scope.workstreamId,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = stepId,
+                attemptId = attemptId,
+                sequence = sequence,
+                fromStatus = fromStatus?.dbValue,
+                toStatus = toStatus.dbValue,
+                ownerToken = ownerToken,
+                failureCode = failureCode,
+                resultEvidenceId = resultEvidenceId,
+                lastObservedEventId = lastObservedEventId,
+                revisionAfter = revisionAfter,
+                recordedAt = now,
+            ),
+        )
     }
 
     /**

@@ -21,6 +21,10 @@ data class DurableAgentAttemptDto(
     val caseId: String,
     val failureCode: String? = null,
     val resultEvidenceId: String? = null,
+    /** Work environment the attempt ran against (operator metadata, never a secret). */
+    val environmentRef: String? = null,
+    /** Environment revision the attempt was bound to at reservation time. */
+    val expectedEnvironmentRevision: Int? = null,
     val revision: Int,
     val createdAt: Instant,
     val startedAt: Instant? = null,
@@ -37,6 +41,8 @@ fun DurableAgentAttempt.toDto(): DurableAgentAttemptDto = DurableAgentAttemptDto
     caseId = caseId,
     failureCode = failureCode,
     resultEvidenceId = resultEvidenceId,
+    environmentRef = environmentRef,
+    expectedEnvironmentRevision = expectedEnvironmentRevision,
     revision = revision,
     createdAt = createdAt,
     startedAt = startedAt,

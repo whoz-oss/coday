@@ -2,6 +2,8 @@ package io.whozoss.factory.agentattempt.service
 
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptJournalEntry
+import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.DurableAgentAttemptRepository
 import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.persistence.TenantScope
@@ -33,6 +35,60 @@ class DurableAgentAttemptService(
         attempt: DurableAgentAttempt,
         now: Instant = Instant.now(),
     ): DurableAgentAttempt = repository.register(scope, attempt, now)
+
+    /**
+     * The next attempt number of a workflow step (`MAX(attemptNumber) + 1`, or
+     * 1 when the step has no attempt yet). A retry registers a brand-new
+     * attempt with this number; a terminal attempt is never reactivated.
+     */
+    @Transactional(readOnly = true)
+    fun nextAttemptNumber(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Int = repository.nextAttemptNumber(scope, namespaceId, workflowId, stepId)
+
+    /**
+     * Register the RETRY attempt of a step: a brand-new [DurableAgentAttempt]
+     * whose [DurableAgentAttempt.attemptNumber] is exactly
+     * [nextAttemptNumber] and whose [DurableAgentAttempt.attemptId] is
+     * genuinely new (see
+     * [io.whozoss.factory.capability.CapabilityExecutionService.retryAttemptId]).
+     * The prior attempt — terminal or not — is left strictly untouched: a
+     * terminal attempt is an immutable record of the earlier try and is never
+     * reactivated.
+     *
+     * Defensive guards: a mismatched [DurableAgentAttempt.attemptNumber] is an
+     * [IllegalArgumentException]; an [DurableAgentAttempt.attemptId] that
+     * already exists is an [IdempotencyKeyCollisionException] — a retry must
+     * never silently reuse (and thereby reactivate) a prior attempt.
+     */
+    @Transactional
+    fun registerRetry(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt {
+        val next = repository.nextAttemptNumber(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId)
+        require(attempt.attemptNumber == next) {
+            "Retry attempt number ${attempt.attemptNumber} is not the next attempt number $next " +
+                "of step '${attempt.stepId}' (a retry must increment, never reuse, a prior attempt number)"
+        }
+        repository.find(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)?.let {
+            throw IdempotencyKeyCollisionException(
+                "Retry attempt '${attempt.attemptId}' already exists as '${it.status.dbValue}' — " +
+                    "a retry must register a brand-new attempt id",
+                details = mapOf(
+                    "attemptId" to attempt.attemptId,
+                    "workflowId" to attempt.workflowId,
+                    "stepId" to attempt.stepId,
+                    "existingStatus" to it.status.dbValue,
+                ),
+            )
+        }
+        return repository.register(scope, attempt, now)
+    }
 
     /**
      * Atomically claim the attempt for [ownerToken]. Exactly one concurrent
@@ -149,6 +205,21 @@ class DurableAgentAttemptService(
         namespaceId: String,
         workflowId: String,
     ): List<DurableAgentAttempt> = repository.findByWorkflow(scope, namespaceId, workflowId)
+
+    /**
+     * The append-only transition journal of the attempt, oldest entry first.
+     * Every landed state change (registration, claim, transition, finalization,
+     * cancellation) is recorded with its monotone sequence; fenced/conflicted
+     * mutations and idempotent replays leave no trace.
+     */
+    @Transactional(readOnly = true)
+    fun journal(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ): List<DurableAgentAttemptJournalEntry> = repository.journal(scope, namespaceId, workflowId, stepId, attemptId)
 
     /**
      * Every non-terminal attempt of the whole graph, across all tenant scopes and

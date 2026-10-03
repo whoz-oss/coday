@@ -43,6 +43,15 @@ data class DurableAgentAttempt(
      * bridge registered before the payload was persisted.
      */
     val brief: String? = null,
+    /**
+     * The `environmentId` of the work environment this attempt was bound to at
+     * reservation time, and the environment optimistic-lock revision it
+     * captured then. Both are set once at registration and never mutated
+     * afterwards; `null` on legacy records and on attempts reserved before any
+     * environment existed for the workflow.
+     */
+    val environmentRef: String? = null,
+    val expectedEnvironmentRevision: Int? = null,
     val status: AgentAttemptStatus = AgentAttemptStatus.PENDING,
     val failureCode: String? = null,
     val resultEvidenceId: String? = null,

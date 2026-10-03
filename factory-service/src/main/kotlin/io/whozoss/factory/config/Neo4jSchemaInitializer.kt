@@ -213,6 +213,22 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.debug { "[Neo4jSchemaInitializer] Constraint idempotency_record_id_unique ensured" }
 
+        // ── Durable agent attempt journal (append-only) ────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT durable_agent_attempt_journal_id_unique IF NOT EXISTS " +
+                    "FOR (j:DurableAgentAttemptJournal) REQUIRE j.id IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint durable_agent_attempt_journal_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX durable_agent_attempt_journal_attempt IF NOT EXISTS " +
+                    "FOR (j:DurableAgentAttemptJournal) ON " +
+                    "(j.organizationId, j.workstreamId, j.namespaceId, j.workflowId, j.stepId, j.attemptId)",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Index durable_agent_attempt_journal_attempt ensured" }
+
         // ── Workflow definitions ───────────────────────────────────────────
         neo4jClient
             .query(

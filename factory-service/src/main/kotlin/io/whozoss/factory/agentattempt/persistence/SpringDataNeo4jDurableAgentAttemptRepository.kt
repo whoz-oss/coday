@@ -35,6 +35,8 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
                       a.turnCorrelation = ${'$'}turnCorrelation,
                       a.commandId = ${'$'}commandId,
                       a.brief = ${'$'}brief,
+                      a.environmentRef = ${'$'}environmentRef,
+                      a.expectedEnvironmentRevision = ${'$'}expectedEnvironmentRevision,
                       a.status = 'pending',
                       a.revision = 1,
                       a.createdAt = ${'$'}now,
@@ -57,6 +59,8 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         turnCorrelation: String?,
         commandId: String?,
         brief: String?,
+        environmentRef: String?,
+        expectedEnvironmentRevision: Int?,
         now: Instant,
     ): DurableAgentAttemptNode
 
@@ -117,6 +121,31 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         namespaceId: String,
         workflowId: String,
     ): List<DurableAgentAttemptNode>
+
+    /**
+     * The highest `attemptNumber` registered for a workflow step, or 0 when the
+     * step has no attempt yet. The retry path derives the next attempt number
+     * as `maxAttemptNumber + 1`, so a retry is always a brand-new attempt and
+     * never a reactivation of a prior (terminal) one.
+     */
+    @Query(
+        """
+        MATCH (a:DurableAgentAttempt)
+        WHERE a.organizationId = ${'$'}organizationId
+          AND a.workstreamId = ${'$'}workstreamId
+          AND a.namespaceId = ${'$'}namespaceId
+          AND a.workflowId = ${'$'}workflowId
+          AND a.stepId = ${'$'}stepId
+        RETURN coalesce(max(a.attemptNumber), 0) AS maxAttemptNumber
+        """,
+    )
+    fun maxAttemptNumber(
+        organizationId: String,
+        workstreamId: String,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Long
 
     /**
      * Explicit business cancellation: a revision-fenced CAS that moves a
