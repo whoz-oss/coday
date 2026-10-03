@@ -7,12 +7,12 @@
       @for (t of ticks(); track t.sec) {
         <span class="tick" [style.left.%]="pct(t.sec)">{{ t.label }}</span>
       }
-      <span class="now-badge" [style.left.%]="pct(nowSec())">{{ nowSec() | duration }}</span>
+      <span class="now-badge" [style.left.%]="pct(effectiveNowSec())">{{ effectiveNowSec() | duration }}</span>
     </div>
   </div>
 
   <!-- Couloirs -->
-  @for (lane of lanes(); track lane.id) {
+  @for (lane of effectiveLanes(); track lane.id) {
     <div class="row lane">
       <div class="label-col">
         <span class="lane-name" [class]="'tone-' + lane.tone">
@@ -82,7 +82,7 @@
             }
           </button>
         }
-        <span class="now-line" [style.left.%]="pct(nowSec())" aria-hidden="true"></span>
+        <span class="now-line" [style.left.%]="pct(effectiveNowSec())" aria-hidden="true"></span>
       </div>
     </div>
   }
