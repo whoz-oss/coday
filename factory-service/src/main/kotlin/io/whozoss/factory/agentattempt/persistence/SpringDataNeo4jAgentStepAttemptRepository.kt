@@ -17,10 +17,20 @@ interface SpringDataNeo4jAgentStepAttemptRepository : Neo4jRepository<AgentStepA
      * Atomically transitions the attempt to [status], incrementing the
      * optimistic-locking `revision`. Returns the number of nodes updated
      * (0 or 1).
+     *
+     * ## Terminal sealing (Phase 10)
+     * The `WHERE NOT a.status IN ['completed', 'failed']` guard makes the
+     * primitive itself enforce "a late result never changes a sealed verdict":
+     * an attempt already in a terminal status (`completed` / `failed` — the
+     * full vocabulary of this result-path aggregate) matches nothing, so the
+     * statement returns 0 and the sealed status and revision are left
+     * untouched. Callers MUST treat 0 as "already sealed", never as a failure
+     * to retry blindly.
      */
     @Query(
         """
         MATCH (a:AgentStepAttempt {id: ${'$'}id})
+        WHERE NOT a.status IN ['completed', 'failed']
         SET a.status = ${'$'}status,
             a.revision = a.revision + 1,
             a.updatedAt = ${'$'}updatedAt

@@ -37,6 +37,10 @@ interface AgentStepAttemptRepository {
     /**
      * Transition the attempt to a terminal status, incrementing the
      * optimistic-locking `revision`. Returns the number of updated rows.
+     *
+     * The write is fenced at the storage layer (Phase 10): an attempt already
+     * sealed in a terminal status (`completed` / `failed`) matches nothing and
+     * the call returns 0 without altering the sealed verdict or its revision.
      */
     fun terminalize(
         scope: TenantScope,
