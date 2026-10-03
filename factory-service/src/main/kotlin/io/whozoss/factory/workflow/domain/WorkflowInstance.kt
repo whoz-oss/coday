@@ -28,6 +28,32 @@ fun nowIso(): String = Instant.now().truncatedTo(ChronoUnit.MILLIS).toString()
 fun independentWorkflowRelations(workflowId: String): Map<String, Any?> = mapOf("rootWorkflowId" to workflowId)
 
 /**
+ * Relations of a SUCCESSOR workflow that resumes or re-runs a sealed
+ * (terminal-run) predecessor (Phase 10 terminal governance).
+ *
+ * A terminal workflow (`completed` / `failed` / `cancelled`) is immutable and
+ * sealed: reopening it is strictly forbidden (`WORKFLOW_SEALED`). To resume
+ * or re-run the requirement, the control plane starts a NEW [newWorkflowId]
+ * whose [WorkflowStartCommand.relations] carry [previousWorkflowId] (the
+ * sealed predecessor) and the shared [rootWorkflowId] — by default the
+ * predecessor itself is the root of the run chain; pass the predecessor's own
+ * `rootWorkflowId` to keep a longer chain under one root. The sealed
+ * predecessor is never reopened, mutated or re-linked.
+ *
+ * Relations already flow unchanged through [createWorkflowInstance] and
+ * [CanonicalHash.workflowStartCommandHash], so no start-command change is
+ * required: pass the returned map as `WorkflowStartCommand.relations`.
+ */
+fun linkedWorkflowRelations(
+    newWorkflowId: String,
+    previousWorkflowId: String,
+    rootWorkflowId: String = previousWorkflowId,
+): Map<String, Any?> = mapOf(
+    "rootWorkflowId" to rootWorkflowId,
+    "previousWorkflowId" to previousWorkflowId,
+)
+
+/**
  * Builds the governed instance and its v2 projection for a validated start
  * command, and computes the creation command hash.
  */

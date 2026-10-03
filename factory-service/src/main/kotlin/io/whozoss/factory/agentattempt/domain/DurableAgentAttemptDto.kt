@@ -36,6 +36,20 @@ data class DurableAgentAttemptDto(
     val createdAt: Instant,
     val startedAt: Instant? = null,
     val completedAt: Instant? = null,
+    /**
+     * Phase 10 observability: `true` when [status] is a sealed terminal
+     * verdict ([AgentAttemptStatus.terminal]). A terminal attempt is
+     * immutable — a late result never changes the sealed verdict.
+     */
+    val terminal: Boolean = false,
+    /**
+     * Phase 10 observability: the sealing distinction
+     * ([AgentOsRuntimeStateMapping.SealingClass] wire name) the cockpit uses
+     * to separate a still-observed attempt (`ACTIVE`), an authoritatively
+     * succeeded one (`COMPLETED`) and a runtime-closed one
+     * (`RUNTIME_CLOSED`: failed / indeterminate / interrupted / superseded).
+     */
+    val sealingClass: String = AgentOsRuntimeStateMapping.SealingClass.ACTIVE.name,
 )
 
 /** Map a domain [DurableAgentAttempt] to its bounded public read DTO. */
@@ -55,4 +69,6 @@ fun DurableAgentAttempt.toDto(): DurableAgentAttemptDto = DurableAgentAttemptDto
     createdAt = createdAt,
     startedAt = startedAt,
     completedAt = completedAt,
+    terminal = status.terminal,
+    sealingClass = AgentOsRuntimeStateMapping.classify(status).name,
 )

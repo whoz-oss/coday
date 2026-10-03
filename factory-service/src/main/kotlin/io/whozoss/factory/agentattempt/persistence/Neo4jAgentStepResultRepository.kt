@@ -21,6 +21,7 @@ import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.ResultSemanticCollisionException
 import io.whozoss.factory.agentattempt.domain.SubmitOutcome
 import io.whozoss.factory.persistence.TenantScope
+import mu.KotlinLogging
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
@@ -56,6 +57,8 @@ class Neo4jAgentStepResultRepository(
     private val attempts: AgentStepAttemptRepository,
     private val objectMapper: ObjectMapper,
 ) : AgentStepResultRepository {
+
+    private val logger = KotlinLogging.logger {}
 
     @Transactional
     override fun issue(
@@ -180,7 +183,7 @@ class Neo4jAgentStepResultRepository(
             insertSubmitted(scope, capability, submitted.resultId, resultStatus, resultHash, payload, now)
         }
 
-        attempts.terminalize(
+        val terminalized = attempts.terminalize(
             scope,
             capability.namespaceId,
             capability.workflowId,
@@ -188,6 +191,19 @@ class Neo4jAgentStepResultRepository(
             capability.attemptId,
             ATTEMPT_TERMINAL_STATUS.getValue(parsed.status),
         )
+        if (terminalized == 0) {
+            // Phase 10 late-result policy: the attempt is already sealed in a
+            // terminal status. Do NOT throw and never rewrite the verdict —
+            // the sealed attempt stays byte-for-byte unchanged and the result
+            // row above remains governed by the semantic-collision guard (an
+            // identical late submission replays, a divergent one was already
+            // rejected before reaching this point). Observed for audit only.
+            logger.warn {
+                "Late result ignored for sealed attempt '${capability.attemptId}' " +
+                    "(workflow '${capability.workflowId}', step '${capability.stepId}'): " +
+                    "the terminal verdict is immutable and was left unchanged"
+            }
+        }
         insertOutbox(scope, submitted, now)
 
         return SubmitOutcome.Created(submitted)
