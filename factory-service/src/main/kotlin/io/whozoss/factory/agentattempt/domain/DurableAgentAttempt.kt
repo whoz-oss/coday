@@ -52,6 +52,17 @@ data class DurableAgentAttempt(
      */
     val environmentRef: String? = null,
     val expectedEnvironmentRevision: Int? = null,
+    /**
+     * The bounded resumption context of a successor attempt `N+1` (Phase 4
+     * ask-step-question): a compact JSON document holding the question, the
+     * audited human answer and actor, and the predecessor
+     * `attemptId`/`interactionId` links. Set ONCE at registration of the
+     * successor attempt, never mutated afterwards; `null` on first attempts and
+     * on attempts registered before the ask-step-question channel existed.
+     * Bounded to
+     * [StepQuestionLimits.RESUMPTION_CONTEXT_BYTES] UTF-8 bytes.
+     */
+    val resumptionContext: String? = null,
     val status: AgentAttemptStatus = AgentAttemptStatus.PENDING,
     val failureCode: String? = null,
     val resultEvidenceId: String? = null,

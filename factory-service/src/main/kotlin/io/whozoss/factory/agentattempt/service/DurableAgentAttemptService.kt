@@ -236,6 +236,33 @@ class DurableAgentAttemptService(
      * already interrupted; a divergent revision is a conflict; any other terminal
      * status is an invalid transition.
      */
+    /**
+     * Supersede a `waiting_human` attempt (Phase 4 ask-step-question), fenced on
+     * [expectedRevision]: the attempt is moved to the terminal `superseded`
+     * status and its lease owner token rotated. Idempotent when already
+     * superseded; a divergent revision is a conflict; any other status is an
+     * invalid transition. A superseded attempt is immutable — the step resumes
+     * exclusively as a brand-new attempt registered through [registerRetry].
+     */
+    @Transactional
+    fun supersede(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int? = null,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.supersede(
+        scope,
+        namespaceId,
+        workflowId,
+        stepId,
+        attemptId,
+        expectedRevision,
+        now,
+    )
+
     @Transactional
     fun requestCancel(
         scope: TenantScope,

@@ -60,6 +60,7 @@ class AgentAttemptStateMachineTest {
             AgentAttemptStatus.FAILED,
             AgentAttemptStatus.INDETERMINATE,
             AgentAttemptStatus.INTERRUPTED,
+            AgentAttemptStatus.SUPERSEDED,
         ).forEach { terminal ->
             assertThat(terminal.terminal).isTrue()
             AgentAttemptStatus.entries.forEach { to ->
@@ -84,6 +85,25 @@ class AgentAttemptStateMachineTest {
         ).forEach { status ->
             assertThat(status.terminal).isFalse()
         }
+    }
+
+    /**
+     * Phase 4 ask-step-question attestation: `superseded` is reachable ONLY
+     * from `waiting_human` (a parked attempt whose human answer was received),
+     * it is terminal, and it is never a success.
+     */
+    @Test
+    fun `superseded is terminal, not a success, and reachable only from waiting_human`() {
+        AgentAttemptStatus.entries.forEach { from ->
+            assertThat(from.canTransitionTo(AgentAttemptStatus.SUPERSEDED))
+                .describedAs("$from -> SUPERSEDED")
+                .isEqualTo(from == AgentAttemptStatus.WAITING_HUMAN)
+        }
+        assertThat(AgentAttemptStatus.SUPERSEDED.terminal).isTrue()
+        assertThat(AgentAttemptStatus.SUPERSEDED.isSuccess).isFalse()
+        assertThat(AgentAttemptStatus.SUPERSEDED.canTransitionTo(AgentAttemptStatus.RUNNING)).isFalse()
+        assertThat(AgentAttemptStatus.SUPERSEDED.canTransitionTo(AgentAttemptStatus.PENDING)).isFalse()
+        assertThat(AgentAttemptStatus.SUPERSEDED.dbValue).isEqualTo("superseded")
     }
 
     @Test

@@ -40,6 +40,10 @@ class FactoryToolGrantService(
                 "request_transition", "FACTORY__request_transition" -> "request_transition"
                 "transition_workflow", "FACTORY__transition_workflow" -> "transition_workflow"
                 "submit_step_result", "FACTORY__submit_step_result" -> "submit_step_result"
+                // Phase 4 ask-step-question: a WORKER capability, grantable only
+                // explicitly alongside the result channel — never granted to the
+                // Workstream Agent persona.
+                "ask_step_question", "FACTORY__ask_step_question" -> "ask_step_question"
                 else -> null
             }
         }.toSet()

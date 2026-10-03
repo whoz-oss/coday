@@ -135,12 +135,13 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         val byId = attempts.associateBy { it["attemptId"] }
         val first = byId.getValue("attempt-1")
         // Exactly the bounded public fields are exposed (the environment link
-        // is safe operator metadata, never a secret).
+        // and the Phase 4 resumption context are safe operator metadata, never
+        // secrets).
         assertThat(first.keys).containsExactlyInAnyOrderElementsOf(
             setOf(
                 "attemptId", "stepId", "attemptNumber", "agentName", "status", "caseId",
                 "failureCode", "resultEvidenceId", "environmentRef", "expectedEnvironmentRevision",
-                "revision", "createdAt", "startedAt", "completedAt",
+                "resumptionContext", "revision", "createdAt", "startedAt", "completedAt",
             ),
         )
         assertThat(first["status"]).isEqualTo("running")

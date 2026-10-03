@@ -86,6 +86,7 @@ class Neo4jDurableAgentAttemptRepository(
             brief = attempt.brief,
             environmentRef = attempt.environmentRef,
             expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
+            resumptionContext = attempt.resumptionContext,
             now = now,
         )
         if (isNew) {
@@ -389,6 +390,78 @@ class Neo4jDurableAgentAttemptRepository(
             after.status == AgentAttemptStatus.INTERRUPTED -> after
             after.status.terminal -> throw InvalidAttemptTransitionException(
                 "Attempt '$attemptId' became terminal as '${after.status.dbValue}' and cannot be cancelled",
+                details = mapOf("attemptId" to attemptId, "status" to after.status.dbValue),
+            )
+            else -> throw RevisionConflictException(
+                "Attempt '$attemptId' is at revision ${after.revision}, expected $revision",
+                details = mapOf("attemptId" to attemptId, "currentRevision" to after.revision, "expectedRevision" to revision),
+            )
+        }
+    }
+
+    @Transactional
+    override fun supersede(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int?,
+        now: Instant,
+    ): DurableAgentAttempt {
+        val current = requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+        // Idempotent supersede replay: already superseded (the step question was
+        // already answered once — a terminal record is never rewritten).
+        if (current.status == AgentAttemptStatus.SUPERSEDED) return current
+        if (current.status.terminal) {
+            throw InvalidAttemptTransitionException(
+                "Attempt '$attemptId' is already terminal as '${current.status.dbValue}' and cannot be superseded",
+                details = mapOf("attemptId" to attemptId, "status" to current.status.dbValue),
+            )
+        }
+        if (current.status != AgentAttemptStatus.WAITING_HUMAN) {
+            throw InvalidAttemptTransitionException(
+                "Only a 'waiting_human' attempt can be superseded, not '${current.status.dbValue}'",
+                details = mapOf("attemptId" to attemptId, "status" to current.status.dbValue),
+            )
+        }
+        val revision = expectedRevision ?: current.revision
+        if (revision != current.revision) {
+            throw RevisionConflictException(
+                "Attempt '$attemptId' is at revision ${current.revision}, expected $revision",
+                details = mapOf("attemptId" to attemptId, "currentRevision" to current.revision, "expectedRevision" to revision),
+            )
+        }
+        val id = requireId(scope, namespaceId, workflowId, stepId, attemptId)
+        val superseded = attempts.supersede(id, revision, "supersede:$attemptId", now)
+        if (superseded > 0L) {
+            val after = requireNode(scope, namespaceId, workflowId, stepId, attemptId)
+            appendJournal(
+                scope = scope,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = stepId,
+                attemptId = attemptId,
+                fromStatus = current.status,
+                toStatus = AgentAttemptStatus.SUPERSEDED,
+                ownerToken = "supersede:$attemptId",
+                revisionAfter = after.revision,
+                now = now,
+            )
+            return after.toDomain()
+        }
+        // The CAS matched nothing: the attempt changed between the read and the
+        // write (answered concurrently, terminalized or revision-bumped) —
+        // surface the precise conflict.
+        val after = requireNode(scope, namespaceId, workflowId, stepId, attemptId).toDomain()
+        return when {
+            after.status == AgentAttemptStatus.SUPERSEDED -> after
+            after.status.terminal -> throw InvalidAttemptTransitionException(
+                "Attempt '$attemptId' became terminal as '${after.status.dbValue}' and cannot be superseded",
+                details = mapOf("attemptId" to attemptId, "status" to after.status.dbValue),
+            )
+            after.status != AgentAttemptStatus.WAITING_HUMAN -> throw InvalidAttemptTransitionException(
+                "Only a 'waiting_human' attempt can be superseded, not '${after.status.dbValue}'",
                 details = mapOf("attemptId" to attemptId, "status" to after.status.dbValue),
             )
             else -> throw RevisionConflictException(
