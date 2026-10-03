@@ -5,7 +5,7 @@
   [class.card--working]="s.status === 'working'"
   [class.card--destroyed]="s.status === 'destroyed'"
 >
-  <!-- En-tête : nom, statut, vague, coût orchestrateur -->
+  <!-- En-tête : nom, statut, type de workflow -->
   <header class="head">
     <h3 class="name">
       @if (s.run) {
@@ -27,25 +27,25 @@
       }
     }
 
-    @if (s.wave) {
-      <sf-status-chip tone="amber" icon="waves">{{ s.wave }}</sf-status-chip>
-    }
-
     <span class="sf-spacer"></span>
-    <sf-metric icon="chat_bubble" label="Coût orchestrateur Archay">Archay {{ s.archayCostUsd | usd }}</sf-metric>
+    @if (s.workflowType) {
+      <sf-status-chip tone="cyan" icon="polyline">{{ s.workflowType }}</sf-status-chip>
+    }
   </header>
 
-  <!-- Méta : projet › branche · roster + liens services -->
+  <!-- Méta : projet › branche · ticket + liens services -->
   <div class="meta">
     <mat-icon class="branch-icon" aria-hidden="true">account_tree</mat-icon>
     <span class="sf-workflow">{{ s.project }}</span>
     @if (s.branch) {
       <span>›</span><span class="sf-workflow">{{ s.branch }}</span>
     }
-    <span>·</span>
-    <span
-      >roster <span class="sf-workflow">{{ s.roster }}</span></span
-    >
+    @if (s.ticket) {
+      <span>·</span>
+      <span
+        >ticket <span class="sf-workflow">{{ s.ticket }}</span></span
+      >
+    }
     <span class="sf-spacer"></span>
     <a class="service-link" href="#" (click)="$event.preventDefault()"><span class="dot"></span>Coday · Archay</a>
     @if (s.run) {
@@ -88,8 +88,6 @@
       <button mat-button class="sf-ghost" (click)="action.emit('conversation')">Conversation</button>
       <button mat-button class="sf-ghost" (click)="action.emit('log')">Log</button>
       <button mat-button class="sf-ghost" (click)="action.emit('commits')">Récupérer les commits</button>
-      <span class="sf-spacer"></span>
-      <button mat-stroked-button class="sf-danger" (click)="action.emit('destroy')">Détruire</button>
     </footer>
   }
 </mat-card>

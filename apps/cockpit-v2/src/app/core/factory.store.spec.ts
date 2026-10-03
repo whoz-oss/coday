@@ -2,7 +2,6 @@ import { provideHttpClient } from '@angular/common/http'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { TestBed } from '@angular/core/testing'
 import { FactoryStore } from './factory.store'
-import { SANDBOXES } from './mock-data'
 import { EVENT_SOURCE_FACTORY } from './sse.service'
 
 type Listener = (event: MessageEvent) => void
@@ -109,55 +108,87 @@ describe('FactoryStore', () => {
     http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: actions })
   }
 
-  it('exposes the mock sandboxes before/without real data', () => {
+  // ---------------------------------------------------------------------------
+  // Derivation from the real active workflows
+  // ---------------------------------------------------------------------------
+
+  it('starts with no sandboxes before any real workflow is loaded', () => {
     flushInitialWorkflows()
-    expect(store.sandboxes()).toEqual(SANDBOXES)
+
+    expect(store.sandboxes()).toEqual([])
+    expect(store.activeSandboxes()).toEqual([])
+    expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
   })
 
-  it('hides destroyed sandboxes from the active list', () => {
-    flushInitialWorkflows()
-    expect(store.activeSandboxes()).toHaveLength(2)
-    expect(store.activeSandboxes().every((sandbox) => sandbox.status !== 'destroyed')).toBe(true)
+  it('derives one sandbox per active workflow, from the real snapshot fields', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    expect(store.sandboxes()).toHaveLength(1)
+    const [sandbox] = store.sandboxes()
+    if (!sandbox) throw new Error('expected one derived sandbox')
+
+    expect(sandbox.name).toBe('wf-1')
+    expect(sandbox.project).toBe('ns-1')
+    expect(sandbox.namespace).toBe('ns-1')
+    expect(sandbox.ticket).toBe('ABC-1')
+    expect(sandbox.branch).toBe('ABC-1')
+    expect(sandbox.status).toBe('working')
+    expect(sandbox.run?.id).toBe('wf-1')
+    expect(sandbox.run?.workflow).toBe('Real workflow')
+    expect(sandbox.run?.status).toBe('running')
   })
 
-  it('switches between active and visible sandboxes with showDestroyed', () => {
-    flushInitialWorkflows()
+  it('maps an idle/pending workflow state onto an idle sandbox', () => {
+    const idle = { ...snapshot, projection: { ...snapshot.projection, status: 'pending' } }
+    flushInitialWorkflows([idle])
+    flushEnrichment()
+
+    expect(store.sandboxes()[0]?.status).toBe('idle')
+  })
+
+  it('keeps the active and visible lists consistent and toggles with showDestroyed', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
     expect(store.visibleSandboxes()).toEqual(store.activeSandboxes())
+    expect(store.destroyedSandboxes()).toEqual([])
 
     store.showDestroyed.set(true)
     expect(store.visibleSandboxes()).toEqual(store.sandboxes())
   })
 
-  it('aggregates the workflow costs of the active sandboxes', () => {
-    flushInitialWorkflows()
-    const expected = store.activeSandboxes().reduce((sum, sandbox) => sum + (sandbox.run?.costUsd ?? 0), 0)
+  // ---------------------------------------------------------------------------
+  // Real cost aggregation
+  // ---------------------------------------------------------------------------
 
-    expect(store.costs().workflowsUsd).toBeCloseTo(expected, 6)
-    expect(store.costs().active).toBe(store.activeSandboxes().length)
-  })
-
-  it('marks a sandbox as destroyed and drops its run', () => {
-    flushInitialWorkflows()
-    const target = store.activeSandboxes()[0]
-    if (!target) throw new Error('expected at least one active sandbox')
-
-    store.destroy(target.name)
-
-    const updated = store.sandboxes().find((sandbox) => sandbox.name === target.name)
-    expect(updated?.status).toBe('destroyed')
-    expect(updated?.run).toBeUndefined()
-    expect(updated?.finalCostUsd).toBe(target.run?.costUsd ?? 0)
-  })
-
-  it('maps real workflow projections onto the active sandboxes', () => {
+  it('aggregates the real workflow costs and uncertainty into CostSummary', () => {
     flushInitialWorkflows([snapshot])
-    flushEnrichment()
+    flushEnrichment({
+      workflowId: 'wf-1',
+      realCost: {
+        cost: 1.5,
+        unknownCostCount: 2,
+        liveTokens: 150,
+        paused: false,
+        active: true,
+        runCostThreshold: null,
+      },
+    })
 
-    expect(store.activeSandboxes()[0]?.run?.id).toBe('wf-1')
-    expect(store.activeSandboxes()[0]?.run?.status).toBe('running')
-    // Extra active sandboxes keep their mock run when there is no real match.
-    expect(store.activeSandboxes()[1]?.run?.id).toBe('c5f49c91')
+    const costs = store.costs()
+    expect(costs.active).toBe(1)
+    expect(costs.workflowsUsd).toBeCloseTo(1.5, 6)
+    expect(costs.totalUsd).toBeCloseTo(1.5, 6)
+    expect(costs.unknownCostCount).toBe(2)
+    // No fabricated Archay/destroyed figures anymore.
+    expect(costs.archayUsd).toBeUndefined()
+    expect(costs.destroyedUsd).toBeUndefined()
   })
+
+  // ---------------------------------------------------------------------------
+  // Session detail + governed actions (preserved surface)
+  // ---------------------------------------------------------------------------
 
   it('exposes a real session detail for a loaded workflow', () => {
     flushInitialWorkflows([snapshot])
@@ -186,10 +217,7 @@ describe('FactoryStore', () => {
     expect(store.session('wf-1')?.costUsd).toBe(1.0723)
     expect(store.activeSandboxes()[0]?.run?.costUsd).toBe(1.0723)
     expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(0)
-    expect(store.costs().workflowsUsd).toBeCloseTo(
-      store.activeSandboxes().reduce((sum, sandbox) => sum + (sandbox.run?.costUsd ?? 0), 0),
-      6
-    )
+    expect(store.costs().workflowsUsd).toBeCloseTo(1.0723, 6)
   })
 
   it('propagates a partially unknown workflow cost into the summary', () => {
@@ -202,6 +230,7 @@ describe('FactoryStore', () => {
     expect(store.session('wf-1')?.unknownCostCount).toBe(3)
     expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(3)
     expect(store.costs().unknownCostCount).toBe(3)
+    expect(store.costs().totalUsd).toBeCloseTo(0.5, 6)
   })
 
   it('enriches the session with read-only human interactions', () => {
@@ -304,8 +333,13 @@ describe('FactoryStore', () => {
     expect(session?.workflow).toBe('Real workflow')
   })
 
-  it('refetches the workflow list on an SSE invalidation', () => {
+  // ---------------------------------------------------------------------------
+  // SSE invalidation + graceful degradation
+  // ---------------------------------------------------------------------------
+
+  it('refetches the real active workflows on an SSE invalidation', () => {
     flushInitialWorkflows([])
+    expect(store.sandboxes()).toEqual([])
 
     const source = FakeEventSource.instances[0]
     source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
@@ -313,16 +347,19 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment()
 
-    expect(store.activeSandboxes()[0]?.run?.id).toBe('wf-1')
+    expect(store.sandboxes()).toHaveLength(1)
+    expect(store.sandboxes()[0]?.run?.id).toBe('wf-1')
   })
 
-  it('degrades gracefully when the REST backend fails', () => {
+  it('degrades to an empty list (never the mock fleet) when the REST backend fails', () => {
     http
       .expectOne((r) => r.url === '/api/factory/workflows')
       .flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
 
-    expect(store.activeSandboxes()).toHaveLength(2)
-    expect(store.activeSandboxes()[0]?.run?.id).toBe('872641a8')
+    expect(store.sandboxes()).toEqual([])
+    expect(store.activeSandboxes()).toEqual([])
+    expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
+    // The demo session fallback still resolves without crashing.
     expect(store.session('872641a8').id).toBe('872641a8')
   })
 
@@ -331,6 +368,10 @@ describe('FactoryStore', () => {
     const session = store.session('unknown-run')
     expect(session?.id).toBe('unknown-run')
   })
+
+  // ---------------------------------------------------------------------------
+  // Governed actions & blockers: backend authority, preserved verbatim
+  // ---------------------------------------------------------------------------
 
   it('enriches the session with backend allowedActions and blockers', () => {
     flushInitialWorkflows([snapshot])

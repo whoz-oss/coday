@@ -3,41 +3,38 @@
   <header class="page-head">
     <div class="titles">
       <h1>Sandboxes</h1>
-      <p class="sf-muted">Environnements isolés où tournent vos workflows d'agents, orchestrés par Archay.</p>
+      <p class="sf-muted">Workflows d'agents actifs, dérivés des runs réels exposés par factory-service.</p>
     </div>
-    <button mat-stroked-button class="sf-secondary" (click)="bestOfN()">Best-of-N…</button>
-    <button mat-flat-button class="sf-primary" (click)="mount()"><mat-icon>add</mat-icon>Monter une sandbox</button>
   </header>
 
   <!-- Indicateurs -->
   @let c = store.costs();
   <section class="kpis" aria-label="Indicateurs">
     <article class="kpi sf-panel">
-      <h2 class="sf-overline">Sandboxes actives</h2>
+      <h2 class="sf-overline">Workflows actifs</h2>
       <span class="kpi-value">{{ c.active }}</span>
-      <span class="kpi-sub"><span class="ok-dot"></span>{{ c.active }} au travail</span>
+      <span class="kpi-sub"><span class="ok-dot"></span>runs réels en cours</span>
     </article>
     <article class="kpi sf-panel">
-      <h2 class="sf-overline">Workflows en cours</h2>
-      <span class="kpi-value kpi-value--cyan">{{ c.workflowsUsd | usd: 2 }}</span>
-      <span class="kpi-sub">{{ c.active }} runs actifs</span>
-    </article>
-    <article class="kpi sf-panel">
-      <h2 class="sf-overline">Sandboxes détruites</h2>
-      <span class="kpi-value">{{ c.destroyedUsd | usd: 2 }}</span>
-      <span class="kpi-sub">coût final cumulé</span>
+      <h2 class="sf-overline">Coût workflows</h2>
+      <span class="kpi-value kpi-value--cyan">{{ c.workflowsUsd | usd: 2 : c.unknownCostCount }}</span>
+      <span class="kpi-sub">coût réel cumulé</span>
     </article>
     <article class="kpi sf-panel kpi--total">
       <h2 class="sf-overline">Total</h2>
-      <span class="kpi-value kpi-value--violet">{{ c.totalUsd | usd: 2 }}</span>
-      <span class="kpi-sub">workflows + Archay + détruites</span>
+      <span class="kpi-value kpi-value--violet">{{ c.totalUsd | usd: 2 : c.unknownCostCount }}</span>
+      <span class="kpi-sub">coût réel des workflows actifs</span>
     </article>
   </section>
 
   <div class="split">
-    <!-- Nouvelle sandbox -->
+    <!-- Nouvelle sandbox (informatif : aucun backend de flotte de conteneurs) -->
     <section class="new sf-panel" aria-labelledby="new-title">
       <h2 id="new-title" class="sf-overline">Nouvelle sandbox</h2>
+      <p class="sf-muted note">
+        La création de sandbox n'est pas disponible : factory-service n'expose pas de flotte de conteneurs. Les cartes
+        ci-dessous reflètent les workflows actifs réels.
+      </p>
       <form [formGroup]="form" (ngSubmit)="mount()" class="new-form">
         <mat-form-field appearance="outline">
           <mat-label>Projet</mat-label>
@@ -66,8 +63,8 @@
         <mat-checkbox formControlName="orchestrator">Orchestrateur Coday (Archay)</mat-checkbox>
 
         <div class="form-actions">
-          <button mat-flat-button class="sf-primary" type="submit">Monter</button>
-          <button mat-stroked-button class="sf-secondary" type="button" (click)="bestOfN()">Best-of-N…</button>
+          <button mat-flat-button class="sf-primary" type="submit" disabled>Monter</button>
+          <button mat-stroked-button class="sf-secondary" type="button" disabled>Best-of-N…</button>
         </div>
       </form>
     </section>
@@ -100,7 +97,7 @@
     @for (s of store.visibleSandboxes(); track s.name) {
       <sf-sandbox-card [sandbox]="s" (action)="onAction(s.name, $event)" />
     } @empty {
-      <p class="empty sf-panel sf-muted">Aucune sandbox active. Montez-en une pour lancer un workflow.</p>
+      <p class="empty sf-panel sf-muted">Aucun workflow actif.</p>
     }
   </section>
 </div>

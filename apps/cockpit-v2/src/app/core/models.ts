@@ -28,16 +28,34 @@ export interface RunSummary {
   phases: PhaseSegment[]
 }
 
+/**
+ * One active sandbox card, DERIVED from a real active workflow snapshot.
+ *
+ * The container fleet itself has no backend API; the available truth is the
+ * list of active workflows, so every real field below is mapped from a
+ * `/api/factory/workflows?state=active` item. The legacy mock-only fields
+ * (`roster`, `wave`, `archayCostUsd`) are kept optional so older fixtures keep
+ * compiling, but nothing derives or displays them anymore.
+ */
 export interface Sandbox {
   name: string
   project: string
   branch?: string
-  roster: string
   status: SandboxStatus
-  wave?: string
-  archayCostUsd: number
-  finalCostUsd?: number // sandboxes détruites
+  /** Namespace attribution of the underlying workflow, when known. */
+  namespace?: string
+  /** Workflow type (e.g. `adw_simple_sdlc`), when known. */
+  workflowType?: string
+  /** Jira/issue ticket carried through the workflow relations, when known. */
+  ticket?: string
+  finalCostUsd?: number // sandboxes détruites (only set when a real teardown exists)
   run?: RunSummary
+  /** @deprecated no real source: model roster of the former mocked fleet. */
+  roster?: string
+  /** @deprecated no real source: wave label of the former mocked fleet. */
+  wave?: string
+  /** @deprecated no real source: Archay orchestrator cost. */
+  archayCostUsd?: number
 }
 
 export interface RecentTask {
@@ -47,11 +65,16 @@ export interface RecentTask {
 }
 
 export interface CostSummary {
+  /** Number of active workflows (= number of derived sandbox cards). */
   active: number
+  /** Sum of the real workflow costs (`RunSummary.costUsd`). */
   workflowsUsd: number
-  archayUsd: number
-  destroyedUsd: number
+  /** Real total: currently equal to `workflowsUsd` (no other real source). */
   totalUsd: number
+  /** @deprecated no real source: was a mocked Archay orchestrator cost. */
+  archayUsd?: number
+  /** @deprecated no real source: was a mocked destroyed-sandbox total. */
+  destroyedUsd?: number
   /**
    * Sum of the {@link RunSummary.unknownCostCount} of the active runs. When
    * > 0 the aggregated `workflowsUsd`/`totalUsd` are lower bounds.

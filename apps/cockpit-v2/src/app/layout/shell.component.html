@@ -22,22 +22,14 @@
   @let c = store.costs();
   <div class="cost-pill" aria-label="Résumé des coûts">
     <span class="live-dot" aria-hidden="true"></span>
-    <span class="strong">{{ c.active }} actives</span>
+    <span class="strong">{{ c.active }} workflows actifs</span>
     <span>·</span
     ><span [attr.title]="c.unknownCostCount ? c.unknownCostCount + ' tour(s) au coût inconnu' : null"
       >workflows <b>{{ c.workflowsUsd | usd: 2 : c.unknownCostCount }}</b></span
     >
-    <span class="opt">·</span
-    ><span class="opt"
-      >Archay <b>{{ c.archayUsd | usd: 2 }}</b></span
-    >
-    <span class="opt">·</span
-    ><span class="opt"
-      >détruites <b>{{ c.destroyedUsd | usd: 2 }}</b></span
-    >
     <span>·</span
     ><span
-      >total <b class="total">{{ c.totalUsd | usd: 2 }}</b></span
+      >total <b class="total">{{ c.totalUsd | usd: 2 : c.unknownCostCount }}</b></span
     >
   </div>
 
