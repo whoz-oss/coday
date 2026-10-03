@@ -1,0 +1,24 @@
+<section class="ws-history" aria-label="Controller history">
+  <h2 class="ws-section-title">
+    <mat-icon>timeline</mat-icon>
+    Controller cases
+  </h2>
+  <p class="ws-history__hint">Controller case transitions — distinct from worker execution steps.</p>
+
+  @if (!history || history.entries.length === 0) {
+    <p class="ws-history__empty">No controller case recorded for this workflow.</p>
+  } @else {
+    <ol class="ws-history__timeline">
+      @for (entry of history.entries; track entry.caseId + entry.at) {
+        <li class="ws-history__entry">
+          <span class="ws-history__at">{{ entry.at }}</span>
+          <span class="ws-history__case">{{ entry.caseId }}</span>
+          <span class="ws-history__transition">{{ entry.fromStatus }} → {{ entry.toStatus }}</span>
+          @if (entry.note) {
+            <span class="ws-history__note">{{ entry.note }}</span>
+          }
+        </li>
+      }
+    </ol>
+  }
+</section>

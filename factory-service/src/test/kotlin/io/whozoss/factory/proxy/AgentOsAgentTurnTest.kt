@@ -55,7 +55,7 @@ class AgentOsAgentTurnTest {
     }
 
     @Test
-    fun `a successful turn reaches IDLE and returns the last agent message`() {
+    fun `a free-text turn reaching IDLE is not an authoritative success`() {
         val (client, server) = build()
         val running = """[{"id":"e1","type":"CaseStatusEvent","status":"RUNNING"}]"""
         val idle = """
@@ -67,9 +67,13 @@ class AgentOsAgentTurnTest {
 
         val result = client.executeAgentTurn("ns-1", "architect", "step-1", "wf-1", brief = "do it")
 
-        assertThat(result).isInstanceOf(AgentTurnExecutionResult.Completed::class.java)
-        assertThat((result as AgentTurnExecutionResult.Completed).summary).isEqualTo("all good")
+        // A raw agent message is observation evidence only: only a structured
+        // capability-backed submission may make an agent step succeed.
+        assertThat(result).isInstanceOf(AgentTurnExecutionResult.Failed::class.java)
+        assertThat((result as AgentTurnExecutionResult.Failed).code)
+            .isEqualTo(HttpAgentOsProxyClient.AGENT_NO_STRUCTURED_RESULT)
         assertThat(result.facts["caseStatus"]).isEqualTo("IDLE")
+        assertThat(result.facts["summary"]).isEqualTo("all good")
         server.verify()
     }
 
@@ -108,7 +112,8 @@ class AgentOsAgentTurnTest {
             caseId = "case-9",
         )
 
-        assertThat(result).isInstanceOf(AgentTurnExecutionResult.Completed::class.java)
+        // the turn itself is not an authoritative success (no structured result)
+        assertThat(result).isInstanceOf(AgentTurnExecutionResult.Failed::class.java)
         server.verify()
     }
 

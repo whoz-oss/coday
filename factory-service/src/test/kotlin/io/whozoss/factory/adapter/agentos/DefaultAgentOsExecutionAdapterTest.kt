@@ -251,7 +251,7 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
-    fun `observeTurn derives Succeeded from the SSE replay of a completed turn`() {
+    fun `observeTurn derives a non-authoritative Indeterminate from the SSE replay of a completed free-text turn`() {
         val (adapter, server) = build(sseFactory())
         server.expect(requestTo("$baseUrl/api/cases"))
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
@@ -264,11 +264,15 @@ class DefaultAgentOsExecutionAdapterTest {
             holdAfterMs = 1_000,
         )
 
-        // the completed turn is decided from the stream alone: no further REST call
+        // the completed turn is decided from the stream alone: no further REST call.
+        // A free-text turn output is observation evidence, never an
+        // authoritative success (that requires a structured capability submission).
         val verdict = adapter.observeTurn("case-1", "attempt-1", timeoutMs = 5_000)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("turn output")
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        verdict as AgentOsExecutionVerdict.Indeterminate
+        assertThat(verdict.reason).isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
+        assertThat(verdict.evidence["summary"]).isEqualTo("turn output")
         server.verify()
     }
 
@@ -291,8 +295,8 @@ class DefaultAgentOsExecutionAdapterTest {
 
         val verdict = adapter.observeTurn("case-1", "attempt-x", timeoutMs = 5_000)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("caught up")
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).evidence["summary"]).isEqualTo("caught up")
         server.verify()
     }
 }

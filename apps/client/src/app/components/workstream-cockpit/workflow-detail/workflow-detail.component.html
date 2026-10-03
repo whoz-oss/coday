@@ -1,0 +1,46 @@
+<section class="ws-detail" aria-label="Workflow detail">
+  @if (detail) {
+    <header class="ws-detail__header">
+      <h2 class="ws-section-title">
+        <mat-icon>account_tree</mat-icon>
+        {{ detail.workflowId }} — {{ detail.workflowType }}
+      </h2>
+      <div class="ws-detail__freshness" title="Projection freshness">
+        <span class="ws-badge ws-badge--info">rev {{ detail.revision }}</span>
+        <span [class]="stepBadgeClass(detail.state)">{{ detail.state }}</span>
+        <span [class]="stepBadgeClass(detail.status)">{{ detail.status }}</span>
+      </div>
+    </header>
+
+    <div class="ws-detail__lanes">
+      @for (lane of laneOrder; track lane) {
+        <div class="ws-detail__lane">
+          <h3 class="ws-detail__lane-title">
+            <mat-icon>{{ laneIcons[lane] }}</mat-icon>
+            {{ laneLabels[lane] }}
+          </h3>
+          <ul class="ws-detail__steps">
+            @for (step of stepsForLane(lane); track step.stepId) {
+              <li>
+                <button
+                  type="button"
+                  class="ws-detail__step"
+                  [class.ws-detail__step--selected]="step.stepId === selectedStepId"
+                  (click)="onSelectStep(step.stepId)"
+                >
+                  <span class="ws-detail__step-id">{{ step.stepId }}</span>
+                  <span [class]="stepBadgeClass(step.status)">{{ step.status }}</span>
+                  <span class="ws-detail__step-rev">rev {{ step.revision }}</span>
+                </button>
+              </li>
+            } @empty {
+              <li class="ws-detail__empty">No step in this lane</li>
+            }
+          </ul>
+        </div>
+      }
+    </div>
+  } @else {
+    <p class="ws-detail__empty">Select a workflow to see its lanes.</p>
+  }
+</section>

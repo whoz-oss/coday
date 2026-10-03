@@ -21,8 +21,25 @@ data class CaseHandle(
  * `factory.adapter.agentos.enabled=false` explicitly demotes execution to the
  * legacy polling turn driver (`HttpAgentOsProxyClient`), a troubleshooting
  * fallback only.
+ *
+ * This interface refines the runtime-agnostic [AgentRuntimeAdapter] lifecycle
+ * contract with the historical argument-list signatures its long-standing
+ * consumers (`CapabilityExecutionService`, `BridgeRecoveryWorker`,
+ * `BridgeCancellationService`, `WorkflowService`) and test doubles were
+ * written against:
+ * - The historical signatures stay abstract — existing implementations that
+ *   override only them remain source-compatible, and the
+ *   [AgentRuntimeAdapter] binding/token operations are provided here as
+ *   default methods that unwrap the [TrustedCaseBinding]/[TurnToken] and
+ *   delegate to the historical signatures.
+ * - The production [DefaultAgentOsExecutionAdapter] does the converse: it
+ *   implements the binding/token operations (capturing the per-turn baseline
+ *   and tracking every case in the [ActiveCaseRegistry]) and adapts the
+ *   historical signatures onto them.
  */
-interface AgentOsExecutionAdapter {
+interface AgentOsExecutionAdapter : AgentRuntimeAdapter {
+
+    // ---- Historical signatures (kept abstract: existing adapters override them) ----
 
     /**
      * Create the AgentOS case for an attempt, or recover the existing one when
@@ -58,10 +75,6 @@ interface AgentOsExecutionAdapter {
      * reconnection) until a verdict is derivable or the budget elapses.
      * Never returns a verdict derived from silence.
      */
-    /**
-     * Compatibility entry point for adapters that only need terminal
-     * observation. Existing implementations may keep overriding this method.
-     */
     fun observeTurn(
         caseId: String,
         attemptId: String,
@@ -83,12 +96,42 @@ interface AgentOsExecutionAdapter {
 
     /**
      * REST-only catch-up: pull the durable events and derive the verdict. A
-     * case that is not yet quiescent yields [AgentOsExecutionVerdict.Indeterminate].
+     * case that is not yet quiescent yields [AgentOsExecutionVerdict.Indeterminate];
+     * a runtime that cannot be reached at all yields an indeterminate
+     * [VerdictDeriver.RUNTIME_UNREACHABLE] verdict — never `Succeeded`.
      */
     fun reconcile(caseId: String): AgentOsExecutionVerdict
 
-    /** Durable, non-transient case history used for strict human-answer reconciliation. */
-    fun persistedEvents(caseId: String): List<CaseEventView> = emptyList()
+    // ---- AgentRuntimeAdapter contract, defaulted over the historical signatures ----
+
+    override fun createOrRecoverExecution(binding: TrustedCaseBinding, workflowId: String, stepId: String): CaseHandle =
+        createOrRecoverExecution(
+            namespaceId = binding.namespaceId ?: "",
+            workflowId = workflowId,
+            stepId = stepId,
+            externalUserId = binding.externalUserId,
+            attemptId = binding.attemptId,
+            capabilityToken = binding.capabilityToken,
+            caseId = binding.caseId,
+        )
+
+    /**
+     * Default turn start: delegates to the historical signature and returns an
+     * unbaselined token. Implementations capturing a real per-turn baseline
+     * (the production adapter) override this to return the captured baseline.
+     */
+    override fun startTurn(binding: TrustedCaseBinding, persona: String, brief: String): TurnToken {
+        startTurn(binding.caseId, persona, brief, binding.externalUserId, binding.attemptId, binding.capabilityToken)
+        return TurnToken.unbaselined(binding.caseId, binding.attemptId)
+    }
+
+    override fun observeTurn(
+        turn: TurnToken,
+        timeoutMs: Long,
+        onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
+    ): AgentOsExecutionVerdict = observeTurn(turn.caseId, turn.attemptId, timeoutMs, onIntermediateVerdict)
+
+    override fun reconcile(turn: TurnToken): AgentOsExecutionVerdict = reconcile(turn.caseId)
 
     /**
      * Forward a bounded human answer to AgentOS. This command only requests the
@@ -108,15 +151,4 @@ interface AgentOsExecutionAdapter {
         require(answeringUserId.isNotBlank()) { "answeringUserId must not be blank" }
         throw UnsupportedOperationException("AgentOS answer forwarding with identity is not supported by this adapter")
     }
-
-    /**
-     * Request an interruption (best-effort stop; the AgentOS contract exposes
-     * only the kill route). The interruption intent is remembered so a
-     * subsequent terminal `KILLED` derives to
-     * [AgentOsExecutionVerdict.Interrupted] — never `Succeeded`.
-     */
-    fun interrupt(caseId: String, reason: String)
-
-    /** Best-effort `POST /api/cases/{caseId}/kill`; never throws. */
-    fun kill(caseId: String)
 }

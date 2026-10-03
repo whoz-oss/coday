@@ -83,6 +83,37 @@ class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `result-submitted and terminalization commit with a pending outbox event before any workflow transition`() {
+        seedAttempt("attempt-seq")
+        val issued = service.issue(scope, identity("attempt-seq"))
+
+        service.submit(scope, issued.token, business("FAIL", "broken"), observed("attempt-seq"), null)
+
+        // The single authoritative commit is fully visible the instant submit()
+        // returns: (a) the result row carries the submitted payload,
+        // (b) the attempt is terminal in the SAME transaction, and
+        // (c) the outbox event is still `pending` — no workflow transition ran
+        // inside the submission transaction. The session DAG is advanced later,
+        // after the drain commit, by the OutboxDrainWorker (disabled in tests).
+        assertThat(resultPayloadType("attempt-seq")).isEqualTo("result-submitted")
+        assertThat(resultNode("attempt-seq")?.resultStatus).isEqualTo("failure")
+        assertThat(attempts.find(scope, namespace, workflow, step, "attempt-seq")?.status).isEqualTo("failed")
+
+        val outbox = outboxEvents()
+        assertThat(outbox).hasSize(1)
+        assertThat(outbox.single().eventType).isEqualTo("result_submitted")
+        assertThat(outbox.single().status).isEqualTo("pending")
+        val payload = objectMapper.readTree(outbox.single().payload)
+        assertThat(payload.path("aggregateType").asText()).isEqualTo("agent_step_result")
+        assertThat(payload.path("attemptId").asText()).isEqualTo("attempt-seq")
+        assertThat(payload.path("status").asText()).isEqualTo("FAIL")
+        assertThat(payload.path("namespaceId").asText()).isEqualTo(namespace)
+        assertThat(payload.path("workflowId").asText()).isEqualTo(workflow)
+        assertThat(payload.path("stepId").asText()).isEqualTo(step)
+        assertThat(payload.path("caseId").asText()).isEqualTo(caseId)
+    }
+
+    @Test
     fun `an identical replay is idempotent and does not write again`() {
         seedAttempt("attempt-idem")
         val issued = service.issue(scope, identity("attempt-idem"))
@@ -158,6 +189,44 @@ class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
         }
             .isInstanceOf(ResultIdentityMismatchException::class.java)
             .hasFieldOrPropertyWithValue("errorCode", "RESULT_IDENTITY_MISMATCH")
+    }
+
+    @Test
+    fun `a mismatched observed namespace is rejected`() {
+        seedAttempt("attempt-ns")
+        val issued = service.issue(scope, identity("attempt-ns"))
+
+        assertThatThrownBy {
+            service.submit(
+                scope,
+                issued.token,
+                business("PASS", "ok"),
+                AgentStepResultObservedIdentity("attempt-ns", caseId, agentName, namespaceId = "other-namespace"),
+                null,
+            )
+        }
+            .isInstanceOf(ResultIdentityMismatchException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", "RESULT_IDENTITY_MISMATCH")
+
+        assertThat(countOutbox()).isEqualTo(0)
+        assertThat(attempts.find(scope, namespace, workflow, step, "attempt-ns")?.status).isEqualTo("running")
+    }
+
+    @Test
+    fun `a matching observed namespace is accepted`() {
+        seedAttempt("attempt-ns-ok")
+        val issued = service.issue(scope, identity("attempt-ns-ok"))
+
+        val outcome = service.submit(
+            scope,
+            issued.token,
+            business("PASS", "ok"),
+            AgentStepResultObservedIdentity("attempt-ns-ok", caseId, agentName, namespaceId = namespace),
+            null,
+        )
+
+        assertThat(outcome.idempotent).isFalse()
+        assertThat(attempts.find(scope, namespace, workflow, step, "attempt-ns-ok")?.status).isEqualTo("completed")
     }
 
     @Test

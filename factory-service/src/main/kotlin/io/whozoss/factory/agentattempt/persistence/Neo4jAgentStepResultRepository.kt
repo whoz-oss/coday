@@ -21,6 +21,7 @@ import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.ResultSemanticCollisionException
 import io.whozoss.factory.agentattempt.domain.SubmitOutcome
 import io.whozoss.factory.persistence.TenantScope
+import mu.KotlinLogging
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
@@ -56,6 +57,8 @@ class Neo4jAgentStepResultRepository(
     private val attempts: AgentStepAttemptRepository,
     private val objectMapper: ObjectMapper,
 ) : AgentStepResultRepository {
+
+    private val logger = KotlinLogging.logger {}
 
     @Transactional
     override fun issue(
@@ -125,9 +128,17 @@ class Neo4jAgentStepResultRepository(
     ): SubmitOutcome {
         val capability = findByTokenHash(scope, CanonicalJsonHash.sha256(token))
             ?: throw ResultCapabilityInvalidException()
+        // Identity fencing: the submission is bound to exactly the attempt,
+        // case, agent and (when declared by the trust boundary) namespace the
+        // capability was issued for. `workflowId`/`stepId` are never declared
+        // by the caller — they are taken from the capability itself — and the
+        // tenant `(organizationId, workstreamId)` is fenced by the token-hash
+        // lookup being scoped to the verified `TenantScope`: a token presented
+        // under another tenant simply does not resolve (RESULT_CAPABILITY_INVALID).
         if (observed.attemptId != capability.attemptId ||
             observed.caseId != capability.caseId ||
-            observed.agentName != capability.agentName
+            observed.agentName != capability.agentName ||
+            (observed.namespaceId != null && observed.namespaceId != capability.namespaceId)
         ) {
             throw ResultIdentityMismatchException()
         }
@@ -172,7 +183,7 @@ class Neo4jAgentStepResultRepository(
             insertSubmitted(scope, capability, submitted.resultId, resultStatus, resultHash, payload, now)
         }
 
-        attempts.terminalize(
+        val terminalized = attempts.terminalize(
             scope,
             capability.namespaceId,
             capability.workflowId,
@@ -180,6 +191,19 @@ class Neo4jAgentStepResultRepository(
             capability.attemptId,
             ATTEMPT_TERMINAL_STATUS.getValue(parsed.status),
         )
+        if (terminalized == 0) {
+            // Phase 10 late-result policy: the attempt is already sealed in a
+            // terminal status. Do NOT throw and never rewrite the verdict —
+            // the sealed attempt stays byte-for-byte unchanged and the result
+            // row above remains governed by the semantic-collision guard (an
+            // identical late submission replays, a divergent one was already
+            // rejected before reaching this point). Observed for audit only.
+            logger.warn {
+                "Late result ignored for sealed attempt '${capability.attemptId}' " +
+                    "(workflow '${capability.workflowId}', step '${capability.stepId}'): " +
+                    "the terminal verdict is immutable and was left unchanged"
+            }
+        }
         insertOutbox(scope, submitted, now)
 
         return SubmitOutcome.Created(submitted)
@@ -199,6 +223,17 @@ class Neo4jAgentStepResultRepository(
 
     override fun findByToken(scope: TenantScope, token: String): AgentStepResultCapability? =
         findByTokenHash(scope, CanonicalJsonHash.sha256(token))
+
+    override fun findSubmittedWithNonTerminalAttempt(): List<ScopedSubmittedResult> =
+        results.findSubmittedWithNonTerminalAttempt().map { node ->
+            ScopedSubmittedResult(TenantScope(node.organizationId, node.workstreamId), node.toDomain())
+        }
+
+    override fun findUnredeemedReservedCapabilities(): List<ScopedReservedCapability> =
+        capabilities.findUnredeemedReserved().mapNotNull { node ->
+            runCatching { deserialize(node.payload, AgentStepResultCapability::class.java) }.getOrNull()
+                ?.let { ScopedReservedCapability(TenantScope(node.organizationId, node.workstreamId), it) }
+        }
 
     // ------------------------------------------------------------------
     // Capability / result IO

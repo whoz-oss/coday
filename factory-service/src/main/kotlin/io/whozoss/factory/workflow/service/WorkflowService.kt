@@ -160,15 +160,39 @@ class WorkflowService(
      * namespace of the scope is listed; when it is supplied only that namespace
      * is returned. The tenant isolation always comes from [scope] — never from
      * the namespace filter.
+     *
+     * [workflowType] and [limit] are OPTIONAL read-only filters (Phase 6
+     * Workstream Agent reads) applied over the already-projected snapshots:
+     * the type filter keeps only items whose projected `projection.workflowType`
+     * matches, and [limit] is coerced into `[1, MAX_LIST_LIMIT]`, reporting
+     * `truncated` when items were dropped. Both are `null`-neutral: when they
+     * are absent every snapshot is returned in the repository order.
      */
     @Transactional(readOnly = true)
-    fun listProjections(scope: TenantScope, namespaceId: String?, state: String): Map<String, Any?> {
+    fun listProjections(
+        scope: TenantScope,
+        namespaceId: String?,
+        state: String,
+        workflowType: String? = null,
+        limit: Int? = null,
+    ): Map<String, Any?> {
         if (state !in setOf("active", "removed")) {
             throw workflowException(WorkflowErrorCodes.UNSUPPORTED_STATE, "state must be active or removed.")
         }
         val resolvedNamespace = namespaceId?.takeIf { it.isNotBlank() }
-        val items = repository.listProjections(scope, resolvedNamespace, state).map { publicSnapshot(it) }
-        return mapOf("namespaceId" to (resolvedNamespace ?: ""), "state" to state, "items" to items)
+        var items = repository.listProjections(scope, resolvedNamespace, state).map { publicSnapshot(it) }
+        val typeFilter = workflowType?.takeIf { it.isNotBlank() }
+        if (typeFilter != null) {
+            items = items.filter { (it["projection"] as? Map<*, *>)?.get("workflowType") == typeFilter }
+        }
+        val boundedLimit = limit?.coerceIn(1, MAX_LIST_LIMIT)
+        val capped = boundedLimit?.let { items.take(it) } ?: items
+        return mapOf(
+            "namespaceId" to (resolvedNamespace ?: ""),
+            "state" to state,
+            "items" to capped,
+            "truncated" to (capped.size < items.size),
+        )
     }
 
     @Transactional(readOnly = true)
@@ -404,6 +428,7 @@ class WorkflowService(
         }
         val request = (validation as TransitionRequestValidation.Valid).request
         val instance = activeInstance(scope, namespaceId, workflowId)
+        assertNotSealed(instance)
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId).map { it.toPolicyEvidence() }
@@ -451,6 +476,7 @@ class WorkflowService(
         }
         val request = (validation as TransitionRequestValidation.Valid).request
         val instance = activeInstance(scope, namespaceId, workflowId)
+        assertNotSealed(instance)
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId).map { it.toPolicyEvidence() }
@@ -764,6 +790,7 @@ class WorkflowService(
         val action = actions.firstOrNull { it["id"] == actionId }
             ?: throw workflowException(WorkflowErrorCodes.ACTION_NOT_ALLOWED)
         val instance = activeInstance(scope, namespaceId, workflowId)
+        assertNotSealed(instance)
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val isRetry = interaction.interactionType == "retry"
@@ -972,6 +999,17 @@ class WorkflowService(
     // Lifecycle
     // ------------------------------------------------------------------
 
+    /**
+     * Recovers a soft-deleted (`removed`) projection/instance back to the
+     * `active` LIFECYCLE state.
+     *
+     * This is strictly a lifecycle (soft-delete recovery) operation, ORTHOGONAL
+     * to the run-status seal (Phase 10): it never reopens a terminal run. A
+     * restored workflow whose overall run status is `completed` / `failed` /
+     * `cancelled` stays sealed — any subsequent transition is still rejected
+     * with `WORKFLOW_SEALED` by [assertNotSealed]. Resuming the requirement
+     * requires a NEW workflow linked to the sealed predecessor.
+     */
     @Transactional
     fun restore(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowHttpResult {
         val projection = repository.findProjection(scope, namespaceId, workflowId)
@@ -1469,6 +1507,35 @@ class WorkflowService(
         return instance
     }
 
+    /**
+     * Phase 10 terminal governance: rejects any mutation of a workflow whose
+     * overall RUN status is terminal (`completed` / `failed` / `cancelled`).
+     *
+     * This is the explicit, uniform top-level seal of the governed instance —
+     * a dedicated machine code ([WorkflowErrorCodes.WORKFLOW_SEALED]) that
+     * fires before the per-step state machine, so a sealed workflow stays
+     * sealed even if a future definition change made per-step bookkeeping
+     * ambiguous. Reopening a terminal workflow is strictly forbidden: to
+     * resume or re-run the requirement, the control plane starts a NEW
+     * workflow linked to the sealed predecessor (see
+     * [io.whozoss.factory.workflow.domain.linkedWorkflowRelations]).
+     *
+     * The run status is a DIFFERENT axis from the lifecycle state checked by
+     * [activeInstance] (`active` vs `removed`/`purged`): [restore] recovers a
+     * soft-deleted projection, it never reopens a terminal run — this guard
+     * keeps rejecting transitions after any lifecycle recovery.
+     */
+    private fun assertNotSealed(instance: WorkflowInstanceRecord) {
+        val runStatus = instance.instance["status"] as? String
+        if (WorkflowStatuses.isTerminal(runStatus)) {
+            throw workflowException(
+                WorkflowErrorCodes.WORKFLOW_SEALED,
+                "The workflow run is terminal ('$runStatus') and sealed: it cannot be reopened or mutated.",
+                mapOf("workflowId" to instance.workflowId, "status" to runStatus),
+            )
+        }
+    }
+
     private fun resolveDefinition(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowPolicyDefinition {
         val workflowType = instance.instance["workflowType"] as? String
         val version = instance.instance["definitionVersion"] as? String
@@ -1487,6 +1554,9 @@ class WorkflowService(
         /** Interaction type of a DAG-owned human checkpoint (opened by the capability resolver). */
         const val CHECKPOINT_INTERACTION_TYPE = "checkpoint"
         const val MAX_AGENT_ANSWER_LENGTH = 2_000
+
+        /** Upper bound of the read-only `limit` filter of [listProjections] (contract §6.1). */
+        const val MAX_LIST_LIMIT = 200
     }
 }
 
@@ -1570,4 +1640,24 @@ private fun HumanInteractionRecord.toJson(): Map<String, Any?> = buildMap {
     put("actions", payload["actions"])
     put("prompt", payload["prompt"])
     (payload["response"] as? Map<*, *>)?.let { put("response", it) }
+    // Phase 4 ask-step-question: surface the full Q&A and the attempt N -> N+1
+    // link so Cockpit can display the question, the audited human answer and
+    // the successor attempt of an `agent_question` interaction. Bounded — the
+    // payload only carries schema-validated question fields, never secrets.
+    if (interactionType == "agent_question") {
+        put("namespaceId", namespaceId)
+        listOf(
+            "attemptId",
+            "caseId",
+            "questionType",
+            "options",
+            "recipientRole",
+            "contextHash",
+            "expiresAt",
+            "answer",
+            "actorId",
+            "answeredAt",
+            "successorAttemptId",
+        ).forEach { key -> payload[key]?.let { put(key, it) } }
+    }
 }

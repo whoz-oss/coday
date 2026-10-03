@@ -12,6 +12,8 @@ import io.whozoss.factory.agentattempt.service.BridgeRecoveryWorker
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityResolver
+import io.whozoss.factory.environment.domain.WorkEnvironment
+import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.ControllerRequestInput
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
@@ -90,6 +92,9 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
     private lateinit var durableAgentAttemptService: DurableAgentAttemptService
 
     @Autowired
+    private lateinit var workEnvironmentRepository: WorkEnvironmentRepository
+
+    @Autowired
     private lateinit var sseHub: WorkflowSseHub
 
     @Autowired
@@ -153,7 +158,11 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
     private fun agentStep(id: String, dependsOn: List<String> = emptyList()): WorkflowStepDefinition =
         WorkflowStepDefinition(id, "Step $id", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "architect"), dependsOn)
 
-    private fun bridgeService(adapter: AgentOsExecutionAdapter, leaseTtlMs: Long? = 3_600_000L): CapabilityExecutionService =
+    private fun bridgeService(
+        adapter: AgentOsExecutionAdapter,
+        leaseTtlMs: Long? = 3_600_000L,
+        environments: WorkEnvironmentRepository? = null,
+    ): CapabilityExecutionService =
         CapabilityExecutionService(
             CapabilityResolver(),
             workflowRepository,
@@ -165,6 +174,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
             durableAgentAttemptService = durableAgentAttemptService,
             agentOsExecutionAdapter = adapter,
             agentLeaseTtlMs = leaseTtlMs,
+            workEnvironmentRepository = environments,
         )
 
     private fun sessionRunner(adapter: AgentOsExecutionAdapter, leaseTtlMs: Long? = 3_600_000L): SessionRunService =
@@ -417,6 +427,112 @@ Work only on this step. Return a structured result for downstream Factory steps.
         )
         assertThat(attempt!!.brief).isEqualTo(brief)
         assertThat(brief.split(requestText)).hasSize(2)
+    }
+
+    // ----- 3b. Reservation BEFORE case creation; caseId BEFORE the turn ----
+
+    /**
+     * Reqs 3 & 4 attestation: the durable attempt is idempotently reserved
+     * BEFORE the AgentOS case is created, and the `caseId` is persisted on the
+     * attempt BEFORE the useful work (the turn brief) is dispatched.
+     */
+    @Test
+    fun `the attempt is reserved before case creation and the caseId is persisted before the turn is sent`() {
+        val workflowId = isolatedWorkflowId("wf-bridge-reserve-order")
+        startSession("bridge-reserve-order", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, "A")
+        val expectedCaseId = CapabilityExecutionService.stableCaseId(workflowId, "A")
+        var statusAtCaseCreation: AgentAttemptStatus? = null
+        var statusAtStartTurn: AgentAttemptStatus? = null
+        var caseIdAtStartTurn: String? = null
+        val adapter = object : FakeAdapter(caseSteps(workflowId, "A"), { AgentOsExecutionVerdict.Succeeded(emptyMap()) }) {
+            override fun createOrRecoverExecution(
+                namespaceId: String,
+                workflowId: String,
+                stepId: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+                caseId: String,
+            ): CaseHandle {
+                // Req 3: at the very first AgentOS case creation, the durable
+                // attempt already exists AND is reserved (claimed), not pending.
+                statusAtCaseCreation = durableAgentAttemptService.find(
+                    scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+                )?.status
+                return super.createOrRecoverExecution(namespaceId, workflowId, stepId, externalUserId, attemptId, capabilityToken, caseId)
+            }
+
+            override fun startTurn(
+                caseId: String,
+                persona: String,
+                brief: String,
+                externalUserId: String?,
+                attemptId: String,
+                capabilityToken: String?,
+            ) {
+                // Req 4: at the instant the useful work is dispatched, the
+                // deterministic caseId is already persisted on the attempt and
+                // the attempt is durably marked `starting`.
+                val attempt = durableAgentAttemptService.find(
+                    scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+                )
+                statusAtStartTurn = attempt?.status
+                caseIdAtStartTurn = attempt?.caseId
+                super.startTurn(caseId, persona, brief, externalUserId, attemptId, capabilityToken)
+            }
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(adapter.createCalls.get()).isEqualTo(1)
+        assertThat(adapter.startTurns).hasSize(1)
+        assertThat(statusAtCaseCreation).isEqualTo(AgentAttemptStatus.CLAIMING)
+        assertThat(statusAtStartTurn).isEqualTo(AgentAttemptStatus.STARTING)
+        assertThat(caseIdAtStartTurn).isEqualTo(expectedCaseId)
+        val attempt = durableAgentAttemptService.find(scope, namespace, workflowId, "A", attemptId)
+        assertThat(attempt!!.caseId).isEqualTo(expectedCaseId)
+    }
+
+    // ----- 3c. Reservation binds the attempt to its work environment -------
+
+    /**
+     * Req 8 attestation: reserving the attempt captures the
+     * `environmentRef` and the expected environment revision of the work
+     * environment the workflow runs against.
+     */
+    @Test
+    fun `a reserved attempt is bound to the workflow work environment and its expected revision`() {
+        val workflowId = isolatedWorkflowId("wf-bridge-env-link")
+        startSession("bridge-env-link", workflowId, listOf(stepJson("A", "agent", "architect", emptyList())))
+        val environment = workEnvironmentRepository.insert(
+            scope,
+            WorkEnvironment(
+                organizationId = scope.organizationId,
+                workstreamId = scope.workstreamId,
+                environmentId = "env-${UUID.randomUUID()}",
+                workUnitId = "wu-1",
+                workflowId = workflowId,
+                namespaceId = namespace,
+                repoRoot = repoRoot.toString(),
+                integrationBranch = "main",
+                branch = "wu/wu-1",
+                worktreePath = repoRoot.resolve("worktree").toString(),
+                createdBy = "test",
+            ),
+        )
+        val adapter = FakeAdapter(caseSteps(workflowId, "A")) { AgentOsExecutionVerdict.Succeeded(emptyMap()) }
+
+        val result = bridgeService(adapter, environments = workEnvironmentRepository)
+            .resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
+
+        assertThat(result.outcome).isInstanceOf(io.whozoss.factory.capability.CapabilityOutcome.AgentCompleted::class.java)
+        val attempt = durableAgentAttemptService.find(
+            scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
+        )
+        assertThat(attempt!!.environmentRef).isEqualTo(environment.environmentId)
+        assertThat(attempt.expectedEnvironmentRevision).isEqualTo(environment.revision)
     }
 
     // ----- 4. Two concurrent executions ⇒ one attempt owns it ------------

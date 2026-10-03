@@ -1,6 +1,8 @@
 package io.whozoss.agentos.plugins.factorybridge.tools
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -59,12 +61,46 @@ class FactoryStartWorkflowTool(
                 .build()
         return try {
             withContext(Dispatchers.IO) {
-                httpClient.newCall(request).execute().use { response -> parseResponse(response.code, response.body?.string()) }
+                httpClient.newCall(request).execute().use { response ->
+                    val result = parseResponse(response.code, response.body?.string())
+                    if (!result.success) return@use result
+                    // Best-effort allowedActions enrichment (Phase 7 standardized
+                    // command output): a failed actions read never fails the command.
+                    val workflowId = result.metadata["workflowId"] as? String ?: return@use result
+                    val allowedActions = fetchAllowedActions(workflowId, context)
+                    val output = objectMapper.readTree(result.output) as ObjectNode
+                    output.set<JsonNode>("allowedActions", allowedActions)
+                    ToolExecutionResult.success(
+                        objectMapper.writeValueAsString(output),
+                        metadata = result.metadata + ("allowedActions" to allowedActions),
+                    )
+                }
             }
         } catch (_: Exception) {
             failure("FACTORY_UNAVAILABLE", "Factory is unavailable.")
         }
     }
+
+    /** Best-effort enrichment: a failed actions read never fails the command. */
+    private fun fetchAllowedActions(
+        workflowId: String,
+        context: ToolContext,
+    ): JsonNode =
+        try {
+            val id = URLEncoder.encode(workflowId, Charsets.UTF_8).replace("+", "%20")
+            val ns = URLEncoder.encode(context.namespaceId.toString(), Charsets.UTF_8).replace("+", "%20")
+            httpClient
+                .newCall(Request.Builder().url("${baseUrl.trimEnd('/')}/api/factory/workflows/$id/actions?namespaceId=$ns").get().build())
+                .execute()
+                .use { response ->
+                    if (!response.isSuccessful) return@use objectMapper.createArrayNode()
+                    val root = objectMapper.readTree(response.body?.string())
+                    root.path("data").path("allowedActions").takeIf { it.isArray }
+                        ?: objectMapper.createArrayNode()
+                }
+        } catch (_: Exception) {
+            objectMapper.createArrayNode()
+        }
 
     internal fun parseResponse(
         status: Int,
@@ -90,10 +126,19 @@ class FactoryStartWorkflowTool(
         if (workflowId == null || revision == null || created == null || idempotent == null) {
             return failure("MALFORMED_FACTORY_RESPONSE", "Factory returned an invalid response.")
         }
+        // Phase 7 standardized command output: status / revision / reasonCode /
+        // interactionId|proposalId / allowedActions (enriched in execute) / message,
+        // while preserving the start-specific rich fields.
         val output =
-            mapOf(
-                "workflowId" to workflowId,
+            linkedMapOf<String, Any?>(
+                "status" to "accepted",
                 "revision" to revision,
+                "reasonCode" to null,
+                "interactionId" to null,
+                "proposalId" to null,
+                "allowedActions" to emptyList<Any>(),
+                "message" to if (created) "Workflow $workflowId created." else "Workflow $workflowId already exists (idempotent).",
+                "workflowId" to workflowId,
                 "created" to created,
                 "idempotent" to idempotent,
                 "governanceMode" to data.path("governanceMode").asText(),

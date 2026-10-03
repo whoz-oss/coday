@@ -64,7 +64,7 @@ class AgentOsSseClientTest {
     }
 
     @Test
-    fun `connection after start derives Succeeded from RUNNING then IDLE with an agent message`() {
+    fun `connection after start derives a non-authoritative Indeterminate from RUNNING then IDLE with an agent message`() {
         val (onEvent, counts) = processedIdsCounter()
         server.enqueueEvents(
             FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
@@ -75,8 +75,12 @@ class AgentOsSseClientTest {
 
         val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000, onEvent = onEvent)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("all good")
+        // The free-text message is observation evidence only — never an
+        // authoritative success (that requires a structured capability submission).
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        verdict as AgentOsExecutionVerdict.Indeterminate
+        assertThat(verdict.reason).isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
+        assertThat(verdict.evidence["summary"]).isEqualTo("all good")
         assertThat(counts.keys).containsExactlyInAnyOrder("e1", "m1", "e2")
     }
 
@@ -91,8 +95,10 @@ class AgentOsSseClientTest {
 
         val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("finished work")
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        verdict as AgentOsExecutionVerdict.Indeterminate
+        assertThat(verdict.reason).isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
+        assertThat(verdict.evidence["summary"]).isEqualTo("finished work")
     }
 
     @Test
@@ -142,7 +148,7 @@ class AgentOsSseClientTest {
             },
         )
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         assertThat(reconcileCalls.get()).isGreaterThanOrEqualTo(1)
         // every event processed exactly once across replay + live + reconnect + REST catch-up
         assertThat(counts.entries.associate { it.key to it.value.get() })
@@ -162,12 +168,12 @@ class AgentOsSseClientTest {
 
         val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000, onEvent = onEvent)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         assertThat(counts["e1"]!!.get()).isEqualTo(1)
     }
 
     @Test
-    fun `WAITING_HUMAN is intermediate and observation continues to final success`() {
+    fun `WAITING_HUMAN is intermediate and observation continues to the end of the turn`() {
         val intermediate = mutableListOf<AgentOsExecutionVerdict.WaitingHuman>()
         server.enqueueEvents(
             FakeAgentOsSseServer.statusEvent("e1", "case-1", "RUNNING"),
@@ -188,8 +194,9 @@ class AgentOsSseClientTest {
 
         assertThat(intermediate).hasSize(1)
         assertThat(intermediate.single().questionRef).isEqualTo("q1")
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("final result")
+        // the final free-text message is not an authoritative success
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).evidence["summary"]).isEqualTo("final result")
     }
 
     @Test
@@ -231,7 +238,7 @@ class AgentOsSseClientTest {
         val verdict = client(stallTimeoutMs = 500, humanWaitTimeoutMs = 1_000)
             .observe(caseId = "case-1", timeoutMs = 200)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
     }
 
     @Test
@@ -247,7 +254,8 @@ class AgentOsSseClientTest {
 
         val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat(verdict).isNotInstanceOf(AgentOsExecutionVerdict.WaitingHuman::class.java)
     }
 
     @Test
@@ -262,7 +270,7 @@ class AgentOsSseClientTest {
 
         assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).reason)
-            .isEqualTo(VerdictDeriver.IDLE_WITHOUT_OUTPUT)
+            .isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
     }
 
     @Test
@@ -330,8 +338,8 @@ class AgentOsSseClientTest {
 
         val verdict = client(stallTimeoutMs = 100).observe(caseId = "case-1", timeoutMs = 5_000)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"])
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).evidence["summary"])
             .isEqualTo("recovered after stall")
     }
 
@@ -350,8 +358,8 @@ class AgentOsSseClientTest {
         val checkpoint = EventCheckpoint()
         val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000, checkpoint = checkpoint, onEvent = onEvent)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("mine")
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).evidence["summary"]).isEqualTo("mine")
         // the foreign frames never reached processing nor the checkpoint
         assertThat(counts.keys).doesNotContain("x1", "x2")
         assertThat(checkpoint.mark.lastEventId).isEqualTo("e2")
@@ -373,7 +381,7 @@ class AgentOsSseClientTest {
         val checkpoint = EventCheckpoint()
         val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000, checkpoint = checkpoint, onEvent = onEvent)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         assertThat(counts.keys).doesNotContain("t1", "t2", "t3")
         assertThat(checkpoint.mark.lastEventId).isEqualTo("e2")
     }
@@ -404,10 +412,10 @@ class AgentOsSseClientTest {
 
         val verdict = client().observe(caseId = "case-1", timeoutMs = 5_000, checkpoint = checkpoint, onEvent = onEvent)
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         // the known prefix was not reprocessed…
         assertThat(counts).doesNotContainKey("e1")
         // …yet the warm history still fed the verdict derivation (message precedes IDLE)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("late message")
+        assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).evidence["summary"]).isEqualTo("late message")
     }
 }

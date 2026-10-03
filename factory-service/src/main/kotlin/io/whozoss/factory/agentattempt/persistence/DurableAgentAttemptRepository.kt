@@ -2,6 +2,7 @@ package io.whozoss.factory.agentattempt.persistence
 
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptJournalEntry
 import io.whozoss.factory.persistence.TenantScope
 import java.time.Instant
 
@@ -72,6 +73,33 @@ interface DurableAgentAttemptRepository {
      * reconcile attempts orphaned by a crash.
      */
     fun findNonTerminal(limit: Int): List<ScopedDurableAgentAttempt>
+
+    /**
+     * The next attempt number of a workflow step: `MAX(attemptNumber) + 1`
+     * across every attempt of `(namespaceId, workflowId, stepId)`, or 1 when
+     * the step has no attempt yet. A retry registers a brand-new attempt with
+     * this number; a terminal attempt is never reactivated.
+     */
+    fun nextAttemptNumber(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Int
+
+    /**
+     * The append-only transition journal of the attempt, ordered by its
+     * monotone [DurableAgentAttemptJournalEntry.sequence]. Every successful
+     * state change of the aggregate appends exactly one entry atomically with
+     * the compare-and-set; a fenced or conflicted no-op appends nothing.
+     */
+    fun journal(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ): List<DurableAgentAttemptJournalEntry>
 
     /**
      * Atomically claim the attempt for [ownerToken], moving it to `claiming`
@@ -146,6 +174,30 @@ interface DurableAgentAttemptRepository {
         attemptId: String,
         expectedRevision: Int?,
         failureCode: String?,
+        now: Instant,
+    ): DurableAgentAttempt
+
+    /**
+     * Supersede a `waiting_human` attempt (Phase 4 ask-step-question), fenced
+     * on [expectedRevision]: the attempt is moved to the terminal `superseded`
+     * status and its lease owner token rotated so an in-flight worker can no
+     * longer finalize it. The step then resumes as a brand-new attempt `N+1`
+     * (see
+     * [io.whozoss.factory.agentattempt.service.DurableAgentAttemptService.registerRetry]);
+     * attempt `N` is an immutable record and is NEVER reactivated or rewritten.
+     * An attempt already `superseded` is returned idempotently; any other
+     * terminal status is rejected with
+     * [io.whozoss.factory.agentattempt.domain.InvalidAttemptTransitionException];
+     * a divergent revision is rejected with
+     * [io.whozoss.factory.error.RevisionConflictException].
+     */
+    fun supersede(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int?,
         now: Instant,
     ): DurableAgentAttempt
 }

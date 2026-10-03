@@ -1,0 +1,47 @@
+<section class="ws-interactions" aria-label="Human interactions">
+  <h2 class="ws-section-title">
+    <mat-icon>pending_actions</mat-icon>
+    Human interactions
+  </h2>
+
+  @if (interactions.length === 0) {
+    <p class="ws-interactions__empty">No open human interaction on this workflow.</p>
+  } @else {
+    <ul class="ws-interactions__list">
+      @for (interaction of interactions; track interaction.interactionId) {
+        <li class="ws-interactions__item">
+          <div class="ws-interactions__row">
+            <span class="ws-badge ws-badge--warning">waiting_human</span>
+            <span class="ws-interactions__resumption">
+              Resumes at revision {{ interaction.expectedRevision }} · state: open
+            </span>
+          </div>
+          <p class="ws-interactions__prompt">{{ interaction.prompt }}</p>
+          <p class="ws-interactions__meta">
+            Step {{ interaction.stepId }} · recipient: authenticated control-plane actor
+            @if (interaction.questionEventId) {
+              · question {{ interaction.questionEventId }}
+            }
+          </p>
+          <div class="ws-interactions__actions">
+            @if (canRespond(interaction)) {
+              @for (action of interaction.actions; track action.id) {
+                <button
+                  mat-stroked-button
+                  type="button"
+                  [class.ws-interactions__approve]="action.id === 'approve'"
+                  [class.ws-interactions__reject]="action.id === 'reject'"
+                  (click)="onRespond(interaction, action)"
+                >
+                  {{ action.label }}
+                </button>
+              }
+            } @else {
+              <span class="ws-interactions__denied">Reply not authorized for this caller</span>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</section>

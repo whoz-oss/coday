@@ -9,6 +9,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
 import io.whozoss.factory.agentattempt.domain.InvalidResultRequestException
+import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.TrustContextUnavailableException
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.error.ErrorResponse
@@ -91,12 +92,26 @@ class AgentStepResultController(
         val attemptId = body.observed?.attemptId?.takeIf { it.isNotBlank() }
             ?: body.attemptId?.takeIf { it.isNotBlank() }
             ?: throw InvalidResultRequestException("'attemptId' is required")
-        val caseId = body.observed?.caseId?.takeIf { it.isNotBlank() }
+        val declaredCaseId = body.observed?.caseId?.takeIf { it.isNotBlank() }
             ?: body.caseId?.takeIf { it.isNotBlank() }
             ?: caseHeader?.takeIf { it.isNotBlank() }
         val agentName = body.observed?.agentName?.takeIf { it.isNotBlank() }
             ?: body.agentName?.takeIf { it.isNotBlank() }
             ?: agentHeader?.takeIf { it.isNotBlank() }
+
+        // Identity fencing anchored on the trust boundary: when the verified
+        // TrustContext carries a case/namespace identity (signed JWT claims, or
+        // the loopback-dev headers on a local socket), it OVERRIDES whatever
+        // the body declares. A body that contradicts the trusted identity is
+        // rejected outright; a body that omits it inherits the trusted value.
+        val trustedNamespaceId = trustContext?.namespaceId?.takeIf { it.isNotBlank() }
+        val trustedCaseId = trustContext?.caseId?.takeIf { it.isNotBlank() }
+        if (trustedCaseId != null && declaredCaseId != null && declaredCaseId != trustedCaseId) {
+            throw ResultIdentityMismatchException(
+                "The declared caseId does not match the trusted execution context",
+            )
+        }
+        val caseId = trustedCaseId ?: declaredCaseId
         val idempotencyKey = idempotencyHeader?.takeIf { it.isNotBlank() }
             ?: body.idempotencyKey?.takeIf { it.isNotBlank() }
         if (idempotencyKey != null && idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
@@ -113,6 +128,7 @@ class AgentStepResultController(
                 attemptId = attemptId,
                 caseId = caseId,
                 agentName = agentName,
+                namespaceId = trustedNamespaceId,
             ),
             idempotencyKey = idempotencyKey,
         )

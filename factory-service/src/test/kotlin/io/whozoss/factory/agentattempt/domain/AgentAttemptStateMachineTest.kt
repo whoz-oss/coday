@@ -23,6 +23,26 @@ class AgentAttemptStateMachineTest {
         }
     }
 
+    /**
+     * Req 2 attestation: the transition set is imposed — every `(from, to)`
+     * pair NOT listed in `ALLOWED_TRANSITIONS` is rejected by
+     * [AgentAttemptStatus.canTransitionTo]. This covers the required chain
+     * `pending -> starting -> running -> waiting_human -> succeeded|failed|
+     * indeterminate|interrupted` (with the extra `claiming` hop the real
+     * machine inserts between `pending` and `starting`).
+     */
+    @Test
+    fun `every illegal transition is rejected by canTransitionTo`() {
+        AgentAttemptStatus.entries.forEach { from ->
+            val allowed = AgentAttemptStatus.transitions().getValue(from)
+            AgentAttemptStatus.entries.filter { it !in allowed }.forEach { to ->
+                assertThat(from.canTransitionTo(to))
+                    .describedAs("$from -> $to must be rejected")
+                    .isFalse()
+            }
+        }
+    }
+
     @Test
     fun `succeeded is reachable only from running and waiting_human`() {
         val allowedSources = setOf(AgentAttemptStatus.RUNNING, AgentAttemptStatus.WAITING_HUMAN)
@@ -40,6 +60,7 @@ class AgentAttemptStateMachineTest {
             AgentAttemptStatus.FAILED,
             AgentAttemptStatus.INDETERMINATE,
             AgentAttemptStatus.INTERRUPTED,
+            AgentAttemptStatus.SUPERSEDED,
         ).forEach { terminal ->
             assertThat(terminal.terminal).isTrue()
             AgentAttemptStatus.entries.forEach { to ->
@@ -64,6 +85,25 @@ class AgentAttemptStateMachineTest {
         ).forEach { status ->
             assertThat(status.terminal).isFalse()
         }
+    }
+
+    /**
+     * Phase 4 ask-step-question attestation: `superseded` is reachable ONLY
+     * from `waiting_human` (a parked attempt whose human answer was received),
+     * it is terminal, and it is never a success.
+     */
+    @Test
+    fun `superseded is terminal, not a success, and reachable only from waiting_human`() {
+        AgentAttemptStatus.entries.forEach { from ->
+            assertThat(from.canTransitionTo(AgentAttemptStatus.SUPERSEDED))
+                .describedAs("$from -> SUPERSEDED")
+                .isEqualTo(from == AgentAttemptStatus.WAITING_HUMAN)
+        }
+        assertThat(AgentAttemptStatus.SUPERSEDED.terminal).isTrue()
+        assertThat(AgentAttemptStatus.SUPERSEDED.isSuccess).isFalse()
+        assertThat(AgentAttemptStatus.SUPERSEDED.canTransitionTo(AgentAttemptStatus.RUNNING)).isFalse()
+        assertThat(AgentAttemptStatus.SUPERSEDED.canTransitionTo(AgentAttemptStatus.PENDING)).isFalse()
+        assertThat(AgentAttemptStatus.SUPERSEDED.dbValue).isEqualTo("superseded")
     }
 
     @Test

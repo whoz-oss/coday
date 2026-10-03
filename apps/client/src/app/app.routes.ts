@@ -60,6 +60,17 @@ export const appRoutes: Route[] = [
     redirectTo: 'project/:projectName/tasks',
   },
   {
+    path: 'project/:projectName/workstream',
+    loadComponent: () =>
+      import('./components/workstream-cockpit/workstream-cockpit.component').then((m) => m.WorkstreamCockpitComponent),
+    canActivate: [projectStateGuard],
+  },
+  {
+    path: 'workstream',
+    loadComponent: () =>
+      import('./components/workstream-cockpit/workstream-cockpit.component').then((m) => m.WorkstreamCockpitComponent),
+  },
+  {
     path: 'project/:projectName/thread/:threadId',
     loadComponent: () => import('./components/main-app/main-app.component').then((m) => m.MainAppComponent),
     canActivate: [projectStateGuard, threadStateGuard],

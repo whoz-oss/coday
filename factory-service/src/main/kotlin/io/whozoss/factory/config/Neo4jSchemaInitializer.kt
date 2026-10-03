@@ -213,6 +213,22 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.debug { "[Neo4jSchemaInitializer] Constraint idempotency_record_id_unique ensured" }
 
+        // ── Durable agent attempt journal (append-only) ────────────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT durable_agent_attempt_journal_id_unique IF NOT EXISTS " +
+                    "FOR (j:DurableAgentAttemptJournal) REQUIRE j.id IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint durable_agent_attempt_journal_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX durable_agent_attempt_journal_attempt IF NOT EXISTS " +
+                    "FOR (j:DurableAgentAttemptJournal) ON " +
+                    "(j.organizationId, j.workstreamId, j.namespaceId, j.workflowId, j.stepId, j.attemptId)",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Index durable_agent_attempt_journal_attempt ensured" }
+
         // ── Workflow definitions ───────────────────────────────────────────
         neo4jClient
             .query(
@@ -362,6 +378,46 @@ class Neo4jSchemaInitializer(
                     "(e.organizationId, e.workstreamId, e.namespaceId, e.workflowId)",
             ).run()
         logger.debug { "[Neo4jSchemaInitializer] Index human_interaction_event_instance ensured" }
+
+        // ── Plan change proposals (append-only governed replanning) ────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT plan_change_proposal_id_unique IF NOT EXISTS " +
+                    "FOR (p:PlanChangeProposal) REQUIRE p.id IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint plan_change_proposal_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX plan_change_proposal_workflow IF NOT EXISTS " +
+                    "FOR (p:PlanChangeProposal) ON " +
+                    "(p.organizationId, p.workstreamId, p.namespaceId, p.workflowId, p.currentStatus)",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Index plan_change_proposal_workflow ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX plan_change_proposal_idempotency IF NOT EXISTS " +
+                    "FOR (p:PlanChangeProposal) ON " +
+                    "(p.organizationId, p.workstreamId, p.workflowId, p.idempotencyKey)",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Index plan_change_proposal_idempotency ensured" }
+
+        // ── Plan change decisions (append-only decision log) ───────────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT plan_change_decision_id_unique IF NOT EXISTS " +
+                    "FOR (d:PlanChangeDecision) REQUIRE d.id IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint plan_change_decision_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX plan_change_decision_proposal IF NOT EXISTS " +
+                    "FOR (d:PlanChangeDecision) ON " +
+                    "(d.organizationId, d.workstreamId, d.namespaceId, d.workflowId, d.proposalId)",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Index plan_change_decision_proposal ensured" }
 
         logger.info { "[Neo4jSchemaInitializer] Neo4j schema ensured" }
     }
