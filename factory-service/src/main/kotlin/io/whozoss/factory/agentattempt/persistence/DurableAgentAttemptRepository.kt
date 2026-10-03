@@ -2,6 +2,7 @@ package io.whozoss.factory.agentattempt.persistence
 
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptJournalEntry
 import io.whozoss.factory.persistence.TenantScope
 import java.time.Instant
 
@@ -72,6 +73,20 @@ interface DurableAgentAttemptRepository {
      * reconcile attempts orphaned by a crash.
      */
     fun findNonTerminal(limit: Int): List<ScopedDurableAgentAttempt>
+
+    /**
+     * The append-only transition journal of the attempt, ordered by its
+     * monotone [DurableAgentAttemptJournalEntry.sequence]. Every successful
+     * state change of the aggregate appends exactly one entry atomically with
+     * the compare-and-set; a fenced or conflicted no-op appends nothing.
+     */
+    fun journal(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ): List<DurableAgentAttemptJournalEntry>
 
     /**
      * Atomically claim the attempt for [ownerToken], moving it to `claiming`

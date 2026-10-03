@@ -2,6 +2,7 @@ package io.whozoss.factory.agentattempt.service
 
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptJournalEntry
 import io.whozoss.factory.agentattempt.persistence.DurableAgentAttemptRepository
 import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.persistence.TenantScope
@@ -149,6 +150,21 @@ class DurableAgentAttemptService(
         namespaceId: String,
         workflowId: String,
     ): List<DurableAgentAttempt> = repository.findByWorkflow(scope, namespaceId, workflowId)
+
+    /**
+     * The append-only transition journal of the attempt, oldest entry first.
+     * Every landed state change (registration, claim, transition, finalization,
+     * cancellation) is recorded with its monotone sequence; fenced/conflicted
+     * mutations and idempotent replays leave no trace.
+     */
+    @Transactional(readOnly = true)
+    fun journal(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ): List<DurableAgentAttemptJournalEntry> = repository.journal(scope, namespaceId, workflowId, stepId, attemptId)
 
     /**
      * Every non-terminal attempt of the whole graph, across all tenant scopes and
