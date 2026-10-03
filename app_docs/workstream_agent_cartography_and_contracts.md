@@ -433,9 +433,12 @@ Codes additionnels émis par les contrôleurs : `INVALID_RETRY_REQUEST`, `INVALI
 | Code | HTTP | Signification |
 |---|---|---|
 | `RESULT_CAPABILITY_INVALID` | 401 | Token de capability inconnu/expiré |
-| `RESULT_IDENTITY_MISMATCH` | 400 | `attemptId`/`caseId` déclaré ≠ binding |
+| `RESULT_IDENTITY_MISMATCH` | 400 | Identité observée/déclarée (`attemptId`, `caseId`, `agentName`, `namespaceId` de confiance) ≠ binding |
 | `RESULT_ALREADY_SUBMITTED` | 409 | Résultat déjà soumis (idempotence) |
+| `RESULT_SEMANTIC_COLLISION` | 409 | Replay avec un payload différent pour le même attempt |
+| `RESULT_CAPABILITY_EXPIRED` | 410 | Capability expirée |
 | `RESULT_BUDGET_EXHAUSTED` | 409 | Budget de soumissions épuisé |
+| `AGENT_NO_STRUCTURED_RESULT` | n/a (verdict/raison) | Turn `IDLE` sans question en attente et sans résultat structuré soumis via la capability — un message libre n'est jamais un succès autoritatif |
 
 ### 7.3 Domaine bridge / transport (côté tools)
 

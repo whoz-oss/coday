@@ -11,13 +11,14 @@ package io.whozoss.factory.adapter.agentos
  * - `IDLE`:
  *   - an unanswered `QuestionEvent` (no matching `AnswerEvent.questionId`) →
  *     [AgentOsExecutionVerdict.WaitingHuman] with `questionRef = questionId`;
- *   - else a non-blank agent `MessageEvent` → [AgentOsExecutionVerdict.Succeeded]
- *     with `outputs = {"summary": …}`;
- *   - else → [AgentOsExecutionVerdict.Indeterminate] — **deliberately stricter
- *     than the polling client** (`HttpAgentOsProxyClient` treats an IDLE with
- *     no question as success even with an empty summary). Here, a turn that
- *     reaches IDLE with no question and no structured output is *not* a
- *     success: no success by silence.
+ *   - else → [AgentOsExecutionVerdict.Indeterminate] with reason
+ *     [AGENT_NO_STRUCTURED_RESULT] — **never** [AgentOsExecutionVerdict.Succeeded].
+ *     A raw agent `MessageEvent` (free text) is NOT an authoritative result:
+ *     the only authoritative success of an agent step is a structured result
+ *     submitted through the single-use capability channel
+ *     (`POST /api/factory/agent-step-results`). The SSE verdict observes the
+ *     lifecycle and explicit failures; it must never promote silence or prose
+ *     into a success — no success by silence, no result from free text.
  * - `ERROR` → [AgentOsExecutionVerdict.Failed] (`AGENT_CASE_ERROR`).
  * - `KILLED` → [AgentOsExecutionVerdict.Failed] (`AGENT_CASE_KILLED`), or
  *   [AgentOsExecutionVerdict.Interrupted] when the kill was caller-initiated
@@ -31,6 +32,13 @@ package io.whozoss.factory.adapter.agentos
 object VerdictDeriver {
 
     const val IDLE_WITHOUT_OUTPUT = "Turn reached IDLE without structured output"
+
+    /**
+     * Verdict reason of an `IDLE` turn with no pending question and no
+     * structured capability-backed result: a raw agent message is never an
+     * authoritative success. Kept stable — observability tooling matches on it.
+     */
+    const val AGENT_NO_STRUCTURED_RESULT = "AGENT_NO_STRUCTURED_RESULT"
     const val OBSERVATION_TIMEOUT = "SSE observation timeout"
     const val HUMAN_WAIT_TIMEOUT = "HUMAN_WAIT_TIMEOUT"
     const val RECONNECT_BUDGET_EXHAUSTED = "SSE reconnection budget exhausted"
@@ -95,15 +103,17 @@ object VerdictDeriver {
                         ),
                     )
                     else -> {
+                        // No pending question: the turn is over, but a raw
+                        // agent message is NOT an authoritative result. Only a
+                        // structured submission through the capability channel
+                        // can make an agent step succeed — this verdict stays
+                        // non-authoritative (Indeterminate), carrying the free
+                        // text as observation evidence only.
                         val summary = lastAgentMessage(durable)
-                        if (!summary.isNullOrBlank()) {
-                            AgentOsExecutionVerdict.Succeeded(
-                                outputs = mapOf("summary" to summary),
-                                evidence = facts + ("summary" to summary),
-                            )
-                        } else {
-                            AgentOsExecutionVerdict.Indeterminate(IDLE_WITHOUT_OUTPUT, facts)
-                        }
+                        AgentOsExecutionVerdict.Indeterminate(
+                            AGENT_NO_STRUCTURED_RESULT,
+                            if (summary.isNullOrBlank()) facts else facts + ("summary" to summary),
+                        )
                     }
                 }
             }

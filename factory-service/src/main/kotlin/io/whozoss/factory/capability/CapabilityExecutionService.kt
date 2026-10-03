@@ -685,6 +685,14 @@ class CapabilityExecutionService(
     /**
      * Phase 3 of the bridge: validates the verdict, persists the durable outputs as
      * `agent-result` evidence and finalizes the attempt (fenced on the owner token).
+     *
+     * Authority note: a `pass` evidence is persisted here only on
+     * [AgentOsExecutionVerdict.Succeeded]. The SSE verdict itself never derives
+     * `Succeeded` from a free-text agent message (see
+     * [io.whozoss.factory.adapter.agentos.VerdictDeriver]): the authoritative
+     * success of an agent step is a structured result submitted through the
+     * `agent-step-results` capability channel; the SSE verdict only observes
+     * the lifecycle, explicit failures and human checkpoints.
      */
     private fun finalizeAgentAttempt(
         scope: TenantScope,

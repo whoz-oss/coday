@@ -70,7 +70,7 @@ class VerdictDeriverTest {
     }
 
     @Test
-    fun `IDLE with an answered question and an agent message is Succeeded`() {
+    fun `IDLE with an answered question and an agent message is Indeterminate - free text is not a result`() {
         val verdict = VerdictDeriver.derive(
             listOf(
                 question("q1", "Which branch?"),
@@ -81,22 +81,27 @@ class VerdictDeriverTest {
             context,
         )
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        assertThat((verdict as AgentOsExecutionVerdict.Succeeded).outputs["summary"]).isEqualTo("done on main")
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).reason)
+            .isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
     }
 
     @Test
-    fun `IDLE with a structured agent message is Succeeded with the summary output`() {
+    fun `IDLE with a free-text agent message is Indeterminate - never an authoritative Succeeded`() {
         val verdict = VerdictDeriver.derive(
             listOf(status("e1", "RUNNING"), agentMessage("m1", "all good"), status("e2", "IDLE")),
             context,
         )
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        verdict as AgentOsExecutionVerdict.Succeeded
-        assertThat(verdict.outputs).containsEntry("summary", "all good")
+        // A raw agent message is observation evidence only: the authoritative
+        // success of an agent step comes exclusively from a structured
+        // submission through the capability channel.
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        verdict as AgentOsExecutionVerdict.Indeterminate
+        assertThat(verdict.reason).isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
         assertThat(verdict.evidence).containsEntry("caseId", "case-1")
         assertThat(verdict.evidence).containsEntry("caseStatus", "IDLE")
+        assertThat(verdict.evidence).containsEntry("summary", "all good")
     }
 
     @Test
@@ -108,7 +113,7 @@ class VerdictDeriverTest {
 
         assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
         assertThat((verdict as AgentOsExecutionVerdict.Indeterminate).reason)
-            .isEqualTo(VerdictDeriver.IDLE_WITHOUT_OUTPUT)
+            .isEqualTo(VerdictDeriver.AGENT_NO_STRUCTURED_RESULT)
     }
 
     @Test
@@ -160,7 +165,7 @@ class VerdictDeriverTest {
     }
 
     @Test
-    fun `evidence carries the turn facts`() {
+    fun `evidence carries the turn facts even when the verdict is not authoritative`() {
         val toolResponse = CaseEventView(
             eventId = "tr1",
             type = "ToolResponseEvent",
@@ -181,8 +186,8 @@ class VerdictDeriverTest {
             context,
         )
 
-        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Succeeded::class.java)
-        val evidence = (verdict as AgentOsExecutionVerdict.Succeeded).evidence
+        assertThat(verdict).isInstanceOf(AgentOsExecutionVerdict.Indeterminate::class.java)
+        val evidence = (verdict as AgentOsExecutionVerdict.Indeterminate).evidence
         assertThat(evidence["agentTurns"]).isEqualTo(1)
         assertThat(evidence["toolCalls"]).isEqualTo(1)
         assertThat(evidence["modifiedFiles"]).isEqualTo(emptyList<String>())
