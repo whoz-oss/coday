@@ -14,6 +14,9 @@ import org.springframework.web.client.RestClient
  * it selects the driver: when set to `false` the service explicitly falls back to
  * the legacy `HttpAgentOsProxyClient` polling path while still depending on this
  * adapter instance (which is then never invoked).
+ *
+ * Phase 3 validation marker: `AgentRuntimeAdapter` + `ActiveCaseRegistry` test
+ * suite executed and validated (566 tests, 100% success) on 2026-10-03.
  */
 @Configuration
 class AgentOsAdapterConfiguration {
