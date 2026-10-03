@@ -6,6 +6,9 @@ import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
+import io.whozoss.factory.proxy.AgentOsUnavailableException
+import io.whozoss.factory.proxy.UsageTrackingUnavailableException
+import io.whozoss.factory.workflow.domain.AllowedActionDto
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
@@ -13,6 +16,10 @@ import io.whozoss.factory.workflow.domain.HumanInteractionRecord
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.TransitionDecision
 import io.whozoss.factory.workflow.domain.TransitionRequestValidation
+import io.whozoss.factory.workflow.domain.WorkflowActionTypes
+import io.whozoss.factory.workflow.domain.WorkflowActionsResponseDto
+import io.whozoss.factory.workflow.domain.WorkflowBlockerCodes
+import io.whozoss.factory.workflow.domain.WorkflowBlockerDto
 import io.whozoss.factory.workflow.domain.WorkflowCodeTransitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionInput
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
@@ -26,6 +33,7 @@ import io.whozoss.factory.workflow.domain.WorkflowProjectionRecord
 import io.whozoss.factory.workflow.domain.WorkflowProjectionValidator
 import io.whozoss.factory.workflow.domain.WorkflowSnapshot
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
+import io.whozoss.factory.workflow.domain.WorkflowStatuses
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
 import io.whozoss.factory.workflow.domain.WorkflowTransitionPolicy
@@ -1087,6 +1095,8 @@ class WorkflowService(
         val paused: Boolean = false,
         val active: Boolean = false,
         val runCostThreshold: Double? = null,
+        /** Cases (or blocking ancestors) currently held at a threshold. */
+        val pausedCaseIds: List<String> = emptyList(),
     ) {
         fun toJson(): Map<String, Any?> = mapOf(
             "cost" to cost,
@@ -1099,40 +1109,57 @@ class WorkflowService(
     }
 
     /**
-     * Aggregates the real run cost of the workflow over its distinct case ids,
-     * read from AgentOS `GET /api/cases/{caseId}/run-cost`.
-     *
-     * Root-case resolution (trusted boundary only — persisted state, never
-     * client input):
+     * Root-case resolution of a workflow (trusted boundary only — persisted
+     * state, never client input):
      * 1. `controllerExecution.caseId` of the persisted workflow instance,
      * 2. the `caseId` of every persisted durable agent attempt of the workflow.
      *
      * Ids are deduped by exact value: AgentOS already rolls up the whole
-     * descendant tree of each case it is asked about (delegations included),
-     * so querying each distinct persisted case id once is the faithful root
-     * set — a case and one of its own sub-cases must never be summed twice.
+     * descendant tree of each case it is asked about (delegations included), so
+     * querying each distinct persisted case id once is the faithful root set — a
+     * case and one of its own sub-cases must never be counted twice. A requested
+     * case id is honoured only when it belongs to the workflow.
+     */
+    private fun resolveWorkflowCaseIds(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        requestedCaseId: String?,
+    ): List<String> {
+        val caseIds = LinkedHashSet<String>()
+        repository.findInstance(scope, namespaceId, workflowId)?.let { record ->
+            ((record.instance["controllerExecution"] as? Map<*, *>)?.get("caseId") as? String)
+                ?.takeIf { it.isNotBlank() }
+                ?.let(caseIds::add)
+        }
+        durableAgentAttemptService
+            ?.findByWorkflow(scope, namespaceId, workflowId)
+            ?.forEach { attempt -> attempt.caseId.takeIf { it.isNotBlank() }?.let(caseIds::add) }
+        val requested = requestedCaseId?.takeIf { it.isNotBlank() } ?: return caseIds.toList()
+        return if (caseIds.contains(requested)) listOf(requested) else emptyList()
+    }
+
+    /**
+     * Aggregates the real run cost of the workflow over its distinct case ids,
+     * read from AgentOS `GET /api/cases/{caseId}/run-cost`.
      *
-     * Degradation is total: a disabled proxy, an unreachable AgentOS, an
-     * unknown case or any unexpected error yields the zero aggregate and never
-     * breaks `metrics`. `unknownCostCount` is summed verbatim — an unpriced
-     * cost is never folded into `cost` as 0.
+     * Degradation is total: a disabled proxy, an unreachable AgentOS, an unknown
+     * case or any unexpected error yields the zero aggregate and never breaks
+     * `metrics`. `unknownCostCount` is summed verbatim — an unpriced cost is
+     * never folded into `cost` as 0.
      */
     @Suppress("UNCHECKED_CAST")
     private fun aggregateRealCost(scope: TenantScope, namespaceId: String, workflowId: String): RealCostAggregate {
         val proxy = agentOsProxyClient ?: return RealCostAggregate()
         return try {
-            val caseIds = LinkedHashSet<String>()
-            repository.findInstance(scope, namespaceId, workflowId)?.let { record ->
-                ((record.instance["controllerExecution"] as? Map<*, *>)?.get("caseId") as? String)
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let(caseIds::add)
-            }
-            durableAgentAttemptService
-                ?.findByWorkflow(scope, namespaceId, workflowId)
-                ?.forEach { attempt -> attempt.caseId.takeIf { it.isNotBlank() }?.let(caseIds::add) }
             var aggregate = RealCostAggregate()
-            for (caseId in caseIds) {
+            for (caseId in resolveWorkflowCaseIds(scope, namespaceId, workflowId, null)) {
                 val runCost = proxy.getRunCost(caseId, null) ?: continue
+                val pausedCases = if (runCost.paused) {
+                    runCost.pausedCaseIds.ifEmpty { listOf(runCost.caseId) }
+                } else {
+                    emptyList()
+                }
                 aggregate = RealCostAggregate(
                     cost = aggregate.cost + runCost.cost,
                     unknownCostCount = aggregate.unknownCostCount + runCost.unknownCostCount,
@@ -1140,6 +1167,7 @@ class WorkflowService(
                     paused = aggregate.paused || runCost.paused,
                     active = aggregate.active || runCost.active,
                     runCostThreshold = maxThreshold(aggregate.runCostThreshold, runCost.runCostThreshold),
+                    pausedCaseIds = (aggregate.pausedCaseIds + pausedCases).distinct(),
                 )
             }
             aggregate
@@ -1149,11 +1177,285 @@ class WorkflowService(
         }
     }
 
+    // ------------------------------------------------------------------
+    // Governed actions & blockers (single authority)
+    // ------------------------------------------------------------------
+
+    /**
+     * Authoritative read of what a workflow permits right now.
+     *
+     * [canReply] reflects the trusted caller's authorization to close a human
+     * gate; every other action is gated purely on state. The computation is
+     * derived from existing state only (projection steps, open human
+     * interactions, durable agent attempts, the real-cost aggregate and audit
+     * evidence) — no state is duplicated or recomputed.
+     */
+    @Transactional(readOnly = true)
+    fun workflowActions(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        canReply: Boolean,
+    ): WorkflowActionsResponseDto {
+        val projectionState = getProjection(scope, namespaceId, workflowId)
+        requireExistingWorkflow(projectionState)
+        val revision = (projectionState["revision"] as? Number)?.toInt() ?: 0
+        val steps = ((projectionState["projection"] as? Map<*, *>)?.get("steps") as? List<*>)
+            .orEmpty()
+            .mapNotNull { entry -> (entry as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } }
+        val interactions = interactionRepository.list(scope, namespaceId, workflowId, openOnly = true)
+        val attempts = durableAgentAttemptService?.findByWorkflow(scope, namespaceId, workflowId).orEmpty()
+        val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
+        val realCost = aggregateRealCost(scope, namespaceId, workflowId)
+
+        val actions = mutableListOf<AllowedActionDto>()
+        val blockers = mutableListOf<WorkflowBlockerDto>()
+        val seenBlockers = mutableSetOf<Pair<String, String?>>()
+        fun blocker(code: String, stepId: String?, message: String) {
+            if (seenBlockers.add(code to stepId)) blockers.add(WorkflowBlockerDto(code, stepId, message))
+        }
+
+        // Open human interactions -> reply action (authorized callers only).
+        interactions.forEach { interaction ->
+            blocker(
+                WorkflowBlockerCodes.WAITING_HUMAN_INTERACTION,
+                interaction.stepId,
+                "Waiting for a human decision on step '${interaction.stepId}'.",
+            )
+            if (canReply) {
+                actions.add(
+                    AllowedActionDto(
+                        type = WorkflowActionTypes.REPLY,
+                        interactionId = interaction.interactionId,
+                        stepId = interaction.stepId,
+                        questionEventId = interaction.payload["questionEventId"] as? String,
+                        expectedRevision = interaction.revision,
+                        label = interaction.payload["prompt"] as? String,
+                    ),
+                )
+            }
+        }
+
+        // Projection steps -> blocked steps are retryable, waiting steps are blockers.
+        steps.forEach { step ->
+            val stepId = step["id"] as? String ?: return@forEach
+            when (step["status"] as? String) {
+                WorkflowStatuses.BLOCKED -> {
+                    blocker(WorkflowBlockerCodes.STEP_BLOCKED, stepId, "Step '$stepId' is blocked.")
+                    actions.add(
+                        AllowedActionDto(
+                            type = WorkflowActionTypes.RETRY,
+                            stepId = stepId,
+                            expectedRevision = revision,
+                            label = "Retry step '$stepId'",
+                        ),
+                    )
+                }
+
+                WorkflowStatuses.WAITING_HUMAN -> blocker(
+                    WorkflowBlockerCodes.WAITING_HUMAN_INTERACTION,
+                    stepId,
+                    "Waiting for a human decision on step '$stepId'.",
+                )
+
+                WorkflowStatuses.FAILED -> blocker(
+                    WorkflowBlockerCodes.ATTEMPT_FAILED,
+                    stepId,
+                    "Step '$stepId' failed.",
+                )
+
+                else -> Unit
+            }
+        }
+
+        // Durable attempts -> active attempts are cancellable, terminal ones are blockers.
+        attempts.forEach { attempt ->
+            if (!attempt.status.terminal) {
+                actions.add(
+                    AllowedActionDto(
+                        type = WorkflowActionTypes.CANCEL_ATTEMPT,
+                        stepId = attempt.stepId,
+                        attemptId = attempt.attemptId,
+                        caseId = attempt.caseId,
+                        expectedRevision = attempt.revision,
+                        label = "Cancel attempt '${attempt.attemptId}'",
+                    ),
+                )
+            }
+            when (attempt.status) {
+                AgentAttemptStatus.WAITING_HUMAN -> blocker(
+                    WorkflowBlockerCodes.WAITING_HUMAN_INTERACTION,
+                    attempt.stepId,
+                    "The agent is waiting for a human answer on step '${attempt.stepId}'.",
+                )
+
+                AgentAttemptStatus.FAILED -> blocker(
+                    WorkflowBlockerCodes.ATTEMPT_FAILED,
+                    attempt.stepId,
+                    "Execution attempt '${attempt.attemptId}' failed (${attempt.failureCode ?: "unknown"}).",
+                )
+
+                AgentAttemptStatus.INDETERMINATE -> blocker(
+                    WorkflowBlockerCodes.UNKNOWN_RUNTIME,
+                    attempt.stepId,
+                    "Execution attempt '${attempt.attemptId}' has an indeterminate outcome.",
+                )
+
+                else -> Unit
+            }
+        }
+
+        // Real-cost pause -> continue/stop actions and a blocker.
+        if (realCost.paused) {
+            blocker(WorkflowBlockerCodes.REAL_COST_PAUSED, null, "The run is paused: real cost reached its threshold.")
+            val pausedCases = realCost.pausedCaseIds.distinct()
+            if (pausedCases.isEmpty()) {
+                actions.add(
+                    AllowedActionDto(WorkflowActionTypes.CONTINUE_COST, expectedRevision = revision, label = "Continue run"),
+                )
+                actions.add(
+                    AllowedActionDto(WorkflowActionTypes.STOP_COST, expectedRevision = revision, label = "Stop run"),
+                )
+            } else {
+                pausedCases.forEach { caseId ->
+                    actions.add(
+                        AllowedActionDto(
+                            type = WorkflowActionTypes.CONTINUE_COST,
+                            caseId = caseId,
+                            expectedRevision = revision,
+                            label = "Continue run",
+                        ),
+                    )
+                    actions.add(
+                        AllowedActionDto(
+                            type = WorkflowActionTypes.STOP_COST,
+                            caseId = caseId,
+                            expectedRevision = revision,
+                            label = "Stop run",
+                        ),
+                    )
+                }
+            }
+        }
+
+        // Failed verification evidence -> a verification blocker.
+        evidence
+            .filter { it.kind == "oracle-result" && it.outcome?.lowercase() in setOf("fail", "failed") }
+            .forEach { item ->
+                blocker(
+                    WorkflowBlockerCodes.VERIFICATION_FAILED,
+                    item.stepId,
+                    "Verification failed for step '${item.stepId ?: "unknown"}'.",
+                )
+            }
+
+        return WorkflowActionsResponseDto(allowedActions = actions, blockers = blockers)
+    }
+
+    /**
+     * Relay a run-cost continuation to AgentOS for every case bound to the
+     * workflow, using the trusted caller identity. Fails cleanly with a 503 when
+     * usage tracking is disabled/unavailable, a 409 on a stale revision and a
+     * 400 when a continuation threshold cannot be resolved.
+     */
+    fun continueRunCost(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        actorId: String?,
+        requestedCaseId: String? = null,
+        expectedThreshold: Double? = null,
+        expectedRevision: Int? = null,
+    ): Map<String, Any?> {
+        val proxy = agentOsProxyClient ?: throw UsageTrackingUnavailableException()
+        fenceWorkflowRevision(scope, namespaceId, workflowId, expectedRevision)
+        val caseIds = resolveWorkflowCaseIds(scope, namespaceId, workflowId, requestedCaseId)
+        if (caseIds.isEmpty()) throw workflowException("NO_RUN_CASE", "No AgentOS case is bound to this workflow.")
+        var updated = 0
+        for (caseId in caseIds) {
+            val threshold = expectedThreshold
+                ?: proxy.getRunCost(caseId, actorId)?.runCostThreshold
+                ?: throw workflowException(
+                    WorkflowErrorCodes.INVALID_REQUEST,
+                    "expectedThreshold is required to continue a paused run.",
+                )
+            try {
+                if (proxy.continueRunCost(caseId, threshold, actorId)) updated++
+            } catch (error: AgentOsUnavailableException) {
+                throw UsageTrackingUnavailableException("Usage tracking is disabled", error)
+            }
+        }
+        return mapOf(
+            "workflowId" to workflowId,
+            "namespaceId" to namespaceId,
+            "operation" to "continue",
+            "caseIds" to caseIds,
+            "updated" to updated,
+            "runtimeNotification" to "agentos",
+        )
+    }
+
+    /**
+     * Relay a run-cost stop to AgentOS for every case bound to the workflow.
+     * Fails cleanly with a 503 when usage tracking is disabled/unavailable and a
+     * 409 on a stale revision.
+     */
+    fun stopRunCost(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        actorId: String?,
+        requestedCaseId: String? = null,
+        expectedRevision: Int? = null,
+    ): Map<String, Any?> {
+        val proxy = agentOsProxyClient ?: throw UsageTrackingUnavailableException()
+        fenceWorkflowRevision(scope, namespaceId, workflowId, expectedRevision)
+        val caseIds = resolveWorkflowCaseIds(scope, namespaceId, workflowId, requestedCaseId)
+        if (caseIds.isEmpty()) throw workflowException("NO_RUN_CASE", "No AgentOS case is bound to this workflow.")
+        var updated = 0
+        for (caseId in caseIds) {
+            try {
+                if (proxy.stopRunCost(caseId, actorId)) updated++
+            } catch (error: AgentOsUnavailableException) {
+                throw UsageTrackingUnavailableException("Usage tracking is disabled", error)
+            }
+        }
+        return mapOf(
+            "workflowId" to workflowId,
+            "namespaceId" to namespaceId,
+            "operation" to "stop",
+            "caseIds" to caseIds,
+            "updated" to updated,
+            "runtimeNotification" to "agentos",
+        )
+    }
+
     /** Greatest of two nullable thresholds, ignoring nulls (null when both are). */
     private fun maxThreshold(a: Double?, b: Double?): Double? = when {
         a == null -> b
         b == null -> a
         else -> maxOf(a, b)
+    }
+
+    /** Throws the canonical error when [state] is not an existing workflow. */
+    private fun requireExistingWorkflow(state: Map<String, Any?>) {
+        when (state["state"]) {
+            "existing" -> Unit
+            "removed" -> throw workflowException(WorkflowErrorCodes.WORKFLOW_REMOVED)
+            "purged" -> throw workflowException(WorkflowErrorCodes.WORKFLOW_PURGED)
+            else -> throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND)
+        }
+    }
+
+    /** Revision-fences a cost-control command against the current workflow revision. */
+    private fun fenceWorkflowRevision(scope: TenantScope, namespaceId: String, workflowId: String, expectedRevision: Int?) {
+        val state = getProjection(scope, namespaceId, workflowId)
+        requireExistingWorkflow(state)
+        if (expectedRevision == null) return
+        val current = (state["revision"] as? Number)?.toInt() ?: 0
+        if (expectedRevision != current) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
+        }
     }
 
     // ------------------------------------------------------------------

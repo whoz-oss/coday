@@ -34,6 +34,27 @@ interface AgentOsProxyClient {
     fun getRunCost(caseId: String, externalUserId: String? = null): RunCostDto?
 
     /**
+     * Confirm a paused run's next cost window (`POST /api/cases/{caseId}/run-cost/continue`).
+     *
+     * [expectedThreshold] is the optimistic precondition: AgentOS rejects the
+     * command when the run's current threshold diverged. When null the body is
+     * omitted and AgentOS answers with its own validation error.
+     *
+     * Never returns a failure silently: an unreachable AgentOS or a disabled
+     * usage-tracking surface throws [UsageTrackingUnavailableException] (503) so
+     * the caller degrades cleanly instead of surfacing a 500.
+     */
+    fun continueRunCost(caseId: String, expectedThreshold: Double?, externalUserId: String? = null): Boolean
+
+    /**
+     * Stop a run's live execution (`POST /api/cases/{caseId}/run-cost/stop`).
+     *
+     * Never returns a failure silently: an unreachable AgentOS or a disabled
+     * usage-tracking surface throws [UsageTrackingUnavailableException] (503).
+     */
+    fun stopRunCost(caseId: String, externalUserId: String? = null): Boolean
+
+    /**
      * Resolve the repo root from the namespace configPath. Returns null when the
      * namespace is not found or has no configPath.
      */
@@ -88,3 +109,14 @@ sealed interface AgentTurnExecutionResult {
 /** Raised when AgentOS is unreachable or answers non-404 — mapped to 502. */
 class AgentOsUnavailableException(message: String, cause: Throwable? = null) :
     io.whozoss.factory.error.FactoryException(502, "AGENTOS_UNAVAILABLE", message, null, cause)
+
+/**
+ * Raised when AgentOS usage tracking is disabled or its cost-control surface is
+ * unreachable — mapped to a clean 503 (`SERVICE_UNAVAILABLE`) instead of an
+ * unhandled 500. The message defaults to the AgentOS wording the Cockpit and
+ * clients already recognise.
+ */
+class UsageTrackingUnavailableException(
+    message: String = "Usage tracking is disabled",
+    cause: Throwable? = null,
+) : io.whozoss.factory.error.FactoryException(503, "SERVICE_UNAVAILABLE", message, null, cause)

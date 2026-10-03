@@ -101,6 +101,9 @@ class HttpAgentOsProxyClient(
                     paused = raw["paused"] as? Boolean ?: false,
                     active = raw["active"] as? Boolean ?: false,
                     liveTokens = (raw["liveTokens"] as? Number)?.toLong() ?: 0L,
+                    pausedCaseIds = (raw["pausedCases"] as? List<*>)
+                        ?.mapNotNull { (it as? Map<*, *>)?.get("caseId") as? String }
+                        ?: emptyList(),
                 )
             }
         } catch (_: AgentOsNotFound) {
@@ -111,6 +114,49 @@ class HttpAgentOsProxyClient(
             logger.warn(error) { "run-cost unavailable for case $caseId; degrading" }
             null
         }
+
+    /**
+     * Cost-control command relay. AgentOS owns the state machine; this adapter
+     * only forwards the trusted external identity and the optional threshold.
+     *
+     * A disabled usage-tracking surface (AgentOS 503) is surfaced as a
+     * [UsageTrackingUnavailableException] (503) so the caller can degrade
+     * cleanly; any other transport/HTTP failure is an [AgentOsUnavailableException]
+     * (502) which the cost-control service maps to a 503 as well.
+     */
+    override fun continueRunCost(caseId: String, expectedThreshold: Double?, externalUserId: String?): Boolean =
+        postRunCostCommand("/api/cases/$caseId/run-cost/continue", externalUserId, expectedThreshold)
+
+    override fun stopRunCost(caseId: String, externalUserId: String?): Boolean =
+        postRunCostCommand("/api/cases/$caseId/run-cost/stop", externalUserId, null)
+
+    private fun postRunCostCommand(path: String, externalUserId: String?, expectedThreshold: Double?): Boolean {
+        val spec = client.post().uri(path).contentType(MediaType.APPLICATION_JSON)
+        if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+        if (expectedThreshold != null) spec.body(mapOf("expectedThreshold" to expectedThreshold))
+        return try {
+            spec.retrieve().toBodilessEntity()
+            true
+        } catch (error: RestClientResponseException) {
+            if (error.statusCode.value() == 503) {
+                throw UsageTrackingUnavailableException(
+                    agentOsMessage(error.responseBodyAsString) ?: "Usage tracking is disabled",
+                    error,
+                )
+            }
+            throw AgentOsUnavailableException("AgentOS ${error.statusCode.value()} on $path", error)
+        } catch (error: Exception) {
+            throw AgentOsUnavailableException(error.message ?: error.toString(), error)
+        }
+    }
+
+    /** Best-effort extraction of the `message` field of an AgentOS error body. */
+    private fun agentOsMessage(body: String?): String? {
+        if (body.isNullOrBlank()) return null
+        return runCatching {
+            org.springframework.boot.json.JsonParserFactory.getJsonParser().parseMap(body)["message"] as? String
+        }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
 
     override fun resolveRepoRoot(namespaceId: String, externalUserId: String?): String? {
         val namespace = fetchNamespace(namespaceId, externalUserId) ?: return null

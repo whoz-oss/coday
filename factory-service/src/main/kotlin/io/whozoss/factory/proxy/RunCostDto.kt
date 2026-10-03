@@ -21,4 +21,6 @@ data class RunCostDto(
     val paused: Boolean,
     val active: Boolean,
     val liveTokens: Long,
+    /** Case ids currently held at a threshold; this case or one of its blocking ancestors. */
+    val pausedCaseIds: List<String> = emptyList(),
 )

@@ -12,6 +12,7 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
+import org.springframework.test.web.client.match.MockRestRequestMatchers.content
 import org.springframework.test.web.client.match.MockRestRequestMatchers.header
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withStatus
@@ -125,6 +126,55 @@ class AgentOsProxyMockTest : Neo4jDomainIntegrationTest() {
             )
         assertThat(storeClient.resolveRunStoreRoot("ns-2", null)).isEqualTo("/srv/repo/forge/factory-runs")
         storeServer.verify()
+    }
+
+    @Test
+    fun `continueRunCost relays the threshold and trusted identity`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/case-1/run-cost/continue"))
+            .andExpect(header("X-External-User-Id", "user-7"))
+            .andExpect(content().json("""{"expectedThreshold":50.0}"""))
+            .andRespond(withStatus(HttpStatus.OK))
+
+        assertThat(client.continueRunCost("case-1", 50.0, "user-7")).isTrue()
+        server.verify()
+    }
+
+    @Test
+    fun `stopRunCost relays the stop and returns true on success`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/case-2/run-cost/stop"))
+            .andRespond(withStatus(HttpStatus.NO_CONTENT))
+
+        assertThat(client.stopRunCost("case-2", null)).isTrue()
+        server.verify()
+    }
+
+    @Test
+    fun `a disabled usage-tracking surfaces as a 503 usage-tracking exception`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/case-3/run-cost/stop"))
+            .andRespond(
+                withStatus(HttpStatus.SERVICE_UNAVAILABLE)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body("""{"status":503,"message":"Usage tracking is disabled"}"""),
+            )
+
+        assertThatThrownBy { client.stopRunCost("case-3", null) }
+            .isInstanceOf(UsageTrackingUnavailableException::class.java)
+            .hasMessage("Usage tracking is disabled")
+        server.verify()
+    }
+
+    @Test
+    fun `a non-503 AgentOS failure on cost control surfaces as a 502`() {
+        val (client, server) = buildClient()
+        server.expect(requestTo("http://agentos.test/api/cases/case-4/run-cost/continue"))
+            .andRespond(withStatus(HttpStatus.CONFLICT))
+
+        assertThatThrownBy { client.continueRunCost("case-4", 10.0, null) }
+            .isInstanceOf(AgentOsUnavailableException::class.java)
+        server.verify()
     }
 
     @Test

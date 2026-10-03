@@ -13,6 +13,7 @@ import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.web.TrustContext
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
 import io.whozoss.factory.workflow.domain.ControllerRequestInput
+import io.whozoss.factory.workflow.domain.WorkflowActionsResponseDto
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowExecution
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
@@ -768,6 +769,95 @@ class WorkflowController(
                 caller.actorId,
             ).data,
         )
+    }
+
+    // ----- governed actions & cost control -------------------------------
+
+    /**
+     * Authoritative read of what a governed workflow permits right now: the
+     * allowed actions (each with the revision it must be executed at) and the
+     * active blockers. Derived purely from persisted state + the trusted caller
+     * identity — the client never decides this itself.
+     */
+    @GetMapping(path = ["/{workflowId}/actions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Authoritative allowed actions and blockers of a workflow.")
+    fun actions(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<WorkflowActionsResponseDto> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        val canReply = trustContext?.principalType == TrustContext.PRINCIPAL_TYPE_HUMAN && isSafeActor(caller.actorId)
+        return WorkflowDataEnvelope(service.workflowActions(caller.scope, caller.namespaceId, workflowId, canReply))
+    }
+
+    @PostMapping(path = ["/{workflowId}/cost/continue"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Relay a run-cost continuation to AgentOS for the workflow's cases.")
+    fun continueCost(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestParam(name = "namespaceId", required = false) queryNamespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> =
+        costControl(workflowId, body, queryNamespaceId, trustContext, continueRun = true)
+
+    @PostMapping(path = ["/{workflowId}/cost/stop"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Relay a run-cost stop to AgentOS for the workflow's cases.")
+    fun stopCost(
+        @PathVariable workflowId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestParam(name = "namespaceId", required = false) queryNamespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<Map<String, Any?>> =
+        costControl(workflowId, body, queryNamespaceId, trustContext, continueRun = false)
+
+    /**
+     * Shared cost-control pass-through. Identity and namespace are resolved from
+     * the verified [TrustContext] (and the optional `namespaceId` query param)
+     * first; the persisted workflow state is authoritative for the target case
+     * ids. A body `namespaceId` is only a last-resort hint when the trusted
+     * context carries no namespace at all.
+     */
+    private fun costControl(
+        workflowId: String,
+        body: Map<String, Any?>?,
+        queryNamespaceId: String?,
+        trustContext: TrustContext?,
+        continueRun: Boolean,
+    ): WorkflowDataEnvelope<Map<String, Any?>> {
+        val request = body ?: emptyMap()
+        val allowed = setOf("expectedThreshold", "caseId", "namespaceId", "expectedRevision")
+        if (request.keys.any { it !in allowed }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Unsupported cost-control request fields.")
+        }
+        val trustedNamespaceId = queryNamespaceId?.takeIf { it.isNotBlank() }
+            ?: trustContext?.namespaceId?.takeIf { it.isNotBlank() }
+        val bodyNamespaceId = (request["namespaceId"] as? String)?.takeIf { it.isNotBlank() }
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, trustedNamespaceId ?: bodyNamespaceId)
+        val expectedThreshold = (request["expectedThreshold"] as? Number)?.toDouble()
+        val caseId = (request["caseId"] as? String)?.takeIf { it.isNotBlank() }
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+        val result = if (continueRun) {
+            service.continueRunCost(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                caller.actorId,
+                caseId,
+                expectedThreshold,
+                expectedRevision,
+            )
+        } else {
+            service.stopRunCost(
+                caller.scope,
+                caller.namespaceId,
+                workflowId,
+                caller.actorId,
+                caseId,
+                expectedRevision,
+            )
+        }
+        return WorkflowDataEnvelope(result)
     }
 
     // ----- helpers -------------------------------------------------------
