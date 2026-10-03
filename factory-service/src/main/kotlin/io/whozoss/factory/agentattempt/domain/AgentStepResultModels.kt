@@ -97,11 +97,20 @@ data class AgentStepResultCapabilityIdentity(
     val briefHash: String,
 )
 
-/** The identity a submission declares, checked against the issued capability. */
+/**
+ * The identity a submission declares, checked against the issued capability.
+ *
+ * [namespaceId] is NEVER taken from model-authored arguments: the HTTP
+ * boundary fills it from the verified `TrustContext` (signed JWT claims, or
+ * the loopback-dev headers on a local socket). When present it must equal the
+ * capability namespace, otherwise the submission is rejected with
+ * `RESULT_IDENTITY_MISMATCH`.
+ */
 data class AgentStepResultObservedIdentity(
     val attemptId: String?,
     val caseId: String?,
     val agentName: String?,
+    val namespaceId: String? = null,
 )
 
 /** Durable capability-issued record (the clear token is never persisted). */

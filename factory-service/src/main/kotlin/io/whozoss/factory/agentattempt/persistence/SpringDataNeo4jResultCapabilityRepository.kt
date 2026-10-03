@@ -57,4 +57,26 @@ interface SpringDataNeo4jResultCapabilityRepository : Neo4jRepository<ResultCapa
         workstreamId: String,
         tokenHash: String,
     ): ResultCapabilityNode?
+
+    /**
+     * Read-only startup-reconciliation sweep: every capability still backed by
+     * an unredeemed reservation row (`collision_detected`), across all tenant
+     * scopes. The join on the six identity fields keeps each capability fenced
+     * to its own reservation.
+     */
+    @Query(
+        """
+        MATCH (c:ResultCapability), (r:AgentStepResult)
+        WHERE c.organizationId = r.organizationId
+          AND c.workstreamId = r.workstreamId
+          AND c.namespaceId = r.namespaceId
+          AND c.workflowId = r.workflowId
+          AND c.stepId = r.stepId
+          AND c.attemptId = r.attemptId
+          AND r.resultStatus = 'collision_detected'
+        RETURN c
+        ORDER BY c.createdAt ASC
+        """,
+    )
+    fun findUnredeemedReserved(): List<ResultCapabilityNode>
 }

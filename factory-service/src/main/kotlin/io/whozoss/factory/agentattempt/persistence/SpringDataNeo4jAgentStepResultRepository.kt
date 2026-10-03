@@ -60,6 +60,29 @@ interface SpringDataNeo4jAgentStepResultRepository : Neo4jRepository<AgentStepRe
         payload: String,
     ): Long
 
+    /**
+     * Read-only startup-reconciliation sweep: every submitted result
+     * (`success`/`failure`) whose attempt is NOT in a terminal status, across
+     * all tenant scopes. The join on the six identity fields keeps each row
+     * fenced to its own attempt; the scope is read back from the node.
+     */
+    @Query(
+        """
+        MATCH (r:AgentStepResult), (a:AgentStepAttempt)
+        WHERE r.organizationId = a.organizationId
+          AND r.workstreamId = a.workstreamId
+          AND r.namespaceId = a.namespaceId
+          AND r.workflowId = a.workflowId
+          AND r.stepId = a.stepId
+          AND r.attemptId = a.attemptId
+          AND r.resultStatus IN ['success', 'failure']
+          AND NOT a.status IN ['completed', 'failed']
+        RETURN r
+        ORDER BY r.createdAt ASC
+        """,
+    )
+    fun findSubmittedWithNonTerminalAttempt(): List<AgentStepResultNode>
+
     /** Number of result rows attached to an attempt (0, or 1 after a reservation). */
     @Query(
         """
