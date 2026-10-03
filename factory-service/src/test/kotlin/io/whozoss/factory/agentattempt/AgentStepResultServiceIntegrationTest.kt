@@ -161,6 +161,44 @@ class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `a mismatched observed namespace is rejected`() {
+        seedAttempt("attempt-ns")
+        val issued = service.issue(scope, identity("attempt-ns"))
+
+        assertThatThrownBy {
+            service.submit(
+                scope,
+                issued.token,
+                business("PASS", "ok"),
+                AgentStepResultObservedIdentity("attempt-ns", caseId, agentName, namespaceId = "other-namespace"),
+                null,
+            )
+        }
+            .isInstanceOf(ResultIdentityMismatchException::class.java)
+            .hasFieldOrPropertyWithValue("errorCode", "RESULT_IDENTITY_MISMATCH")
+
+        assertThat(countOutbox()).isEqualTo(0)
+        assertThat(attempts.find(scope, namespace, workflow, step, "attempt-ns")?.status).isEqualTo("running")
+    }
+
+    @Test
+    fun `a matching observed namespace is accepted`() {
+        seedAttempt("attempt-ns-ok")
+        val issued = service.issue(scope, identity("attempt-ns-ok"))
+
+        val outcome = service.submit(
+            scope,
+            issued.token,
+            business("PASS", "ok"),
+            AgentStepResultObservedIdentity("attempt-ns-ok", caseId, agentName, namespaceId = namespace),
+            null,
+        )
+
+        assertThat(outcome.idempotent).isFalse()
+        assertThat(attempts.find(scope, namespace, workflow, step, "attempt-ns-ok")?.status).isEqualTo("completed")
+    }
+
+    @Test
     fun `an invalid business schema is rejected before any DB write`() {
         seedAttempt("attempt-schema")
         val issued = service.issue(scope, identity("attempt-schema"))

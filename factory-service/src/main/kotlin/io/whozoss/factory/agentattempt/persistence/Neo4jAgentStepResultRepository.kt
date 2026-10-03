@@ -125,9 +125,17 @@ class Neo4jAgentStepResultRepository(
     ): SubmitOutcome {
         val capability = findByTokenHash(scope, CanonicalJsonHash.sha256(token))
             ?: throw ResultCapabilityInvalidException()
+        // Identity fencing: the submission is bound to exactly the attempt,
+        // case, agent and (when declared by the trust boundary) namespace the
+        // capability was issued for. `workflowId`/`stepId` are never declared
+        // by the caller — they are taken from the capability itself — and the
+        // tenant `(organizationId, workstreamId)` is fenced by the token-hash
+        // lookup being scoped to the verified `TenantScope`: a token presented
+        // under another tenant simply does not resolve (RESULT_CAPABILITY_INVALID).
         if (observed.attemptId != capability.attemptId ||
             observed.caseId != capability.caseId ||
-            observed.agentName != capability.agentName
+            observed.agentName != capability.agentName ||
+            (observed.namespaceId != null && observed.namespaceId != capability.namespaceId)
         ) {
             throw ResultIdentityMismatchException()
         }

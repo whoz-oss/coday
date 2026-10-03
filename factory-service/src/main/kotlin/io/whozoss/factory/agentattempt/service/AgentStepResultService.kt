@@ -105,12 +105,18 @@ class AgentStepResultService(
             resultHash = result.resultHash,
         )
 
-    /** SHA-256 hex of the canonical request (attempt identity + business result). */
+    /**
+     * SHA-256 hex of the canonical request (attempt identity + business result).
+     * The trusted namespace observed at the HTTP boundary is part of the hash so
+     * a replayed idempotency key under a different trusted namespace is a
+     * collision, never a silent reuse.
+     */
     private fun hashRequest(observed: AgentStepResultObservedIdentity, business: JsonNode?): String {
         val request = objectMapper.createObjectNode().apply {
             put("attemptId", observed.attemptId)
             put("caseId", observed.caseId)
             put("agentName", observed.agentName)
+            put("namespaceId", observed.namespaceId)
             set<JsonNode>("result", business ?: objectMapper.nullNode())
         }
         return CanonicalJsonHash.sha256Hex(CanonicalJsonHash.canonicalJson(request))
