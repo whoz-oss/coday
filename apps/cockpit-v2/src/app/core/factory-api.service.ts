@@ -67,6 +67,50 @@ export class FactoryApiService {
   }
 
   /**
+   * GET `/api/factory/workflows/:id/interactions?state=all|open[&namespaceId=…]`.
+   * Unwraps the `{ data: … }` envelope and returns the raw interaction records as
+   * an array (empty when the backend exposes none).
+   */
+  getInteractions(workflowId: string, namespaceId?: string, state: 'all' | 'open' = 'all'): Observable<unknown[]> {
+    return this.request<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/interactions`,
+      { state },
+      namespaceId
+    ).pipe(
+      map((payload) => {
+        if (Array.isArray(payload)) return payload
+        const obj = payload as { items?: unknown; data?: unknown } | null
+        const items = obj?.items
+        if (Array.isArray(items)) return items
+        const nested = obj?.data
+        return Array.isArray(nested) ? nested : []
+      })
+    )
+  }
+
+  /**
+   * GET `/api/factory/workflows/:id/attempts[?namespaceId=…]`.
+   * Unwraps the `{ data: […] }` or `{ data: { items: […] } }` envelope and
+   * returns the raw attempt records as an array (empty when none are exposed).
+   */
+  getAttempts(workflowId: string, namespaceId?: string): Observable<unknown[]> {
+    return this.request<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/attempts`,
+      {},
+      namespaceId
+    ).pipe(
+      map((payload) => {
+        if (Array.isArray(payload)) return payload
+        const obj = payload as { items?: unknown; data?: unknown } | null
+        const items = obj?.items
+        if (Array.isArray(items)) return items
+        const nested = obj?.data
+        return Array.isArray(nested) ? nested : []
+      })
+    )
+  }
+
+  /**
    * Issue a GET request and unwrap the response. `correlationId` is optional so
    * a caller can thread an existing trace id; otherwise a fresh one is minted.
    */

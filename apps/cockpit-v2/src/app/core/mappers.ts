@@ -1,4 +1,6 @@
 import {
+  AgentAttempt,
+  HumanInteraction,
   PhaseDetail,
   PhaseSegment,
   RunEvent,
@@ -530,28 +532,172 @@ function mapStepsToSessionSteps(steps: unknown[]): SessionStep[] {
   })
 }
 
-function buildPhaseDetail(steps: unknown[], fallbackStatus: RunStatus): PhaseDetail {
+// ---------------------------------------------------------------------------
+// Human interactions (read-only)
+// ---------------------------------------------------------------------------
+
+function asInteractionArray(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload
+  const obj = asObject(payload)
+  if (!obj) return []
+  if (Array.isArray(obj['items'])) return obj['items'] as unknown[]
+  if (Array.isArray(obj['data'])) return obj['data'] as unknown[]
+  return []
+}
+
+function extractActions(value: unknown): Array<{ id: string; label: string }> | undefined {
+  if (!Array.isArray(value)) return undefined
+  const actions: Array<{ id: string; label: string }> = []
+  value.forEach((entry, index) => {
+    if (typeof entry === 'string' && entry.length > 0) {
+      actions.push({ id: entry, label: entry })
+      return
+    }
+    const obj = asObject(entry)
+    if (!obj) return
+    const id = getString(obj, 'id') ?? getString(obj, 'actionId') ?? String(index + 1)
+    const label = getString(obj, 'label') ?? getString(obj, 'name') ?? getString(obj, 'title') ?? id
+    actions.push({ id, label })
+  })
+  return actions.length > 0 ? actions : undefined
+}
+
+/**
+ * Defensively extract the human interactions carried by a `getInteractions`
+ * payload. Accepts a bare array, an `{ items: [...] }` wrapper or a
+ * `{ data: [...] }` wrapper; anything else degrades to `[]`. Each record is
+ * mapped to a {@link HumanInteraction} with graceful defaults so a
+ * partially-migrated backend never throws.
+ */
+export function extractInteractions(payload: unknown): HumanInteraction[] {
+  return asInteractionArray(payload).map((item, index) => {
+    const obj = asObject(item) ?? {}
+    const payloadObj = asObject(obj['payload']) ?? {}
+    const interaction: HumanInteraction = {
+      interactionId: getString(obj, 'interactionId') ?? getString(obj, 'id') ?? `interaction-${index + 1}`,
+      stepId: getString(obj, 'stepId') ?? getString(payloadObj, 'stepId') ?? '',
+      interactionType: getString(obj, 'interactionType') ?? getString(obj, 'type') ?? 'unknown',
+      status: getString(obj, 'status') ?? 'unknown',
+    }
+    const prompt = getString(payloadObj, 'prompt') ?? getString(payloadObj, 'question') ?? getString(obj, 'prompt')
+    if (prompt) interaction.prompt = prompt
+    const actions = extractActions(payloadObj['actions'] ?? obj['actions'])
+    if (actions) interaction.actions = actions
+    const recipient = getString(payloadObj, 'recipient') ?? getString(obj, 'recipient')
+    if (recipient) interaction.recipient = recipient
+    const createdAt = getString(obj, 'createdAt') ?? getString(payloadObj, 'createdAt')
+    if (createdAt) interaction.createdAt = createdAt
+    return interaction
+  })
+}
+
+/** Surface each human interaction as a read-only {@link RunEvent}. */
+export function mapInteractionsToEvents(interactions: HumanInteraction[]): RunEvent[] {
+  return interactions.map((interaction) => ({
+    time: formatClock(interaction.createdAt),
+    type: 'agent_message',
+    text: `[Human Gate - ${interaction.interactionType}] ${interaction.prompt ?? interaction.status}`,
+  }))
+}
+
+// ---------------------------------------------------------------------------
+// Real agent attempts (read-only)
+// ---------------------------------------------------------------------------
+
+function asAttemptArray(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload
+  const obj = asObject(payload)
+  if (!obj) return []
+  if (Array.isArray(obj['items'])) return obj['items'] as unknown[]
+  if (Array.isArray(obj['data'])) return obj['data'] as unknown[]
+  return []
+}
+
+/**
+ * Defensively extract the real agent execution attempts carried by a
+ * `getAttempts` payload (backend `DurableAgentAttemptDto`). Accepts a bare
+ * array or an `{ items: [...] }` / `{ data: [...] }` wrapper; anything else
+ * degrades to `[]`. Each record is mapped with graceful defaults so a
+ * partially-migrated backend never throws.
+ */
+export function extractAttempts(payload: unknown): AgentAttempt[] {
+  return asAttemptArray(payload).map((item, index) => {
+    const obj = asObject(item) ?? {}
+    const attempt: AgentAttempt = {
+      attemptId: getString(obj, 'attemptId') ?? getString(obj, 'id') ?? `attempt-${index + 1}`,
+      stepId: getString(obj, 'stepId') ?? '',
+      attemptNumber: getNumber(obj, 'attemptNumber') ?? 0,
+      agentName: getString(obj, 'agentName') ?? '',
+      status: getString(obj, 'status') ?? 'unknown',
+      caseId: getString(obj, 'caseId') ?? '',
+    }
+    const failureCode = getString(obj, 'failureCode')
+    if (failureCode) attempt.failureCode = failureCode
+    const resultEvidenceId = getString(obj, 'resultEvidenceId')
+    if (resultEvidenceId) attempt.resultEvidenceId = resultEvidenceId
+    const revision = getNumber(obj, 'revision')
+    if (revision !== undefined) attempt.revision = revision
+    const createdAt = getString(obj, 'createdAt')
+    if (createdAt) attempt.createdAt = createdAt
+    const startedAt = getString(obj, 'startedAt')
+    if (startedAt) attempt.startedAt = startedAt
+    const completedAt = getString(obj, 'completedAt')
+    if (completedAt) attempt.completedAt = completedAt
+    return attempt
+  })
+}
+
+function pickCurrentAttempt(stepAttempts: AgentAttempt[]): AgentAttempt | undefined {
+  if (stepAttempts.length === 0) return undefined
+  return stepAttempts.reduce((latest, attempt) => (attempt.attemptNumber >= latest.attemptNumber ? attempt : latest))
+}
+
+function buildPhaseDetail(
+  steps: unknown[],
+  fallbackStatus: RunStatus,
+  interactionsCount = 0,
+  attempts: AgentAttempt[] = []
+): PhaseDetail {
   const active = steps.find((step) => resolveStepState(step) === 'active') ?? steps[steps.length - 1]
   const obj = asObject(active) ?? {}
   const responsibility = asObject(obj['responsibility'])
   const duration = stepDurationSec(obj) ?? 0
   const description = getString(obj, 'description')
+  const stepId = getString(obj, 'id') ?? getString(obj, 'key')
 
-  return {
+  const stepAttempts = stepId ? attempts.filter((attempt) => attempt.stepId === stepId) : []
+  const currentAttempt = pickCurrentAttempt(stepAttempts)
+
+  const detail: PhaseDetail = {
     name: getString(obj, 'name') ?? getString(obj, 'id') ?? 'phase',
     status: getString(obj, 'status') ? mapWorkflowStateToRunStatus(getString(obj, 'status'), [obj]) : fallbackStatus,
     durationSec: Math.round(duration),
     owner: getString(responsibility, 'name') ?? actorName(obj),
     kind: getString(responsibility, 'kind') ?? classifyActorKind(obj),
-    attempt: '0/0',
+    // Real attempts are surfaced when available; a neutral `1/1` fallback is
+    // used when the backend exposes none.
+    attempt: '1/1',
     sections: [
       { label: "Configuration de l'agent" },
       { label: 'Description', ...(description ? { body: description } : {}) },
       { label: 'Prompts compilés', count: 0 },
-      { label: 'Gates', count: 0 },
+      { label: 'Gates', count: interactionsCount },
       { label: 'Sorties', count: 0 },
     ],
   }
+
+  if (stepAttempts.length > 0 && currentAttempt) {
+    detail.attempt = `${currentAttempt.attemptNumber}/${stepAttempts.length}`
+    detail.currentAttemptNumber = currentAttempt.attemptNumber
+    detail.totalAttempts = stepAttempts.length
+    detail.attempts = stepAttempts
+    detail.agentName = currentAttempt.agentName
+    detail.attemptStatus = currentAttempt.status
+    detail.caseId = currentAttempt.caseId
+    if (currentAttempt.failureCode) detail.failureCode = currentAttempt.failureCode
+  }
+
+  return detail
 }
 
 /** Resolve the workflow id carried by a list/detail snapshot. */
@@ -576,7 +722,9 @@ export function mapProjectionToSessionDetail(
   workflow: unknown,
   timing?: unknown,
   evidence?: unknown,
-  metrics?: unknown
+  metrics?: unknown,
+  interactions?: unknown,
+  attempts?: unknown
 ): SessionDetail {
   const snapshot = asObject(workflow) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
@@ -588,6 +736,8 @@ export function mapProjectionToSessionDetail(
   const metricsObj = asObject(metrics)
   const realCost = extractRealCost(metricsObj)
   const evidenceItems = asArray(asObject(evidence)?.['items'])
+  const mappedInteractions = extractInteractions(interactions)
+  const mappedAttempts = extractAttempts(attempts)
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
@@ -634,7 +784,9 @@ export function mapProjectionToSessionDetail(
     steps: mapStepsToSessionSteps(steps),
     lanes,
     nowSec: Math.round(laneEnd),
-    events: mapEvidenceToEvents(evidenceItems, steps),
-    phase: buildPhaseDetail(steps, status),
+    events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
+    phase: buildPhaseDetail(steps, status, mappedInteractions.length, mappedAttempts),
+    interactions: mappedInteractions,
+    attempts: mappedAttempts,
   }
 }

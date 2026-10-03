@@ -157,7 +157,7 @@ export const SESSION_872641A8: SessionDetail = {
     durationSec: 619,
     owner: 'builder',
     kind: 'agent',
-    attempt: '0/0',
+    attempt: '1/1',
     sections: [
       { label: "Configuration de l'agent" },
       { label: 'Description' },

@@ -95,10 +95,16 @@ describe('FactoryStore', () => {
       .flush({ data: { namespaceId: '', state: 'active', items } })
   }
 
-  function flushEnrichment(metrics: unknown = { workflowId: 'wf-1' }): void {
+  function flushEnrichment(
+    metrics: unknown = { workflowId: 'wf-1' },
+    interactions: unknown = { workflowId: 'wf-1', items: [] },
+    attempts: unknown = { workflowId: 'wf-1', data: [] }
+  ): void {
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: metrics })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: interactions })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush(attempts)
   }
 
   it('exposes the mock sandboxes before/without real data', () => {
@@ -194,6 +200,104 @@ describe('FactoryStore', () => {
     expect(store.session('wf-1')?.unknownCostCount).toBe(3)
     expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(3)
     expect(store.costs().unknownCostCount).toBe(3)
+  })
+
+  it('enriches the session with read-only human interactions', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      {
+        workflowId: 'wf-1',
+        items: [
+          {
+            interactionId: 'i-1',
+            stepId: 'build',
+            interactionType: 'approval',
+            status: 'waiting',
+            payload: { prompt: 'Approve the deploy?' },
+          },
+        ],
+      }
+    )
+
+    const session = store.session('wf-1')
+    expect(session?.interactions).toHaveLength(1)
+    expect(session?.interactions?.[0]?.interactionId).toBe('i-1')
+    expect(session?.phase.sections.find((section) => section.label === 'Gates')?.count).toBe(1)
+    expect(session?.events.some((event) => event.text.includes('Approve the deploy?'))).toBe(true)
+  })
+
+  it('degrades gracefully when the interactions fetch fails', () => {
+    flushInitialWorkflows([snapshot])
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/interactions'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.interactions).toEqual([])
+    // The other enrichments still landed despite the failed interaction fetch.
+    expect(session?.workflow).toBe('Real workflow')
+  })
+
+  it('enriches the session with real agent attempts and the dynamic attempt string', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      {
+        workflowId: 'wf-1',
+        data: [
+          {
+            attemptId: 'a-1',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'builder',
+            status: 'failed',
+            caseId: 'case-1',
+            failureCode: 'TEST_FAILED',
+          },
+          {
+            attemptId: 'a-2',
+            stepId: 'build',
+            attemptNumber: 2,
+            agentName: 'builder',
+            status: 'running',
+            caseId: 'case-2',
+          },
+        ],
+      }
+    )
+
+    const session = store.session('wf-1')
+    expect(session?.attempts).toHaveLength(2)
+    expect(session?.phase.attempt).toBe('2/2')
+    expect(session?.phase.currentAttemptNumber).toBe(2)
+    expect(session?.phase.totalAttempts).toBe(2)
+    expect(session?.phase.attemptStatus).toBe('running')
+    expect(session?.phase.attempt).toBe('2/2')
+  })
+
+  it('degrades gracefully when the attempts fetch fails', () => {
+    flushInitialWorkflows([snapshot])
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/attempts'))
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    const session = store.session('wf-1')
+    expect(session?.id).toBe('wf-1')
+    expect(session?.attempts).toEqual([])
+    // Fallback attempt string is neutral.
+    expect(session?.phase.attempt).toBe('1/1')
+    expect(session?.workflow).toBe('Real workflow')
   })
 
   it('refetches the workflow list on an SSE invalidation', () => {
