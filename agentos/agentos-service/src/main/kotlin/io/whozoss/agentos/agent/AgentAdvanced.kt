@@ -945,6 +945,7 @@ class AgentAdvanced(
             userId = userId,
             userExternalId = userExternalId,
             caseEvents = filterEventsByIntegration(toolName, caseEventsProvider()),
+            agentName = name,
             toolRequestId = toolRequestId,
         )
 
@@ -1565,6 +1566,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                                 userId = userId,
                                 userExternalId = userExternalId,
                                 caseEvents = filteredEvents,
+                                agentName = name,
                                 toolRequestId = toolRequest.toolRequestId,
                             ),
                         )

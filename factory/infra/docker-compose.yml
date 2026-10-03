@@ -1,0 +1,50 @@
+# Local PostgreSQL for the Factory pilot aggregates (WorkflowDefinition / WorkflowInstance).
+#
+# Usage:
+#   docker compose -f factory/infra/docker-compose.yml up -d
+#   docker compose -f factory/infra/docker-compose.yml ps
+#
+# The `flyway` service applies the versioned migrations in `factory/infra/migrations`
+# once PostgreSQL is healthy. See `factory/infra/README.md` for the full workflow.
+name: coday-factory-postgres
+
+services:
+  coday-postgres:
+    image: postgres:16-alpine
+    container_name: coday-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: coday_factory
+      POSTGRES_USER: factory
+      POSTGRES_PASSWORD: factory_dev_pass
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '5432:5432'
+    volumes:
+      - coday_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U factory -d coday_factory']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot migration runner. Kept in the same compose file so `up` yields a
+  # migrated database; it exits 0 once Flyway has applied every pending version.
+  flyway:
+    image: flyway/flyway:10-alpine
+    container_name: coday-flyway
+    depends_on:
+      coday-postgres:
+        condition: service_healthy
+    command: >-
+      -url=jdbc:postgresql://coday-postgres:5432/coday_factory
+      -user=factory
+      -password=factory_dev_pass
+      -locations=filesystem:/flyway/sql
+      -connectRetries=10
+      migrate
+    volumes:
+      - ./migrations:/flyway/sql:ro
+
+volumes:
+  coday_pgdata:

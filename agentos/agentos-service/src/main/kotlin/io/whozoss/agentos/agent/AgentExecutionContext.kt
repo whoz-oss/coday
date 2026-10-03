@@ -2,6 +2,7 @@ package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.time.Instant
 import java.util.UUID
@@ -26,6 +27,8 @@ import java.util.UUID
  *   Used by [io.whozoss.agentos.auth.OAuthFlowService] to emit [io.whozoss.agentos.sdk.caseEvent.QuestionEvent]s
  *   during interactive OAuth flows. Returns the persisted event (with stable id).
  *   Null when running outside a live case (e.g. definition resolution for a debug endpoint).
+ * @param toolGrantPolicies Optional SPI policies evaluated against each resolved tool before
+ *   the agent is granted it. Empty by default: pass-through, no filtering.
  * @param usageAccumulator When non-null, [io.whozoss.agentos.chat.ChatClientProvider] wraps the model in
  *   [io.whozoss.agentos.chat.UsageTrackingChatModel] to record each provider request.
  *   The caller retrieves the totals at the end of the run and attaches them to [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent].
@@ -36,9 +39,12 @@ data class AgentExecutionContext(
     val caseId: UUID? = null,
     val caseCreatedAt: Instant? = null,
     val userId: UUID? = null,
+    /** Trusted orchestration binding; never populated from model/tool input. */
+    val workflowId: String? = null,
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
     val usageAccumulator: UsageAccumulator? = null,
+    val toolGrantPolicies: List<ToolGrantPolicy> = emptyList(),
 ) {
     fun toToolContext(
         userExternalId: String?,

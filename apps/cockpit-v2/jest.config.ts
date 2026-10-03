@@ -1,0 +1,22 @@
+export default {
+  displayName: 'cockpit-v2',
+  preset: '../../jest.preset.cjs',
+  setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
+  coverageDirectory: '../../coverage/apps/cockpit-v2',
+  transform: {
+    '^.+\\.(ts|mjs|js|html)$': [
+      'jest-preset-angular',
+      {
+        tsconfig: '<rootDir>/tsconfig.spec.json',
+        stringifyContentPathRegex: '\\.(html|svg)$',
+      },
+    ],
+  },
+  transformIgnorePatterns: ['node_modules/(?!.*\\.mjs$|@angular|rxjs)'],
+  moduleFileExtensions: ['ts', 'html', 'js', 'json', 'mjs'],
+  snapshotSerializers: [
+    'jest-preset-angular/build/serializers/no-ng-attributes',
+    'jest-preset-angular/build/serializers/ng-snapshot',
+    'jest-preset-angular/build/serializers/html-comment',
+  ],
+}

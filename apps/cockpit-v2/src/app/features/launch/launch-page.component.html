@@ -1,0 +1,119 @@
+<div class="page">
+  <header class="page-head">
+    <div class="titles">
+      <h1>Lancer un run</h1>
+      <p class="sf-muted">
+        Matérialise puis démarre un workflow réel via factory-service (start puis run asynchrone durable).
+      </p>
+    </div>
+  </header>
+
+  @if (successMessage(); as message) {
+    <div class="banner banner--success" role="status" data-launch-success="true">
+      <mat-icon aria-hidden="true">check_circle</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  }
+  @if (errorMessage(); as message) {
+    <div class="banner banner--error" role="alert" data-launch-error="true">
+      <mat-icon aria-hidden="true">error</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  }
+  @if (definitionsError(); as message) {
+    <div class="banner banner--warn" role="alert" data-launch-definitions-error="true">
+      <mat-icon aria-hidden="true">warning</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  }
+
+  <form class="sf-panel launch-form" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Définition de workflow</mat-label>
+      @if (workflowTypes().length > 0) {
+        <mat-select formControlName="workflowType" data-launch-workflow-type="true">
+          @for (type of workflowTypes(); track type) {
+            <mat-option [value]="type">{{ type }}</mat-option>
+          }
+        </mat-select>
+      } @else {
+        <input
+          matInput
+          class="sf-mono"
+          formControlName="workflowType"
+          placeholder="adw_simple_sdlc"
+          data-launch-workflow-type="true"
+        />
+      }
+      @if (form.controls.workflowType.hasError('required')) {
+        <mat-error>La définition de workflow est requise.</mat-error>
+      }
+      <mat-hint>{{ definitionsLoading() ? 'Chargement des définitions…' : 'workflowType' }}</mat-hint>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Namespace</mat-label>
+      @if (namespaces().length > 0) {
+        <mat-select formControlName="namespaceId" data-launch-namespace="true">
+          @for (namespace of namespaces(); track namespace) {
+            <mat-option [value]="namespace">{{ namespace }}</mat-option>
+          }
+        </mat-select>
+      } @else {
+        <input
+          matInput
+          class="sf-mono"
+          formControlName="namespaceId"
+          placeholder="default"
+          data-launch-namespace="true"
+        />
+      }
+      @if (form.controls.namespaceId.hasError('required')) {
+        <mat-error>Le namespace est requis.</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="field field--wide">
+      <mat-label>Demande de l’ingénieur</mat-label>
+      <textarea
+        matInput
+        rows="6"
+        formControlName="controllerRequest"
+        placeholder="Décrivez le run à lancer…"
+        data-launch-request="true"
+      ></textarea>
+      <mat-hint>1 à 4000 caractères</mat-hint>
+      @if (form.controls.controllerRequest.hasError('required')) {
+        <mat-error>La demande est requise.</mat-error>
+      } @else if (form.controls.controllerRequest.hasError('minlength')) {
+        <mat-error>La demande ne peut pas être vide.</mat-error>
+      } @else if (form.controls.controllerRequest.hasError('maxlength')) {
+        <mat-error>La demande est limitée à 4000 caractères.</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Racine du dépôt</mat-label>
+      <input
+        matInput
+        class="sf-mono"
+        formControlName="repoRoot"
+        placeholder="Résolution automatique via AgentOS"
+        data-launch-repo-root="true"
+      />
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Ticket Jira (optionnel)</mat-label>
+      <input matInput class="sf-mono" formControlName="ticket" placeholder="ABC-123" data-launch-ticket="true" />
+    </mat-form-field>
+
+    <div class="form-actions">
+      <button mat-flat-button class="sf-primary" type="submit" [disabled]="submitting()" data-launch-submit="true">
+        <mat-icon>{{ submitting() ? 'hourglass_top' : 'play_arrow' }}</mat-icon>
+        {{ submitting() ? 'Lancement…' : 'Lancer le run' }}
+      </button>
+      <a mat-stroked-button class="sf-secondary" routerLink="/sandboxes">Annuler</a>
+    </div>
+  </form>
+</div>

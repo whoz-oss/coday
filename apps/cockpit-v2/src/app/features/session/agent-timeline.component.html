@@ -1,0 +1,89 @@
+<section class="timeline" aria-label="Chronologie des agents">
+  <!-- Axe -->
+  <div class="row axis">
+    <div class="label-col sf-overline">Acteurs</div>
+    <div class="request-col">request</div>
+    <div class="track">
+      @for (t of ticks(); track t.sec) {
+        <span class="tick" [style.left.%]="pct(t.sec)">{{ t.label }}</span>
+      }
+      <span class="now-badge" [style.left.%]="pct(effectiveNowSec())">{{ effectiveNowSec() | duration }}</span>
+    </div>
+  </div>
+
+  <!-- Couloirs -->
+  @for (lane of effectiveLanes(); track lane.id) {
+    <div class="row lane">
+      <div class="label-col">
+        <span class="lane-name" [class]="'tone-' + lane.tone">
+          <mat-icon aria-hidden="true">{{ iconFor(lane) }}</mat-icon
+          >{{ lane.label }}
+        </span>
+        <span class="lane-sub sf-mono">{{ lane.subtitle }}</span>
+        @if (lane.contextPct !== undefined) {
+          <span class="ctx">
+            <span class="ctx-label">Contexte</span>
+            <span class="ctx-bar"><span [style.width.%]="lane.contextPct"></span></span>
+            <span class="sf-mono">{{ lane.contextPct }}%</span>
+          </span>
+        }
+      </div>
+
+      <div class="request-col">
+        @if (lane.request; as r) {
+          <button type="button" class="block block--amber block--request" (click)="blockSelect.emit(r)">
+            <span class="block-title"><mat-icon class="check">check</mat-icon>{{ r.label }}</span>
+            @if (r.description) {
+              <span class="block-desc">{{ r.description }}</span>
+            }
+          </button>
+        }
+      </div>
+
+      <div class="track grid-lines" [style.background-size]="100 / ticks().length + '% 100%'">
+        @for (b of lane.blocks; track b.label) {
+          @let compact = 30 > b.endSec - b.startSec;
+          <button
+            type="button"
+            class="block"
+            [class]="'block--' + lane.tone"
+            [class.block--running]="b.status === 'running'"
+            [class.block--compact]="compact"
+            [class.block--selected]="selected() === b.label"
+            [style.left.%]="pct(b.startSec)"
+            [style.width.%]="widthPct(b)"
+            [matTooltip]="compact ? b.label + ' · terminé' : ''"
+            [attr.aria-label]="b.label + (b.status === 'running' ? ', en cours' : ', terminé')"
+            (click)="blockSelect.emit(b)"
+          >
+            @if (compact) {
+              <mat-icon class="check">check</mat-icon>
+            } @else {
+              <span class="block-title">
+                @if (b.status === 'running') {
+                  <span class="pulse"></span>
+                } @else {
+                  <mat-icon class="check">check</mat-icon>
+                }
+                <span class="sf-spacer-inline">{{ b.label }}</span>
+                <span class="block-dur sf-mono">{{ b.endSec - b.startSec | duration }}</span>
+              </span>
+              @if (b.description) {
+                <span class="block-desc">{{ b.description }}</span>
+              }
+              <span class="ticks" aria-hidden="true">
+                @for (t of b.ticksSec ?? []; track $index) {
+                  <i [style.left.%]="((t - b.startSec) / (b.endSec - b.startSec)) * 100"></i>
+                }
+                @for (t of b.errorTicksSec ?? []; track $index) {
+                  <i class="err" [style.left.%]="((t - b.startSec) / (b.endSec - b.startSec)) * 100"></i>
+                }
+              </span>
+            }
+          </button>
+        }
+        <span class="now-line" [style.left.%]="pct(effectiveNowSec())" aria-hidden="true"></span>
+      </div>
+    </div>
+  }
+</section>

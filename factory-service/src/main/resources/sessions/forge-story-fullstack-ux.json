@@ -1,0 +1,116 @@
+{
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "id": "ticket-analysis",
+      "name": "Ticket analysis",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeProductWorker"
+      }
+    },
+    {
+      "dependsOn": ["ticket-analysis"],
+      "id": "intent-checkpoint",
+      "name": "Intent checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product owner"
+      }
+    },
+    {
+      "dependsOn": ["intent-checkpoint"],
+      "id": "product-specification",
+      "name": "Product specification",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeProductWorker"
+      }
+    },
+    {
+      "dependsOn": ["product-specification"],
+      "id": "product-checkpoint",
+      "name": "Product specification checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product owner"
+      }
+    },
+    {
+      "dependsOn": ["product-checkpoint"],
+      "id": "ux-design",
+      "name": "UX design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeUXDesigner"
+      }
+    },
+    {
+      "dependsOn": ["product-checkpoint"],
+      "id": "codebase-research",
+      "name": "Codebase research",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Searcher"
+      }
+    },
+    {
+      "dependsOn": ["ux-design"],
+      "id": "ux-checkpoint",
+      "name": "UX checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product owner"
+      }
+    },
+    {
+      "dependsOn": ["codebase-research", "ux-checkpoint"],
+      "id": "technical-design",
+      "name": "Technical design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeTechDesigner"
+      }
+    },
+    {
+      "dependsOn": ["technical-design"],
+      "id": "technical-checkpoint",
+      "name": "Technical readiness checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Technical authority"
+      }
+    },
+    {
+      "dependsOn": ["technical-checkpoint"],
+      "id": "fullstack-implementation",
+      "name": "Fullstack implementation",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeFullstackWorker"
+      }
+    },
+    {
+      "dependsOn": ["fullstack-implementation"],
+      "id": "fullstack-verification",
+      "name": "Fullstack build and test verification",
+      "responsibility": {
+        "kind": "code",
+        "name": "forge-fullstack-verification"
+      }
+    },
+    {
+      "dependsOn": ["fullstack-verification"],
+      "id": "acceptance-checkpoint",
+      "name": "Acceptance checkpoint",
+      "responsibility": {
+        "kind": "human",
+        "name": "Acceptance reviewer"
+      }
+    }
+  ],
+  "title": "Forge Fullstack Story with UX & Verification",
+  "version": "1.0.0",
+  "workflowType": "forge-story-fullstack-ux"
+}

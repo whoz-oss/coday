@@ -1,0 +1,165 @@
+@if (session(); as s) {
+  <div class="page">
+    <!-- En-tête du run -->
+    <section class="run-head sf-panel">
+      <div class="title-row">
+        <h1>{{ s.goal }}</h1>
+        <button mat-stroked-button class="sf-secondary">Conversation</button>
+      </div>
+
+      <div class="meta-row">
+        @switch (s.status) {
+          @case ('running') {
+            <sf-status-chip tone="blue" icon="progress_activity" spin>running</sf-status-chip>
+          }
+          @case ('succeeded') {
+            <sf-status-chip tone="green" icon="check">terminé</sf-status-chip>
+          }
+          @case ('failed') {
+            <sf-status-chip tone="red" icon="close">échec</sf-status-chip>
+          }
+          @default {
+            <sf-status-chip tone="neutral">en attente</sf-status-chip>
+          }
+        }
+        <span class="sf-muted started"
+          >démarré le {{ s.startedAt | date: 'd MMM' }} à
+          <span class="sf-mono">{{ s.startedAt | date: 'HH:mm:ss' }}</span></span
+        >
+        <span class="sf-workflow">{{ s.workflow }}</span>
+        <span class="sf-spacer"></span>
+        <sf-metric icon="paid" label="Coût" [unknownCostCount]="s.unknownCostCount ?? 0">{{
+          s.costUsd | usd: 2 : s.unknownCostCount
+        }}</sf-metric>
+        <sf-metric icon="timer" label="Durée">{{ s.durationSec | duration }}</sf-metric>
+        <sf-metric icon="link" label="Tokens contexte">{{ s.tokens | tokens }}</sf-metric>
+        <sf-metric icon="menu_book" label="Tokens lus">{{ s.tokensRead | tokens }}</sf-metric>
+        <sf-metric icon="edit" label="Tokens écrits">{{ s.tokensWritten | tokens }}</sf-metric>
+      </div>
+
+      <!-- Étapes -->
+      <ol class="steps" aria-label="Étapes du workflow">
+        @for (step of s.steps; track step.key; let last = $last) {
+          <li
+            class="step"
+            [class]="'step--' + step.tone"
+            [class.step--running]="step.status === 'running'"
+            [attr.aria-current]="step.status === 'running' ? 'step' : null"
+          >
+            <span class="node">
+              @if (step.status === 'done') {
+                <mat-icon>check</mat-icon>
+              } @else {
+                <span class="core"></span>
+              }
+            </span>
+            <span class="step-name">{{ step.key }}</span>
+            @if (step.durationSec !== undefined) {
+              <span class="step-dur sf-mono">
+                {{ step.durationSec | duration }}{{ step.status === 'running' ? ' · en cours' : '' }}
+              </span>
+            }
+          </li>
+          @if (!last) {
+            <li class="connector" aria-hidden="true"></li>
+          }
+        }
+      </ol>
+    </section>
+
+    <!-- Actions pilotées par le backend (allowedActions / blockers) -->
+    <sf-action-bar
+      [allowedActions]="s.allowedActions ?? []"
+      [blockers]="s.blockers ?? []"
+      [interactions]="s.interactions ?? []"
+      (reply)="onReply($event)"
+      (retryRequested)="onRetry($event)"
+      (cancelAttempt)="onCancelAttempt($event)"
+      (continueCost)="onContinueCost()"
+      (stopCost)="onStopCost()"
+    />
+
+    <!-- Chronologie -->
+    <sf-agent-timeline
+      [lanes]="s.lanes"
+      [nowSec]="s.nowSec"
+      [status]="s.status"
+      [startedAt]="s.startedAt"
+      [selected]="selectedBlock()"
+      (blockSelect)="selectBlock($event)"
+    />
+
+    <!-- Détail de phase + événements -->
+    <div class="bottom">
+      <section class="phase sf-panel" aria-labelledby="phase-title">
+        <header class="phase-head">
+          <h2 id="phase-title">{{ s.phase.name }}</h2>
+          <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>{{ s.phase.status }}</sf-status-chip>
+          <span class="sf-mono">{{ s.phase.durationSec | duration }}</span>
+        </header>
+        <div class="phase-tags">
+          <span class="tag"
+            >owner <b>{{ s.phase.owner }}</b></span
+          >
+          <span class="tag"
+            >kind <b>{{ s.phase.kind }}</b></span
+          >
+          <span class="tag"
+            >attempt <b class="sf-mono">{{ s.phase.attempt }}</b></span
+          >
+        </div>
+        <mat-accordion multi displayMode="flat" class="sections">
+          @for (sec of s.phase.sections; track sec.label) {
+            <mat-expansion-panel>
+              <mat-expansion-panel-header>
+                <mat-panel-title>{{ sec.label }}</mat-panel-title>
+                @if (sec.notAvailable) {
+                  <mat-panel-description>
+                    <span class="badge badge--off">indisponible</span>
+                  </mat-panel-description>
+                } @else if (sec.count !== undefined) {
+                  <mat-panel-description>
+                    <span class="badge" [class.badge--on]="sec.count > 0">{{ sec.count }}</span>
+                  </mat-panel-description>
+                }
+              </mat-expansion-panel-header>
+              <div class="section-content">
+                @if (sec.items?.length) {
+                  <ul class="section-items">
+                    @for (item of sec.items; track $index) {
+                      <li class="section-item">
+                        <span class="item-title">{{ item.title }}</span>
+                        @if (item.status) {
+                          <span class="item-status">{{ item.status }}</span>
+                        }
+                        @if (item.subtitle) {
+                          <span class="item-subtitle">{{ item.subtitle }}</span>
+                        }
+                        @if (item.actions?.length) {
+                          <span class="item-actions">
+                            @for (action of item.actions; track action.id) {
+                              <span class="item-action">{{ action.label }}</span>
+                            }
+                          </span>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+                @if (sec.body) {
+                  <p class="sf-muted section-body">{{ sec.body }}</p>
+                } @else if (!sec.items?.length) {
+                  <p class="sf-muted section-body">Aucun contenu pour le moment.</p>
+                }
+              </div>
+            </mat-expansion-panel>
+          }
+        </mat-accordion>
+      </section>
+
+      <sf-event-log [events]="s.events" [running]="s.status === 'running'" activityLabel="builder écrit du code…" />
+    </div>
+  </div>
+} @else {
+  <p class="sf-muted">Session introuvable.</p>
+}
