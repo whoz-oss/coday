@@ -13,21 +13,74 @@ tags:
   description: "Workflow projections, transitions and interactions"
 - name: agentos-proxy
   description: AgentOS relay endpoints
+- name: step-result-bindings
+  description: Verify a capability-bound agent step result submission
 - name: delivery
   description: Governed delivery control plane
 - name: agent-step-results
   description: Capability-bound agent step result submission
-- name: runs
-  description: Legacy workflow JSONL runs
 - name: delivery-operations
   description: "Delivery deployment, verification and rollback control plane"
+- name: plan-change-proposals
+  description: Governed replanning plan-change proposals
 - name: workflows
   description: Workflow definitions
 - name: workstreams
   description: Factory workstreams
 - name: oracles
   description: Oracle definitions and execution runs
+- name: agent-step-questions
+  description: Capability-bound worker step questions (ask-step-question)
 paths:
+  /api/factory/workstreams/{workstreamId}:
+    get:
+      tags:
+      - workstreams
+      summary: Read one workstream registry entry of the caller's trusted workstream.
+      operationId: getWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+    put:
+      tags:
+      - workstreams
+      summary: Save a new revision of a workstream registry entry.
+      operationId: updateWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkstreamRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
   /api/factory/workflows/{workflowId}/projection:
     get:
       tags:
@@ -107,8 +160,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              additionalProperties: {}
+              $ref: "#/components/schemas/CreateWorkstreamRequest"
       responses:
         "200":
           description: OK
@@ -220,6 +272,11 @@ paths:
         required: true
         schema:
           type: string
+      - name: sync
+        in: query
+        required: false
+        schema:
+          type: boolean
       requestBody:
         content:
           application/json:
@@ -870,6 +927,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/cost/stop:
+    post:
+      tags:
+      - workflows
+      summary: Relay a run-cost stop to AgentOS for the workflow's cases.
+      operationId: stopCostWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/cost/continue:
+    post:
+      tags:
+      - workflows
+      summary: Relay a run-cost continuation to AgentOS for the workflow's cases.
+      operationId: continueCostWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows/{workflowId}/continue:
     post:
       tags:
@@ -882,6 +999,11 @@ paths:
         required: true
         schema:
           type: string
+      - name: sync
+        in: query
+        required: false
+        schema:
+          type: boolean
       requestBody:
         content:
           application/json:
@@ -903,6 +1025,98 @@ paths:
       operationId: codeTransitionWorkflow
       parameters:
       - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/attempts/{attemptId}/cancel:
+    post:
+      tags:
+      - workflows
+      summary: "Explicitly cancel a durable agent attempt (revision-fenced, interrupt/kill\
+        \ + reconcile)."
+      operationId: cancelAttemptWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: attemptId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/agent-step-questions/{interactionId}/answer:
+    post:
+      tags:
+      - workflows
+      summary: "Submit an authenticated human answer to a worker step question (supersedes\
+        \ attempt N, resumes as N+1)."
+      operationId: answerAgentStepQuestionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/agent-questions/{questionEventId}/answer:
+    post:
+      tags:
+      - workflows
+      summary: Submit an authenticated answer to the active AgentOS question.
+      operationId: answerAgentQuestionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: questionEventId
         in: path
         required: true
         schema:
@@ -1008,6 +1222,155 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflow-definitions/upload:
+    post:
+      tags:
+      - workflows
+      summary: Upload and register a workflow definition JSON file.
+      operationId: uploadDefinitionWorkflowDefinition
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/step-result-bindings:
+    post:
+      tags:
+      - step-result-bindings
+      summary: Verify a step-result capability and resolve its binding.
+      description: "Requires an `Authorization: Bearer <capability>` token (or the\
+        \ token in the body). Never redeems the capability."
+      operationId: verifyFactoryStepResultBinding
+      parameters:
+      - name: Authorization
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FactoryStepResultBindingRequest"
+      responses:
+        "200":
+          description: The capability is valid and the binding is resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryStepResultBindingEnvelopeFactoryStepResultBindingData"
+        "401":
+          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: RESULT_IDENTITY_MISMATCH
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/plan-change-proposals:
+    get:
+      tags:
+      - plan-change-proposals
+      summary: "List the plan-change proposals of a workflow, optionally filtered\
+        \ by status."
+      operationId: listPlanChangeProposal
+      parameters:
+      - name: workflowId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopeListPlanChangeProposalResponse"
+    post:
+      tags:
+      - plan-change-proposals
+      summary: Submit a plan-change proposal
+      description: "Validates the bounded payload, computes the deterministic classification\
+        \ and recommended governance verdict, and persists the immutable proposal.\
+        \ Idempotent on (organizationId, workstreamId, workflowId, idempotencyKey)."
+      operationId: submitPlanChangeProposal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitPlanChangeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopePlanChangeProposalResponse"
+  /api/factory/plan-change-proposals/{proposalId}/decide:
+    post:
+      tags:
+      - plan-change-proposals
+      summary: Record a governance decision on a plan-change proposal
+      description: "Appends an immutable decision event (AUTO_APPLIED, GATE_REQUIRED,\
+        \ REQUIRES_NEW_DEFINITION or REJECTED). Decisions violating the governance\
+        \ Rules 1–3 are rejected with 409 PLAN_CHANGE_GATE_REQUIRED."
+      operationId: decidePlanChangeProposal
+      parameters:
+      - name: proposalId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: workflowId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecidePlanChangeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopePlanChangeProposalResponse"
   /api/factory/agent-step-results:
     post:
       tags:
@@ -1069,6 +1432,67 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: RESULT_SEMANTIC_COLLISION or IDEMPOTENCY_KEY_COLLISION
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: RESULT_CAPABILITY_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/agent-step-questions:
+    post:
+      tags:
+      - agent-step-questions
+      summary: Ask a durable human step question and park the attempt in waiting_human.
+      description: "Requires an `Authorization: Bearer <capability>` token issued\
+        \ by the Factory. Returns as soon as the question is durably recorded — the\
+        \ answer never blocks the worker call."
+      operationId: askAgentStepQuestion
+      parameters:
+      - name: Authorization
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Case-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Agent-Name
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentStepQuestionRequest"
+      responses:
+        "202":
+          description: Question durably recorded (or idempotent replay)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStepQuestionEnvelopeAgentStepQuestionData"
+        "400":
+          description: "QUESTION_SCHEMA_INVALID, RESULT_IDENTITY_MISMATCH or INVALID_RESULT_REQUEST"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: QUESTION_ATTEMPT_NOT_WAITABLE or QUESTION_ALREADY_ASKED
           content:
             application/json:
               schema:
@@ -1142,11 +1566,55 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+  /api/namespaces:
+    get:
+      tags:
+      - agentos-proxy
+      summary: List AgentOS namespaces visible to the trusted caller.
+      operationId: namespacesAgentOsProxy
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/workstreams/{workstreamId}/projection:
+    get:
+      tags:
+      - workstreams
+      summary: Read-only aggregated projection of the caller's trusted workstream.
+      operationId: projectionWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/WorkstreamProjectionResponse"
   /api/factory/workflows:
     get:
       tags:
       - workflows
-      summary: List workflow projections of the caller's tenant scope (optionally filtered by namespace).
+      summary: List workflow projections of the caller's tenant scope (optionally
+        filtered by namespace).
       operationId: listWorkflow
       parameters:
       - name: namespaceId
@@ -1237,6 +1705,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/session:
+    get:
+      tags:
+      - workflows
+      summary: Read the session DAG state (per-step statuses + overall status).
+      operationId: sessionStateWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows/{workflowId}/metrics:
     get:
       tags:
@@ -1304,6 +1796,54 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/attempts:
+    get:
+      tags:
+      - workflows
+      summary: List durable execution attempts of a workflow.
+      operationId: listAttemptsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeListDurableAgentAttemptDto"
+  /api/factory/workflows/{workflowId}/actions:
+    get:
+      tags:
+      - workflows
+      summary: Authoritative allowed actions and blockers of a workflow.
+      operationId: actionsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeWorkflowActionsResponseDto"
   /api/factory/workflow-definitions/{workflowType}/{version}:
     get:
       tags:
@@ -1328,6 +1868,58 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    delete:
+      tags:
+      - workflows
+      summary: Delete a workflow definition by type and version.
+      operationId: deleteDefinitionWorkflowDefinition
+      parameters:
+      - name: workflowType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/plan-change-proposals/{proposalId}:
+    get:
+      tags:
+      - plan-change-proposals
+      summary: Read one plan-change proposal with its full immutable decision timeline.
+      operationId: getPlanChangeProposal
+      parameters:
+      - name: proposalId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: workflowId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopePlanChangeProposalResponse"
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -1368,12 +1960,55 @@ paths:
                 type: object
 components:
   schemas:
+    UpdateWorkstreamRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        namespaceId:
+          type: string
+        controllerAgentRef:
+          type: string
+        allowedWorkflowTypes:
+          type: array
+          items:
+            type: string
+        governancePolicyRef:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
     WorkflowDataEnvelopeObject:
       type: object
       properties:
         data: {}
       required:
       - data
+    CreateWorkstreamRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        namespaceId:
+          type: string
+        controllerAgentRef:
+          type: string
+        allowedWorkflowTypes:
+          type: array
+          items:
+            type: string
+        governancePolicyRef:
+          type: string
     OracleRunRequest:
       type: object
       properties:
@@ -1566,6 +2201,241 @@ components:
         data: {}
       required:
       - data
+    FactoryStepResultBindingRequest:
+      type: object
+      properties:
+        capabilityToken:
+          type: string
+        attemptId:
+          type: string
+    ErrorDetail:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+      required:
+      - code
+      - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+      required:
+      - error
+    FactoryStepResultBindingData:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        namespaceId:
+          type: string
+        caseId:
+          type: string
+        agentName:
+          type: string
+        issuedAt:
+          type: string
+        expiresAt:
+          type: string
+        submissionBudget:
+          type: integer
+          format: int32
+        verified:
+          type: boolean
+      required:
+      - agentName
+      - attemptId
+      - caseId
+      - expiresAt
+      - issuedAt
+      - namespaceId
+      - stepId
+      - submissionBudget
+      - verified
+      - workflowId
+    FactoryStepResultBindingEnvelopeFactoryStepResultBindingData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/FactoryStepResultBindingData"
+      required:
+      - data
+    DependencyChangeDto:
+      type: object
+      properties:
+        op:
+          type: string
+        fromStepId:
+          type: string
+        toStepId:
+          type: string
+    ScopeChangeDto:
+      type: object
+      properties:
+        op:
+          type: string
+        target:
+          type: string
+        detail:
+          type: string
+    SubmitPlanChangeRequest:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
+        reasonCode:
+          type: string
+        summary:
+          type: string
+        proposalType:
+          type: string
+        affectedStepIds:
+          type: array
+          items:
+            type: string
+        proposedDependencyChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyChangeDto"
+        proposedScopeChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScopeChangeDto"
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        idempotencyKey:
+          type: string
+    FactoryDataEnvelopePlanChangeProposalResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/PlanChangeProposalResponse"
+      required:
+      - data
+    PlanChangeDecisionResponse:
+      type: object
+      properties:
+        sequence:
+          type: integer
+          format: int64
+        status:
+          type: string
+        actorId:
+          type: string
+        reason:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+      required:
+      - actorId
+      - recordedAt
+      - sequence
+      - status
+    PlanChangeProposalResponse:
+      type: object
+      properties:
+        proposalId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        workstreamId:
+          type: string
+        reasonCode:
+          type: string
+        summary:
+          type: string
+        proposalType:
+          type: string
+        kind:
+          type: string
+        recommendedVerdict:
+          type: string
+        status:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
+        affectedStepIds:
+          type: array
+          items:
+            type: string
+        proposedDependencyChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyChangeDto"
+        proposedScopeChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScopeChangeDto"
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        revision:
+          type: integer
+          format: int32
+        idempotent:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanChangeDecisionResponse"
+      required:
+      - affectedStepIds
+      - createdAt
+      - decisions
+      - evidenceRefs
+      - expectedRevision
+      - idempotent
+      - kind
+      - namespaceId
+      - proposalId
+      - proposalType
+      - proposedDependencyChanges
+      - reasonCode
+      - recommendedVerdict
+      - revision
+      - status
+      - summary
+      - updatedAt
+      - workflowId
+      - workstreamId
+    DecidePlanChangeRequest:
+      type: object
+      properties:
+        expectedRevision:
+          type: integer
+          format: int32
+        decision:
+          type: string
+        reason:
+          type: string
+        idempotencyKey:
+          type: string
     AgentStepResultRequest:
       type: object
       properties:
@@ -1593,24 +2463,6 @@ components:
           type: string
         agentName:
           type: string
-    ErrorDetail:
-      type: object
-      properties:
-        code:
-          type: string
-        message:
-          type: string
-        details: {}
-      required:
-      - code
-      - message
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          $ref: "#/components/schemas/ErrorDetail"
-      required:
-      - error
     AgentStepResultData:
       type: object
       properties:
@@ -1629,5 +2481,455 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/AgentStepResultData"
+      required:
+      - data
+    AgentStepQuestionRequest:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        question:
+          $ref: "#/components/schemas/JsonNode"
+    AgentStepQuestionData:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        interactionId:
+          type: string
+        status:
+          type: string
+        idempotent:
+          type: boolean
+      required:
+      - attemptId
+      - idempotent
+      - interactionId
+      - status
+    AgentStepQuestionEnvelopeAgentStepQuestionData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/AgentStepQuestionData"
+      required:
+      - data
+    AttemptSummary:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        agentName:
+          type: string
+        status:
+          type: string
+        revision:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+      required:
+      - agentName
+      - attemptId
+      - revision
+      - status
+      - stepId
+      - workflowId
+    ChangeSummary:
+      type: object
+      properties:
+        kind:
+          type: string
+        refId:
+          type: string
+        workflowId:
+          type: string
+        timestamp:
+          type: string
+      required:
+      - kind
+      - refId
+      - timestamp
+    EnvironmentSection:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        byState:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnvironmentSummary"
+        truncated:
+          type: boolean
+      required:
+      - byState
+      - count
+      - items
+      - truncated
+    EnvironmentSummary:
+      type: object
+      properties:
+        environmentId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        lifecycleState:
+          type: string
+        revision:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - environmentId
+      - lifecycleState
+      - namespaceId
+      - revision
+      - workflowId
+    HumanActionSummary:
+      type: object
+      properties:
+        interactionId:
+          type: string
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        interactionType:
+          type: string
+        status:
+          type: string
+      required:
+      - interactionId
+      - workflowId
+    OracleFailureSummary:
+      type: object
+      properties:
+        executionId:
+          type: string
+        oracleId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        updatedAt:
+          type: string
+      required:
+      - executionId
+    StepCounts:
+      type: object
+      properties:
+        running:
+          type: integer
+          format: int32
+        waitingHuman:
+          type: integer
+          format: int32
+        blocked:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StepSummary"
+        truncated:
+          type: boolean
+      required:
+      - blocked
+      - items
+      - running
+      - truncated
+      - waitingHuman
+    StepSummary:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+      required:
+      - status
+      - stepId
+      - workflowId
+    WorkflowSummary:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        workflowType:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        revision:
+          type: integer
+          format: int32
+      required:
+      - revision
+      - workflowId
+    WorkstreamProjectionResponse:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        namespaceId:
+          type: string
+        status:
+          type: string
+        workstreamRevision:
+          type: string
+        activeWorkflows:
+          $ref: "#/components/schemas/WorkstreamSectionWorkflowSummary"
+        steps:
+          $ref: "#/components/schemas/StepCounts"
+        attempts:
+          $ref: "#/components/schemas/WorkstreamSectionAttemptSummary"
+        humanActions:
+          $ref: "#/components/schemas/WorkstreamSectionHumanActionSummary"
+        failedOracles:
+          $ref: "#/components/schemas/WorkstreamSectionOracleFailureSummary"
+        environments:
+          $ref: "#/components/schemas/EnvironmentSection"
+        recentChanges:
+          $ref: "#/components/schemas/WorkstreamSectionChangeSummary"
+        boundaryViolations:
+          type: integer
+          format: int32
+      required:
+      - activeWorkflows
+      - attempts
+      - boundaryViolations
+      - environments
+      - failedOracles
+      - humanActions
+      - recentChanges
+      - status
+      - steps
+      - workstreamId
+      - workstreamRevision
+    WorkstreamSectionAttemptSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttemptSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionChangeSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangeSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionHumanActionSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HumanActionSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionOracleFailureSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OracleFailureSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionWorkflowSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    DurableAgentAttemptDto:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        stepId:
+          type: string
+        attemptNumber:
+          type: integer
+          format: int32
+        agentName:
+          type: string
+        status:
+          type: string
+        caseId:
+          type: string
+        failureCode:
+          type: string
+        resultEvidenceId:
+          type: string
+        environmentRef:
+          type: string
+        expectedEnvironmentRevision:
+          type: integer
+          format: int32
+        resumptionContext:
+          type: string
+        revision:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+      required:
+      - agentName
+      - attemptId
+      - attemptNumber
+      - caseId
+      - createdAt
+      - revision
+      - status
+      - stepId
+    WorkflowDataEnvelopeListDurableAgentAttemptDto:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DurableAgentAttemptDto"
+      required:
+      - data
+    AllowedActionDto:
+      type: object
+      properties:
+        type:
+          type: string
+        interactionId:
+          type: string
+        stepId:
+          type: string
+        attemptId:
+          type: string
+        caseId:
+          type: string
+        questionEventId:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
+        label:
+          type: string
+      required:
+      - expectedRevision
+      - type
+    WorkflowActionsResponseDto:
+      type: object
+      properties:
+        allowedActions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AllowedActionDto"
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowBlockerDto"
+      required:
+      - allowedActions
+      - blockers
+    WorkflowBlockerDto:
+      type: object
+      properties:
+        code:
+          type: string
+        stepId:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
+    WorkflowDataEnvelopeWorkflowActionsResponseDto:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/WorkflowActionsResponseDto"
+      required:
+      - data
+    FactoryDataEnvelopeListPlanChangeProposalResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanChangeProposalResponse"
       required:
       - data
