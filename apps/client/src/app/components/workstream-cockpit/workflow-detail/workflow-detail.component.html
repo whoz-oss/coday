@@ -7,7 +7,7 @@
       </h2>
       <div class="ws-detail__freshness" title="Projection freshness">
         <span class="ws-badge ws-badge--info">rev {{ detail.revision }}</span>
-        <span class="ws-badge ws-badge--neutral">{{ detail.state }}</span>
+        <span [class]="stepBadgeClass(detail.state)">{{ detail.state }}</span>
         <span [class]="stepBadgeClass(detail.status)">{{ detail.status }}</span>
       </div>
     </header>

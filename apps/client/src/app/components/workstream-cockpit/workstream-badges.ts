@@ -9,6 +9,7 @@ import { AttemptStatus, BlockerCode } from '../../core/models/workstream.model'
  * - `indeterminate` / `UNKNOWN_RUNTIME` → neutral (purple-grey)
  * - `succeeded` / `completed` → success (green)
  * - in-flight statuses (`pending`, `claiming`, `starting`, `running`) → info (blue-grey)
+ * - `archived` / `runtime-closed` / `removed` / `purged` → muted (grey, Phase 10)
  *
  * The returned strings are BEM-style CSS classes (`ws-badge ws-badge--<tone>`)
  * styled locally by each component's SCSS.
@@ -37,18 +38,31 @@ export function blockerLabel(code: BlockerCode): string {
   return labels[code]
 }
 
-/** CSS classes for a workflow step status badge (step statuses are plain strings in the DTO). */
+/** CSS classes for a workflow step / workflow status badge (statuses are plain strings in the DTO). */
 export function stepBadgeClass(status: string): string {
   const toneByStatus: Record<string, string> = {
+    // Phase 10 terminal / sealing vocabulary — completed is sealed success; archived
+    // and runtime-closed are retired states, visually distinct from completed.
     completed: 'success',
     succeeded: 'success',
+    archived: 'muted',
+    'runtime-closed': 'muted',
+    removed: 'muted',
+    purged: 'muted',
+    absent: 'muted',
+    // In-flight / pending.
     running: 'info',
     ready: 'info',
     pending: 'info',
+    claiming: 'info',
+    starting: 'info',
+    // Awaiting a human decision.
     waiting_human: 'warning',
+    // Prevented / failed.
     blocked: 'error',
     failed: 'error',
-    cancelled: 'neutral',
+    cancelled: 'muted',
+    // Unknown runtime state must never look like a success or a hard failure.
     indeterminate: 'neutral',
   }
   return `ws-badge ws-badge--${toneByStatus[status] ?? 'neutral'}`

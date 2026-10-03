@@ -80,6 +80,12 @@
   color: #b91c1c;
 }
 
+.ws-interactions__denied {
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
 .ws-badge {
   display: inline-flex;
   align-items: center;

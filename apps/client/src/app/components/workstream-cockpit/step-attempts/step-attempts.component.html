@@ -51,7 +51,7 @@
             <button
               mat-stroked-button
               type="button"
-              [disabled]="!canRetry(attempt.status)"
+              [disabled]="!canRetry(attempt)"
               title="Request an agent retry (control-plane action)"
               (click)="onRetry(attempt)"
             >
