@@ -3,14 +3,22 @@ package io.whozoss.factory.workstream
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import io.whozoss.factory.error.ResourceNotFoundException
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.web.TrustContext
 import io.whozoss.factory.web.requireNamespaceQuery
 import io.whozoss.factory.web.resolveFactoryCaller
+import io.whozoss.factory.workstream.domain.ControllerCaseStatus
 import io.whozoss.factory.workstream.projection.WorkstreamProjectionService
+import io.whozoss.factory.workstream.web.CompactControllerCaseRequest
+import io.whozoss.factory.workstream.web.ControllerCaseHistoryResponse
+import io.whozoss.factory.workstream.web.ControllerCaseResponse
+import io.whozoss.factory.workstream.web.ControllerResumptionPackage
 import io.whozoss.factory.workstream.web.CreateWorkstreamRequest
+import io.whozoss.factory.workstream.web.StartControllerCaseRequest
 import io.whozoss.factory.workstream.web.UpdateWorkstreamRequest
 import io.whozoss.factory.workstream.web.WorkstreamProjectionResponse
+import io.whozoss.factory.workstream.web.toResponse
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -36,6 +44,7 @@ import org.springframework.web.bind.annotation.RestController
 class WorkstreamController(
     private val service: WorkstreamService,
     private val projectionService: WorkstreamProjectionService,
+    private val controllerCaseService: ControllerCaseService,
     private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
@@ -103,6 +112,89 @@ class WorkstreamController(
             .ok()
             .eTag("\"${dto.workstreamRevision}\"")
             .body(dto)
+    }
+
+    /**
+     * The active controller case of the workstream (Cockpit). The contract is
+     * explicit: when no case is active yet, the answer is a 404
+     * `NO_ACTIVE_CONTROLLER_CASE`, never an empty 200.
+     */
+    @GetMapping("/{workstreamId}/controller-case")
+    @Operation(summary = "Read the active controller case of the caller's trusted workstream.")
+    fun activeControllerCase(
+        @PathVariable workstreamId: String,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ControllerCaseResponse {
+        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val active = controllerCaseService.getActiveCase(caller, workstreamId)
+            ?: throw ResourceNotFoundException(
+                "Le workstream '$workstreamId' n'a aucun case contrôleur actif",
+                mapOf("code" to "NO_ACTIVE_CONTROLLER_CASE"),
+            )
+        return active.toResponse()
+    }
+
+    @GetMapping("/{workstreamId}/controller-case/history")
+    @Operation(summary = "List the controller case history (active + archived) of the caller's trusted workstream.")
+    fun controllerCaseHistory(
+        @PathVariable workstreamId: String,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ControllerCaseHistoryResponse {
+        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val history = controllerCaseService.listHistory(caller, workstreamId)
+        return ControllerCaseHistoryResponse(
+            workstreamId = workstreamId,
+            activeCaseId = history.firstOrNull { it.status == ControllerCaseStatus.ACTIVE }?.caseId,
+            cases = history.map { it.toResponse() },
+        )
+    }
+
+    /**
+     * Preview the bounded resumption context package that a new controller
+     * case would be seeded with, rebuilt live from the aggregated projection.
+     * Read-only: nothing is persisted.
+     */
+    @GetMapping("/{workstreamId}/controller-case/context")
+    @Operation(summary = "Preview the bounded controller resumption context package of the caller's trusted workstream.")
+    fun controllerCaseContext(
+        @PathVariable workstreamId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "limit", required = false) limit: Int?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ControllerResumptionPackage {
+        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        return controllerCaseService.getContextPackage(caller, workstreamId, namespaceId, limit)
+    }
+
+    @PostMapping("/{workstreamId}/controller-case")
+    @Operation(summary = "Start the first controller case of the caller's trusted workstream.")
+    fun startControllerCase(
+        @PathVariable workstreamId: String,
+        @RequestBody(required = false) body: StartControllerCaseRequest?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<ControllerCaseResponse> {
+        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val started = controllerCaseService.startControllerCase(caller, workstreamId, body ?: StartControllerCaseRequest())
+        return ResponseEntity.status(201).body(started.toResponse())
+    }
+
+    /**
+     * Explicit compaction: archive the active controller case and bind a
+     * fresh one — same Workstream Agent identity (`controllerAgentRef`), same
+     * workstream identity, next sequence, bounded resumption package rebuilt
+     * from the current projection.
+     */
+    @PostMapping("/{workstreamId}/controller-case/compact")
+    @Operation(summary = "Compact / renew the controller case of the caller's trusted workstream.")
+    fun compactControllerCase(
+        @PathVariable workstreamId: String,
+        @RequestBody(required = false) body: CompactControllerCaseRequest?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ControllerCaseResponse {
+        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        return controllerCaseService
+            .compactControllerCase(caller, workstreamId, body ?: CompactControllerCaseRequest())
+            .toResponse()
     }
 
     /** Parse an `If-Match` header (`"3"` or `3`) into the expected revision. */
