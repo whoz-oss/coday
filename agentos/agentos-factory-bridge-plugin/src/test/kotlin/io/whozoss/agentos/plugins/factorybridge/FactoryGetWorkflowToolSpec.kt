@@ -83,6 +83,7 @@ class FactoryGetWorkflowToolSpec : StringSpec({
                 "FACTORY__record_agent_result",
                 "FACTORY__record_artifact",
                 "FACTORY__submit_step_result",
+                "FACTORY__ask_step_question",
                 "FACTORY__request_human_decision",
                 "FACTORY__request_transition",
                 "FACTORY__transition_workflow",

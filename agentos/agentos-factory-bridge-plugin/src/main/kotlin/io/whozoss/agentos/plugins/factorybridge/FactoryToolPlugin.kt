@@ -1,6 +1,7 @@
 package io.whozoss.agentos.plugins.factorybridge
 
 import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryAskStepQuestionTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetWorkflowTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryProvisionEnvironmentTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryPublishProjectionTool
@@ -34,6 +35,7 @@ internal fun buildFactoryTools(services: FactoryBridgeServices): List<StandardTo
         FactoryRecordAgentResultTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryRecordArtifactTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactorySubmitStepResultTool(baseUrl, httpClient, objectMapper, services.stepResultBindings),
+        FactoryAskStepQuestionTool(baseUrl, httpClient, objectMapper, services.stepResultBindings),
         FactoryRequestHumanDecisionTool(baseUrl, httpClient, objectMapper, runtimeId, services.pendingCheckpoints),
         FactoryRequestTransitionTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryTransitionWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),

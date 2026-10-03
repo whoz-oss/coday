@@ -1570,4 +1570,24 @@ private fun HumanInteractionRecord.toJson(): Map<String, Any?> = buildMap {
     put("actions", payload["actions"])
     put("prompt", payload["prompt"])
     (payload["response"] as? Map<*, *>)?.let { put("response", it) }
+    // Phase 4 ask-step-question: surface the full Q&A and the attempt N -> N+1
+    // link so Cockpit can display the question, the audited human answer and
+    // the successor attempt of an `agent_question` interaction. Bounded — the
+    // payload only carries schema-validated question fields, never secrets.
+    if (interactionType == "agent_question") {
+        put("namespaceId", namespaceId)
+        listOf(
+            "attemptId",
+            "caseId",
+            "questionType",
+            "options",
+            "recipientRole",
+            "contextHash",
+            "expiresAt",
+            "answer",
+            "actorId",
+            "answeredAt",
+            "successorAttemptId",
+        ).forEach { key -> payload[key]?.let { put(key, it) } }
+    }
 }

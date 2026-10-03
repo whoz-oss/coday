@@ -216,6 +216,16 @@ object AgentAttemptErrorCodes {
     const val INVALID_RESULT_CAPABILITY_IDENTITY = "INVALID_RESULT_CAPABILITY_IDENTITY"
     const val INVALID_RESULT_REQUEST = "INVALID_RESULT_REQUEST"
     const val TRUST_CONTEXT_UNAVAILABLE = "TRUST_CONTEXT_UNAVAILABLE"
+
+    // Phase 4 ask-step-question vocabulary (dedicated worker question channel).
+    const val QUESTION_SCHEMA_INVALID = "QUESTION_SCHEMA_INVALID"
+    const val QUESTION_ATTEMPT_NOT_WAITABLE = "QUESTION_ATTEMPT_NOT_WAITABLE"
+    const val QUESTION_ALREADY_ASKED = "QUESTION_ALREADY_ASKED"
+    const val QUESTION_ALREADY_ANSWERED = "QUESTION_ALREADY_ANSWERED"
+    const val QUESTION_INTERACTION_NOT_FOUND = "QUESTION_INTERACTION_NOT_FOUND"
+    const val QUESTION_INTERACTION_STALE = "QUESTION_INTERACTION_STALE"
+    const val QUESTION_SUPERSEDE_CONFLICT = "QUESTION_SUPERSEDE_CONFLICT"
+    const val QUESTION_ANSWER_INVALID = "QUESTION_ANSWER_INVALID"
 }
 
 /**
@@ -298,3 +308,51 @@ class TrustContextUnavailableException(
     message: String = "A verified trust context is required",
     details: Any? = null,
 ) : AgentAttemptException(AgentAttemptErrorCodes.TRUST_CONTEXT_UNAVAILABLE, 401, message, details)
+
+/** 400 — the structured step question fails validation. */
+class QuestionSchemaInvalidException(
+    message: String = "The structured step question is invalid",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_SCHEMA_INVALID, 400, message, details)
+
+/** 409 — the attempt is not in a state that can durably wait for a human answer. */
+class QuestionAttemptNotWaitableException(
+    message: String = "The attempt cannot wait for a human answer from its current state",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_ATTEMPT_NOT_WAITABLE, 409, message, details)
+
+/** 409 — a different question was already recorded for this attempt. */
+class QuestionAlreadyAskedException(
+    message: String = "A different question was already asked for this attempt",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_ALREADY_ASKED, 409, message, details)
+
+/** 409 — the question interaction is already closed; an answer unblocks exactly once. */
+class QuestionAlreadyAnsweredException(
+    message: String = "The step question was already answered",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_ALREADY_ANSWERED, 409, message, details)
+
+/** 404 — no `agent_question` interaction exists for the given id in the caller's scope. */
+class QuestionInteractionNotFoundException(
+    message: String = "Step question interaction not found",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_INTERACTION_NOT_FOUND, 404, message, details)
+
+/** 409 — the question interaction no longer matches the durable attempt state. */
+class QuestionInteractionStaleException(
+    message: String = "The step question interaction is stale",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_INTERACTION_STALE, 409, message, details)
+
+/** 409 — the predecessor attempt cannot be superseded from its current state. */
+class QuestionSupersedeConflictException(
+    message: String = "The predecessor attempt cannot be superseded from its current state",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_SUPERSEDE_CONFLICT, 409, message, details)
+
+/** 400 — the human answer fails validation (bounds, choice membership, actor). */
+class QuestionAnswerInvalidException(
+    message: String = "The step question answer is invalid",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.QUESTION_ANSWER_INVALID, 400, message, details)
