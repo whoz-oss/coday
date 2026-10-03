@@ -3,8 +3,12 @@ import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@ang
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import {
+  ActorRoleEnum,
+  AnswerEvent,
   Configuration,
   ExchangeFileEntryScopeEnum,
+  QuestionEvent,
+  QuestionEventQuestionTypeEnum,
   ToolRequestEvent,
   ToolResponseEvent,
 } from '@whoz-oss/agentos-api-client'
@@ -377,5 +381,105 @@ describe('CaseChatComponent — submit with attachments', () => {
       })
     )
     expect(timeline.some((item) => item.kind === 'tool')).toBe(false)
+  })
+
+  describe('question timeline items', () => {
+    const metadata = { id: '', created: '', modified: '', removed: false }
+    const question = (userId?: string): QuestionEvent => ({
+      id: 'q-1',
+      type: 'QuestionEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata,
+      agentId: 'agent-1',
+      agentName: 'Agent',
+      question: 'Which color?',
+      questionType: QuestionEventQuestionTypeEnum.FREE_TEXT,
+      userId,
+    })
+    const answer = (id: string, actorId: string, text: string): AnswerEvent => ({
+      id,
+      type: 'AnswerEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:01Z',
+      metadata,
+      questionId: 'q-1',
+      answer: text,
+      actor: { id: actorId, role: ActorRoleEnum.USER, displayName: 'Someone' },
+    })
+
+    it('carries the matching answer on the question item', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
+
+      const timeline = ref.instance['timeline']()
+      expect(timeline).toHaveLength(1)
+      const item = timeline[0]
+      expect(item).toEqual(expect.objectContaining({ kind: 'question' }))
+      expect(item?.kind === 'question' && item.answer?.answer).toBe('blue')
+    })
+
+    it('leaves answer undefined while the question is unanswered', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([question()])
+
+      const item = ref.instance['timeline']()[0]
+      expect(item?.kind).toBe('question')
+      expect(item?.kind === 'question' && item.answer).toBeUndefined()
+    })
+
+    it('keeps a question addressed to A pending on an answer from B, then picks the answer from A', () => {
+      const ref = makeComponent()
+      const fromB = answer('a-b', 'user-b', 'from B')
+      ref.instance['events'].set([question('user-a'), fromB])
+
+      let item = ref.instance['timeline']()[0]
+      expect(item?.kind === 'question' && item.answer).toBeUndefined()
+
+      const fromA = answer('a-a', 'user-a', 'from A')
+      ref.instance['events'].set([question('user-a'), fromB, fromA])
+
+      item = ref.instance['timeline']()[0]
+      expect(item?.kind === 'question' && item.answer).toBe(fromA)
+    })
+
+    it('labels the answer with the respondent name, falling back to You for an unnamed user', () => {
+      const ref = makeComponent()
+      const named = answer('a-1', 'u-1', 'blue')
+      const unnamed = { ...named, actor: { id: 'u-1', role: ActorRoleEnum.USER } }
+      expect(ref.instance['answerLabel'](named)).toBe('Someone')
+      expect(ref.instance['answerLabel'](unnamed)).toBe('You')
+    })
+
+    it('only treats an unanswered, non-OAuth question as pending (focus target)', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([question()])
+      expect(ref.instance['pendingQuestionId']()).toBe('q-1')
+
+      ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
+      expect(ref.instance['pendingQuestionId']()).toBeNull()
+
+      ref.instance['events'].set([{ ...question(), questionType: QuestionEventQuestionTypeEnum.OAUTH_AUTHORIZE }])
+      expect(ref.instance['pendingQuestionId']()).toBeNull()
+    })
+
+    it('does not post a second answer while one is in flight', () => {
+      const ref = makeComponent()
+      ref.instance['onQuestionAnswered'](question(), 'blue')
+      ref.instance['onQuestionAnswered'](question(), 'blue')
+
+      expect(http.post).toHaveBeenCalledTimes(1)
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/messages', { content: 'blue', answerToEventId: 'q-1' })
+    })
+
+    it('does not render the AnswerEvent as its own timeline item, even in technical mode', () => {
+      const ref = makeComponent()
+      ref.setInput('showTechnicalOverride', true)
+      ref.instance['events'].set([question(), answer('a-1', 'u-1', 'blue')])
+
+      expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['question'])
+    })
   })
 })

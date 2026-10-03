@@ -10,6 +10,7 @@ import {
   effect,
   ElementRef,
   inject,
+  Injector,
   input,
   NgZone,
   OnDestroy,
@@ -48,7 +49,7 @@ import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonCom
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
-import { QuestionPanelComponent } from '../question-panel/question-panel.component'
+import { QuestionPanelComponent, questionElementId } from '../question-panel/question-panel.component'
 import { MarkdownRendererService } from '../../services/markdown-renderer.service'
 import { DelegationCardComponent } from '../delegation/delegation-card/delegation-card.component'
 import {
@@ -64,6 +65,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { exchangeMutationScope } from '../../services/exchange-content.utils'
 import { ExchangeShellComponent } from '../exchange-shell/exchange-shell.component'
 import { CaseMembersComponent } from '../case-members/case-members.component'
+import { findLegitimateAnswer } from './case-chat.utils'
 import { ComposerAttachmentsService } from '../composer-attachments/composer-attachments.service'
 import { ComposerAttachmentsComponent } from '../composer-attachments/composer-attachments.component'
 import { isNamespaceTargeted, resolveUploadScope } from '../composer-attachments/composer-attachments.utils'
@@ -104,7 +106,7 @@ export type TimelineItem =
   | { kind: 'streaming' }
   | { kind: 'notice'; notice: ExecutionNotice; eventId: string }
   | { kind: 'technical'; item: TechnicalItem; eventId: string }
-  | { kind: 'question'; event: QuestionEvent; answered: boolean }
+  | { kind: 'question'; event: QuestionEvent; answer?: AnswerEvent }
   | { kind: 'delegation'; delegation: DelegationPresentation }
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
@@ -157,6 +159,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   private readonly http = inject(HttpClient)
   private readonly zone = inject(NgZone)
   private readonly destroyRef = inject(DestroyRef)
+  private readonly injector = inject(Injector)
   private readonly markdown = inject(MarkdownRendererService)
   private readonly exchangeState = inject(ExchangeStateService)
 
@@ -380,8 +383,18 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       queueMicrotask(() => {
         if (this.isEditing()) return
         if (hasActiveSelection()) return
+        // A pending question takes the focus instead (see the effect below).
+        if (this.pendingQuestionId()) return
         this.composerInput()?.nativeElement.focus()
       })
+    })
+
+    // Move keyboard focus to the answer controls of a pending question (first option, or the
+    // text input), once they are rendered and enabled. See focusQuestionControls for the guards.
+    effect(() => {
+      const questionId = this.pendingQuestionId()
+      if (!questionId || this.isRunning()) return
+      afterNextRender(() => this.focusQuestionControls(questionId), { injector: this.injector })
     })
 
     // Keep the composer sized to its current content, including after a message is sent
@@ -508,9 +521,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         // The corresponding Started event owns the single visual card.
       } else if (e.type === 'QuestionEvent') {
         const qe = e as QuestionEvent
-        // A question is answered when there is a corresponding AnswerEvent in the stream.
-        const answered = allEvents.some((ae) => ae.type === 'AnswerEvent' && (ae as AnswerEvent).questionId === qe.id)
-        items.push({ kind: 'question', event: qe, answered })
+        // A question is answered when a legitimate AnswerEvent exists in the stream (same rule as the backend).
+        items.push({ kind: 'question', event: qe, answer: findLegitimateAnswer(qe, allEvents) })
       } else if (showTechnical && !this.isEventConsumedElsewhere(e)) {
         // Execution notices and the generic fallback are diagnostics: keep them entirely
         // behind the technical toggle, while dedicated conversation/tool renderers stay visible.
@@ -542,6 +554,49 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     if (streamingText.trim().length === 0) return base
     return [...base, { kind: 'streaming' }]
   })
+
+  /**
+   * Id of the latest unanswered, non-OAuth question (the one whose answer controls get focus).
+   * OAuth questions are excluded: their popup flow must start from an explicit click.
+   */
+  protected readonly pendingQuestionId = computed<string | null>(() => {
+    const items = this.baseTimeline()
+    for (let i = items.length - 1; i >= 0; i--) {
+      const item = items[i]
+      if (item?.kind === 'question' && !item.answer && item.event.questionType !== 'OAUTH_AUTHORIZE') {
+        return item.event.id
+      }
+    }
+    return null
+  })
+
+  protected readonly questionElementId = questionElementId
+
+  /** Role label of an answer bubble: the respondent's name, 'You' for an unnamed user. */
+  protected answerLabel(answer: AnswerEvent): string {
+    return answer.actor.displayName || (answer.actor.role === 'USER' ? 'You' : 'Agent')
+  }
+
+  /**
+   * Focus the first enabled control (option button, or text input for FREE_TEXT) of a pending
+   * question. Deliberately non-intrusive: does nothing when the user is selecting text, or is
+   * typing in another field (a non-empty composer draft included).
+   */
+  private focusQuestionControls(questionId: string): void {
+    if (hasActiveSelection()) return
+    const active = document.activeElement
+    const composer = this.composerInput()?.nativeElement
+    const inOtherField =
+      (active instanceof HTMLInputElement ||
+        active instanceof HTMLTextAreaElement ||
+        active instanceof HTMLSelectElement) &&
+      (active !== composer || composer.value.trim().length > 0)
+    if (inOtherField) return
+    const target = this.messagesContainer()?.nativeElement.querySelector<HTMLElement>(
+      `[data-question-controls="${questionId}"] button:not(:disabled), [data-question-controls="${questionId}"] input:not(:disabled)`
+    )
+    target?.focus()
+  }
 
   protected trackTimelineItem(_index: number, item: TimelineItem): string {
     switch (item.kind) {
@@ -575,6 +630,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
    * Posts to POST /api/cases/{caseId}/messages with answerToEventId.
    */
   protected onQuestionAnswered(questionEvent: QuestionEvent, answer: string): void {
+    // The controls are disabled while running; this also blocks a double submit.
+    if (this.isRunning()) return
     this.isRunning.set(true)
     this.http
       .post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
