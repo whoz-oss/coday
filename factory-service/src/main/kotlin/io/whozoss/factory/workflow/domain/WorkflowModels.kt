@@ -50,8 +50,22 @@ object WorkflowStatuses {
         CANCELLED to emptySet(),
     )
 
+    /**
+     * Terminal run statuses of a workflow instance (Phase 10): once a
+     * governed instance reaches one of them it is SEALED — final and
+     * immutable. Reopening is strictly forbidden ([TRANSITIONS] gives them an
+     * empty outgoing set, and the service layer rejects any further mutation
+     * with `WORKFLOW_SEALED`); resuming or re-running the requirement happens
+     * via a NEW workflow linked to the sealed predecessor (see
+     * `linkedWorkflowRelations` in `WorkflowInstance.kt`).
+     */
+    val TERMINAL: Set<String> = setOf(COMPLETED, FAILED, CANCELLED)
+
     /** Whether a status is a valid wire status. */
     fun isKnown(value: String?): Boolean = value != null && value in ALL
+
+    /** Whether [status] is a terminal (sealed) run status of a workflow instance. */
+    fun isTerminal(status: String?): Boolean = status != null && status in TERMINAL
 }
 
 /** Responsibility of a workflow step (`kind` + optional display `name`). */

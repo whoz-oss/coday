@@ -428,6 +428,7 @@ class WorkflowService(
         }
         val request = (validation as TransitionRequestValidation.Valid).request
         val instance = activeInstance(scope, namespaceId, workflowId)
+        assertNotSealed(instance)
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId).map { it.toPolicyEvidence() }
@@ -475,6 +476,7 @@ class WorkflowService(
         }
         val request = (validation as TransitionRequestValidation.Valid).request
         val instance = activeInstance(scope, namespaceId, workflowId)
+        assertNotSealed(instance)
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId).map { it.toPolicyEvidence() }
@@ -788,6 +790,7 @@ class WorkflowService(
         val action = actions.firstOrNull { it["id"] == actionId }
             ?: throw workflowException(WorkflowErrorCodes.ACTION_NOT_ALLOWED)
         val instance = activeInstance(scope, namespaceId, workflowId)
+        assertNotSealed(instance)
         val snapshot = instance.toSnapshot()
         val definition = resolveDefinition(scope, instance)
         val isRetry = interaction.interactionType == "retry"
@@ -996,6 +999,17 @@ class WorkflowService(
     // Lifecycle
     // ------------------------------------------------------------------
 
+    /**
+     * Recovers a soft-deleted (`removed`) projection/instance back to the
+     * `active` LIFECYCLE state.
+     *
+     * This is strictly a lifecycle (soft-delete recovery) operation, ORTHOGONAL
+     * to the run-status seal (Phase 10): it never reopens a terminal run. A
+     * restored workflow whose overall run status is `completed` / `failed` /
+     * `cancelled` stays sealed — any subsequent transition is still rejected
+     * with `WORKFLOW_SEALED` by [assertNotSealed]. Resuming the requirement
+     * requires a NEW workflow linked to the sealed predecessor.
+     */
     @Transactional
     fun restore(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowHttpResult {
         val projection = repository.findProjection(scope, namespaceId, workflowId)
@@ -1491,6 +1505,35 @@ class WorkflowService(
         if (instance == null) throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND)
         if (instance.status != "active") throw workflowException(WorkflowErrorCodes.WORKFLOW_REMOVED)
         return instance
+    }
+
+    /**
+     * Phase 10 terminal governance: rejects any mutation of a workflow whose
+     * overall RUN status is terminal (`completed` / `failed` / `cancelled`).
+     *
+     * This is the explicit, uniform top-level seal of the governed instance —
+     * a dedicated machine code ([WorkflowErrorCodes.WORKFLOW_SEALED]) that
+     * fires before the per-step state machine, so a sealed workflow stays
+     * sealed even if a future definition change made per-step bookkeeping
+     * ambiguous. Reopening a terminal workflow is strictly forbidden: to
+     * resume or re-run the requirement, the control plane starts a NEW
+     * workflow linked to the sealed predecessor (see
+     * [io.whozoss.factory.workflow.domain.linkedWorkflowRelations]).
+     *
+     * The run status is a DIFFERENT axis from the lifecycle state checked by
+     * [activeInstance] (`active` vs `removed`/`purged`): [restore] recovers a
+     * soft-deleted projection, it never reopens a terminal run — this guard
+     * keeps rejecting transitions after any lifecycle recovery.
+     */
+    private fun assertNotSealed(instance: WorkflowInstanceRecord) {
+        val runStatus = instance.instance["status"] as? String
+        if (WorkflowStatuses.isTerminal(runStatus)) {
+            throw workflowException(
+                WorkflowErrorCodes.WORKFLOW_SEALED,
+                "The workflow run is terminal ('$runStatus') and sealed: it cannot be reopened or mutated.",
+                mapOf("workflowId" to instance.workflowId, "status" to runStatus),
+            )
+        }
     }
 
     private fun resolveDefinition(scope: TenantScope, instance: WorkflowInstanceRecord): WorkflowPolicyDefinition {
