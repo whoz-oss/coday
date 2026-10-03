@@ -325,4 +325,142 @@ describe('FactoryApiService', () => {
       expect(error).toEqual(expect.objectContaining({ code: 'SERVICE_UNAVAILABLE', status: 503 }))
     })
   })
+
+  describe('admin artifact operations', () => {
+    it('runGarbageCollection posts to /admin/artifacts/gc with the dryRun body and a correlation id', () => {
+      let result: unknown
+      service.runGarbageCollection({ dryRun: true }).subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/admin/artifacts/gc')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ dryRun: true })
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      request.flush({ data: { scannedMetadataRows: 3, reclaimedStagingKeys: ['a'] } })
+
+      expect(result).toEqual({ scannedMetadataRows: 3, reclaimedStagingKeys: ['a'] })
+    })
+
+    it('runGarbageCollection posts an empty body by default and forwards the namespace', () => {
+      service.runGarbageCollection(undefined, '  ns-42  ').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/admin/artifacts/gc')
+      expect(request.request.body).toEqual({})
+      expect(request.request.params.get('namespaceId')).toBe('ns-42')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-42')
+      request.flush({ data: {} })
+    })
+
+    it('purgeArtifact posts to the encoded purge route with the reason body and namespace', () => {
+      let result: unknown
+      service.purgeArtifact('art/1 2', { reason: 'expired' }, 'ns-1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/admin/artifacts/art%2F1%202/purge')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ reason: 'expired' })
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { status: 'purged', artifactId: 'art/1 2' } })
+
+      expect(result).toEqual({ status: 'purged', artifactId: 'art/1 2' })
+    })
+
+    it('purgeArtifact omits the reason when none is provided', () => {
+      service.purgeArtifact('art-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/admin/artifacts/art-1/purge')
+      expect(request.request.body).toEqual({})
+      request.flush({ data: { status: 'purged' } })
+    })
+
+    it('setLegalHold posts the legal-hold body to the encoded route', () => {
+      service.setLegalHold('art-1', { legalHold: false, reason: 'audit' }).subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/admin/artifacts/art-1/legal-hold')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ legalHold: false, reason: 'audit' })
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { legalHold: false, id: 'art-1' } })
+    })
+
+    it('normalizes a 403 FORBIDDEN_ADMIN_REQUIRED failure', () => {
+      let error: FactoryApiError | undefined
+      service.runGarbageCollection().subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === '/api/factory/admin/artifacts/gc')
+        .flush(
+          { error: { code: 'FORBIDDEN_ADMIN_REQUIRED', message: 'droits requis' } },
+          { status: 403, statusText: 'Forbidden' }
+        )
+
+      expect(error).toEqual(
+        expect.objectContaining({ code: 'FORBIDDEN_ADMIN_REQUIRED', message: 'droits requis', status: 403 })
+      )
+    })
+  })
+
+  describe('workflow definitions', () => {
+    it('getWorkflowDefinitions issues a GET and forwards the namespace', () => {
+      let result: unknown
+      service.getWorkflowDefinitions('ns-1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflow-definitions')
+      expect(request.request.method).toBe('GET')
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { items: [{ workflowType: 't', version: 'v1' }] } })
+
+      expect(result).toEqual({ items: [{ workflowType: 't', version: 'v1' }] })
+    })
+
+    it('uploadWorkflowDefinition posts multipart FormData without an explicit Content-Type', () => {
+      const file = new File(['{}'], 'definition.json', { type: 'application/json' })
+      service.uploadWorkflowDefinition(file, 'ns-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflow-definitions/upload')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toBeInstanceOf(FormData)
+      const data = request.request.body as FormData
+      expect(data.get('file')).toBeInstanceOf(File)
+      expect((data.get('file') as File).name).toBe('definition.json')
+      expect(request.request.headers.has('Content-Type')).toBe(false)
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      request.flush({ data: { workflowType: 't', version: 'v1' } })
+    })
+
+    it('deleteWorkflowDefinition issues a DELETE on the encoded type/version route', () => {
+      let result: unknown
+      service.deleteWorkflowDefinition('my/type', 'v 1', 'ns-1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflow-definitions/my%2Ftype/v%201')
+      expect(request.request.method).toBe('DELETE')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      request.flush({ data: { status: 'deleted' } })
+
+      expect(result).toEqual({ status: 'deleted' })
+    })
+
+    it('normalizes a 403 FORBIDDEN_ADMIN_REQUIRED failure for definitions', () => {
+      let error: FactoryApiError | undefined
+      service.deleteWorkflowDefinition('t', 'v1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === '/api/factory/workflow-definitions/t/v1')
+        .flush(
+          { error: { code: 'FORBIDDEN_ADMIN_REQUIRED', message: 'admin only' } },
+          { status: 403, statusText: 'Forbidden' }
+        )
+
+      expect(error).toEqual(
+        expect.objectContaining({ code: 'FORBIDDEN_ADMIN_REQUIRED', message: 'admin only', status: 403 })
+      )
+    })
+  })
 })
