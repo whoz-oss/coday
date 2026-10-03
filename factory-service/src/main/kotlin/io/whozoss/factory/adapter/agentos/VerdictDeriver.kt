@@ -44,6 +44,14 @@ object VerdictDeriver {
     const val RECONNECT_BUDGET_EXHAUSTED = "SSE reconnection budget exhausted"
     const val NOT_QUIESCENT = "Case has not reached a terminal or quiescent status"
 
+    /**
+     * Verdict reason of an observation/reconciliation that could not reach
+     * the AgentOS runtime at all (connection refused, DNS failure, reset…):
+     * the case state is unknowable, so the verdict stays honestly
+     * indeterminate — never `Succeeded`, never a failure proof.
+     */
+    const val RUNTIME_UNREACHABLE = "RUNTIME_UNREACHABLE"
+
     const val AGENT_CASE_ERROR = "AGENT_CASE_ERROR"
     const val AGENT_CASE_KILLED = "AGENT_CASE_KILLED"
 

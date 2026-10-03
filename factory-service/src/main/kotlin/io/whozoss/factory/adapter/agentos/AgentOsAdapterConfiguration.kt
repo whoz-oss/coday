@@ -6,7 +6,24 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.web.client.RestClient
 
 /**
- * Wiring of the AgentOS execution adapter.
+ * Spring wiring of the AgentOS execution boundary (Phase 3).
+ *
+ * Phase 3 introduced the durable, runtime-agnostic agent-execution adapter and
+ * its supporting lifecycle machinery. This configuration assembles those
+ * collaborators into the single [agentOsExecutionAdapter] bean driving
+ * `CapabilityExecutionService`:
+ *
+ * - [DefaultAgentOsExecutionAdapter] — durable SSE-bridge implementation of the
+ *   [AgentRuntimeAdapter] contract (create / turn start / observation /
+ *   reconciliation / shutdown of a case).
+ * - [ActiveCaseRegistry] — process-wide, thread-safe registry of every active
+ *   case driven by this Factory instance, used for status tracking and graceful
+ *   shutdown ([AgentOsCaseShutdownHook]).
+ * - [TrustedCaseBinding] — Factory-authority identities bound to each case,
+ *   never sourced from LLM arguments.
+ * - [HighWaterMark] — durable per-turn baseline fencing out older case events.
+ * - [VerdictDeriver] — derives the [AgentOsExecutionVerdict] from observed
+ *   case events.
  *
  * The bean is **always created** since the final cutover: the durable SSE bridge
  * is the primary, mandatory execution driver of `CapabilityExecutionService`.
@@ -23,9 +40,11 @@ class AgentOsAdapterConfiguration {
         builder: RestClient.Builder,
         proxyProperties: ProxyProperties,
         properties: AgentOsAdapterProperties,
+        activeCaseRegistry: ActiveCaseRegistry,
     ): AgentOsExecutionAdapter = DefaultAgentOsExecutionAdapter(
         builder = builder.clone(),
         baseUrl = proxyProperties.agentosUrl,
+        registry = activeCaseRegistry,
         sseClientFactory = { baseUrl ->
             AgentOsSseClient(
                 baseUrl = baseUrl,
