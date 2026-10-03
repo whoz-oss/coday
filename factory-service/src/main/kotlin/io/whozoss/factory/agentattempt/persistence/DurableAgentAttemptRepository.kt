@@ -75,6 +75,19 @@ interface DurableAgentAttemptRepository {
     fun findNonTerminal(limit: Int): List<ScopedDurableAgentAttempt>
 
     /**
+     * The next attempt number of a workflow step: `MAX(attemptNumber) + 1`
+     * across every attempt of `(namespaceId, workflowId, stepId)`, or 1 when
+     * the step has no attempt yet. A retry registers a brand-new attempt with
+     * this number; a terminal attempt is never reactivated.
+     */
+    fun nextAttemptNumber(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Int
+
+    /**
      * The append-only transition journal of the attempt, ordered by its
      * monotone [DurableAgentAttemptJournalEntry.sequence]. Every successful
      * state change of the aggregate appends exactly one entry atomically with

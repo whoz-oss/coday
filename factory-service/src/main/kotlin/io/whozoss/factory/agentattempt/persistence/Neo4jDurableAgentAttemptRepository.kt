@@ -106,6 +106,20 @@ class Neo4jDurableAgentAttemptRepository(
         return registered.toDomain()
     }
 
+    override fun nextAttemptNumber(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Int =
+        attempts.maxAttemptNumber(
+            organizationId = scope.organizationId,
+            workstreamId = scope.workstreamId,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            stepId = stepId,
+        ).toInt() + 1
+
     override fun journal(
         scope: TenantScope,
         namespaceId: String,

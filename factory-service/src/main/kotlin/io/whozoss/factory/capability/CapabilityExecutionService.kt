@@ -1040,6 +1040,18 @@ class CapabilityExecutionService(
         fun stableAttemptId(workflowId: String, stepId: String): String = "$workflowId#$stepId"
 
         /**
+         * Deterministic durable attempt id of the [attemptNumber]-th execution
+         * of a step, used by the retry path. Attempt #1 keeps the historical
+         * [stableAttemptId] form (so existing replay/idempotence behaviour is
+         * unchanged); a retry allocates
+         * [io.whozoss.factory.agentattempt.service.DurableAgentAttemptService.nextAttemptNumber]
+         * (>= 2) and registers a brand-new attempt under this id — the prior
+         * terminal attempt stays an immutable record of the earlier try.
+         */
+        fun retryAttemptId(workflowId: String, stepId: String, attemptNumber: Int): String =
+            if (attemptNumber <= 1) stableAttemptId(workflowId, stepId) else "$workflowId#$stepId#$attemptNumber"
+
+        /**
          * Deterministic AgentOS case UUID bound to a workflow step.
          *
          * AgentOS models case ids as UUIDs. UUID.nameUUIDFromBytes gives us a
