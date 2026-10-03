@@ -93,6 +93,11 @@ export class FactoryStore {
     return runId === SESSION_872641A8.id ? SESSION_872641A8 : { ...SESSION_872641A8, id: runId }
   }
 
+  /** Public handle letting a component re-fetch the active workflow projections. */
+  refresh(): void {
+    this.load()
+  }
+
   /** Re-fetch the active workflow projections and re-derive the state. */
   private load(): void {
     this.api.getWorkflows('active').subscribe({

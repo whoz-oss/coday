@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Observable, catchError, map, throwError } from 'rxjs'
+import { Observable, catchError, map, of, throwError } from 'rxjs'
 import { AllowedAction, GetActionsResponse, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
@@ -19,6 +19,99 @@ export interface WorkflowListPayload {
   state?: string
   items?: unknown[]
   [key: string]: unknown
+}
+
+/** Report returned by the admin garbage-collection command. */
+export interface GcReport {
+  reclaimedStagingKeys?: string[]
+  scannedBlobKeys?: string[]
+  scannedMetadataRows?: number
+  anomalies?: string[]
+  timestamp?: string
+  [key: string]: unknown
+}
+
+/** Result of an admin artifact purge. */
+export interface PurgeResult {
+  status?: string
+  artifactId?: string
+  id?: string
+  reason?: string
+  metadata?: { size?: number; [key: string]: unknown }
+  [key: string]: unknown
+}
+
+/** Result of an admin legal-hold command. */
+export interface LegalHoldResult {
+  status?: string
+  id?: string
+  artifactId?: string
+  legalHold?: boolean
+  legalHoldReason?: string
+  reason?: string
+  [key: string]: unknown
+}
+
+/** One registered workflow definition. */
+export interface WorkflowDefinition {
+  workflowType?: string
+  version?: string
+  definitionHash?: string
+  [key: string]: unknown
+}
+
+/** One AgentOS namespace exposed by `GET /api/namespaces`. */
+export interface NamespaceItem {
+  id?: string
+  name?: string
+  namespaceId?: string
+  [key: string]: unknown
+}
+
+/** Body of `POST /api/factory/workflows/:id/start` (materializes an instance). */
+export interface StartWorkflowRequest {
+  workflow: {
+    workflowId: string
+    workflowType: string
+    title: string
+    ticket?: string
+  }
+  execution: {
+    namespaceId: string
+    runtimeId: string
+    kind: string
+    agentId: string
+  }
+  controllerRequest: string
+}
+
+/** Body of `POST /api/factory/workflows/:id/run` (triggers the durable run). */
+export interface RunWorkflowRequest {
+  namespaceId: string
+  ticket?: string
+  repoRoot?: string
+}
+
+/** Unwrapped `{ data }` payload of `POST /api/factory/workflows/:id/run`. */
+export interface RunWorkflowResponse {
+  status?: string
+  submissionId?: string
+  workflowId?: string
+  [key: string]: unknown
+}
+
+/** Machine codes meaning the workflow instance already exists (start is idempotent). */
+export const WORKFLOW_CONFLICT_CODES = ['WORKFLOW_IDENTITY_CONFLICT', 'WORKFLOW_ALREADY_EXISTS'] as const
+
+/**
+ * True when a start failure only means the instance is already materialized
+ * (identity conflict / already exists / HTTP 409), in which case the /run phase
+ * may proceed for that existing instance.
+ */
+export function isWorkflowConflict(error: FactoryApiError | null | undefined): boolean {
+  if (!error) return false
+  if (error.status === 409) return true
+  return (WORKFLOW_CONFLICT_CODES as readonly string[]).includes(error.code)
 }
 
 /**
@@ -196,6 +289,84 @@ export class FactoryApiService {
     return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/cost/stop`, {}, namespaceId)
   }
 
+  /** POST `/api/factory/admin/artifacts/gc` (admin-only garbage collection). */
+  runGarbageCollection(body?: { dryRun?: boolean }, namespaceId?: string): Observable<unknown> {
+    return this.post<unknown>('/api/factory/admin/artifacts/gc', body ?? {}, namespaceId)
+  }
+
+  /** POST `/api/factory/admin/artifacts/:artifactId/purge` (admin-only, destructive). */
+  purgeArtifact(artifactId: string, body?: { reason?: string }, namespaceId?: string): Observable<unknown> {
+    const path = `/api/factory/admin/artifacts/${encodeURIComponent(artifactId)}/purge`
+    return this.post<unknown>(path, body ?? {}, namespaceId)
+  }
+
+  /** POST `/api/factory/admin/artifacts/:artifactId/legal-hold` (admin-only). */
+  setLegalHold(
+    artifactId: string,
+    body: { legalHold: boolean; reason?: string },
+    namespaceId?: string
+  ): Observable<unknown> {
+    const path = `/api/factory/admin/artifacts/${encodeURIComponent(artifactId)}/legal-hold`
+    return this.post<unknown>(path, body, namespaceId)
+  }
+
+  /** GET `/api/factory/workflow-definitions[?namespaceId=…]`. */
+  getWorkflowDefinitions(namespaceId?: string): Observable<unknown> {
+    return this.request<unknown>('/api/factory/workflow-definitions', {}, namespaceId)
+  }
+
+  /**
+   * GET `/api/namespaces` → AgentOS namespaces. Unwraps a raw array or a
+   * `{ items: […] }` payload and degrades gracefully to `[]` when the endpoint
+   * is missing, unavailable or returns an error.
+   */
+  getNamespaces(): Observable<NamespaceItem[]> {
+    return this.request<unknown>('/api/namespaces', {}).pipe(
+      map((payload) => {
+        if (Array.isArray(payload)) return payload as NamespaceItem[]
+        const items = (payload as { items?: unknown } | null)?.items
+        return Array.isArray(items) ? (items as NamespaceItem[]) : []
+      }),
+      catchError(() => of([] as NamespaceItem[]))
+    )
+  }
+
+  /**
+   * POST `/api/factory/workflows/:id/start` — materializes the workflow instance
+   * from a definition. A `WORKFLOW_IDENTITY_CONFLICT` / `WORKFLOW_ALREADY_EXISTS`
+   * (or HTTP 409) failure is NOT swallowed here; the caller decides, via
+   * {@link isWorkflowConflict}, whether it can proceed to the /run phase.
+   */
+  startWorkflow(workflowId: string, payload: StartWorkflowRequest, namespaceId?: string): Observable<unknown> {
+    return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/start`, payload, namespaceId)
+  }
+
+  /** POST `/api/factory/workflows/:id/run` — triggers the durable async run (202 Accepted). */
+  runWorkflow(workflowId: string, payload: RunWorkflowRequest, namespaceId?: string): Observable<RunWorkflowResponse> {
+    return this.post<RunWorkflowResponse>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/run`,
+      payload,
+      namespaceId
+    )
+  }
+
+  /**
+   * POST `/api/factory/workflow-definitions/upload` as `multipart/form-data`.
+   * The `Content-Type` header is deliberately NOT set so the browser/HttpClient
+   * can attach the multipart boundary itself.
+   */
+  uploadWorkflowDefinition(file: File, namespaceId?: string): Observable<unknown> {
+    const formData = new FormData()
+    formData.append('file', file, file.name || 'definition.json')
+    return this.postFormData<unknown>('/api/factory/workflow-definitions/upload', formData, namespaceId)
+  }
+
+  /** DELETE `/api/factory/workflow-definitions/:workflowType/:version[?namespaceId=…]`. */
+  deleteWorkflowDefinition(workflowType: string, version: string, namespaceId?: string): Observable<unknown> {
+    const path = `/api/factory/workflow-definitions/${encodeURIComponent(workflowType)}/${encodeURIComponent(version)}`
+    return this.delete<unknown>(path, namespaceId)
+  }
+
   /**
    * Issue a POST request and unwrap the response. Mirrors {@link request}:
    * an `X-Correlation-Id` is always sent, the optional namespace is threaded
@@ -214,6 +385,42 @@ export class FactoryApiService {
     }
 
     return this.http.post<unknown>(path, body, { params, headers }).pipe(
+      map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
+      catchError((error: unknown) => throwError(() => normalizeError(error)))
+    )
+  }
+
+  /**
+   * Issue a `multipart/form-data` POST and unwrap the response. Mirrors
+   * {@link post} but never sets `Content-Type` (the boundary is owned by the
+   * browser/HttpClient FormData handling).
+   */
+  private postFormData<T>(path: string, formData: FormData, namespaceId?: string): Observable<T> {
+    let params = new HttpParams()
+    let headers = new HttpHeaders().set('X-Correlation-Id', generateCorrelationId())
+    const namespace = namespaceId?.trim()
+    if (namespace) {
+      headers = headers.set('X-Namespace-Id', namespace)
+      params = params.set('namespaceId', namespace)
+    }
+
+    return this.http.post<unknown>(path, formData, { params, headers }).pipe(
+      map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
+      catchError((error: unknown) => throwError(() => normalizeError(error)))
+    )
+  }
+
+  /** Issue a DELETE request and unwrap the response. */
+  private delete<T>(path: string, namespaceId?: string): Observable<T> {
+    let params = new HttpParams()
+    let headers = new HttpHeaders().set('X-Correlation-Id', generateCorrelationId())
+    const namespace = namespaceId?.trim()
+    if (namespace) {
+      headers = headers.set('X-Namespace-Id', namespace)
+      params = params.set('namespaceId', namespace)
+    }
+
+    return this.http.delete<unknown>(path, { params, headers }).pipe(
       map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
       catchError((error: unknown) => throwError(() => normalizeError(error)))
     )

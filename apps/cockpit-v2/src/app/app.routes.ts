@@ -16,12 +16,20 @@ export const routes: Routes = [
     loadComponent: () => import('./features/sandboxes/sandboxes-page.component').then((m) => m.SandboxesPageComponent),
   },
   {
+    path: 'lancer',
+    loadComponent: () => import('./features/launch/launch-page.component').then((m) => m.LaunchPageComponent),
+  },
+  {
     path: 'sessions/:runId',
     loadComponent: () => import('./features/session/session-page.component').then((m) => m.SessionPageComponent),
   },
   {
     path: 'historique',
     loadComponent: () => import('./features/history/history-page.component').then((m) => m.HistoryPageComponent),
+  },
+  {
+    path: 'reglages',
+    loadComponent: () => import('./features/admin/admin-page.component').then((m) => m.AdminPageComponent),
   },
   { path: '**', redirectTo: 'sandboxes' },
 ]

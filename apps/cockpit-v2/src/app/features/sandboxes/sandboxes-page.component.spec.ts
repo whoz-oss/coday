@@ -76,12 +76,16 @@ describe('SandboxesPageComponent', () => {
     expect(host.textContent).not.toContain('Sandboxes détruites')
   })
 
-  it('keeps the mount / best-of-N controls disabled (no backend fleet)', async () => {
+  it('exposes a launch entry point to the /lancer screen', async () => {
     const host = await setup(createStore())
 
-    const submit = host.querySelector<HTMLButtonElement>('button[type="submit"]')
-    expect(submit?.disabled).toBe(true)
-    const formButtons = Array.from(host.querySelectorAll('.form-actions button')) as HTMLButtonElement[]
-    expect(formButtons.every((button) => button.disabled)).toBe(true)
+    const header = host.querySelector<HTMLAnchorElement>('header [data-sandboxes-launch]')
+    expect(header).not.toBeNull()
+    expect(header?.getAttribute('href')).toBe('/lancer')
+    expect(header?.textContent).toContain('Lancer un run')
+
+    const panel = host.querySelector<HTMLAnchorElement>('[data-sandboxes-launch-panel]')
+    expect(panel).not.toBeNull()
+    expect(panel?.getAttribute('href')).toBe('/lancer')
   })
 })
