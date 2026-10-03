@@ -65,6 +65,24 @@ const snapshot = {
   projection,
 }
 
+const controllerRequest = {
+  text: 'Ship the feature safely',
+  namespaceId: 'ns-1',
+  observedAt: startedAt,
+  actorId: 'benjamin',
+  source: 'factory-cockpit',
+}
+
+/** Snapshot whose steps loop does NOT already derive a `request` block. */
+const snapshotWithControllerRequest = {
+  ...snapshot,
+  controllerRequest,
+  projection: {
+    ...projection,
+    steps: projection.steps.filter((step) => step.id !== 'request'),
+  },
+}
+
 describe('mappers', () => {
   describe('classification', () => {
     it('prefers the explicit lane then the responsibility kind', () => {
@@ -224,6 +242,38 @@ describe('mappers', () => {
       })
       expect(lanes[0]).toMatchObject({ id: 'code', kind: 'workspace', tone: 'cyan' })
       expect(lanes[0]?.blocks[0]?.endSec).toBeGreaterThanOrEqual(2)
+    })
+
+    it('surfaces the persisted controllerRequest as the engineer lane request block', () => {
+      const lanes = mapProjectionToLanes(snapshotWithControllerRequest)
+
+      const engineer = lanes.find((candidate) => candidate.id === 'engineer')
+      expect(engineer).toMatchObject({ kind: 'human', label: 'engineer', tone: 'amber', subtitle: 'benjamin' })
+      expect(engineer?.request).toMatchObject({ label: 'request', startSec: 0, status: 'done' })
+      expect(engineer?.request?.description).toBe('Ship the feature safely')
+      expect(engineer?.request?.endSec).toBeGreaterThanOrEqual(2)
+      expect(engineer?.blocks).toHaveLength(0)
+    })
+
+    it('accepts a legacy string controllerRequest', () => {
+      const lanes = mapProjectionToLanes({
+        ...snapshot,
+        controllerRequest: 'Do the thing',
+        projection: { ...projection, steps: projection.steps.filter((step) => step.id !== 'request') },
+      })
+      const engineer = lanes.find((candidate) => candidate.id === 'engineer')
+      expect(engineer?.request?.description).toBe('Do the thing')
+    })
+
+    it('does not duplicate the engineer lane/request when a request step already provides it', () => {
+      const lanes = mapProjectionToLanes({ ...snapshot, controllerRequest })
+
+      const engineers = lanes.filter((candidate) => candidate.id === 'engineer')
+      expect(engineers).toHaveLength(1)
+      // The step-derived request block wins: the controllerRequest text is not
+      // injected as a second block.
+      expect(engineers[0]?.request?.description).toBeUndefined()
+      expect(engineers[0]?.blocks).toHaveLength(0)
     })
   })
 
@@ -447,6 +497,106 @@ describe('mappers', () => {
       const gates = session.phase.sections.find((section) => section.label === 'Gates')
       expect(gates?.count).toBe(0)
       expect(session.interactions).toEqual([])
+    })
+
+    it('renders the real gate items of the active step only', () => {
+      const interactions = [
+        {
+          interactionId: 'i-1',
+          stepId: 'build',
+          interactionType: 'approval',
+          status: 'waiting',
+          createdAt: startedAt,
+          payload: { prompt: 'Approve the deploy?', actions: [{ id: 'approve', label: 'Approve' }] },
+        },
+        { interactionId: 'i-2', stepId: 'plan', interactionType: 'notice', status: 'done' },
+      ]
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, interactions)
+
+      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      expect(gates?.count).toBe(1)
+      expect(gates?.body).toBeUndefined()
+      expect(gates?.items).toEqual([
+        {
+          title: 'approval',
+          status: 'waiting',
+          subtitle: 'Approve the deploy?',
+          actions: [{ id: 'approve', label: 'Approve' }],
+        },
+      ])
+    })
+
+    it('renders the real evidence of the active step and of the current attempt result', () => {
+      const attempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'builder',
+          status: 'running',
+          caseId: 'case-1',
+          resultEvidenceId: 'ev-2',
+        },
+      ]
+      const evidence = {
+        items: [
+          {
+            evidenceId: 'ev-1',
+            stepId: 'build',
+            kind: 'oracle',
+            outcome: 'pass',
+            facts: { message: 'all tests pass' },
+            createdAt: startedAt,
+          },
+          { evidenceId: 'ev-2', stepId: 'plan', kind: 'result', outcome: 'done', facts: { summary: 'result summary' } },
+          { evidenceId: 'ev-3', stepId: 'plan', kind: 'noise' },
+        ],
+      }
+      const session = mapProjectionToSessionDetail(snapshot, undefined, evidence, undefined, undefined, attempts)
+
+      const outputs = session.phase.sections.find((section) => section.label === 'Sorties')
+      expect(outputs?.count).toBe(2)
+      expect(outputs?.body).toBeUndefined()
+      expect(outputs?.items?.[0]).toMatchObject({ title: 'oracle', status: 'pass', subtitle: 'all tests pass' })
+      expect(outputs?.items?.[1]).toMatchObject({ title: 'result', subtitle: 'result summary' })
+    })
+
+    it('reports an explicit empty message for Gates and Sorties when nothing is known', () => {
+      const session = mapProjectionToSessionDetail(snapshot)
+      const gates = session.phase.sections.find((section) => section.label === 'Gates')
+      const outputs = session.phase.sections.find((section) => section.label === 'Sorties')
+      expect(gates?.body).toBe("Aucune gate d'interaction pour cette phase.")
+      expect(outputs?.body).toBe('Aucune sortie enregistrée pour cette phase.')
+    })
+
+    it('exposes the real agent configuration and honestly marks prompts/model unavailable', () => {
+      const attempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'builder',
+          status: 'running',
+          caseId: 'case-7',
+        },
+      ]
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, attempts)
+
+      const config = session.phase.sections.find((section) => section.label === "Configuration de l'agent")
+      expect(config?.items).toEqual(
+        expect.arrayContaining([
+          { title: 'Agent', subtitle: 'builder' },
+          { title: 'Case', subtitle: 'case-7' },
+          { title: 'Tentatives', subtitle: '2/1' },
+        ])
+      )
+
+      const prompts = session.phase.sections.find((section) => section.label === 'Prompts compilés')
+      expect(prompts).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite exposition backend)' })
+      expect(prompts?.count).toBeUndefined()
+
+      const model = session.phase.sections.find((section) => section.label === 'Modèle LLM résolu')
+      expect(model).toMatchObject({ notAvailable: true, body: 'Non disponible (nécessite exposition backend)' })
     })
 
     it('surfaces the real attempts of the active step and a dynamic attempt string', () => {

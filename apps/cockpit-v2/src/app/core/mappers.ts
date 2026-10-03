@@ -5,6 +5,8 @@ import {
   BlockerCode,
   HumanInteraction,
   PhaseDetail,
+  PhaseSection,
+  PhaseSectionItem,
   PhaseSegment,
   RunEvent,
   RunEventType,
@@ -348,6 +350,53 @@ export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): Run
 
 const MIN_BLOCK_SEC = 2
 
+/**
+ * Normalized engineer request carried by a snapshot (backend
+ * `controllerRequest`, see `WorkflowService.publicSnapshot`).
+ */
+export interface ControllerRequest {
+  text?: string
+  prompt?: string
+  namespaceId?: string
+  observedAt?: string
+  actorId?: string
+  source?: string
+}
+
+/**
+ * Read the persisted engineer request defensively.
+ *
+ * The backend exposes it at `snapshot.controllerRequest`; legacy payloads may
+ * carry it on the projection/instance or as a raw string, so both are accepted.
+ * Returns `undefined` when nothing usable is present.
+ */
+function readControllerRequest(snapshot: JsonObject, projection: JsonObject): ControllerRequest | undefined {
+  const instance = asObject(snapshot['instance'])
+  const raw = snapshot['controllerRequest'] ?? projection['controllerRequest'] ?? instance?.['controllerRequest']
+  if (typeof raw === 'string' && raw.length > 0) return { text: raw }
+  const obj = asObject(raw)
+  if (!obj) return undefined
+  const request: ControllerRequest = {}
+  const text = getString(obj, 'text')
+  if (text) request.text = text
+  const prompt = getString(obj, 'prompt')
+  if (prompt) request.prompt = prompt
+  const namespaceId = getString(obj, 'namespaceId')
+  if (namespaceId) request.namespaceId = namespaceId
+  const observedAt = getString(obj, 'observedAt')
+  if (observedAt) request.observedAt = observedAt
+  const actorId = getString(obj, 'actorId')
+  if (actorId) request.actorId = actorId
+  const source = getString(obj, 'source')
+  if (source) request.source = source
+  const hasContent =
+    request.text !== undefined ||
+    request.prompt !== undefined ||
+    request.actorId !== undefined ||
+    request.observedAt !== undefined
+  return hasContent ? request : undefined
+}
+
 function stepBlockStatus(step: unknown): TimelineBlock['status'] {
   const state = resolveStepState(step)
   return state === 'active' || state === 'failed' ? 'running' : 'done'
@@ -373,18 +422,25 @@ function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: n
  * Blocks are positioned in real time (relative seconds from the workflow
  * start). Steps without timing are queued sequentially so the strip never
  * overlaps. Human steps whose id/name is `request` are surfaced in the
- * dedicated `request` column, matching the reference cockpit layout.
+ * dedicated `request` column, and the persisted `controllerRequest` (the
+ * initial human command) is surfaced as the engineer lane's `request` block
+ * when no `request` step already provides one.
  */
 export function mapProjectionToLanes(input: unknown, timing?: unknown): TimelineLane[] {
   const snapshot = asObject(input) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
   const steps = asArray(projection['steps'])
-  if (steps.length === 0) return []
+  const controllerRequest = readControllerRequest(snapshot, projection)
+  if (steps.length === 0 && !controllerRequest) return []
 
   const timingObj = asObject(timing)
-  const starts = steps
+  const stepStarts = steps
     .map((step) => toEpochMs(asObject(step)?.['startedAt']))
     .filter((value): value is number => value !== null)
+  // The persisted request anchors the timeline start when present (it is the
+  // first human activity), so the engineer block always starts at 0s.
+  const requestStartMs = toEpochMs(controllerRequest?.observedAt)
+  const starts = requestStartMs !== null ? [...stepStarts, requestStartMs] : stepStarts
   const t0 = starts.length > 0 ? Math.min(...starts) : (toEpochMs(timingObj?.['startedAt']) ?? Date.now())
 
   const ordered = steps
@@ -448,6 +504,44 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown): Timeline
       lane.request = placement.block
     } else {
       lane.blocks.push(placement.block)
+    }
+  }
+
+  // Persisted engineer request: the `controllerRequest` is the authoritative
+  // initial human command. Surface it as the engineer lane's `request` block
+  // when the steps loop did not already derive one from a `request` step (in
+  // which case we must not duplicate the lane or the block).
+  if (controllerRequest) {
+    let lane = lanes.get('engineer')
+    if (!lane) {
+      lane = {
+        id: 'engineer',
+        label: 'engineer',
+        subtitle: controllerRequest.actorId ?? 'engineer',
+        kind: 'human',
+        tone: 'amber',
+        blocks: [],
+      }
+      lanes.set('engineer', lane)
+    }
+    if (!lane.request) {
+      const firstStepStart = stepStarts.length > 0 ? Math.min(...stepStarts) : null
+      const endSec =
+        requestStartMs !== null && firstStepStart !== null && firstStepStart > requestStartMs
+          ? Math.max((firstStepStart - t0) / 1000, MIN_BLOCK_SEC)
+          : MIN_BLOCK_SEC
+      const requestBlock: TimelineBlock = {
+        label: 'request',
+        startSec: 0,
+        endSec,
+        status: 'done',
+      }
+      const requestText = controllerRequest.text ?? controllerRequest.prompt
+      if (requestText) requestBlock.description = requestText
+      lane.request = requestBlock
+    }
+    if (controllerRequest.actorId && (!lane.subtitle || lane.subtitle === 'workspace')) {
+      lane.subtitle = controllerRequest.actorId
     }
   }
 
@@ -733,11 +827,37 @@ function pickCurrentAttempt(stepAttempts: AgentAttempt[]): AgentAttempt | undefi
   return stepAttempts.reduce((latest, attempt) => (attempt.attemptNumber >= latest.attemptNumber ? attempt : latest))
 }
 
+/** Map the real human interactions of the active step to section items. */
+function interactionToItems(interactions: HumanInteraction[]): PhaseSectionItem[] {
+  return interactions.map((interaction) => {
+    const item: PhaseSectionItem = { title: interaction.interactionType, status: interaction.status }
+    if (interaction.prompt) item.subtitle = interaction.prompt
+    if (interaction.actions) item.actions = interaction.actions
+    return item
+  })
+}
+
+/** Map the real evidence records of the active step to output section items. */
+function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
+  return evidenceItems.map((entry, index) => {
+    const obj = asObject(entry) ?? {}
+    const facts = asObject(obj['facts']) ?? {}
+    const kind = getString(obj, 'kind') ?? getString(obj, 'evidenceId') ?? `sortie-${index + 1}`
+    const item: PhaseSectionItem = { title: kind }
+    const outcome = getString(obj, 'outcome')
+    if (outcome) item.status = outcome
+    const message = getString(facts, 'message') ?? getString(facts, 'text') ?? getString(facts, 'summary') ?? outcome
+    if (message) item.subtitle = message
+    return item
+  })
+}
+
 function buildPhaseDetail(
   steps: unknown[],
   fallbackStatus: RunStatus,
-  interactionsCount = 0,
-  attempts: AgentAttempt[] = []
+  interactions: HumanInteraction[] = [],
+  attempts: AgentAttempt[] = [],
+  evidenceItems: unknown[] = []
 ): PhaseDetail {
   const active = steps.find((step) => resolveStepState(step) === 'active') ?? steps[steps.length - 1]
   const obj = asObject(active) ?? {}
@@ -745,6 +865,8 @@ function buildPhaseDetail(
   const duration = stepDurationSec(obj) ?? 0
   const description = getString(obj, 'description')
   const stepId = getString(obj, 'id') ?? getString(obj, 'key')
+  const owner = getString(responsibility, 'name') ?? actorName(obj)
+  const kind = getString(responsibility, 'kind') ?? classifyActorKind(obj)
 
   const stepAttempts = stepId ? attempts.filter((attempt) => attempt.stepId === stepId) : []
   const currentAttempt = pickCurrentAttempt(stepAttempts)
@@ -753,18 +875,12 @@ function buildPhaseDetail(
     name: getString(obj, 'name') ?? getString(obj, 'id') ?? 'phase',
     status: getString(obj, 'status') ? mapWorkflowStateToRunStatus(getString(obj, 'status'), [obj]) : fallbackStatus,
     durationSec: Math.round(duration),
-    owner: getString(responsibility, 'name') ?? actorName(obj),
-    kind: getString(responsibility, 'kind') ?? classifyActorKind(obj),
+    owner,
+    kind,
     // Real attempts are surfaced when available; a neutral `1/1` fallback is
     // used when the backend exposes none.
     attempt: '1/1',
-    sections: [
-      { label: "Configuration de l'agent" },
-      { label: 'Description', ...(description ? { body: description } : {}) },
-      { label: 'Prompts compilés', count: 0 },
-      { label: 'Gates', count: interactionsCount },
-      { label: 'Sorties', count: 0 },
-    ],
+    sections: [],
   }
 
   if (stepAttempts.length > 0 && currentAttempt) {
@@ -777,6 +893,52 @@ function buildPhaseDetail(
     detail.caseId = currentAttempt.caseId
     if (currentAttempt.failureCode) detail.failureCode = currentAttempt.failureCode
   }
+
+  // ── Gates: the real interactions attached to the active step. ──────────────
+  const stepInteractions = stepId ? interactions.filter((interaction) => interaction.stepId === stepId) : interactions
+  const gates: PhaseSection = {
+    label: 'Gates',
+    count: stepInteractions.length,
+    items: interactionToItems(stepInteractions),
+  }
+  if (stepInteractions.length === 0) gates.body = "Aucune gate d'interaction pour cette phase."
+
+  // ── Sorties: the real evidence of the active step (or of the current
+  // attempt's `resultEvidenceId`). ────────────────────────────────────────────
+  const stepEvidence = evidenceItems.filter((entry) => {
+    const evidenceObj = asObject(entry) ?? {}
+    const evidenceStepId = getString(evidenceObj, 'stepId')
+    const evidenceId = getString(evidenceObj, 'evidenceId') ?? getString(evidenceObj, 'id')
+    const matchesStep = stepId !== undefined && evidenceStepId === stepId
+    const matchesAttempt =
+      currentAttempt?.resultEvidenceId !== undefined && evidenceId === currentAttempt.resultEvidenceId
+    return matchesStep || matchesAttempt
+  })
+  const outputs: PhaseSection = {
+    label: 'Sorties',
+    count: stepEvidence.length,
+    items: evidenceToItems(stepEvidence),
+  }
+  if (stepEvidence.length === 0) outputs.body = 'Aucune sortie enregistrée pour cette phase.'
+
+  // ── Configuration de l'agent: only the real fields exposed by the backend. ─
+  const agentItems: PhaseSectionItem[] = []
+  if (detail.agentName ?? owner) agentItems.push({ title: 'Agent', subtitle: detail.agentName ?? owner })
+  if (owner) agentItems.push({ title: 'Rôle', subtitle: `${owner} (${kind})` })
+  if (detail.caseId) agentItems.push({ title: 'Case', subtitle: detail.caseId })
+  if (detail.totalAttempts) agentItems.push({ title: 'Tentatives', subtitle: detail.attempt })
+  const agentConfig: PhaseSection = { label: "Configuration de l'agent", items: agentItems }
+  if (agentItems.length === 0) agentConfig.body = 'Information agent non disponible'
+
+  detail.sections = [gates, outputs, agentConfig]
+  if (description) detail.sections.push({ label: 'Description', body: description })
+  // No backend field exists today for the compiled prompts or the resolved LLM
+  // model. They are surfaced explicitly as unavailable (`notAvailable`) rather
+  // than as a misleading `count: 0` that would imply an empty (but known) list.
+  detail.sections.push(
+    { label: 'Prompts compilés', notAvailable: true, body: 'Non disponible (nécessite exposition backend)' },
+    { label: 'Modèle LLM résolu', notAvailable: true, body: 'Non disponible (nécessite exposition backend)' }
+  )
 
   return detail
 }
@@ -869,7 +1031,7 @@ export function mapProjectionToSessionDetail(
     lanes,
     nowSec: Math.round(laneEnd),
     events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
-    phase: buildPhaseDetail(steps, status, mappedInteractions.length, mappedAttempts),
+    phase: buildPhaseDetail(steps, status, mappedInteractions, mappedAttempts, evidenceItems),
     interactions: mappedInteractions,
     attempts: mappedAttempts,
     allowedActions: mappedAllowedActions,

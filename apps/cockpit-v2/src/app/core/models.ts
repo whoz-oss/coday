@@ -142,6 +142,34 @@ export interface AgentAttempt {
   completedAt?: string
 }
 
+/**
+ * One concrete entry rendered inside a {@link PhaseSection} (a gate, a real
+ * output/evidence item, an agent configuration line…). Only real fields are
+ * carried; a missing field is left absent rather than fabricated.
+ */
+export interface PhaseSectionItem {
+  title: string
+  subtitle?: string
+  status?: string
+  details?: string
+  actions?: Array<{ id: string; label: string }>
+}
+
+/**
+ * One accordion section of the phase detail panel.
+ *
+ * `count` is only meaningful when the underlying collection is actually known.
+ * `notAvailable` marks a section whose backend data does not exist yet: the UI
+ * must show an explicit "unavailable" message and never a misleading `count: 0`.
+ */
+export interface PhaseSection {
+  label: string
+  count?: number
+  body?: string
+  items?: PhaseSectionItem[]
+  notAvailable?: boolean
+}
+
 export interface PhaseDetail {
   name: string
   status: RunStatus
@@ -163,7 +191,7 @@ export interface PhaseDetail {
   caseId?: string
   /** Failure code of the current attempt, when it failed. */
   failureCode?: string
-  sections: { label: string; count?: number; body?: string }[]
+  sections: PhaseSection[]
 }
 
 export interface HumanInteraction {
