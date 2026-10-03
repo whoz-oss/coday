@@ -160,15 +160,39 @@ class WorkflowService(
      * namespace of the scope is listed; when it is supplied only that namespace
      * is returned. The tenant isolation always comes from [scope] — never from
      * the namespace filter.
+     *
+     * [workflowType] and [limit] are OPTIONAL read-only filters (Phase 6
+     * Workstream Agent reads) applied over the already-projected snapshots:
+     * the type filter keeps only items whose projected `projection.workflowType`
+     * matches, and [limit] is coerced into `[1, MAX_LIST_LIMIT]`, reporting
+     * `truncated` when items were dropped. Both are `null`-neutral: when they
+     * are absent every snapshot is returned in the repository order.
      */
     @Transactional(readOnly = true)
-    fun listProjections(scope: TenantScope, namespaceId: String?, state: String): Map<String, Any?> {
+    fun listProjections(
+        scope: TenantScope,
+        namespaceId: String?,
+        state: String,
+        workflowType: String? = null,
+        limit: Int? = null,
+    ): Map<String, Any?> {
         if (state !in setOf("active", "removed")) {
             throw workflowException(WorkflowErrorCodes.UNSUPPORTED_STATE, "state must be active or removed.")
         }
         val resolvedNamespace = namespaceId?.takeIf { it.isNotBlank() }
-        val items = repository.listProjections(scope, resolvedNamespace, state).map { publicSnapshot(it) }
-        return mapOf("namespaceId" to (resolvedNamespace ?: ""), "state" to state, "items" to items)
+        var items = repository.listProjections(scope, resolvedNamespace, state).map { publicSnapshot(it) }
+        val typeFilter = workflowType?.takeIf { it.isNotBlank() }
+        if (typeFilter != null) {
+            items = items.filter { (it["projection"] as? Map<*, *>)?.get("workflowType") == typeFilter }
+        }
+        val boundedLimit = limit?.coerceIn(1, MAX_LIST_LIMIT)
+        val capped = boundedLimit?.let { items.take(it) } ?: items
+        return mapOf(
+            "namespaceId" to (resolvedNamespace ?: ""),
+            "state" to state,
+            "items" to capped,
+            "truncated" to (capped.size < items.size),
+        )
     }
 
     @Transactional(readOnly = true)
@@ -1487,6 +1511,9 @@ class WorkflowService(
         /** Interaction type of a DAG-owned human checkpoint (opened by the capability resolver). */
         const val CHECKPOINT_INTERACTION_TYPE = "checkpoint"
         const val MAX_AGENT_ANSWER_LENGTH = 2_000
+
+        /** Upper bound of the read-only `limit` filter of [listProjections] (contract §6.1). */
+        const val MAX_LIST_LIMIT = 200
     }
 }
 

@@ -2,7 +2,12 @@ package io.whozoss.agentos.plugins.factorybridge
 
 import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryAskStepQuestionTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetBlockersTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetRequiredHumanActionsTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetStepAttemptsTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetWorkflowTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryGetWorkstreamTool
+import io.whozoss.agentos.plugins.factorybridge.tools.FactoryListWorkflowsTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryProvisionEnvironmentTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryPublishProjectionTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactoryRecordAgentResultTool
@@ -29,7 +34,13 @@ internal fun buildFactoryTools(services: FactoryBridgeServices): List<StandardTo
     val objectMapper = services.objectMapper
     val runtimeId = services.config.runtimeId
     return listOf(
+        // Phase 6 read-only Workstream Agent reads (never capability-bound).
         FactoryGetWorkflowTool(baseUrl, httpClient, objectMapper),
+        FactoryGetWorkstreamTool(baseUrl, httpClient, objectMapper),
+        FactoryListWorkflowsTool(baseUrl, httpClient, objectMapper),
+        FactoryGetStepAttemptsTool(baseUrl, httpClient, objectMapper),
+        FactoryGetBlockersTool(baseUrl, httpClient, objectMapper),
+        FactoryGetRequiredHumanActionsTool(baseUrl, httpClient, objectMapper),
         FactoryProvisionEnvironmentTool(baseUrl, httpClient, objectMapper),
         FactoryStartWorkflowTool(baseUrl, httpClient, objectMapper, runtimeId),
         FactoryRecordAgentResultTool(baseUrl, httpClient, objectMapper, runtimeId),

@@ -163,6 +163,44 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `attempts filters by stepId and keeps the bounded secret-free shape`() {
+        val workflowId = "wf-attempts-step-filter"
+        durableAgentAttemptService.register(scope, attempt("attempt-s1", workflowId, "step-1"))
+        durableAgentAttemptService.register(scope, attempt("attempt-s2", workflowId, "step-2"))
+
+        val filtered = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId/attempts?namespaceId=$namespace&stepId=step-2",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(filtered.statusCode).isEqualTo(HttpStatus.OK)
+        val filteredData = (filtered.body?.get("data") as? List<*>)!!.filterIsInstance<Map<String, Any?>>()
+        assertThat(filteredData.map { it["attemptId"] }).containsExactly("attempt-s2")
+        assertThat(filtered.body.toString()).doesNotContain("capabilityToken")
+
+        // An unknown step degrades to an empty `{ "data": [] }` with HTTP 200.
+        val unknown = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId/attempts?namespaceId=$namespace&stepId=step-unknown",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(unknown.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat((unknown.body?.get("data") as? List<*>)).isEmpty()
+
+        // No stepId: regression — every attempt of the workflow is returned.
+        val all = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId/attempts?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(all.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat((all.body?.get("data") as? List<*>)).hasSize(2)
+    }
+
+    @Test
     fun `attempts degrades to an empty data array when the workflow has no attempt`() {
         val response = restTemplate.exchange(
             "/api/factory/workflows/wf-without-attempts/attempts?namespaceId=$namespace",
@@ -361,6 +399,10 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             ?: emptyList()
 
     private fun publish(workflowId: String, namespaceId: String) {
+        publishWithType(workflowId, namespaceId, "wf-http")
+    }
+
+    private fun publishWithType(workflowId: String, namespaceId: String, workflowType: String) {
         val body = mapOf(
             "execution" to mapOf(
                 "namespaceId" to namespaceId,
@@ -371,7 +413,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             "projection" to mapOf(
                 "schemaVersion" to "2",
                 "workflowId" to workflowId,
-                "workflowType" to "wf-http",
+                "workflowType" to workflowType,
                 "title" to "Listed $workflowId",
                 "status" to "ready",
                 "steps" to listOf(
@@ -415,6 +457,54 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(items.mapNotNull { it["workflowId"] as? String }).contains("wf-list-a", "wf-list-b")
         // Each item carries its namespace so the cockpit can open its detail.
         assertThat(items.mapNotNull { it["namespaceId"] as? String }).contains(namespace, secondNamespace)
+    }
+
+    @Test
+    fun `list filters by workflowType and bounds with limit reporting truncation`() {
+        publishWithType("wf-type-a", namespace, "wf-http")
+        publishWithType("wf-type-b", namespace, "wf-other")
+
+        val filtered = restTemplate.exchange(
+            "/api/factory/workflows?namespaceId=$namespace&state=active&workflowType=wf-other",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(filtered.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(listIds(data(filtered.body))).containsExactly("wf-type-b")
+
+        val limited = restTemplate.exchange(
+            "/api/factory/workflows?namespaceId=$namespace&state=active&limit=1",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(limited.statusCode).isEqualTo(HttpStatus.OK)
+        val limitedData = data(limited.body)
+        assertThat((limitedData["items"] as? List<*>)).hasSize(1)
+        assertThat(limitedData["truncated"]).isEqualTo(true)
+
+        // No filter: regression — every workflow of the namespace, not truncated.
+        val unfiltered = restTemplate.exchange(
+            "/api/factory/workflows?namespaceId=$namespace&state=active",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(unfiltered.statusCode).isEqualTo(HttpStatus.OK)
+        val unfilteredData = data(unfiltered.body)
+        assertThat(listIds(unfilteredData)).containsExactlyInAnyOrder("wf-type-a", "wf-type-b")
+        assertThat(unfilteredData["truncated"]).isEqualTo(false)
+
+        // An out-of-range limit is coerced into the [1, 200] contract bound.
+        val coerced = restTemplate.exchange(
+            "/api/factory/workflows?namespaceId=$namespace&state=active&limit=9999",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(coerced.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(listIds(data(coerced.body))).containsExactlyInAnyOrder("wf-type-a", "wf-type-b")
     }
 
     @Test

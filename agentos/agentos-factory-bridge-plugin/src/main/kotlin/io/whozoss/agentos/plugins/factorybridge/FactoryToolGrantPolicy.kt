@@ -18,7 +18,11 @@ import org.pf4j.Extension
  * without an active capability cannot durably record a question either.
  *
  * Every other tool is left untouched ([ToolGrantDecision.Neutral]), matching the SPI's
- * pass-through contract.
+ * pass-through contract. In particular the six Phase 6 read-only Workstream
+ * Agent tools (`get_workstream`, `list_workflows`, `get_workflow`,
+ * `get_step_attempts`, `get_blockers`, `get_required_human_actions`) are
+ * intentionally NOT capability-gated: they are pure reads with no mutation
+ * surface, so no case-scoped capability is required.
  */
 @Extension
 class FactoryToolGrantPolicy

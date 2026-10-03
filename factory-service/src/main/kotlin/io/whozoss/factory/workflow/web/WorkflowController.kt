@@ -90,12 +90,16 @@ class WorkflowController(
     fun list(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestParam(name = "state", required = false) state: String?,
+        @RequestParam(name = "workflowType", required = false) workflowType: String?,
+        @RequestParam(name = "limit", required = false) limit: Int?,
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
         // `namespaceId` is an OPTIONAL filter: absent/blank lists every namespace
         // of the caller's trusted tenant scope.
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId, requireNamespace = false)
-        return WorkflowDataEnvelope(service.listProjections(caller.scope, caller.namespaceId, state ?: "active"))
+        return WorkflowDataEnvelope(
+            service.listProjections(caller.scope, caller.namespaceId, state ?: "active", workflowType, limit),
+        )
     }
 
     @GetMapping(path = ["/{workflowId}"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -437,11 +441,16 @@ class WorkflowController(
     fun listAttempts(
         @PathVariable workflowId: String,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "stepId", required = false) stepId: String?,
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): WorkflowDataEnvelope<List<DurableAgentAttemptDto>> {
         val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
-        val attempts = durableAgentAttemptService.findByWorkflow(caller.scope, caller.namespaceId, workflowId)
-        return WorkflowDataEnvelope(attempts.map { it.toDto() })
+        val attempts = durableAgentAttemptService.findByWorkflow(caller.scope, caller.namespaceId, workflowId).map { it.toDto() }
+        // Optional read-only step filter (Phase 6 Workstream Agent reads): a pure
+        // in-memory filter over the bounded DTO list; an unknown step degrades to
+        // an empty `{ "data": [] }` with HTTP 200, never an error.
+        val stepFilter = stepId?.takeIf { it.isNotBlank() }
+        return WorkflowDataEnvelope(stepFilter?.let { wanted -> attempts.filter { it.stepId == wanted } } ?: attempts)
     }
 
     /**
