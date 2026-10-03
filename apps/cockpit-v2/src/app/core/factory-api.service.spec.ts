@@ -463,4 +463,86 @@ describe('FactoryApiService', () => {
       )
     })
   })
+
+  describe('workflow launch', () => {
+    const startPayload = {
+      workflow: { workflowId: 'wf-1', workflowType: 'adw_simple_sdlc', title: 'Run adw_simple_sdlc', ticket: 'ABC-1' },
+      execution: { namespaceId: 'ns-1', runtimeId: 'factory-dashboard', kind: 'agentos', agentId: 'factory-agent' },
+      controllerRequest: 'Please build the feature',
+    }
+
+    it('startWorkflow posts the payload to the encoded /start route with namespace and correlation id', () => {
+      let result: unknown
+      service.startWorkflow('wf/1 2', startPayload, 'ns-1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1%202/start')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual(startPayload)
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { workflowId: 'wf/1 2', status: 'materialized' } })
+
+      expect(result).toEqual({ workflowId: 'wf/1 2', status: 'materialized' })
+    })
+
+    it('startWorkflow normalizes an identity conflict into a structured error', () => {
+      let error: FactoryApiError | undefined
+      service.startWorkflow('wf-1', startPayload).subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === '/api/factory/workflows/wf-1/start')
+        .flush(
+          { error: { code: 'WORKFLOW_IDENTITY_CONFLICT', message: 'already exists' } },
+          { status: 409, statusText: 'Conflict' }
+        )
+
+      expect(error).toEqual(expect.objectContaining({ code: 'WORKFLOW_IDENTITY_CONFLICT', status: 409 }))
+    })
+
+    it('runWorkflow posts the run payload and unwraps the 202 accepted envelope', () => {
+      let result: { status?: string; submissionId?: string } | undefined
+      service
+        .runWorkflow('wf-1', { namespaceId: 'ns-1', ticket: 'ABC-1', repoRoot: '/repo' }, 'ns-1')
+        .subscribe((r) => {
+          result = r
+        })
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/run')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ namespaceId: 'ns-1', ticket: 'ABC-1', repoRoot: '/repo' })
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush(
+        { data: { status: 'accepted', submissionId: 'sub-1', workflowId: 'wf-1' } },
+        { status: 202, statusText: 'Accepted' }
+      )
+
+      expect(result).toEqual({ status: 'accepted', submissionId: 'sub-1', workflowId: 'wf-1' })
+    })
+
+    it('getNamespaces unwraps a raw array and a { items } payload', () => {
+      let raw: unknown[] | undefined
+      service.getNamespaces().subscribe((items) => (raw = items))
+      http.expectOne((r) => r.url === '/api/namespaces').flush([{ namespaceId: 'ns-1' }])
+      expect(raw).toEqual([{ namespaceId: 'ns-1' }])
+
+      let wrapped: unknown[] | undefined
+      service.getNamespaces().subscribe((items) => (wrapped = items))
+      http.expectOne((r) => r.url === '/api/namespaces').flush({ data: { items: [{ id: 'ns-2' }] } })
+      expect(wrapped).toEqual([{ id: 'ns-2' }])
+    })
+
+    it('getNamespaces degrades gracefully to an empty array on error', () => {
+      let result: unknown[] | undefined
+      service.getNamespaces().subscribe((items) => (result = items))
+
+      http
+        .expectOne((r) => r.url === '/api/namespaces')
+        .flush({ error: { code: 'NOT_FOUND' } }, { status: 404, statusText: 'Not Found' })
+
+      expect(result).toEqual([])
+    })
+  })
 })
