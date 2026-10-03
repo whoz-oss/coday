@@ -1,6 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable, catchError, map, throwError } from 'rxjs'
+import { AllowedAction, GetActionsResponse, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
 
@@ -107,6 +108,114 @@ export class FactoryApiService {
         const nested = obj?.data
         return Array.isArray(nested) ? nested : []
       })
+    )
+  }
+
+  /**
+   * GET `/api/factory/workflows/:id/actions[?namespaceId=…]`.
+   *
+   * Authoritative read of what a governed workflow permits right now. Unwraps
+   * the `{ data: { allowedActions, blockers } }` envelope and defensively
+   * normalizes both lists to arrays so the caller can render conditionally.
+   */
+  getActions(workflowId: string, namespaceId?: string): Observable<GetActionsResponse> {
+    return this.request<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/actions`,
+      {},
+      namespaceId
+    ).pipe(
+      map((payload) => {
+        const obj = (typeof payload === 'object' && payload !== null ? payload : {}) as {
+          allowedActions?: unknown
+          blockers?: unknown
+        }
+        return {
+          allowedActions: Array.isArray(obj.allowedActions) ? (obj.allowedActions as AllowedAction[]) : [],
+          blockers: Array.isArray(obj.blockers) ? (obj.blockers as WorkflowBlocker[]) : [],
+        }
+      })
+    )
+  }
+
+  /**
+   * POST `/api/factory/workflows/:id/interactions/:interactionId/reply`.
+   * `actionId` and `expectedRevision` come from the backend `reply` allowed
+   * action; the cockpit never invents them.
+   */
+  replyInteraction(
+    workflowId: string,
+    interactionId: string,
+    payload: { actionId?: string; text?: string; expectedRevision?: number },
+    namespaceId?: string
+  ): Observable<unknown> {
+    return this.post<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/interactions/${encodeURIComponent(interactionId)}/reply`,
+      payload,
+      namespaceId
+    )
+  }
+
+  /** POST `/api/factory/workflows/:id/retries` (opens a retry for a blocked step). */
+  openRetry(
+    workflowId: string,
+    payload: { stepId: string; expectedRevision?: number; reasonCode?: string },
+    namespaceId?: string
+  ): Observable<unknown> {
+    return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/retries`, payload, namespaceId)
+  }
+
+  /** POST `/api/factory/workflows/:id/attempts/:attemptId/cancel`. */
+  cancelAttempt(
+    workflowId: string,
+    attemptId: string,
+    payload: { expectedRevision?: number; reason?: string },
+    namespaceId?: string
+  ): Observable<unknown> {
+    return this.post<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/attempts/${encodeURIComponent(attemptId)}/cancel`,
+      payload,
+      namespaceId
+    )
+  }
+
+  /** POST `/api/factory/workflows/:id/cost/continue`. */
+  continueCost(
+    workflowId: string,
+    payload?: { expectedThreshold?: number },
+    namespaceId?: string
+  ): Observable<unknown> {
+    return this.post<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/cost/continue`,
+      payload ?? {},
+      namespaceId
+    )
+  }
+
+  /** POST `/api/factory/workflows/:id/cost/stop`. */
+  stopCost(workflowId: string, namespaceId?: string): Observable<unknown> {
+    return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/cost/stop`, {}, namespaceId)
+  }
+
+  /**
+   * Issue a POST request and unwrap the response. Mirrors {@link request}:
+   * an `X-Correlation-Id` is always sent, the optional namespace is threaded
+   * as both the `namespaceId` query param and the `X-Namespace-Id` header, the
+   * `{ data }` envelope is unwrapped and failures are normalized.
+   */
+  private post<T>(path: string, body: unknown, namespaceId?: string, correlationId?: string): Observable<T> {
+    let params = new HttpParams()
+    let headers = new HttpHeaders()
+      .set('X-Correlation-Id', correlationId ?? generateCorrelationId())
+      .set('Content-Type', 'application/json')
+    const namespace = namespaceId?.trim()
+    if (namespace) {
+      headers = headers.set('X-Namespace-Id', namespace)
+      params = params.set('namespaceId', namespace)
+    }
+
+    return this.http.post<unknown>(path, body, { params, headers }).pipe(
+      map((payload) => (isEnvelope(payload) ? (payload.data as T) : (payload as T))),
+      catchError((error: unknown) => throwError(() => normalizeError(error)))
     )
   }
 

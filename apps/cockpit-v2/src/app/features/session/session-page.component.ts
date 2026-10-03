@@ -12,6 +12,7 @@ import { ShellState } from '../../core/shell-state'
 import { DurationPipe, TokensPipe, UsdPipe } from '../../shared/pipes/format.pipes'
 import { MetricChipComponent } from '../../shared/ui/metric-chip.component'
 import { StatusChipComponent } from '../../shared/ui/status-chip.component'
+import { ActionBarComponent, CancelIntent, ReplyIntent, RetryIntent } from './action-bar.component'
 import { AgentTimelineComponent } from './agent-timeline.component'
 import { EventLogComponent } from './event-log.component'
 
@@ -24,6 +25,7 @@ import { EventLogComponent } from './event-log.component'
     MatIconModule,
     StatusChipComponent,
     MetricChipComponent,
+    ActionBarComponent,
     AgentTimelineComponent,
     EventLogComponent,
     UsdPipe,
@@ -65,7 +67,44 @@ export class SessionPageComponent {
     this.selectedBlock.set(b.label)
   }
 
-  protected stop(): void {
-    console.log('stop run', this.effectiveRunId())
+  protected onReply(intent: ReplyIntent): void {
+    const id = this.effectiveRunId()
+    if (!id) return
+    this.store.replyInteraction(id, intent.interactionId, {
+      actionId: intent.actionId,
+      text: intent.text,
+      expectedRevision: intent.expectedRevision,
+    })
+  }
+
+  protected onRetry(intent: RetryIntent): void {
+    const id = this.effectiveRunId()
+    if (!id) return
+    this.store.retry(id, {
+      stepId: intent.stepId,
+      expectedRevision: intent.expectedRevision,
+      reasonCode: intent.reasonCode,
+    })
+  }
+
+  protected onCancelAttempt(intent: CancelIntent): void {
+    const id = this.effectiveRunId()
+    if (!id) return
+    this.store.cancelAttempt(id, intent.attemptId, {
+      expectedRevision: intent.expectedRevision,
+      reason: intent.reason,
+    })
+  }
+
+  protected onContinueCost(): void {
+    const id = this.effectiveRunId()
+    if (!id) return
+    this.store.continueCost(id)
+  }
+
+  protected onStopCost(): void {
+    const id = this.effectiveRunId()
+    if (!id) return
+    this.store.stopCost(id)
   }
 }

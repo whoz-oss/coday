@@ -1,5 +1,8 @@
 import {
   AgentAttempt,
+  AllowedAction,
+  AllowedActionType,
+  BlockerCode,
   HumanInteraction,
   PhaseDetail,
   PhaseSegment,
@@ -12,6 +15,7 @@ import {
   TimelineBlock,
   TimelineLane,
   Tone,
+  WorkflowBlocker,
 } from './models'
 
 /**
@@ -647,6 +651,83 @@ export function extractAttempts(payload: unknown): AgentAttempt[] {
   })
 }
 
+// ---------------------------------------------------------------------------
+// Governed actions & blockers (backend authority)
+// ---------------------------------------------------------------------------
+
+/** Extract a list from a bare array, a `{ [key]: [...] }` block or `items`/`data` wrappers. */
+function asList(payload: unknown, key: string): unknown[] {
+  if (Array.isArray(payload)) return payload
+  const obj = asObject(payload)
+  if (!obj) return []
+  const direct = obj[key]
+  if (Array.isArray(direct)) return direct
+  if (Array.isArray(obj['items'])) return obj['items'] as unknown[]
+  if (Array.isArray(obj['data'])) return obj['data'] as unknown[]
+  return []
+}
+
+/**
+ * Defensively extract `allowedActions` from a `getActions` payload.
+ *
+ * Accepts the normalized `{ allowedActions: [...] }` block, a `{ items }` /
+ * `{ data }` wrapper or a bare array; anything else degrades to `[]`. Entries
+ * without a usable `type` are dropped (an action the cockpit cannot name must
+ * never be rendered), while every identity field is copied verbatim — never
+ * invented.
+ */
+export function extractAllowedActions(payload: unknown): AllowedAction[] {
+  const actions: AllowedAction[] = []
+  for (const item of asList(payload, 'allowedActions')) {
+    const obj = asObject(item)
+    if (!obj) continue
+    const type = getString(obj, 'type')
+    if (!type) continue
+    const action: AllowedAction = { type: type as AllowedActionType }
+    const label = getString(obj, 'label')
+    if (label) action.label = label
+    const interactionId = getString(obj, 'interactionId')
+    if (interactionId) action.interactionId = interactionId
+    const stepId = getString(obj, 'stepId')
+    if (stepId) action.stepId = stepId
+    const attemptId = getString(obj, 'attemptId')
+    if (attemptId) action.attemptId = attemptId
+    const caseId = getString(obj, 'caseId')
+    if (caseId) action.caseId = caseId
+    const questionEventId = getString(obj, 'questionEventId')
+    if (questionEventId) action.questionEventId = questionEventId
+    const expectedRevision = getNumber(obj, 'expectedRevision')
+    if (expectedRevision !== undefined) action.expectedRevision = expectedRevision
+    actions.push(action)
+  }
+  return actions
+}
+
+/**
+ * Defensively extract `blockers` from a `getActions` payload. Accepts the
+ * normalized `{ blockers: [...] }` block, `items`/`data` wrappers or a bare
+ * array; anything else degrades to `[]`. The backend field is `message`; it is
+ * surfaced as {@link WorkflowBlocker.label} too so the UI always has a label.
+ */
+export function extractBlockers(payload: unknown): WorkflowBlocker[] {
+  const blockers: WorkflowBlocker[] = []
+  for (const item of asList(payload, 'blockers')) {
+    const obj = asObject(item)
+    if (!obj) continue
+    const code = getString(obj, 'code') ?? 'UNKNOWN_RUNTIME'
+    const message = getString(obj, 'message')
+    const label = getString(obj, 'label') ?? message ?? getString(obj, 'details') ?? code
+    const blocker: WorkflowBlocker = { code: code as BlockerCode, label }
+    const stepId = getString(obj, 'stepId')
+    if (stepId) blocker.stepId = stepId
+    if (message) blocker.message = message
+    const details = getString(obj, 'details')
+    if (details) blocker.details = details
+    blockers.push(blocker)
+  }
+  return blockers
+}
+
 function pickCurrentAttempt(stepAttempts: AgentAttempt[]): AgentAttempt | undefined {
   if (stepAttempts.length === 0) return undefined
   return stepAttempts.reduce((latest, attempt) => (attempt.attemptNumber >= latest.attemptNumber ? attempt : latest))
@@ -724,7 +805,8 @@ export function mapProjectionToSessionDetail(
   evidence?: unknown,
   metrics?: unknown,
   interactions?: unknown,
-  attempts?: unknown
+  attempts?: unknown,
+  actions?: unknown
 ): SessionDetail {
   const snapshot = asObject(workflow) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
@@ -738,6 +820,8 @@ export function mapProjectionToSessionDetail(
   const evidenceItems = asArray(asObject(evidence)?.['items'])
   const mappedInteractions = extractInteractions(interactions)
   const mappedAttempts = extractAttempts(attempts)
+  const mappedAllowedActions = extractAllowedActions(actions)
+  const mappedBlockers = extractBlockers(actions)
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
@@ -788,5 +872,7 @@ export function mapProjectionToSessionDetail(
     phase: buildPhaseDetail(steps, status, mappedInteractions.length, mappedAttempts),
     interactions: mappedInteractions,
     attempts: mappedAttempts,
+    allowedActions: mappedAllowedActions,
+    blockers: mappedBlockers,
   }
 }
