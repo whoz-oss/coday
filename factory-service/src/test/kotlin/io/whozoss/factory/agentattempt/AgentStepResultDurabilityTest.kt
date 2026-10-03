@@ -294,6 +294,7 @@ class AgentStepResultDurabilityTest {
         val service = AgentStepResultService(
             results,
             Neo4jIdempotencyRepository(context.getBean(SpringDataNeo4jIdempotencyRepository::class.java)),
+            attempts,
             objectMapper,
         )
         return ResultChannelStack(harness, context, service, attempts)

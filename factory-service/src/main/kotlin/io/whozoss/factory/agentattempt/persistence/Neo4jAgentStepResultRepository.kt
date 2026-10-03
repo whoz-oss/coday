@@ -208,6 +208,17 @@ class Neo4jAgentStepResultRepository(
     override fun findByToken(scope: TenantScope, token: String): AgentStepResultCapability? =
         findByTokenHash(scope, CanonicalJsonHash.sha256(token))
 
+    override fun findSubmittedWithNonTerminalAttempt(): List<ScopedSubmittedResult> =
+        results.findSubmittedWithNonTerminalAttempt().map { node ->
+            ScopedSubmittedResult(TenantScope(node.organizationId, node.workstreamId), node.toDomain())
+        }
+
+    override fun findUnredeemedReservedCapabilities(): List<ScopedReservedCapability> =
+        capabilities.findUnredeemedReserved().mapNotNull { node ->
+            runCatching { deserialize(node.payload, AgentStepResultCapability::class.java) }.getOrNull()
+                ?.let { ScopedReservedCapability(TenantScope(node.organizationId, node.workstreamId), it) }
+        }
+
     // ------------------------------------------------------------------
     // Capability / result IO
     // ------------------------------------------------------------------
