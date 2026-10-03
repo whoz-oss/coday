@@ -23,6 +23,26 @@ class AgentAttemptStateMachineTest {
         }
     }
 
+    /**
+     * Req 2 attestation: the transition set is imposed — every `(from, to)`
+     * pair NOT listed in `ALLOWED_TRANSITIONS` is rejected by
+     * [AgentAttemptStatus.canTransitionTo]. This covers the required chain
+     * `pending -> starting -> running -> waiting_human -> succeeded|failed|
+     * indeterminate|interrupted` (with the extra `claiming` hop the real
+     * machine inserts between `pending` and `starting`).
+     */
+    @Test
+    fun `every illegal transition is rejected by canTransitionTo`() {
+        AgentAttemptStatus.entries.forEach { from ->
+            val allowed = AgentAttemptStatus.transitions().getValue(from)
+            AgentAttemptStatus.entries.filter { it !in allowed }.forEach { to ->
+                assertThat(from.canTransitionTo(to))
+                    .describedAs("$from -> $to must be rejected")
+                    .isFalse()
+            }
+        }
+    }
+
     @Test
     fun `succeeded is reachable only from running and waiting_human`() {
         val allowedSources = setOf(AgentAttemptStatus.RUNNING, AgentAttemptStatus.WAITING_HUMAN)

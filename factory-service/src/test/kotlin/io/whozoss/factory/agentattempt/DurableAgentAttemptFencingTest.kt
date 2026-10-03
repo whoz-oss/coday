@@ -193,6 +193,47 @@ class DurableAgentAttemptFencingTest : Neo4jDomainIntegrationTest() {
         assertThat(indeterminate.failureCode).isEqualTo("timeout")
     }
 
+    /**
+     * Req 6 attestation: the observation-timeout path of a RUNNING attempt
+     * finalizes as `indeterminate` (never `succeeded`), and the terminal
+     * `indeterminate` record can never be flipped to `succeeded` afterwards.
+     */
+    @Test
+    fun `a running attempt that times out finalizes as indeterminate and can never flip to succeeded`() {
+        service.register(scope, attempt("attempt-timeout"))
+        claimToRunning("attempt-timeout", "owner-a")
+
+        val indeterminate = service.finalize(
+            scope,
+            namespaceId = NAMESPACE_ID,
+            workflowId = WORKFLOW_ID,
+            stepId = STEP_ID,
+            attemptId = "attempt-timeout",
+            ownerToken = "owner-a",
+            target = AgentAttemptStatus.INDETERMINATE,
+            failureCode = "timeout",
+        )
+        assertThat(indeterminate.status).isEqualTo(AgentAttemptStatus.INDETERMINATE)
+        assertThat(indeterminate.failureCode).isEqualTo("timeout")
+        assertThat(indeterminate.completedAt).isNotNull
+
+        val failure = assertThrows(InvalidAttemptTransitionException::class.java) {
+            service.finalize(
+                scope,
+                namespaceId = NAMESPACE_ID,
+                workflowId = WORKFLOW_ID,
+                stepId = STEP_ID,
+                attemptId = "attempt-timeout",
+                ownerToken = "owner-a",
+                target = AgentAttemptStatus.SUCCEEDED,
+            )
+        }
+        assertThat(failure.errorCode).isEqualTo("ATTEMPT_INVALID_TRANSITION")
+        val persisted = service.find(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, "attempt-timeout")
+        assertThat(persisted!!.status).isEqualTo(AgentAttemptStatus.INDETERMINATE)
+        assertThat(persisted.failureCode).isEqualTo("timeout")
+    }
+
     @Test
     fun `re-registering the same attemptId creates no duplicate and preserves the live state`() {
         service.register(scope, attempt("attempt-idem"))
