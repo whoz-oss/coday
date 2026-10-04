@@ -242,6 +242,96 @@ describe('FactoryApiService', () => {
     })
   })
 
+  describe('workflow lifecycle endpoints (remove, restore, purge)', () => {
+    it('removeWorkflow sends a DELETE to the encoded route with namespace and correlation id', () => {
+      let result: unknown
+      service.removeWorkflow('wf/1 2', 'ns/1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1%202')
+      expect(request.request.method).toBe('DELETE')
+      expect(request.request.params.get('namespaceId')).toBe('ns/1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns/1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { status: 'removed', workflowId: 'wf/1 2' } })
+
+      expect(result).toEqual({ status: 'removed', workflowId: 'wf/1 2' })
+    })
+
+    it('removeWorkflow omits the namespace when none is given', () => {
+      service.removeWorkflow('wf-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1')
+      expect(request.request.method).toBe('DELETE')
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      expect(request.request.headers.has('X-Namespace-Id')).toBe(false)
+      request.flush({ data: { status: 'removed' } })
+    })
+
+    it('removeWorkflow normalizes HTTP failures into a structured error', () => {
+      let error: FactoryApiError | undefined
+      service.removeWorkflow('missing').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === '/api/factory/workflows/missing')
+        .flush({ error: { code: 'WORKFLOW_NOT_FOUND' } }, { status: 404, statusText: 'Not Found' })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'WORKFLOW_NOT_FOUND', status: 404 }))
+    })
+
+    it('restoreWorkflow posts an empty body to the encoded /restore route', () => {
+      let result: unknown
+      service.restoreWorkflow('wf/1 2', 'ns/1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1%202/restore')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({})
+      expect(request.request.params.get('namespaceId')).toBe('ns/1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns/1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { status: 'active' } })
+
+      expect(result).toEqual({ status: 'active' })
+    })
+
+    it('restoreWorkflow omits the namespace and normalizes failures', () => {
+      let error: FactoryApiError | undefined
+      service.restoreWorkflow('wf-1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/restore')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      request.flush({ error: { code: 'WORKFLOW_NOT_REMOVED' } }, { status: 409, statusText: 'Conflict' })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'WORKFLOW_NOT_REMOVED', status: 409 }))
+    })
+
+    it('purgeWorkflow posts an empty body to the encoded /purge route', () => {
+      let result: unknown
+      service.purgeWorkflow('wf/1 2', 'ns/1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1%202/purge')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({})
+      expect(request.request.params.get('namespaceId')).toBe('ns/1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns/1')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      request.flush({ data: { status: 'purged' } })
+
+      expect(result).toEqual({ status: 'purged' })
+    })
+
+    it('purgeWorkflow omits the namespace and normalizes failures', () => {
+      let error: FactoryApiError | undefined
+      service.purgeWorkflow('wf-1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/purge')
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      request.flush({ error: { code: 'FORBIDDEN_ADMIN_REQUIRED' } }, { status: 403, statusText: 'Forbidden' })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'FORBIDDEN_ADMIN_REQUIRED', status: 403 }))
+    })
+  })
+
   describe('governed action POSTs', () => {
     it('replyInteraction posts to the reply route with the payload, namespace and correlation id', () => {
       let result: unknown
