@@ -85,9 +85,17 @@
     <footer class="actions">
       <button mat-flat-button class="sf-primary" (click)="action.emit('ask')">Demander à Archay…</button>
       <button mat-stroked-button class="sf-secondary" (click)="action.emit('workflow')">Lancer un workflow…</button>
+      @if (canStop) {
+        <button mat-stroked-button class="sf-secondary" (click)="action.emit('stop')">Arrêter</button>
+      }
       <button mat-button class="sf-ghost" (click)="action.emit('conversation')">Conversation</button>
       <button mat-button class="sf-ghost" (click)="action.emit('log')">Log</button>
       <button mat-button class="sf-ghost" (click)="action.emit('commits')">Récupérer les commits</button>
+      <button mat-stroked-button class="sf-danger" (click)="action.emit('remove')">Supprimer</button>
+    </footer>
+  } @else {
+    <footer class="actions">
+      <button mat-stroked-button class="sf-secondary" (click)="action.emit('restore')">Restaurer</button>
     </footer>
   }
 </mat-card>
