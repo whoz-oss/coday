@@ -36,9 +36,7 @@ export class ShellComponent {
 
   protected readonly nav: NavItem[] = [
     { label: 'Sandboxes', icon: 'grid_view', link: '/sandboxes' },
-    { label: 'Sessions', icon: 'monitoring', link: '/sessions/872641a8' },
     { label: 'Historique', icon: 'history', link: '/historique' },
     { label: 'Workflows', icon: 'account_tree', link: '/workflows' },
-    { label: 'Agents', icon: 'smart_toy', link: '/agents' },
   ]
 }
