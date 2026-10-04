@@ -552,6 +552,78 @@ describe('FactoryApiService', () => {
         expect.objectContaining({ code: 'FORBIDDEN_ADMIN_REQUIRED', message: 'admin only', status: 403 })
       )
     })
+
+    it('getWorkflowDefinition issues a GET on the encoded type/version route and sends a correlation id', () => {
+      let result: unknown
+      service.getWorkflowDefinition('my/wf', 'v 1').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflow-definitions/my%2Fwf/v%201')
+      expect(request.request.method).toBe('GET')
+      expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      expect(request.request.headers.has('X-Namespace-Id')).toBe(false)
+      request.flush({
+        data: {
+          schemaVersion: '1',
+          workflowType: 'my/wf',
+          version: 'v 1',
+          title: 'My Workflow',
+          steps: [{ id: 'build', name: 'Build', responsibility: { kind: 'agent', name: 'builder' } }],
+        },
+      })
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          workflowType: 'my/wf',
+          version: 'v 1',
+          title: 'My Workflow',
+          steps: [{ id: 'build', name: 'Build', responsibility: { kind: 'agent', name: 'builder' } }],
+        })
+      )
+    })
+
+    it('getWorkflowDefinition forwards the namespace and unwraps a direct (non-enveloped) object', () => {
+      let result: unknown
+      service.getWorkflowDefinition('t', 'v1', '  ns-42  ').subscribe((r) => (result = r))
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflow-definitions/t/v1')
+      expect(request.request.params.get('namespaceId')).toBe('ns-42')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-42')
+      request.flush({ workflowType: 't', version: 'v1', steps: [] })
+
+      expect(result).toEqual({ workflowType: 't', version: 'v1', steps: [] })
+    })
+
+    it('getWorkflowDefinition defensively unwraps a double-wrapped envelope', () => {
+      let result: unknown
+      service.getWorkflowDefinition('t', 'v1').subscribe((r) => (result = r))
+
+      http
+        .expectOne((r) => r.url === '/api/factory/workflow-definitions/t/v1')
+        .flush({ data: { data: { workflowType: 't', version: 'v1', steps: [] } } })
+
+      expect(result).toEqual({ workflowType: 't', version: 'v1', steps: [] })
+    })
+
+    it('getWorkflowDefinition degrades to an empty object for a malformed payload', () => {
+      let result: unknown
+      service.getWorkflowDefinition('t', 'v1').subscribe((r) => (result = r))
+
+      http.expectOne((r) => r.url === '/api/factory/workflow-definitions/t/v1').flush(null)
+
+      expect(result).toEqual({})
+    })
+
+    it('getWorkflowDefinition normalizes HTTP failures into a structured error', () => {
+      let error: FactoryApiError | undefined
+      service.getWorkflowDefinition('missing', 'v1').subscribe({ error: (e: FactoryApiError) => (error = e) })
+
+      http
+        .expectOne((r) => r.url === '/api/factory/workflow-definitions/missing/v1')
+        .flush({ error: { code: 'WORKFLOW_DEFINITION_NOT_FOUND' } }, { status: 404, statusText: 'Not Found' })
+
+      expect(error).toEqual(expect.objectContaining({ code: 'WORKFLOW_DEFINITION_NOT_FOUND', status: 404 }))
+    })
   })
 
   describe('workflow launch', () => {

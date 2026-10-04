@@ -29,8 +29,11 @@ export const routes: Routes = [
   },
   {
     path: 'workflows',
+    loadComponent: () => import('./features/workflows/workflows-page.component').then((m) => m.WorkflowsPageComponent),
+  },
+  {
+    path: 'reglages',
     loadComponent: () => import('./features/admin/admin-page.component').then((m) => m.AdminPageComponent),
   },
-  { path: 'reglages', redirectTo: 'workflows', pathMatch: 'full' },
   { path: '**', redirectTo: 'sandboxes' },
 ]
