@@ -289,6 +289,21 @@ export class FactoryApiService {
     return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/cost/stop`, {}, namespaceId)
   }
 
+  /** DELETE `/api/factory/workflows/:id` — soft-removes a workflow. */
+  removeWorkflow(workflowId: string, namespaceId?: string): Observable<unknown> {
+    return this.delete<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, namespaceId)
+  }
+
+  /** POST `/api/factory/workflows/:id/restore` — restores a removed workflow. */
+  restoreWorkflow(workflowId: string, namespaceId?: string): Observable<unknown> {
+    return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/restore`, {}, namespaceId)
+  }
+
+  /** POST `/api/factory/workflows/:id/purge` — permanently purges a removed workflow. */
+  purgeWorkflow(workflowId: string, namespaceId?: string): Observable<unknown> {
+    return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/purge`, {}, namespaceId)
+  }
+
   /** POST `/api/factory/admin/artifacts/gc` (admin-only garbage collection). */
   runGarbageCollection(body?: { dryRun?: boolean }, namespaceId?: string): Observable<unknown> {
     return this.post<unknown>('/api/factory/admin/artifacts/gc', body ?? {}, namespaceId)

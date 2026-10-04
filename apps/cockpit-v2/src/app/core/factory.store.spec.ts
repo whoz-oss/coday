@@ -88,10 +88,15 @@ describe('FactoryStore', () => {
 
   afterEach(() => http.verify())
 
-  function flushInitialWorkflows(items: unknown[] = []): void {
-    http
-      .expectOne((r) => r.url === '/api/factory/workflows')
-      .flush({ data: { namespaceId: '', state: 'active', items } })
+  function flushInitialWorkflows(items: unknown[] = [], removed: unknown[] = []): void {
+    const activeRequest = http.expectOne(
+      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active'
+    )
+    const removedRequest = http.expectOne(
+      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed'
+    )
+    activeRequest.flush({ data: { namespaceId: '', state: 'active', items } })
+    removedRequest.flush({ data: { namespaceId: '', state: 'removed', items: removed } })
   }
 
   function flushEnrichment(
@@ -353,7 +358,10 @@ describe('FactoryStore', () => {
 
   it('degrades to an empty list (never the mock fleet) when the REST backend fails', () => {
     http
-      .expectOne((r) => r.url === '/api/factory/workflows')
+      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
+      .flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
+    http
+      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
       .flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
 
     expect(store.sandboxes()).toEqual([])
@@ -488,5 +496,166 @@ describe('FactoryStore', () => {
     request.flush({ data: { ok: true } })
 
     flushInitialWorkflows([])
+  })
+
+  // ---------------------------------------------------------------------------
+  // Removed workflows → destroyed sandboxes
+  // ---------------------------------------------------------------------------
+
+  it('merges active and removed workflows, mapping removed ones to destroyed sandboxes', () => {
+    const removed = {
+      ...snapshot,
+      workflowId: 'wf-removed',
+      relations: { rootWorkflowId: 'wf-removed', ticket: 'ABC-9' },
+      projection: { ...snapshot.projection, title: 'Removed workflow', status: 'removed' },
+    }
+    flushInitialWorkflows([snapshot], [removed])
+    flushEnrichment()
+
+    expect(store.sandboxes()).toHaveLength(2)
+    expect(store.activeSandboxes()).toHaveLength(1)
+    expect(store.destroyedSandboxes()).toHaveLength(1)
+    const [destroyed] = store.destroyedSandboxes()
+    expect(destroyed?.name).toBe('wf-removed')
+    expect(destroyed?.status).toBe('destroyed')
+    // `visibleSandboxes`/`showDestroyed` remain the ONLY visibility filter.
+    expect(store.visibleSandboxes()).toEqual(store.activeSandboxes())
+    store.showDestroyed.set(true)
+    expect(store.visibleSandboxes()).toHaveLength(2)
+  })
+
+  it('keeps active sandboxes when the removed fetch fails (partial degradation)', () => {
+    http
+      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
+      .flush({ data: { namespaceId: '', state: 'active', items: [snapshot] } })
+    http
+      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    flushEnrichment()
+
+    expect(store.activeSandboxes()).toHaveLength(1)
+    expect(store.destroyedSandboxes()).toEqual([])
+  })
+
+  // ---------------------------------------------------------------------------
+  // stop / remove / restore governed actions
+  // ---------------------------------------------------------------------------
+
+  it('stop cancels the active attempt resolved from the cancel_attempt allowed action', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      { workflowId: 'wf-1', data: [] },
+      { allowedActions: [{ type: 'cancel_attempt', attemptId: 'a-1', expectedRevision: 5 }], blockers: [] }
+    )
+
+    store.stop('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-1/cancel')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({ expectedRevision: 5, reason: 'stop' })
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { ok: true } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('stop resolves the attempt and revision from a real running attempt', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      {
+        workflowId: 'wf-1',
+        data: [
+          {
+            attemptId: 'a-9',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'builder',
+            status: 'running',
+            caseId: 'case-9',
+            revision: 3,
+          },
+        ],
+      },
+      { allowedActions: [], blockers: [] }
+    )
+
+    store.stop('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-9/cancel')
+    expect(request.request.body).toEqual({ expectedRevision: 3, reason: 'stop' })
+    request.flush({ data: { ok: true } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('stop does nothing (never fabricates) when no active attempt is resolvable', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.stop('wf-1')
+
+    http.expectNone((r) => r.url.includes('/cancel'))
+    // No reload is triggered either: the state is left untouched.
+    http.expectNone((r) => r.url === '/api/factory/workflows')
+  })
+
+  it('remove deletes the workflow, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.remove('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1')
+    expect(request.request.method).toBe('DELETE')
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { status: 'removed' } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('remove degrades silently on failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.remove('wf-1')
+
+    http
+      .expectOne((r) => r.url === '/api/factory/workflows/wf-1')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    // No reload on failure: state is untouched.
+    http.expectNone((r) => r.url === '/api/factory/workflows')
+  })
+
+  it('restore posts to /restore, then refetches the authoritative state', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.restore('wf-1')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/restore')
+    expect(request.request.method).toBe('POST')
+    expect(request.request.body).toEqual({})
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
+    request.flush({ data: { status: 'active' } })
+
+    flushInitialWorkflows([])
+  })
+
+  it('restore degrades silently on failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    store.restore('wf-1')
+
+    http
+      .expectOne((r) => r.url === '/api/factory/workflows/wf-1/restore')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+
+    http.expectNone((r) => r.url === '/api/factory/workflows')
   })
 })
