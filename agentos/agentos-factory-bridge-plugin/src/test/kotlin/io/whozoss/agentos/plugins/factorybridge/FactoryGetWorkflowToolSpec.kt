@@ -181,33 +181,34 @@ class FactoryGetWorkflowToolSpec : StringSpec({
         }
     }
 
-    "tool plugin exposes the full FACTORY capability set and is config-less" {
-        val plugin = FactoryToolPlugin { FactoryTestFixtures.services() }
-        plugin.integrationType shouldBe "FACTORY"
-        plugin.configSchema shouldBe null
+    "workstream tool plugin exposes exactly the six Workstream reads and registers in the catalog" {
+        val plugin = FactoryWorkstreamToolPlugin { FactoryTestFixtures.services() }
+        plugin.integrationType shouldBe "FACTORY_WORKSTREAM"
+        // Non-null empty-object schema: the plugin appears in the standard integration catalog.
+        (plugin.configSchema != null) shouldBe true
         plugin
             .provideTools(null, null, ToolContext(UUID.randomUUID(), null, null, emptyList()))
             .map { it.name }
             .shouldContainExactly(
-                "FACTORY__get_workflow",
-                "FACTORY__get_workstream",
-                "FACTORY__list_workflows",
-                "FACTORY__get_step_attempts",
-                "FACTORY__get_blockers",
-                "FACTORY__get_required_human_actions",
-                "FACTORY__provision_environment",
-                "FACTORY__start_workflow",
-                "FACTORY__record_agent_result",
-                "FACTORY__record_artifact",
-                "FACTORY__submit_step_result",
-                "FACTORY__ask_step_question",
-                "FACTORY__request_human_decision",
-                "FACTORY__request_transition",
-                "FACTORY__request_agent_retry",
-                "FACTORY__interrupt_attempt",
-                "FACTORY__propose_plan_change",
-                "FACTORY__transition_workflow",
-                "FACTORY__publish_projection",
+                "FACTORY_WORKSTREAM__get_workflow",
+                "FACTORY_WORKSTREAM__get_workstream",
+                "FACTORY_WORKSTREAM__list_workflows",
+                "FACTORY_WORKSTREAM__get_step_attempts",
+                "FACTORY_WORKSTREAM__get_blockers",
+                "FACTORY_WORKSTREAM__get_required_human_actions",
+            )
+    }
+
+    "worker tool plugin exposes exactly the two worker tools and registers in the catalog" {
+        val plugin = FactoryWorkerToolPlugin { FactoryTestFixtures.services() }
+        plugin.integrationType shouldBe "FACTORY_WORKER"
+        (plugin.configSchema != null) shouldBe true
+        plugin
+            .provideTools(null, null, ToolContext(UUID.randomUUID(), null, null, emptyList()))
+            .map { it.name }
+            .shouldContainExactly(
+                "FACTORY_WORKER__submit_step_result",
+                "FACTORY_WORKER__ask_step_question",
             )
     }
 })

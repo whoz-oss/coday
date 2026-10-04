@@ -1,5 +1,7 @@
 package io.whozoss.agentos.plugins.factorybridge
 
+import io.whozoss.agentos.sdk.tool.StandardTool
+
 /**
  * Shared test fixtures for the Factory Bridge plugin.
  *
@@ -17,4 +19,12 @@ internal object FactoryTestFixtures {
         FactoryBridgeServices.create(
             FactoryBridgeConfig(baseUrl = baseUrl, runtimeId = runtimeId, dataDir = dataDir, secret = secret),
         )
+
+    /** Tools exposed by [FactoryWorkstreamToolPlugin] against a fake Factory [baseUrl]. */
+    fun workstreamTools(baseUrl: String = "http://localhost:8141"): List<StandardTool<*>> =
+        FactoryWorkstreamToolPlugin { services(baseUrl) }.provideTools(null, null, null)
+
+    /** Tools exposed by [FactoryWorkerToolPlugin] against a fake Factory [baseUrl]. */
+    fun workerTools(baseUrl: String = "http://localhost:8141"): List<StandardTool<*>> =
+        FactoryWorkerToolPlugin { services(baseUrl) }.provideTools(null, null, null)
 }
