@@ -169,6 +169,72 @@ paths:
               schema:
                 type: object
                 additionalProperties: {}
+  /api/factory/workstreams/{workstreamId}/controller-case:
+    get:
+      tags:
+      - workstreams
+      summary: Read the active controller case of the caller's trusted workstream.
+      operationId: activeControllerCaseWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseResponse"
+    post:
+      tags:
+      - workstreams
+      summary: Start the first controller case of the caller's trusted workstream.
+      operationId: startControllerCaseWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartControllerCaseRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseResponse"
+  /api/factory/workstreams/{workstreamId}/controller-case/compact:
+    post:
+      tags:
+      - workstreams
+      summary: Compact / renew the controller case of the caller's trusted workstream.
+      operationId: compactControllerCaseWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompactControllerCaseRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseResponse"
   /api/factory/workflows/{workflowId}/transitions:
     post:
       tags:
@@ -1609,6 +1675,57 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/WorkstreamProjectionResponse"
+  /api/factory/workstreams/{workstreamId}/controller-case/history:
+    get:
+      tags:
+      - workstreams
+      summary: List the controller case history (active + archived) of the caller's
+        trusted workstream.
+      operationId: controllerCaseHistoryWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseHistoryResponse"
+  /api/factory/workstreams/{workstreamId}/controller-case/context:
+    get:
+      tags:
+      - workstreams
+      summary: Preview the bounded controller resumption context package of the caller's
+        trusted workstream.
+      operationId: controllerCaseContextWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerResumptionPackage"
   /api/factory/workflows:
     get:
       tags:
@@ -1627,6 +1744,17 @@ paths:
         required: false
         schema:
           type: string
+      - name: workflowType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
       responses:
         "200":
           description: OK
@@ -1809,6 +1937,11 @@ paths:
         schema:
           type: string
       - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: stepId
         in: query
         required: false
         schema:
@@ -2008,6 +2141,47 @@ components:
           items:
             type: string
         governancePolicyRef:
+          type: string
+    StartControllerCaseRequest:
+      type: object
+      properties:
+        caseId:
+          type: string
+    ControllerCaseResponse:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        caseId:
+          type: string
+        controllerAgentRef:
+          type: string
+        status:
+          type: string
+        sequence:
+          type: integer
+          format: int32
+        startedAt:
+          type: string
+        archivedAt:
+          type: string
+        compactionReason:
+          type: string
+        contextRevision:
+          type: string
+      required:
+      - caseId
+      - controllerAgentRef
+      - sequence
+      - startedAt
+      - status
+      - workstreamId
+    CompactControllerCaseRequest:
+      type: object
+      properties:
+        caseId:
+          type: string
+        compactionReason:
           type: string
     OracleRunRequest:
       type: object
@@ -2811,6 +2985,143 @@ components:
       - count
       - items
       - truncated
+    ControllerCaseHistoryResponse:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        activeCaseId:
+          type: string
+        cases:
+          type: array
+          items:
+            $ref: "#/components/schemas/ControllerCaseResponse"
+      required:
+      - cases
+      - workstreamId
+    ContextBlocker:
+      type: object
+      properties:
+        kind:
+          type: string
+        refId:
+          type: string
+        workflowId:
+          type: string
+      required:
+      - kind
+      - refId
+    ContextChange:
+      type: object
+      properties:
+        kind:
+          type: string
+        refId:
+          type: string
+        workflowId:
+          type: string
+        timestamp:
+          type: string
+      required:
+      - kind
+      - refId
+      - timestamp
+    ContextHumanAction:
+      type: object
+      properties:
+        interactionId:
+          type: string
+        workflowId:
+          type: string
+        interactionType:
+          type: string
+        status:
+          type: string
+      required:
+      - interactionId
+      - workflowId
+    ContextWorkflow:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        workflowType:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+      required:
+      - workflowId
+    ControllerContextCounts:
+      type: object
+      properties:
+        activeWorkflows:
+          type: integer
+          format: int32
+        running:
+          type: integer
+          format: int32
+        waitingHuman:
+          type: integer
+          format: int32
+        blocked:
+          type: integer
+          format: int32
+        attempts:
+          type: integer
+          format: int32
+        humanActions:
+          type: integer
+          format: int32
+        failedOracles:
+          type: integer
+          format: int32
+        environments:
+          type: integer
+          format: int32
+      required:
+      - activeWorkflows
+      - attempts
+      - blocked
+      - environments
+      - failedOracles
+      - humanActions
+      - running
+      - waitingHuman
+    ControllerResumptionPackage:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        sourceRevision:
+          type: string
+        counts:
+          $ref: "#/components/schemas/ControllerContextCounts"
+        activeWorkflows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextWorkflow"
+        openHumanInteractions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextHumanAction"
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextBlocker"
+        recentChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextChange"
+      required:
+      - activeWorkflows
+      - blockers
+      - counts
+      - openHumanInteractions
+      - recentChanges
+      - sourceRevision
+      - workstreamId
     DurableAgentAttemptDto:
       type: object
       properties:
@@ -2850,6 +3161,10 @@ components:
         completedAt:
           type: string
           format: date-time
+        terminal:
+          type: boolean
+        sealingClass:
+          type: string
       required:
       - agentName
       - attemptId
@@ -2857,8 +3172,10 @@ components:
       - caseId
       - createdAt
       - revision
+      - sealingClass
       - status
       - stepId
+      - terminal
     WorkflowDataEnvelopeListDurableAgentAttemptDto:
       type: object
       properties:
