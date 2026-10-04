@@ -97,13 +97,4 @@ class FactoryRecordEvidenceToolSpec : StringSpec({
         val malformed = execute(200, "bad")
         malformed.errorType shouldBe "MALFORMED_FACTORY_RESPONSE"
     }
-
-    "grants are exact independent and near capabilities are refused" {
-        val grant = FactoryTestFixtures.grantService()
-        val context = ToolContext(UUID.randomUUID(), null, null, emptyList())
-        grant.grantTools(context, mapOf("FACTORY" to listOf("record_agent_result"))).map { it.name } shouldBe listOf("FACTORY__record_agent_result")
-        grant.grantTools(context, mapOf("FACTORY" to listOf("record_artifact"))).map { it.name } shouldBe listOf("FACTORY__record_artifact")
-        grant.grantTools(context, mapOf("FACTORY" to listOf("record_artifacts"))).isEmpty() shouldBe true
-        grant.grantTools(context, null).isEmpty() shouldBe true
-    }
 })

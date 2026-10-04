@@ -4,7 +4,6 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.sun.net.httpserver.HttpServer
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import io.whozoss.agentos.plugins.factorybridge.FactoryTestFixtures
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -17,8 +16,8 @@ import java.util.UUID
 /**
  * Phase 7 command tools: `FACTORY__request_agent_retry`, `FACTORY__interrupt_attempt`,
  * `FACTORY__propose_plan_change` — schema strictness, exact wire payload, trusted
- * identity headers, standardized success output (status / revision / reasonCode /
- * interactionId|proposalId / allowedActions) and grant-service wiring.
+ * identity headers and standardized success output (status / revision / reasonCode /
+ * interactionId|proposalId / allowedActions).
  */
 class FactoryCommandToolsTest : StringSpec({
     val mapper = jacksonObjectMapper()
@@ -396,71 +395,5 @@ class FactoryCommandToolsTest : StringSpec({
         tool.execute(input, context(agent = null)).errorType shouldBe "AGENT_CONTEXT_UNAVAILABLE"
         tool.execute(input, context(actor = null)).errorType shouldBe "USER_CONTEXT_UNAVAILABLE"
         tool.execute(null, context()).errorType shouldBe "INVALID_PLAN_CHANGE_PROPOSAL"
-    }
-
-    // ----- grant service ------------------------------------------------------
-
-    "grant service wires the phase 7 command tools explicitly" {
-        val grant = FactoryTestFixtures.grantService()
-        val toolContext = ToolContext(UUID.randomUUID(), null, null, emptyList())
-        grant
-            .grantTools(toolContext, mapOf("FACTORY" to listOf("request_agent_retry", "interrupt_attempt", "propose_plan_change")))
-            .map { it.name } shouldBe
-            listOf("FACTORY__request_agent_retry", "FACTORY__interrupt_attempt", "FACTORY__propose_plan_change")
-        grant
-            .grantTools(toolContext, mapOf("FACTORY" to listOf("FACTORY__request_agent_retry")))
-            .map { it.name } shouldBe listOf("FACTORY__request_agent_retry")
-    }
-
-    "workstream agent allowlist never grants worker or authority tools" {
-        val grant = FactoryTestFixtures.grantService()
-        val toolContext = ToolContext(UUID.randomUUID(), null, null, emptyList())
-        val granted =
-            grant
-                .grantTools(
-                    toolContext,
-                    mapOf(
-                        "FACTORY" to
-                            listOf(
-                                "get_workflow",
-                                "get_workstream",
-                                "list_workflows",
-                                "get_step_attempts",
-                                "get_blockers",
-                                "get_required_human_actions",
-                                "request_human_decision",
-                                "propose_plan_change",
-                                "request_agent_retry",
-                            ),
-                    ),
-                ).map { it.name }
-        granted.toSet() shouldBe
-            setOf(
-                "FACTORY__get_workflow",
-                "FACTORY__get_workstream",
-                "FACTORY__list_workflows",
-                "FACTORY__get_step_attempts",
-                "FACTORY__get_blockers",
-                "FACTORY__get_required_human_actions",
-                "FACTORY__request_human_decision",
-                "FACTORY__propose_plan_change",
-                "FACTORY__request_agent_retry",
-            )
-        listOf(
-            "FACTORY__submit_step_result",
-            "FACTORY__ask_step_question",
-            "FACTORY__start_workflow",
-            "FACTORY__request_transition",
-            "FACTORY__interrupt_attempt",
-        ).forEach { granted.contains(it) shouldBe false }
-    }
-
-    "absent empty or unknown allowlist grants nothing" {
-        val grant = FactoryTestFixtures.grantService()
-        val toolContext = ToolContext(UUID.randomUUID(), null, null, emptyList())
-        grant.grantTools(toolContext, null).isEmpty() shouldBe true
-        grant.grantTools(toolContext, mapOf("FACTORY" to emptyList())).isEmpty() shouldBe true
-        grant.grantTools(toolContext, mapOf("OTHER" to listOf("request_agent_retry"))).isEmpty() shouldBe true
-        grant.grantTools(toolContext, mapOf("FACTORY" to listOf("request_agent_retries"))).isEmpty() shouldBe true
     }
 })

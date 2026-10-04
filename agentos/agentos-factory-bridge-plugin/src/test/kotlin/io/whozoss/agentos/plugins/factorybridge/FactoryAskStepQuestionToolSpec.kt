@@ -80,14 +80,4 @@ class FactoryAskStepQuestionToolSpec : StringSpec({
         result.success shouldBe false
         result.errorType shouldBe "FACTORY_QUESTION_CONTEXT_MISSING"
     }
-
-    "ask_step_question is grantable only as an explicit worker capability" {
-        val grantService = FactoryToolGrantService { emptyList() }
-        grantService.isGranted(mapOf("FACTORY" to listOf("ask_step_question"))) shouldBe true
-        grantService.isGranted(mapOf("FACTORY" to listOf("FACTORY__ask_step_question"))) shouldBe true
-        // Absence of an explicit grant grants nothing (explicit-only policy).
-        grantService.isGranted(mapOf("FACTORY" to emptyList())) shouldBe false
-        grantService.isGranted(emptyMap()) shouldBe false
-        grantService.isGranted(null) shouldBe false
-    }
 })

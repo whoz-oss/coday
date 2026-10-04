@@ -137,14 +137,4 @@ class FactoryRequestTransitionToolSpec : StringSpec({
         call(409, """{"error":{"code":"PASS_EVIDENCE_REQUIRED","message":"matching pass required"}}""").errorType shouldBe "PASS_EVIDENCE_REQUIRED"
         call(200, "bad").errorType shouldBe "MALFORMED_FACTORY_RESPONSE"
     }
-
-    "grant is exact close capability refused and absent grant grants nothing" {
-        val grant = FactoryTestFixtures.grantService()
-        val toolContext = ToolContext(UUID.randomUUID(), null, null, emptyList())
-        grant.grantTools(toolContext, mapOf("FACTORY" to listOf("request_transition"))).map { it.name } shouldBe
-            listOf("FACTORY__request_transition")
-        grant.grantTools(toolContext, mapOf("FACTORY" to listOf("request_transitions"))).isEmpty() shouldBe true
-        grant.grantTools(toolContext, null).isEmpty() shouldBe true
-        grant.grantTools(toolContext, mapOf("FACTORY" to emptyList())).isEmpty() shouldBe true
-    }
 })

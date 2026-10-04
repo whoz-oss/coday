@@ -75,11 +75,4 @@ class FactoryStartWorkflowToolSpec : StringSpec({
         tool.parseResponse(409, """{"error":{"code":"WORKFLOW_REMOVED","message":"removed"}}""").errorType shouldBe "WORKFLOW_REMOVED"
         tool.parseResponse(200, "bad").errorType shouldBe "MALFORMED_FACTORY_RESPONSE"
     }
-
-    "capability filtering is exact" {
-        val grant = FactoryTestFixtures.grantService()
-        val context = ToolContext(UUID.randomUUID(), null, null, emptyList())
-        grant.grantTools(context, mapOf("FACTORY" to listOf("start_workflow"))).map { it.name } shouldBe listOf("FACTORY__start_workflow")
-        grant.grantTools(context, mapOf("FACTORY" to listOf("start_workflow_extra"))).isEmpty() shouldBe true
-    }
 })

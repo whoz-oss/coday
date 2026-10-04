@@ -65,8 +65,8 @@ internal fun buildFactoryTools(services: FactoryBridgeServices): List<StandardTo
 /**
  * Tool provider for the `FACTORY` integration.
  *
- * Config-less by design: agents must explicitly grant each FACTORY capability
- * (see [FactoryToolGrantService]), and all identities are derived from the trusted
+ * Config-less by design: agents must explicitly allowlist each FACTORY capability
+ * through the standard resolver flow, and all identities are derived from the trusted
  * [ToolContext] rather than from model-authored input.
  */
 @Extension

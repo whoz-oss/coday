@@ -59,16 +59,6 @@ class FactoryGetWorkflowToolSpec : StringSpec({
         tool.parseResponse("wf-1", 200, """{"data":{"workflowId":"wf-1","state":"unknown"}}""").errorType shouldBe "MALFORMED_FACTORY_RESPONSE"
     }
 
-    "grant filtering exposes only declared Factory capabilities" {
-        val grant = FactoryTestFixtures.grantService()
-        val context = ToolContext(UUID.randomUUID(), null, null, emptyList(), "agent")
-        grant.grantTools(context, mapOf("FACTORY" to listOf("get_workflow"))).map { it.name } shouldBe listOf("FACTORY__get_workflow")
-        grant.grantTools(context, mapOf("FACTORY" to listOf("publish_projection"))).map { it.name } shouldBe listOf("FACTORY__publish_projection")
-        grant.grantTools(context, mapOf("FACTORY" to listOf("get_workflow", "publish_projection"))).map { it.name }.toSet() shouldBe
-            setOf("FACTORY__get_workflow", "FACTORY__publish_projection")
-        grant.grantTools(context, mapOf("FACTORY" to emptyList())).isEmpty() shouldBe true
-    }
-
     "existing read merges Factory-calculated allowed actions blockers attempts and summarized evidence" {
         val requestedPaths = mutableListOf<String>()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -180,24 +170,10 @@ class FactoryGetWorkflowToolSpec : StringSpec({
         }
     }
 
-    "read-only grant set exposes exactly the six Workstream Agent reads and stays Neutral in the grant policy" {
-        val grant = FactoryTestFixtures.grantService()
+    "read-only Workstream reads are intentionally not capability-gated and stay Neutral in the grant policy" {
         val context = ToolContext(UUID.randomUUID(), null, null, emptyList(), "agent")
         val readSuffixes =
             listOf("get_workstream", "list_workflows", "get_workflow", "get_step_attempts", "get_blockers", "get_required_human_actions")
-        grant.grantTools(context, mapOf("FACTORY" to readSuffixes)).map { it.name }.toSet() shouldBe
-            setOf(
-                "FACTORY__get_workstream",
-                "FACTORY__list_workflows",
-                "FACTORY__get_workflow",
-                "FACTORY__get_step_attempts",
-                "FACTORY__get_blockers",
-                "FACTORY__get_required_human_actions",
-            )
-        // A worker suffix never appears alongside the read set unless explicitly listed.
-        grant.grantTools(context, mapOf("FACTORY" to readSuffixes)).map { it.name }
-            .none { it in setOf("FACTORY__submit_step_result", "FACTORY__ask_step_question", "FACTORY__record_agent_result", "FACTORY__record_artifact", "FACTORY__request_transition", "FACTORY__transition_workflow", "FACTORY__start_workflow", "FACTORY__provision_environment", "FACTORY__request_human_decision", "FACTORY__publish_projection") } shouldBe true
-        grant.grantTools(context, mapOf("FACTORY" to emptyList())).isEmpty() shouldBe true
         // The read tools are intentionally not capability-gated: the policy stays Neutral.
         val policy = FactoryToolGrantPolicy { FactoryTestFixtures.services() }
         readSuffixes.forEach { suffix ->

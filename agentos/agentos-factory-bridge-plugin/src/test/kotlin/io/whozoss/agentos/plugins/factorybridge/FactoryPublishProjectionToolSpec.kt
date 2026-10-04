@@ -142,12 +142,4 @@ class FactoryPublishProjectionToolSpec : StringSpec({
             )
         tool.execute(input(), context).errorType shouldBe "CASE_CONTEXT_UNAVAILABLE"
     }
-
-    "grant is explicit and resolves exact tool name" {
-        val grant = FactoryTestFixtures.grantService()
-        grant.isGranted(null) shouldBe false
-        grant.isGranted(mapOf("FACTORY" to emptyList())) shouldBe false
-        grant.isGranted(mapOf("FACTORY" to listOf("publish_projection"))) shouldBe true
-        grant.grantTools(ToolContext(UUID.randomUUID(), null, null, emptyList())).single().name shouldBe "FACTORY__publish_projection"
-    }
 })
