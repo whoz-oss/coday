@@ -26,7 +26,7 @@ class FactoryGetRequiredHumanActionsTool(
 ) : StandardTool<FactoryGetRequiredHumanActionsTool.Input> {
     data class Input(val workflowId: String)
 
-    override val name = "FACTORY__get_required_human_actions"
+    override val name = "FACTORY_WORKSTREAM__get_required_human_actions"
     override val description =
         "List the pending human decisions of a Factory workflow that the current actor is authorized to answer " +
             "(Factory-calculated reply actions only). Read-only."

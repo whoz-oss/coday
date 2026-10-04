@@ -39,7 +39,7 @@ class FactorySubmitStepResultTool(
         val findings: List<Finding> = emptyList(),
     )
 
-    override val name = "FACTORY__submit_step_result"
+    override val name = "FACTORY_WORKER__submit_step_result"
     override val description = "Submit the authoritative structured result for this Factory step attempt. Attempt identity is injected by the runtime."
     override val version = "1.0.0"
     override val paramType = Input::class.java

@@ -32,7 +32,7 @@ class FactoryGetWorkflowTool(
 ) : StandardTool<FactoryGetWorkflowTool.Input> {
     data class Input(val workflowId: String)
 
-    override val name = "FACTORY__get_workflow"
+    override val name = "FACTORY_WORKSTREAM__get_workflow"
     override val description =
         "Read the authoritative namespace-scoped state of a Factory workflow: current revision, steps, " +
             "Factory-calculated allowed actions and blockers, bounded attempts and summarized evidence. Read-only."

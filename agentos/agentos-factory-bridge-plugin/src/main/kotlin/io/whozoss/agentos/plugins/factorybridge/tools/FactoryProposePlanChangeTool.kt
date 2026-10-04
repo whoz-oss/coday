@@ -23,6 +23,10 @@ import java.net.URLEncoder
  * exposed in the schema) and the execution identity travels via `x-factory-*` trust
  * headers; the controller fails closed when the trust context is incomplete.
  */
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryProposePlanChangeTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,

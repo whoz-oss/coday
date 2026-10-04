@@ -25,6 +25,10 @@ import java.net.URLEncoder
  * path references and the command payload. The cancel endpoint rejects any body key
  * outside `namespaceId|expectedRevision|reason`.
  */
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryInterruptAttemptTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,

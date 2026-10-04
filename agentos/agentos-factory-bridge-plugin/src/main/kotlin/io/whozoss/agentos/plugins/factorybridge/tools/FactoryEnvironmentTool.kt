@@ -13,6 +13,10 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
 /** Factory-owned provisioning. No repository root or destination is accepted from the model. */
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryProvisionEnvironmentTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,

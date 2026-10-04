@@ -7,6 +7,10 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import okhttp3.OkHttpClient
 
 /** Compatibility alias for the ProductEngineer contract. */
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryTransitionWorkflowTool(
     baseUrl: String,
     httpClient: OkHttpClient,

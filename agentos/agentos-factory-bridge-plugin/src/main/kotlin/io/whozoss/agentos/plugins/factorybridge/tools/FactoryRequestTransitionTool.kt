@@ -13,6 +13,10 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryRequestTransitionTool(
     private val baseUrl: String,
     private val http: OkHttpClient,

@@ -37,7 +37,7 @@ class FactoryListWorkflowsTool(
         val cursor: String? = null,
     )
 
-    override val name = "FACTORY__list_workflows"
+    override val name = "FACTORY_WORKSTREAM__list_workflows"
     override val description =
         "List the Factory workflow projections of the trusted namespace with bounded filters " +
             "(state, workflowType) and mandatory pagination (limit/cursor). Read-only."

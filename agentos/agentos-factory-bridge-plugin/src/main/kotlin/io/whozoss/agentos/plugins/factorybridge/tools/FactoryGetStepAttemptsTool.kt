@@ -26,7 +26,7 @@ class FactoryGetStepAttemptsTool(
 ) : StandardTool<FactoryGetStepAttemptsTool.Input> {
     data class Input(val workflowId: String, val stepId: String)
 
-    override val name = "FACTORY__get_step_attempts"
+    override val name = "FACTORY_WORKSTREAM__get_step_attempts"
     override val description =
         "List the bounded, secret-free durable execution attempts of one Factory workflow step " +
             "(status, agentName, case, timestamps, failureCode, evidence refs). Read-only."

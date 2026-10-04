@@ -24,7 +24,7 @@ class FactoryGetBlockersTool(
 ) : StandardTool<FactoryGetBlockersTool.Input> {
     data class Input(val workflowId: String)
 
-    override val name = "FACTORY__get_blockers"
+    override val name = "FACTORY_WORKSTREAM__get_blockers"
     override val description =
         "List the active blockers of a Factory workflow (human gates, failed verification, blocked steps, " +
             "indeterminate runtime) as calculated by the Factory. Read-only."

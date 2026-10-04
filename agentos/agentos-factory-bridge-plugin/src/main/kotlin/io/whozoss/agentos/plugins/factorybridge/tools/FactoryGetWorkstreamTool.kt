@@ -25,7 +25,7 @@ class FactoryGetWorkstreamTool(
 ) : StandardTool<FactoryGetWorkstreamTool.Input> {
     data class Input(val workstreamId: String)
 
-    override val name = "FACTORY__get_workstream"
+    override val name = "FACTORY_WORKSTREAM__get_workstream"
     override val description =
         "Read the bounded aggregated projection of a Factory workstream: identity and revision, active workflows, " +
             "aggregated step states, pending human decisions and the main blockers. Read-only."

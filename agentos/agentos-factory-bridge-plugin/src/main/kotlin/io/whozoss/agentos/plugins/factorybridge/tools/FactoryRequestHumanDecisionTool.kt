@@ -27,6 +27,10 @@ import java.util.concurrent.ConcurrentHashMap
  * the awaiter (throws — never returns a success result), so no standardized success
  * JSON is ever emitted. Error paths carry the stable bridge/Factory codes verbatim.
  */
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryRequestHumanDecisionTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,

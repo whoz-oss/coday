@@ -93,6 +93,10 @@ abstract class FactoryRecordEvidenceTool<T : Any>(
     ) = ToolExecutionResult.error(message, errorType = code, errorMessage = message)
 }
 
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryRecordAgentResultTool(
     baseUrl: String,
     http: OkHttpClient,
@@ -123,6 +127,10 @@ class FactoryRecordAgentResultTool(
         """{"type":"object","additionalProperties":false,"properties":{"workflowId":{"type":"string"},"stepId":{"type":"string"},"outcome":{"enum":["pass","fail","indeterminate"]},"facts":{"type":"object","additionalProperties":false,"properties":{"resultCode":{"type":"string"},"category":{"type":"string"},"attempt":{"type":"integer"},"durationMs":{"type":"integer"},"itemCount":{"type":"integer"}}},"idempotencyKey":{"type":"string","maxLength":128}},"required":["workflowId","stepId","facts"]}"""
 }
 
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryRecordArtifactTool(
     baseUrl: String,
     http: OkHttpClient,

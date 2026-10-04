@@ -24,6 +24,10 @@ import java.net.URLEncoder
  * and carried via `x-factory-*` trust headers plus the accepted body `namespaceId`
  * hint. The retries endpoint rejects any other body key.
  */
+@Deprecated(
+    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryRequestAgentRetryTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,

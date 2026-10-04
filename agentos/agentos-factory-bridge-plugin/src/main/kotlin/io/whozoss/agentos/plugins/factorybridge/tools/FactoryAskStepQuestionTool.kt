@@ -14,7 +14,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.security.MessageDigest
 
 /**
- * `FACTORY__ask_step_question` — the WORKER tool of the Phase 4
+ * `FACTORY_WORKER__ask_step_question` — the WORKER tool of the Phase 4
  * ask-step-question channel.
  *
  * ## Design decision (why a dedicated tool)
@@ -58,7 +58,7 @@ class FactoryAskStepQuestionTool(
         val recipientRole: String? = null,
     )
 
-    override val name = "FACTORY__ask_step_question"
+    override val name = "FACTORY_WORKER__ask_step_question"
     override val description =
         "Ask a durable human question for this Factory step attempt and park it until a human answers. " +
             "Attempt identity is injected by the runtime; the call returns as soon as the question is recorded."
