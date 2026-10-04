@@ -11,12 +11,12 @@ The Workstream Agent is granted **exactly** the six read-only Factory tools:
 
 | Tool | Purpose |
 |---|---|
-| `FACTORY__get_workstream` | Bounded aggregated projection of a workstream: identity and revision, active workflows, aggregated step states, pending human decisions, main blockers. |
-| `FACTORY__list_workflows` | Bounded, paginated list of workflow projections (`state`, `workflowType`, `limit`/`cursor` — pagination is mandatory). |
-| `FACTORY__get_workflow` | One workflow: current revision, steps, Factory-calculated `allowedActions` and `blockers`, bounded attempts and summarized evidence. |
-| `FACTORY__get_step_attempts` | Durable execution attempts of one step: status, agent name, case, timestamps, failure code, evidence references. |
-| `FACTORY__get_blockers` | Active blockers of one workflow (human gates, failed verification, blocked steps, indeterminate runtime). |
-| `FACTORY__get_required_human_actions` | Pending human decisions the current actor is authorized to answer. |
+| `FACTORY_WORKSTREAM__get_workstream` | Bounded aggregated projection of a workstream: identity and revision, active workflows, aggregated step states, pending human decisions, main blockers. |
+| `FACTORY_WORKSTREAM__list_workflows` | Bounded, paginated list of workflow projections (`state`, `workflowType`, `limit`/`cursor` — pagination is mandatory). |
+| `FACTORY_WORKSTREAM__get_workflow` | One workflow: current revision, steps, Factory-calculated `allowedActions` and `blockers`, bounded attempts and summarized evidence. |
+| `FACTORY_WORKSTREAM__get_step_attempts` | Durable execution attempts of one step: status, agent name, case, timestamps, failure code, evidence references. |
+| `FACTORY_WORKSTREAM__get_blockers` | Active blockers of one workflow (human gates, failed verification, blocked steps, indeterminate runtime). |
+| `FACTORY_WORKSTREAM__get_required_human_actions` | Pending human decisions the current actor is authorized to answer. |
 
 These tools are **read-only by construction**. The Workstream Agent is never
 granted worker or command capabilities (step-result submission, step questions,

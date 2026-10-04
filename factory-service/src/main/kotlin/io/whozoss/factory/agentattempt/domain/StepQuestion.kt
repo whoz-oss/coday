@@ -8,7 +8,7 @@ import java.time.Instant
  * (Phase 4 ask-step-question).
  *
  * A [StepQuestion] is the validated payload of the dedicated
- * `FACTORY__ask_step_question` worker tool, submitted to
+ * `FACTORY_WORKER__ask_step_question` worker tool, submitted to
  * `POST /api/factory/agent-step-questions`. It is deliberately NOT a member of
  * [AgentStepResultStatus]: asking a question is not a terminal business verdict
  * (`PASS`/`FAIL`), so it must not consume the single-use result capability nor

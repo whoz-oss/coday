@@ -175,10 +175,10 @@ class FactoryBridgeExtensionsSpec : StringSpec({
                 "Worker",
             )
 
-        val denied = policy.evaluateToolGrant("Worker", "FACTORY__submit_step_result", context)
+        val denied = policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context)
         denied.shouldBeInstanceOf<ToolGrantDecision.Deny>()
 
-        policy.evaluateToolGrant("Worker", "FACTORY__get_workflow", context) shouldBe ToolGrantDecision.Neutral
+        policy.evaluateToolGrant("Worker", "FACTORY_WORKSTREAM__get_workflow", context) shouldBe ToolGrantDecision.Neutral
 
         services.stepResultBindings.bind(
             FactoryStepResultBinding(
@@ -191,7 +191,7 @@ class FactoryBridgeExtensionsSpec : StringSpec({
                 Instant.now().plusSeconds(60),
             ),
         )
-        policy.evaluateToolGrant("Worker", "FACTORY__submit_step_result", context) shouldBe ToolGrantDecision.Neutral
+        policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context) shouldBe ToolGrantDecision.Neutral
     }
 
     "tool grant policy stays neutral for unrelated tools when bridge lookup fails" {
@@ -221,7 +221,7 @@ class FactoryBridgeExtensionsSpec : StringSpec({
                 "Worker",
             )
 
-        val decision = policy.evaluateToolGrant("Worker", "FACTORY__submit_step_result", context)
+        val decision = policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context)
         decision.shouldBeInstanceOf<ToolGrantDecision.Deny>()
         (decision as ToolGrantDecision.Deny).reason shouldBe "Factory result capability could not be verified"
     }

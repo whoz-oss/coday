@@ -170,22 +170,29 @@ class FactoryGetWorkflowToolSpec : StringSpec({
         }
     }
 
-    "read-only Workstream reads are intentionally not capability-gated and stay Neutral in the grant policy" {
+    "workstream plugin exposes exactly the six reads and they stay Neutral in the grant policy" {
         val context = ToolContext(UUID.randomUUID(), null, null, emptyList(), "agent")
         val readSuffixes =
             listOf("get_workstream", "list_workflows", "get_workflow", "get_step_attempts", "get_blockers", "get_required_human_actions")
+        // The workstream plugin provides exactly the six reads — no worker or command tool leaks in.
+        FactoryTestFixtures.workstreamTools().map { it.name }.toSet() shouldBe
+            readSuffixes.map { "FACTORY_WORKSTREAM__$it" }.toSet()
         // The read tools are intentionally not capability-gated: the policy stays Neutral.
         val policy = FactoryToolGrantPolicy { FactoryTestFixtures.services() }
         readSuffixes.forEach { suffix ->
-            policy.evaluateToolGrant("agent", "FACTORY__$suffix", context) shouldBe io.whozoss.agentos.sdk.spi.ToolGrantDecision.Neutral
+            policy.evaluateToolGrant("agent", "FACTORY_WORKSTREAM__$suffix", context) shouldBe io.whozoss.agentos.sdk.spi.ToolGrantDecision.Neutral
         }
+        // The worker tools live exclusively on the worker plugin.
+        FactoryTestFixtures.workerTools().map { it.name }.toSet() shouldBe
+            setOf("FACTORY_WORKER__submit_step_result", "FACTORY_WORKER__ask_step_question")
     }
 
     "workstream tool plugin exposes exactly the six Workstream reads and registers in the catalog" {
         val plugin = FactoryWorkstreamToolPlugin { FactoryTestFixtures.services() }
         plugin.integrationType shouldBe "FACTORY_WORKSTREAM"
         // Non-null empty-object schema: the plugin appears in the standard integration catalog.
-        (plugin.configSchema != null) shouldBe true
+        plugin.configSchema.path("type").asText() shouldBe "object"
+        plugin.configSchema.path("properties").size() shouldBe 0
         plugin
             .provideTools(null, null, ToolContext(UUID.randomUUID(), null, null, emptyList()))
             .map { it.name }
@@ -202,7 +209,8 @@ class FactoryGetWorkflowToolSpec : StringSpec({
     "worker tool plugin exposes exactly the two worker tools and registers in the catalog" {
         val plugin = FactoryWorkerToolPlugin { FactoryTestFixtures.services() }
         plugin.integrationType shouldBe "FACTORY_WORKER"
-        (plugin.configSchema != null) shouldBe true
+        plugin.configSchema.path("type").asText() shouldBe "object"
+        plugin.configSchema.path("properties").size() shouldBe 0
         plugin
             .provideTools(null, null, ToolContext(UUID.randomUUID(), null, null, emptyList()))
             .map { it.name }

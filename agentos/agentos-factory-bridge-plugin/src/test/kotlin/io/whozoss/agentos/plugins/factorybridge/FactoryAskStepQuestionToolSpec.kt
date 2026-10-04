@@ -15,7 +15,7 @@ import java.util.UUID
 
 /** Source-only contract scenarios. Execution is deliberately left to the maintainer. */
 class FactoryAskStepQuestionToolSpec : StringSpec({
-    "tool is the dedicated FACTORY__ask_step_question worker capability" {
+    "tool is the dedicated FACTORY_WORKER__ask_step_question worker capability" {
         val tool =
             FactoryAskStepQuestionTool(
                 "http://127.0.0.1:8141",
@@ -23,7 +23,7 @@ class FactoryAskStepQuestionToolSpec : StringSpec({
                 jacksonObjectMapper(),
                 FactoryStepResultBindingRegistry(),
             )
-        tool.name shouldBe "FACTORY__ask_step_question"
+        tool.name shouldBe "FACTORY_WORKER__ask_step_question"
         tool.version shouldBe "1.0.0"
         tool.description shouldContain "human question"
     }

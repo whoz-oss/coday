@@ -59,7 +59,7 @@ data class AgentStepQuestionAnswered(
  * ## Design decision (Requirement 2)
  * This is a DEDICATED channel — a capability-bound
  * `POST /api/factory/agent-step-questions` endpoint served here, plus the
- * `FACTORY__ask_step_question` worker tool — deliberately NOT an overload of
+ * `FACTORY_WORKER__ask_step_question` worker tool — deliberately NOT an overload of
  * the structured step result. A `PASS`/`FAIL` result is a terminal business
  * verdict guarded by a single-use capability budget; asking a question is not
  * a verdict and must neither consume the result capability nor terminalize

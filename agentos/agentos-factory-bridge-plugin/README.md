@@ -12,12 +12,20 @@ marks **restart-safe**.
 
 | Extension point (`agentos-sdk`) | Implementation |
 |---|---|
-| `ToolPlugin` | `FactoryToolPlugin` (`FACTORY` integration: submit step result, request human decision, provision environment, …) |
+| `ToolPlugin` | `FactoryWorkstreamToolPlugin` (`FACTORY_WORKSTREAM` integration: the six read-only Workstream tools `FACTORY_WORKSTREAM__*`) |
+| `ToolPlugin` | `FactoryWorkerToolPlugin` (`FACTORY_WORKER` integration: `FACTORY_WORKER__submit_step_result`, `FACTORY_WORKER__ask_step_question`) |
 | `AnswerInterceptor` | `FactoryAnswerInterceptor` (submits the user decision to the Factory checkpoint) |
 | `CaseLifecycleObserver` | `FactoryCaseLifecycleObserver` (invalidates a binding + checkpoint on a terminal case) |
 | `ExternalExecutionContextProvider` | `FactoryExternalExecutionContextProvider` (injects `capabilityToken` / `attemptId` / `runtimeId`) |
-| `ToolGrantPolicy` | `FactoryToolGrantPolicy` (gates `FACTORY__*` tools on an active binding) |
+| `ToolGrantPolicy` | `FactoryToolGrantPolicy` (gates the `FACTORY_WORKER__*` tools on an active binding, fail-closed) |
 | `ExternalContextBindingRegistrar` | `FactoryBindingRegistrar` (host transport → durable step-result binding) |
+
+Both `ToolPlugin` extensions live in this single JAR and share every bridge service
+(HTTP client, bindings, config, SSE listeners, state store) through
+`FactoryBridgePluginHolder`. Both declare an empty-object `configSchema`, so they appear
+in the standard integration catalog and resolve through the ordinary
+`ToolResolverService` flow. The retired config-less `FACTORY` plugin and its migration
+path are documented in [docs/factory-trust-boundary-migration.md](docs/factory-trust-boundary-migration.md).
 
 ## Packaging & load
 
@@ -100,7 +108,7 @@ The AgentOS host owns the HTTP transport, the plugin owns the trust decision:
    empty `{}`.
 
 If the Factory does not send an agent name, the binding is stored with the wildcard agent
-`*`, so the case agent can still redeem the capability (`FACTORY__submit_step_result`).
+`*`, so the case agent can still redeem the capability (`FACTORY_WORKER__submit_step_result`).
 
 ## Tests
 
