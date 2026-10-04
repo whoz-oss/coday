@@ -73,7 +73,7 @@
   <!-- Sandboxes -->
   <section class="cards" aria-label="Sandboxes">
     @for (s of store.visibleSandboxes(); track s.name) {
-      <sf-sandbox-card [sandbox]="s" (action)="onAction(s.name, $event)" />
+      <sf-sandbox-card [sandbox]="s" (action)="onAction(s.run?.id ?? s.name, $event)" />
     } @empty {
       <p class="empty sf-panel sf-muted">Aucun workflow actif.</p>
     }
