@@ -2,7 +2,7 @@
   <header class="page-head">
     <div class="titles">
       <h1>Historique des sandboxes</h1>
-      <p class="sf-muted">Toutes les sandboxes, actives et détruites, avec leur dernier run et leur coût final.</p>
+      <p class="sf-muted">Runs terminés, arrêtés et détruits, avec leur coût et phases</p>
     </div>
     <button mat-stroked-button class="sf-secondary" (click)="exportCsv()">
       <mat-icon>download</mat-icon>Exporter CSV
@@ -23,9 +23,9 @@
     </mat-form-field>
 
     <mat-chip-listbox aria-label="Filtrer par statut" [value]="status()" (change)="status.set($event.value ?? 'all')">
-      <mat-chip-option value="all">Toutes · {{ counts().all }}</mat-chip-option>
-      <mat-chip-option value="working">Au travail · {{ counts().working }}</mat-chip-option>
-      <mat-chip-option value="destroyed">Détruites · {{ counts().destroyed }}</mat-chip-option>
+      <mat-chip-option value="all">Tous · {{ counts().all }}</mat-chip-option>
+      <mat-chip-option value="working">En cours · {{ counts().working }}</mat-chip-option>
+      <mat-chip-option value="destroyed">Terminés / Arrêtés · {{ counts().destroyed }}</mat-chip-option>
     </mat-chip-listbox>
 
     <span class="sf-spacer"></span>
@@ -66,9 +66,9 @@
         <th mat-header-cell *matHeaderCellDef mat-sort-header>Statut</th>
         <td mat-cell *matCellDef="let r">
           @if (r.status === 'destroyed') {
-            <sf-status-chip tone="neutral" size="sm" dot>détruite</sf-status-chip>
+            <sf-status-chip tone="neutral" size="sm" dot>terminé / arrêté</sf-status-chip>
           } @else {
-            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>au travail</sf-status-chip>
+            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>en cours</sf-status-chip>
           }
         </td>
       </ng-container>
