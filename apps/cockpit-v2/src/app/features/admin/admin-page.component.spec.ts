@@ -80,7 +80,7 @@ describe('AdminPageComponent', () => {
     const api = createApi({ getWorkflowDefinitions: jest.fn().mockReturnValue(of(definitions)) })
     const { host } = await setup(api)
 
-    expect(TestBed.inject(ShellState).crumbs()).toEqual([{ label: 'Gouvernance des artefacts' }])
+    expect(TestBed.inject(ShellState).crumbs()).toEqual([{ label: 'Workflows' }])
     expect(api.getWorkflowDefinitions).toHaveBeenCalledTimes(1)
     expect(host.querySelector('[data-admin-gc]')).not.toBeNull()
     expect(host.querySelector('[data-admin-purge]')).not.toBeNull()

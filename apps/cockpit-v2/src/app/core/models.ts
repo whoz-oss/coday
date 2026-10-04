@@ -287,6 +287,18 @@ export interface SessionDetail {
    */
   attempts?: AgentAttempt[]
   /**
+   * Attempt id the cockpit may cancel right now, resolved from real state
+   * (a `cancel_attempt` allowed action, else a running attempt). Absent when no
+   * active attempt is resolvable: the stop action is then unavailable and the
+   * cockpit must never fabricate an id.
+   */
+  activeAttemptId?: string
+  /**
+   * Revision the cancel command must be fenced on for {@link activeAttemptId},
+   * taken verbatim from the backend. Undefined when the backend exposes none.
+   */
+  activeAttemptRevision?: number
+  /**
    * Actions the backend explicitly authorizes from the current state (see
    * `GET /api/factory/workflows/:id/actions`). The cockpit renders an action
    * button ONLY when it is present here. Absent/empty means nothing is allowed.

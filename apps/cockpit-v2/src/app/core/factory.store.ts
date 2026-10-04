@@ -1,5 +1,5 @@
 import { Injectable, computed, inject, signal } from '@angular/core'
-import { Subscription } from 'rxjs'
+import { Subscription, catchError, forkJoin, of } from 'rxjs'
 import { FactoryApiService } from './factory-api.service'
 import { mapProjectionToRunSummary, mapProjectionToSessionDetail, namespaceOf, workflowIdOf } from './mappers'
 import {
@@ -100,12 +100,18 @@ export class FactoryStore {
 
   /** Re-fetch the active workflow projections and re-derive the state. */
   private load(): void {
-    this.api.getWorkflows('active').subscribe({
-      next: (items) => this.applyWorkflows(items),
+    // Fetch active AND removed workflow snapshots concurrently. Inner
+    // `catchError`s mean a partial backend failure (e.g. the removed endpoint is
+    // unavailable) still yields the other half instead of breaking the load.
+    forkJoin({
+      active: this.api.getWorkflows('active').pipe(catchError(() => of([] as unknown[]))),
+      removed: this.api.getWorkflows('removed').pipe(catchError(() => of([] as unknown[]))),
+    }).subscribe({
+      next: ({ active, removed }) => this.applyWorkflows(active, removed),
       error: () => {
         // Graceful degradation: the backend is unavailable, so there is no real
-        // active workflow to show. Clear everything instead of crashing or
-        // falling back onto fabricated mock data.
+        // workflow to show. Clear everything instead of crashing or falling
+        // back onto fabricated mock data.
         this.workflows.set([])
         this.sandboxes.set([])
         this.sessions.set(new Map())
@@ -114,12 +120,19 @@ export class FactoryStore {
     })
   }
 
-  private applyWorkflows(items: unknown[]): void {
-    const snapshots = Array.isArray(items) ? items : []
+  private applyWorkflows(activeItems: unknown[], removedItems: unknown[]): void {
+    const active = Array.isArray(activeItems) ? activeItems : []
+    const removed = Array.isArray(removedItems) ? removedItems : []
+    const snapshots = [...active, ...removed]
     this.workflows.set(snapshots)
     this.enrichment.clear()
-    // Derive one sandbox card per real active workflow snapshot.
-    this.sandboxes.set(snapshots.map((snapshot) => this.toSandbox(snapshot)))
+
+    // Derive one sandbox card per real workflow snapshot. Removed snapshots are
+    // surfaced as destroyed sandboxes; `showDestroyed`/`visibleSandboxes` remain
+    // the ONLY visibility filter.
+    const activeSandboxes = active.map((snapshot) => this.toSandbox(snapshot))
+    const destroyedSandboxes = removed.map((snapshot) => this.toSandbox(snapshot, 'destroyed'))
+    this.sandboxes.set([...activeSandboxes, ...destroyedSandboxes])
 
     const sessionMap = new Map<string, SessionDetail>()
     for (const snapshot of snapshots) {
@@ -128,16 +141,16 @@ export class FactoryStore {
     }
     this.sessions.set(sessionMap)
 
-    // Enrich each session asynchronously with timing/evidence/metrics. Failures
-    // are per-workflow and rolled back silently to the projection-only detail.
-    for (const snapshot of snapshots) this.enrichSession(snapshot)
+    // Enrich active runs only: removed workflows have no live backend surface to
+    // enrich (and their session keeps the projection-only detail).
+    for (const snapshot of active) this.enrichSession(snapshot)
   }
 
   /**
    * Map one real active workflow snapshot onto a displayable {@link Sandbox}.
    * Every field comes from the snapshot/relations; nothing is fabricated.
    */
-  private toSandbox(snapshot: unknown): Sandbox {
+  private toSandbox(snapshot: unknown, forcedStatus?: SandboxStatus): Sandbox {
     const run = mapProjectionToRunSummary(snapshot)
     const obj = asRecord(snapshot)
     const projection = asRecord(obj?.['projection']) ?? obj
@@ -154,7 +167,7 @@ export class FactoryStore {
     const sandbox: Sandbox = {
       name,
       project: namespace ?? ticket ?? 'coday',
-      status: deriveSandboxStatus(state, run.status),
+      status: forcedStatus ?? deriveSandboxStatus(state, run.status),
       run,
     }
     if (namespace) sandbox.namespace = namespace
@@ -275,6 +288,35 @@ export class FactoryStore {
   stopCost(workflowId: string, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
     this.api.stopCost(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
+  }
+
+  /**
+   * Cancel the workflow's real active attempt, then re-fetch the authoritative
+   * state. The attempt id and its expected revision are resolved SOLELY from the
+   * loaded backend state (`allowedActions` first, then a running attempt). When
+   * no active attempt is resolvable the action is unavailable and nothing is
+   * sent: the cockpit never fabricates an id or a revision.
+   */
+  stop(workflowId: string, namespaceId?: string): void {
+    const session = this.sessions().get(workflowId)
+    const attemptId = session?.activeAttemptId
+    if (!attemptId) return
+    const expectedRevision = session?.activeAttemptRevision
+    const payload: { expectedRevision?: number; reason?: string } = { reason: 'stop' }
+    if (expectedRevision !== undefined) payload.expectedRevision = expectedRevision
+    this.cancelAttempt(workflowId, attemptId, payload, namespaceId)
+  }
+
+  /** Soft-remove a workflow, then re-fetch the authoritative state. */
+  remove(workflowId: string, namespaceId?: string): void {
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    this.api.removeWorkflow(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
+  }
+
+  /** Restore a removed workflow, then re-fetch the authoritative state. */
+  restore(workflowId: string, namespaceId?: string): void {
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    this.api.restoreWorkflow(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
   }
 
   /** Replace the run attached to a sandbox once its real cost is known. */

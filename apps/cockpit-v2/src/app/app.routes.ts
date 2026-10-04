@@ -28,8 +28,9 @@ export const routes: Routes = [
     loadComponent: () => import('./features/history/history-page.component').then((m) => m.HistoryPageComponent),
   },
   {
-    path: 'reglages',
+    path: 'workflows',
     loadComponent: () => import('./features/admin/admin-page.component').then((m) => m.AdminPageComponent),
   },
+  { path: 'reglages', redirectTo: 'workflows', pathMatch: 'full' },
   { path: '**', redirectTo: 'sandboxes' },
 ]

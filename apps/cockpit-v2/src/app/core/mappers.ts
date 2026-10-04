@@ -985,6 +985,16 @@ export function mapProjectionToSessionDetail(
   const mappedAllowedActions = extractAllowedActions(actions)
   const mappedBlockers = extractBlockers(actions)
 
+  // The active attempt the cockpit may cancel is resolved ONLY from real state:
+  // a backend `cancel_attempt` allowed action (authoritative), else a running
+  // attempt carrying a real `attemptId`. Never fabricate an id or revision.
+  const cancelAttemptAction = mappedAllowedActions.find(
+    (action) => action.type === 'cancel_attempt' && action.attemptId !== undefined
+  )
+  const runningAttempt = mappedAttempts.find((attempt) => attempt.status === 'running')
+  const activeAttemptId = cancelAttemptAction?.attemptId ?? runningAttempt?.attemptId
+  const activeAttemptRevision = cancelAttemptAction?.expectedRevision ?? runningAttempt?.revision
+
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const lanes = mapProjectionToLanes(snapshot, timing)
@@ -1036,5 +1046,7 @@ export function mapProjectionToSessionDetail(
     attempts: mappedAttempts,
     allowedActions: mappedAllowedActions,
     blockers: mappedBlockers,
+    ...(activeAttemptId !== undefined ? { activeAttemptId } : {}),
+    ...(activeAttemptRevision !== undefined ? { activeAttemptRevision } : {}),
   }
 }
