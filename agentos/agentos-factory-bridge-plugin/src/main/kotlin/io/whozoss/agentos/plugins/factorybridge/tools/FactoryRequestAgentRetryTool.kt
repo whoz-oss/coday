@@ -24,10 +24,6 @@ import java.net.URLEncoder
  * and carried via `x-factory-*` trust headers plus the accepted body `namespaceId`
  * hint. The retries endpoint rejects any other body key.
  */
-@Deprecated(
-    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
-    level = DeprecationLevel.WARNING,
-)
 class FactoryRequestAgentRetryTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,
@@ -42,7 +38,7 @@ class FactoryRequestAgentRetryTool(
         val idempotencyKey: String? = null,
     )
 
-    override val name = "FACTORY__request_agent_retry"
+    override val name = "FACTORY_WORKSTREAM__request_agent_retry"
     override val description =
         "Request a governed retry of a blocked workflow step. This only opens a retry request subject to " +
             "budgets, revision fencing and human approval — the agent never decides the retry itself."

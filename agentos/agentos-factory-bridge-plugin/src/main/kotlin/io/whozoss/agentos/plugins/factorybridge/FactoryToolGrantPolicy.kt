@@ -18,11 +18,14 @@ import org.pf4j.Extension
  * without an active capability cannot durably record a question either.
  *
  * Every other tool is left untouched ([ToolGrantDecision.Neutral]), matching the SPI's
- * pass-through contract. In particular the six read-only Workstream tools
+ * pass-through contract. In particular the eight Workstream tools — the six read-only views
  * (`FACTORY_WORKSTREAM__get_workstream`, `__list_workflows`, `__get_workflow`,
- * `__get_step_attempts`, `__get_blockers`, `__get_required_human_actions`) are
- * intentionally NOT capability-gated: they are pure reads with no mutation
- * surface, so no case-scoped capability is required.
+ * `__get_step_attempts`, `__get_blockers`, `__get_required_human_actions`) plus the two
+ * boundary request commands (`FACTORY_WORKSTREAM__start_workflow`,
+ * `FACTORY_WORKSTREAM__request_agent_retry`) — are intentionally NOT capability-gated: they
+ * are Workstream tools, not worker step result/question callbacks bound to an attempt
+ * capability. Governed authority for retry stays with the Factory (pending-human under the
+ * revision fence), so no case-scoped capability is required.
  *
  * Fail-closed: having the `FACTORY_WORKER` plugin enabled in an `AgentConfig` is NOT
  * sufficient to submit a result or ask a question outside an active attempt binding —

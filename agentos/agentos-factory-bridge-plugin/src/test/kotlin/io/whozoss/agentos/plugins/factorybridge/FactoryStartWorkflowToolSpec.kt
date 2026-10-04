@@ -36,6 +36,7 @@ class FactoryStartWorkflowToolSpec : StringSpec({
         server.start()
         try {
             val tool = FactoryStartWorkflowTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, "runtime-configured")
+            tool.name shouldBe "FACTORY_WORKSTREAM__start_workflow"
             val schema = mapper.readTree(tool.inputSchema)
             schema.path("additionalProperties").asBoolean() shouldBe false
             schema.path("properties").fieldNames().asSequence().toSet() shouldBe setOf("workflowId", "workflowType", "title")

@@ -14,10 +14,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.URLEncoder
 
-@Deprecated(
-    "Not exposed under the Workstream/Worker trust boundary; see docs/factory-trust-boundary-migration.md",
-    level = DeprecationLevel.WARNING,
-)
 class FactoryStartWorkflowTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,
@@ -26,7 +22,7 @@ class FactoryStartWorkflowTool(
 ) : StandardTool<FactoryStartWorkflowTool.Input> {
     data class Input(val workflowId: String, val workflowType: String, val title: String)
 
-    override val name = "FACTORY__start_workflow"
+    override val name = "FACTORY_WORKSTREAM__start_workflow"
     override val description = "Create an authoritative governed workflow from the unique configured immutable definition."
     override val version = "1.0.0"
     override val paramType = Input::class.java

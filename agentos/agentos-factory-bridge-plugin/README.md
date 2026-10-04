@@ -12,7 +12,7 @@ marks **restart-safe**.
 
 | Extension point (`agentos-sdk`) | Implementation |
 |---|---|
-| `ToolPlugin` | `FactoryWorkstreamToolPlugin` (`FACTORY_WORKSTREAM` integration: the six read-only Workstream tools `FACTORY_WORKSTREAM__*`) |
+| `ToolPlugin` | `FactoryWorkstreamToolPlugin` (`FACTORY_WORKSTREAM` integration: 8 tools — the six read-only `FACTORY_WORKSTREAM__*` views plus the boundary request commands `FACTORY_WORKSTREAM__start_workflow` and governed `FACTORY_WORKSTREAM__request_agent_retry`) |
 | `ToolPlugin` | `FactoryWorkerToolPlugin` (`FACTORY_WORKER` integration: `FACTORY_WORKER__submit_step_result`, `FACTORY_WORKER__ask_step_question`) |
 | `AnswerInterceptor` | `FactoryAnswerInterceptor` (submits the user decision to the Factory checkpoint) |
 | `CaseLifecycleObserver` | `FactoryCaseLifecycleObserver` (invalidates a binding + checkpoint on a terminal case) |
@@ -24,8 +24,13 @@ Both `ToolPlugin` extensions live in this single JAR and share every bridge serv
 (HTTP client, bindings, config, SSE listeners, state store) through
 `FactoryBridgePluginHolder`. Both declare an empty-object `configSchema`, so they appear
 in the standard integration catalog and resolve through the ordinary
-`ToolResolverService` flow. The retired config-less `FACTORY` plugin and its migration
-path are documented in [docs/factory-trust-boundary-migration.md](docs/factory-trust-boundary-migration.md).
+`ToolResolverService` flow. The Workstream boundary also carries two boundary request
+commands while authority stays with the Factory: `FACTORY_WORKSTREAM__start_workflow`
+creates an authoritative governed workflow, and `FACTORY_WORKSTREAM__request_agent_retry`
+only creates a `pending-human` retry request under a revision fence — unblocking or
+skipping steps remains human-only in the Factory cockpit. The retired config-less
+`FACTORY` plugin and its migration path are documented in
+[docs/factory-trust-boundary-migration.md](docs/factory-trust-boundary-migration.md).
 
 ## Packaging & load
 

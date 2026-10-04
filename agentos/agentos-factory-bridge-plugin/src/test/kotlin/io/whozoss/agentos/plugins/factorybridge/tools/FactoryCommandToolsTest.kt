@@ -14,10 +14,12 @@ import java.net.InetSocketAddress
 import java.util.UUID
 
 /**
- * Phase 7 command tools: `FACTORY__request_agent_retry`, `FACTORY__interrupt_attempt`,
+ * Phase 7 command tools: `FACTORY_WORKSTREAM__request_agent_retry`, `FACTORY__interrupt_attempt`,
  * `FACTORY__propose_plan_change` — schema strictness, exact wire payload, trusted
  * identity headers and standardized success output (status / revision / reasonCode /
- * interactionId|proposalId / allowedActions).
+ * interactionId|proposalId / allowedActions). Only `request_agent_retry` is exposed (on the
+ * `FACTORY_WORKSTREAM` integration); `interrupt_attempt` and `propose_plan_change` stay
+ * `@Deprecated` and unexposed.
  */
 class FactoryCommandToolsTest : StringSpec({
     val mapper = jacksonObjectMapper()
@@ -85,11 +87,16 @@ class FactoryCommandToolsTest : StringSpec({
             mapOf(
                 "request_agent_retry" to
                     FactoryRequestAgentRetryTool("http://localhost", OkHttpClient(), mapper, "runtime"),
+                // Names: request_agent_retry is re-prefixed onto the Workstream boundary; the
+                // other two command tools keep their deprecated legacy `FACTORY__*` names.
                 "interrupt_attempt" to
                     FactoryInterruptAttemptTool("http://localhost", OkHttpClient(), mapper, "runtime"),
                 "propose_plan_change" to
                     FactoryProposePlanChangeTool("http://localhost", OkHttpClient(), mapper, "runtime"),
             )
+        tools["request_agent_retry"]!!.name shouldBe "FACTORY_WORKSTREAM__request_agent_retry"
+        tools["interrupt_attempt"]!!.name shouldBe "FACTORY__interrupt_attempt"
+        tools["propose_plan_change"]!!.name shouldBe "FACTORY__propose_plan_change"
         tools["request_agent_retry"]!!.let { tool ->
             val schema = mapper.readTree(tool.inputSchema)
             schema.path("additionalProperties").asBoolean() shouldBe false

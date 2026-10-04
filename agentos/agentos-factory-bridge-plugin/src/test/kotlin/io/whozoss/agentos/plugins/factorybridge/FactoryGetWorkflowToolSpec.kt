@@ -170,16 +170,19 @@ class FactoryGetWorkflowToolSpec : StringSpec({
         }
     }
 
-    "workstream plugin exposes exactly the six reads and they stay Neutral in the grant policy" {
+    "workstream plugin exposes exactly the six reads plus two boundary commands and they stay Neutral in the grant policy" {
         val context = ToolContext(UUID.randomUUID(), null, null, emptyList(), "agent")
         val readSuffixes =
             listOf("get_workstream", "list_workflows", "get_workflow", "get_step_attempts", "get_blockers", "get_required_human_actions")
-        // The workstream plugin provides exactly the six reads — no worker or command tool leaks in.
+        val commandSuffixes = listOf("start_workflow", "request_agent_retry")
+        // The workstream plugin provides exactly the six reads plus the two boundary request
+        // commands — no worker or deprecated command tool leaks in.
         FactoryTestFixtures.workstreamTools().map { it.name }.toSet() shouldBe
-            readSuffixes.map { "FACTORY_WORKSTREAM__$it" }.toSet()
-        // The read tools are intentionally not capability-gated: the policy stays Neutral.
+            (readSuffixes + commandSuffixes).map { "FACTORY_WORKSTREAM__$it" }.toSet()
+        // All eight Workstream tools are intentionally not capability-gated: the policy stays
+        // Neutral (retry authority stays with the Factory, pending-human under revision fence).
         val policy = FactoryToolGrantPolicy { FactoryTestFixtures.services() }
-        readSuffixes.forEach { suffix ->
+        (readSuffixes + commandSuffixes).forEach { suffix ->
             policy.evaluateToolGrant("agent", "FACTORY_WORKSTREAM__$suffix", context) shouldBe io.whozoss.agentos.sdk.spi.ToolGrantDecision.Neutral
         }
         // The worker tools live exclusively on the worker plugin.
@@ -187,7 +190,30 @@ class FactoryGetWorkflowToolSpec : StringSpec({
             setOf("FACTORY_WORKER__submit_step_result", "FACTORY_WORKER__ask_step_question")
     }
 
-    "workstream tool plugin exposes exactly the six Workstream reads and registers in the catalog" {
+    "workstream and worker plugins keep strictly separated surfaces and expose no deprecated command tool" {
+        val workstreamNames = FactoryTestFixtures.workstreamTools().map { it.name }
+        val workerNames = FactoryTestFixtures.workerTools().map { it.name }
+        // Strict separation: no FACTORY_WORKER__* tool on the workstream plugin, and no
+        // FACTORY_WORKSTREAM__* tool on the worker plugin.
+        workstreamNames.none { it.startsWith("FACTORY_WORKER__") } shouldBe true
+        workerNames.none { it.startsWith("FACTORY_WORKSTREAM__") } shouldBe true
+        // The deprecated command/transition tools (kept @Deprecated with their legacy
+        // FACTORY__* names) are exposed by neither plugin.
+        val exposed = (workstreamNames + workerNames).toSet()
+        listOf(
+            "FACTORY__transition_workflow",
+            "FACTORY__request_transition",
+            "FACTORY__interrupt_attempt",
+            "FACTORY__request_human_decision",
+            "FACTORY__propose_plan_change",
+            "FACTORY__publish_projection",
+            "FACTORY__provision_environment",
+            "FACTORY__record_agent_result",
+            "FACTORY__record_artifact",
+        ).forEach { exposed.contains(it) shouldBe false }
+    }
+
+    "workstream tool plugin exposes exactly the eight Workstream tools and registers in the catalog" {
         val plugin = FactoryWorkstreamToolPlugin { FactoryTestFixtures.services() }
         plugin.integrationType shouldBe "FACTORY_WORKSTREAM"
         // Non-null empty-object schema: the plugin appears in the standard integration catalog.
@@ -203,6 +229,8 @@ class FactoryGetWorkflowToolSpec : StringSpec({
                 "FACTORY_WORKSTREAM__get_step_attempts",
                 "FACTORY_WORKSTREAM__get_blockers",
                 "FACTORY_WORKSTREAM__get_required_human_actions",
+                "FACTORY_WORKSTREAM__start_workflow",
+                "FACTORY_WORKSTREAM__request_agent_retry",
             )
     }
 
