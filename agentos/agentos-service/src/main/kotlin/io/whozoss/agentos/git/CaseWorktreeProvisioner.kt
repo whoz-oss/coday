@@ -14,6 +14,7 @@ import mu.KLogging
 import org.springframework.stereotype.Service
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
@@ -29,6 +30,7 @@ class CaseWorktreeProvisioner(
     private val checkoutProvisioner: RepositoryCheckoutProvisioner,
     private val serviceAccountResolver: GitServiceAccountResolver,
     private val setupRunner: WorktreeSetupRunner,
+    private val clock: Clock,
 ) {
     /**
      * Bring [binding] to [CaseResourceStatus.READY], creating whatever is still missing.
@@ -98,7 +100,7 @@ class CaseWorktreeProvisioner(
     fun worktreePath(rootCase: Case): Path =
         exchangeStorageService
             .caseRoot(rootCase.namespaceId, rootCase.id, rootCase.metadata.created)
-            .resolve("repo")
+            .resolve(GitExchangeRoot.REPOSITORY_DIRECTORY)
             .toAbsolutePath()
             .normalize()
 
@@ -157,7 +159,7 @@ class CaseWorktreeProvisioner(
         val support = Files.createDirectories(
             exchangeStorageService.workspaceSupportDirectory(binding.namespaceId, binding.rootCaseId),
         )
-        val setAside = support.resolve("interrupted-checkout-${System.currentTimeMillis()}")
+        val setAside = support.resolve("interrupted-checkout-${clock.millis()}")
         Files.move(worktreePath, setAside)
         // Its HEAD is the frozen base, still referenced by refs/agentos/base/<root case id>.
         Files.walk(registration).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
@@ -231,13 +233,13 @@ class CaseWorktreeProvisioner(
         // HEAD and both pointers are written before checkout starts. They cannot prove that
         // worktree add finished: a crash may leave an initializing lock and no index at all.
         val lock = registration.resolve(GitLayout.LOCKED_FILE)
-        if (Files.exists(lock) && Files.readString(lock).trim() == "initializing") {
+        if (Files.exists(lock) && Files.readString(lock).trim() == GitLayout.INITIALIZING_LOCK_REASON) {
             throw IncompleteWorktreeException(
                 registration,
                 "Worktree checkout was interrupted during initialization; inspect and complete its recovery before retrying",
             )
         }
-        if (!Files.isRegularFile(registration.resolve("index"), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+        if (!Files.isRegularFile(registration.resolve(GitLayout.INDEX_FILE), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             throw IncompleteWorktreeException(
                 registration,
                 "Worktree checkout has no index; inspect and complete its recovery before retrying",

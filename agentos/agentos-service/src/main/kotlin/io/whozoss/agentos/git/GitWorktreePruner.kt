@@ -43,7 +43,7 @@ internal fun removeMissingWorktreeRegistration(
     check(Files.isRegularFile(admin.resolve("HEAD"), NOFOLLOW_LINKS)) { "The missing worktree has no regular HEAD" }
     val head = runner.runOrThrow(GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = admin))
     check(head.matches(GitObjectIds.FULL_ID)) { "The missing worktree HEAD is not a commit id" }
-    val index = admin.resolve("index")
+    val index = admin.resolve(GitLayout.INDEX_FILE)
     if (!Files.notExists(index, NOFOLLOW_LINKS)) {
         check(Files.isRegularFile(index, NOFOLLOW_LINKS)) { "The missing worktree has no regular index" }
         // Even without the checkout, its index may be the only copy of staged work.

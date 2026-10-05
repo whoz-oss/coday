@@ -64,11 +64,11 @@ class GitWorkspaceLifecycleService(
      */
     fun cleanupDeletedCases(stopRequested: () -> Boolean = { Thread.currentThread().isInterrupted }) {
         val statuses = CaseResourceStatus.entries.filter { it != CaseResourceStatus.REMOVED }
-        val page = bindings.findByStatusIn(statuses, 5, cleanupCursor)
-        val batch = if (page.isEmpty() && cleanupCursor != null) bindings.findByStatusIn(statuses, 5) else page
+        val page = bindings.findByStatusIn(statuses, CLEANUP_BATCH_SIZE, cleanupCursor)
+        val batch = if (page.isEmpty() && cleanupCursor != null) bindings.findByStatusIn(statuses, CLEANUP_BATCH_SIZE) else page
         // Advance even when cleanup fails, so blocked workspaces cannot starve later families.
         // At the end, start a new sweep to retry earlier rows and observe newly deleted cases.
-        cleanupCursor = batch.takeIf { it.size == 5 }?.last()?.let(CaseResourceBindingCursor::after)
+        cleanupCursor = batch.takeIf { it.size == CLEANUP_BATCH_SIZE }?.last()?.let(CaseResourceBindingCursor::after)
         batch.forEach { binding ->
             if (stopRequested()) return
             try {
@@ -238,5 +238,8 @@ class GitWorkspaceLifecycleService(
     companion object : KLogging() {
         /** Written in the registration right before `worktree remove`, which deletes it on success. */
         internal const val REMOVAL_MARKER = "agentos-removal-started"
+
+        /** Bindings inspected per worker tick, so a slow cleanup never holds the sweep for long. */
+        private const val CLEANUP_BATCH_SIZE = 5
     }
 }

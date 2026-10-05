@@ -47,12 +47,12 @@ class WorkspaceProcessGuard(
 
     fun assertIdle(path: Path) {
         val output = inspect(path)
-        if (output.exitCode != 1 || output.stdout.isNotBlank()) {
+        if (output.exitCode != LSOF_NO_MATCH || output.stdout.isNotBlank()) {
             throw ConflictException("Processes still hold files or a working directory in the workspace")
         }
     }
 
-    /** `lsof` exits with 1 when nothing uses the directory. */
+    /** `lsof` exits with [LSOF_NO_MATCH] when nothing uses the directory. */
     private fun inspect(path: Path): BoundedProcessOutput.Result {
         val process = try { ProcessBuilder(binary, "-t", "+D", path.toString()).start() }
         catch (e: Exception) { throw ConflictException("Cannot verify workspace processes; install lsof before cleanup", e) }
@@ -74,6 +74,9 @@ class WorkspaceProcessGuard(
 
     companion object : KLogging() {
         private val STOP_GRACE: Duration = Duration.ofSeconds(5)
+
+        /** Exit code of `lsof` when no process uses the inspected directory. */
+        private const val LSOF_NO_MATCH = 1
 
         /** `lsof -t` prints one process id per line: this is thousands of processes. */
         private const val MAX_INSPECTION_OUTPUT_CHARS = 16_384

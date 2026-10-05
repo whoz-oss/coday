@@ -19,6 +19,7 @@ import io.whozoss.agentos.git.core.GitExecutionProperties
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Clock
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.exists
@@ -116,6 +117,7 @@ class CaseWorktreeProvisionerSpec :
                         ),
                     serviceAccountResolver = serviceAccounts,
                     setupRunner = WorktreeSetupRunner(gitProperties),
+                    clock = Clock.systemUTC(),
                 )
             return Fixture(storage, provisioner, bindings, namespaceId)
         }
