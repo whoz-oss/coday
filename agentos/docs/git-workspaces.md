@@ -36,7 +36,7 @@ Provisioning and lifecycle coordination target **one AgentOS instance per workst
 
 ## Tools and configuration
 
-The built-in Exchange integration and REST API use `ExchangeRootResolver`: `DefaultExchangeRootResolver` while the flag is off, `GitExchangeRootResolver` when it is on. Admission goes through `CaseLaunchGate`, installed only with the flag.
+The built-in Exchange integration and REST API use `ExchangeRootResolver`: `DefaultExchangeRootResolver` while the flag is off, `GitExchangeRootResolver` when it is on. Admission goes through `CaseLaunchGate`, installed only with the flag. A message sent while the family's workspace is being prepared waits and starts once it is ready. If the preparation fails or the workspace is removed, the waiting message is refused with a warning, and a later successful retry does not replay it: the user sends it again.
 
 A `GIT` integration only exists inside a Git workspace. It always targets the family's worktree, with the administrative directory pinned from the binding rather than read from the worktree's `.git` file, and the repository URL and main branch recorded when the family was equipped. `GitToolsRunIntegration` gives it, on per-run copies, the worktree as `workingDirectory` plus `gitDir`, `commonGitDir`, `repositoryUrl` and `mainBranch`; saved values never override this context and the saved integration is not rewritten. Outside a Git workspace, for a user without write access to it, or on an instance without `agentos.git.workspaces.enabled`, agents receive no Git tool.
 

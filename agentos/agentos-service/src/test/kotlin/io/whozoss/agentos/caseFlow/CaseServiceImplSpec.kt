@@ -795,6 +795,32 @@ class CaseServiceImplSpec :
             }
         }
 
+        "a turn held while its workspace prepares is refused once the preparation fails and the worker hands it back" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val agent = finishingAgent()
+            val service =
+                buildService(agent = agent, caseRepository = repository, caseEventService = events, caseLaunchGate = gitGate(repository, bindings))
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val binding = equip(bindings, case.id, CaseResourceStatus.REQUESTED)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Analyse the billing module")))
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.PENDING) delay(10) }
+                bindings.update(binding.copy(status = CaseResourceStatus.FAILED, failureReason = "clone refused"))
+
+                // What the workspace worker does once a preparation has settled.
+                service.resumeIfPending(case.id)
+
+                withTimeout(3_000) { while (events.findByParent(case.id).none { it is WarnEvent }) delay(10) }
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                delay(100)
+                coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
         // -------------------------------------------------------------------------
         // Concurrent message during a running turn with gate installed
         // -------------------------------------------------------------------------
