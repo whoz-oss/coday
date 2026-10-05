@@ -16,17 +16,20 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitRemoteUrlValidator
+import io.whozoss.agentos.integrationConfig.IntegrationConfig
+import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.ObjectProvider
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 
 /**
  * When a case creation results in a workspace being requested.
@@ -80,13 +83,23 @@ class GitCaseWorkspaceProvisioningSpec :
         fun subCase(parent: Case): Case =
             Case(metadata = EntityMetadata(), namespaceId = namespaceId, title = "Developpement", parentCaseId = parent.id)
 
-        "a root case is not equipped while the GIT plugin is not loaded" {
-            val bindings = InMemoryCaseResourceBindingService()
-            val case = rootCase()
+        "a case is never equipped without the plugin, as a sub-case, or without automation on its namespace" {
+            table(
+                headers("situation", "available", "automation", "associated", "inSubCase"),
+                row("GIT plugin not loaded", false, true, true, false),
+                row("sub-case sharing its root's workspace", true, true, true, true),
+                row("namespace without an association", true, false, false, false),
+                row("association with automation off", true, false, true, false),
+            ).forAll { _, available, automation, associated, inSubCase ->
+                val bindings = InMemoryCaseResourceBindingService()
+                val case = if (inSubCase) subCase(rootCase()) else rootCase()
 
-            hook(bindings, available = false) { settings(autoWorktree = true) }.create(case)
+                hook(bindings, available = available, automation = automation) {
+                    settings(autoWorktree = automation).takeIf { associated }
+                }.create(case)
 
-            bindings.findByRootCaseId(case.id).shouldBeNull()
+                bindings.findByRootCaseId(case.id).shouldBeNull()
+            }
         }
 
         "a root case in a namespace with automation on is equipped" {
@@ -132,34 +145,6 @@ class GitCaseWorkspaceProvisioningSpec :
             }
         }
 
-        "a sub-case never allocates: it shares its root's workspace" {
-            val bindings = InMemoryCaseResourceBindingService()
-            val root = rootCase()
-            val child = subCase(root)
-
-            hook(bindings) { settings(autoWorktree = true) }.create(child)
-
-            bindings.findByRootCaseId(child.id).shouldBeNull()
-        }
-
-        "a namespace without an association equips nothing" {
-            val bindings = InMemoryCaseResourceBindingService()
-            val case = rootCase()
-
-            hook(bindings, automation = false) { null }.create(case)
-
-            bindings.findByRootCaseId(case.id).shouldBeNull()
-        }
-
-        "an association with automation off equips nothing" {
-            val bindings = InMemoryCaseResourceBindingService()
-            val case = rootCase()
-
-            hook(bindings, automation = false) { settings(autoWorktree = false) }.create(case)
-
-            bindings.findByRootCaseId(case.id).shouldBeNull()
-        }
-
         "a broken association is rejected as a conflict for the admin to fix, before creating an unequipped family" {
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
@@ -173,12 +158,12 @@ class GitCaseWorkspaceProvisioningSpec :
         }
 
         "disabled automation never parses broken Git fields or resolves a remote host" {
-            val config = io.whozoss.agentos.integrationConfig.IntegrationConfig(
+            val config = IntegrationConfig(
                 namespaceId = namespaceId, name = "git", integrationType = GitRepositoryIntegration.TYPE,
                 parameters = jacksonObjectMapper().readTree(
                     """{"autoWorktreeForRootCases":false,"repositoryUrl":"https://127.0.0.1/repo","serviceAuthSettingId":"invalid"}"""),
             )
-            val configs = mockk<io.whozoss.agentos.integrationConfig.IntegrationConfigService> {
+            val configs = mockk<IntegrationConfigService> {
                 every { findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE) } returns config
             }
             val validator = mockk<GitRemoteUrlValidator>()
@@ -189,12 +174,12 @@ class GitCaseWorkspaceProvisioningSpec :
                 .create(case)
             bindings.findByRootCaseId(case.id).shouldBeNull()
             association.automationEnabled(namespaceId) shouldBe false
-            io.mockk.verify(exactly = 0) { validator.validate(any()) }
+            verify(exactly = 0) { validator.validate(any()) }
         }
 
         "enabled automation records preparation without doing a DNS check in case creation" {
             val mapper = jacksonObjectMapper()
-            val config = io.whozoss.agentos.integrationConfig.IntegrationConfig(
+            val config = IntegrationConfig(
                 namespaceId = namespaceId, name = "git", integrationType = GitRepositoryIntegration.TYPE,
                 parameters = mapper.valueToTree(mapOf(
                     GitRepositoryIntegration.PARAM_AUTO_WORKTREE to true,
@@ -202,7 +187,7 @@ class GitCaseWorkspaceProvisioningSpec :
                     GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID to UUID.randomUUID().toString(),
                 )),
             )
-            val configs = mockk<io.whozoss.agentos.integrationConfig.IntegrationConfigService> {
+            val configs = mockk<IntegrationConfigService> {
                 every { findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE) } returns config
             }
             val validator = mockk<GitRemoteUrlValidator>()
@@ -212,7 +197,7 @@ class GitCaseWorkspaceProvisioningSpec :
             GitCaseWorkspaceProvisioning(association, bindings, availability(), workerOn()).create(case)
             bindings.findByRootCaseId(case.id)?.status shouldBe CaseResourceStatus.REQUESTED
             association.automationEnabled(namespaceId) shouldBe true
-            io.mockk.verify(exactly = 0) { validator.validate(any()) }
+            verify(exactly = 0) { validator.validate(any()) }
         }
 
     
@@ -247,5 +232,5 @@ class GitCaseWorkspaceProvisioningSpec :
 })
 
 /** The Git worker is enabled, so a family can be equipped. */
-internal fun workerOn(): org.springframework.beans.factory.ObjectProvider<CaseWorkspaceWorker> =
-    io.mockk.mockk { io.mockk.every { getIfAvailable() } returns io.mockk.mockk() }
+internal fun workerOn(): ObjectProvider<CaseWorkspaceWorker> =
+    mockk { every { getIfAvailable() } returns mockk() }

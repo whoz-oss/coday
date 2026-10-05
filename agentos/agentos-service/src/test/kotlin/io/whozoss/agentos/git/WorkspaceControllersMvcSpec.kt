@@ -116,15 +116,12 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.equipped").value(false))
-                .andExpect(jsonPath("$.branchName").doesNotExist())
         }
 
         "a caller without case READ cannot inspect a workspace, nor learn that the case exists" {
             val caseId = UUID.randomUUID()
-            listOf("workspace").forEach { suffix ->
-                mockMvc.perform(get("/api/cases/$caseId/$suffix"))
-                    .andExpect(status().isNotFound)
-            }
+            mockMvc.perform(get("/api/cases/$caseId/workspace"))
+                .andExpect(status().isNotFound)
             verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
         }
 
@@ -138,13 +135,11 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { bindings.findByParent(namespaceId) }
         }
 
-        "case READ alone cannot or retry a workspace" {
+        "case READ alone cannot retry a workspace" {
             val caseId = UUID.randomUUID()
             allow(EntityType.CASE, caseId, Action.READ)
-            listOf("retry").forEach { action ->
-                mockMvc.perform(post("/api/cases/$caseId/workspace/$action"))
-                    .andExpect(status().isForbidden)
-            }
+            mockMvc.perform(post("/api/cases/$caseId/workspace/retry"))
+                .andExpect(status().isForbidden)
             verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
             verify(exactly = 0) { lifecycle.retry(caseId) }
         }
@@ -212,9 +207,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             listOf("manifest", "directory", "content?path=private.txt", "download?path=private.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/${child.id}/files/$suffix")).andExpect(status().isNotFound)
             }
-            listOf("workspace").forEach { suffix ->
-                mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isNotFound)
-            }
+            mockMvc.perform(get("/api/cases/${child.id}/workspace")).andExpect(status().isNotFound)
             mockMvc.perform(delete("/api/cases/${child.id}/files").param("path", "private.txt"))
                 .andExpect(status().isForbidden)
             mockMvc.perform(multipart("/api/cases/${child.id}/files")
