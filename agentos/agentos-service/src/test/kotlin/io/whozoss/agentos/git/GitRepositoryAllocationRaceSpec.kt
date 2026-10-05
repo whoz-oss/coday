@@ -60,7 +60,7 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
             }
             val service = IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy(), listOf(observedPolicy))
             val associations = GitRepositoryAssociationService(service, factory)
-            val allocation = GitCaseWorkspaceProvisioning(associations, bindings, mapper, mockk { every { isAvailable() } returns true }, workerOn())
+            val allocation = GitCaseWorkspaceProvisioning(associations, bindings, mockk { every { isAvailable() } returns true }, workerOn())
             val parameters = mapper.createObjectNode()
                 .put(GitRepositoryIntegration.PARAM_REPOSITORY_URL, oldUrl)
                 .put(GitRepositoryIntegration.PARAM_SERVICE_AUTH_SETTING_ID, UUID.randomUUID().toString())
@@ -88,7 +88,7 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
                 repair.get(5, TimeUnit.SECONDS)
                 allocate.get(5, TimeUnit.SECONDS)
                 associations.findSettings(namespaceId)!!.repositoryUrl shouldBe newUrl
-                val boundSettings = mapper.readValue(bindings.findByRootCaseId(case.id)!!.settingsJson, GitRepositorySettings::class.java)
+                val boundSettings = bindings.findByRootCaseId(case.id)!!.settings!!
                 boundSettings.repositoryUrl shouldBe if (coordinated) newUrl else oldUrl
                 checkouts.findByNamespaceId(namespaceId)!!.repositoryUrl shouldBe if (coordinated) newUrl else oldUrl
             } finally {

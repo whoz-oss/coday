@@ -1,6 +1,5 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.agent.AgentExecutionContext
@@ -31,7 +30,6 @@ class GitToolsRunIntegration(
     private val resolver: GitExchangeRootResolver,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val exchangeStorageService: ExchangeStorageService,
-    private val objectMapper: ObjectMapper,
 ) : RunIntegrationCustomizer {
     override fun customize(
         configs: List<IntegrationConfig>,
@@ -54,9 +52,7 @@ class GitToolsRunIntegration(
         userId: UUID?,
     ): Map<String, String>? {
         val binding = root.binding ?: return null
-        val settings =
-            binding.settingsJson?.let { objectMapper.readValue(it, GitRepositorySettings::class.java) }
-                ?: return null
+        val settings = binding.settings ?: return null
         if (!exchangeCapabilityService.canAccessCase(userId?.toString(), caseId, root.exchange, Action.WRITE)) return null
         root.requireUsable()
         val common = exchangeStorageService.namespaceGitDirectory(binding.namespaceId).toAbsolutePath().normalize()

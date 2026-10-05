@@ -35,7 +35,7 @@ class GitToolsRunIntegrationSpec :
             }
         val bindings = InMemoryCaseResourceBindingService()
         val capabilities = mockk<ExchangeCapabilityService>()
-        val integration = GitToolsRunIntegration(GitExchangeRootResolver(repository, bindings, storage), capabilities, storage, mapper)
+        val integration = GitToolsRunIntegration(GitExchangeRootResolver(repository, bindings, storage), capabilities, storage)
         val settings =
             GitRepositorySettings(
                 configId = UUID.randomUUID(),
@@ -53,7 +53,7 @@ class GitToolsRunIntegrationSpec :
                     namespaceId = namespaceId,
                     integrationConfigId = settings.configId,
                     status = CaseResourceStatus.READY,
-                    settingsJson = mapper.writeValueAsString(settings),
+                    settings = settings,
                 ),
             )
 
@@ -102,9 +102,9 @@ class GitToolsRunIntegrationSpec :
             mayWrite(false)
             integration.customize(git, context(child.id)) shouldBe listOf(bash)
             mayWrite(true)
-            val withoutSettings = bindings.update(binding.copy(settingsJson = null))
+            val withoutSettings = bindings.update(binding.copy(settings = null))
             integration.customize(git, context(child.id)) shouldBe listOf(bash)
-            bindings.update(withoutSettings.copy(settingsJson = binding.settingsJson))
+            bindings.update(withoutSettings.copy(settings = binding.settings))
         }
 
         "outside an equipped family a GIT integration reaches the run as configured" {

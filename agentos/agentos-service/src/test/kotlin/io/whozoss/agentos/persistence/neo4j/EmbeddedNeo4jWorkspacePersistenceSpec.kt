@@ -32,13 +32,21 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
+
+        fun settings(namespaceId: UUID) = GitRepositorySettings(
+            configId = UUID.randomUUID(), namespaceId = namespaceId, repositoryUrl = "https://forge.example/org/project.git",
+            mainBranch = "develop", serviceAuthSettingId = UUID.randomUUID(), autoWorktreeForRootCases = true,
+            setupCommand = "pnpm install --ignore-scripts",
+        )
+
         "bindings roundtrip lifecycle and settings independently of the case title" {
             val ns = namespaces.save(Namespace(name = "workspace"))
             val root = cases.save(Case(namespaceId = ns.id, title = "Case title"))
             val value = bindings.create(CaseResourceBinding(rootCaseId = root.id, namespaceId = ns.id,
                 integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY,
-                settingsJson = "{}", setupStarted = true, setupCompleted = true))
+                settings = settings(ns.id), setupStarted = true, setupCompleted = true))
             bindings.findByRootCaseId(root.id) shouldBe value
+            bindings.findByRootCaseId(root.id)?.settings?.setupCommand shouldBe "pnpm install --ignore-scripts"
         }
 
         fun activeLabels(id: UUID): Int =
@@ -49,6 +57,19 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
 
         fun binding(rootCaseId: UUID, namespaceId: UUID = UUID.randomUUID()) =
             CaseResourceBinding(rootCaseId = rootCaseId, namespaceId = namespaceId, integrationConfigId = UUID.randomUUID())
+
+        "a binding whose stored settings cannot be read is still listed, without settings" {
+            val namespaceId = UUID.randomUUID()
+            val unreadable = bindings.create(binding(UUID.randomUUID(), namespaceId).copy(settings = settings(namespaceId)))
+            val readable = bindings.create(binding(UUID.randomUUID(), namespaceId).copy(settings = settings(namespaceId)))
+            driver.session().use { session ->
+                session.run("MATCH (b:CaseResourceBinding {id: \$id}) SET b.settingsJson = '{not json'", mapOf("id" to unreadable.id.toString()))
+                    .consume()
+            }
+
+            bindings.findByParent(namespaceId).associate { it.id to it.settings } shouldBe
+                mapOf(unreadable.id to null, readable.id to readable.settings)
+        }
 
         "an active binding carries the Active label and the database refuses a second one for the same root case" {
             val rootCaseId = UUID.randomUUID()

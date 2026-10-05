@@ -1,6 +1,5 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
@@ -55,7 +54,6 @@ class CaseWorkspaceWorker(
     private val caseService: CaseService,
     private val checkoutService: RepositoryCheckoutService,
     private val checkoutProvisioner: RepositoryCheckoutProvisioner,
-    private val objectMapper: ObjectMapper,
     private val lifecycle: GitWorkspaceLifecycleService? = null,
     private val executor: GitWorkRunner = GitWorkRunner { it.run() },
     private val meterRegistry: MeterRegistry = SimpleMeterRegistry(),
@@ -229,22 +227,19 @@ class CaseWorkspaceWorker(
                         return CaseResourceStatus.FAILED
                     }
 
+            // The family keeps the settings frozen when it was equipped, never the namespace's current ones.
             val settings =
-                binding.settingsJson?.let { objectMapper.readValue(it, GitRepositorySettings::class.java) }
-                    ?: associationService.findSettings(binding.namespaceId)
+                binding.settings
                     ?: run {
-                        logger.warn { "Namespace ${binding.namespaceId} is no longer associated with a repository" }
-                        bindings.markStatus(
-                            binding.id,
-                            CaseResourceStatus.FAILED,
-                            "The namespace is no longer associated with a repository",
-                        )
+                        logger.warn { "Binding ${binding.id} has no readable settings and is marked failed" }
+                        bindings.markStatus(binding.id, CaseResourceStatus.FAILED, NO_READABLE_SETTINGS)
                         return CaseResourceStatus.FAILED
                     }
 
             return requireNotNull(provisioner).ensureReady(binding, settings, rootCase).status
         } catch (e: Exception) {
-            // ensureReady already recorded FAILED with the cause; keep going through the batch so
+            // ensureReady records FAILED with the cause. An error before it, such as an unavailable
+            // database, leaves the binding REQUESTED for the next pass. Keep going through the batch so
             // one broken workspace does not block every other one behind it. Held turns are handed
             // back to the gate, which reads the binding again: one still pending keeps them waiting.
             countError(OPERATION_WORKTREE)
@@ -291,6 +286,9 @@ class CaseWorkspaceWorker(
 
         /** Failed preparations, tagged by `operation`: checkout, worktree or the whole sweep. */
         const val ERROR_COUNTER = "agentos.git.worker.errors"
+
+        /** Settings absent or unreadable never come back: a retry fails the same way. */
+        private const val NO_READABLE_SETTINGS = "No readable settings were recorded for this workspace. Retrying cannot help."
 
         private const val OPERATION_SWEEP = "sweep"
         private const val OPERATION_CHECKOUT = "checkout"

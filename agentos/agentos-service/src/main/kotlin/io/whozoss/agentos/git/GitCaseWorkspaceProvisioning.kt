@@ -1,7 +1,5 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.ObjectMapper
-
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseWorkspaceProvisioning
 import io.whozoss.agentos.exception.BadRequestException
@@ -33,7 +31,6 @@ import org.springframework.stereotype.Component
 class GitCaseWorkspaceProvisioning(
     private val associationService: GitRepositoryAssociationService,
     private val bindingService: CaseResourceBindingService,
-    private val objectMapper: ObjectMapper,
     private val gitAvailability: GitAvailability,
     private val worker: ObjectProvider<CaseWorkspaceWorker>,
 ) : CaseWorkspaceProvisioning {
@@ -60,7 +57,7 @@ class GitCaseWorkspaceProvisioning(
                         namespaceId = case.namespaceId,
                         integrationConfigId = settings.configId,
                         status = CaseResourceStatus.REQUESTED,
-                        settingsJson = objectMapper.writeValueAsString(settings),
+                        settings = settings,
                     ),
                 )
             logger.info { "Case ${case.id} equipped with workspace ${binding.id} (title '${case.title}')" }

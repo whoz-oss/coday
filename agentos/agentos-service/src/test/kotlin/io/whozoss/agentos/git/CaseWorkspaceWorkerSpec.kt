@@ -42,6 +42,7 @@ class CaseWorkspaceWorkerSpec :
 
         class Harness(
             val bindings: InMemoryCaseResourceBindingService,
+            val association: GitRepositoryAssociationService,
             val provisioner: CaseWorktreeProvisioner,
             val caseService: CaseService,
             val worker: CaseWorkspaceWorker,
@@ -50,7 +51,6 @@ class CaseWorkspaceWorkerSpec :
 
         fun harness(
             cases: List<Case>,
-            resolveSettings: () -> GitRepositorySettings? = { settings() },
             descendants: List<Case> = emptyList(),
             lifecycle: GitWorkspaceLifecycleService? = null,
             executor: GitWorkRunner = GitWorkRunner { it.run() },
@@ -63,7 +63,7 @@ class CaseWorkspaceWorkerSpec :
                     every { findByIds(any(), any()) } answers { firstArg<Collection<UUID>>().mapNotNull { byId[it] } }
                     every { findActiveDescendants(any()) } returns descendants
                 }
-            val association = mockk<GitRepositoryAssociationService> { every { findSettings(any()) } answers { resolveSettings() } }
+            val association = mockk<GitRepositoryAssociationService>()
             val provisioner = mockk<CaseWorktreeProvisioner>()
             val caseService = mockk<CaseService>(relaxed = true)
             // No namespace checkout is queued in these tests: the checkout sweep is exercised in
@@ -73,6 +73,7 @@ class CaseWorkspaceWorkerSpec :
             val meters = SimpleMeterRegistry()
             return Harness(
                 bindings,
+                association,
                 provisioner,
                 caseService,
                 CaseWorkspaceWorker(
@@ -83,7 +84,6 @@ class CaseWorkspaceWorkerSpec :
                     caseService,
                     checkouts,
                     checkoutProvisioner,
-                    com.fasterxml.jackson.module.kotlin.jacksonObjectMapper(),
                     lifecycle,
                     executor,
                     meters,
@@ -97,6 +97,7 @@ class CaseWorkspaceWorkerSpec :
             h: Harness,
             case: Case,
             status: CaseResourceStatus = CaseResourceStatus.REQUESTED,
+            settings: GitRepositorySettings? = settings(),
         ): CaseResourceBinding =
             h.bindings.create(
                 CaseResourceBinding(
@@ -104,6 +105,7 @@ class CaseWorkspaceWorkerSpec :
                     namespaceId = namespaceId,
                     integrationConfigId = UUID.randomUUID(),
                     status = status,
+                    settings = settings,
                 ),
             )
 
@@ -176,12 +178,12 @@ class CaseWorkspaceWorkerSpec :
             verify(exactly = 1) { h.caseService.resumeIfPending(child.id) }
         }
 
-        "a workspace failed for a lost association or a vanished case hands its held turns back" {
+        "a workspace failed for missing settings or a vanished case hands its held turns back" {
             val orphan = rootCase()
             val unassociated = rootCase()
-            val h = harness(listOf(unassociated), resolveSettings = { null })
+            val h = harness(listOf(unassociated))
             request(h, orphan)
-            request(h, unassociated)
+            request(h, unassociated, settings = null)
 
             h.worker.provisionPending()
 
@@ -287,14 +289,24 @@ class CaseWorkspaceWorkerSpec :
             binding.id shouldBe updated.id
         }
 
-        "a binding whose namespace lost its association is failed" {
-            val case = rootCase()
-            val h = harness(listOf(case), resolveSettings = { null })
-            request(h, case)
+        "a binding without readable settings fails for good, never borrows the current association and blocks no one" {
+            val unreadable = rootCase()
+            val next = rootCase()
+            val h = harness(listOf(unreadable, next))
+            request(h, unreadable, settings = null)
+            request(h, next)
+            every { h.provisioner.ensureReady(match { it.rootCaseId == next.id }, any(), any()) } answers {
+                h.bindings.markStatus(firstArg<CaseResourceBinding>().id, CaseResourceStatus.READY)
+            }
 
             h.worker.provisionPending()
 
-            h.bindings.findByRootCaseId(case.id)!!.status shouldBe CaseResourceStatus.FAILED
+            val failed = h.bindings.findByRootCaseId(unreadable.id)!!
+            failed.status shouldBe CaseResourceStatus.FAILED
+            failed.failureReason shouldBe "No readable settings were recorded for this workspace. Retrying cannot help."
+            h.bindings.findByRootCaseId(next.id)!!.status shouldBe CaseResourceStatus.READY
+            verify(exactly = 0) { h.provisioner.ensureReady(match { it.rootCaseId == unreadable.id }, any(), any()) }
+            verify(exactly = 0) { h.association.findSettings(any()) }
         }
 
         "each sweep is timed and each failed workspace is counted" {

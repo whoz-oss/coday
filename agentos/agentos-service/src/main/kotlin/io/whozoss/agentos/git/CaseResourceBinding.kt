@@ -31,7 +31,11 @@ data class CaseResourceBinding(
     val baseSha: String? = null,
     /** Operator-facing failure cause; never a secret. */
     val failureReason: String? = null,
-    val settingsJson: String? = null,
+    /**
+     * The Git settings frozen when the family was equipped. Null only when none could be read back:
+     * the family then cannot be prepared and gets no Git tool (see [CaseResourceBindingNode]).
+     */
+    val settings: GitRepositorySettings? = null,
     val cleanupReason: String? = null,
     val setupStarted: Boolean = false,
     val setupCompleted: Boolean = false,

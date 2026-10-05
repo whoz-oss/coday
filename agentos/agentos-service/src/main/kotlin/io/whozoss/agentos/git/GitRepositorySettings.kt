@@ -1,5 +1,6 @@
 package io.whozoss.agentos.git
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import java.util.UUID
 
 /**
@@ -9,7 +10,11 @@ import java.util.UUID
  * This is the only shape the provisioning code reads. It deliberately carries no secret: the
  * service account secret is resolved from [serviceAuthSettingId] at the moment it is needed, so
  * it never enters a snapshot, a log line or a persisted binding.
+ *
+ * A copy is frozen as JSON on each equipped family's binding. A field added later therefore needs a
+ * default value, and a field is never renamed: bindings written before the change must still read.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class GitRepositorySettings(
     /** Id of the backing `GIT_REPOSITORY` configuration row. */
     val configId: UUID,

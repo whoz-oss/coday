@@ -1,6 +1,11 @@
 package io.whozoss.agentos.git
 
+import com.fasterxml.jackson.core.JacksonException
+import com.fasterxml.jackson.core.StreamReadFeature
+import com.fasterxml.jackson.databind.json.JsonMapper
+import com.fasterxml.jackson.module.kotlin.kotlinModule
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import mu.KLogging
 import org.springframework.data.annotation.CreatedBy
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedBy
@@ -23,6 +28,12 @@ import java.util.UUID
  *
  * [version] carries optimistic locking and tells Spring Data whether a save creates the row, so the
  * creation fields are audited only once.
+ *
+ * [settingsJson] holds the frozen [GitRepositorySettings]. Unlike other nodes, reading it never
+ * fails: one unreadable row would otherwise break every sweep and file access of the namespace that
+ * lists it. Such a binding reads with null settings, which fails its preparation with a clear reason
+ * and gives its family no Git tool. The warning names the binding, never the JSON, since an admin
+ * wrote its setup command.
  */
 @Node("CaseResourceBinding")
 data class CaseResourceBindingNode(
@@ -64,14 +75,30 @@ data class CaseResourceBindingNode(
             status = CaseResourceStatus.valueOf(status),
             baseSha = baseSha,
             failureReason = failureReason,
-            settingsJson = settingsJson,
+            settings = readSettings(id, settingsJson),
             cleanupReason = cleanupReason,
             setupStarted = setupStarted,
             setupCompleted = setupCompleted,
-
         )
 
-    companion object {
+    companion object : KLogging() {
+        /** Settings are written and read here only. Source text stays out of parse errors. */
+        private val MAPPER =
+            JsonMapper.builder().addModule(kotlinModule()).disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build()
+
+        private fun readSettings(
+            id: String,
+            json: String?,
+        ): GitRepositorySettings? =
+            json?.let {
+                try {
+                    MAPPER.readValue(it, GitRepositorySettings::class.java)
+                } catch (e: JacksonException) {
+                    logger.warn(e) { "Binding $id has unreadable workspace settings and is read without them" }
+                    null
+                }
+            }
+
         fun fromDomain(binding: CaseResourceBinding): CaseResourceBindingNode =
             CaseResourceBindingNode(
                 id = binding.id.toString(),
@@ -81,7 +108,7 @@ data class CaseResourceBindingNode(
                 status = binding.status.name,
                 baseSha = binding.baseSha,
                 failureReason = binding.failureReason,
-                settingsJson = binding.settingsJson,
+                settingsJson = binding.settings?.let { MAPPER.writeValueAsString(it) },
                 cleanupReason = binding.cleanupReason,
                 setupStarted = binding.setupStarted,
                 setupCompleted = binding.setupCompleted,

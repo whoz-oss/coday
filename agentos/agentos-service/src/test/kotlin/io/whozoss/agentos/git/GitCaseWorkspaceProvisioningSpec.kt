@@ -66,7 +66,6 @@ class GitCaseWorkspaceProvisioningSpec :
             return GitCaseWorkspaceProvisioning(
                 association,
                 bindings,
-                com.fasterxml.jackson.module.kotlin.jacksonObjectMapper(),
                 availability(available),
                 workerOn(),
             )
@@ -94,11 +93,13 @@ class GitCaseWorkspaceProvisioningSpec :
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
 
-            hook(bindings) { settings(autoWorktree = true) }.create(case)
+            val configured = settings(autoWorktree = true)
+            hook(bindings) { configured }.create(case)
 
             val binding = bindings.findByRootCaseId(case.id)
             binding.shouldNotBeNull()
             binding.status shouldBe CaseResourceStatus.REQUESTED
+            binding.settings shouldBe configured
         }
 
         "root case creations wait for each other only in a namespace that equips new families" {
@@ -174,7 +175,7 @@ class GitCaseWorkspaceProvisioningSpec :
         "disabled automation never parses broken Git fields or resolves a remote host" {
             val config = io.whozoss.agentos.integrationConfig.IntegrationConfig(
                 namespaceId = namespaceId, name = "git", integrationType = GitRepositoryIntegration.TYPE,
-                parameters = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().readTree(
+                parameters = jacksonObjectMapper().readTree(
                     """{"autoWorktreeForRootCases":false,"repositoryUrl":"https://127.0.0.1/repo","serviceAuthSettingId":"invalid"}"""),
             )
             val configs = mockk<io.whozoss.agentos.integrationConfig.IntegrationConfigService> {
@@ -184,7 +185,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val association = GitRepositoryAssociationService(configs, GitRepositorySettingsFactory(validator))
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
-            GitCaseWorkspaceProvisioning(association, bindings, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper(), availability(), workerOn())
+            GitCaseWorkspaceProvisioning(association, bindings, availability(), workerOn())
                 .create(case)
             bindings.findByRootCaseId(case.id).shouldBeNull()
             association.automationEnabled(namespaceId) shouldBe false
@@ -192,7 +193,7 @@ class GitCaseWorkspaceProvisioningSpec :
         }
 
         "enabled automation records preparation without doing a DNS check in case creation" {
-            val mapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
+            val mapper = jacksonObjectMapper()
             val config = io.whozoss.agentos.integrationConfig.IntegrationConfig(
                 namespaceId = namespaceId, name = "git", integrationType = GitRepositoryIntegration.TYPE,
                 parameters = mapper.valueToTree(mapOf(
@@ -208,7 +209,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val association = GitRepositoryAssociationService(configs, GitRepositorySettingsFactory(validator))
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
-            GitCaseWorkspaceProvisioning(association, bindings, mapper, availability(), workerOn()).create(case)
+            GitCaseWorkspaceProvisioning(association, bindings, availability(), workerOn()).create(case)
             bindings.findByRootCaseId(case.id)?.status shouldBe CaseResourceStatus.REQUESTED
             association.automationEnabled(namespaceId) shouldBe true
             io.mockk.verify(exactly = 0) { validator.validate(any()) }
@@ -232,7 +233,7 @@ class GitCaseWorkspaceProvisioningSpec :
                 val logs = ListAppender<ILoggingEvent>().also { it.start() }
                 logger.addAppender(logs)
                 try {
-                    GitCaseWorkspaceProvisioning(association, bindings, jacksonObjectMapper(), availability(), workerOff)
+                    GitCaseWorkspaceProvisioning(association, bindings, availability(), workerOff)
                         .create(case)
                 } finally {
                     logger.detachAppender(logs)
