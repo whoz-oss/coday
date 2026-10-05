@@ -52,32 +52,33 @@ class GitCaseWorkspaceProvisioning(
     }
 
     private fun allocate(case: Case) {
-        // Without the GIT plugin no new family is equipped; families equipped earlier keep working.
-        if (!gitAvailability.isAvailable()) return
-        if (worker.getIfAvailable() == null) {
-            // Allocation only runs where automation is on: this case would have been equipped.
-            logger.warn { "Case ${case.id} not equipped: Git workspaces are enabled but the Git worker is disabled" }
-            return
+        equippingSettings(case)?.let { settings ->
+            val binding =
+                bindingService.create(
+                    CaseResourceBinding(
+                        rootCaseId = case.id,
+                        namespaceId = case.namespaceId,
+                        integrationConfigId = settings.configId,
+                        status = CaseResourceStatus.REQUESTED,
+                        settingsJson = objectMapper.writeValueAsString(settings),
+                    ),
+                )
+            logger.info { "Case ${case.id} equipped with workspace ${binding.id} (title '${case.title}')" }
         }
-        // Disabled automation remains independent of Git validation and availability.
-        val settings = automaticSettings(case) ?: return
-
-        if (!settings.autoWorktreeForRootCases) return
-
-        bindingService.findByRootCaseId(case.id)?.let { return }
-
-        val binding =
-            bindingService.create(
-                CaseResourceBinding(
-                    rootCaseId = case.id,
-                    namespaceId = case.namespaceId,
-                    integrationConfigId = settings.configId,
-                    status = CaseResourceStatus.REQUESTED,
-                    settingsJson = objectMapper.writeValueAsString(settings),
-                ),
-            )
-        logger.info { "Case ${case.id} equipped with workspace ${binding.id} (title '${case.title}')" }
     }
+
+    /** The settings a new root case is equipped with, or null when this instance or namespace equips nothing. */
+    private fun equippingSettings(case: Case): GitRepositorySettings? =
+        when {
+            // Without the GIT plugin no new family is equipped; families equipped earlier keep working.
+            !gitAvailability.isAvailable() -> null
+            worker.getIfAvailable() == null -> {
+                // Allocation only runs where automation is on: this case would have been equipped.
+                logger.warn { "Case ${case.id} not equipped: Git workspaces are enabled but the Git worker is disabled" }
+                null
+            }
+            else -> automaticSettings(case)
+        }
 
     /** The settings automation equips [case] with. Invalid ones are the admin's to fix, not the caller's. */
     private fun automaticSettings(case: Case): GitRepositorySettings? =

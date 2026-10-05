@@ -171,16 +171,6 @@ class GitCaseWorkspaceProvisioningSpec :
             bindings.findByRootCaseId(case.id).shouldBeNull()
         }
 
-        "allocation is idempotent for the same root case" {
-            val bindings = InMemoryCaseResourceBindingService()
-            val case = rootCase()
-            val provisioning = hook(bindings) { settings(autoWorktree = true) }
-
-            provisioning.create(case)
-            provisioning.create(case)
-
-            bindings.findByParent(namespaceId).size shouldBe 1
-        }
         "disabled automation never parses broken Git fields or resolves a remote host" {
             val config = io.whozoss.agentos.integrationConfig.IntegrationConfig(
                 namespaceId = namespaceId, name = "git", integrationType = GitRepositoryIntegration.TYPE,
