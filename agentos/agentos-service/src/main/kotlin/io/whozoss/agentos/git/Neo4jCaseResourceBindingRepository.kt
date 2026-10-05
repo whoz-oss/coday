@@ -44,7 +44,8 @@ open class Neo4jCaseResourceBindingRepository(
             .findActiveByRootCaseId(rootCaseId.toString())
             ?.toDomain()
 
-    override fun findByStatusIn(
+    @Transactional(readOnly = true)
+    open override fun findByStatusIn(
         statuses: Collection<CaseResourceStatus>,
         limit: Int,
         after: CaseResourceBindingCursor?,
