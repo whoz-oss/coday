@@ -64,6 +64,19 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             bindings.findByRootCaseId(rootCaseId)?.id shouldBe replacement.id
         }
 
+        "the worker's binding sweeps are served by an index on status and creation" {
+            driver.session().use { session ->
+                val index =
+                    session
+                        .run(
+                            "SHOW INDEXES YIELD name, labelsOrTypes, properties " +
+                                "WHERE name = 'case_resource_binding_active_status' RETURN labelsOrTypes, properties",
+                        ).single()
+                index["labelsOrTypes"].asList { it.asString() } shouldBe listOf("ActiveCaseResourceBinding")
+                index["properties"].asList { it.asString() } shouldBe listOf("status", "created")
+            }
+        }
+
         "deleting a namespace's bindings removes their Active label" {
             val namespaceId = UUID.randomUUID()
             val rows = listOf(bindings.create(binding(UUID.randomUUID(), namespaceId)), bindings.create(binding(UUID.randomUUID(), namespaceId)))

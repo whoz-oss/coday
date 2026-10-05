@@ -28,6 +28,7 @@ class CaseResourceBindingSchemaInitializer(
         ensureIdConstraint()
         ensureRootCaseUniqueConstraint()
         ensureNamespaceIndex()
+        ensureStatusIndex()
     }
 
     private fun assertNoDuplicateRootCaseKeys() {
@@ -82,6 +83,18 @@ class CaseResourceBindingSchemaInitializer(
                 """.trimIndent(),
             ).run()
         logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_namespace_lookup' ensured" }
+    }
+
+    /** Serves the worker's sweeps, which filter active bindings by status and order them by creation. */
+    private fun ensureStatusIndex() {
+        neo4jClient
+            .query(
+                """
+                CREATE INDEX case_resource_binding_active_status IF NOT EXISTS
+                FOR (b:ActiveCaseResourceBinding) ON (b.status, b.created)
+                """.trimIndent(),
+            ).run()
+        logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_active_status' ensured" }
     }
 
     companion object : KLogging()
