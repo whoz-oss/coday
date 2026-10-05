@@ -19,7 +19,7 @@ interface CaseWorkspaceProvisioning {
     fun <T> aroundCreation(case: Case, action: () -> T): T = action()
 
     /**
-     * Called once a case has been persisted.
+     * Called once a case has been persisted, inside [aroundCreation].
      *
      * The implementation decides whether this case starts a family that needs a workspace. It
      * never provisions anything synchronously: it records the intent, leaving the slow part

@@ -24,6 +24,9 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.ObjectProvider
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
  * When a case creation results in a workspace being requested.
@@ -53,9 +56,13 @@ class GitCaseWorkspaceProvisioningSpec :
         fun hook(
             bindings: CaseResourceBindingService,
             available: Boolean = true,
+            automation: Boolean = true,
             resolve: () -> GitRepositorySettings?,
         ): GitCaseWorkspaceProvisioning {
-            val association = mockk<GitRepositoryAssociationService> { every { findAutomaticSettings(any()) } answers { resolve() } }
+            val association = mockk<GitRepositoryAssociationService> {
+                every { automationEnabled(namespaceId) } returns automation
+                every { findAutomaticSettings(any()) } answers { resolve() }
+            }
             return GitCaseWorkspaceProvisioning(
                 association,
                 bindings,
@@ -64,6 +71,9 @@ class GitCaseWorkspaceProvisioningSpec :
                 workerOn(),
             )
         }
+
+        /** Creation as the case service runs it: allocation happens inside [GitCaseWorkspaceProvisioning.aroundCreation]. */
+        fun GitCaseWorkspaceProvisioning.create(case: Case) = aroundCreation(case) { onCaseCreated(case) }
 
         fun rootCase(title: String = "Corriger les exports"): Case =
             Case(metadata = EntityMetadata(), namespaceId = namespaceId, title = title)
@@ -75,7 +85,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
 
-            hook(bindings, available = false) { settings(autoWorktree = true) }.onCaseCreated(case)
+            hook(bindings, available = false) { settings(autoWorktree = true) }.create(case)
 
             bindings.findByRootCaseId(case.id).shouldBeNull()
         }
@@ -84,11 +94,41 @@ class GitCaseWorkspaceProvisioningSpec :
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
 
-            hook(bindings) { settings(autoWorktree = true) }.onCaseCreated(case)
+            hook(bindings) { settings(autoWorktree = true) }.create(case)
 
             val binding = bindings.findByRootCaseId(case.id)
             binding.shouldNotBeNull()
             binding.status shouldBe CaseResourceStatus.REQUESTED
+        }
+
+        "root case creations wait for each other only in a namespace that equips new families" {
+            table(
+                headers("automation", "secondWaits"),
+                row(true, true),
+                row(false, false),
+            ).forAll { automation, secondWaits ->
+                val provisioning = hook(InMemoryCaseResourceBindingService(), automation = automation) { null }
+                val firstInside = CountDownLatch(1)
+                val releaseFirst = CountDownLatch(1)
+                val secondInside = CountDownLatch(1)
+                val executor = Executors.newFixedThreadPool(2)
+                try {
+                    executor.submit {
+                        provisioning.aroundCreation(rootCase()) {
+                            firstInside.countDown()
+                            check(releaseFirst.await(5, TimeUnit.SECONDS))
+                        }
+                    }
+                    firstInside.await(5, TimeUnit.SECONDS) shouldBe true
+                    executor.submit { provisioning.aroundCreation(rootCase()) { secondInside.countDown() } }
+                    secondInside.await(200, TimeUnit.MILLISECONDS) shouldBe !secondWaits
+                    releaseFirst.countDown()
+                    secondInside.await(5, TimeUnit.SECONDS) shouldBe true
+                } finally {
+                    releaseFirst.countDown()
+                    executor.shutdownNow()
+                }
+            }
         }
 
         "a sub-case never allocates: it shares its root's workspace" {
@@ -96,7 +136,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val root = rootCase()
             val child = subCase(root)
 
-            hook(bindings) { settings(autoWorktree = true) }.onCaseCreated(child)
+            hook(bindings) { settings(autoWorktree = true) }.create(child)
 
             bindings.findByRootCaseId(child.id).shouldBeNull()
         }
@@ -105,7 +145,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
 
-            hook(bindings) { null }.onCaseCreated(case)
+            hook(bindings, automation = false) { null }.create(case)
 
             bindings.findByRootCaseId(case.id).shouldBeNull()
         }
@@ -114,7 +154,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
 
-            hook(bindings) { settings(autoWorktree = false) }.onCaseCreated(case)
+            hook(bindings, automation = false) { settings(autoWorktree = false) }.create(case)
 
             bindings.findByRootCaseId(case.id).shouldBeNull()
         }
@@ -124,7 +164,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val case = rootCase()
 
             shouldThrow<ConflictException> {
-                hook(bindings) { throw BadRequestException("serviceAuthSettingId must be a UUID") }.onCaseCreated(case)
+                hook(bindings) { throw BadRequestException("serviceAuthSettingId must be a UUID") }.create(case)
             }.message shouldBe "The namespace Git settings are invalid (serviceAuthSettingId must be a UUID): " +
                 "a namespace admin must fix them before new conversations can start"
 
@@ -136,8 +176,8 @@ class GitCaseWorkspaceProvisioningSpec :
             val case = rootCase()
             val provisioning = hook(bindings) { settings(autoWorktree = true) }
 
-            provisioning.onCaseCreated(case)
-            provisioning.onCaseCreated(case)
+            provisioning.create(case)
+            provisioning.create(case)
 
             bindings.findByParent(namespaceId).size shouldBe 1
         }
@@ -155,7 +195,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
             GitCaseWorkspaceProvisioning(association, bindings, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper(), availability(), workerOn())
-                .onCaseCreated(case)
+                .create(case)
             bindings.findByRootCaseId(case.id).shouldBeNull()
             association.automationEnabled(namespaceId) shouldBe false
             io.mockk.verify(exactly = 0) { validator.validate(any()) }
@@ -178,7 +218,7 @@ class GitCaseWorkspaceProvisioningSpec :
             val association = GitRepositoryAssociationService(configs, GitRepositorySettingsFactory(validator))
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
-            GitCaseWorkspaceProvisioning(association, bindings, mapper, availability(), workerOn()).onCaseCreated(case)
+            GitCaseWorkspaceProvisioning(association, bindings, mapper, availability(), workerOn()).create(case)
             bindings.findByRootCaseId(case.id)?.status shouldBe CaseResourceStatus.REQUESTED
             association.automationEnabled(namespaceId) shouldBe true
             io.mockk.verify(exactly = 0) { validator.validate(any()) }
@@ -203,7 +243,7 @@ class GitCaseWorkspaceProvisioningSpec :
                 logger.addAppender(logs)
                 try {
                     GitCaseWorkspaceProvisioning(association, bindings, jacksonObjectMapper(), availability(), workerOff)
-                        .onCaseCreated(case)
+                        .create(case)
                 } finally {
                     logger.detachAppender(logs)
                     logs.stop()

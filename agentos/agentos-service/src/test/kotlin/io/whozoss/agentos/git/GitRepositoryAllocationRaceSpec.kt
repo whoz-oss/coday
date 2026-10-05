@@ -76,7 +76,7 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
                 validated.await(5, TimeUnit.SECONDS) shouldBe true
                 val allocate = executor.submit {
                     allocationStarted.countDown()
-                    allocation.onCaseCreated(case)
+                    allocation.aroundCreation(case) { allocation.onCaseCreated(case) }
                 }
                 allocationStarted.await(5, TimeUnit.SECONDS) shouldBe true
                 if (coordinated) {

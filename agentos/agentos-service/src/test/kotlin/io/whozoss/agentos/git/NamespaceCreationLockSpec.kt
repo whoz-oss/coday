@@ -68,6 +68,7 @@ class NamespaceCreationLockSpec : StringSpec({
         val settings = GitRepositorySettings(UUID.randomUUID(), namespaceId, "https://forge.example/repo.git", "main", UUID.randomUUID(), true, null)
         val bindings = InMemoryCaseResourceBindingService()
         val provisioning = GitCaseWorkspaceProvisioning(mockk {
+            every { automationEnabled(namespaceId) } returns true
             every { findAutomaticSettings(namespaceId) } returns settings
         }, bindings, jacksonObjectMapper(), mockk { every { isAvailable() } returns true }, workerOn())
         val observed = object : CaseWorkspaceProvisioning by provisioning {

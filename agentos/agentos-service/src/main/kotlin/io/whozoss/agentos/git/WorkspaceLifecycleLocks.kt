@@ -59,6 +59,9 @@ object WorkspaceLifecycleLocks {
         }
     }
 
+    /** Whether the current thread holds [namespaceId]'s lock, taken through [withNamespace]. */
+    fun holdsNamespace(namespaceId: UUID): Boolean = namespaces[namespaceId]?.isHeldByCurrentThread == true
+
     fun <T> withRoot(
         rootId: UUID,
         action: () -> T,

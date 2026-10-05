@@ -38,21 +38,25 @@ class GitCaseWorkspaceProvisioning(
     private val worker: ObjectProvider<CaseWorkspaceWorker>,
 ) : CaseWorkspaceProvisioning {
     override fun <T> aroundCreation(case: Case, action: () -> T): T =
-        if (case.parentCaseId == null) WorkspaceLifecycleLocks.withNamespace(case.namespaceId, action) else action()
+        // Only a namespace that equips new families has settings to freeze: creations elsewhere never wait.
+        if (case.parentCaseId == null && associationService.automationEnabled(case.namespaceId)) {
+            WorkspaceLifecycleLocks.withNamespace(case.namespaceId, action)
+        } else {
+            action()
+        }
 
     override fun onCaseCreated(case: Case) {
-        if (case.parentCaseId != null) return
-        WorkspaceLifecycleLocks.withNamespace(case.namespaceId) { allocate(case) }
+        // Equip only a creation that [aroundCreation] serialized with settings saves. Taking the lock
+        // now, after the case write, could deadlock with a save waiting for that write's database lock.
+        if (case.parentCaseId == null && WorkspaceLifecycleLocks.holdsNamespace(case.namespaceId)) allocate(case)
     }
 
     private fun allocate(case: Case) {
         // Without the GIT plugin no new family is equipped; families equipped earlier keep working.
         if (!gitAvailability.isAvailable()) return
         if (worker.getIfAvailable() == null) {
-            // Only a namespace with automation on would have been equipped: say so for it, and only for it.
-            if (associationService.automationEnabled(case.namespaceId)) {
-                logger.warn { "Case ${case.id} not equipped: Git workspaces are enabled but the Git worker is disabled" }
-            }
+            // Allocation only runs where automation is on: this case would have been equipped.
+            logger.warn { "Case ${case.id} not equipped: Git workspaces are enabled but the Git worker is disabled" }
             return
         }
         // Disabled automation remains independent of Git validation and availability.
