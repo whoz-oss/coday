@@ -125,7 +125,7 @@ class GitWorkspaceLifecycleService(
                     deleteTreeWithoutFollowingLinks(path)
                     deleteTreeWithoutFollowingLinks(admin)
                 } else {
-                    removeWorktree(b, admin, path, rootId) { reason = it }
+                    removeWorktree(b, admin, path, rootId)
                 }
             } else if (Files.isDirectory(commonGitDir(b))) {
                 // Reconcile only this deleted family's registration. Other checkouts may merely
@@ -143,48 +143,69 @@ class GitWorkspaceLifecycleService(
             }
             bindings.update(b.copy(status = CaseResourceStatus.REMOVED, cleanupReason = null))
         } catch (e: Exception) {
-            if (b.cleanupReason != reason) logger.warn(e) { "Worktree of deleted case $rootId retained: $reason" }
-            bindings.update(b.copy(cleanupReason = reason))
+            val recorded = (e as? CleanupStepFailed)?.reason ?: reason
+            if (b.cleanupReason != recorded) logger.warn(e) { "Worktree of deleted case $rootId retained: $recorded" }
+            bindings.update(b.copy(cleanupReason = recorded))
         }
     }
 
+    /** Each step fails with the reason recorded for the user, never Git's own output. */
     private fun removeWorktree(
         b: CaseResourceBinding,
         admin: Path,
         path: Path,
         rootId: UUID,
-        step: (String) -> Unit,
     ) {
         // Removal honours status.showUntrackedFiles. Inspect explicitly so a display preference
         // cannot make cleanup discard ordinary untracked agent work. Submodule contents are not
         // inspected: that would run their own filters, and a non-forced removal refuses them anyway.
-        step("Cannot inspect local worktree changes before cleanup.")
-        val dirty = runner.runOrThrow(GitInvocation(
-            listOf("--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty"),
-            gitDir = admin, workTree = path,
-        ))
-        step("The worktree contains uncommitted or untracked work.")
-        check(dirty.isEmpty()) { "The worktree contains uncommitted or untracked work." }
+        val dirty = cleanupStep("Cannot inspect local worktree changes before cleanup.") {
+            runner.runOrThrow(GitInvocation(
+                listOf("--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty"),
+                gitDir = admin, workTree = path,
+            ))
+        }
+        if (dirty.isNotEmpty()) throw CleanupStepFailed("The worktree contains uncommitted or untracked work.")
         // An ignored directory can hold an agent's own linked worktree, invisible to the status above.
-        step("The worktree contains another Git worktree. Remove it or move it out of the workspace first.")
-        check(nestedWorktrees(b, path).isEmpty()) { "The worktree contains another Git worktree." }
+        cleanupStep("The worktree contains another Git worktree. Remove it or move it out of the workspace first.") {
+            check(nestedWorktrees(b, path).isEmpty()) { "The worktree contains another Git worktree." }
+        }
         // A detached HEAD is normal here. Worktree removal drops its reflog as well;
         // retain the commit before removal without creating a user branch or a PR.
-        step("Cannot preserve the worktree's current commit before cleanup.")
-        val head = runner.runOrThrow(GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = admin))
-        runner.runOrThrow(GitInvocation(
-            listOf("update-ref", "--no-deref", GitRefs.AGENTOS_RETAINED + rootId, head), gitDir = commonGitDir(b),
-        ))
+        cleanupStep("Cannot preserve the worktree's current commit before cleanup.") {
+            val head = runner.runOrThrow(GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = admin))
+            runner.runOrThrow(GitInvocation(
+                listOf("update-ref", "--no-deref", GitRefs.AGENTOS_RETAINED + rootId, head), gitDir = commonGitDir(b),
+            ))
+        }
         // Git's remaining safety checks still retain locked worktrees. Documents stay.
-        step("Git refused to remove the worktree. Inspect its locks and submodules.")
-        val marker = admin.resolve(REMOVAL_MARKER)
-        Files.writeString(marker, "$rootId\n")
-        val removal = runner.run(GitInvocation(listOf("worktree", "remove", path.toString()),
-            gitDir = commonGitDir(b), timeout = gitProperties.cloneTimeout))
-        // A refusal changed nothing: forget the marker. A killed or timed-out removal keeps it.
-        if (removal is GitCommandResult.Completed && !removal.successful) Files.deleteIfExists(marker)
-        check(removal is GitCommandResult.Completed && removal.successful) { "Git did not remove the worktree" }
+        cleanupStep("Git refused to remove the worktree. Inspect its locks and submodules.") {
+            val marker = admin.resolve(REMOVAL_MARKER)
+            Files.writeString(marker, "$rootId\n")
+            val removal = runner.run(GitInvocation(listOf("worktree", "remove", path.toString()),
+                gitDir = commonGitDir(b), timeout = gitProperties.cloneTimeout))
+            // A refusal changed nothing: forget the marker. A killed or timed-out removal keeps it.
+            if (removal is GitCommandResult.Completed && !removal.successful) Files.deleteIfExists(marker)
+            check(removal is GitCommandResult.Completed && removal.successful) { "Git did not remove the worktree" }
+        }
     }
+
+    /** Run one cleanup step, turning any failure into [reason]. */
+    private inline fun <T> cleanupStep(
+        reason: String,
+        action: () -> T,
+    ): T =
+        try {
+            action()
+        } catch (e: Exception) {
+            throw CleanupStepFailed(reason, e)
+        }
+
+    /** A cleanup step that failed, with the reason recorded on the binding for the user. */
+    private class CleanupStepFailed(
+        val reason: String,
+        cause: Throwable? = null,
+    ) : RuntimeException(reason, cause)
 
     /**
      * A removal killed midway (for example by a redeploy) leaves a half-deleted worktree that every

@@ -262,7 +262,8 @@ class CaseWorktreeProvisionerSpec :
             val retained = deletedFamilyLifecycle(f, root).cleanupDeleted(root.id)
 
             retained.status shouldBe CaseResourceStatus.DELETING
-            retained.cleanupReason shouldNotBe null
+            retained.cleanupReason shouldBe
+                "The worktree contains another Git worktree. Remove it or move it out of the workspace first."
             path.resolve(".worktrees/side/work.txt").readText() shouldBe "Unsaved nested work"
         }
 
@@ -319,8 +320,10 @@ class CaseWorktreeProvisionerSpec :
             admin.resolve(GitWorkspaceLifecycleService.REMOVAL_MARKER).writeText("${root.id}\n")
             path.resolve("README.md").writeText("Uncommitted change\n")
 
-            deletedFamilyLifecycle(f, root).cleanupDeleted(root.id).status shouldBe CaseResourceStatus.DELETING
+            val retained = deletedFamilyLifecycle(f, root).cleanupDeleted(root.id)
 
+            retained.status shouldBe CaseResourceStatus.DELETING
+            retained.cleanupReason shouldBe "The worktree contains uncommitted or untracked work."
             path.resolve("README.md").readText() shouldBe "Uncommitted change\n"
         }
 
@@ -342,7 +345,7 @@ class CaseWorktreeProvisionerSpec :
             root = root.copy(metadata = root.metadata.copy(removed = true))
             val retained = lifecycle.cleanupDeleted(root.id)
             retained.status shouldBe CaseResourceStatus.DELETING
-            retained.cleanupReason shouldNotBe null
+            retained.cleanupReason shouldBe "The worktree contains uncommitted or untracked work."
             path.resolve("local.txt").readText() shouldBe "Unsaved work"
             Files.delete(path.resolve("local.txt"))
             lifecycle.cleanupDeleted(root.id).status shouldBe CaseResourceStatus.REMOVED
