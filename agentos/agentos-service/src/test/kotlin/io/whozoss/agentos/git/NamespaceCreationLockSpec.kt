@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit
 
 /** Exercises the actual Namespace relationship lock, not just a fake transaction completion. */
 class NamespaceCreationLockSpec : StringSpec({
-    "first Git association and case creation acquire the namespace lock before database writes" {
+    "a root case that automation equips waits for a settings save and locks the namespace before database writes" {
         val directory = Files.createTempDirectory("namespace-creation-lock-")
         val management = DatabaseManagementServiceBuilder(directory)
             .setConfig(GraphDatabaseSettings.transaction_timeout, Duration.ofSeconds(5)).build()
