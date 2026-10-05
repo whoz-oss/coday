@@ -12,7 +12,6 @@ import mu.KLogging
 import org.pf4j.Extension
 import org.pf4j.Plugin
 import java.nio.file.Path
-import java.util.concurrent.ConcurrentHashMap
 
 class GitPlugin : Plugin() {
     override fun start() {
@@ -36,24 +35,36 @@ class GitPlugin : Plugin() {
  * the integration is an ordinary one: its tools work in the repository its configuration names.
  * Either way they act with the credentials of the user running the case, from the auth setting
  * bound to the integration.
+ *
+ * Remotes on a private network follow the service's `agentos.git.allow-private-remote-hosts`, as
+ * HTTP_API and MCP_HTTP refuse them: an integration cannot allow them on its own.
  */
 @Extension
-class GitToolProvider : ToolPlugin {
+class GitToolProvider(
+    /** The service's Git settings, injected when the service creates this extension. */
+    private val serviceProperties: GitExecutionProperties?,
+) : ToolPlugin {
+    constructor() : this(null)
+
     override val integrationType: String = INTEGRATION_TYPE
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
-    /** One runner per execution policy: each keeps its private support directory for the JVM lifetime. */
-    private val runners = ConcurrentHashMap<Boolean, GitCommandRunner>()
+    private val allowPrivateRemoteHosts: Boolean = serviceProperties?.allowPrivateRemoteHosts ?: false
+
+    /** Keeps its private support directory for the JVM lifetime. */
+    private val runner: GitCommandRunner by lazy {
+        GitCommandRunner(GitExecutionProperties(allowPrivateRemoteHosts = allowPrivateRemoteHosts))
+    }
+
+    init {
+        if (allowPrivateRemoteHosts) logger.info { "GIT tools may reach private network remotes (agentos.git.allow-private-remote-hosts)" }
+    }
 
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
         // A case Git workspace injects its whole context. Elsewhere the configuration names the repository.
         val injected = GitWorkspaceContext.from(config)
         val directory = injected?.workingDirectory ?: configuredDirectory(config, configName) ?: return emptyList()
-        val allowPrivateRemoteHosts = config?.path("allowPrivateRemoteHosts")?.asBoolean(false) ?: false
-        val runner = runners.computeIfAbsent(allowPrivateRemoteHosts) {
-            GitCommandRunner(GitExecutionProperties(allowPrivateRemoteHosts = it))
-        }
         val workspace =
             if (injected != null) GitWorkspace(injected, runner)
             else GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner)
@@ -105,12 +116,6 @@ class GitToolProvider : ToolPlugin {
                         "type": "string",
                         "title": "Main branch",
                         "description": "Branch pull requests target, never pushed by the tools. Defaults to main."
-                    },
-                    "allowPrivateRemoteHosts": {
-                        "type": "boolean",
-                        "title": "Allow private remote hosts",
-                        "description": "Allow push and fetch to a forge on a private network. Keep it aligned with agentos.git.allow-private-remote-hosts.",
-                        "default": false
                     }
                 },
                 "additionalProperties": false

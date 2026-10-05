@@ -214,6 +214,28 @@ class GitToolsSpec :
             git(clone, "status", "--porcelain") shouldBe ""
         }
 
+        "private network remotes follow the service's setting, never the integration's" {
+            val clone = cloneOf(managed())
+            val config =
+                jacksonObjectMapper()
+                    .createObjectNode()
+                    .put("workingDirectory", clone.toString())
+                    .put("repositoryUrl", "https://127.0.0.1:9/org/project.git")
+                    .put("allowPrivateRemoteHosts", true)
+            val withCredentials = toolContext.copy(credentialProvider = { token() })
+
+            suspend fun fetchWith(provider: GitToolProvider): String =
+                provider
+                    .provideTools(config, "git", withCredentials)
+                    .associateBy { it.name.removePrefix("git__") }
+                    .call("git_fetch")
+                    .output
+
+            fetchWith(GitToolProvider()) shouldContain "agentos.git.allow-private-remote-hosts"
+            fetchWith(GitToolProvider(GitExecutionProperties(allowPrivateRemoteHosts = true))) shouldNotContain
+                "agentos.git.allow-private-remote-hosts"
+        }
+
         "outside a Git workspace a remote must be configured" {
             val fixture = managed()
             val status = gitTools("git", configured(cloneOf(fixture)), access(), gitHub)
