@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.factorybridge.tools
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import io.whozoss.agentos.plugins.factorybridge.FactoryTrustedHeaderSigner
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -18,47 +19,39 @@ class FactoryStartWorkflowTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,
     private val objectMapper: ObjectMapper,
-    private val runtimeId: String,
+    private val trustedHeaderSigner: FactoryTrustedHeaderSigner,
 ) : StandardTool<FactoryStartWorkflowTool.Input> {
-    data class Input(val workflowId: String, val workflowType: String, val title: String)
+    data class Input(val workflowType: String, val title: String? = null, val ticket: String? = null)
 
     override val name = "FACTORY_WORKSTREAM__start_workflow"
     override val description = "Create an authoritative governed workflow from the unique configured immutable definition."
-    override val version = "1.0.0"
+    override val version = "2.0.0"
     override val paramType = Input::class.java
     override val inputSchema =
-        """{"type":"object","additionalProperties":false,"properties":{"workflowId":{"type":"string"},"workflowType":{"type":"string"},"title":{"type":"string"}},"required":["workflowId","workflowType","title"]}"""
+        """{"type":"object","additionalProperties":false,"properties":{"workflowType":{"type":"string","maxLength":128},"title":{"type":"string","maxLength":200},"ticket":{"type":"string","maxLength":64}},"required":["workflowType"]}"""
 
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
-        if (input == null) return failure("INVALID_START_REQUEST", "workflowId, workflowType and title are required.")
+        if (input == null || input.workflowType.isBlank()) return failure("INVALID_START_REQUEST", "workflowType is required.")
         val caseIds = context.caseEvents.map { it.caseId }.distinct()
         if (caseIds.size != 1) return failure("CASE_CONTEXT_UNAVAILABLE", "A single controlling case is required.")
-        val agent =
-            context.agentName?.takeIf { it.isNotBlank() }
-                ?: return failure("AGENT_CONTEXT_UNAVAILABLE", "A controlling agent is required.")
-        val execution =
-            linkedMapOf<String, Any>(
-                "namespaceId" to context.namespaceId.toString(),
-                "runtimeId" to runtimeId,
-                "kind" to "agentos",
-                "agentId" to agent,
-                "caseId" to caseIds.single().toString(),
-            )
-        val actor =
-            context.userExternalId?.takeIf { it.isNotBlank() } ?: context.userId?.toString()
-                ?: return failure("USER_CONTEXT_UNAVAILABLE", "A controlling actor is required.")
-        execution["actorId"] = actor
-        val body = objectMapper.writeValueAsString(mapOf("workflow" to input, "execution" to execution))
-        val id = URLEncoder.encode(input.workflowId, Charsets.UTF_8).replace("+", "%20")
-        val request =
-            Request
-                .Builder()
-                .url("${baseUrl.trimEnd('/')}/api/factory/workflows/$id/start")
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
+        val requestIdentity = context.toolRequestId?.takeIf { it.isNotBlank() }
+            ?: return failure("TOOL_REQUEST_CONTEXT_UNAVAILABLE", "A stable tool request identity is required.")
+        val parameters = buildMap<String, Any> { input.ticket?.trim()?.takeIf { it.isNotEmpty() }?.let { put("ticket", it) } }
+        val body = objectMapper.writeValueAsString(buildMap<String, Any> {
+            put("workflowType", input.workflowType)
+            input.title?.trim()?.takeIf { it.isNotEmpty() }?.let { put("title", it) }
+            if (parameters.isNotEmpty()) put("parameters", parameters)
+        })
+        val requestBuilder = Request.Builder()
+            .url("${baseUrl.trimEnd('/')}/api/factory/workflows")
+            .header("Idempotency-Key", "agentos-tool:$requestIdentity")
+            .post(body.toRequestBody("application/json".toMediaType()))
+        val request = trustedHeaderSigner.sign(requestBuilder, context).getOrElse {
+            return failure("TRUST_CONTEXT_UNAVAILABLE", it.message ?: "Trusted Factory context is unavailable.")
+        }.build()
         return try {
             withContext(Dispatchers.IO) {
                 httpClient.newCall(request).execute().use { response ->
@@ -121,9 +114,13 @@ class FactoryStartWorkflowTool(
         val data = root.path("data")
         val workflowId = data.path("workflowId").takeIf { it.isTextual }?.asText()
         val revision = data.path("revision").takeIf { it.isIntegralNumber }?.asLong()
+        val title = data.path("title").takeIf { it.isTextual }?.asText()
         val created = data.path("created").takeIf { it.isBoolean }?.asBoolean()
+        val queued = data.path("queued").takeIf { it.isBoolean }?.asBoolean()
         val idempotent = data.path("idempotent").takeIf { it.isBoolean }?.asBoolean()
-        if (workflowId == null || revision == null || created == null || idempotent == null) {
+        val submissionId = data.path("submissionId").takeIf { it.isTextual }?.asText()
+        val submissionStatus = data.path("submissionStatus").takeIf { it.isTextual }?.asText()
+        if (workflowId == null || title == null || revision == null || created == null || queued == null || idempotent == null || submissionId == null || submissionStatus == null) {
             return failure("MALFORMED_FACTORY_RESPONSE", "Factory returned an invalid response.")
         }
         // Phase 7 standardized command output: status / revision / reasonCode /
@@ -139,8 +136,12 @@ class FactoryStartWorkflowTool(
                 "allowedActions" to emptyList<Any>(),
                 "message" to if (created) "Workflow $workflowId created." else "Workflow $workflowId already exists (idempotent).",
                 "workflowId" to workflowId,
+                "title" to title,
                 "created" to created,
+                "queued" to queued,
                 "idempotent" to idempotent,
+                "submissionId" to submissionId,
+                "submissionStatus" to submissionStatus,
                 "governanceMode" to data.path("governanceMode").asText(),
                 "definitionVersion" to data.path("definitionVersion").asText(),
                 "definitionHash" to data.path("definitionHash").asText(),

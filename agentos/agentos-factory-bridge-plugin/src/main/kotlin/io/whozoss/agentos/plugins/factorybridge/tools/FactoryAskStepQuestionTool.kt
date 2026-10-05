@@ -73,11 +73,14 @@ class FactoryAskStepQuestionTool(
     ): ToolExecutionResult {
         if (input == null) return failure("QUESTION_SCHEMA_INVALID", "A structured step question is required.")
         val caseId = context.caseEvents.map { it.caseId }.distinct().singleOrNull()
-            ?: return failure("FACTORY_QUESTION_CONTEXT_MISSING", "This case has no Factory question capability.")
+            ?: return failure("FACTORY_WORKER_BINDING_INVALID", "Factory worker invocation requires exactly one controlling case.")
         val agent = context.agentName
-            ?: return failure("FACTORY_QUESTION_CONTEXT_MISSING", "This case has no Factory question capability.")
+            ?: return failure("FACTORY_WORKER_BINDING_INVALID", "Factory worker invocation requires an agent identity.")
         val binding = bindings.acquire(caseId, context.namespaceId, agent)
-            ?: return failure("FACTORY_QUESTION_CONTEXT_MISSING", "This case has no available Factory question capability.")
+            ?: return failure(
+                "FACTORY_WORKER_BINDING_MISSING",
+                "No active Factory attempt binding matches this case, namespace, and agent, or the binding is unavailable.",
+            )
         val contextHash = contextHash(binding.attemptId, input)
         val question = buildMap<String, Any?> {
             put("prompt", input.prompt)

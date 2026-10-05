@@ -41,7 +41,7 @@ class DefaultAgentOsExecutionAdapterTest {
     ): Pair<DefaultAgentOsExecutionAdapter, MockRestServiceServer> {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
-        return DefaultAgentOsExecutionAdapter(builder, baseUrl, sseClientFactory) to server
+        return DefaultAgentOsExecutionAdapter(builder, baseUrl, "binding-secret", sseClientFactory) to server
     }
 
     private fun sseFactory(): (String) -> AgentOsSseClient = {
@@ -61,6 +61,8 @@ class DefaultAgentOsExecutionAdapterTest {
             .andExpect(header("X-External-User-Id", "user-1"))
             .andExpect(header("X-Factory-Attempt-Id", "attempt-1"))
             .andExpect(header("X-Factory-Capability-Token", "token-1"))
+            .andExpect(header("X-Factory-Agentos-Secret", "binding-secret"))
+            .andExpect(header("X-Factory-Agent-Name", "*"))
             .andExpect(jsonPath("$.id").value("case-1"))
             .andExpect(jsonPath("$.attemptId").value("attempt-1"))
             .andExpect(jsonPath("$.capabilityToken").value("token-1"))
@@ -88,6 +90,19 @@ class DefaultAgentOsExecutionAdapterTest {
         assertThat(created).isEqualTo(CaseHandle("case-1", "ns-1", recovered = false))
         assertThat(recovered).isEqualTo(CaseHandle("case-1", "ns-1", recovered = true))
         server.verify() // a single POST /api/cases — the second call recovered
+    }
+
+    @Test
+    fun `capability-bound creation fails before HTTP when the binding secret is absent`() {
+        val builder = RestClient.builder()
+        val server = MockRestServiceServer.bindTo(builder).build()
+        val adapter = DefaultAgentOsExecutionAdapter(builder, baseUrl)
+
+        assertThatThrownBy {
+            adapter.createOrRecoverExecution("ns-1", "wf-1", "step-1", null, "attempt-1", "token-1", "case-1")
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("binding secret")
+        server.verify()
     }
 
     @Test

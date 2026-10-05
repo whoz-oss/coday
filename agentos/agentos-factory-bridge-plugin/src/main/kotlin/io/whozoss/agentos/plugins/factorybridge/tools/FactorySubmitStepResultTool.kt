@@ -52,10 +52,14 @@ class FactorySubmitStepResultTool(
     ): ToolExecutionResult {
         if (input == null) return failure("RESULT_SCHEMA_INVALID", "A structured result is required.")
         val caseId = context.caseEvents.map { it.caseId }.distinct().singleOrNull()
-            ?: return failure("FACTORY_RESULT_CONTEXT_MISSING", "This case has no Factory result capability.")
-        val agent = context.agentName ?: return failure("FACTORY_RESULT_CONTEXT_MISSING", "This case has no Factory result capability.")
+            ?: return failure("FACTORY_WORKER_BINDING_INVALID", "Factory worker invocation requires exactly one controlling case.")
+        val agent = context.agentName
+            ?: return failure("FACTORY_WORKER_BINDING_INVALID", "Factory worker invocation requires an agent identity.")
         val binding = bindings.acquire(caseId, context.namespaceId, agent)
-            ?: return failure("FACTORY_RESULT_CONTEXT_MISSING", "This case has no available Factory result capability.")
+            ?: return failure(
+                "FACTORY_WORKER_BINDING_MISSING",
+                "No active Factory attempt binding matches this case, namespace, and agent, or the binding is unavailable.",
+            )
         val body = mapper.writeValueAsString(mapOf("attemptId" to binding.attemptId, "result" to input))
         val request =
             Request

@@ -16,6 +16,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties(prefix = "factory.adapter.agentos")
 data class AgentOsAdapterProperties(
     val enabled: Boolean = true,
+    /** Shared secret required by AgentOS when registering a Factory worker binding. */
+    val bindingSecret: String? = null,
     /** Base delay of the SSE reconnection exponential backoff. */
     val backoffBaseMs: Long = AgentOsSseClient.DEFAULT_BACKOFF_BASE_MS,
     /** Cap of the SSE reconnection backoff. */

@@ -125,6 +125,8 @@ class TrustContextExtractorTest {
             principalType = "service",
             scopes = listOf("admin:*"),
             serviceIdentityId = "svc-1",
+            namespaceId = "namespace-1",
+            caseId = "case-1",
             secret = secret,
         )
         val request = request().apply { headers.forEach { (name, value) -> addHeader(name, value) } }
@@ -135,6 +137,59 @@ class TrustContextExtractorTest {
         assertThat(context.principalType).isEqualTo(TrustContext.PRINCIPAL_TYPE_SERVICE)
         assertThat(context.serviceIdentityId).isEqualTo("svc-1")
         assertThat(context.scopes).containsExactly("admin:*")
+        assertThat(context.namespaceId).isEqualTo("namespace-1")
+        assertThat(context.caseId).isEqualTo("case-1")
+    }
+
+    @Test
+    fun `tampering signed namespace or case fails closed`() {
+        val signed = TestJwt.signProxyHeaders(
+            principalId = "proxy-actor",
+            principalType = "service",
+            namespaceId = "namespace-1",
+            caseId = "case-1",
+            secret = secret,
+        )
+        listOf(
+            FakeIdp.PROXY_NAMESPACE_ID_HEADER to "namespace-2",
+            FakeIdp.PROXY_CASE_ID_HEADER to "case-2",
+        ).forEach { (header, tamperedValue) ->
+            val request = request().apply {
+                signed.forEach { (name, value) -> addHeader(name, if (name == header) tamperedValue else value) }
+            }
+            val context = extractor(allowLoopbackDev = false).extract(request)
+            assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+            assertThat(context.namespaceId).isNull()
+            assertThat(context.caseId).isNull()
+        }
+    }
+
+    @Test
+    fun `missing signature or trusted field fails closed`() {
+        val signed = TestJwt.signProxyHeaders(
+            principalId = "proxy-actor",
+            principalType = "service",
+            namespaceId = "namespace-1",
+            caseId = "case-1",
+            secret = secret,
+        )
+        listOf(
+            FakeIdp.PROXY_SIGNATURE_HEADER,
+            FakeIdp.PROXY_NAMESPACE_ID_HEADER,
+            FakeIdp.PROXY_CASE_ID_HEADER,
+        ).forEach { missing ->
+            val request = request().apply {
+                signed.filterKeys { it != missing }.forEach { (name, value) -> addHeader(name, value) }
+            }
+            val context = extractor(allowLoopbackDev = false).extract(request)
+            if (missing == FakeIdp.PROXY_SIGNATURE_HEADER) {
+                assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+            } else {
+                assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+            }
+            assertThat(context.namespaceId).isNull()
+            assertThat(context.caseId).isNull()
+        }
     }
 
     @Test

@@ -16,6 +16,8 @@ import java.util.concurrent.TimeUnit
  * | runtime id       | `agentos.factory.runtime-id`        | `AGENTOS_FACTORY_RUNTIME_ID`      | `agentos-primary`       |
  * | data dir         | `agentos.factory-bridge.data-dir`   | `AGENTOS_FACTORY_BRIDGE_DATA_DIR` | `data/factory-bridge`   |
  * | shared secret    | `agentos.factory-bridge.secret`     | `AGENTOS_FACTORY_BRIDGE_SECRET`   | *(empty → disabled)*    |
+ * | service identity | `agentos.factory-bridge.service-identity-id` | `AGENTOS_FACTORY_BRIDGE_SERVICE_IDENTITY_ID` | `agentos-factory-bridge` |
+ * | service scopes   | `agentos.factory-bridge.scopes`     | `AGENTOS_FACTORY_BRIDGE_SCOPES`   | `workflow:write`        |
  * | binding TTL (s)  | `agentos.factory-bridge.binding-ttl`| `AGENTOS_FACTORY_BRIDGE_BINDING_TTL` | `3600`             |
  *
  * @property dataDir directory used for the restart-safe JSON state store. `null` keeps
@@ -30,6 +32,8 @@ data class FactoryBridgeConfig(
     val runtimeId: String,
     val dataDir: String? = null,
     val secret: String? = null,
+    val serviceIdentityId: String = DEFAULT_SERVICE_IDENTITY_ID,
+    val scopes: List<String> = DEFAULT_SCOPES,
     val bindingTtlSeconds: Long = DEFAULT_BINDING_TTL_SECONDS,
 ) {
     /**
@@ -48,6 +52,8 @@ data class FactoryBridgeConfig(
     companion object {
         const val DEFAULT_BASE_URL = "http://localhost:8141"
         const val DEFAULT_RUNTIME_ID = "agentos-primary"
+        const val DEFAULT_SERVICE_IDENTITY_ID = "agentos-factory-bridge"
+        val DEFAULT_SCOPES = listOf("workflow:write")
         const val DEFAULT_BINDING_TTL_SECONDS = 3600L
 
         fun fromEnvironment(): FactoryBridgeConfig =
@@ -56,6 +62,16 @@ data class FactoryBridgeConfig(
                 runtimeId = resolve("agentos.factory.runtime-id", "AGENTOS_FACTORY_RUNTIME_ID", DEFAULT_RUNTIME_ID),
                 dataDir = resolve("agentos.factory-bridge.data-dir", "AGENTOS_FACTORY_BRIDGE_DATA_DIR", "data/factory-bridge"),
                 secret = resolve("agentos.factory-bridge.secret", "AGENTOS_FACTORY_BRIDGE_SECRET", ""),
+                serviceIdentityId = resolve(
+                    "agentos.factory-bridge.service-identity-id",
+                    "AGENTOS_FACTORY_BRIDGE_SERVICE_IDENTITY_ID",
+                    DEFAULT_SERVICE_IDENTITY_ID,
+                ),
+                scopes = resolve(
+                    "agentos.factory-bridge.scopes",
+                    "AGENTOS_FACTORY_BRIDGE_SCOPES",
+                    DEFAULT_SCOPES.joinToString(","),
+                ).split(",").map { it.trim() }.filter { it.isNotEmpty() },
                 bindingTtlSeconds =
                     resolve("agentos.factory-bridge.binding-ttl", "AGENTOS_FACTORY_BRIDGE_BINDING_TTL", DEFAULT_BINDING_TTL_SECONDS.toString())
                         .toLongOrNull()

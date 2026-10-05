@@ -72,6 +72,8 @@ class TrustContextExtractor(
                 principalType = verification.principalType ?: TrustContext.PRINCIPAL_TYPE_HUMAN
                 serviceIdentityId = verification.serviceIdentityId
                 scopes = verification.scopes
+                namespaceId = verification.namespaceId
+                caseId = verification.caseId
             }
         }
 
@@ -85,7 +87,10 @@ class TrustContextExtractor(
                 principalType = TrustContext.PRINCIPAL_TYPE_HUMAN
                 serviceIdentityId = null
                 scopes = listOf(TrustContext.ADMIN_WILDCARD_SCOPE)
-                namespaceId = header("x-factory-namespace-id")
+                // Cockpit V2 selects the target namespace explicitly. In local
+                // loopback-dev mode this remains a trusted development boundary;
+                // production callers must use JWT or signed proxy attribution.
+                namespaceId = header("x-factory-namespace-id") ?: header("x-namespace-id")
                 caseId = header("x-factory-case-id")
             } else {
                 authenticationMethod = TrustContext.AUTH_ANONYMOUS

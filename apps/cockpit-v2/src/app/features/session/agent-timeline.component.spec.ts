@@ -89,7 +89,7 @@ describe('AgentTimelineComponent', () => {
     const running = lane({ blocks: [{ label: 'build', startSec: 0, endSec: 10, status: 'running' }] })
     const done = lane({
       id: 'code',
-      blocks: [{ label: 'plan', startSec: 0, endSec: 5, status: 'done' }],
+      blocks: [{ label: 'plan', startSec: 0, endSec: 5, status: 'completed' }],
     })
 
     const component = render({ lanes: [running, done], nowSec: 12, status: 'running', startedAt })
@@ -99,5 +99,35 @@ describe('AgentTimelineComponent', () => {
     expect(effective[1]?.blocks[0]?.endSec).toBe(5)
     // The original input lanes are never mutated.
     expect(running.blocks[0]?.endSec).toBe(10)
+  })
+
+  it('keeps a planned Thor lane empty while Tony failed remains truthfully visible', () => {
+    const tony = lane({
+      id: 'agent:Tony_Starck',
+      label: 'Tony_Starck',
+      blocks: [{ label: 'Tony failed', startSec: 2, endSec: 4, status: 'failed' }],
+    })
+    const thor = lane({
+      id: 'agent:Thor',
+      label: 'Thor',
+      subtitle: 'Thor',
+      blocks: [
+        { label: 'Thor pending', startSec: 4, endSec: 6, status: 'pending' },
+        { label: 'Thor ready', startSec: 6, endSec: 8, status: 'ready' },
+      ],
+    })
+    const component = render({ lanes: [tony, thor], nowSec: 60, status: 'running' })
+
+    expect(component.effectiveLanes().map((candidate) => [candidate.label, candidate.blocks.length])).toEqual([
+      ['Tony_Starck', 1],
+      ['Thor', 0],
+    ])
+    expect(fixture.nativeElement.querySelectorAll('.row.lane')).toHaveLength(2)
+    expect(fixture.nativeElement.textContent).toContain('Thor')
+    const labels = [...fixture.nativeElement.querySelectorAll('button.block')].map((button: Element) =>
+      button.getAttribute('aria-label')
+    )
+    expect(labels).toEqual(expect.arrayContaining([expect.stringContaining('Tony failed, échoué')]))
+    expect(labels.some((label: string | null) => label?.startsWith('Thor'))).toBe(false)
   })
 })

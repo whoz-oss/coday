@@ -205,6 +205,27 @@
   background: #0e2127;
   box-shadow: 0 0 24px -6px rgba(95, 212, 224, 0.55);
 }
+.block--waiting {
+  border-color: var(--sf-tertiary);
+  background: #26200f;
+}
+.block--failed {
+  border-color: var(--sf-error);
+  background: #2a1418;
+}
+.block--indeterminate {
+  border-style: dashed;
+  border-color: var(--sf-text-muted);
+  background: #20222a;
+}
+.block--pending {
+  border-style: dashed;
+  opacity: 0.72;
+}
+.block--cancelled {
+  opacity: 0.58;
+  text-decoration: line-through;
+}
 .block--selected {
   outline: 2px solid var(--sf-primary);
   outline-offset: 2px;
@@ -237,12 +258,21 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.check {
+.check,
+.status-icon {
   width: 14px;
   height: 14px;
   font-size: 14px;
-  color: var(--sf-success);
   font-weight: 700;
+}
+.check {
+  color: var(--sf-success);
+}
+.planned-dot {
+  width: 8px;
+  height: 8px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
 }
 .pulse {
   width: 7px;

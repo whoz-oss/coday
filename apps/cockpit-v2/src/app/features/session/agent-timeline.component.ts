@@ -58,15 +58,16 @@ export class AgentTimelineComponent {
     return Math.max(base, elapsedSec)
   })
 
-  /** Lanes with any running block stretched to the effective now. */
+  /** Visible execution lanes, with any running block stretched to the effective now. */
   protected readonly effectiveLanes = computed(() => {
     const now = this.effectiveNowSec()
+    const isVisible = (block: TimelineBlock): boolean => block.status !== 'pending' && block.status !== 'ready'
     const extend = (block: TimelineBlock): TimelineBlock =>
       block.status === 'running' && now > block.endSec ? { ...block, endSec: now } : block
     return this.lanes().map((lane) => ({
       ...lane,
-      request: lane.request ? extend(lane.request) : lane.request,
-      blocks: lane.blocks.map(extend),
+      request: lane.request && isVisible(lane.request) ? extend(lane.request) : undefined,
+      blocks: lane.blocks.filter(isVisible).map(extend),
     }))
   })
 
@@ -94,5 +95,43 @@ export class AgentTimelineComponent {
 
   protected iconFor(lane: TimelineLane): string {
     return lane.kind === 'human' ? 'person' : lane.kind === 'workspace' ? 'terminal' : 'smart_toy'
+  }
+
+  protected statusIcon(block: TimelineBlock): string | null {
+    switch (block.status) {
+      case 'completed':
+        return 'check'
+      case 'failed':
+        return 'error'
+      case 'indeterminate':
+        return 'help'
+      case 'cancelled':
+        return 'cancel'
+      case 'waiting_human':
+        return 'person_alert'
+      default:
+        return null
+    }
+  }
+
+  protected statusLabel(block: TimelineBlock): string {
+    switch (block.status) {
+      case 'pending':
+        return 'en attente'
+      case 'ready':
+        return 'prêt, en attente de prise en charge'
+      case 'running':
+        return 'en cours'
+      case 'waiting_human':
+        return 'en attente d’une intervention humaine'
+      case 'completed':
+        return 'terminé'
+      case 'failed':
+        return 'échoué'
+      case 'indeterminate':
+        return 'état indéterminé'
+      case 'cancelled':
+        return 'annulé'
+    }
   }
 }

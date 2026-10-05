@@ -31,8 +31,8 @@ internal fun buildFactoryWorkstreamTools(services: FactoryBridgeServices): List<
         FactoryGetStepAttemptsTool(baseUrl, httpClient, objectMapper),
         FactoryGetBlockersTool(baseUrl, httpClient, objectMapper),
         FactoryGetRequiredHumanActionsTool(baseUrl, httpClient, objectMapper),
-        FactoryStartWorkflowTool(baseUrl, httpClient, objectMapper, services.config.runtimeId),
-        FactoryRequestAgentRetryTool(baseUrl, httpClient, objectMapper, services.config.runtimeId),
+        FactoryStartWorkflowTool(baseUrl, httpClient, objectMapper, services.trustedHeaderSigner),
+        FactoryRequestAgentRetryTool(baseUrl, httpClient, objectMapper, services.trustedHeaderSigner),
     )
 }
 

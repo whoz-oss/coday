@@ -14,7 +14,6 @@ import java.time.Instant
  */
 interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, String> {
 
-    /** The distinct organizations that currently have at least one pending event. */
     @Query(
         """
         MATCH (e:OutboxEvent)
@@ -24,7 +23,6 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
     )
     fun findPendingOrganizations(): List<String>
 
-    /** Up to [limit] oldest pending events of a tenant, in insertion order. */
     @Query(
         """
         MATCH (e:OutboxEvent)
@@ -37,7 +35,6 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
     )
     fun findPending(organizationId: String, limit: Int): List<OutboxEventNode>
 
-    /** Every event of a tenant, oldest first (test/introspection helper). */
     @Query(
         """
         MATCH (e:OutboxEvent)
@@ -48,7 +45,18 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
     )
     fun findAllByOrganization(organizationId: String): List<OutboxEventNode>
 
-    /** Marks one event dispatched and stamps its dispatch time. */
+    /** Pending/dispatched submission fencing duplicate workflow starts. */
+    @Query(
+        """
+        MATCH (e:OutboxEvent {id: ${'$'}id})
+        WHERE e.eventType = ${'$'}eventType
+          AND e.status IN ['pending', 'dispatched']
+        RETURN e
+        LIMIT 1
+        """,
+    )
+    fun findActiveRunSubmission(id: String, eventType: String): OutboxEventNode?
+
     @Query(
         """
         MATCH (e:OutboxEvent)
@@ -59,7 +67,6 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
     )
     fun markDispatched(organizationId: String, eventId: String, dispatchedAt: Instant): Long
 
-    /** Marks one event failed and increments its attempt counter. */
     @Query(
         """
         MATCH (e:OutboxEvent)

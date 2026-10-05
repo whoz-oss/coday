@@ -19,32 +19,36 @@ class FactoryStartWorkflowToolSpec : StringSpec({
     "strict schema and trusted HTTP attribution" {
         var path = ""
         var body = ""
+        var headers = emptyMap<String, String>()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { ex ->
             if (ex.requestMethod == "POST") {
                 path = ex.requestURI.toString()
                 body = ex.requestBody.bufferedReader().readText()
+                headers = ex.requestHeaders.entries.associate { it.key.lowercase() to it.value.single() }
             } else {
                 ex.requestBody.close()
             }
             val bytes =
-                """{"data":{"workflowId":"wf-1","revision":1,"created":true,"idempotent":false,"governanceMode":"governed","definitionVersion":"1.0.0","definitionHash":"hash","projection":{}}}"""
+                """{"data":{"workflowId":"wf-1","title":"Story","revision":1,"created":true,"queued":true,"idempotent":false,"submissionId":"sub-1","submissionStatus":"pending","governanceMode":"governed","definitionVersion":"1.0.0","definitionHash":"hash","projection":{}}}"""
                     .toByteArray()
             ex.sendResponseHeaders(201, bytes.size.toLong())
             ex.responseBody.use { it.write(bytes) }
         }
         server.start()
         try {
-            val tool = FactoryStartWorkflowTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, "runtime-configured")
+            val signer = FactoryTrustedHeaderSigner("test-secret", "agentos-factory-bridge", listOf("workflow:write"), now = { 1234L })
+            val tool = FactoryStartWorkflowTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, signer)
             tool.name shouldBe "FACTORY_WORKSTREAM__start_workflow"
             val schema = mapper.readTree(tool.inputSchema)
             schema.path("additionalProperties").asBoolean() shouldBe false
-            schema.path("properties").fieldNames().asSequence().toSet() shouldBe setOf("workflowId", "workflowType", "title")
+            schema.path("properties").fieldNames().asSequence().toSet() shouldBe setOf("workflowType", "title", "ticket")
             val ns = UUID.randomUUID()
             val case = UUID.randomUUID()
             val context =
                 ToolContext(ns, UUID.randomUUID(), "actor-external", listOf(CaseStatusEvent(metadata = EntityMetadata(), namespaceId = ns, caseId = case, status = CaseStatus.PENDING)), "ProductEngineer")
-            val result = tool.execute(FactoryStartWorkflowTool.Input("wf-1", "bmad-story", "Story"), context)
+            val trustedContext = context.copy(toolRequestId = "tool-request-1")
+            val result = tool.execute(FactoryStartWorkflowTool.Input("bmad-story", "Story"), trustedContext)
             result.success shouldBe true
             val output = mapper.readTree(result.output)
             // Phase 7 standardized command output.
@@ -52,26 +56,37 @@ class FactoryStartWorkflowToolSpec : StringSpec({
             output.path("revision").asLong() shouldBe 1L
             output.path("allowedActions").isArray shouldBe true
             output.path("created").asBoolean() shouldBe true
-            path shouldBe "/api/factory/workflows/wf-1/start"
+            path shouldBe "/api/factory/workflows"
             val sent = mapper.readTree(body)
-            sent.path("workflow").fieldNames().asSequence().toSet() shouldBe setOf("workflowId", "workflowType", "title")
-            sent.path("execution").path("namespaceId").asText() shouldBe ns.toString()
-            sent.path("execution").path("runtimeId").asText() shouldBe "runtime-configured"
-            sent.path("execution").path("caseId").asText() shouldBe case.toString()
-            sent.path("execution").path("agentId").asText() shouldBe "ProductEngineer"
-            sent.path("execution").path("actorId").asText() shouldBe "actor-external"
+            sent.fieldNames().asSequence().toSet() shouldBe setOf("workflowType", "title")
+            sent.path("workflowType").asText() shouldBe "bmad-story"
+            sent.path("title").asText() shouldBe "Story"
+            headers["idempotency-key"] shouldBe "agentos-tool:tool-request-1"
+            headers["x-proxy-principal-id"] shouldBe "actor-external"
+            headers["x-proxy-principal-type"] shouldBe "service"
+            headers["x-proxy-service-identity-id"] shouldBe "agentos-factory-bridge"
+            headers["x-proxy-scopes"] shouldBe "workflow:write"
+            headers["x-proxy-namespace-id"] shouldBe ns.toString()
+            headers["x-proxy-case-id"] shouldBe case.toString()
+            headers["x-proxy-timestamp"] shouldBe "1234"
+            headers["x-proxy-signature"].isNullOrBlank() shouldBe false
         } finally {
             server.stop(0)
         }
     }
 
     "maps created idempotent errors and malformed responses" {
-        val tool = FactoryStartWorkflowTool("http://localhost", OkHttpClient(), mapper, "runtime")
+        val tool = FactoryStartWorkflowTool(
+            "http://localhost",
+            OkHttpClient(),
+            mapper,
+            FactoryTrustedHeaderSigner("test-secret", "agentos-factory-bridge", listOf("workflow:write")),
+        )
         tool
-            .parseResponse(201, """{"data":{"workflowId":"wf","revision":1,"created":true,"idempotent":false,"governanceMode":"governed","definitionVersion":"1.0.0","definitionHash":"h","projection":{}}}""")
+            .parseResponse(201, """{"data":{"workflowId":"wf","title":"Run","revision":1,"created":true,"queued":true,"idempotent":false,"submissionId":"sub","submissionStatus":"pending","governanceMode":"governed","definitionVersion":"1.0.0","definitionHash":"h","projection":{}}}""")
             .metadata["created"] shouldBe true
         tool
-            .parseResponse(200, """{"data":{"workflowId":"wf","revision":1,"created":false,"idempotent":true,"governanceMode":"governed","definitionVersion":"1.0.0","definitionHash":"h","projection":{}}}""")
+            .parseResponse(200, """{"data":{"workflowId":"wf","title":"Run","revision":1,"created":false,"queued":false,"idempotent":true,"submissionId":"sub","submissionStatus":"pending","governanceMode":"governed","definitionVersion":"1.0.0","definitionHash":"h","projection":{}}}""")
             .metadata["idempotent"] shouldBe true
         tool.parseResponse(409, """{"error":{"code":"WORKFLOW_REMOVED","message":"removed"}}""").errorType shouldBe "WORKFLOW_REMOVED"
         tool.parseResponse(200, "bad").errorType shouldBe "MALFORMED_FACTORY_RESPONSE"

@@ -3,7 +3,7 @@
     <div class="titles">
       <h1>Lancer un run</h1>
       <p class="sf-muted">
-        Matérialise puis démarre un workflow réel via factory-service (start puis run asynchrone durable).
+        Crée et soumet durablement un workflow réel. Factory attribue l’identité et le contexte d’exécution.
       </p>
     </div>
   </header>
@@ -55,8 +55,8 @@
       <mat-label>Namespace</mat-label>
       @if (namespaces().length > 0) {
         <mat-select formControlName="namespaceId" data-launch-namespace="true">
-          @for (namespace of namespaces(); track namespace) {
-            <mat-option [value]="namespace">{{ namespace }}</mat-option>
+          @for (namespace of namespaces(); track namespace.id) {
+            <mat-option [value]="namespace.id">{{ namespace.name }}</mat-option>
           }
         </mat-select>
       } @else {
@@ -74,33 +74,15 @@
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field field--wide">
-      <mat-label>Demande de l’ingénieur</mat-label>
-      <textarea
-        matInput
-        rows="6"
-        formControlName="controllerRequest"
-        placeholder="Décrivez le run à lancer…"
-        data-launch-request="true"
-      ></textarea>
-      <mat-hint>1 à 4000 caractères</mat-hint>
-      @if (form.controls.controllerRequest.hasError('required')) {
-        <mat-error>La demande est requise.</mat-error>
-      } @else if (form.controls.controllerRequest.hasError('minlength')) {
-        <mat-error>La demande ne peut pas être vide.</mat-error>
-      } @else if (form.controls.controllerRequest.hasError('maxlength')) {
-        <mat-error>La demande est limitée à 4000 caractères.</mat-error>
-      }
-    </mat-form-field>
-
-    <mat-form-field appearance="outline" class="field">
-      <mat-label>Racine du dépôt</mat-label>
+      <mat-label>Titre (optionnel)</mat-label>
       <input
         matInput
-        class="sf-mono"
-        formControlName="repoRoot"
-        placeholder="Résolution automatique via AgentOS"
-        data-launch-repo-root="true"
+        formControlName="title"
+        maxlength="200"
+        placeholder="Titre lisible du run"
+        data-launch-title="true"
       />
+      <mat-hint>Factory génère un titre lisible si omis.</mat-hint>
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field">

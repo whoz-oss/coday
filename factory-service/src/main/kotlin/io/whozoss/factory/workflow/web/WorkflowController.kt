@@ -20,6 +20,7 @@ import io.whozoss.factory.workflow.domain.WorkflowExecution
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.WorkflowException
 import io.whozoss.factory.workflow.domain.workflowException
+import io.whozoss.factory.workflow.service.CreateWorkflowRunService
 import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import io.whozoss.factory.workflow.service.WorkflowHttpResult
@@ -32,6 +33,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -60,6 +62,7 @@ import java.util.UUID
 @Tag(name = "workflows", description = "Workflow projections, transitions and interactions")
 class WorkflowController(
     private val service: WorkflowService,
+    private val createWorkflowRunService: CreateWorkflowRunService,
     private val sessionRunService: SessionRunService,
     private val sessionRunSubmissionService: SessionRunSubmissionService,
     private val sessionProperties: SessionProperties,
@@ -165,8 +168,41 @@ class WorkflowController(
         )
     }
 
-    // ----- start ---------------------------------------------------------
+    // ----- create / compatibility start ---------------------------------
 
+    @PostMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Create and durably submit a workflow run. Factory assigns identity and execution context.")
+    fun createRun(
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("workflowType", "title", "parameters") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        }
+        val workflowType = request["workflowType"] as? String
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
+        val suppliedKey = idempotencyKey?.trim()?.takeIf { it.isNotEmpty() }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "Idempotency-Key is required.")
+        val parameters = (request["parameters"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, trustContext?.namespaceId)
+        val repoRoot = resolveRepoRoot(caller.namespaceId, trustContext?.principalId)
+            ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
+        return respond(
+            createWorkflowRunService.create(
+                caller.scope,
+                caller.namespaceId,
+                caller.actorId,
+                trustContext?.caseId,
+                CreateWorkflowRunService.Command(workflowType, request["title"] as? String, parameters, suppliedKey),
+                repoRoot,
+            ),
+        )
+    }
+
+    /** @deprecated Compatibility route for callers that still own workflow identity. */
+    @Deprecated("Use POST /api/factory/workflows; Factory now owns workflow identity and execution attribution.")
     @PostMapping(path = ["/{workflowId}/start"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Start a governed workflow instance from a definition.")
     fun start(
@@ -245,7 +281,9 @@ class WorkflowController(
                 )
             },
         )
-        return respond(service.start(caller.scope, caller.namespaceId, command, execution))
+        val repoRoot = resolveRepoRoot(caller.namespaceId, trustContext?.principalId)
+            ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
+        return respond(service.start(caller.scope, caller.namespaceId, command, execution, repoRoot))
     }
 
     // ----- transitions ---------------------------------------------------
@@ -370,7 +408,7 @@ class WorkflowController(
             // the tracking identity. The bounded outbox worker drains it, so the
             // HTTP connection is never held for the agent turn and an undrained
             // submission survives a restart.
-            val submissionId = sessionRunSubmissionService.submit(
+            val submission = sessionRunSubmissionService.submit(
                 caller.scope,
                 caller.namespaceId,
                 workflowId,
@@ -384,8 +422,10 @@ class WorkflowController(
                         "workflowId" to workflowId,
                         "namespaceId" to caller.namespaceId,
                         "operation" to operation,
-                        "status" to "accepted",
-                        "submissionId" to submissionId,
+                        "status" to if (submission.queued) "accepted" else submission.status,
+                        "queued" to submission.queued,
+                        "idempotent" to submission.idempotent,
+                        "submissionId" to submission.submissionId,
                         "runtimeNotification" to "durable-outbox",
                     ),
                 ),

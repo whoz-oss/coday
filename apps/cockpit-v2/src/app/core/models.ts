@@ -91,12 +91,22 @@ export interface SessionStep {
   durationSec?: number
 }
 
+export type TimelineStepStatus =
+  | 'pending'
+  | 'ready'
+  | 'running'
+  | 'waiting_human'
+  | 'completed'
+  | 'failed'
+  | 'indeterminate'
+  | 'cancelled'
+
 export interface TimelineBlock {
   label: string
   description?: string
   startSec: number
   endSec: number
-  status: 'done' | 'running'
+  status: TimelineStepStatus
   ticksSec?: number[] // instants d'événements (petits traits)
   errorTicksSec?: number[]
 }

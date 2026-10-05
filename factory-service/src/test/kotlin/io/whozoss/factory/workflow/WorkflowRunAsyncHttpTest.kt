@@ -108,6 +108,46 @@ class WorkflowRunAsyncHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `start durably submits the newly created workflow exactly once and replay is idempotent`() {
+        val workflowId = "wf-start-submission-1"
+        val raw = linkedMapOf<String, Any?>(
+            "schemaVersion" to "1",
+            "workflowType" to "wf-start-submission",
+            "version" to "1.0.0",
+            "title" to "Start submission",
+            "steps" to listOf(
+                linkedMapOf(
+                    "id" to "gate",
+                    "name" to "Gate",
+                    "responsibility" to linkedMapOf("kind" to "human", "name" to "reviewer"),
+                    "dependsOn" to emptyList<String>(),
+                ),
+            ),
+        )
+        val valid = WorkflowDefinitionValidator.validate(raw) as WorkflowDefinitionValidation.Valid
+        workflowService.registerDefinition(
+            scope,
+            WorkflowDefinitionRecord(
+                workflowType = "wf-start-submission",
+                version = "1.0.0",
+                definitionHash = hashWorkflowDefinition(valid.definition),
+                definition = valid.definition,
+            ),
+        )
+        val command = WorkflowStartCommand(workflowId, "wf-start-submission", "Start submission")
+        val execution = ControllerExecutionInput("test-runtime", "agentos", "runner", namespaceId = namespace)
+
+        val created = workflowService.start(scope, namespace, command, execution, repoRoot.toString())
+        val replay = workflowService.start(scope, namespace, command, execution, repoRoot.toString())
+
+        assertThat(created.status).isEqualTo(201)
+        assertThat(replay.status).isEqualTo(200)
+        val submissions = outbox.findAllByOrganization("org-local-dev")
+            .filter { it.eventType == SessionRunSubmissionService.SESSION_RUN_REQUESTED && it.payload.contains(workflowId) }
+        assertThat(submissions).hasSize(1)
+    }
+
+    @Test
     fun `run answers 202 with a tracking identity and durably enqueues the submission`() {
         val workflowId = "wf-run-async-1"
         startSession(workflowId)
@@ -126,6 +166,8 @@ class WorkflowRunAsyncHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(payload["workflowId"]).isEqualTo(workflowId)
         assertThat(payload["namespaceId"]).isEqualTo(namespace)
         assertThat(payload["submissionId"]).isNotNull
+        assertThat(payload["queued"]).isEqualTo(true)
+        assertThat(payload["idempotent"]).isEqualTo(false)
 
         // The submission is durable: the outbox carries a pending event.
         val events = outbox.findAllByOrganization("org-local-dev")

@@ -258,6 +258,26 @@ class AgentStepResultServiceIntegrationTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `a deterministic governed attempt identity is accepted by capability validation`() {
+        val attemptId = io.whozoss.factory.capability.CapabilityExecutionService.stableAttemptId(workflow, step)
+        seedAttempt(attemptId)
+
+        val issued = service.issue(scope, identity(attemptId))
+
+        assertThat(issued.token).isNotBlank()
+        assertThat(io.whozoss.factory.agentattempt.domain.CanonicalJsonHash.isSafeId(attemptId)).isTrue()
+    }
+
+    @Test
+    fun `the legacy hash-delimited governed attempt identity is rejected`() {
+        val attemptId = "$workflow#$step"
+        seedAttempt(attemptId)
+
+        assertThatThrownBy { service.issue(scope, identity(attemptId)) }
+            .isInstanceOf(InvalidResultCapabilityIdentityException::class.java)
+    }
+
+    @Test
     fun `an invalid capability identity is rejected`() {
         seedAttempt("attempt-bad-cap")
 

@@ -27,6 +27,7 @@ data class TrustedCaseBinding(
     val namespaceId: String? = null,
     val runtimeId: String? = null,
     val capabilityToken: String? = null,
+    val agentName: String? = null,
     val environmentRef: String? = null,
     val environmentRevision: Int? = null,
     val externalUserId: String? = null,

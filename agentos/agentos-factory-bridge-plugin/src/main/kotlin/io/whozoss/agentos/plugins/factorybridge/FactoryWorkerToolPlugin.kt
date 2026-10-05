@@ -26,11 +26,9 @@ internal fun buildFactoryWorkerTools(services: FactoryBridgeServices): List<Stan
  * Tool provider for the `FACTORY_WORKER` integration — the Worker trust boundary.
  *
  * Exposes exactly the two worker tools (`FACTORY_WORKER__submit_step_result`,
- * `FACTORY_WORKER__ask_step_question`). Both are capability-bound: enabling this
- * integration in an `AgentConfig` is NOT sufficient to use them — [FactoryToolGrantPolicy]
- * denies them fail-closed unless the running case holds an active Factory attempt
- * binding, and the tools themselves resolve the attempt identity from that binding,
- * never from model-authored input.
+ * `FACTORY_WORKER__ask_step_question`). AgentConfig and IntegrationConfig determine
+ * exposure; the tools themselves authorize each invocation against the active Factory
+ * attempt binding and resolve attempt identity from it, never from model-authored input.
  *
  * The integration needs no parameters, but unlike the retired config-less `FACTORY`
  * plugin it declares a non-null empty-object [configSchema] so it registers in the

@@ -5,6 +5,7 @@ import io.whozoss.factory.agentattempt.persistence.OutboxEventNode
 import io.whozoss.factory.agentattempt.persistence.SpringDataNeo4jOutboxRepository
 import io.whozoss.factory.persistence.TenantScope
 import java.time.Instant
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -27,6 +28,13 @@ class SessionRunSubmissionService(
     private val objectMapper: ObjectMapper,
 ) {
 
+    data class SubmissionResult(
+        val submissionId: String,
+        val queued: Boolean,
+        val idempotent: Boolean,
+        val status: String,
+    )
+
     /**
      * Durably enqueues a run/resume submission and returns its tracking id. No
      * agent turn is executed on this call — the bounded background worker drains
@@ -40,10 +48,25 @@ class SessionRunSubmissionService(
         repoRoot: String,
         operation: String,
         ticket: String?,
-    ): String {
-        val submissionId = UUID.randomUUID().toString()
+    ): SubmissionResult {
+        val submissionId = stableSubmissionId(scope, namespaceId, workflowId, operation)
+        val nodeId = OutboxEventNode.compositeId(scope.organizationId, submissionId)
+        val existing = outbox.findActiveRunSubmission(nodeId, SESSION_RUN_REQUESTED)
+        if (existing != null) {
+            return SubmissionResult(
+                submissionId = existing.eventId,
+                queued = existing.status == PENDING,
+                idempotent = true,
+                status = existing.status,
+            )
+        }
+        // A terminal failed submission may be explicitly re-submitted under a
+        // new identity; active pending/dispatched rows remain deterministically
+        // fenced by the stable id above.
+        val eventId = if (outbox.existsById(nodeId)) UUID.randomUUID().toString() else submissionId
+        val eventNodeId = OutboxEventNode.compositeId(scope.organizationId, eventId)
         val payload = buildMap<String, Any?> {
-            put("submissionId", submissionId)
+            put("submissionId", eventId)
             put("namespaceId", namespaceId)
             put("workflowId", workflowId)
             put("repoRoot", repoRoot)
@@ -52,9 +75,9 @@ class SessionRunSubmissionService(
         }
         outbox.save(
             OutboxEventNode(
-                id = OutboxEventNode.compositeId(scope.organizationId, submissionId),
+                id = eventNodeId,
                 organizationId = scope.organizationId,
-                eventId = submissionId,
+                eventId = eventId,
                 workstreamId = scope.workstreamId,
                 eventType = SESSION_RUN_REQUESTED,
                 payload = objectMapper.writeValueAsString(payload),
@@ -64,7 +87,7 @@ class SessionRunSubmissionService(
                 dispatchedAt = null,
             ),
         )
-        return submissionId
+        return SubmissionResult(eventId, queued = true, idempotent = false, status = PENDING)
     }
 
     companion object {
@@ -72,5 +95,14 @@ class SessionRunSubmissionService(
         const val SESSION_RUN_REQUESTED = "session_run_requested"
 
         const val PENDING = "pending"
+
+        private fun stableSubmissionId(
+            scope: TenantScope,
+            namespaceId: String,
+            workflowId: String,
+            operation: String,
+        ): String = UUID.nameUUIDFromBytes(
+            "${scope.workstreamId}|$namespaceId|$workflowId|$operation".toByteArray(StandardCharsets.UTF_8),
+        ).toString()
     }
 }

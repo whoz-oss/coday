@@ -6,60 +6,22 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import org.pf4j.Extension
 
 /**
- * Fail-closed tool-grant policy for the Factory result channel.
+ * Leaves Factory tool exposure to the standard IntegrationConfig / AgentConfig resolver.
  *
- * `FACTORY_WORKER__submit_step_result` authorises against a case-scoped Factory capability
- * (bound out-of-band by the Factory, never by the model). When no such capability is
- * active for the running case, the tool is denied so an agent can never be prompted into
- * a submission it is not entitled to make.
- *
- * `FACTORY_WORKER__ask_step_question` (Phase 4 ask-step-question) authorises against the SAME
- * case-scoped capability: asking a question resolves the binding read-only, so a case
- * without an active capability cannot durably record a question either.
- *
- * Every other tool is left untouched ([ToolGrantDecision.Neutral]), matching the SPI's
- * pass-through contract. In particular the eight Workstream tools — the six read-only views
- * (`FACTORY_WORKSTREAM__get_workstream`, `__list_workflows`, `__get_workflow`,
- * `__get_step_attempts`, `__get_blockers`, `__get_required_human_actions`) plus the two
- * boundary request commands (`FACTORY_WORKSTREAM__start_workflow`,
- * `FACTORY_WORKSTREAM__request_agent_retry`) — are intentionally NOT capability-gated: they
- * are Workstream tools, not worker step result/question callbacks bound to an attempt
- * capability. Governed authority for retry stays with the Factory (pending-human under the
- * revision fence), so no case-scoped capability is required.
- *
- * Fail-closed: having the `FACTORY_WORKER` plugin enabled in an `AgentConfig` is NOT
- * sufficient to submit a result or ask a question outside an active attempt binding —
- * this policy is the single enforcement point.
+ * Worker binding validation belongs to tool invocation, where the trusted case, namespace,
+ * agent, capability, active-attempt and single-use checks can be evaluated together. Hiding
+ * worker tools here when no binding exists would incorrectly make transient runtime state
+ * decide the model's configured tool surface.
  */
 @Extension
 class FactoryToolGrantPolicy
     @JvmOverloads
     constructor(
-        private val services: () -> FactoryBridgeServices = { FactoryBridgePluginHolder.current },
+        @Suppress("UNUSED_PARAMETER") services: () -> FactoryBridgeServices = { FactoryBridgePluginHolder.current },
     ) : ToolGrantPolicy {
-        override fun evaluateToolGrant(
-            agentName: String?,
-            toolName: String,
-            context: ToolContext,
-        ): ToolGrantDecision {
-            if (toolName !in CAPABILITY_BOUND_TOOLS) return ToolGrantDecision.Neutral
-            return runCatching {
-                val caseId = context.caseEvents.map { it.caseId }.distinct().singleOrNull()
-                    ?: return@runCatching ToolGrantDecision.Deny(setOf(toolName), "no single controlling case")
-                val bound = services().stepResultBindings.contextForCase(caseId, context.namespaceId).isNotEmpty()
-                if (bound) {
-                    ToolGrantDecision.Neutral
-                } else {
-                    ToolGrantDecision.Deny(setOf(toolName), "this case has no active Factory result capability")
-                }
-            }.getOrElse {
-                ToolGrantDecision.Deny(setOf(toolName), "Factory result capability could not be verified")
-            }
-        }
-
-        private companion object {
-            const val STEP_RESULT_TOOL = "FACTORY_WORKER__submit_step_result"
-            const val ASK_STEP_QUESTION_TOOL = "FACTORY_WORKER__ask_step_question"
-            val CAPABILITY_BOUND_TOOLS = setOf(STEP_RESULT_TOOL, ASK_STEP_QUESTION_TOOL)
-        }
-    }
+    override fun evaluateToolGrant(
+        agentName: String?,
+        toolName: String,
+        context: ToolContext,
+    ): ToolGrantDecision = ToolGrantDecision.Neutral
+}

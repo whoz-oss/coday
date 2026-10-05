@@ -32,7 +32,13 @@ export const SESSION_872641A8: SessionDetail = {
       kind: 'human',
       tone: 'amber',
       blocks: [],
-      request: { label: 'request', description: 'Capture the incoming ask', startSec: 0, endSec: 0, status: 'done' },
+      request: {
+        label: 'request',
+        description: 'Capture the incoming ask',
+        startSec: 0,
+        endSec: 0,
+        status: 'completed',
+      },
     },
     {
       id: 'code',
@@ -40,7 +46,7 @@ export const SESSION_872641A8: SessionDetail = {
       subtitle: 'workspace',
       kind: 'workspace',
       tone: 'cyan',
-      blocks: [{ label: 'workspace', startSec: 229, endSec: 237, status: 'done' }],
+      blocks: [{ label: 'workspace', startSec: 229, endSec: 237, status: 'completed' }],
     },
     {
       id: 'planner',
@@ -55,7 +61,7 @@ export const SESSION_872641A8: SessionDetail = {
           description: 'Turn the request into an implementable plan',
           startSec: 0,
           endSec: 236,
-          status: 'done',
+          status: 'completed',
           ticksSec: [6, 12, 18, 24, 30, 90, 180, 230],
           errorTicksSec: [48, 52],
         },

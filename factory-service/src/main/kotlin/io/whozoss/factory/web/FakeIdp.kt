@@ -30,6 +30,8 @@ object FakeIdp {
     const val PROXY_PRINCIPAL_TYPE_HEADER = "x-proxy-principal-type"
     const val PROXY_SERVICE_IDENTITY_ID_HEADER = "x-proxy-service-identity-id"
     const val PROXY_SCOPES_HEADER = "x-proxy-scopes"
+    const val PROXY_NAMESPACE_ID_HEADER = "x-proxy-namespace-id"
+    const val PROXY_CASE_ID_HEADER = "x-proxy-case-id"
 
     /** Header names covered by the proxy signature, in canonical order. */
     private val SIGNED_PROXY_HEADERS = listOf(
@@ -37,6 +39,8 @@ object FakeIdp {
         PROXY_PRINCIPAL_TYPE_HEADER,
         PROXY_SERVICE_IDENTITY_ID_HEADER,
         PROXY_SCOPES_HEADER,
+        PROXY_NAMESPACE_ID_HEADER,
+        PROXY_CASE_ID_HEADER,
         PROXY_TIMESTAMP_HEADER,
     )
 
@@ -55,6 +59,8 @@ object FakeIdp {
         val principalType: String? = null,
         val serviceIdentityId: String? = null,
         val scopes: List<String> = emptyList(),
+        val namespaceId: String? = null,
+        val caseId: String? = null,
         val reason: String? = null,
     )
 
@@ -145,6 +151,10 @@ object FakeIdp {
             ?: return ProxyVerification(false, reason = "missing-principal-id")
         val principalType = headers[PROXY_PRINCIPAL_TYPE_HEADER]
             ?: return ProxyVerification(false, reason = "missing-principal-type")
+        val namespaceId = headers[PROXY_NAMESPACE_ID_HEADER]
+            ?: return ProxyVerification(false, reason = "missing-namespace-id")
+        val caseId = headers[PROXY_CASE_ID_HEADER]
+            ?: return ProxyVerification(false, reason = "missing-case-id")
 
         val signed = SIGNED_PROXY_HEADERS
             .mapNotNull { name -> headers[name]?.let { name to it } }
@@ -162,6 +172,8 @@ object FakeIdp {
             },
             serviceIdentityId = headers[PROXY_SERVICE_IDENTITY_ID_HEADER],
             scopes = parseScopes(headers[PROXY_SCOPES_HEADER]),
+            namespaceId = namespaceId,
+            caseId = caseId,
         )
     }
 }

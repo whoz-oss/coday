@@ -16,6 +16,7 @@ import {
   SessionStep,
   TimelineBlock,
   TimelineLane,
+  TimelineStepStatus,
   Tone,
   WorkflowBlocker,
 } from './models'
@@ -138,25 +139,16 @@ export function classifyLane(step: unknown): LaneDescriptor {
   return { id: `agent:${name}`, kind: 'agent', label: name }
 }
 
-export type StepState = 'completed' | 'active' | 'pending' | 'failed'
+export type StepState = TimelineStepStatus
 
-/** Map a projection step status to the four visual states. */
+/** Preserve the authoritative Factory step status for truthful rendering. */
 export function resolveStepState(step: unknown): StepState {
-  const obj = asObject(step)
-  const status = getString(obj, 'status') ?? 'pending'
-  switch (status) {
-    case 'completed':
-    case 'cancelled':
-      return 'completed'
-    case 'failed':
-      return 'failed'
-    case 'running':
-    case 'waiting_human':
-    case 'ready':
-      return 'active'
-    default:
-      return 'pending'
-  }
+  const status = getString(asObject(step), 'status') ?? 'pending'
+  return (
+    ['pending', 'ready', 'running', 'waiting_human', 'completed', 'failed', 'indeterminate', 'cancelled'] as const
+  ).includes(status as TimelineStepStatus)
+    ? (status as TimelineStepStatus)
+    : 'pending'
 }
 
 /** Duration of a step in seconds, or `null` when the projection does not provide it. */
@@ -183,8 +175,8 @@ function toneForActor(kind: ActorKind): Tone {
 function deriveStatusFromSteps(steps: unknown[]): RunStatus {
   if (steps.length === 0) return 'queued'
   const states = steps.map((step) => resolveStepState(step))
-  if (states.includes('failed')) return 'failed'
-  if (states.includes('active')) return 'running'
+  if (states.some((state) => state === 'failed' || state === 'indeterminate' || state === 'cancelled')) return 'failed'
+  if (states.some((state) => state === 'running' || state === 'waiting_human')) return 'running'
   if (states.every((state) => state === 'completed')) return 'succeeded'
   return 'queued'
 }
@@ -197,15 +189,18 @@ export function mapWorkflowStateToRunStatus(state?: string, steps?: unknown[]): 
   const normalized = (state ?? '').toLowerCase()
   switch (normalized) {
     case 'running':
-    case 'ready':
     case 'waiting_human':
+      return 'running'
+    case 'ready':
+      return 'queued'
     case 'active':
     case 'existing':
-      return 'running'
+      return deriveStatusFromSteps(asArray(steps))
     case 'completed':
     case 'succeeded':
       return 'succeeded'
     case 'failed':
+    case 'indeterminate':
     case 'cancelled':
       return 'failed'
     case 'pending':
@@ -218,13 +213,13 @@ export function mapWorkflowStateToRunStatus(state?: string, steps?: unknown[]): 
 
 function phaseSegmentStatus(step: unknown): PhaseSegment['status'] {
   const state = resolveStepState(step)
-  if (state === 'active') return 'running'
-  if (state === 'pending') return 'pending'
+  if (state === 'running' || state === 'waiting_human') return 'running'
+  if (state === 'pending' || state === 'ready') return 'pending'
   return 'done'
 }
 
 function phaseTone(step: unknown): Tone {
-  return resolveStepState(step) === 'failed' ? 'red' : toneForActor(classifyActorKind(step))
+  return ['failed', 'indeterminate'].includes(resolveStepState(step)) ? 'red' : toneForActor(classifyActorKind(step))
 }
 
 /** Derive the phase-bar segments from the projection steps. */
@@ -246,7 +241,7 @@ export function mapStepsToPhaseSegments(steps: unknown[], totalDurationSec = 0):
 }
 
 function currentPhaseName(steps: unknown[]): string | undefined {
-  const active = steps.find((step) => resolveStepState(step) === 'active')
+  const active = steps.find((step) => ['running', 'waiting_human', 'ready'].includes(resolveStepState(step)))
   if (active) return getString(asObject(active), 'name') ?? getString(asObject(active), 'id')
   const last = steps[steps.length - 1]
   return last ? (getString(asObject(last), 'name') ?? getString(asObject(last), 'id')) : undefined
@@ -330,7 +325,7 @@ export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): Run
 
   return {
     id,
-    workflow: getString(projection, 'workflowType') ?? getString(projection, 'title') ?? 'workflow',
+    workflow: getString(projection, 'title') ?? id,
     status: mapWorkflowStateToRunStatus(getString(projection, 'status'), steps),
     currentPhase: currentPhaseName(steps),
     goal,
@@ -398,8 +393,7 @@ function readControllerRequest(snapshot: JsonObject, projection: JsonObject): Co
 }
 
 function stepBlockStatus(step: unknown): TimelineBlock['status'] {
-  const state = resolveStepState(step)
-  return state === 'active' || state === 'failed' ? 'running' : 'done'
+  return resolveStepState(step)
 }
 
 function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: number): number[] | undefined {
@@ -454,10 +448,42 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown): Timeline
       return aStart - bStart || a.index - b.index
     })
 
-  const placements: { lane: LaneDescriptor; block: TimelineBlock; isRequest: boolean; contextPct?: number }[] = []
+  const lanes = new Map<string, TimelineLane>()
+  const ensureLane = (descriptor: LaneDescriptor, contextPct?: number): TimelineLane => {
+    let lane = lanes.get(descriptor.id)
+    if (!lane) {
+      lane = {
+        id: descriptor.id,
+        label: descriptor.label,
+        subtitle: descriptor.kind === 'agent' ? descriptor.label : 'workspace',
+        kind: descriptor.kind === 'human' ? 'human' : descriptor.kind === 'code' ? 'workspace' : 'agent',
+        tone: toneForActor(descriptor.kind),
+        blocks: [],
+      }
+      lanes.set(descriptor.id, lane)
+    }
+    if (descriptor.kind === 'agent' && contextPct !== undefined) lane.contextPct = contextPct
+    return lane
+  }
+
   let cursorSec = 0
 
   for (const entry of ordered) {
+    // Lane topology describes the workflow plan, independently from whether an
+    // execution has started. Pending/ready steps therefore create an empty lane.
+    const descriptor = classifyLane(entry.obj)
+    const contextPct = getNumber(entry.obj, 'contextPct')
+    const lane = ensureLane(descriptor, contextPct)
+    const status = stepBlockStatus(entry.obj)
+    const isVisibleExecution =
+      status === 'running' ||
+      status === 'completed' ||
+      status === 'failed' ||
+      status === 'indeterminate' ||
+      status === 'cancelled' ||
+      (status === 'waiting_human' && entry.start !== null)
+    if (!isVisibleExecution) continue
+
     const startSec = entry.start !== null ? Math.max((entry.start - t0) / 1000, 0) : cursorSec
     const rawDuration = entry.duration ?? 0
     const endSec = Math.max(startSec + Math.max(rawDuration, MIN_BLOCK_SEC), startSec + MIN_BLOCK_SEC)
@@ -467,7 +493,7 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown): Timeline
       label: getString(entry.obj, 'name') ?? getString(entry.obj, 'id') ?? 'step',
       startSec,
       endSec,
-      status: stepBlockStatus(entry.obj),
+      status,
     }
     const description = getString(entry.obj, 'description')
     if (description) block.description = description
@@ -477,33 +503,11 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown): Timeline
     if (errorTicksSec) block.errorTicksSec = errorTicksSec
 
     const stepId = getString(entry.obj, 'id')
-    placements.push({
-      lane: classifyLane(entry.obj),
-      block,
-      isRequest: stepId === 'request' || block.label === 'request',
-      contextPct: getNumber(entry.obj, 'contextPct'),
-    })
-  }
-
-  const lanes = new Map<string, TimelineLane>()
-  for (const placement of placements) {
-    let lane = lanes.get(placement.lane.id)
-    if (!lane) {
-      lane = {
-        id: placement.lane.id,
-        label: placement.lane.label,
-        subtitle: placement.lane.kind === 'agent' ? placement.lane.label : 'workspace',
-        kind: placement.lane.kind === 'human' ? 'human' : placement.lane.kind === 'code' ? 'workspace' : 'agent',
-        tone: toneForActor(placement.lane.kind),
-        blocks: [],
-      }
-      if (placement.lane.kind === 'agent' && placement.contextPct !== undefined) lane.contextPct = placement.contextPct
-      lanes.set(placement.lane.id, lane)
-    }
-    if (placement.lane.kind === 'human' && placement.isRequest && !lane.request) {
-      lane.request = placement.block
+    const isRequest = stepId === 'request' || block.label === 'request'
+    if (descriptor.kind === 'human' && isRequest && !lane.request) {
+      lane.request = block
     } else {
-      lane.blocks.push(placement.block)
+      lane.blocks.push(block)
     }
   }
 
@@ -534,7 +538,7 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown): Timeline
         label: 'request',
         startSec: 0,
         endSec,
-        status: 'done',
+        status: 'completed',
       }
       const requestText = controllerRequest.text ?? controllerRequest.prompt
       if (requestText) requestBlock.description = requestText
@@ -622,7 +626,12 @@ function mapStepsToSessionSteps(steps: unknown[]): SessionStep[] {
     const result: SessionStep = {
       key: getString(obj, 'id') ?? getString(obj, 'name') ?? `step-${index + 1}`,
       tone: phaseTone(obj),
-      status: state === 'active' ? 'running' : state === 'pending' ? 'pending' : 'done',
+      status:
+        state === 'running' || state === 'waiting_human'
+          ? 'running'
+          : state === 'pending' || state === 'ready'
+            ? 'pending'
+            : 'done',
     }
     const duration = stepDurationSec(obj)
     if (duration !== null) result.durationSec = Math.round(duration)
@@ -859,7 +868,9 @@ function buildPhaseDetail(
   attempts: AgentAttempt[] = [],
   evidenceItems: unknown[] = []
 ): PhaseDetail {
-  const active = steps.find((step) => resolveStepState(step) === 'active') ?? steps[steps.length - 1]
+  const active =
+    steps.find((step) => ['running', 'waiting_human', 'ready'].includes(resolveStepState(step))) ??
+    steps[steps.length - 1]
   const obj = asObject(active) ?? {}
   const responsibility = asObject(obj['responsibility'])
   const duration = stepDurationSec(obj) ?? 0
@@ -1023,7 +1034,7 @@ export function mapProjectionToSessionDetail(
       getString(projection, 'startedAt') ??
       firstStartedAt(steps) ??
       new Date().toISOString(),
-    workflow: getString(projection, 'workflowType') ?? getString(projection, 'title') ?? 'workflow',
+    workflow: getString(projection, 'title') ?? id,
     // Real cost wins; otherwise fall back to projection/metrics/snapshot cost, else 0.
     costUsd:
       realCost?.cost ??

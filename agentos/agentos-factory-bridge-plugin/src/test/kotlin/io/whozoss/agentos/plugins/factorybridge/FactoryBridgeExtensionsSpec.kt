@@ -161,68 +161,12 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         observer.onEventStored(caseId, CaseStatusEvent(metadata = EntityMetadata(), namespaceId = namespaceId, caseId = caseId, status = CaseStatus.RUNNING))
     }
 
-    "tool grant policy denies the step-result tool without an active binding and is neutral once bound" {
-        val services = FactoryTestFixtures.services()
-        val policy = FactoryToolGrantPolicy { services }
-        val namespaceId = UUID.randomUUID()
-        val caseId = UUID.randomUUID()
-        val context =
-            ToolContext(
-                namespaceId,
-                UUID.randomUUID(),
-                "user",
-                listOf(CaseStatusEvent(metadata = EntityMetadata(), namespaceId = namespaceId, caseId = caseId, status = CaseStatus.RUNNING)),
-                "Worker",
-            )
-
-        val denied = policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context)
-        denied.shouldBeInstanceOf<ToolGrantDecision.Deny>()
-
-        policy.evaluateToolGrant("Worker", "FACTORY_WORKSTREAM__get_workflow", context) shouldBe ToolGrantDecision.Neutral
-
-        services.stepResultBindings.bind(
-            FactoryStepResultBinding(
-                caseId,
-                namespaceId,
-                "Worker",
-                "attempt",
-                "runtime",
-                "secret-token-value-with-sufficient-length",
-                Instant.now().plusSeconds(60),
-            ),
-        )
-        policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context) shouldBe ToolGrantDecision.Neutral
-    }
-
-    "tool grant policy stays neutral for unrelated tools when bridge lookup fails" {
-        val policy = FactoryToolGrantPolicy { error("bridge unavailable") }
+    "tool grant policy leaves configured worker tools exposed without an active binding" {
+        val policy = FactoryToolGrantPolicy()
         val context = ToolContext(UUID.randomUUID(), UUID.randomUUID(), "user", emptyList(), "Worker")
 
-        policy.evaluateToolGrant("Worker", "OTHER__tool", context) shouldBe ToolGrantDecision.Neutral
-    }
-
-    "tool grant policy denies the reserved tool when bridge lookup fails" {
-        val policy = FactoryToolGrantPolicy { error("secret bridge detail") }
-        val namespaceId = UUID.randomUUID()
-        val caseId = UUID.randomUUID()
-        val context =
-            ToolContext(
-                namespaceId,
-                UUID.randomUUID(),
-                "user",
-                listOf(
-                    CaseStatusEvent(
-                        metadata = EntityMetadata(),
-                        namespaceId = namespaceId,
-                        caseId = caseId,
-                        status = CaseStatus.RUNNING,
-                    ),
-                ),
-                "Worker",
-            )
-
-        val decision = policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context)
-        decision.shouldBeInstanceOf<ToolGrantDecision.Deny>()
-        (decision as ToolGrantDecision.Deny).reason shouldBe "Factory result capability could not be verified"
+        policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context) shouldBe ToolGrantDecision.Neutral
+        policy.evaluateToolGrant("Worker", "FACTORY_WORKER__ask_step_question", context) shouldBe ToolGrantDecision.Neutral
+        policy.evaluateToolGrant("Worker", "FACTORY_WORKSTREAM__get_workflow", context) shouldBe ToolGrantDecision.Neutral
     }
 })

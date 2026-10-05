@@ -98,6 +98,8 @@ class WorkflowService(
     private val transactionManager: PlatformTransactionManager? = null,
     private val durableAgentAttemptService: DurableAgentAttemptService? = null,
     private val agentOsExecutionAdapter: AgentOsExecutionAdapter? = null,
+    /** Durable runner submission used by start_workflow; absent only in narrow unit tests. */
+    private val sessionRunSubmissionService: SessionRunSubmissionService? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -324,12 +326,12 @@ class WorkflowService(
     // Start
     // ------------------------------------------------------------------
 
-    @Transactional
     fun start(
         scope: TenantScope,
         namespaceId: String,
         command: WorkflowStartCommand,
         controllerExecution: ControllerExecutionInput,
+        repoRoot: String? = null,
     ): WorkflowHttpResult {
         val definitionRecord = resolveUniqueDefinition(scope, command.workflowType)
         val definitionInput = WorkflowDefinitionInput(
@@ -345,9 +347,17 @@ class WorkflowService(
             if (existing.creationCommandHash != hash) {
                 throw workflowException(WorkflowErrorCodes.WORKFLOW_IDENTITY_CONFLICT)
             }
+            val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot)
             return WorkflowHttpResult(
                 200,
-                mapOf("namespaceId" to namespaceId, "created" to false, "idempotent" to true) + publicInstanceSnapshot(existing),
+                mapOf(
+                    "namespaceId" to namespaceId,
+                    "created" to false,
+                    "queued" to submission.queued,
+                    "idempotent" to true,
+                    "submissionId" to submission.submissionId,
+                    "submissionStatus" to submission.status,
+                ) + publicInstanceSnapshot(existing),
             )
         }
         val created = createWorkflowInstance(command, definitionInput, controllerExecution)
@@ -362,11 +372,38 @@ class WorkflowService(
         )
         repository.insertInstance(scope, record)
         publishProjectionRow(scope, namespaceId, command.workflowId, created.projection, command.workflowType, definitionRecord, controllerExecution)
+        val submission = submitCreatedWorkflow(scope, namespaceId, command, repoRoot)
         sseHub.publish(scope, namespaceId, mapOf("workflowId" to command.workflowId, "namespaceId" to namespaceId, "revision" to 1))
         return WorkflowHttpResult(
             201,
-            mapOf("namespaceId" to namespaceId, "created" to true, "idempotent" to false) + publicInstanceSnapshot(record),
+            mapOf(
+                "namespaceId" to namespaceId,
+                "created" to true,
+                "queued" to submission.queued,
+                "idempotent" to submission.idempotent,
+                "submissionId" to submission.submissionId,
+                "submissionStatus" to submission.status,
+            ) + publicInstanceSnapshot(record),
         )
+    }
+
+    private fun submitCreatedWorkflow(
+        scope: TenantScope,
+        namespaceId: String,
+        command: WorkflowStartCommand,
+        repoRoot: String?,
+    ): SessionRunSubmissionService.SubmissionResult {
+        val submitter = sessionRunSubmissionService
+            ?: throw workflowException(
+                WorkflowErrorCodes.INVALID_REQUEST,
+                "The durable workflow runner is unavailable; execution was not queued.",
+            )
+        val resolvedRoot = repoRoot?.takeIf { it.isNotBlank() }
+            ?: agentOsProxyClient
+                ?.let { client -> runCatching { client.resolveRepoRoot(namespaceId, null) }.getOrNull() }
+                ?.takeIf { it.isNotBlank() }
+            ?: Path.of(".").toAbsolutePath().normalize().toString()
+        return submitter.submit(scope, namespaceId, command.workflowId, resolvedRoot, "start", command.ticket)
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -69,7 +69,8 @@
       "executor": "@angular/build:dev-server",
       "options": {
         "port": 4300,
-        "host": "localhost"
+        "host": "localhost",
+        "proxyConfig": "apps/cockpit-v2/proxy.conf.json"
       },
       "configurations": {
         "production": {

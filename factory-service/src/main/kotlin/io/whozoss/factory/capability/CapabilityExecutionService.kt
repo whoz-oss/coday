@@ -4,6 +4,7 @@ import io.whozoss.factory.adapter.agentos.AgentOsAdapterProperties
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.ObservationEscalationPolicy
+import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
@@ -413,6 +414,7 @@ class CapabilityExecutionService(
         val attemptId: String,
         val caseId: String,
         val ownerToken: String,
+        val capabilityToken: String?,
         /** Whether a `startTurn` already happened for this attempt (recovered mid-flight). */
         val turnStarted: Boolean,
         /** Set when the attempt is already terminal: the outcome is replayed, not re-driven. */
@@ -523,6 +525,7 @@ class CapabilityExecutionService(
                 attemptId = attemptId,
                 caseId = existing.caseId,
                 ownerToken = existing.ownerToken ?: ownerToken,
+                capabilityToken = existing.capabilityToken,
                 turnStarted = true,
                 terminalStatus = existing.status,
             )
@@ -544,17 +547,22 @@ class CapabilityExecutionService(
         if (newAttempt) {
             // Bind the attempt to the environment it runs against, captured at
             // reservation time (Req 8). Null when no environment exists yet.
+            val caseId = stableCaseId(workflowId, step.id)
             val environment = workEnvironmentRepository?.findLatestByWorkflowId(scope, workflowId)
+            val capabilityToken = issueDurableCapability(
+                scope, namespaceId, workflowId, step, attemptId, caseId, agentId, brief,
+            )
             attempts.register(
                 scope,
                 DurableAgentAttempt(
                     attemptId = attemptId,
-                    caseId = stableCaseId(workflowId, step.id),
+                    caseId = caseId,
                     namespaceId = namespaceId,
                     workflowId = workflowId,
                     stepId = step.id,
                     attemptNumber = 1,
                     agentName = agentId,
+                    capabilityToken = capabilityToken,
                     brief = brief,
                     environmentRef = environment?.environmentId,
                     expectedEnvironmentRevision = environment?.revision,
@@ -566,7 +574,9 @@ class CapabilityExecutionService(
             AgentAttemptStatus.RUNNING,
             AgentAttemptStatus.WAITING_HUMAN,
         )
-        val resolvedCaseId = existing?.caseId?.takeIf { it.isNotBlank() } ?: stableCaseId(workflowId, step.id)
+        val persisted = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
+            ?: error("Durable attempt '$attemptId' was not persisted before AgentOS case creation")
+        val resolvedCaseId = persisted.caseId.takeIf { it.isNotBlank() } ?: stableCaseId(workflowId, step.id)
         val claimed = try {
             attempts.claim(
                 scope,
@@ -585,6 +595,7 @@ class CapabilityExecutionService(
             attemptId = attemptId,
             caseId = resolvedCaseId,
             ownerToken = ownerToken,
+            capabilityToken = persisted.capabilityToken,
             turnStarted = turnStarted,
             conflicted = !claimed,
         )
@@ -609,15 +620,24 @@ class CapabilityExecutionService(
         brief: String,
         onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): AgentOsExecutionVerdict {
-        val handle = adapter.createOrRecoverExecution(
-            namespaceId = namespaceId,
-            workflowId = workflowId,
-            stepId = step.id,
-            externalUserId = null,
-            attemptId = reservation.attemptId,
-            capabilityToken = null,
+        val binding = TrustedCaseBinding(
             caseId = reservation.caseId,
+            namespaceId = namespaceId,
+            attemptId = reservation.attemptId,
+            capabilityToken = reservation.capabilityToken,
+            agentName = agentId,
         )
+        val handle = try {
+            adapter.createOrRecoverExecution(binding, workflowId, step.id)
+        } catch (error: Exception) {
+            // The attempt already exists durably but no usable AgentOS execution
+            // was obtained. Terminalize it now so the step-level recovery can
+            // converge to FAILED instead of leaving a RUNNING projection forever.
+            return AgentOsExecutionVerdict.Indeterminate(
+                reason = "AGENT_CASE_CREATION_ERROR: ${error.message ?: error.toString()}",
+                evidence = mapOf("caseId" to reservation.caseId, "attemptId" to reservation.attemptId),
+            )
+        }
         val caseId = handle.caseId
         // Mark the attempt `starting` BEFORE dispatching the message: a crash
         // after the message is accepted therefore records that the turn was
@@ -627,7 +647,7 @@ class CapabilityExecutionService(
         }
         if (!reservation.turnStarted) {
             try {
-                adapter.startTurn(caseId, agentId, brief, null, reservation.attemptId, null)
+                adapter.startTurn(binding.copy(caseId = caseId), agentId, brief)
             } catch (error: Exception) {
                 // Ambiguous dispatch: reconcile before deciding; never a false success.
                 runCatching { adapter.reconcile(caseId) }
@@ -989,6 +1009,41 @@ class CapabilityExecutionService(
      * step, it only means the worker cannot submit through the capability
      * channel. Failures are swallowed (the step still runs and is recorded).
      */
+    /**
+     * Creates the result-channel attempt and capability before the AgentOS case request.
+     * A configured issuer is authoritative: any issuance failure aborts the run before
+     * the first message, so a governed worker can never start without its binding.
+     * The null issuer remains supported only for source-level/unit compositions.
+     */
+    private fun issueDurableCapability(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        attemptId: String,
+        caseId: String,
+        agentName: String,
+        brief: String,
+    ): String? {
+        val issuer = agentStepResultService ?: return null
+        attemptRepository.insert(
+            scope,
+            AgentStepAttemptRecord(namespaceId, workflowId, step.id, attemptId, agentName, "running", 1, "{}"),
+        )
+        return issuer.issue(
+            scope,
+            AgentStepResultCapabilityIdentity(
+                attemptId = attemptId,
+                workflowId = workflowId,
+                stepId = step.id,
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentName = agentName,
+                briefHash = CanonicalJsonHash.sha256(brief),
+            ),
+        ).token
+    }
+
     private fun issueCapability(
         scope: TenantScope,
         namespaceId: String,
@@ -1047,12 +1102,13 @@ class CapabilityExecutionService(
         const val AGENT_ATTEMPT_CONFLICT = "AGENT_ATTEMPT_CONFLICT"
 
         /**
-         * Deterministic durable attempt id of a step execution. Keying the
-         * attempt on `(workflowId, stepId)` is what makes the bridge replayable:
+         * Deterministic, safe-identifier-compatible durable attempt id of a step
+         * execution. Keying the UUID on `(workflowId, stepId)` makes the bridge replayable:
          * a retried run recovers the very same attempt (and its AgentOS case)
          * instead of creating a duplicate.
          */
-        fun stableAttemptId(workflowId: String, stepId: String): String = "$workflowId#$stepId"
+        fun stableAttemptId(workflowId: String, stepId: String): String =
+            UUID.nameUUIDFromBytes("factory-attempt|$workflowId|$stepId".toByteArray(Charsets.UTF_8)).toString()
 
         /**
          * Deterministic durable attempt id of the [attemptNumber]-th execution
@@ -1064,7 +1120,13 @@ class CapabilityExecutionService(
          * terminal attempt stays an immutable record of the earlier try.
          */
         fun retryAttemptId(workflowId: String, stepId: String, attemptNumber: Int): String =
-            if (attemptNumber <= 1) stableAttemptId(workflowId, stepId) else "$workflowId#$stepId#$attemptNumber"
+            if (attemptNumber <= 1) {
+                stableAttemptId(workflowId, stepId)
+            } else {
+                UUID.nameUUIDFromBytes(
+                    "factory-attempt|$workflowId|$stepId|$attemptNumber".toByteArray(Charsets.UTF_8),
+                ).toString()
+            }
 
         /**
          * Deterministic AgentOS case UUID bound to a workflow step.

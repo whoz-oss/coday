@@ -555,6 +555,40 @@ describe('FactoryApiService', () => {
   })
 
   describe('workflow launch', () => {
+    it('creates and durably submits through the canonical collection endpoint', () => {
+      service
+        .createWorkflowRun(
+          { workflowType: 'delivery', title: 'Readable', parameters: { ticket: 'ABC-1' } },
+          '  ns-1  ',
+          'request-1'
+        )
+        .subscribe()
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows' && r.method === 'POST')
+      expect(request.request.body).toEqual({
+        workflowType: 'delivery',
+        title: 'Readable',
+        parameters: { ticket: 'ABC-1' },
+      })
+      expect(request.request.headers.get('Idempotency-Key')).toBe('request-1')
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.body.workflowId).toBeUndefined()
+      expect(request.request.body.namespaceId).toBeUndefined()
+      request.flush({
+        data: {
+          workflowId: 'generated',
+          title: 'Readable',
+          created: true,
+          queued: true,
+          idempotent: false,
+          submissionId: 'sub',
+          submissionStatus: 'pending',
+          status: 'pending',
+          revision: 1,
+        },
+      })
+    })
+
     const startPayload = {
       workflow: { workflowId: 'wf-1', workflowType: 'adw_simple_sdlc', title: 'Run adw_simple_sdlc', ticket: 'ABC-1' },
       execution: { namespaceId: 'ns-1', runtimeId: 'factory-dashboard', kind: 'agentos', agentId: 'factory-agent' },

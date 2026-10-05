@@ -57,8 +57,8 @@
   @if (s.run; as run) {
     <section class="run" aria-label="Run en cours">
       <div class="run-head">
-        <a class="sf-id" [routerLink]="['/sessions', run.id]">{{ run.id }}</a>
-        <span class="sf-workflow">{{ run.workflow }}</span>
+        <a class="sf-workflow" [routerLink]="['/sessions', run.id]">{{ run.workflow || run.id }}</a>
+        <code class="sf-id" [title]="'Workflow ID: ' + run.id">{{ run.id }}</code>
         @if (run.status === 'running') {
           <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>
             en cours{{ run.currentPhase ? ' · ' + run.currentPhase : '' }}

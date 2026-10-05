@@ -40,6 +40,7 @@ class AgentOsCaseBusyException(caseId: String, status: String) : RuntimeExceptio
 class DefaultAgentOsExecutionAdapter(
     builder: RestClient.Builder,
     private val baseUrl: String,
+    private val bindingSecret: String? = null,
     private val sseClientFactory: (baseUrl: String) -> AgentOsSseClient = { AgentOsSseClient(it) },
     private val checkpointStore: HighWaterMarkStore = HighWaterMarkStore(),
     private val registry: ActiveCaseRegistry = ActiveCaseRegistry(),
@@ -60,6 +61,7 @@ class DefaultAgentOsExecutionAdapter(
         val namespaceId: String?,
         val externalUserId: String?,
         val capabilityToken: String?,
+        val agentName: String? = null,
         val runtimeId: String? = null,
         val environmentRef: String? = null,
         val environmentRevision: Int? = null,
@@ -70,6 +72,7 @@ class DefaultAgentOsExecutionAdapter(
             attemptId = attemptId,
             runtimeId = runtimeId,
             capabilityToken = capabilityToken,
+            agentName = agentName,
             environmentRef = environmentRef,
             environmentRevision = environmentRevision,
             externalUserId = externalUserId,
@@ -95,7 +98,13 @@ class DefaultAgentOsExecutionAdapter(
             .body(body)
         if (!binding.externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", binding.externalUserId)
         spec.header("X-Factory-Attempt-Id", binding.attemptId)
-        if (!binding.capabilityToken.isNullOrBlank()) spec.header("X-Factory-Capability-Token", binding.capabilityToken)
+        if (!binding.capabilityToken.isNullOrBlank()) {
+            val secret = bindingSecret?.takeIf { it.isNotBlank() }
+                ?: throw IllegalStateException("Factory worker binding secret is required before creating a capability-bound AgentOS case")
+            spec.header("X-Factory-Capability-Token", binding.capabilityToken)
+            spec.header("X-Factory-Agent-Name", binding.agentName ?: "*")
+            spec.header("X-Factory-Agentos-Secret", secret)
+        }
         val response = spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
         val resolvedCaseId = (response?.get("id") as? String) ?: binding.caseId
         val record = ExecutionRecord(
@@ -103,6 +112,7 @@ class DefaultAgentOsExecutionAdapter(
             namespaceId = binding.namespaceId,
             externalUserId = binding.externalUserId,
             capabilityToken = binding.capabilityToken,
+            agentName = binding.agentName,
             runtimeId = binding.runtimeId,
             environmentRef = binding.environmentRef,
             environmentRevision = binding.environmentRevision,

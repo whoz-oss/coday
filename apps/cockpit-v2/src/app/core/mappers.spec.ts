@@ -153,12 +153,22 @@ describe('mappers', () => {
       const run = mapProjectionToRunSummary(snapshot)
       expect(run.id).toBe('wf-1')
       expect(run.workflow).toBe('Deliver the AgentOS adapter')
+      expect(run.id).toBe('wf-1')
       expect(run.status).toBe('running')
       expect(run.currentPhase).toBe('build')
       expect(run.goal).toBe('Deliver the AgentOS adapter')
       expect(run.durationSec).toBe(180)
       expect(run.phases.map((phase) => phase.key)).toEqual(['request', 'plan', 'build'])
       expect(run.unknownCostCount).toBe(0)
+    })
+
+    it('uses workflow id as the display fallback for legacy records without title', () => {
+      const run = mapProjectionToRunSummary({
+        workflowId: 'legacy-id',
+        projection: { workflowType: 'delivery', status: 'pending', steps: [] },
+      })
+      expect(run.workflow).toBe('legacy-id')
+      expect(run.id).toBe('legacy-id')
     })
 
     it('maps the real cost from the metrics payload', () => {
@@ -232,8 +242,72 @@ describe('mappers', () => {
 
       const planner = lanes[2]
       expect(planner?.kind).toBe('agent')
-      expect(planner?.blocks[0]).toMatchObject({ label: 'plan', startSec: 10, status: 'done' })
+      expect(planner?.blocks[0]).toMatchObject({ label: 'plan', startSec: 10, status: 'completed' })
       expect(planner?.blocks[0]?.ticksSec).toEqual([12, 30])
+    })
+
+    it('keeps planned actor lanes empty until execution starts while preserving failed executions', () => {
+      const lanes = mapProjectionToLanes({
+        projection: {
+          steps: [
+            {
+              id: 'tony',
+              name: 'Tony_Starck',
+              status: 'failed',
+              startedAt,
+              completedAt: isoOffset(10),
+              responsibility: { kind: 'agent', name: 'Tony_Starck' },
+            },
+            {
+              id: 'thor',
+              name: 'Thor',
+              status: 'pending',
+              dependsOn: ['tony'],
+              responsibility: { kind: 'agent', name: 'Thor' },
+            },
+            {
+              id: 'thor-ready',
+              name: 'Thor',
+              status: 'ready',
+              dependsOn: ['tony'],
+              responsibility: { kind: 'agent', name: 'Thor' },
+            },
+            {
+              id: 'tony-retry',
+              name: 'Tony retry',
+              status: 'running',
+              startedAt: isoOffset(12),
+              responsibility: { kind: 'agent', name: 'Tony_Starck' },
+            },
+          ],
+        },
+      })
+
+      expect(lanes.flatMap((lane) => lane.blocks).map((block) => [block.label, block.status])).toEqual([
+        ['Tony_Starck', 'failed'],
+        ['Tony retry', 'running'],
+      ])
+      expect(lanes.find((lane) => lane.label === 'Thor')).toMatchObject({ blocks: [] })
+    })
+
+    it('only shows waiting_human after execution has begun', () => {
+      const lanes = mapProjectionToLanes({
+        projection: {
+          steps: [
+            { id: 'not-started', status: 'waiting_human', responsibility: { kind: 'agent', name: 'Thor' } },
+            {
+              id: 'started',
+              status: 'waiting_human',
+              startedAt,
+              responsibility: { kind: 'agent', name: 'Tony_Starck' },
+            },
+          ],
+        },
+      })
+
+      expect(lanes.flatMap((lane) => lane.blocks)).toEqual([
+        expect.objectContaining({ label: 'started', status: 'waiting_human' }),
+      ])
     })
 
     it('groups a code step into the workspace lane', () => {
@@ -249,7 +323,7 @@ describe('mappers', () => {
 
       const engineer = lanes.find((candidate) => candidate.id === 'engineer')
       expect(engineer).toMatchObject({ kind: 'human', label: 'engineer', tone: 'amber', subtitle: 'benjamin' })
-      expect(engineer?.request).toMatchObject({ label: 'request', startSec: 0, status: 'done' })
+      expect(engineer?.request).toMatchObject({ label: 'request', startSec: 0, status: 'completed' })
       expect(engineer?.request?.description).toBe('Ship the feature safely')
       expect(engineer?.request?.endSec).toBeGreaterThanOrEqual(2)
       expect(engineer?.blocks).toHaveLength(0)

@@ -31,8 +31,18 @@
 
       <div class="request-col">
         @if (lane.request; as r) {
-          <button type="button" class="block block--amber block--request" (click)="blockSelect.emit(r)">
-            <span class="block-title"><mat-icon class="check">check</mat-icon>{{ r.label }}</span>
+          <button
+            type="button"
+            class="block block--amber block--request"
+            [attr.aria-label]="r.label + ', ' + statusLabel(r)"
+            (click)="blockSelect.emit(r)"
+          >
+            <span class="block-title">
+              @if (r.status === 'completed') {
+                <mat-icon class="check">check</mat-icon>
+              }
+              {{ r.label }}
+            </span>
             @if (r.description) {
               <span class="block-desc">{{ r.description }}</span>
             }
@@ -48,22 +58,33 @@
             class="block"
             [class]="'block--' + lane.tone"
             [class.block--running]="b.status === 'running'"
+            [class.block--waiting]="b.status === 'waiting_human'"
+            [class.block--failed]="b.status === 'failed'"
+            [class.block--indeterminate]="b.status === 'indeterminate'"
+            [class.block--pending]="b.status === 'pending' || b.status === 'ready'"
+            [class.block--cancelled]="b.status === 'cancelled'"
             [class.block--compact]="compact"
             [class.block--selected]="selected() === b.label"
             [style.left.%]="pct(b.startSec)"
             [style.width.%]="widthPct(b)"
-            [matTooltip]="compact ? b.label + ' · terminé' : ''"
-            [attr.aria-label]="b.label + (b.status === 'running' ? ', en cours' : ', terminé')"
+            [matTooltip]="compact ? b.label + ' · ' + statusLabel(b) : ''"
+            [attr.aria-label]="b.label + ', ' + statusLabel(b)"
             (click)="blockSelect.emit(b)"
           >
             @if (compact) {
-              <mat-icon class="check">check</mat-icon>
+              @if (statusIcon(b); as icon) {
+                <mat-icon [class.check]="b.status === 'completed'" class="status-icon">{{ icon }}</mat-icon>
+              } @else {
+                <span class="planned-dot" aria-hidden="true"></span>
+              }
             } @else {
               <span class="block-title">
                 @if (b.status === 'running') {
                   <span class="pulse"></span>
+                } @else if (statusIcon(b); as icon) {
+                  <mat-icon [class.check]="b.status === 'completed'" class="status-icon">{{ icon }}</mat-icon>
                 } @else {
-                  <mat-icon class="check">check</mat-icon>
+                  <span class="planned-dot" aria-hidden="true"></span>
                 }
                 <span class="sf-spacer-inline">{{ b.label }}</span>
                 <span class="block-dur sf-mono">{{ b.endSec - b.startSec | duration }}</span>

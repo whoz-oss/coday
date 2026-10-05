@@ -36,6 +36,8 @@ object TestJwt {
         principalType: String,
         scopes: List<String> = emptyList(),
         serviceIdentityId: String? = null,
+        namespaceId: String? = null,
+        caseId: String? = null,
         timestamp: Long = System.currentTimeMillis(),
         secret: String,
     ): Map<String, String> {
@@ -44,6 +46,8 @@ object TestJwt {
         signed[FakeIdp.PROXY_PRINCIPAL_TYPE_HEADER] = principalType
         if (serviceIdentityId != null) signed[FakeIdp.PROXY_SERVICE_IDENTITY_ID_HEADER] = serviceIdentityId
         if (scopes.isNotEmpty()) signed[FakeIdp.PROXY_SCOPES_HEADER] = scopes.joinToString(",")
+        if (namespaceId != null) signed[FakeIdp.PROXY_NAMESPACE_ID_HEADER] = namespaceId
+        if (caseId != null) signed[FakeIdp.PROXY_CASE_ID_HEADER] = caseId
         signed[FakeIdp.PROXY_TIMESTAMP_HEADER] = timestamp.toString()
 
         val payload = listOf(
@@ -51,6 +55,8 @@ object TestJwt {
             FakeIdp.PROXY_PRINCIPAL_TYPE_HEADER,
             FakeIdp.PROXY_SERVICE_IDENTITY_ID_HEADER,
             FakeIdp.PROXY_SCOPES_HEADER,
+            FakeIdp.PROXY_NAMESPACE_ID_HEADER,
+            FakeIdp.PROXY_CASE_ID_HEADER,
             FakeIdp.PROXY_TIMESTAMP_HEADER,
         ).filter { signed.containsKey(it) }
             .joinToString("\n") { "$it:${signed[it]}" }

@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.factorybridge.tools
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.plugins.factorybridge.FactoryTrustedHeaderSigner
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -21,14 +22,14 @@ import java.net.URLEncoder
  * fence and opens a `retry` human interaction (`pending-human`): budgets and policy
  * stay with the control plane. The agent never picks an arbitrary `caseId` or
  * capability; the whole execution identity is derived from the trusted [ToolContext]
- * and carried via `x-factory-*` trust headers plus the accepted body `namespaceId`
- * hint. The retries endpoint rejects any other body key.
+ * and carried via the shared signed proxy-header contract. The retries endpoint
+ * receives only retry business data.
  */
 class FactoryRequestAgentRetryTool(
     private val baseUrl: String,
     private val httpClient: OkHttpClient,
     private val objectMapper: ObjectMapper,
-    private val runtimeId: String,
+    private val trustedHeaderSigner: FactoryTrustedHeaderSigner,
 ) : StandardTool<FactoryRequestAgentRetryTool.Input> {
     data class Input(
         val workflowId: String,
@@ -54,35 +55,23 @@ class FactoryRequestAgentRetryTool(
         if (input == null) return fail("INVALID_RETRY_REQUEST", "workflowId, stepId, expectedRevision and reasonCode are required.")
         val caseIds = context.caseEvents.map { it.caseId }.distinct()
         if (caseIds.size != 1) return fail("CASE_CONTEXT_UNAVAILABLE", "A single controlling case is required.")
-        val agent =
-            context.agentName?.takeIf { it.isNotBlank() }
-                ?: return fail("AGENT_CONTEXT_UNAVAILABLE", "A controlling agent is required.")
-        val actor =
-            context.userExternalId?.takeIf { it.isNotBlank() } ?: context.userId?.toString()
-                ?: return fail("USER_CONTEXT_UNAVAILABLE", "A controlling actor is required.")
         // Exact allowlist of the retries endpoint — unknown keys are rejected with
         // INVALID_RETRY_REQUEST; the model-authored idempotencyKey is never sent.
         val body =
             objectMapper.writeValueAsString(
                 mapOf(
-                    "namespaceId" to context.namespaceId.toString(),
                     "stepId" to input.stepId,
                     "expectedRevision" to input.expectedRevision,
                     "reasonCode" to input.reasonCode,
                 ),
             )
         val workflowId = encode(input.workflowId)
-        val request =
-            Request
-                .Builder()
-                .url("${baseUrl.trimEnd('/')}/api/factory/workflows/$workflowId/retries")
-                .header("x-factory-namespace-id", context.namespaceId.toString())
-                .header("x-factory-runtime-id", runtimeId)
-                .header("x-factory-agent-id", agent)
-                .header("x-factory-case-id", caseIds.single().toString())
-                .header("x-factory-actor-id", actor)
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
+        val requestBuilder = Request.Builder()
+            .url("${baseUrl.trimEnd('/')}/api/factory/workflows/$workflowId/retries")
+            .post(body.toRequestBody("application/json".toMediaType()))
+        val request = trustedHeaderSigner.sign(requestBuilder, context).getOrElse {
+            return fail("TRUST_CONTEXT_UNAVAILABLE", it.message ?: "Trusted Factory context is unavailable.")
+        }.build()
         return try {
             withContext(Dispatchers.IO) {
                 httpClient.newCall(request).execute().use { response ->

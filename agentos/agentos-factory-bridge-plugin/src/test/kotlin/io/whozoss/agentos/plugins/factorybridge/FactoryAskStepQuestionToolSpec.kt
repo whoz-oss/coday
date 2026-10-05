@@ -55,7 +55,7 @@ class FactoryAskStepQuestionToolSpec : StringSpec({
             )
         val result = tool.execute(FactoryAskStepQuestionTool.Input("Proceed?"), ToolContext(UUID.randomUUID(), null, null, emptyList(), "Worker"))
         result.success shouldBe false
-        result.errorType shouldBe "FACTORY_QUESTION_CONTEXT_MISSING"
+        result.errorType shouldBe "FACTORY_WORKER_BINDING_INVALID"
     }
 
     "tool is fail-closed when the case exists but has no active binding" {
@@ -78,6 +78,6 @@ class FactoryAskStepQuestionToolSpec : StringSpec({
             )
         val result = tool.execute(FactoryAskStepQuestionTool.Input("Proceed?"), context)
         result.success shouldBe false
-        result.errorType shouldBe "FACTORY_QUESTION_CONTEXT_MISSING"
+        result.errorType shouldBe "FACTORY_WORKER_BINDING_MISSING"
     }
 })

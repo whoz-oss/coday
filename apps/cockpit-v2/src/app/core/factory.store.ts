@@ -162,7 +162,7 @@ export class FactoryStore {
     const title = readString(projection, 'title')
     const goal = readString(projection, 'goal')
     const state = readString(projection, 'status')
-    const name = run.id !== 'unknown' ? run.id : (ticket ?? title ?? goal ?? 'workflow')
+    const name = title ?? (run.id !== 'unknown' ? run.id : (ticket ?? goal ?? 'workflow'))
 
     const sandbox: Sandbox = {
       name,

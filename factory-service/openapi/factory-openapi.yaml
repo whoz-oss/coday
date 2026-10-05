@@ -235,6 +235,67 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ControllerCaseResponse"
+  /api/factory/workflows:
+    get:
+      tags:
+      - workflows
+      summary: List workflow projections of the caller's tenant scope (optionally
+        filtered by namespace).
+      operationId: listWorkflow
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: workflowType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - workflows
+      summary: Create and durably submit a workflow run. Factory assigns identity
+        and execution context.
+      operationId: createRunWorkflow
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
   /api/factory/workflows/{workflowId}/transitions:
     post:
       tags:
@@ -326,6 +387,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+      deprecated: true
   /api/factory/workflows/{workflowId}/run:
     post:
       tags:
@@ -1726,42 +1788,6 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ControllerResumptionPackage"
-  /api/factory/workflows:
-    get:
-      tags:
-      - workflows
-      summary: List workflow projections of the caller's tenant scope (optionally
-        filtered by namespace).
-      operationId: listWorkflow
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: state
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: workflowType
-        in: query
-        required: false
-        schema:
-          type: string
-      - name: limit
-        in: query
-        required: false
-        schema:
-          type: integer
-          format: int32
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows/{workflowId}:
     get:
       tags:

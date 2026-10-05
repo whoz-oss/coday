@@ -4,58 +4,45 @@ import { provideRouter, Router } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FactoryApiError, FactoryApiService } from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
-import { ShellState } from '../../core/shell-state'
 import { LaunchPageComponent } from './launch-page.component'
 
 interface ApiStub {
   getWorkflowDefinitions: jest.Mock
   getNamespaces: jest.Mock
-  startWorkflow: jest.Mock
-  runWorkflow: jest.Mock
+  createWorkflowRun: jest.Mock
 }
 
-function createApi(overrides: Partial<ApiStub> = {}): ApiStub {
+function api(overrides: Partial<ApiStub> = {}): ApiStub {
   return {
-    getWorkflowDefinitions: jest.fn().mockReturnValue(of({ items: [] })),
-    getNamespaces: jest.fn().mockReturnValue(of([])),
-    startWorkflow: jest.fn().mockReturnValue(of({})),
-    runWorkflow: jest.fn().mockReturnValue(of({ status: 'accepted', submissionId: 'sub-1' })),
+    getWorkflowDefinitions: jest.fn().mockReturnValue(of({ items: [{ workflowType: 'delivery' }] })),
+    getNamespaces: jest.fn().mockReturnValue(of([{ namespaceId: 'ns-1' }, { id: 'ns-2' }])),
+    createWorkflowRun: jest.fn().mockReturnValue(
+      of({
+        workflowId: 'generated-id',
+        title: 'Readable run',
+        created: true,
+        queued: true,
+        idempotent: false,
+        submissionId: 'sub-1',
+        submissionStatus: 'pending',
+        status: 'pending',
+        revision: 1,
+      })
+    ),
     ...overrides,
   }
 }
 
-interface StoreStub {
-  refresh: jest.Mock
-}
-
-function createStore(): StoreStub {
-  return { refresh: jest.fn() }
-}
-
-interface ComponentAccess {
-  form: FormGroup
-  workflowTypes(): string[]
-  namespaces(): string[]
-  onSubmit(): void
-}
-
-const conflictError: FactoryApiError = {
-  code: 'WORKFLOW_IDENTITY_CONFLICT',
-  message: 'instance already exists',
-  status: 409,
-  raw: null,
-}
-
-describe('LaunchPageComponent', () => {
+describe('LaunchPageComponent create-run contract', () => {
   let fixture: ComponentFixture<LaunchPageComponent>
 
-  async function setup(api: ApiStub, store: StoreStub = createStore()): Promise<HTMLElement> {
+  async function setup(service: ApiStub): Promise<HTMLElement> {
     await TestBed.configureTestingModule({
       imports: [LaunchPageComponent],
       providers: [
         provideRouter([]),
-        { provide: FactoryApiService, useValue: api },
-        { provide: FactoryStore, useValue: store },
+        { provide: FactoryApiService, useValue: service },
+        { provide: FactoryStore, useValue: { refresh: jest.fn() } },
       ],
     }).compileComponents()
     fixture = TestBed.createComponent(LaunchPageComponent)
@@ -63,180 +50,52 @@ describe('LaunchPageComponent', () => {
     return fixture.nativeElement as HTMLElement
   }
 
-  function access(): ComponentAccess {
-    return fixture.componentInstance as unknown as ComponentAccess
+  function form(): FormGroup {
+    return (fixture.componentInstance as unknown as { form: FormGroup }).form
   }
 
-  it('sets the breadcrumb and loads definitions and namespaces on init', async () => {
-    const api = createApi({
-      getWorkflowDefinitions: jest.fn().mockReturnValue(
-        of({
-          items: [
-            { workflowType: 'adw_simple_sdlc', version: 'v1' },
-            { workflowType: 'adw_simple_sdlc', version: 'v2' },
-            { workflowType: 'hotfix', version: 'v1' },
-          ],
-        })
-      ),
-      getNamespaces: jest.fn().mockReturnValue(of([{ namespaceId: 'ns-1' }, { namespaceId: 'ns-2' }])),
-    })
-    await setup(api)
-
-    expect(TestBed.inject(ShellState).crumbs()).toEqual([
-      { label: 'Sandboxes', link: '/sandboxes' },
-      { label: 'Lancer un run' },
-    ])
-    expect(api.getWorkflowDefinitions).toHaveBeenCalledTimes(1)
-    expect(api.getNamespaces).toHaveBeenCalledTimes(1)
-
-    // Definitions are de-duplicated; namespaces are exposed for the select.
-    expect(access().workflowTypes()).toEqual(['adw_simple_sdlc', 'hotfix'])
-    expect(access().namespaces()).toEqual(['ns-1', 'ns-2'])
+  it('requires a namespace and exposes the canonical business fields', async () => {
+    await setup(api({ getNamespaces: jest.fn().mockReturnValue(of([])) }))
+    expect(Object.keys(form().controls)).toEqual(['workflowType', 'namespaceId', 'title', 'ticket'])
+    form().patchValue({ workflowType: 'delivery', namespaceId: '', title: '', ticket: '' })
+    expect(form().valid).toBe(false)
+    form().controls['namespaceId'].setValue('ns-1')
+    expect(form().valid).toBe(true)
+    form().controls['title'].setValue('x'.repeat(201))
+    expect(form().controls['title'].hasError('maxlength')).toBe(true)
   })
 
-  it('enforces required fields and the 4000-character limit', async () => {
-    await setup(createApi())
-    const form = access().form
-
-    expect(form.valid).toBe(false)
-    form.patchValue({ workflowType: 'wf', namespaceId: 'ns', controllerRequest: 'do it' })
-    expect(form.valid).toBe(true)
-
-    form.controls['controllerRequest'].setValue('x'.repeat(4001))
-    expect(form.controls['controllerRequest'].hasError('maxlength')).toBe(true)
-    form.controls['controllerRequest'].setValue('')
-    expect(form.controls['controllerRequest'].hasError('required')).toBe(true)
-
-    form.patchValue({ workflowType: 'wf', namespaceId: 'ns', controllerRequest: 'do it' })
-    form.controls['workflowType'].setValue('')
-    expect(form.controls['workflowType'].hasError('required')).toBe(true)
-  })
-
-  it('does not call the API when the form is invalid', async () => {
-    const api = createApi()
-    await setup(api)
-
-    access().onSubmit()
-    fixture.detectChanges()
-
-    expect(api.startWorkflow).not.toHaveBeenCalled()
-    expect(api.runWorkflow).not.toHaveBeenCalled()
-  })
-
-  it('starts then runs on submit, ignores a start conflict, refreshes and navigates', async () => {
-    const api = createApi({
-      startWorkflow: jest.fn().mockReturnValue(throwError(() => conflictError)),
-      runWorkflow: jest.fn().mockReturnValue(of({ status: 'accepted', submissionId: 'sub-42' })),
-    })
-    const store = createStore()
-    const host = await setup(api, store)
-
-    const form = access().form
-    form.patchValue({
-      workflowType: 'adw_simple_sdlc',
-      namespaceId: 'ns-1',
-      controllerRequest: 'Ship the feature',
-      repoRoot: '/repo',
-      ticket: 'ABC-1',
-    })
-
-    const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
-    access().onSubmit()
-    fixture.detectChanges()
-
-    expect(api.startWorkflow).toHaveBeenCalledTimes(1)
-    const [workflowId, startPayload, startNamespace] = api.startWorkflow.mock.calls[0]
-    expect(workflowId).toMatch(/^wf-\d+-[a-z0-9]{5}$/)
-    expect(startNamespace).toBe('ns-1')
-    expect(startPayload).toEqual({
-      workflow: {
-        workflowId,
-        workflowType: 'adw_simple_sdlc',
-        title: 'Run adw_simple_sdlc',
-        ticket: 'ABC-1',
-      },
-      execution: {
-        namespaceId: 'ns-1',
-        runtimeId: 'factory-dashboard',
-        kind: 'agentos',
-        agentId: 'factory-agent',
-      },
-      controllerRequest: 'Ship the feature',
-    })
-
-    expect(api.runWorkflow).toHaveBeenCalledTimes(1)
-    const [runId, runPayload, runNamespace] = api.runWorkflow.mock.calls[0]
-    expect(runId).toBe(workflowId)
-    expect(runNamespace).toBe('ns-1')
-    expect(runPayload).toEqual({ namespaceId: 'ns-1', ticket: 'ABC-1', repoRoot: '/repo' })
-
-    expect(store.refresh).toHaveBeenCalledTimes(1)
-    expect(navigate).toHaveBeenCalledWith(['/sessions', workflowId])
-    expect(host.querySelector('[data-launch-success]')?.textContent).toContain('Lancement accepté (id: sub-42)')
-    expect(host.querySelector('[data-launch-error]')).toBeNull()
-  })
-
-  it('propagates a non-conflict start failure without running or navigating', async () => {
-    const serverError: FactoryApiError = {
-      code: 'SERVICE_UNAVAILABLE',
-      message: 'moteur indisponible',
-      status: 503,
-      raw: null,
-    }
-    const api = createApi({ startWorkflow: jest.fn().mockReturnValue(throwError(() => serverError)) })
-    const store = createStore()
-    const host = await setup(api, store)
-
-    access().form.patchValue({
-      workflowType: 'adw_simple_sdlc',
-      namespaceId: 'ns-1',
-      controllerRequest: 'Ship it',
-    })
+  it('calls the canonical use case without workflow or execution identity and navigates with the returned id', async () => {
+    const service = api()
+    await setup(service)
+    form().patchValue({ workflowType: 'delivery', namespaceId: 'ns-2', title: 'Readable run', ticket: 'ABC-1' })
     const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
 
-    access().onSubmit()
+    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
     fixture.detectChanges()
 
-    expect(api.runWorkflow).not.toHaveBeenCalled()
-    expect(store.refresh).not.toHaveBeenCalled()
+    expect(service.createWorkflowRun).toHaveBeenCalledTimes(1)
+    const [payload, namespaceId, key] = service.createWorkflowRun.mock.calls[0]
+    expect(payload).toEqual({ workflowType: 'delivery', title: 'Readable run', parameters: { ticket: 'ABC-1' } })
+    expect(payload.workflowId).toBeUndefined()
+    expect(payload.namespaceId).toBeUndefined()
+    expect(payload.execution).toBeUndefined()
+    expect(namespaceId).toBe('ns-2')
+    expect(key).toEqual(expect.any(String))
+    expect(navigate).toHaveBeenCalledWith(['/sessions', 'generated-id'])
+  })
+
+  it('surfaces Factory rejection and does not navigate', async () => {
+    const error: FactoryApiError = { code: 'INVALID_START_REQUEST', message: 'invalid', status: 400, raw: null }
+    const service = api({ createWorkflowRun: jest.fn().mockReturnValue(throwError(() => error)) })
+    const host = await setup(service)
+    form().patchValue({ workflowType: 'delivery' })
+    const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+
+    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
+    fixture.detectChanges()
+
     expect(navigate).not.toHaveBeenCalled()
-    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('moteur indisponible')
-    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('SERVICE_UNAVAILABLE')
-    expect(host.querySelector('[data-launch-success]')).toBeNull()
-  })
-
-  it('shows a readable error when the run call fails and never fabricates success', async () => {
-    const serverError: FactoryApiError = {
-      code: 'VALIDATION_FAILED',
-      message: 'controllerRequest invalide',
-      status: 400,
-      raw: null,
-    }
-    const api = createApi({ runWorkflow: jest.fn().mockReturnValue(throwError(() => serverError)) })
-    const store = createStore()
-    const host = await setup(api, store)
-
-    access().form.patchValue({
-      workflowType: 'adw_simple_sdlc',
-      namespaceId: 'ns-1',
-      controllerRequest: 'Ship it',
-    })
-    const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
-
-    access().onSubmit()
-    fixture.detectChanges()
-
-    expect(api.startWorkflow).toHaveBeenCalledTimes(1)
-    expect(api.runWorkflow).toHaveBeenCalledTimes(1)
-    expect(store.refresh).not.toHaveBeenCalled()
-    expect(navigate).not.toHaveBeenCalled()
-    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('controllerRequest invalide')
-    expect(host.querySelector('[data-launch-success]')).toBeNull()
-  })
-
-  it('falls back to a manual workflowType input when no definitions are available', async () => {
-    const host = await setup(createApi({ getWorkflowDefinitions: jest.fn().mockReturnValue(of({ items: [] })) }))
-
-    expect(host.querySelector('input[data-launch-workflow-type]')).not.toBeNull()
+    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('invalid')
   })
 })

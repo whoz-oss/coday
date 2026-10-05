@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.factorybridge.tools
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.sun.net.httpserver.HttpServer
+import io.whozoss.agentos.plugins.factorybridge.FactoryTrustedHeaderSigner
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
@@ -23,6 +24,7 @@ import java.util.UUID
  */
 class FactoryCommandToolsTest : StringSpec({
     val mapper = jacksonObjectMapper()
+    val signer = FactoryTrustedHeaderSigner("test-secret", "agentos-factory-bridge", listOf("workflow:write"))
 
     fun context(
         agent: String? = "WorkstreamAgent",
@@ -86,7 +88,7 @@ class FactoryCommandToolsTest : StringSpec({
         val tools =
             mapOf(
                 "request_agent_retry" to
-                    FactoryRequestAgentRetryTool("http://localhost", OkHttpClient(), mapper, "runtime"),
+                    FactoryRequestAgentRetryTool("http://localhost", OkHttpClient(), mapper, signer),
                 // Names: request_agent_retry is re-prefixed onto the Workstream boundary; the
                 // other two command tools keep their deprecated legacy `FACTORY__*` names.
                 "interrupt_attempt" to
@@ -150,7 +152,7 @@ class FactoryCommandToolsTest : StringSpec({
         try {
             val toolContext = context()
             val result =
-                FactoryRequestAgentRetryTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, "runtime-configured")
+                FactoryRequestAgentRetryTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, signer)
                     .execute(
                         FactoryRequestAgentRetryTool.Input("wf-1", "build", 5, "FLAKY_ORACLE", "retry-key-1"),
                         toolContext,
@@ -159,17 +161,16 @@ class FactoryCommandToolsTest : StringSpec({
             captured.path shouldBe "/api/factory/workflows/wf-1/retries"
             // Exact endpoint allowlist: the model-authored idempotencyKey is never sent.
             val sent = mapper.readTree(captured.body)
-            sent.fieldNames().asSequence().toSet() shouldBe setOf("namespaceId", "stepId", "expectedRevision", "reasonCode")
-            sent.path("namespaceId").asText() shouldBe toolContext.namespaceId.toString()
+            sent.fieldNames().asSequence().toSet() shouldBe setOf("stepId", "expectedRevision", "reasonCode")
             sent.path("stepId").asText() shouldBe "build"
             sent.path("expectedRevision").asLong() shouldBe 5L
             sent.path("reasonCode").asText() shouldBe "FLAKY_ORACLE"
             // Trusted identity travels via headers, sourced from the ToolContext.
-            captured.headers["x-factory-namespace-id"]?.single() shouldBe toolContext.namespaceId.toString()
-            captured.headers["x-factory-runtime-id"]?.single() shouldBe "runtime-configured"
-            captured.headers["x-factory-agent-id"]?.single() shouldBe "WorkstreamAgent"
-            captured.headers["x-factory-case-id"]?.single() shouldBe toolContext.caseEvents.single().caseId.toString()
-            captured.headers["x-factory-actor-id"]?.single() shouldBe "external-actor"
+            captured.headers["x-proxy-namespace-id"]?.single() shouldBe toolContext.namespaceId.toString()
+            captured.headers["x-proxy-case-id"]?.single() shouldBe toolContext.caseEvents.single().caseId.toString()
+            captured.headers["x-proxy-principal-id"]?.single() shouldBe "external-actor"
+            captured.headers["x-proxy-service-identity-id"]?.single() shouldBe "agentos-factory-bridge"
+            captured.headers["x-proxy-signature"]?.single().isNullOrBlank() shouldBe false
             // Standardized command output.
             val output = mapper.readTree(result.output)
             output.path("status").asText() shouldBe "pending-human"
@@ -186,12 +187,12 @@ class FactoryCommandToolsTest : StringSpec({
     }
 
     "request_agent_retry fails closed without a complete trusted context" {
-        val tool = FactoryRequestAgentRetryTool("http://localhost", OkHttpClient(), mapper, "runtime")
+        val tool = FactoryRequestAgentRetryTool("http://localhost", OkHttpClient(), mapper, signer)
         val input = FactoryRequestAgentRetryTool.Input("wf-1", "build", 5, "FLAKY_ORACLE")
         tool.execute(input, context(caseCount = 0)).errorType shouldBe "CASE_CONTEXT_UNAVAILABLE"
         tool.execute(input, context(caseCount = 2)).errorType shouldBe "CASE_CONTEXT_UNAVAILABLE"
-        tool.execute(input, context(agent = null)).errorType shouldBe "AGENT_CONTEXT_UNAVAILABLE"
-        tool.execute(input, context(actor = null)).errorType shouldBe "USER_CONTEXT_UNAVAILABLE"
+        tool.execute(input, context(agent = null)).success shouldBe false
+        tool.execute(input, context(actor = null)).errorType shouldBe "TRUST_CONTEXT_UNAVAILABLE"
         tool.execute(null, context()).errorType shouldBe "INVALID_RETRY_REQUEST"
     }
 
@@ -202,7 +203,7 @@ class FactoryCommandToolsTest : StringSpec({
         ): ToolExecutionResult {
             val server = fakeFactory(status, response)
             return try {
-                FactoryRequestAgentRetryTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, "runtime")
+                FactoryRequestAgentRetryTool("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper, signer)
                     .execute(FactoryRequestAgentRetryTool.Input("wf-1", "build", 5, "FLAKY_ORACLE"), context())
             } finally {
                 server.stop(0)

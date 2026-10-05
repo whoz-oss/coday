@@ -6,14 +6,7 @@ import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatIconModule } from '@angular/material/icon'
 import { MatInputModule } from '@angular/material/input'
 import { MatSelectModule } from '@angular/material/select'
-import { catchError, of, switchMap, throwError } from 'rxjs'
-import {
-  FactoryApiError,
-  FactoryApiService,
-  RunWorkflowRequest,
-  StartWorkflowRequest,
-  isWorkflowConflict,
-} from '../../core/factory-api.service'
+import { FactoryApiError, FactoryApiService, generateCorrelationId } from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
 import { ShellState } from '../../core/shell-state'
 
@@ -36,20 +29,30 @@ export function extractWorkflowTypes(payload: unknown): string[] {
   return Array.from(types)
 }
 
-/** Extract the unique, non-blank namespace ids from a namespaces payload. */
-export function extractNamespaceIds(payload: unknown): string[] {
+/** Namespace option displayed by name while submitting its stable id. */
+export interface NamespaceOption {
+  id: string
+  name: string
+}
+
+/** Extract unique namespace options from the AgentOS namespace API payload. */
+export function extractNamespaceOptions(payload: unknown): NamespaceOption[] {
   const items = Array.isArray(payload) ? payload : []
-  const ids = new Set<string>()
+  const options = new Map<string, NamespaceOption>()
   for (const item of items) {
     if (typeof item === 'string') {
-      if (item.trim()) ids.add(item.trim())
+      const id = item.trim()
+      if (id) options.set(id, { id, name: id })
       continue
     }
     const record = item as { namespaceId?: unknown; id?: unknown; name?: unknown } | null
-    const value = record?.namespaceId ?? record?.id ?? record?.name
-    if (typeof value === 'string' && value.trim()) ids.add(value.trim())
+    const rawId = record?.namespaceId ?? record?.id
+    if (typeof rawId !== 'string' || !rawId.trim()) continue
+    const id = rawId.trim()
+    const name = typeof record?.name === 'string' && record.name.trim() ? record.name.trim() : id
+    options.set(id, { id, name })
   }
-  return Array.from(ids)
+  return Array.from(options.values()).sort((left, right) => left.name.localeCompare(right.name))
 }
 
 /** Human-readable, non-fabricated launch error message. */
@@ -60,12 +63,10 @@ export function formatLaunchError(error: FactoryApiError | null | undefined): st
 }
 
 /**
- * Dedicated `/lancer` screen: materializes a workflow instance from a registered
- * definition (`start`) then triggers the durable run (`run`) on the real
- * factory-service endpoints.
- *
- * The cockpit never fabricates a success: a backend failure keeps the form on
- * screen and surfaces a readable banner.
+ * Dedicated `/lancer` screen using Factory's canonical create-and-submit use
+ * case. Factory owns workflow identity and execution attribution. The browser
+ * supplies the selected namespace only through the trusted/local HTTP boundary.
+ * A backend failure keeps the form visible and surfaces a readable banner.
  */
 @Component({
   selector: 'sf-launch-page',
@@ -88,7 +89,7 @@ export class LaunchPageComponent {
   private readonly router = inject(Router)
 
   protected readonly workflowTypes = signal<string[]>([])
-  protected readonly namespaces = signal<string[]>([])
+  protected readonly namespaces = signal<NamespaceOption[]>([])
   protected readonly submitting = signal(false)
   protected readonly successMessage = signal<string | null>(null)
   protected readonly errorMessage = signal<string | null>(null)
@@ -98,9 +99,8 @@ export class LaunchPageComponent {
   protected readonly form = inject(NonNullableFormBuilder).group({
     workflowType: ['', Validators.required],
     namespaceId: ['', Validators.required],
-    controllerRequest: ['', [Validators.required, Validators.minLength(1), Validators.maxLength(4000)]],
-    repoRoot: [''],
-    ticket: [''],
+    title: ['', Validators.maxLength(200)],
+    ticket: ['', Validators.maxLength(64)],
   })
 
   constructor() {
@@ -130,19 +130,19 @@ export class LaunchPageComponent {
     })
   }
 
-  /** Fetch the AgentOS namespaces (already degrades to `[]` on failure). */
+  /** Fetch the AgentOS namespaces (the API degrades to `[]` on failure). */
   private loadNamespaces(): void {
     this.api.getNamespaces().subscribe((payload) => {
-      const ids = extractNamespaceIds(payload)
-      this.namespaces.set(ids)
-      const [firstNamespace] = ids
+      const options = extractNamespaceOptions(payload)
+      this.namespaces.set(options)
+      const [firstNamespace] = options
       if (firstNamespace && !this.form.controls.namespaceId.value) {
-        this.form.controls.namespaceId.setValue(firstNamespace)
+        this.form.controls.namespaceId.setValue(firstNamespace.id)
       }
     })
   }
 
-  /** Materialize then run the workflow, driving the form's feedback banners. */
+  /** Invoke the single Factory-owned create-and-submit use case. */
   protected onSubmit(): void {
     if (this.submitting()) return
     if (this.form.invalid) {
@@ -150,46 +150,24 @@ export class LaunchPageComponent {
       return
     }
 
-    const { workflowType, namespaceId, controllerRequest, repoRoot, ticket } = this.form.getRawValue()
+    const { workflowType, namespaceId, title, ticket } = this.form.getRawValue()
+    const trimmedTitle = title.trim()
     const trimmedTicket = ticket.trim()
-    const trimmedRepoRoot = repoRoot.trim()
-    const workflowId = `wf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
-
-    const startPayload: StartWorkflowRequest = {
-      workflow: {
-        workflowId,
-        workflowType,
-        title: `Run ${workflowType}`,
-        ...(trimmedTicket ? { ticket: trimmedTicket } : {}),
-      },
-      execution: {
-        namespaceId,
-        runtimeId: 'factory-dashboard',
-        kind: 'agentos',
-        agentId: 'factory-agent',
-      },
-      controllerRequest,
-    }
-
-    const runPayload: RunWorkflowRequest = {
-      namespaceId,
-      ...(trimmedTicket ? { ticket: trimmedTicket } : {}),
-      ...(trimmedRepoRoot ? { repoRoot: trimmedRepoRoot } : {}),
-    }
+    const idempotencyKey = generateCorrelationId()
 
     this.submitting.set(true)
     this.successMessage.set(null)
     this.errorMessage.set(null)
 
     this.api
-      .startWorkflow(workflowId, startPayload, namespaceId)
-      .pipe(
-        catchError((error: FactoryApiError) => {
-          // An already-materialized instance is fine: proceed to the /run phase.
-          if (isWorkflowConflict(error)) return of(null)
-          return throwError(() => error)
-        }),
-        switchMap(() => this.api.runWorkflow(workflowId, runPayload, namespaceId))
+      .createWorkflowRun(
+        {
+          workflowType,
+          ...(trimmedTitle ? { title: trimmedTitle } : {}),
+          ...(trimmedTicket ? { parameters: { ticket: trimmedTicket } } : {}),
+        },
+        namespaceId,
+        idempotencyKey
       )
       .subscribe({
         next: (response) => {
@@ -197,7 +175,7 @@ export class LaunchPageComponent {
           const submissionId = response?.submissionId
           this.successMessage.set(submissionId ? `Lancement accepté (id: ${submissionId})` : 'Lancement accepté.')
           this.store.refresh()
-          void this.router.navigate(['/sessions', workflowId])
+          void this.router.navigate(['/sessions', response.workflowId])
         },
         error: (error: FactoryApiError) => {
           this.submitting.set(false)

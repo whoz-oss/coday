@@ -24,7 +24,7 @@ class FactorySubmitStepResultToolSpec : StringSpec({
         val input = FactorySubmitStepResultTool.Input("PASS", "ok", claims = FactorySubmitStepResultTool.Claims(emptyList()))
         val result = tool.execute(input, ToolContext(UUID.randomUUID(), null, null, emptyList(), "Worker"))
         result.success shouldBe false
-        result.errorType shouldBe "FACTORY_RESULT_CONTEXT_MISSING"
+        result.errorType shouldBe "FACTORY_WORKER_BINDING_INVALID"
     }
 
     "tool is fail-closed when the case exists but has no active binding" {
@@ -47,6 +47,6 @@ class FactorySubmitStepResultToolSpec : StringSpec({
             )
         val result = tool.execute(FactorySubmitStepResultTool.Input("PASS", "ok", claims = FactorySubmitStepResultTool.Claims(emptyList())), context)
         result.success shouldBe false
-        result.errorType shouldBe "FACTORY_RESULT_CONTEXT_MISSING"
+        result.errorType shouldBe "FACTORY_WORKER_BINDING_MISSING"
     }
 })

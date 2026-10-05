@@ -68,24 +68,34 @@ export interface NamespaceItem {
   [key: string]: unknown
 }
 
-/** Body of `POST /api/factory/workflows/:id/start` (materializes an instance). */
+/** Bounded caller-owned input of the canonical create-run use case. */
+export interface CreateWorkflowRunRequest {
+  workflowType: string
+  title?: string
+  parameters?: { ticket?: string }
+}
+
+/** Honest durable creation/submission result returned by Factory. */
+export interface CreateWorkflowRunResponse {
+  workflowId: string
+  title: string
+  created: boolean
+  queued: boolean
+  idempotent: boolean
+  submissionId: string
+  submissionStatus: string
+  status: string
+  revision: number
+}
+
+/** @deprecated Compatibility request for callers still using the old start route. */
 export interface StartWorkflowRequest {
-  workflow: {
-    workflowId: string
-    workflowType: string
-    title: string
-    ticket?: string
-  }
-  execution: {
-    namespaceId: string
-    runtimeId: string
-    kind: string
-    agentId: string
-  }
+  workflow: { workflowId: string; workflowType: string; title: string; ticket?: string }
+  execution: { namespaceId: string; runtimeId: string; kind: string; agentId: string }
   controllerRequest: string
 }
 
-/** Body of `POST /api/factory/workflows/:id/run` (triggers the durable run). */
+/** Body of `POST /api/factory/workflows/:id/run` (legacy explicit run). */
 export interface RunWorkflowRequest {
   namespaceId: string
   ticket?: string
@@ -227,6 +237,21 @@ export class FactoryApiService {
           blockers: Array.isArray(obj.blockers) ? (obj.blockers as WorkflowBlocker[]) : [],
         }
       })
+    )
+  }
+
+  /** Canonical Factory-owned creation and durable submission. */
+  createWorkflowRun(
+    payload: CreateWorkflowRunRequest,
+    namespaceId: string,
+    idempotencyKey: string
+  ): Observable<CreateWorkflowRunResponse> {
+    return this.post<CreateWorkflowRunResponse>(
+      '/api/factory/workflows',
+      payload,
+      namespaceId,
+      undefined,
+      idempotencyKey
     )
   }
 
@@ -388,11 +413,18 @@ export class FactoryApiService {
    * as both the `namespaceId` query param and the `X-Namespace-Id` header, the
    * `{ data }` envelope is unwrapped and failures are normalized.
    */
-  private post<T>(path: string, body: unknown, namespaceId?: string, correlationId?: string): Observable<T> {
+  private post<T>(
+    path: string,
+    body: unknown,
+    namespaceId?: string,
+    correlationId?: string,
+    idempotencyKey?: string
+  ): Observable<T> {
     let params = new HttpParams()
     let headers = new HttpHeaders()
       .set('X-Correlation-Id', correlationId ?? generateCorrelationId())
       .set('Content-Type', 'application/json')
+    if (idempotencyKey) headers = headers.set('Idempotency-Key', idempotencyKey)
     const namespace = namespaceId?.trim()
     if (namespace) {
       headers = headers.set('X-Namespace-Id', namespace)

@@ -1,0 +1,14 @@
+{
+  "/api/factory": {
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "secure": false,
+    "target": "http://localhost:8141"
+  },
+  "/api/namespaces": {
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "secure": false,
+    "target": "http://localhost:8124"
+  }
+}

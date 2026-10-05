@@ -133,7 +133,7 @@ describe('FactoryStore', () => {
     const [sandbox] = store.sandboxes()
     if (!sandbox) throw new Error('expected one derived sandbox')
 
-    expect(sandbox.name).toBe('wf-1')
+    expect(sandbox.name).toBe('Real workflow')
     expect(sandbox.project).toBe('ns-1')
     expect(sandbox.namespace).toBe('ns-1')
     expect(sandbox.ticket).toBe('ABC-1')
@@ -516,7 +516,7 @@ describe('FactoryStore', () => {
     expect(store.activeSandboxes()).toHaveLength(1)
     expect(store.destroyedSandboxes()).toHaveLength(1)
     const [destroyed] = store.destroyedSandboxes()
-    expect(destroyed?.name).toBe('wf-removed')
+    expect(destroyed?.name).toBe('Removed workflow')
     expect(destroyed?.status).toBe('destroyed')
     // `visibleSandboxes`/`showDestroyed` remain the ONLY visibility filter.
     expect(store.visibleSandboxes()).toEqual(store.activeSandboxes())

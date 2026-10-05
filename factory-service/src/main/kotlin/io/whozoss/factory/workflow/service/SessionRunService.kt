@@ -321,15 +321,12 @@ class SessionRunService(
         val restored = SessionProgress.fromStates(byId)
         for (step in steps) {
             val stored = byId[step.id]?.status ?: WorkflowStatuses.PENDING
-            // A step left `running` by an interrupted run is re-scheduled: the
-            // in-process sequencer is the only owner of the `running` state. The
-            // reset is persisted (inside the workflow lock) so the atomic claim
-            // below can always transition from `ready`.
-            if (stored == WorkflowStatuses.RUNNING) {
-                setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.READY, progress)
-            } else {
-                progress.statuses[step.id] = stored
-            }
+            // Never reset a durable RUNNING step to READY automatically. The
+            // external AgentOS turn may have been accepted even when this process
+            // lost observation; replaying it could duplicate uncertain work. A
+            // normal submission replay therefore observes the persisted status
+            // and leaves reconciliation/retry to explicit durable-attempt flows.
+            progress.statuses[step.id] = stored
         }
         progress.startedAt.putAll(restored.startedAt)
         progress.completedAt.putAll(restored.completedAt)
