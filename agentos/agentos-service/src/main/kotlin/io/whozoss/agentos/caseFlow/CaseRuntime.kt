@@ -109,6 +109,12 @@ class CaseRuntime(
      */
     private val killRequested = AtomicBoolean(false)
 
+    /**
+     * Set only by [requestShutdownStop]: stops the agent like a Kill but ends the turn as
+     * [CaseStatus.IDLE], so a conversation kept open across a restart is not closed.
+     */
+    private val shutdownStopRequested = AtomicBoolean(false)
+
     /** What [processNextStep] signals back to the run loop. */
     private enum class StepResult { CONTINUE, AGENT_FINISHED, STOP }
 
@@ -178,6 +184,22 @@ class CaseRuntime(
         interruptRequested.set(true)
         commandQueue.clear()
     }
+
+    /**
+     * Stop the current turn for a server shutdown that keeps the case open: the agent stops at its
+     * next check, as with [requestKill], but the turn ends as [CaseStatus.IDLE].
+     */
+    fun requestShutdownStop() {
+        shutdownStopRequested.set(true)
+        interruptRequested.set(true)
+        commandQueue.clear()
+    }
+
+    /** Whether a Kill was requested since the current turn started. */
+    fun isKillRequested(): Boolean = killRequested.get()
+
+    /** What the agent checks between its steps: a Kill or a shutdown stop ends its turn. */
+    private fun agentMayContinue(): Boolean = !killRequested.get() && !shutdownStopRequested.get()
 
     /**
      * Enqueue a command for sequential execution after the current agent turn.
@@ -349,6 +371,7 @@ class CaseRuntime(
                 } else {
                     interruptRequested.set(false)
                     killRequested.set(false)
+                    shutdownStopRequested.set(false)
                     true
                 }
             }
@@ -485,7 +508,7 @@ class CaseRuntime(
                         eventList.getAll(),
                         { eventList.getAll() },
                         resolveUserId(events),
-                    ) { !killRequested.get() }
+                    ) { agentMayContinue() }
                     return StepResult.CONTINUE
                 }
 
@@ -548,7 +571,7 @@ class CaseRuntime(
                         eventList.getAll(),
                         { eventList.getAll() },
                         userId,
-                    ) { !killRequested.get() }
+                    ) { agentMayContinue() }
                     return if (killRequested.get()) StepResult.STOP else StepResult.CONTINUE
                 }
 
