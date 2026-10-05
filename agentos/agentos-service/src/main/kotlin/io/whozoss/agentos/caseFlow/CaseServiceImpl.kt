@@ -130,16 +130,7 @@ class CaseServiceImpl(
         // Soft-deleted ids count: reusing one would resurrect the old node with its existing
         // relationships, including its place in another family.
         require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
-        entity.parentCaseId?.let { parentId ->
-            val parent = getById(parentId)
-            if (caseRepository.countAncestorDepth(parentId) >= MAX_DELEGATION_DEPTH) {
-                throw UnprocessableEntityException("Case hierarchy depth limit reached")
-            }
-            if (parent.namespaceId != entity.namespaceId) {
-                throw BadRequestException("A sub-case must belong to its parent's namespace")
-            }
-            caseLaunchGate?.requireAccepting(parentId)
-        }
+        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -160,6 +151,21 @@ class CaseServiceImpl(
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
         return saved
+    }
+
+    /** A sub-case needs an existing parent in its namespace, below the depth limit, that still accepts input. */
+    private fun requireValidParent(
+        parentId: UUID,
+        namespaceId: UUID,
+    ) {
+        val parent = getById(parentId)
+        if (caseRepository.countAncestorDepth(parentId) >= MAX_DELEGATION_DEPTH) {
+            throw UnprocessableEntityException("Case hierarchy depth limit reached")
+        }
+        if (parent.namespaceId != namespaceId) {
+            throw BadRequestException("A sub-case must belong to its parent's namespace")
+        }
+        caseLaunchGate?.requireAccepting(parentId)
     }
 
     override fun update(entity: Case): Case {
