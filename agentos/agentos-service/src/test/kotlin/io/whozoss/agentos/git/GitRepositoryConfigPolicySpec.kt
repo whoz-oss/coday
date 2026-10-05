@@ -136,7 +136,7 @@ class GitRepositoryConfigPolicySpec :
 
             val generic = service.create(config(validParameters()))
             val dedicated = controller.setAssociation(dedicatedNamespace, request)
-            dedicated.checkoutStatus shouldBe RepositoryCheckoutStatus.PREPARING.name
+            dedicated.checkoutStatus shouldBe RepositoryCheckoutStatus.PREPARING
             dedicated.autoWorktreeForRootCases shouldBe false
             for (namespace in listOf(namespaceId, dedicatedNamespace)) {
                 val queued = checkoutStore.findByNamespaceId(namespace).shouldNotBeNull()

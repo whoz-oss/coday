@@ -25,8 +25,8 @@ data class NamespaceGitResource(
     /** Whether a new root case gets a detached worktree. */
     val autoWorktreeForRootCases: Boolean = false,
     val setupCommand: String? = null,
-    /** `PREPARING`, `READY` or `FAILED`; null while no clone has been attempted. */
-    val checkoutStatus: String? = null,
+    @Schema(description = "Preparation state of the namespace repository. Null while no clone has been attempted")
+    val checkoutStatus: RepositoryCheckoutStatus? = null,
     /** Operator-facing reason when the checkout failed. Never a secret. */
     val checkoutFailureReason: String? = null,
     val lastFetchedAt: Instant? = null,

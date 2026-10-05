@@ -4893,6 +4893,12 @@ components:
           type: string
         checkoutStatus:
           type: string
+          description: Preparation state of the namespace repository. Null while no
+            clone has been attempted
+          enum:
+          - PREPARING
+          - READY
+          - FAILED
         lastFetchedAt:
           type: string
           format: date-time

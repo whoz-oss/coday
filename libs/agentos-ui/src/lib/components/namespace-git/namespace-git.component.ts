@@ -3,7 +3,12 @@ import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, computed, injec
 import { FormsModule } from '@angular/forms'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AuthSettingDto, NamespaceGit, NamespaceGitControllerService } from '@whoz-oss/agentos-api-client'
+import {
+  AuthSettingDto,
+  NamespaceGit,
+  NamespaceGitCheckoutStatusEnum,
+  NamespaceGitControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { catchError, forkJoin, of } from 'rxjs'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 
@@ -96,6 +101,7 @@ export class NamespaceGitComponent implements OnInit {
 
   /** Preparation state of the managed clone, when one has been attempted. */
   readonly checkoutStatus = computed(() => this.association()?.checkoutStatus ?? null)
+  protected readonly CheckoutStatus = NamespaceGitCheckoutStatusEnum
 
   ngOnInit(): void {
     this.namespaceId = this.route.snapshot.paramMap.get('namespaceId') ?? ''
