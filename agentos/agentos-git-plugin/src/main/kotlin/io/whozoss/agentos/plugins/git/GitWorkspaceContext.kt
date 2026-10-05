@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.git.core.GitCommandResult
 import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitInvocation
+import io.whozoss.agentos.git.core.GitToolParameters
 import java.nio.file.Path
 
 /**
@@ -29,18 +30,19 @@ internal data class GitWorkspaceContext(
         /** The context a case Git workspace injects, or null when one of its values is missing. */
         fun from(config: JsonNode?): GitWorkspaceContext? =
             GitWorkspaceContext(
-                workingDirectory = Path.of(text(config, WORKING_DIRECTORY) ?: return null),
-                gitDir = Path.of(text(config, GIT_DIR) ?: return null),
-                commonGitDir = Path.of(text(config, COMMON_GIT_DIR) ?: return null),
-                repositoryUrl = text(config, REPOSITORY_URL) ?: return null,
-                mainBranch = text(config, MAIN_BRANCH) ?: return null,
+                workingDirectory = Path.of(text(config, GitToolParameters.WORKING_DIRECTORY) ?: return null),
+                gitDir = Path.of(text(config, GitToolParameters.GIT_DIR) ?: return null),
+                commonGitDir = Path.of(text(config, GitToolParameters.COMMON_GIT_DIR) ?: return null),
+                repositoryUrl = text(config, GitToolParameters.REPOSITORY_URL) ?: return null,
+                mainBranch = text(config, GitToolParameters.MAIN_BRANCH) ?: return null,
             )
 
         /** The repository root a configuration names outside a workspace, or null when it names none. */
-        fun configuredDirectory(config: JsonNode?): Path? = text(config, WORKING_DIRECTORY)?.let { Path.of(it).normalize() }
+        fun configuredDirectory(config: JsonNode?): Path? =
+            text(config, GitToolParameters.WORKING_DIRECTORY)?.let { Path.of(it).normalize() }
 
         /** The remote a configuration names outside a workspace, or null when it names none. */
-        fun configuredRepositoryUrl(config: JsonNode?): String? = text(config, REPOSITORY_URL)
+        fun configuredRepositoryUrl(config: JsonNode?): String? = text(config, GitToolParameters.REPOSITORY_URL)
 
         /**
          * Read the Git directories of a configured repository, which must be the root of a non-bare
@@ -73,7 +75,7 @@ internal data class GitWorkspaceContext(
                 repositoryUrl =
                     configuredRepositoryUrl(config)
                         ?: throw GitToolException("Configure repositoryUrl on this GIT integration to use it outside a Git workspace"),
-                mainBranch = text(config, MAIN_BRANCH) ?: DEFAULT_MAIN_BRANCH,
+                mainBranch = text(config, GitToolParameters.MAIN_BRANCH) ?: DEFAULT_MAIN_BRANCH,
             )
         }
 
@@ -81,12 +83,6 @@ internal data class GitWorkspaceContext(
             config: JsonNode?,
             key: String,
         ): String? = config?.get(key)?.takeIf { it.isTextual }?.asText()?.takeIf { it.isNotBlank() }
-
-        private const val WORKING_DIRECTORY = "workingDirectory"
-        private const val GIT_DIR = "gitDir"
-        private const val COMMON_GIT_DIR = "commonGitDir"
-        private const val REPOSITORY_URL = "repositoryUrl"
-        private const val MAIN_BRANCH = "mainBranch"
 
         /** Keeps a Git error readable in a tool answer. */
         private const val MAX_DETAIL = 500
