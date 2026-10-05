@@ -22,7 +22,8 @@ open class Neo4jCaseResourceBindingRepository(
                 if (entity.metadata.removed) neo4jRepository.setInactive(saved.id) else neo4jRepository.setActive(saved.id)
             }.toDomain()
 
-    override fun findByIds(
+    @Transactional(readOnly = true)
+    open override fun findByIds(
         ids: Collection<UUID>,
         withRemoved: Boolean,
     ): List<CaseResourceBinding> =
@@ -31,12 +32,14 @@ open class Neo4jCaseResourceBindingRepository(
             .filter { withRemoved || it.removed != true }
             .map { it.toDomain() }
 
-    override fun findByParent(parentId: UUID): List<CaseResourceBinding> =
+    @Transactional(readOnly = true)
+    open override fun findByParent(parentId: UUID): List<CaseResourceBinding> =
         neo4jRepository
             .findActiveByNamespaceId(parentId.toString())
             .map { it.toDomain() }
 
-    override fun findByRootCaseId(rootCaseId: UUID): CaseResourceBinding? =
+    @Transactional(readOnly = true)
+    open override fun findByRootCaseId(rootCaseId: UUID): CaseResourceBinding? =
         neo4jRepository
             .findActiveByRootCaseId(rootCaseId.toString())
             ?.toDomain()

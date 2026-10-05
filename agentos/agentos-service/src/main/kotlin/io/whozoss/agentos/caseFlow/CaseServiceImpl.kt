@@ -172,7 +172,8 @@ class CaseServiceImpl(
         parentId: UUID,
         namespaceId: UUID,
     ) {
-        val parent = getById(parentId)
+        // A soft-deleted parent does not exist for this purpose (getById would include it).
+        val parent = findById(parentId) ?: throw ResourceNotFoundException("Parent case not found: $parentId")
         if (caseRepository.countAncestorDepth(parentId) >= MAX_DELEGATION_DEPTH) {
             throw UnprocessableEntityException("Case hierarchy depth limit reached")
         }
@@ -893,18 +894,19 @@ class CaseServiceImpl(
             activeRuntimes[caseId]
                 ?: throw ResourceNotFoundException("No active case runtime found: $caseId")
         logger.info { "Interrupting case: $caseId" }
-        // Mark every runtime interrupted before unblocking any waiting model call.
-        // Apply the same gate-interrupt + requestInterrupt to descendants so that a Stop on
-        // the parent also cancels any gated (not-yet-started) run of a child waiting for its workspace.
-        caseRepository.findActiveDescendants(caseId).forEach { descendant ->
-            activeRuntimes[descendant.id]?.let { descendantRuntime ->
-                gatedRuns?.interrupt(descendantRuntime)
-                descendantRuntime.requestInterrupt()
+        val family = caseRepository.findActiveDescendants(caseId).mapNotNull { activeRuntimes[it.id] } + runtime
+        // Mark every runtime interrupted before unblocking any waiting model call. With a gate, a
+        // launch admitted but not running yet is cancelled in the same pass.
+        family.forEach { if (gatedRuns != null) gatedRuns.cancelAdmitted(it) else it.requestInterrupt() }
+        if (usageConfig.enabled) runCostService?.stop(caseId)
+        // Releasing a held turn sets it IDLE, which completes a parent's delegation: only once everything
+        // above is stopped. Interrupting again covers a turn a resume started in between.
+        gatedRuns?.let { gated ->
+            family.forEach {
+                gated.interrupt(it)
+                it.requestInterrupt()
             }
         }
-        gatedRuns?.interrupt(runtime)
-        runtime.requestInterrupt()
-        if (usageConfig.enabled) runCostService?.stop(caseId)
     }
 
     /**
@@ -1085,13 +1087,16 @@ class CaseServiceImpl(
                 if (gatedRuns?.keepOpenOnShutdown(caseId) != true) {
                     killSingleCase(caseId)
                 } else {
-                    gatedRuns.stopForShutdown(runtime) {
-                        // Stopping this process is not a user Kill: its workspace survives, so an
-                        // unfinished conversation accepts a fresh instruction after the restart.
-                        if (!getById(caseId).status.isTerminal()) handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
-                        activeRuntimes.remove(caseId, runtime)
-                        watcherJobs.remove(caseId)?.cancel()
+                    gatedRuns.stopForShutdown(runtime)
+                    // Stopping this process is not a user Kill: its workspace survives, so an
+                    // unfinished conversation accepts a fresh instruction after the restart.
+                    if (!getById(caseId).status.isTerminal()) {
+                        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+                        // A Kill landing while that release was written keeps its terminal status.
+                        if (runtime.isKillRequested()) handleStatusChange(caseId, CaseStatus.KILLED)
                     }
+                    activeRuntimes.remove(caseId, runtime)
+                    watcherJobs.remove(caseId)?.cancel()
                 }
             } catch (e: Exception) {
                 logger.warn(e) { "Error killing case $caseId during shutdown" }

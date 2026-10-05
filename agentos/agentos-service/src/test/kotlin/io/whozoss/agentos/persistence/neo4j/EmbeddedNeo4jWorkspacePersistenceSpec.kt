@@ -95,7 +95,6 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             ready.status shouldBe CaseResourceStatus.READY
         }
 
-
         "REST-style child creation records graph ancestry and the family lookup climbs through removed cases" {
             val ns = namespaces.save(Namespace(name = "hierarchy"))
             val root = caseService.create(Case(namespaceId = ns.id))
@@ -111,6 +110,20 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             cases.save(child.copy(metadata = child.metadata.copy(removed = true)))
             roots.familyAmong(root, cases.findByParent(ns.id)).map { it.id }.toSet() shouldBe setOf(root.id, grandchild.id)
             roots.familyAmong(root, listOf(unrelated)) shouldBe emptyList()
+        }
+
+        "a stale write is refused instead of overwriting a newer one" {
+            val original = bindings.create(binding(UUID.randomUUID()))
+            bindings.update(original.copy(status = CaseResourceStatus.PREPARING))
+            shouldThrowAny { bindings.update(original.copy(status = CaseResourceStatus.READY)) }
+            bindings.findByRootCaseId(original.rootCaseId)?.status shouldBe CaseResourceStatus.PREPARING
+        }
+
+        "a namespace's bindings are found through an index" {
+            driver.session().use { session ->
+                session.run("SHOW INDEXES YIELD name WHERE name = 'case_resource_binding_namespace_lookup' RETURN count(*) AS n")
+                    .single()["n"].asInt() shouldBe 1
+            }
         }
     }
 }

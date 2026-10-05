@@ -14,11 +14,11 @@ import java.util.UUID
  *
  * Cloning a repository and installing its dependencies takes minutes. Starting a run before the
  * worktree exists would have the agent's tools resolve to a directory that is not there yet, so
- * the case waits instead — its message is already persisted, and the provisioning sweep resumes it
- * once the workspace is ready.
+ * the case waits instead. Its message is already persisted, and whatever prepares the workspace must
+ * call [io.whozoss.agentos.caseFlow.CaseService.resumeIfPending] once it is ready. Nothing creates a
+ * binding yet: worktree allocation, and the sweep that resumes held turns, come with the next change.
  *
- * Failed and removed resources also refuse execution. Their status and
- * preparation retry commands remain available through the workspace API.
+ * Failed and removed resources also refuse execution.
  *
  * Installed only with `agentos.git.workspaces.enabled`: without it, runs start immediately.
  */
@@ -69,12 +69,13 @@ class GitCaseLaunchGate(
         exchangeRootResolver.resolveGit(caseId).binding != null
 
     override fun requireAccepting(caseId: UUID) {
-        val binding = exchangeRootResolver.resolveGit(caseId).binding ?: return
-        if (binding.status in setOf(CaseResourceStatus.DELETING, CaseResourceStatus.REMOVED)) {
-            throw ConflictException("The workspace is being removed or has been removed")
-        }
-        if (caseRepository.findById(caseId)?.status?.isTerminal() != false) {
-            throw ConflictException("This case is closed and cannot accept new messages")
+        exchangeRootResolver.resolveGit(caseId).binding?.let { binding ->
+            if (binding.status.isRemovalStarted) {
+                throw ConflictException("The workspace is being removed or has been removed")
+            }
+            if (caseRepository.findById(caseId)?.status?.isTerminal() != false) {
+                throw ConflictException("This case is closed and cannot accept new messages")
+            }
         }
     }
 

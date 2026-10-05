@@ -848,9 +848,10 @@ class AgentServiceImpl(
      * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
      *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
      *   root);
-     * - the case scope additionally requires a live [context.caseId]; it needs no permission gate of
-     *   its own because its root is the run's own case, which the invoking user already holds Case
-     *   WRITE on to have reached this point;
+     * - the case scope additionally requires a live [context.caseId]. The run's own directory needs no
+     *   extra gate: the invoking user already holds Case WRITE on that case to have reached this point.
+     *   A directory owned by another case (a family's shared workspace) also requires the user's
+     *   permission on that owner, and is read-only without WRITE on both;
      * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
      *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
      *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
