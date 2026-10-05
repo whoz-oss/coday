@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing'
 import {
+  CaseWorkspaceViewStatusEnum,
   ExchangeControllerService,
   ExchangeDirectoryEntry,
   ExchangeDirectoryListing,
@@ -150,13 +151,13 @@ describe('ExchangeStateService', () => {
         .mockReturnValueOnce(throwError(() => ({ status: 409 })))
         .mockReturnValue(of(listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE, [caseFile])))
       init()
-      states.next({ view: { equipped: true, status: 'REQUESTED' } })
+      states.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.REQUESTED } })
       expect(service.caseStatus()).toBe('preparing')
       expect(service.canWriteCase()).toBe(false)
       expect(service.caseFiles()).toEqual([])
-      states.next({ view: { equipped: true, status: 'PREPARING' } })
+      states.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.PREPARING } })
       expect(controller.browseCaseFilesExchange).toHaveBeenCalledTimes(1)
-      states.next({ view: { equipped: true, status: 'READY' } })
+      states.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.READY } })
       expect(service.caseStatus()).toBe('ready')
       expect(service.caseFiles()).toEqual([caseFile])
       expect(service.canWriteCase()).toBe(true)
@@ -170,8 +171,8 @@ describe('ExchangeStateService', () => {
       workspaces.watch.mockReturnValue(states)
       controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
       init()
-      states.next({ view: { equipped: true, status: 'PREPARING' } })
-      states.next({ view: { equipped: true, status: 'FAILED' } })
+      states.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.PREPARING } })
+      states.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.FAILED } })
       expect(service.caseStatus()).toBe('error')
       expect(service.canWriteCase()).toBe(false)
       expect(states.observed).toBe(false)
@@ -188,7 +189,7 @@ describe('ExchangeStateService', () => {
 
     it('retries once if readiness wins the race, without looping on another conflict', () => {
       controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
-      workspaces.watch.mockReturnValue(of({ view: { equipped: true, status: 'READY' } }))
+      workspaces.watch.mockReturnValue(of({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.READY } }))
       init()
       expect(service.caseStatus()).toBe('error')
       expect(controller.browseCaseFilesExchange).toHaveBeenCalledTimes(2)
@@ -200,7 +201,7 @@ describe('ExchangeStateService', () => {
       workspaces.watch.mockReturnValue(states)
       controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
       init()
-      states.next({ view: { equipped: true, status: 'PREPARING' } })
+      states.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.PREPARING } })
       states.next({ view: null, errorStatus: 403 })
       expect(service.caseStatus()).toBe('forbidden')
       expect(service.caseSectionVisible()).toBe(false)
@@ -213,7 +214,7 @@ describe('ExchangeStateService', () => {
       workspaces.watch.mockReturnValue(states)
       controller.browseCaseFilesExchange.mockReturnValue(throwError(() => ({ status: 409 })))
       init()
-      states.next({ view: { equipped: true, status: 'PREPARING' } })
+      states.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.PREPARING } })
       expect(states.observed).toBe(true)
       controller.browseCaseFilesExchange.mockReturnValue(
         of(listing(ExchangeDirectoryListingCapabilityEnum.READ_WRITE, [caseFile]))

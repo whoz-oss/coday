@@ -1,7 +1,11 @@
 import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@angular/core'
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import { CaseControllerService, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import {
+  CaseControllerService,
+  CaseWorkspaceViewStatusEnum,
+  ExchangeFileEntryScopeEnum,
+} from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
@@ -246,7 +250,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
   })
 
   it('explains a long preparation wait and retries the same case with its text and files intact', fakeAsync(() => {
-    const state = new BehaviorSubject({ view: { equipped: true, status: 'PREPARING' } })
+    const state = new BehaviorSubject({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.PREPARING } })
     workspaces.watch.mockReturnValue(state)
     const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
     const ref = makeComponent()
@@ -264,7 +268,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
     expect(api.addMessageCase).not.toHaveBeenCalled()
     expect(exchangeState.uploadFile).not.toHaveBeenCalled()
 
-    state.next({ view: { equipped: true, status: 'READY' } })
+    state.next({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.READY } })
     void ref.instance['submit']()
     tick()
     expect(api.createCase).toHaveBeenCalledTimes(1)
@@ -287,7 +291,7 @@ describe('CaseHomeComponent — first message with attachments', () => {
   })
 
   it('cancels the shared preparation wait when the composer changes namespace', async () => {
-    const state = new BehaviorSubject({ view: { equipped: true, status: 'PREPARING' } })
+    const state = new BehaviorSubject({ view: { equipped: true, status: CaseWorkspaceViewStatusEnum.PREPARING } })
     workspaces.watch.mockReturnValue(state)
     const ref = makeComponent()
     ref.instance.ngOnInit()

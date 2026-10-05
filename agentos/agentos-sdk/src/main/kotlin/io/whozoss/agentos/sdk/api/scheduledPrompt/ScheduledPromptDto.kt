@@ -140,4 +140,10 @@ data class ScheduledPromptDto(
     val updatedOn: Instant? = null,
     /** True when soft-deleted, false when active. Read-only. */
     val removed: Boolean = false,
+    /**
+     * Opaque metadata map for external consumers.
+     * AgentOS persists this field as-is without interpreting its content.
+     * External consumers store their own metadata here (e.g. `isStandard`).
+     */
+    val externalMetadata: Map<String, Any?>? = null,
 )

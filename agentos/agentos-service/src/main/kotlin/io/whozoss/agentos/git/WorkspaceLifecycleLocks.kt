@@ -13,9 +13,10 @@ object WorkspaceLifecycleLocks {
         val waiting = ConcurrentHashMap<UUID, () -> Unit>()
 
         fun notifyAvailable() {
-            if (lock.isLocked) return
-            waiting.entries.toList().forEach { (id, callback) ->
-                if (waiting.remove(id, callback)) callback()
+            if (!lock.isLocked) {
+                waiting.entries.toList().forEach { (id, callback) ->
+                    if (waiting.remove(id, callback)) callback()
+                }
             }
         }
     }
@@ -57,6 +58,9 @@ object WorkspaceLifecycleLocks {
             if (!transactionReleasesLock) lock.unlock()
         }
     }
+
+    /** Whether the current thread holds [namespaceId]'s lock, taken through [withNamespace]. */
+    fun holdsNamespace(namespaceId: UUID): Boolean = namespaces[namespaceId]?.isHeldByCurrentThread == true
 
     fun <T> withRoot(
         rootId: UUID,

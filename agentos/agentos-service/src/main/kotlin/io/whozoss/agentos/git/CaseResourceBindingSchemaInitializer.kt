@@ -28,6 +28,9 @@ class CaseResourceBindingSchemaInitializer(
         ensureIdConstraint()
         ensureRootCaseUniqueConstraint()
         ensureNamespaceIndex()
+        ensureStatusIndex()
+        backfillVersion()
+        backfillSetupState()
     }
 
     private fun assertNoDuplicateRootCaseKeys() {
@@ -73,6 +76,7 @@ class CaseResourceBindingSchemaInitializer(
         logger.info { "[CaseResourceBindingSchema] constraint 'case_resource_binding_active_root_case_unique' ensured" }
     }
 
+    /** Serves [CaseResourceBindingNodeNeo4jRepository.findActiveByNamespaceId], which filters by namespace. */
     private fun ensureNamespaceIndex() {
         neo4jClient
             .query(
@@ -82,6 +86,39 @@ class CaseResourceBindingSchemaInitializer(
                 """.trimIndent(),
             ).run()
         logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_namespace_lookup' ensured" }
+    }
+
+    /** Serves the worker's sweeps, which filter active bindings by status and order them by creation. */
+    private fun ensureStatusIndex() {
+        neo4jClient
+            .query(
+                """
+                CREATE INDEX case_resource_binding_active_status IF NOT EXISTS
+                FOR (b:ActiveCaseResourceBinding) ON (b.status, b.created)
+                """.trimIndent(),
+            ).run()
+        logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_active_status' ensured" }
+    }
+
+    /** Rows saved before [CaseResourceBindingNode.version] existed need one for optimistic locking. */
+    private fun backfillVersion() {
+        neo4jClient.query("MATCH (b:CaseResourceBinding) WHERE b.version IS NULL SET b.version = 0").run()
+    }
+
+    /** Rows saved before [CaseResourceBindingNode.setupState] kept the setup progress in two flags. */
+    private fun backfillSetupState() {
+        neo4jClient
+            .query(
+                """
+                MATCH (b:CaseResourceBinding) WHERE b.setupState IS NULL
+                SET b.setupState = CASE
+                    WHEN b.setupCompleted THEN 'COMPLETED'
+                    WHEN b.setupStarted THEN 'STARTED'
+                    ELSE 'NOT_STARTED'
+                END
+                REMOVE b.setupStarted, b.setupCompleted
+                """.trimIndent(),
+            ).run()
     }
 
     companion object : KLogging()

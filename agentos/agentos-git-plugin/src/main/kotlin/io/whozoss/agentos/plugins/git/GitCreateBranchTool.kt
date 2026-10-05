@@ -8,7 +8,7 @@ internal class GitCreateBranchTool(
     data class Input(val name: String? = null)
 
     override val description: String =
-        "Create a Git branch at the current commit of this case's workspace and switch to it. Do this before committing."
+        "Create a Git branch at the current commit of the repository and switch to it. Do this before committing."
 
     override val paramType: Class<Input> = Input::class.java
 

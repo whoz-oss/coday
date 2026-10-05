@@ -1,11 +1,8 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.Timer
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
-import io.whozoss.agentos.caseFlow.CaseRepository
-import io.whozoss.agentos.caseFlow.CaseService
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.event.ApplicationReadyEvent
@@ -13,11 +10,11 @@ import org.springframework.context.event.EventListener
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Drives requested workspaces to readiness.
+ * Drives requested namespace checkouts and, through [CaseWorkspaceSweep], case workspaces to
+ * readiness.
  *
  * Creating a case only records the intent; cloning, fetching and setup take minutes and
  * must not happen in a request thread. This sweep picks up the intents and runs them.
@@ -46,16 +43,11 @@ import java.util.concurrent.atomic.AtomicBoolean
     matchIfMissing = false,
 )
 class CaseWorkspaceWorker(
-    private val bindingService: CaseResourceBindingService,
-    private val associationService: GitRepositoryAssociationService,
     /** Null without `agentos.git.workspaces.enabled`: the worker then only prepares namespace checkouts. */
-    private val provisioner: CaseWorktreeProvisioner?,
-    private val caseRepository: CaseRepository,
-    private val caseService: CaseService,
+    private val workspaceSweep: CaseWorkspaceSweep?,
+    private val associationService: GitRepositoryAssociationService,
     private val checkoutService: RepositoryCheckoutService,
     private val checkoutProvisioner: RepositoryCheckoutProvisioner,
-    private val objectMapper: ObjectMapper,
-    private val lifecycle: GitWorkspaceLifecycleService? = null,
     private val executor: GitWorkRunner = GitWorkRunner { it.run() },
     private val meterRegistry: MeterRegistry = SimpleMeterRegistry(),
     private val control: GitWorkspacesControl = GitWorkspacesControl(),
@@ -74,41 +66,10 @@ class CaseWorkspaceWorker(
     /** What the sweep is doing, for [GitWorkspacesEndpoint]. */
     fun activity(): WorkerActivity = current.let { WorkerActivity(sweeping.get(), it?.first, it?.second) }
 
-    /**
-     * Hand back to the sweep any workspace left mid-preparation by a crash.
-     *
-     * [CaseWorktreeProvisioner.ensureReady] marks a binding `PREPARING` before work that can run for
-     * tens of minutes (clone, fetch, `worktree add`, setup). Kill the process in that window and the
-     * binding stays `PREPARING` forever, because the sweep only looks at `REQUESTED`. Nothing else
-     * re-drives a binding, so the family is bricked: the launch gate defers every message and every
-     * file access answers 409, with no error surfaced anywhere.
-     *
-     * Re-driving reuses the frozen base SHA and the registered worktree, including a branch
-     * subsequently created by an agent. Existing registrations remain intact if their directory is missing.
-     * An interrupted setup requires explicit acknowledgement before its replay.
-     *
-     * This runs **at startup only**, not on the timer. A crash is the sole path that leaves
-     * `PREPARING` behind — an application failure already lands in `FAILED` — so sweeping that
-     * status on every tick would buy nothing and would instead need a lease or a heartbeat to avoid
-     * stealing work from a pass still in flight. That reasoning depends on the single-instance model
-     * described above: a second instance starting up would hand itself the first one's live work.
-     */
+    /** Requeue, once at startup, the workspaces a crash left mid-preparation. */
     @EventListener(ApplicationReadyEvent::class)
     fun reclaimInterruptedPreparations() {
-        try {
-            val interrupted = bindingService.findByStatusIn(listOf(CaseResourceStatus.PREPARING), RECLAIM_LIMIT)
-            if (interrupted.isEmpty()) return
-            logger.warn {
-                "Found ${interrupted.size} workspace(s) left preparing by a previous run; queueing them again"
-            }
-            interrupted.forEach { binding ->
-                bindingService.markStatus(binding.id, CaseResourceStatus.REQUESTED, null)
-            }
-        } catch (e: Exception) {
-            // Startup must not fail because reconciliation did: the sweep still works for everything
-            // that was REQUESTED, and these bindings stay visible as PREPARING.
-            logger.error(e) { "Could not reclaim interrupted workspace preparations" }
-        }
+        workspaceSweep?.reclaimInterruptedPreparations()
     }
 
     /**
@@ -130,22 +91,11 @@ class CaseWorkspaceWorker(
     private fun provisionSweep() {
         val sample = Timer.start(meterRegistry)
         try {
-            lifecycle?.cleanupDeletedCases(::stopRequested)
+            workspaceSweep?.cleanupDeletedCases(::stopRequested)
             if (stopRequested()) return
             prepareRequestedCheckouts()
-            if (stopRequested() || provisioner == null) return
-            val pending = bindingService.findByStatusIn(listOf(CaseResourceStatus.REQUESTED), BATCH_SIZE)
-            if (pending.isEmpty()) return
-            logger.info { "Provisioning ${pending.size} pending workspace(s)" }
-            pending.forEach {
-                if (stopRequested()) return
-                current = "workspace ${it.rootCaseId}" to Instant.now()
-                try {
-                    provisionOne(it)
-                } finally {
-                    current = null
-                }
-            }
+            if (stopRequested()) return
+            workspaceSweep?.let(::prepareRequestedWorkspaces)
         } catch (e: Exception) {
             // A sweep must never die: the next tick has to run.
             countError(OPERATION_SWEEP)
@@ -199,71 +149,19 @@ class CaseWorkspaceWorker(
         }
     }
 
-    private fun provisionOne(binding: CaseResourceBinding) {
-        val ready = WorkspaceLifecycleLocks.withRoot(binding.rootCaseId) { provisionLocked(binding) }
-        if (ready) releaseHeldTurns(binding.rootCaseId)
-    }
-
-    private fun provisionLocked(requested: CaseResourceBinding): Boolean {
-        val binding = bindingService.findByRootCaseId(requested.rootCaseId) ?: return false
-        if (binding.status != CaseResourceStatus.REQUESTED) return false
-        // Deletion may have happened after the pending batch was read.
-        if (lifecycle?.cleanupDeleted(binding.rootCaseId)?.status in setOf(CaseResourceStatus.DELETING, CaseResourceStatus.REMOVED)) return false
-        try {
-            val rootCase =
-                caseRepository.findByIds(listOf(binding.rootCaseId), withRemoved = true).firstOrNull()
-                    ?: run {
-                        // The case vanished under its binding. Nothing to provision, and leaving it
-                        // REQUESTED would make the sweep retry it forever.
-                        logger.warn { "Binding ${binding.id} references missing case ${binding.rootCaseId}; marking it failed" }
-                        bindingService.markStatus(binding.id, CaseResourceStatus.FAILED, "The owning case no longer exists")
-                        return false
-                    }
-
-            val settings =
-                binding.settingsJson?.let { objectMapper.readValue(it, GitRepositorySettings::class.java) }
-                    ?: associationService.findSettings(binding.namespaceId)
-                    ?: run {
-                        logger.warn { "Namespace ${binding.namespaceId} is no longer associated with a repository" }
-                        bindingService.markStatus(
-                            binding.id,
-                            CaseResourceStatus.FAILED,
-                            "The namespace is no longer associated with a repository",
-                        )
-                        return false
-                    }
-
-            val ready = requireNotNull(provisioner).ensureReady(binding, settings, rootCase)
-
-            return ready.status == CaseResourceStatus.READY
-        } catch (e: Exception) {
-            // ensureReady already recorded FAILED with the cause; keep going through the batch so
-            // one broken workspace does not block every other one behind it.
-            countError(OPERATION_WORKTREE)
-            logger.error(e) { "Could not provision workspace ${binding.id} for case ${binding.rootCaseId}" }
-            return false
+    /** Prepare the oldest requested case workspaces, one at a time. */
+    private fun prepareRequestedWorkspaces(sweep: CaseWorkspaceSweep) {
+        val pending = sweep.requested(BATCH_SIZE)
+        if (pending.isNotEmpty()) logger.info { "Provisioning ${pending.size} pending workspace(s)" }
+        pending.forEach {
+            if (stopRequested()) return
+            current = "workspace ${it.rootCaseId}" to Instant.now()
+            try {
+                sweep.provision(it)
+            } finally {
+                current = null
+            }
         }
-    }
-
-    /**
-     * Release every turn the launch gate held back for this family, not just the root's.
-     *
-     * The whole family shares one workspace, so the gate defers the whole family. A sub-case created
-     * by delegation while the workspace was preparing had its message persisted and its run refused
-     * exactly like the root's — and resuming only the root left the delegating parent waiting on a
-     * child that would never run.
-     *
-     * [CaseService.resumeIfPending] is the filter: it starts a case only when it is still `PENDING`,
-     * so descendants that already ran, were killed or never had a held-back turn are untouched. That
-     * is what makes casting this net wider safe.
-     */
-    private fun releaseHeldTurns(rootCaseId: UUID) {
-        caseService.resumeIfPending(rootCaseId)
-        val descendants =
-            runCatching { caseRepository.findActiveDescendants(rootCaseId) }
-                .onFailure { logger.error(it) { "Could not list descendants of $rootCaseId to resume them" } }
-                .getOrDefault(emptyList())
-        descendants.forEach { caseService.resumeIfPending(it.id) }
     }
 
     /** Snapshot of the sweep: whether one is queued or running, and the item it is on. */
@@ -282,17 +180,13 @@ class CaseWorkspaceWorker(
 
         private const val OPERATION_SWEEP = "sweep"
         private const val OPERATION_CHECKOUT = "checkout"
-        private const val OPERATION_WORKTREE = "worktree"
+
+        /** Counted by [CaseWorkspaceSweep], which prepares the case worktrees. */
+        internal const val OPERATION_WORKTREE = "worktree"
+
         private val OPERATIONS = listOf(OPERATION_SWEEP, OPERATION_CHECKOUT, OPERATION_WORKTREE)
 
         /** Bound each pass so pending work and cleanup alternate regularly. */
         private const val BATCH_SIZE = 5
-
-        /**
-         * Startup reconciliation looks wider than one sweep: every binding a crash stranded has to
-         * come back, not just the first few. Still bounded, so a pathological database cannot make
-         * startup walk an unbounded result set.
-         */
-        private const val RECLAIM_LIMIT = 500
     }
 }

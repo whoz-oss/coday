@@ -9,15 +9,17 @@ package io.whozoss.agentos.caseFlow
  * nothing about Git.
  *
  * Installed only with `agentos.git.workspaces.enabled`; without it, case creation is unchanged.
- * Implementations must be cheap for the common path and must not fail case creation for a reason
- * that is not the caller's fault: a namespace with no Git association does no work at all here.
+ * Implementations must be cheap for the common path: a namespace with no Git association does no
+ * work at all here. They may refuse a creation they cannot honour, such as a family that should be
+ * equipped under settings that are no longer valid, rather than create it in a state that no retry
+ * can repair.
  */
 interface CaseWorkspaceProvisioning {
     /** Coordinate configuration before any case write can lock the namespace in the database. */
     fun <T> aroundCreation(case: Case, action: () -> T): T = action()
 
     /**
-     * Called once a case has been persisted.
+     * Called once a case has been persisted, inside [aroundCreation].
      *
      * The implementation decides whether this case starts a family that needs a workspace. It
      * never provisions anything synchronously: it records the intent, leaving the slow part

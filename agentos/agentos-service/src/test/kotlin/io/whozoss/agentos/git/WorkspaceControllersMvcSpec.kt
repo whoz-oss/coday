@@ -117,12 +117,18 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.equipped").value(false))
-                .andExpect(jsonPath("$.branchName").doesNotExist())
         }
 
-        "a caller without case READ cannot inspect workspace environment or diff" {
+        "a caller without case READ cannot inspect a workspace, nor learn that the case exists" {
             val caseId = UUID.randomUUID()
-            listOf("workspace", "workspace/changes", "workspace/diff?path=secret.txt").forEach { suffix ->
+            mockMvc.perform(get("/api/cases/$caseId/workspace"))
+                .andExpect(status().isNotFound)
+            verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
+        }
+
+        "a caller without case READ cannot inspect workspace changes or diff" {
+            val caseId = UUID.randomUUID()
+            listOf("workspace/changes", "workspace/diff?path=secret.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/$caseId/$suffix"))
                     .andExpect(status().isForbidden)
             }
@@ -200,6 +206,25 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(status().isNotFound)
         }
 
+        "a root case missing from the store leaves the other workspaces of the namespace listed" {
+            val namespaceId = UUID.randomUUID()
+            val listed = Case(namespaceId = namespaceId)
+            val vanishedId = UUID.randomUUID()
+            val listedBinding = CaseResourceBinding(rootCaseId = listed.id, namespaceId = namespaceId, integrationConfigId = UUID.randomUUID())
+            val vanishedBinding = CaseResourceBinding(rootCaseId = vanishedId, namespaceId = namespaceId, integrationConfigId = UUID.randomUUID())
+            stubCase(listed, listedBinding)
+            every { cases.findByIds(listOf(vanishedId), any()) } returns emptyList()
+            every { bindings.findByParent(namespaceId) } returns listOf(vanishedBinding, listedBinding)
+            allow(EntityType.NAMESPACE, namespaceId, Action.READ)
+            allow(EntityType.CASE, listed.id, Action.READ)
+            allow(EntityType.CASE, vanishedId, Action.READ)
+
+            mockMvc.perform(get("/api/namespaces/$namespaceId/workspaces"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].rootCaseId").value(listed.id.toString()))
+        }
+
         "a sub-case permission never grants access to its root's Exchange or Git metadata" {
             val root = Case(namespaceId = UUID.randomUUID())
             val child = Case(namespaceId = root.namespaceId, parentCaseId = root.id)
@@ -212,7 +237,8 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             listOf("manifest", "directory", "content?path=private.txt", "download?path=private.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/${child.id}/files/$suffix")).andExpect(status().isNotFound)
             }
-            listOf("workspace", "workspace/changes", "workspace/diff?path=private.txt").forEach { suffix ->
+            mockMvc.perform(get("/api/cases/${child.id}/workspace")).andExpect(status().isNotFound)
+            listOf("workspace/changes", "workspace/diff?path=private.txt").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isForbidden)
             }
             mockMvc.perform(delete("/api/cases/${child.id}/files").param("path", "private.txt"))

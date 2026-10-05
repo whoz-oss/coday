@@ -7,9 +7,9 @@ internal class GitStatusTool(
 ) : GitTool<Unit>(prefix, "git_status") {
     override val description: String =
         """
-        Show the Git state of this case's workspace: current branch (or detached HEAD), current commit,
+        Show the Git state of the repository: current branch (or detached HEAD), current commit,
         whether the branch was pushed, and the changed files in `git status --porcelain` format.
-        The workspace is created and removed by AgentOS; you work in it with these Git tools.
+        In a case Git workspace, AgentOS creates and removes the worktree. You work in it with these Git tools.
         """.trimIndent()
 
     override val paramType: Class<Unit>? = null

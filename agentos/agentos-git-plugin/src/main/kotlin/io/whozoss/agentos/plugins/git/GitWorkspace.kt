@@ -9,17 +9,24 @@ import io.whozoss.agentos.git.core.GitRefs
 import java.time.Duration
 
 /**
- * Git operations in the family's worktree, run through the service's hardened runner.
+ * Git operations in the family's worktree or the configured repository, run through the service's
+ * hardened runner.
  *
  * Local commands pin `--git-dir` and `--work-tree` from [GitWorkspaceContext]; commands that can
  * run a filter first check the repository configuration. Credentialed commands use the runner's
  * private network context, so nothing an agent wrote in the shared configuration sees the token.
+ * A configured repository is read on first use, so a wrong configuration reaches the agent as the
+ * tool's answer.
  */
 internal class GitWorkspace(
-    private val context: GitWorkspaceContext,
+    resolveContext: () -> GitWorkspaceContext,
     private val runner: GitCommandRunner,
     private val networkTimeout: Duration = Duration.ofMinutes(10),
 ) {
+    constructor(context: GitWorkspaceContext, runner: GitCommandRunner) : this({ context }, runner)
+
+    private val context by lazy(resolveContext)
+
     val mainBranch: String get() = context.mainBranch
 
     val repositoryUrl: String get() = context.repositoryUrl
@@ -133,7 +140,12 @@ internal class GitWorkspace(
     private fun guard() = runner.assertNoHostileLocalConfig(context.gitDir)
 
     private fun local(vararg args: String) =
-        GitInvocation(args.toList(), gitDir = context.gitDir, workTree = context.workingDirectory, workingDirectory = context.workingDirectory)
+        GitInvocation(
+            args.toList(),
+            gitDir = context.gitDir,
+            workTree = context.workingDirectory,
+            workingDirectory = context.workingDirectory,
+        )
 
     private fun successful(result: GitCommandResult, action: String): String {
         if (result is GitCommandResult.Completed && result.successful && !result.truncated) return result.stdout

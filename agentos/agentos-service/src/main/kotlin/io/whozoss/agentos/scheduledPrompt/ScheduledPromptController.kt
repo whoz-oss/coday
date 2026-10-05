@@ -180,6 +180,7 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
+            externalMetadata = resource.externalMetadata,
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -242,6 +243,7 @@ class ScheduledPromptController(
             recurrence = resource.recurrence.toDomain(),
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
+            externalMetadata = resource.externalMetadata,
         )
 
     companion object : KLogging()
@@ -292,4 +294,5 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         updatedBy = entity.metadata.modifiedBy,
         updatedOn = entity.metadata.modified,
         removed = entity.metadata.removed,
+        externalMetadata = entity.externalMetadata,
     )

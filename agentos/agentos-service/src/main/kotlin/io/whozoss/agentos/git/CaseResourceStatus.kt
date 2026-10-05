@@ -32,4 +32,7 @@ enum class CaseResourceStatus {
 
     /** Whether a run may be held waiting for this workspace to become usable. */
     val isPending: Boolean get() = this == REQUESTED || this == PREPARING
+
+    /** Whether removal has started: the workspace accepts no new work. */
+    val isRemovalStarted: Boolean get() = this == DELETING || this == REMOVED
 }

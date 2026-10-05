@@ -27,6 +27,7 @@ import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
@@ -143,6 +144,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             skillToolGrantService = skillToolGrantService,
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(),
+            limitsConfig = LimitsConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
             exchangeRootResolver = exchangeRootResolver,
         )
@@ -561,6 +563,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                     exchangeRootResolver = exchangeRootResolver,
                 )
@@ -895,6 +898,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
                     exchangeRootResolver = exchangeRootResolver,
                 )

@@ -1,12 +1,18 @@
 package io.whozoss.agentos.git
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.git.GitWorkspaceStates.PR_CLOSED_UNMERGED
+import io.whozoss.agentos.git.GitWorkspaceStates.PR_DRAFT
+import io.whozoss.agentos.git.GitWorkspaceStates.PR_MERGED
+import io.whozoss.agentos.git.GitWorkspaceStates.PR_NONE
+import io.whozoss.agentos.git.GitWorkspaceStates.PR_OPEN
+import io.whozoss.agentos.git.GitWorkspaceStates.UNKNOWN
 import io.whozoss.agentos.git.core.GitHubApi
 import io.whozoss.agentos.git.core.GitHubRepository
 import io.whozoss.agentos.git.core.GitObjectIds
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -37,17 +43,20 @@ class GitHubPullRequests internal constructor(
         }
         val fullName = repository.fullName
         val head = URLEncoder.encode("${repository.owner}:$branch", Charsets.UTF_8)
-        val array = request(settings, "$fullName/pulls?state=all&head=$head&sort=updated&direction=desc&per_page=100")
+        val array = request(
+            settings,
+            "$fullName/pulls?state=all&head=$head&sort=updated&direction=desc&per_page=$PAGE_SIZE",
+        )
         val matching = array.filter {
             it.path("head").path("ref").asText() == branch &&
                 it.path("head").path("repo").path("full_name").asText().equals(fullName, true) &&
                 it.path("base").path("repo").path("full_name").asText().equals(fullName, true)
         }
-        val open = matching.filter { it.path("state").asText() == "open" }
+        val open = matching.filter { it.path("state").asText() == STATE_OPEN }
         check(open.size <= 1) { "Several open PRs reference this branch" }
         val pr = open.firstOrNull() ?: matching.firstOrNull()
             ?: findByHead(settings, fullName, branch, headSha)
-            ?: return GitWorkspaceSummary(prState = "NONE")
+            ?: return GitWorkspaceSummary(prState = PR_NONE)
         return summary(pr)
     }
 
@@ -57,7 +66,7 @@ class GitHubPullRequests internal constructor(
         // evidence of the association. Never attribute the latest merged PR to the main branch.
         if (headSha == null || branch == settings.mainBranch) return null
         require(headSha.lowercase().matches(GitObjectIds.FULL_ID)) { "Invalid Git commit SHA" }
-        val candidates = request(settings, "$fullName/commits/${headSha.lowercase()}/pulls?per_page=100").filter {
+        val candidates = request(settings, "$fullName/commits/${headSha.lowercase()}/pulls?per_page=$PAGE_SIZE").filter {
             it.path("base").path("repo").path("full_name").asText().equals(fullName, true) &&
                 it.path("head").path("sha").asText().equals(headSha, true)
         }
@@ -70,18 +79,38 @@ class GitHubPullRequests internal constructor(
         val response = api.get("repos/$repositoryPath", accounts.resolve(settings).secret)
         check(response.status == 200) { "PR status unavailable (HTTP ${response.status})" }
         val array = response.body
-        check(array != null && array.isArray && array.size() < 100) { "PR result is incomplete; cannot determine its status" }
+        // A full page may be truncated: GitHub never says so, and a wrong answer here would be
+        // projected as a PR state. Refuse rather than guess.
+        check(array != null && array.isArray && array.size() < PAGE_SIZE) {
+            "PR result is incomplete; cannot determine its status"
+        }
         return array
     }
 
     private fun summary(pr: JsonNode): GitWorkspaceSummary {
-        val state = when {
-            pr.path("state").asText() == "open" && pr.path("draft").asBoolean() -> "DRAFT"
-            pr.path("state").asText() == "open" -> "OPEN"
-            !pr.path("merged_at").isNull && !pr.path("merged_at").isMissingNode -> "MERGED"
-            pr.path("state").asText() == "closed" -> "CLOSED_UNMERGED"
-            else -> "UNKNOWN"
+        val state = pr.path("state").asText()
+        val merged = !pr.path("merged_at").isNull && !pr.path("merged_at").isMissingNode
+        val projected = when {
+            state == STATE_OPEN && pr.path("draft").asBoolean() -> PR_DRAFT
+            state == STATE_OPEN -> PR_OPEN
+            merged -> PR_MERGED
+            state == STATE_CLOSED -> PR_CLOSED_UNMERGED
+            else -> UNKNOWN
         }
-        return GitWorkspaceSummary(prState = state, prNumber = pr.path("number").asInt(), prUrl = pr.path("html_url").asText(), prHeadSha = pr.path("head").path("sha").asText())
+        return GitWorkspaceSummary(
+            prState = projected,
+            prNumber = pr.path("number").asInt(),
+            prUrl = pr.path("html_url").asText(),
+            prHeadSha = pr.path("head").path("sha").asText(),
+        )
+    }
+
+    private companion object {
+        /** `per_page` of every call: a full page cannot be told apart from a truncated one. */
+        const val PAGE_SIZE = 100
+
+        // GitHub's own vocabulary, not ours: these are the values the API returns.
+        const val STATE_OPEN = "open"
+        const val STATE_CLOSED = "closed"
     }
 }

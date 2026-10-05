@@ -92,6 +92,8 @@ class AgentSelectedEventNode(
     timestamp: Instant,
     val agentId: String,
     val agentName: String,
+    /** UUID of the answered question that this selection resumes, when applicable. */
+    val questionId: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -109,6 +111,13 @@ class AgentFinishedEventNode(
     val agentName: String,
     val llmProvider: String? = null,
     val llmModel: String? = null,
+    // LlmUsage fields stored flat — null when tracking is not configured.
+    val usageInputTokens: Long? = null,
+    val usageOutputTokens: Long? = null,
+    val usageCacheReadTokens: Long? = null,
+    val usageCacheWriteTokens: Long? = null,
+    val usageTotalTokens: Long? = null,
+    val usageEstimatedCostUsd: Double? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),

@@ -28,8 +28,8 @@
       @if (isAssociated() && checkoutStatus()) {
         <p
           class="namespace-git__status"
-          [class.namespace-git__status--failed]="checkoutStatus() === 'FAILED'"
-          [class.namespace-git__status--ready]="checkoutStatus() === 'READY'"
+          [class.namespace-git__status--failed]="checkoutStatus() === CheckoutStatus.FAILED"
+          [class.namespace-git__status--ready]="checkoutStatus() === CheckoutStatus.READY"
         >
           Repository: {{ checkoutStatus() }}
           @if (association()?.checkoutFailureReason) {

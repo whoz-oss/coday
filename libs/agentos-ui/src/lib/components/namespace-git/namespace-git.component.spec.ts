@@ -2,7 +2,12 @@ import { HttpErrorResponse, provideHttpClient } from '@angular/common/http'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router'
-import { AuthSettingDto, Configuration, NamespaceGit } from '@whoz-oss/agentos-api-client'
+import {
+  AuthSettingDto,
+  Configuration,
+  NamespaceGit,
+  NamespaceGitCheckoutStatusEnum,
+} from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { AuthSettingConfigStateService } from '../../services/auth-setting-config-state.service'
 import { NamespaceGitComponent } from './namespace-git.component'
@@ -16,7 +21,7 @@ describe('NamespaceGitComponent loading and safe updates', () => {
     serviceAuthSettingId: 'shared-auth',
     autoWorktreeForRootCases: true,
     setupCommand: 'pnpm install --ignore-scripts',
-    checkoutStatus: 'READY',
+    checkoutStatus: NamespaceGitCheckoutStatusEnum.READY,
   }
   let http: HttpTestingController
   let fixture: ComponentFixture<NamespaceGitComponent>

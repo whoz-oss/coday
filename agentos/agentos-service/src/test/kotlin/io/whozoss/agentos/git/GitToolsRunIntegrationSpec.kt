@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
@@ -35,7 +36,7 @@ class GitToolsRunIntegrationSpec :
             }
         val bindings = InMemoryCaseResourceBindingService()
         val capabilities = mockk<ExchangeCapabilityService>()
-        val integration = GitToolsRunIntegration(GitExchangeRootResolver(repository, bindings, storage), capabilities, storage, mapper)
+        val integration = GitToolsRunIntegration(GitExchangeRootResolver(repository, bindings, storage), capabilities, storage)
         val settings =
             GitRepositorySettings(
                 configId = UUID.randomUUID(),
@@ -53,7 +54,7 @@ class GitToolsRunIntegrationSpec :
                     namespaceId = namespaceId,
                     integrationConfigId = settings.configId,
                     status = CaseResourceStatus.READY,
-                    settingsJson = mapper.writeValueAsString(settings),
+                    settings = settings,
                 ),
             )
 
@@ -71,8 +72,10 @@ class GitToolsRunIntegrationSpec :
 
         fun context(caseId: UUID?) = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, userId = userId)
 
+        /** The run's own case asks to write the family's shared directory, which the root owns. */
         fun mayWrite(allowed: Boolean) {
-            every { capabilities.canAccessCase(userId.toString(), any(), any(), Action.WRITE) } returns allowed
+            every { capabilities.canAccessCase(userId.toString(), child.id, match { it.ownerCaseId == root.id }, Action.WRITE) } returns
+                allowed
         }
 
         "Git tools receive the family worktree and the Git context recorded when it was equipped" {
@@ -93,27 +96,30 @@ class GitToolsRunIntegrationSpec :
             expected.forEach { (key, value) -> effective.parameters!![key].asText() shouldBe value }
             effective.authSettingName shouldBe "github"
             saved.parameters!!["gitDir"].asText() shouldBe "/elsewhere/.git"
+            verify { capabilities.canAccessCase(userId.toString(), child.id, match { it.ownerCaseId == root.id }, Action.WRITE) }
         }
 
-        "Git tools exist only inside a Git workspace the user may write, other integrations are untouched" {
+        "in an equipped family Git tools exist only for a user who may write the workspace" {
             val bash = config("BASH", """{"workingDirectory":"/srv/project"}""")
             val git = listOf(config("GIT"), bash)
 
-            mayWrite(true)
-            integration.customize(git, context(null)) shouldBe listOf(bash)
-            integration.customize(git, context(ordinary.id)) shouldBe listOf(bash)
             mayWrite(false)
             integration.customize(git, context(child.id)) shouldBe listOf(bash)
             mayWrite(true)
-            bindings.update(binding.copy(settingsJson = null))
-            integration.customize(git, context(child.id)) shouldBe listOf(bash)
-            bindings.update(binding)
+            val withoutSettings = bindings.update(binding.copy(settings = null))
+            try {
+                integration.customize(git, context(child.id)) shouldBe listOf(bash)
+            } finally {
+                bindings.update(withoutSettings.copy(settings = binding.settings))
+            }
         }
 
-        "without Git workspaces a saved GIT integration never reaches the plugin" {
-            val bash = config("BASH")
-            val saved = config("GIT", """{"workingDirectory":"/elsewhere","gitDir":"/elsewhere/.git"}""")
+        "outside an equipped family a GIT integration reaches the run as configured" {
+            val bash = config("BASH", """{"workingDirectory":"/srv/project"}""")
+            val git = listOf(config("GIT", """{"workingDirectory":"/srv/repository"}"""), bash)
 
-            GitToolsRunIntegration(null, capabilities, storage, mapper).customize(listOf(saved, bash), context(child.id)) shouldBe listOf(bash)
+            mayWrite(true)
+            integration.customize(git, context(null)) shouldBe git
+            integration.customize(git, context(ordinary.id)) shouldBe git
         }
     })

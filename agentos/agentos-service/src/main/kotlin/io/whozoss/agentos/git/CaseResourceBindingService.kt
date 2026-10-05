@@ -23,9 +23,8 @@ interface CaseResourceBindingService : EntityService<CaseResourceBinding, UUID> 
     /**
      * Record progress of a preparation attempt, re-reading the row before writing it back.
      *
-     * Only the provisioner writes a binding, and it holds the family's slot for the duration of an
-     * attempt, so read-copy-save is safe here. A second writer would turn it into a lost-update
-     * window and require a targeted `SET` or a version field.
+     * Writers hold the family's lock, and the row's version refuses a write based on an older read,
+     * so a concurrent write fails instead of being lost.
      */
     fun markStatus(
         id: UUID,

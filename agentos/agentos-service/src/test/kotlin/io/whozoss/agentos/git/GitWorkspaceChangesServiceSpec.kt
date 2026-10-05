@@ -25,7 +25,7 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         status: CaseResourceStatus,
         branchName: String? = "feature/work",
         baseSha: String? = "abc123",
-        settingsJson: String? = null,
+        settings: GitRepositorySettings? = null,
     ) = CaseResourceBinding(
         rootCaseId = UUID.randomUUID(),
         namespaceId = UUID.randomUUID(),
@@ -33,7 +33,7 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         status = status,
         branchName = branchName,
         baseSha = baseSha,
-        settingsJson = settingsJson,
+        settings = settings,
     )
 
     fun makeRoot(

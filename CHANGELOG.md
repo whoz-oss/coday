@@ -1,3 +1,96 @@
+## 3.18.0 (2026-09-30)
+
+### 🚀 Features
+
+- introduce UsageRecord entity, persistence, service and controller ([a71fc3e9](https://github.com/whoz-oss/coday/commit/a71fc3e9))
+- regen openapi and api-client ([0299f1a8](https://github.com/whoz-oss/coday/commit/0299f1a8))
+- add sumCostByCaseTreeSince — cost sum for a case tree from a given instant ([1e4c8f0d](https://github.com/whoz-oss/coday/commit/1e4c8f0d))
+- regen openapi and api-client ([83f4de1c](https://github.com/whoz-oss/coday/commit/83f4de1c))
+- pr-review ([6abdb14c](https://github.com/whoz-oss/coday/commit/6abdb14c))
+- **agentos:** complete usage tracking and cost confirmation ([4c45eece](https://github.com/whoz-oss/coday/commit/4c45eece))
+- **agentos:** make usage tracking explicitly opt-in ([2a42524e](https://github.com/whoz-oss/coday/commit/2a42524e))
+- **agentos:** complete usage tracking, monitoring and cost confirmation ([#1358](https://github.com/whoz-oss/coday/pull/1358))
+
+### 🩹 Fixes
+
+- correct UsageRecord permissions — drop getById, restrict namespace aggregates to ADMIN ([68bf6653](https://github.com/whoz-oss/coday/commit/68bf6653))
+- address review comments on UsageRecord PR ([baac24dd](https://github.com/whoz-oss/coday/commit/baac24dd))
+- #1309 address Vincent's review — timestamp explicit, collect comment ([#1309](https://github.com/whoz-oss/coday/issues/1309))
+- align generated usage aggregate contract ([93e5bbab](https://github.com/whoz-oss/coday/commit/93e5bbab))
+- wz-34476 Refresh case usage on distinct agent message events ([926f3e46](https://github.com/whoz-oss/coday/commit/926f3e46))
+- wz-34476 Refactor delegation timeout and terminal status handling ([fbb3ba5f](https://github.com/whoz-oss/coday/commit/fbb3ba5f))
+- wz-34476: correct test ([73df739c](https://github.com/whoz-oss/coday/commit/73df739c))
+- **agentos:** preserve graceful interruption and fix usage template lint ([bf2d6d1c](https://github.com/whoz-oss/coday/commit/bf2d6d1c))
+- **agentos:** preserve tool history when stopping a cost pause ([10bc512c](https://github.com/whoz-oss/coday/commit/10bc512c))
+- **agentos:** record terminal tool failures in usage ([c264ff26](https://github.com/whoz-oss/coday/commit/c264ff26))
+- **agentos:** refresh cost confirmations during active runs ([e5081fe6](https://github.com/whoz-oss/coday/commit/e5081fe6))
+- **agentos:** release cost sessions when run startup fails ([7ca3e1bb](https://github.com/whoz-oss/coday/commit/7ca3e1bb))
+- **agentos:** tolerate analytics outages for uncapped runs ([df60f80a](https://github.com/whoz-oss/coday/commit/df60f80a))
+- **agentos:** show ancestor cost pauses in child conversations ([445a5951](https://github.com/whoz-oss/coday/commit/445a5951))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- selimbensenouciep-prog
+- vincent.audibert
+
+## 3.17.0 (2026-09-30)
+
+### 🚀 Features
+
+- #WZ-35099 add externalMetadata to ScheduledPrompt ([#1400](https://github.com/whoz-oss/coday/pull/1400))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.16.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** browse Exchange directories reliably ([#1366](https://github.com/whoz-oss/coday/pull/1366))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.15.1 (2026-09-30)
+
+### 🩹 Fixes
+
+- #1271 Resume multiple answered questions sequentially ([#1273](https://github.com/whoz-oss/coday/pull/1273), [#1271](https://github.com/whoz-oss/coday/issues/1271))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 3.15.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** configure optional namespace Git repositories ([#1365](https://github.com/whoz-oss/coday/pull/1365))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.14.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** add managed Git execution and repository storage ([#1364](https://github.com/whoz-oss/coday/pull/1364))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.13.0 (2026-09-29)
 
 ### 🚀 Features

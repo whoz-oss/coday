@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
-import { Configuration } from '@whoz-oss/agentos-api-client'
+import { CaseWorkspaceViewStatusEnum, Configuration } from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of } from 'rxjs'
 import { CaseWorkspaceService, WorkspaceState } from '../../services/case-workspace.service'
 import { CaseStateService } from '../../services/case-state.service'
@@ -9,7 +9,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 import { CaseWorkspaceComponent } from './case-workspace.component'
 
 describe('actionable workspace notice', () => {
-  const ready = { equipped: true, rootCaseId: 'root', status: 'READY' }
+  const ready = { equipped: true, rootCaseId: 'root', status: CaseWorkspaceViewStatusEnum.READY }
   let state: BehaviorSubject<WorkspaceState>
   let service: { watch: jest.Mock; act: jest.Mock }
   beforeEach(() => {
@@ -37,7 +37,7 @@ describe('actionable workspace notice', () => {
   })
   it('shows preparation failures and retry at the root, then removes notices after access loss', () => {
     const fixture = setup()
-    state.next({ view: { ...ready, status: 'FAILED', failureReason: 'Setup failed' } })
+    state.next({ view: { ...ready, status: CaseWorkspaceViewStatusEnum.FAILED, failureReason: 'Setup failed' } })
     fixture.detectChanges()
     expect(fixture.nativeElement.textContent).toContain('Setup failed')
     fixture.nativeElement.querySelector('button').click()
@@ -48,7 +48,7 @@ describe('actionable workspace notice', () => {
   })
   it('allows preparation retry only for a writable root case', () => {
     const fixture = setup()
-    state.next({ view: { ...ready, status: 'FAILED' } })
+    state.next({ view: { ...ready, status: CaseWorkspaceViewStatusEnum.FAILED } })
     fixture.componentRef.setInput('canWrite', false)
     fixture.detectChanges()
     expect(fixture.nativeElement.querySelector('button')).toBeNull()
@@ -122,7 +122,7 @@ describe('workspace preparation retry and case files', () => {
     http.expectOne(workspaceUrl).flush({
       equipped: true,
       rootCaseId: 'root',
-      status: 'FAILED',
+      status: CaseWorkspaceViewStatusEnum.FAILED,
       failureReason: 'Network unavailable',
     })
     fixture.detectChanges()

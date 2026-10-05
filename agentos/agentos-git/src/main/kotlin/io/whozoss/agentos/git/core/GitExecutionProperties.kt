@@ -23,6 +23,7 @@ import java.time.Duration
  * - AGENTOS_GIT_CLONE_TIMEOUT
  * - AGENTOS_GIT_SETUP_TIMEOUT
  * - AGENTOS_GIT_MAX_OUTPUT_CHARS
+ * - AGENTOS_GIT_ALLOWED_REMOTE_PROTOCOLS
  * - AGENTOS_GIT_ALLOW_PRIVATE_REMOTE_HOSTS
  *
  * | Property | Env var | Default | Purpose |
@@ -45,9 +46,9 @@ data class GitExecutionProperties(
      * for the deployment prerequisites.
      */
     val binary: String = "git",
-    /** Timeout applied to ordinary commands (status, rev-parse, worktree add, ...). */
+    /** Timeout applied to ordinary commands (status, rev-parse, ...). */
     val defaultTimeout: Duration = Duration.ofMinutes(2),
-    /** Timeout applied to network-bound commands (clone, fetch). */
+    /** Timeout applied to network-bound commands (clone, fetch) and to worktree creation and removal. */
     val cloneTimeout: Duration = Duration.ofMinutes(30),
     /** Timeout applied to the configured setup command run inside a new worktree. */
     val setupTimeout: Duration = Duration.ofMinutes(15),

@@ -46,8 +46,12 @@ class WorkspaceProcessGuardSpec : StringSpec({
     "an independent process holding the workspace prevents deletion even without an in-memory registry" {
         val path = directory()
         val process = ProcessBuilder("sleep", "120").directory(path.toFile()).start()
-        try { shouldThrow<ConflictException> { WorkspaceProcessGuard().assertIdle(path) } }
-        finally { process.destroyForcibly(); process.waitFor(10, TimeUnit.SECONDS) }
+        try {
+            shouldThrow<ConflictException> { WorkspaceProcessGuard().assertIdle(path) }.message!! shouldContain "${process.pid()} (sleep)"
+        } finally {
+            process.destroyForcibly()
+            process.waitFor(10, TimeUnit.SECONDS)
+        }
         WorkspaceProcessGuard().assertIdle(path)
     }
     "an unavailable process inspector fails closed" {
@@ -59,6 +63,8 @@ class WorkspaceProcessGuardSpec : StringSpec({
         for (command in listOf("exit 0", "echo 123; exit 1", "echo warning >&2; exit 1")) {
             shouldThrow<ConflictException> { inspector(path, command).assertIdle(path) }
         }
+        shouldThrow<ConflictException> { inspector(path, "echo 'lsof: WARNING: cannot stat' >&2; exit 1").assertIdle(path) }
+            .message shouldBe "Workspace process inspection was incomplete: lsof: WARNING: cannot stat"
     }
     "truncated blank output fails closed on either pipe" {
         val path = directory()

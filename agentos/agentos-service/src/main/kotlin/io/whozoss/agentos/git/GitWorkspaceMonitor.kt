@@ -24,7 +24,10 @@ class GitWorkspaceMonitor(
     private val active = AtomicBoolean()
     private var cursor: CaseResourceBindingCursor? = null
 
-    @Scheduled(fixedDelayString = "\${agentos.git.status.interval-ms:60000}", initialDelayString = "\${agentos.git.status.initial-delay-ms:30000}")
+    @Scheduled(
+        fixedDelayString = "\${agentos.git.status.interval-ms:60000}",
+        initialDelayString = "\${agentos.git.status.initial-delay-ms:30000}",
+    )
     fun poll() {
         if (control.isMonitorPaused()) return
         submitWorkspaceSweep(executor, active) { pollBatch() }
@@ -32,15 +35,16 @@ class GitWorkspaceMonitor(
 
     private fun pollBatch() {
         try {
-            val page = bindings.findByStatusIn(listOf(CaseResourceStatus.READY), 5, cursor)
-            val batch = if (page.isEmpty() && cursor != null) {
-                bindings.findByStatusIn(listOf(CaseResourceStatus.READY), 5)
-            } else page
-            cursor = batch.takeIf { it.size == 5 }?.last()?.let(CaseResourceBindingCursor::after)
-            batch.forEach { binding ->
-                if (control.isMonitorPaused() || Thread.currentThread().isInterrupted) return
+            val page = bindings.findByStatusIn(READY_ONLY, PAGE_SIZE, cursor)
+            // An exhausted cursor means the last page is behind us: restart from the beginning.
+            val batch = if (page.isEmpty() && cursor != null) bindings.findByStatusIn(READY_ONLY, PAGE_SIZE) else page
+            cursor = batch.takeIf { it.size == PAGE_SIZE }?.last()?.let(CaseResourceBindingCursor::after)
+            for (binding in batch) {
+                // A pause or a shutdown stops this page; the cursor already points past it.
+                if (control.isMonitorPaused() || Thread.currentThread().isInterrupted) break
                 try {
-                    statuses.refresh(binding, roots.resolveGit(binding.rootCaseId).repositoryPath.toAbsolutePath().normalize())
+                    val repository = roots.resolveGit(binding.rootCaseId).repositoryPath.toAbsolutePath().normalize()
+                    statuses.refresh(binding, repository)
                 } catch (e: Exception) {
                     logger.warn(e) { "Workspace status refresh failed for ${binding.rootCaseId}" }
                 }
@@ -49,5 +53,10 @@ class GitWorkspaceMonitor(
             logger.warn(e) { "Workspace status sweep failed" }
         }
     }
-    companion object : KLogging()
+
+    companion object : KLogging() {
+        /** Small enough that a paused operator waits at most this many slow observations. */
+        private const val PAGE_SIZE = 5
+        private val READY_ONLY = listOf(CaseResourceStatus.READY)
+    }
 }

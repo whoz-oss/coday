@@ -10,7 +10,7 @@ internal class GitCommitTool(
 
     override val description: String =
         """
-        Commit changes of this case's workspace on the current branch, authored as the user running the case.
+        Commit changes of the repository on the current branch, authored as the user running the case.
         Stages the given paths, or every change when none is given. Refused on a detached HEAD.
         """.trimIndent()
 

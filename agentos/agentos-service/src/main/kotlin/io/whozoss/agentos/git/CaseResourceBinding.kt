@@ -6,8 +6,8 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
 
 /**
- * The workspace allocated to one case family: a worktree with an optional observed branch, owned by the root case and
- * shared by every descendant.
+ * The workspace allocated to one case family: a detached worktree owned by the root case and shared
+ * by every descendant.
  *
  * Exactly one binding per equipped root case; ordinary families have none at all rather than a row
  * saying "no resource". The presence of a binding — never the namespace's current configuration —
@@ -16,7 +16,7 @@ import java.util.UUID
  *
  * [baseSha] is frozen once, when preparation first resolves the main branch, and never
  * recomputed: a retry after a crash must reuse the same base, without
- * silently rebase the case onto whatever was pushed meanwhile.
+ * silently rebasing the case onto whatever was pushed meanwhile.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CaseResourceBinding(
@@ -33,9 +33,17 @@ data class CaseResourceBinding(
     val baseSha: String? = null,
     /** Operator-facing failure cause; never a secret. */
     val failureReason: String? = null,
-    val settingsJson: String? = null,
+    /**
+     * The Git settings frozen when the family was equipped. Null only when none could be read back:
+     * the family then cannot be prepared and gets no Git tool (see [CaseResourceBindingNode]).
+     */
+    val settings: GitRepositorySettings? = null,
     val summaryJson: String? = null,
     val cleanupReason: String? = null,
-    val setupStarted: Boolean = false,
-    val setupCompleted: Boolean = false,
-) : Entity
+    /** Progress of the setup command, which a retry must never replay without acknowledgement. */
+    val setup: SetupState = SetupState.NOT_STARTED,
+) : Entity {
+    /** A family deleted before its workspace was ever prepared: nothing on disk depends on it. */
+    val removedBeforePreparation: Boolean
+        get() = status == CaseResourceStatus.REMOVED && baseSha == null && setup == SetupState.NOT_STARTED
+}

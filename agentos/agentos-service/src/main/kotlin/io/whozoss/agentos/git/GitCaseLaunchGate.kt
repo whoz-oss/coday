@@ -2,6 +2,7 @@ package io.whozoss.agentos.git
 
 import io.whozoss.agentos.caseFlow.CaseLaunchGate
 import io.whozoss.agentos.caseFlow.CaseRepository
+import io.whozoss.agentos.caseFlow.LaunchDecision
 import io.whozoss.agentos.exception.ConflictException
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -13,11 +14,11 @@ import java.util.UUID
  *
  * Cloning a repository and installing its dependencies takes minutes. Starting a run before the
  * worktree exists would have the agent's tools resolve to a directory that is not there yet, so
- * the case waits instead — its message is already persisted, and the provisioning sweep resumes it
- * once the workspace is ready.
+ * the case waits instead. Its message is already persisted, and whatever prepares the workspace must
+ * call [io.whozoss.agentos.caseFlow.CaseService.resumeIfPending] once it is ready. Nothing creates a
+ * binding yet: worktree allocation, and the sweep that resumes held turns, come with the next change.
  *
- * Failed and removed resources also refuse execution. Their status and
- * preparation retry commands remain available through the workspace API.
+ * Failed and removed resources also refuse execution.
  *
  * Installed only with `agentos.git.workspaces.enabled`: without it, runs start immediately.
  */
@@ -27,17 +28,31 @@ class GitCaseLaunchGate(
     private val exchangeRootResolver: GitExchangeRootResolver,
     private val caseRepository: CaseRepository,
 ) : CaseLaunchGate {
-    override fun canLaunch(caseId: UUID): Boolean {
-        // A lookup failure propagates. Answering "not ready" would park the turn of any case,
+    override fun launchDecision(caseId: UUID): LaunchDecision {
+        // A lookup failure propagates. Answering Wait would park the turn of any case,
         // equipped or not, with nothing left to resume it; the case service reports it instead.
         val resolved = exchangeRootResolver.resolveGit(caseId)
 
-        if (resolved.binding != null && caseRepository.findById(caseId)?.status?.isTerminal() != false) return false
-        if (resolved.isPending) {
-            logger.info { "Case $caseId is waiting for workspace ${resolved.binding?.id} (${resolved.binding?.status})" }
-            return false
+        // A terminal case with a binding must not run: the workspace may still exist but the
+        // case itself is closed. Refuse rather than Wait so the caller cleans up immediately.
+        if (resolved.binding != null && caseRepository.findById(caseId)?.status?.isTerminal() != false) {
+            return LaunchDecision.Refuse("Case $caseId is in a terminal status and cannot run")
         }
-        return resolved.isUsable
+
+        return when {
+            resolved.isPending -> {
+                val status = resolved.binding?.status
+                logger.info { "Case $caseId is waiting for workspace ${resolved.binding?.id} ($status)" }
+                LaunchDecision.Wait("Workspace ${resolved.binding?.id} is $status")
+            }
+            resolved.isUsable -> LaunchDecision.Admit
+            else -> {
+                // FAILED, DELETING, REMOVED, or any other non-usable, non-pending state.
+                // These will never become usable on their own: refuse immediately.
+                val status = resolved.binding?.status
+                LaunchDecision.Refuse("Workspace ${resolved.binding?.id} is $status and cannot be used")
+            }
+        }
     }
 
     override fun withAdmission(caseId: UUID, onAvailable: () -> Unit, action: () -> Unit) {
@@ -54,12 +69,13 @@ class GitCaseLaunchGate(
         exchangeRootResolver.resolveGit(caseId).binding != null
 
     override fun requireAccepting(caseId: UUID) {
-        val binding = exchangeRootResolver.resolveGit(caseId).binding ?: return
-        if (binding.status in setOf(CaseResourceStatus.DELETING, CaseResourceStatus.REMOVED)) {
-            throw ConflictException("The workspace is being removed or has been removed")
-        }
-        if (caseRepository.findById(caseId)?.status?.isTerminal() != false) {
-            throw ConflictException("This case is closed and cannot accept new messages")
+        exchangeRootResolver.resolveGit(caseId).binding?.let { binding ->
+            if (binding.status.isRemovalStarted) {
+                throw ConflictException("The workspace is being removed or has been removed")
+            }
+            if (caseRepository.findById(caseId)?.status?.isTerminal() != false) {
+                throw ConflictException("This case is closed and cannot accept new messages")
+            }
         }
     }
 

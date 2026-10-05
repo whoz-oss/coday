@@ -21,7 +21,7 @@ class DefaultExchangeRootResolver(
         caseCreatedAt: Instant,
     ): ResolvedExchangeRoot = ResolvedExchangeRoot(exchangeStorageService.caseRoot(namespaceId, caseId, caseCreatedAt), caseId)
 
-    override fun <T> withCaseMutation(
+    override fun <T> withFileMutation(
         case: Case,
         action: (ResolvedExchangeRoot) -> T,
     ): T = action(resolve(case))
