@@ -9,11 +9,16 @@
  */
 
 export interface AgentConfig {
+  /**
+   * Use executionMode instead
+   * @deprecated
+   */
   advancedExecution?: boolean
   createdBy?: string
   createdOn?: string
   description?: string
   enabled?: boolean
+  executionMode?: AgentConfigExecutionModeEnum
   externalMetadata?: { [key: string]: any }
   id?: string
   instructions?: string
@@ -25,4 +30,9 @@ export interface AgentConfig {
   subAgents?: Array<string>
   updatedBy?: string
   updatedOn?: string
+}
+export enum AgentConfigExecutionModeEnum {
+  SIMPLE = 'SIMPLE',
+  ADVANCED = 'ADVANCED',
+  LOOP = 'LOOP',
 }

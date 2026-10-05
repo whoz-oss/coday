@@ -1,0 +1,54 @@
+<div class="agent-config-launch">
+  <header class="agent-config-launch__header">
+    <button class="agent-config-launch__back" type="button" (click)="back()" title="Back to agent config">
+      <span class="agent-config-launch__back-icon">&#8592;</span>
+      Edit agent config
+    </button>
+    <h1 class="agent-config-launch__title">Launch loop agent</h1>
+    @if (isPlatformMode) {
+      <span class="agent-config-launch__platform-badge">Platform level</span>
+    }
+  </header>
+
+  <p class="agent-config-launch__intro">
+    Provide the <code class="agent-config-launch__code">AgentLoopPayload</code> as JSON. The payload defines which
+    entities to iterate over and what action to apply to each one. A new Case will be created and the agent loop will
+    start immediately.
+  </p>
+
+  <div class="agent-config-launch__field">
+    <label class="agent-config-launch__label" for="agent-loop-payload">Loop configuration (JSON)</label>
+    <textarea
+      id="agent-loop-payload"
+      class="agent-config-launch__textarea"
+      rows="15"
+      [placeholder]="placeholder"
+      [value]="payloadJson()"
+      (input)="onInput($event)"
+      [disabled]="isLaunching()"
+      spellcheck="false"
+      autocomplete="off"
+    ></textarea>
+    @if (payloadError()) {
+      <p class="agent-config-launch__error" role="alert">{{ payloadError() }}</p>
+    }
+  </div>
+
+  @if (launchError()) {
+    <p class="agent-config-launch__error agent-config-launch__error--banner" role="alert">
+      {{ launchError() }}
+    </p>
+  }
+
+  <div class="agent-config-launch__actions">
+    <button
+      class="agent-config-launch__btn agent-config-launch__btn--primary"
+      type="button"
+      [disabled]="isLaunching()"
+      (click)="launch()"
+    >
+      {{ isLaunching() ? 'Launching…' : 'Launch' }}
+    </button>
+    <button class="agent-config-launch__btn" type="button" [disabled]="isLaunching()" (click)="back()">Cancel</button>
+  </div>
+</div>

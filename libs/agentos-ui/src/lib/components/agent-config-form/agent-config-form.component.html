@@ -126,13 +126,18 @@
           }
         </fieldset>
       }
+
+      <!-- Execution mode — replaces the old advancedExecution checkbox -->
       <div class="agent-config-form__field">
-        <label class="agent-config-form__toggle-label">
-          <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="advancedExecutionControl" />
-          <span class="agent-config-form__toggle-text">Advanced mode</span>
-        </label>
-        <p class="agent-config-form__toggle-hint">
-          When enabled, this agent uses a multi-step reasoning loop instead of a single LLM call.
+        <label class="agent-config-form__label" for="agent-config-execution-mode">Execution mode</label>
+        <select id="agent-config-execution-mode" class="agent-config-form__select" [formControl]="executionModeControl">
+          <option [value]="ExecutionMode.SIMPLE">SIMPLE — Standard agent (single LLM call)</option>
+          <option [value]="ExecutionMode.ADVANCED">ADVANCED — Multi-step reasoning loop</option>
+          <option [value]="ExecutionMode.LOOP">LOOP — Bulk loop agent (no LLM)</option>
+        </select>
+        <p class="agent-config-form__field-hint">
+          SIMPLE runs a single LLM pass. ADVANCED uses an intention loop for complex tasks. LOOP iterates over a dataset
+          without an LLM — configure the run via the Launch section below.
         </p>
       </div>
 
@@ -148,7 +153,7 @@
         <span class="agent-config-form__label">Sub-agents</span>
         <p class="agent-config-form__field-hint">
           Glob patterns for agents this agent may delegate to. <code class="agent-config-form__code">*</code> matches
-          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
+          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
           <code class="agent-config-form__code">*</code> for all). Leave empty to disable delegation.
         </p>
 

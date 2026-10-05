@@ -11,13 +11,18 @@ import { AgentDefinitionToolSummary } from './agent-definition-tool-summary'
 
 export interface AgentDefinition {
   /**
-   * Whether the agent uses the advanced multi-step execution engine.
+   * Whether the agent uses the advanced multi-step execution engine. Deprecated: use executionMode instead.
+   * @deprecated
    */
   advancedExecution: boolean
   /**
    * The ID of the AgentConfig this definition was resolved from.
    */
   agentConfigId: string
+  /**
+   * The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP).
+   */
+  executionMode: AgentDefinitionExecutionModeEnum
   /**
    * Final system instructions sent to the LLM, including injected namespace / integration / user context blocks.
    */
@@ -50,4 +55,9 @@ export interface AgentDefinition {
    * The user whose overlay was applied, or null for namespace-only resolution.
    */
   userId?: string
+}
+export enum AgentDefinitionExecutionModeEnum {
+  SIMPLE = 'SIMPLE',
+  ADVANCED = 'ADVANCED',
+  LOOP = 'LOOP',
 }

@@ -107,9 +107,16 @@ class AgentLoop(
             }
 
             // TODO: implement SEARCH → EXTRACT → ACT pipeline
-            // Blocked on:
-            //   1. Search* structured-output contract (peer ticket)
-            //   2. CreateCase tool implementation
+            // Blocked on: Search* structured-output contract (peer PR).
+            //
+            // Expected flow per page of results:
+            //   1. SEARCH  — call Search* tool with payload.filters and payload.searchOptions
+            //   2. EXTRACT — for each entity, resolve the user context associated with that entity
+            //                (userId, possibly a different namespaceId). The AgentLoop trigger
+            //                userId must NOT be used as-is for the sub-cases.
+            //   3. ACT     — call SubCaseManager.startSubCase() with the resolved context,
+            //                then emit SubCaseStartedEvent for traceability.
+            //   4. Repeat until no more pages or shouldContinue() returns false.
             //
             // For now, the loop finishes immediately after logging the payload.
             // This skeleton validates the ExecutionMode.LOOP wiring end-to-end.

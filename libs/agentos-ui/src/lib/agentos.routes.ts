@@ -238,6 +238,14 @@ export const AGENTOS_ROUTES: Route[] = [
               ),
           },
           {
+            path: 'admin/agent-configs/:agentConfigId/launch',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-launch/agent-config-launch.component').then(
+                (m) => m.AgentConfigLaunchComponent
+              ),
+          },
+          {
             path: 'admin/agent-configs',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>
@@ -353,7 +361,8 @@ export const AGENTOS_ROUTES: Route[] = [
           {
             path: ':namespaceId/usage',
             canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/namespace-usage/namespace-usage.component').then((m) => m.NamespaceUsageComponent),
+            loadComponent: () =>
+              import('./components/namespace-usage/namespace-usage.component').then((m) => m.NamespaceUsageComponent),
           },
           // --- Scheduled Prompts ---
           {
@@ -424,6 +433,14 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/agent-config-inspect/agent-config-inspect.component').then(
                 (m) => m.AgentConfigInspectComponent
+              ),
+          },
+          {
+            path: ':namespaceId/agent-configs/:agentConfigId/launch',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-launch/agent-config-launch.component').then(
+                (m) => m.AgentConfigLaunchComponent
               ),
           },
           {

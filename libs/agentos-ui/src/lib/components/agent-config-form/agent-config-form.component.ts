@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AgentConfigExecutionModeEnum,
   AgentConfigExportService,
   IntegrationConfig,
   IntegrationTypeControllerService,
@@ -12,6 +13,9 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { catchError, forkJoin, map, Observable, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
+
+/** Convenience alias for the generated enum. */
+type ExecutionMode = AgentConfigExecutionModeEnum
 
 /** Represents one sub-agent glob pattern entry in the list. */
 interface SubAgentRow {
@@ -114,7 +118,7 @@ export class AgentConfigFormComponent implements OnInit {
     description: new FormControl<string | null>(null),
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
-    advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
+    executionMode: new FormControl<ExecutionMode>(AgentConfigExecutionModeEnum.SIMPLE, { nonNullable: true }),
     enabled: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
@@ -134,8 +138,8 @@ export class AgentConfigFormComponent implements OnInit {
     return this.form.controls.instructions
   }
 
-  protected get advancedExecutionControl() {
-    return this.form.controls.advancedExecution
+  protected get executionModeControl() {
+    return this.form.controls.executionMode
   }
 
   protected get enabledControl() {
@@ -154,6 +158,9 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isExporting = signal(false)
+
+  /** Expose the enum to the template for option value bindings. */
+  protected readonly ExecutionMode = AgentConfigExecutionModeEnum
 
   /**
    * Built-in integration rows (e.g. file exchange) surfaced by the backend only when their
@@ -213,7 +220,11 @@ export class AgentConfigFormComponent implements OnInit {
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
-          this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+          // Backward compat: if executionMode is absent but advancedExecution is true, infer ADVANCED.
+          const mode: ExecutionMode =
+            config.executionMode ??
+            (config.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
+          this.executionModeControl.setValue(mode)
           this.enabledControl.setValue(config.enabled ?? true)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
@@ -441,7 +452,9 @@ export class AgentConfigFormComponent implements OnInit {
       modelName: this.modelNameControl.value?.trim() || undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
-      advancedExecution: this.advancedExecutionControl.value,
+      executionMode: this.executionModeControl.value,
+      // Keep advancedExecution for backward compat with older backend versions.
+      advancedExecution: this.executionModeControl.value === AgentConfigExecutionModeEnum.ADVANCED,
       enabled: this.enabledControl.value,
       subAgents: this.buildSubAgentsPayload(),
     } as AgentConfig

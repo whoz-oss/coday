@@ -117,6 +117,26 @@
     line-height: 1.5;
   }
 
+  &__select {
+    width: 100%;
+    padding: 0.625rem 0.875rem;
+    border-radius: 0;
+    border: 1px solid var(--color-divider);
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 0.9375rem;
+    font-family: inherit;
+    outline: none;
+    box-sizing: border-box;
+    cursor: pointer;
+    transition: border-color 0.15s ease;
+    appearance: auto;
+
+    &:focus {
+      border-color: var(--color-accent);
+    }
+  }
+
   &__integrations {
     border: 1px solid var(--color-divider);
     border-radius: 0;
@@ -345,6 +365,8 @@
     color: var(--color-text-secondary);
     line-height: 1.4;
   }
+
+  // ── Actions row ───────────────────────────────────────────────
 
   &__actions {
     display: flex;

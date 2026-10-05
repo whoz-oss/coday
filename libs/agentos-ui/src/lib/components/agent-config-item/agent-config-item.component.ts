@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { AgentConfig } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, AgentConfigExecutionModeEnum } from '@whoz-oss/agentos-api-client'
 import { BlueprintDirective, IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
@@ -40,11 +40,46 @@ export class AgentConfigItemComponent {
 
   protected readonly pendingDelete = signal(false)
 
-  protected readonly menuItems: KebabMenuItem[] = [
-    { key: 'edit', label: 'Edit agent config', icon: 'edit' },
-    { key: 'inspect', label: 'Inspect definition', icon: 'search' },
-    { key: 'delete', label: 'Delete agent config', icon: 'delete', variant: 'danger' },
-  ]
+  /**
+   * Badge metadata for the execution mode. Returns null for SIMPLE (no badge shown),
+   * a label + mode string for ADVANCED and LOOP so the template can apply the right modifier.
+   * Backward compat: if executionMode is absent but advancedExecution is true, show ADVANCED.
+   */
+  protected readonly executionModeBadge = computed(() => {
+    const cfg = this.config()
+    const mode =
+      cfg.executionMode ??
+      (cfg.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
+    if (mode === AgentConfigExecutionModeEnum.ADVANCED) return { mode, label: 'ADVANCED' }
+    if (mode === AgentConfigExecutionModeEnum.LOOP) return { mode, label: 'LOOP' }
+    return null
+  })
+
+  /**
+   * True when the agent's execution mode is LOOP.
+   * Determines whether the "Launch" entry appears in the kebab menu.
+   */
+  protected readonly isLoop = computed(() => {
+    const cfg = this.config()
+    return (
+      cfg.executionMode === AgentConfigExecutionModeEnum.LOOP ||
+      // Backward compat: no executionMode field but mode badge shows LOOP is impossible
+      // via advancedExecution alone — this guard is just for safety.
+      false
+    )
+  })
+
+  protected get menuItems(): KebabMenuItem[] {
+    const items: KebabMenuItem[] = [
+      { key: 'edit', label: 'Edit agent config', icon: 'edit' },
+      { key: 'inspect', label: 'Inspect definition', icon: 'search' },
+    ]
+    if (this.isLoop()) {
+      items.push({ key: 'launch', label: 'Launch loop', icon: 'play_arrow' })
+    }
+    items.push({ key: 'delete', label: 'Delete agent config', icon: 'delete', variant: 'danger' })
+    return items
+  }
 
   protected readonly readOnlyMenuItems: KebabMenuItem[] = [
     { key: 'inspect', label: 'Inspect definition', icon: 'search' },
@@ -64,6 +99,13 @@ export class AgentConfigItemComponent {
           this.router.navigate(['/agentos', 'admin', 'agent-configs', this.config().id, 'inspect'])
         } else {
           this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'inspect'])
+        }
+        break
+      case 'launch':
+        if (this.platformMode()) {
+          this.router.navigate(['/agentos', 'admin', 'agent-configs', this.config().id, 'launch'])
+        } else {
+          this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'launch'])
         }
         break
       case 'delete':
