@@ -56,7 +56,7 @@ class NamespaceGitController(
                 // A stored-but-unusable association must still be visible in the screen that can
                 // repair it, so report it rather than failing the whole page.
                 logger.warn(e) { "Namespace $namespaceId has an unusable Git association" }
-                return NamespaceGitResource(associated = true, checkoutStatus = "FAILED",
+                return NamespaceGitResource(associated = true, checkoutStatus = RepositoryCheckoutStatus.FAILED,
                     checkoutFailureReason = "Cannot load the saved Git association. Retry before changing its settings.")
             } ?: return NamespaceGitResource(associated = false)
 
@@ -68,7 +68,7 @@ class NamespaceGitController(
             serviceAuthSettingId = settings.serviceAuthSettingId,
             autoWorktreeForRootCases = settings.autoWorktreeForRootCases,
             setupCommand = settings.setupCommand,
-            checkoutStatus = checkout?.status?.name,
+            checkoutStatus = checkout?.status,
             checkoutFailureReason = checkout?.failureReason,
             lastFetchedAt = checkout?.lastFetchedAt,
         )

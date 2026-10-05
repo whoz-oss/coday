@@ -32,16 +32,26 @@ class EmbeddedNeo4jCaseResourceBindingPaginationSpec : StringSpec() {
         "equal timestamps use the ID as a tie breaker even when the previous page disappears" {
             val created = Instant.parse("2026-01-01T00:00:00Z")
             val namespace = UUID.randomUUID()
-            fun row(id: Long, time: Instant = created, status: CaseResourceStatus = CaseResourceStatus.READY) =
-                CaseResourceBinding(metadata = EntityMetadata(id = UUID(0, id), created = time),
+            fun row(id: Long, status: CaseResourceStatus = CaseResourceStatus.READY) =
+                CaseResourceBinding(metadata = EntityMetadata(id = UUID(0, id)),
                     rootCaseId = UUID.randomUUID(), namespaceId = namespace,
                     integrationConfigId = UUID.randomUUID(), status = status)
+            // Creation dates are audited on insert: set them in the database to control the order.
+            fun createdAt(time: Instant, vararg ids: Long) =
+                driver.session().use { session ->
+                    session.run(
+                        "MATCH (b:CaseResourceBinding) WHERE b.id IN ${'$'}ids SET b.created = datetime(${'$'}time)",
+                        mapOf("ids" to ids.map { UUID(0, it).toString() }, "time" to time.toString()),
+                    ).consume()
+                }
             val rows = listOf(row(6), row(2), row(4), row(1), row(3), row(5))
             rows.forEach { bindings.create(it) }
             bindings.create(row(7, status = CaseResourceStatus.FAILED))
             bindings.create(row(8)).also { bindings.delete(it.id) }
             // An earlier timestamp sorts first even with an ID above every other row.
-            bindings.create(row(9, created.minusSeconds(1)))
+            bindings.create(row(9))
+            createdAt(created, 1, 2, 3, 4, 5, 6, 7, 8)
+            createdAt(created.minusSeconds(1), 9)
             val first = bindings.findByStatusIn(listOf(CaseResourceStatus.READY), 3)
             first.map { it.id } shouldBe listOf(UUID(0, 9), UUID(0, 1), UUID(0, 2))
             val cursor = CaseResourceBindingCursor.after(first.last())

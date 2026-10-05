@@ -2,6 +2,10 @@ package io.whozoss.agentos.git
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.headers
+import io.kotest.data.row
+import io.kotest.data.table
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
@@ -84,6 +88,75 @@ class GitExchangeRootResolverSpec :
             resolved.binding shouldBe null
             resolved.isUsable shouldBe true
             resolved.path shouldBe f.storage.caseRoot(namespaceId, ordinary.id, ordinary.metadata.created)
+        }
+
+        "the walk to the root follows 32 ancestors and refuses a deeper chain" {
+            val chain = (1..33).runningFold(case("Root")) { parent, level -> case("Level $level", parent = parent) }
+            val f = fixture(*chain.toTypedArray())
+
+            f.resolver.resolveRootCase(chain[32]) shouldBe chain[0]
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(chain[33]) }.message shouldBe
+                "Invalid case ancestry: cycle or excessive depth"
+        }
+
+        "the walk to the root refuses a cycle" {
+            val firstId = UUID.randomUUID()
+            val secondId = UUID.randomUUID()
+            val first = Case(metadata = EntityMetadata(id = firstId), namespaceId = namespaceId, title = "First", parentCaseId = secondId)
+            val second = Case(metadata = EntityMetadata(id = secondId), namespaceId = namespaceId, title = "Second", parentCaseId = firstId)
+            val f = fixture(first, second)
+
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(first) }.message shouldBe
+                "Invalid case ancestry: cycle or excessive depth"
+        }
+
+        "the walk to the root refuses a missing parent" {
+            val missingParentId = UUID.randomUUID()
+            val orphan = Case(metadata = EntityMetadata(), namespaceId = namespaceId, title = "Orphan", parentCaseId = missingParentId)
+            val f = fixture(orphan)
+
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(orphan) }.message shouldBe
+                "The parent case $missingParentId is unavailable"
+        }
+
+        "the walk to the root refuses an ancestor from another namespace" {
+            val foreignParent = Case(metadata = EntityMetadata(), namespaceId = UUID.randomUUID(), title = "Foreign")
+            val child = case("Child", parent = foreignParent)
+            val f = fixture(foreignParent, child)
+
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(child) }.message shouldBe
+                "Invalid case ancestry: it crosses namespaces"
+        }
+
+        "the family of a root counts every lineage that reaches it, or that cannot be followed to another top-level case" {
+            val root = case("Root")
+            val child = case("Child", parent = root)
+            val removedChild = case("Removed child", parent = root).let { it.copy(metadata = it.metadata.copy(removed = true)) }
+            val grandchild = case("Grandchild", parent = removedChild)
+            val otherRoot = case("Other root")
+            val otherChild = case("Other child", parent = otherRoot)
+            val orphan = Case(metadata = EntityMetadata(), namespaceId = namespaceId, title = "Orphan", parentCaseId = UUID.randomUUID())
+            // Thirty-two hops from another top-level case: still followed to its end.
+            val chain = (1..32).runningFold(otherRoot) { parent, level -> case("Level $level", parent = parent) }
+            val exactlyBounded = chain.last()
+            val tooDeep = case("Too deep", parent = exactlyBounded)
+            val foreign = Case(metadata = EntityMetadata(), namespaceId = UUID.randomUUID(), title = "Foreign", parentCaseId = root.id)
+            val f = fixture(root, child, removedChild, grandchild, otherChild, orphan, tooDeep, foreign, *chain.toTypedArray())
+
+            table(
+                headers("candidate", "member"),
+                row(root, true),
+                row(child, true),
+                row(grandchild, true),
+                row(otherRoot, false),
+                row(otherChild, false),
+                row(orphan, true),
+                row(exactlyBounded, false),
+                row(tooDeep, true),
+                row(foreign, false),
+            ).forAll { candidate, member ->
+                f.resolver.familyAmong(root, listOf(candidate)).isNotEmpty() shouldBe member
+            }
         }
 
         "an ordinary sub-case keeps its own directory, separate from its parent" {
@@ -195,11 +268,11 @@ class GitExchangeRootResolverSpec :
         "the exchange contract refuses every unavailable Git state without a directory fallback" {
             val root = case("Root")
             val f = fixture(root)
-            val binding = equip(f, root)
+            var binding = equip(f, root)
             val resolver: ExchangeRootResolver = f.resolver
 
             CaseResourceStatus.entries.filter { !it.isUsable }.forEach { status ->
-                f.bindings.update(binding.copy(status = status))
+                binding = f.bindings.update(binding.copy(status = status))
                 val resolved = resolver.resolve(root)
                 shouldThrow<ConflictException> { resolved.requireUsable() }
             }

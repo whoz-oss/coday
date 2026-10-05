@@ -4282,19 +4282,37 @@ components:
       properties:
         branchName:
           type: string
+          description: Last observed branch of the worktree. Null for a detached HEAD
+            or a family that is not equipped
         cleanupReason:
           type: string
+          description: Why the workspace of a deleted family is still kept. Never
+            a secret
         equipped:
           type: boolean
+          description: Whether the case's family owns a Git workspace
         failureReason:
           type: string
+          description: Why the last preparation failed. Never a secret
         git:
           $ref: "#/components/schemas/GitWorkspaceSummary"
+          description: Last observed Git and pull request state of the worktree. Null
+            until first observed
         rootCaseId:
           type: string
           format: uuid
+          description: Root case that owns the family's workspace. Null when the family
+            is not equipped
         status:
           type: string
+          description: Lifecycle of the workspace. Null when the family is not equipped
+          enum:
+          - REQUESTED
+          - PREPARING
+          - READY
+          - FAILED
+          - DELETING
+          - REMOVED
       required:
       - equipped
     ConfirmationResolvedEvent:
@@ -4933,6 +4951,12 @@ components:
           type: string
         checkoutStatus:
           type: string
+          description: Preparation state of the namespace repository. Null while no
+            clone has been attempted
+          enum:
+          - PREPARING
+          - READY
+          - FAILED
         lastFetchedAt:
           type: string
           format: date-time

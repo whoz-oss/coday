@@ -1,14 +1,28 @@
 package io.whozoss.agentos.git
 
+import org.springframework.dao.OptimisticLockingFailureException
 import java.util.UUID
 
-/** Minimal in-memory [CaseResourceBindingService] for the provisioning tests. */
+/**
+ * Minimal in-memory [CaseResourceBindingService] for the provisioning tests.
+ *
+ * Versions rows like the Neo4j repository does: writing a copy read before a newer write fails.
+ */
 class InMemoryCaseResourceBindingService : CaseResourceBindingService {
     private val rows = mutableMapOf<UUID, CaseResourceBinding>()
 
-    override fun create(entity: CaseResourceBinding): CaseResourceBinding = entity.also { rows[it.id] = it }
+    override fun create(entity: CaseResourceBinding): CaseResourceBinding = store(entity)
 
-    override fun update(entity: CaseResourceBinding): CaseResourceBinding = entity.also { rows[it.id] = it }
+    override fun update(entity: CaseResourceBinding): CaseResourceBinding = store(entity)
+
+    private fun store(entity: CaseResourceBinding): CaseResourceBinding {
+        val stored = rows[entity.id]
+        if (stored != null && stored.metadata.version != entity.metadata.version) {
+            throw OptimisticLockingFailureException("Binding ${entity.id} was written since version ${entity.metadata.version}")
+        }
+        val next = (stored?.metadata?.version ?: -1) + 1
+        return entity.copy(metadata = entity.metadata.copy(version = next)).also { rows[it.id] = it }
+    }
 
     override fun findByIds(
         ids: Collection<UUID>,
@@ -33,7 +47,7 @@ class InMemoryCaseResourceBindingService : CaseResourceBindingService {
             .take(limit)
 
     override fun delete(id: UUID): Boolean =
-        rows[id]?.let { rows[id] = it.copy(metadata = it.metadata.copy(removed = true)); true } ?: false
+        rows[id]?.let { store(it.copy(metadata = it.metadata.copy(removed = true))); true } ?: false
 
     override fun deleteByParent(parentId: UUID): Int = findByParent(parentId).count { delete(it.id) }
 
@@ -43,6 +57,6 @@ class InMemoryCaseResourceBindingService : CaseResourceBindingService {
         failureReason: String?,
     ): CaseResourceBinding {
         val current = requireNotNull(rows[id]) { "binding $id not found" }
-        return current.copy(status = status, failureReason = failureReason).also { rows[id] = it }
+        return store(current.copy(status = status, failureReason = failureReason))
     }
 }

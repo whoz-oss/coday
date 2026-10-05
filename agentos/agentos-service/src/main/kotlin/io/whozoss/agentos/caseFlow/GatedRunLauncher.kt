@@ -49,13 +49,12 @@ internal class GatedRunLauncher(
         val claimed = synchronized(runtime) {
             runtime.claimPending().also { deferredRuns.add(runtime.id) }
         }
-        claimed?.let(runtime::publishStatus)
+        // A failed PENDING write must not leave the turn deferred with nothing to admit it.
+        claimed?.let { publishQuietly(runtime, it) }
         admit(runtime)
     }
 
     fun resumeIfPending(caseId: UUID) {
-        // Only turns deferred by this process: a restart never replays an old instruction.
-        if (caseId !in deferredRuns) return
         // Policy: a deferred turn whose persisted status is no longer PENDING is silently dropped.
         //
         // This covers the concurrent-message case: if a second message arrives while turn 1 is
@@ -68,11 +67,12 @@ internal class GatedRunLauncher(
         // A turn that could not claim PENDING is lost; the user must send a new message.
         // The behaviour is pinned by the test
         // "a second message sent while a gated turn is running is silently dropped".
-        if (statusOf(caseId) != CaseStatus.PENDING) {
-            deferredRuns.remove(caseId)
-            return
+        when {
+            // Only turns deferred by this process: a restart never replays an old instruction.
+            caseId !in deferredRuns -> Unit
+            statusOf(caseId) != CaseStatus.PENDING -> deferredRuns.remove(caseId)
+            else -> runtimeOf(caseId)?.let { admit(it) }
         }
-        runtimeOf(caseId)?.let { admit(it) }
     }
 
     /**
@@ -99,28 +99,38 @@ internal class GatedRunLauncher(
     ) {
         if (runtime == null) {
             deferredRuns.remove(caseId)
-            return
-        }
-        synchronized(runtime) {
-            deferredRuns.remove(caseId)
-            // A launch admitted but not running must not clear the Kill flag when it enters run().
-            if (!runtime.isRunning()) executionJobs[caseId]?.cancel()
-            runtime.requestKill()
+        } else {
+            synchronized(runtime) {
+                deferredRuns.remove(caseId)
+                // A launch admitted but not running must not clear the Kill flag when it enters run().
+                if (!runtime.isRunning()) executionJobs[caseId]?.cancel()
+                runtime.requestKill()
+            }
         }
     }
 
     fun keepOpenOnShutdown(caseId: UUID): Boolean = gate.keepOpenOnShutdown(caseId)
 
-    /** Stop this process's work on a case kept open, then [release] it under the same lock. */
-    fun stopForShutdown(
-        runtime: CaseRuntime,
-        release: () -> Unit,
-    ): Unit =
+    /**
+     * Stop this process's work on a case kept open across a restart. The caller then releases it to
+     * `IDLE`, outside the admission lock.
+     */
+    fun stopForShutdown(runtime: CaseRuntime): Unit =
         synchronized(runtime) {
             deferredRuns.remove(runtime.id)
-            runtime.requestKill()
+            // Not a Kill: a turn still running would end as KILLED and close the case for good.
+            runtime.requestShutdownStop()
             executionJobs[runtime.id]?.cancel()
-            release()
+        }
+
+    /**
+     * First pass of a Stop: cancel a launch admitted but not running yet and mark the runtime
+     * interrupted, without releasing a held turn (see [interrupt]).
+     */
+    fun cancelAdmitted(runtime: CaseRuntime): Unit =
+        synchronized(runtime) {
+            if (!runtime.isRunning()) executionJobs[runtime.id]?.cancel()
+            runtime.requestInterrupt()
         }
 
     private fun admit(runtime: CaseRuntime) {
@@ -242,14 +252,26 @@ internal class GatedRunLauncher(
                     null
                 }
             }
+        // The message is already stored: failing to report the drop must not turn into an HTTP failure.
         dropped?.let {
-            runtime.emitEvent(
-                storeEvent(WarnEvent(namespaceId = runtime.namespaceId, caseId = runtime.id, message = message)),
-            )
+            runCatching {
+                runtime.emitEvent(
+                    storeEvent(WarnEvent(namespaceId = runtime.namespaceId, caseId = runtime.id, message = message)),
+                )
+            }.onFailure { e -> logger.error(e) { "Could not warn case ${runtime.id} that its instruction was not started" } }
             it.idle
                 ?.takeIf { runtime.statusFlow.value == CaseStatus.IDLE && statusOf(runtime.id)?.isTerminal() != true }
-                ?.let(runtime::publishStatus)
+                ?.let { idle -> publishQuietly(runtime, idle) }
         }
+    }
+
+    /** Persist a claimed status; a store failure is logged rather than failing the caller's request. */
+    private fun publishQuietly(
+        runtime: CaseRuntime,
+        status: CaseStatus,
+    ) {
+        runCatching { runtime.publishStatus(status) }
+            .onFailure { e -> logger.error(e) { "Could not persist status $status for case ${runtime.id}" } }
     }
 
     /** A turn taken back by [dropTurn], with the `IDLE` transition it claimed, if any. */

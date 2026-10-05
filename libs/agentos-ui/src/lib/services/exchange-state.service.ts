@@ -1,6 +1,7 @@
 import { computed, inject, Injectable, Signal, signal } from '@angular/core'
 import { toSignal } from '@angular/core/rxjs-interop'
 import {
+  CaseWorkspaceViewStatusEnum,
   ExchangeControllerService,
   ExchangeFileContent,
   ExchangeFileEntryScopeEnum,
@@ -237,13 +238,27 @@ export class ExchangeStateService {
     loader: () => Observable<ExchangeDirectoryListing>
   ): Observable<ExchangeScopeView> {
     return this.workspaces.watch(caseId).pipe(
-      takeWhile(({ view }) => !!view?.equipped && (view.status === 'REQUESTED' || view.status === 'PREPARING'), true),
+      takeWhile(
+        ({ view }) =>
+          !!view?.equipped &&
+          (view.status === CaseWorkspaceViewStatusEnum.REQUESTED ||
+            view.status === CaseWorkspaceViewStatusEnum.PREPARING),
+        true
+      ),
       switchMap(({ view: workspace, errorStatus }) => {
         if (!workspace) return of(this.scopeError({ status: errorStatus }))
-        if (workspace.equipped && (workspace.status === 'REQUESTED' || workspace.status === 'PREPARING')) {
+        if (
+          workspace.equipped &&
+          (workspace.status === CaseWorkspaceViewStatusEnum.REQUESTED ||
+            workspace.status === CaseWorkspaceViewStatusEnum.PREPARING)
+        ) {
           return of({ ...NEUTRAL_LOADING, status: 'preparing' as const })
         }
-        if (!workspace.equipped || workspace.status === 'READY' || workspace.status === 'REMOVED') {
+        if (
+          !workspace.equipped ||
+          workspace.status === CaseWorkspaceViewStatusEnum.READY ||
+          workspace.status === CaseWorkspaceViewStatusEnum.REMOVED
+        ) {
           // Retry once after the shared state becomes ready; another conflict is a file error.
           return this.loadScope(loader)
         }

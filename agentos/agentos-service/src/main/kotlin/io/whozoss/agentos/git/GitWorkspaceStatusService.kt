@@ -31,9 +31,8 @@ class GitWorkspaceStatusService(
     private val hosting: GitHostingProvider,
     private val mapper: ObjectMapper,
 ) {
-    fun settings(binding: CaseResourceBinding): GitRepositorySettings = binding.settingsJson?.let {
-        mapper.readValue(it, GitRepositorySettings::class.java)
-    } ?: associations.findSettings(binding.namespaceId)
+    fun settings(binding: CaseResourceBinding): GitRepositorySettings = binding.settings
+        ?: associations.findSettings(binding.namespaceId)
         ?: throw ConflictException("The namespace no longer has a Git repository association")
 
     fun commonGitDir(binding: CaseResourceBinding): Path =
@@ -51,7 +50,7 @@ class GitWorkspaceStatusService(
         return CaseWorkspaceView(
             equipped = true,
             rootCaseId = binding.rootCaseId,
-            status = binding.status.name,
+            status = binding.status,
             branchName = binding.branchName,
             failureReason = binding.failureReason,
             cleanupReason = binding.cleanupReason,

@@ -1,12 +1,12 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
-import { CaseWorkspaceControllerService } from '@whoz-oss/agentos-api-client'
+import { CaseWorkspaceControllerService, CaseWorkspaceViewStatusEnum } from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { CaseWorkspaceService, pullRequestIndicator, WorkspaceState, WorkspaceView } from './case-workspace.service'
 
 describe('case pull request indicator', () => {
   const workspace: WorkspaceView = {
     equipped: true,
-    status: 'READY',
+    status: CaseWorkspaceViewStatusEnum.READY,
     branchName: 'agent/chosen',
   }
   it('shows no icon without a known associated PR, even for a pushed or modified branch', () => {

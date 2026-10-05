@@ -15,7 +15,13 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { filter, firstValueFrom, Subject, takeUntil, throwError, timeout } from 'rxjs'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, CaseControllerService, CaseStatusEnum, Prompt } from '@whoz-oss/agentos-api-client'
+import {
+  AgentConfig,
+  CaseControllerService,
+  CaseStatusEnum,
+  CaseWorkspaceViewStatusEnum,
+  Prompt,
+} from '@whoz-oss/agentos-api-client'
 import { CaseStateService } from '../../services/case-state.service'
 import { BlueprintDirective, IconButtonComponent } from '@whoz-oss/design-system'
 import { PromptAutocompleteComponent } from '../prompt-autocomplete/prompt-autocomplete.component'
@@ -235,7 +241,12 @@ export class CaseHomeComponent implements OnInit {
       if (this.attachments.hasAttachments()) {
         const state = await firstValueFrom(
           this.workspaces.watch(caseId).pipe(
-            filter(({ view }) => !view?.equipped || !['REQUESTED', 'PREPARING'].includes(view.status ?? '')),
+            filter(
+              ({ view }) =>
+                !view?.equipped ||
+                (view.status !== CaseWorkspaceViewStatusEnum.REQUESTED &&
+                  view.status !== CaseWorkspaceViewStatusEnum.PREPARING)
+            ),
             timeout({
               first: 120_000,
               with: () =>
@@ -251,7 +262,7 @@ export class CaseHomeComponent implements OnInit {
           )
         )
         // Without Git workspaces on this instance there is nothing to wait for.
-        const unready = !state.view || (state.view.equipped && state.view.status !== 'READY')
+        const unready = !state.view || (state.view.equipped && state.view.status !== CaseWorkspaceViewStatusEnum.READY)
         if (!workspacesUnavailable(state) && unready) {
           throw new Error(state.view?.failureReason || 'Workspace is not ready. Retry this submission shortly.')
         }

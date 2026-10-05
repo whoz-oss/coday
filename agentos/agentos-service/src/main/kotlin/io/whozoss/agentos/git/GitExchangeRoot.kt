@@ -22,7 +22,7 @@ data class GitExchangeRoot(
         unavailableReason = if (isUsable) null else unavailableMessage(),
     )
 
-    val repositoryPath: Path get() = if (binding == null) path else path.resolve("repo")
+    val repositoryPath: Path get() = if (binding == null) path else path.resolve(REPOSITORY_DIRECTORY)
 
     /** Whether files may be read or written here right now. */
     val isUsable: Boolean get() = binding == null || binding.status.isUsable
@@ -59,4 +59,9 @@ data class GitExchangeRoot(
             null -> "This case has no usable workspace."
             else -> "The workspace for this case is ${binding.status} and cannot be used."
         }
+
+    companion object {
+        /** Subdirectory of the root case's Exchange that holds the family's worktree. */
+        const val REPOSITORY_DIRECTORY = "repo"
+    }
 }

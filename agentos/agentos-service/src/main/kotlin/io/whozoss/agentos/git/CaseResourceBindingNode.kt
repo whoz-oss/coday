@@ -1,8 +1,14 @@
 package io.whozoss.agentos.git
 
+import com.fasterxml.jackson.core.JacksonException
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import mu.KLogging
+import org.springframework.data.annotation.CreatedBy
+import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedBy
 import org.springframework.data.annotation.LastModifiedDate
+import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import java.time.Instant
@@ -18,8 +24,14 @@ import java.util.UUID
  * No `BELONGS_TO` edge is materialised: a binding is reached by its root case id, and adding a
  * second edge into the case graph would make the family-enumeration queries ambiguous.
  *
- * Only the modification fields are audited. The id is assigned by the application, so without a
- * `@Version` Spring Data treats every save as new and `@CreatedDate` would reset [created].
+ * [version] carries optimistic locking and tells Spring Data whether a save creates the row, so the
+ * creation fields are audited only once.
+ *
+ * [settingsJson] holds the frozen [GitRepositorySettings]. Unlike other nodes, reading it never
+ * fails: one unreadable row would otherwise break every sweep and file access of the namespace that
+ * lists it. Such a binding reads with null settings, which fails its preparation with a clear reason
+ * and gives its family no Git tool. The warning names the binding, never the JSON, since an admin
+ * wrote its setup command.
  */
 @Node("CaseResourceBinding")
 data class CaseResourceBindingNode(
@@ -35,11 +47,12 @@ data class CaseResourceBindingNode(
     val settingsJson: String? = null,
     val summaryJson: String? = null,
     val cleanupReason: String? = null,
-    val setupStarted: Boolean = false,
-    val setupCompleted: Boolean = false,
+    /** A [SetupState] name, like [status]. */
+    val setupState: String = SetupState.NOT_STARTED.name,
     // EntityMetadata fields
-    val created: Instant = Instant.now(),
-    val createdBy: String? = null,
+    @Version val version: Long? = null,
+    @CreatedDate val created: Instant = Instant.now(),
+    @CreatedBy val createdBy: String? = null,
     @LastModifiedDate val modified: Instant = Instant.now(),
     @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
@@ -54,6 +67,7 @@ data class CaseResourceBindingNode(
                     modified = modified,
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
+                    version = version,
                 ),
             rootCaseId = UUID.fromString(rootCaseId),
             namespaceId = UUID.fromString(namespaceId),
@@ -62,15 +76,32 @@ data class CaseResourceBindingNode(
             branchName = branchName,
             baseSha = baseSha,
             failureReason = failureReason,
-            settingsJson = settingsJson,
+            settings = readSettings(id, settingsJson),
             summaryJson = summaryJson,
             cleanupReason = cleanupReason,
-            setupStarted = setupStarted,
-            setupCompleted = setupCompleted,
-
+            setup = SetupState.valueOf(setupState),
         )
 
-    companion object {
+    companion object : KLogging() {
+        /** Settings are written and read here only. */
+        private val MAPPER = jacksonObjectMapper()
+
+        private fun readSettings(
+            id: String,
+            json: String?,
+        ): GitRepositorySettings? =
+            json?.let {
+                try {
+                    MAPPER.readValue(it, GitRepositorySettings::class.java)
+                } catch (e: JacksonException) {
+                    // Jackson quotes the offending text in its messages: name the failure, never the content.
+                    logger.warn {
+                        "Binding $id has unreadable workspace settings (${e.javaClass.simpleName}) and is read without them"
+                    }
+                    null
+                }
+            }
+
         fun fromDomain(binding: CaseResourceBinding): CaseResourceBindingNode =
             CaseResourceBindingNode(
                 id = binding.id.toString(),
@@ -81,12 +112,11 @@ data class CaseResourceBindingNode(
                 branchName = binding.branchName,
                 baseSha = binding.baseSha,
                 failureReason = binding.failureReason,
-                settingsJson = binding.settingsJson,
+                settingsJson = binding.settings?.let { MAPPER.writeValueAsString(it) },
                 summaryJson = binding.summaryJson,
                 cleanupReason = binding.cleanupReason,
-                setupStarted = binding.setupStarted,
-                setupCompleted = binding.setupCompleted,
-
+                setupState = binding.setup.name,
+                version = binding.metadata.version,
                 created = binding.metadata.created,
                 createdBy = binding.metadata.createdBy,
                 modified = binding.metadata.modified,

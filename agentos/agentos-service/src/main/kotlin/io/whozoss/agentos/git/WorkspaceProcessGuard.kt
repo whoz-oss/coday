@@ -47,12 +47,23 @@ class WorkspaceProcessGuard(
 
     fun assertIdle(path: Path) {
         val output = inspect(path)
-        if (output.exitCode != 1 || output.stdout.isNotBlank()) {
-            throw ConflictException("Processes still hold files or a working directory in the workspace")
+        if (output.exitCode != LSOF_NO_MATCH || output.stdout.isNotBlank()) {
+            val holders = describeHolders(output.stdout).ifEmpty { "lsof exited with ${output.exitCode}" }
+            throw ConflictException("Processes still hold files or a working directory in the workspace: $holders")
         }
     }
 
-    /** `lsof` exits with 1 when nothing uses the directory. */
+    /** The first holders by process id and executable name, never their arguments: those may carry secrets. */
+    private fun describeHolders(pids: String): String =
+        pids.lineSequence()
+            .mapNotNull { it.trim().toLongOrNull() }
+            .take(MAX_DESCRIBED_HOLDERS)
+            .joinToString { pid ->
+                val executable = ProcessHandle.of(pid).flatMap { it.info().command() }.map { " (${Path.of(it).fileName})" }
+                pid.toString() + executable.orElse("")
+            }
+
+    /** `lsof` exits with [LSOF_NO_MATCH] when nothing uses the directory. */
     private fun inspect(path: Path): BoundedProcessOutput.Result {
         val process = try { ProcessBuilder(binary, "-t", "+D", path.toString()).start() }
         catch (e: Exception) { throw ConflictException("Cannot verify workspace processes; install lsof before cleanup", e) }
@@ -67,7 +78,10 @@ class WorkspaceProcessGuard(
             throw ConflictException("Workspace process inspection was incomplete", e)
         }
         if (output.truncated || output.stderr.isNotBlank()) {
-            throw ConflictException("Workspace process inspection was incomplete")
+            // lsof's own explanation, bounded, for the operator's log.
+            val diagnostic = output.stderr.trim().take(MAX_DIAGNOSTIC_CHARS)
+            val detail = if (diagnostic.isEmpty()) "" else ": $diagnostic"
+            throw ConflictException("Workspace process inspection was incomplete$detail")
         }
         return output
     }
@@ -75,7 +89,16 @@ class WorkspaceProcessGuard(
     companion object : KLogging() {
         private val STOP_GRACE: Duration = Duration.ofSeconds(5)
 
+        /** Exit code of `lsof` when no process uses the inspected directory. */
+        private const val LSOF_NO_MATCH = 1
+
         /** `lsof -t` prints one process id per line: this is thousands of processes. */
         private const val MAX_INSPECTION_OUTPUT_CHARS = 16_384
+
+        /** Holders named in a refusal. The log only needs a lead, not the whole list. */
+        private const val MAX_DESCRIBED_HOLDERS = 10
+
+        /** Characters of lsof's error output kept in a refusal. */
+        private const val MAX_DIAGNOSTIC_CHARS = 500
     }
 }

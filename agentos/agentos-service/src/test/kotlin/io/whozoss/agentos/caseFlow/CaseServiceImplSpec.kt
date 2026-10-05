@@ -72,12 +72,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Path
@@ -237,6 +239,7 @@ class CaseServiceImplSpec :
             caseRepository: CaseRepository = InMemoryCaseRepository(),
             caseEventService: CaseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
             caseLaunchGate: CaseLaunchGate? = null,
+            runCostService: RunCostService? = null,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -270,6 +273,7 @@ class CaseServiceImplSpec :
                 usageRecordService = UsageRecordServiceImpl(usageRecordRepository),
                 usageConfig = usageConfig,
                 caseLaunchGate = caseLaunchGate,
+                runCostService = runCostService,
             )
         }
 
@@ -709,6 +713,27 @@ class CaseServiceImplSpec :
             }
         }
 
+        "a refusal whose warning cannot be stored does not fail the message and still returns the case to IDLE" {
+            val store = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val events = object : CaseEventService by store {
+                override fun create(entity: CaseEvent): CaseEvent =
+                    if (entity is WarnEvent) throw IllegalStateException("Neo4j unavailable") else store.create(entity)
+            }
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Refuse("workspace preparation failed")
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
         "a Kill landing while a refusal is being reported keeps the case KILLED" {
             lateinit var service: CaseServiceImpl
             val store = CaseEventServiceImpl(InMemoryCaseEventRepository())
@@ -733,6 +758,120 @@ class CaseServiceImplSpec :
                 service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
                 service.getById(case.id).status shouldBe CaseStatus.KILLED
                 verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "shutdown stops a running equipped turn without closing the case" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            var caseId: UUID? = null
+            val started = CountDownLatch(1)
+            val agent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val shouldContinue = secondArg<() -> Boolean>()
+                    flow {
+                        started.countDown()
+                        // A step that never suspends notices the stop only through shouldContinue.
+                        while (shouldContinue() && currentCoroutineContext().isActive) Thread.sleep(5)
+                        // End only once shutdown released the case, so the run reaches no cancellation check first.
+                        while (repository.findByIds(listOfNotNull(caseId)).single().status != CaseStatus.IDLE) Thread.sleep(5)
+                    }
+                }
+            }
+            val service = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = service.create(Case(namespaceId = namespaceId))
+            caseId = case.id
+            equip(bindings, case.id)
+            val runtime = service.getCaseRuntime(case.id)
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("Long instruction")))
+            started.await(5, TimeUnit.SECONDS) shouldBe true
+            service.shutdown()
+            withTimeout(5_000) { while (runtime.isRunning()) delay(10) }
+            repository.findByIds(listOf(case.id)).single().status shouldBe CaseStatus.IDLE
+        }
+
+        "shutdown releases a kept-open case outside the admission lock" {
+            val inner = InMemoryCaseRepository()
+            var runtime: CaseRuntime? = null
+            val ioUnderLock = AtomicBoolean()
+            val repository = object : CaseRepository by inner {
+                override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Case> {
+                    if (runtime?.let { Thread.holdsLock(it) } == true) ioUnderLock.set(true)
+                    return inner.findByIds(ids, withRemoved)
+                }
+
+                override fun save(entity: Case): Case {
+                    if (runtime?.let { Thread.holdsLock(it) } == true) ioUnderLock.set(true)
+                    return inner.save(entity)
+                }
+            }
+            val bindings = InMemoryCaseResourceBindingService()
+            val service = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            runtime = service.getCaseRuntime(case.id)
+            service.shutdown()
+            inner.findByIds(listOf(case.id)).single().status shouldBe CaseStatus.IDLE
+            ioUnderLock.get() shouldBe false
+        }
+
+        "a Kill landing while shutdown releases a kept-open case keeps it KILLED" {
+            val inner = InMemoryCaseRepository()
+            lateinit var service: CaseServiceImpl
+            val pauseRelease = AtomicBoolean()
+            val repository = object : CaseRepository by inner {
+                override fun save(entity: Case): Case {
+                    if (entity.status == CaseStatus.IDLE && pauseRelease.compareAndSet(true, false)) {
+                        val killing = thread { service.killCase(entity.id) }
+                        killing.join(5_000)
+                        check(!killing.isAlive) { "the Kill waited for the shutdown release" }
+                    }
+                    return inner.save(entity)
+                }
+            }
+            val bindings = InMemoryCaseResourceBindingService()
+            service = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            pauseRelease.set(true)
+            service.shutdown()
+            inner.findByIds(listOf(case.id)).single().status shouldBe CaseStatus.KILLED
+        }
+
+        "a Stop halts cost tracking before it releases a held sub-case turn" {
+            val order = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val inner = InMemoryCaseRepository()
+            var childId: UUID? = null
+            val repository = object : CaseRepository by inner {
+                override fun save(entity: Case): Case {
+                    if (entity.id == childId && entity.status == CaseStatus.IDLE) order += "child released"
+                    return inner.save(entity)
+                }
+            }
+            val runCost = mockk<RunCostService>(relaxed = true)
+            every { runCost.stop(any()) } answers { order += "cost stopped" }
+            val service =
+                buildService(
+                    caseRepository = repository,
+                    caseLaunchGate = TestLaunchGate(),
+                    usageConfig = UsageConfigProperties(enabled = true),
+                    runCostService = runCost,
+                )
+            try {
+                val parent = service.create(Case(namespaceId = namespaceId))
+                val child = service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
+                childId = child.id
+                service.addMessage(child.id, userActor, listOf(MessageContent.Text("held instruction")))
+                service.getById(child.id).status shouldBe CaseStatus.PENDING
+                service.interruptCase(parent.id)
+                order shouldBe listOf("cost stopped", "child released")
             } finally {
                 service.shutdown()
             }
@@ -2260,6 +2399,16 @@ class CaseServiceImplSpec :
 
             shouldThrow<IllegalArgumentException> {
                 service.create(Case(metadata = EntityMetadata(id = deleted.id), namespaceId = namespaceId))
+            }
+        }
+
+        "create refuses a soft-deleted parent as if it did not exist" {
+            val service = buildService()
+            val deletedParent = service.create(Case(namespaceId = namespaceId))
+            service.delete(deletedParent.id)
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(Case(namespaceId = namespaceId, parentCaseId = deletedParent.id))
             }
         }
 

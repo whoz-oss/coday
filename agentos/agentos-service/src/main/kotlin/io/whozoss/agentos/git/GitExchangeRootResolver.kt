@@ -50,19 +50,22 @@ class GitExchangeRootResolver(
         action: (ResolvedExchangeRoot) -> T,
     ): T {
         val git = resolveGit(case)
-        val root = git.exchange
-        val workspaceId = git.binding?.rootCaseId ?: return action(root)
-        return WorkspaceLifecycleLocks.tryWithRoot(
-            workspaceId,
-            onBusy = { throw ConflictException("The workspace is busy; retry the file operation shortly") },
-        ) {
-            // Preparation or cleanup may have changed the case or its workspace since the first read.
-            val current =
-                caseRepository.findByIds(listOf(case.id)).firstOrNull()
-                    ?: throw ResourceNotFoundException("Case not found: ${case.id}")
-            val resolved = resolve(current)
-            resolved.requireUsable()
-            action(resolved)
+        val workspaceId = git.binding?.rootCaseId
+        return if (workspaceId == null) {
+            action(git.exchange)
+        } else {
+            WorkspaceLifecycleLocks.tryWithRoot(
+                workspaceId,
+                onBusy = { throw ConflictException("The workspace is busy; retry the file operation shortly") },
+            ) {
+                // Preparation or cleanup may have changed the case or its workspace since the first read.
+                val current =
+                    caseRepository.findByIds(listOf(case.id)).firstOrNull()
+                        ?: throw ResourceNotFoundException("Case not found: ${case.id}")
+                val resolved = resolve(current)
+                resolved.requireUsable()
+                action(resolved)
+            }
         }
     }
     /**
@@ -107,21 +110,23 @@ class GitExchangeRootResolver(
      *
      * The walk is bounded: a cycle introduced by a bad write must not spin here.
      */
-    fun resolveRootCase(case: Case): Case {
-        var current = case
-        var hops = 0
-        while (true) {
-            val parentId = current.parentCaseId ?: return current
-            if (++hops > MAX_ANCESTOR_HOPS) {
-                throw ConflictException("Invalid case ancestry: cycle or excessive depth")
-            }
-            current =
-                caseRepository.findByIds(listOf(parentId), withRemoved = true).firstOrNull()
-                    ?: throw ConflictException("The parent case $parentId is unavailable")
-            if (current.namespaceId != case.namespaceId) {
-                throw ConflictException("Invalid case ancestry: it crosses namespaces")
-            }
+    fun resolveRootCase(case: Case): Case =
+        generateSequence(case) { current -> current.parentCaseId?.let { parentOf(it, case.namespaceId) } }
+            .take(MAX_ANCESTOR_HOPS + 1)
+            .firstOrNull { it.parentCaseId == null }
+            ?: throw ConflictException("Invalid case ancestry: cycle or excessive depth")
+
+    private fun parentOf(
+        parentId: UUID,
+        namespaceId: UUID,
+    ): Case {
+        val parent =
+            caseRepository.findByIds(listOf(parentId), withRemoved = true).firstOrNull()
+                ?: throw ConflictException("The parent case $parentId is unavailable")
+        if (parent.namespaceId != namespaceId) {
+            throw ConflictException("Invalid case ancestry: it crosses namespaces")
         }
+        return parent
     }
 
     /**
@@ -133,18 +138,22 @@ class GitExchangeRootResolver(
         rootCase: Case,
         candidates: Collection<Case>,
     ): List<Case> {
+        // Parents already read, including those that could not be: each is read at most once.
         val known: MutableMap<UUID, Case?> = candidates.associateByTo(mutableMapOf()) { it.id }
-        fun belongs(case: Case): Boolean {
-            var current = case
-            var hops = 0
-            while (current.id != rootCase.id) {
-                val parentId = current.parentCaseId ?: return false
-                if (++hops > MAX_ANCESTOR_HOPS) return true
-                val parent = if (parentId in known) known[parentId]
-                    else caseRepository.findByIds(listOf(parentId), withRemoved = true).firstOrNull().also { known[parentId] = it }
-                current = parent ?: return true
+        fun parent(id: UUID): Case? =
+            if (id in known) {
+                known[id]
+            } else {
+                caseRepository.findByIds(listOf(id), withRemoved = true).firstOrNull().also { known[id] = it }
             }
-            return true
+        fun belongs(case: Case): Boolean {
+            val lineage =
+                generateSequence(case) { current -> current.takeIf { it.id != rootCase.id }?.parentCaseId?.let(::parent) }
+                    .take(MAX_ANCESTOR_HOPS + 1)
+                    .toList()
+            // Reaching the root makes a member. Stopping short of a top-level case, because a parent
+            // cannot be read or the lineage is too deep, makes one too.
+            return lineage.any { it.id == rootCase.id } || lineage.last().parentCaseId != null
         }
         return candidates.filter { it.namespaceId == rootCase.namespaceId && belongs(it) }
     }

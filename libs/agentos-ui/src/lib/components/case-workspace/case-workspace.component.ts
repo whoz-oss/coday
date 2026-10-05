@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core'
 import { CaseWorkspaceService, WorkspaceAction, WorkspaceView } from '../../services/case-workspace.service'
-import { WorkspaceRetryRequest } from '@whoz-oss/agentos-api-client'
+import { CaseWorkspaceViewStatusEnum, WorkspaceRetryRequest } from '@whoz-oss/agentos-api-client'
 import { Subscription } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
@@ -23,7 +23,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
         }
         <div class="actions">
           @if (workspace.rootCaseId === caseId() && canWrite()) {
-            @if (workspace.status === 'FAILED') {
+            @if (workspace.status === Status.FAILED) {
               <button type="button" [disabled]="busy()" (click)="act('retry')">Retry preparation</button>
               <label
                 ><input type="checkbox" [checked]="acknowledgeSetup()" (change)="onAcknowledgeSetup($event)" /> I have
@@ -49,6 +49,7 @@ import { ExchangeStateService } from '../../services/exchange-state.service'
 export class CaseWorkspaceComponent {
   readonly caseId = input.required<string>()
   readonly canWrite = input(false)
+  protected readonly Status = CaseWorkspaceViewStatusEnum
   private readonly service = inject(CaseWorkspaceService)
   private readonly cases = inject(CaseStateService)
   private readonly files = inject(ExchangeStateService)
@@ -57,10 +58,10 @@ export class CaseWorkspaceComponent {
     const view = this.view()
     return (
       view?.equipped &&
-      (view.status === 'REQUESTED' ||
-        view.status === 'PREPARING' ||
-        view.status === 'FAILED' ||
-        view.status === 'DELETING' ||
+      (view.status === CaseWorkspaceViewStatusEnum.REQUESTED ||
+        view.status === CaseWorkspaceViewStatusEnum.PREPARING ||
+        view.status === CaseWorkspaceViewStatusEnum.FAILED ||
+        view.status === CaseWorkspaceViewStatusEnum.DELETING ||
         !!view.failureReason ||
         !!view.cleanupReason)
     )

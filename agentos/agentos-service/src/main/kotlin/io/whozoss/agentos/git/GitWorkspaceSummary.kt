@@ -1,7 +1,6 @@
 package io.whozoss.agentos.git
 
 import java.time.Instant
-import java.util.UUID
 
 /**
  * The vocabulary of an observed workspace, owned here rather than by any producer.
@@ -41,14 +40,4 @@ data class GitWorkspaceSummary(
     val prHeadSha: String? = null,
     val observedAt: Instant? = null,
     val error: String? = null,
-)
-
-data class CaseWorkspaceView(
-    val equipped: Boolean,
-    val rootCaseId: UUID? = null,
-    val status: String? = null,
-    val branchName: String? = null,
-    val failureReason: String? = null,
-    val cleanupReason: String? = null,
-    val git: GitWorkspaceSummary? = null,
 )

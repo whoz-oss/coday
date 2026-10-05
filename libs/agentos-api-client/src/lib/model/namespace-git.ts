@@ -12,10 +12,18 @@ export interface NamespaceGit {
   associated: boolean
   autoWorktreeForRootCases: boolean
   checkoutFailureReason?: string
-  checkoutStatus?: string
+  /**
+   * Preparation state of the namespace repository. Null while no clone has been attempted
+   */
+  checkoutStatus?: NamespaceGitCheckoutStatusEnum
   lastFetchedAt?: string
   mainBranch?: string
   repositoryUrl?: string
   serviceAuthSettingId?: string
   setupCommand?: string
+}
+export enum NamespaceGitCheckoutStatusEnum {
+  PREPARING = 'PREPARING',
+  READY = 'READY',
+  FAILED = 'FAILED',
 }

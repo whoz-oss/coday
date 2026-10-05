@@ -54,6 +54,7 @@ class GitWorkerWithoutWorkspacesSpec : StringSpec() {
             context.getBeanNamesForType(CaseResourceBindingService::class.java).toList().shouldBeEmpty()
             context.getBeanNamesForType(CaseResourceBindingRepository::class.java).toList().shouldBeEmpty()
             context.getBeanNamesForType(CaseWorktreeProvisioner::class.java).toList().shouldBeEmpty()
+            context.getBeanNamesForType(CaseWorkspaceSweep::class.java).toList().shouldBeEmpty()
         }
 
         "the sweep still prepares namespace checkouts" {

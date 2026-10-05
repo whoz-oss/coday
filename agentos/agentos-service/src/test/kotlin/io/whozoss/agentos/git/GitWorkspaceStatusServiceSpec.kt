@@ -70,7 +70,7 @@ class GitWorkspaceStatusServiceSpec : StringSpec({
                 integrationConfigId = settings.configId,
                 status = CaseResourceStatus.READY,
                 baseSha = git(path, "rev-parse", "HEAD"),
-                settingsJson = mapper.writeValueAsString(settings),
+                settings = settings,
             ),
         )
         val storage = mockk<ExchangeStorageService> { every { namespaceGitDirectory(namespaceId) } returns common }
@@ -82,7 +82,7 @@ class GitWorkspaceStatusServiceSpec : StringSpec({
         )
         val service = GitWorkspaceStatusService(
             bindings = bindings,
-            // The binding carries its own settingsJson, so the association is never consulted.
+            // The binding carries its own frozen settings, so the association is never consulted.
             associations = mockk(),
             storage = storage,
             runner = runner,

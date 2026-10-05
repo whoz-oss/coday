@@ -20,6 +20,12 @@ object GitLayout {
     /** Present in an administrative directory when the worktree is locked against pruning. */
     const val LOCKED_FILE: String = "locked"
 
+    /** Reason `git worktree add` writes in [LOCKED_FILE] until the checkout of the new worktree completes. */
+    const val INITIALIZING_LOCK_REASON: String = "initializing"
+
+    /** Index of a linked worktree, in its administrative directory. Written once its checkout completes. */
+    const val INDEX_FILE: String = "index"
+
     /** Present in an administrative directory when the worktree holds submodule repositories. */
     const val MODULES_DIR: String = "modules"
 }
