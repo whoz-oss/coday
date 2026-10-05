@@ -78,6 +78,7 @@ import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -164,7 +165,9 @@ class Neo4jPersistenceConfiguration {
         return Neo4jRepositoryCheckoutRepository(repositoryCheckoutNodeNeo4jRepository, childLinkService)
     }
 
+    /** Case-family workspace bindings: registered only with `agentos.git.workspaces.enabled`. */
     @Bean
+    @ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
     fun neo4jCaseResourceBindingRepository(
         caseResourceBindingNodeNeo4jRepository: CaseResourceBindingNodeNeo4jRepository,
     ): CaseResourceBindingRepository {
