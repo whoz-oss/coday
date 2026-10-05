@@ -55,19 +55,26 @@ class GitWorkspaceSweepSpec : StringSpec({
         visited shouldBe rows.map { it.rootCaseId } + rows.map { it.rootCaseId }
     }
 
+    /** Every workspace resolves; only the observation itself differs between the status tests. */
+    fun resolver() = mockk<GitExchangeRootResolver> {
+        every { resolveGit(any<UUID>()) } returns GitExchangeRoot(Path.of("/tmp/unused-workspace"), null, UUID.randomUUID())
+    }
+
+    fun observer(visited: MutableList<UUID>, onVisit: (CaseResourceBinding) -> Unit = {}) =
+        mockk<GitWorkspaceStatusService> {
+            every { refresh(any(), any()) } answers {
+                firstArg<CaseResourceBinding>().also {
+                    visited.add(it.rootCaseId)
+                    onVisit(it)
+                }
+            }
+        }
+
     "a full final page starts the next status sweep without losing a scheduled tick" {
         val bindings = InMemoryCaseResourceBindingService()
         val rows = rows(bindings, 5)
         val visited = mutableListOf<UUID>()
-        val roots = mockk<GitExchangeRootResolver> {
-            every { resolveGit(any<UUID>()) } returns GitExchangeRoot(Path.of("/tmp/unused-workspace"), null, UUID.randomUUID())
-        }
-        val statuses = mockk<GitWorkspaceStatusService> {
-            every { refresh(any(), any()) } answers {
-                firstArg<CaseResourceBinding>().also { visited.add(it.rootCaseId) }
-            }
-        }
-        val monitor = GitWorkspaceMonitor(bindings, roots, statuses)
+        val monitor = GitWorkspaceMonitor(bindings, resolver(), observer(visited))
         repeat(2) { monitor.poll() }
         visited shouldBe rows.map { it.rootCaseId } + rows.map { it.rootCaseId }
     }
@@ -76,18 +83,10 @@ class GitWorkspaceSweepSpec : StringSpec({
         val bindings = InMemoryCaseResourceBindingService()
         val rows = rows(bindings)
         val visited = mutableListOf<UUID>()
-        val roots = mockk<GitExchangeRootResolver> {
-            every { resolveGit(any<UUID>()) } returns GitExchangeRoot(Path.of("/tmp/unused-workspace"), null, UUID.randomUUID())
+        val statuses = observer(visited) {
+            if (it.id == rows.first().id) error("transient observation failure")
         }
-        val statuses = mockk<GitWorkspaceStatusService> {
-            every { refresh(any(), any()) } answers {
-                val binding = firstArg<CaseResourceBinding>()
-                visited.add(binding.rootCaseId)
-                if (binding.id == rows.first().id) error("transient observation failure")
-                binding
-            }
-        }
-        val monitor = GitWorkspaceMonitor(bindings, roots, statuses)
+        val monitor = GitWorkspaceMonitor(bindings, resolver(), statuses)
         monitor.poll()
         visited shouldBe rows.take(5).map { it.rootCaseId }
         rows.take(5).forEach { bindings.delete(it.id) }
@@ -96,22 +95,38 @@ class GitWorkspaceSweepSpec : StringSpec({
         monitor.poll()
         visited shouldBe rows.map { it.rootCaseId } + rows.takeLast(2).map { it.rootCaseId }
     }
+
     "a paused monitor polls nothing until it is resumed" {
         val bindings = InMemoryCaseResourceBindingService()
         val rows = rows(bindings, 2)
         val visited = mutableListOf<UUID>()
-        val roots = mockk<GitExchangeRootResolver> {
-            every { resolveGit(any<UUID>()) } returns GitExchangeRoot(Path.of("/tmp/unused-workspace"), null, UUID.randomUUID())
-        }
-        val statuses = mockk<GitWorkspaceStatusService> {
-            every { refresh(any(), any()) } answers { firstArg<CaseResourceBinding>().also { visited.add(it.rootCaseId) } }
-        }
         val control = GitWorkspacesControl().also { it.pauseMonitor() }
-        val monitor = GitWorkspaceMonitor(bindings, roots, statuses, control = control)
+        val monitor = GitWorkspaceMonitor(bindings, resolver(), observer(visited), control = control)
         monitor.poll()
         visited shouldBe emptyList()
         control.resumeMonitor()
         monitor.poll()
         visited shouldBe rows.map { it.rootCaseId }
+    }
+
+    "pausing mid-page skips the rest of that page until the cursor wraps around" {
+        val bindings = InMemoryCaseResourceBindingService()
+        val rows = rows(bindings)
+        val visited = mutableListOf<UUID>()
+        val control = GitWorkspacesControl()
+        // An operator pauses while the second workspace of the first page is being observed.
+        val statuses = observer(visited) { if (visited.size == 2) control.pauseMonitor() }
+        val monitor = GitWorkspaceMonitor(bindings, resolver(), statuses, control = control)
+
+        monitor.poll()
+
+        visited shouldBe rows.take(2).map { it.rootCaseId }
+        control.resumeMonitor()
+        // The cursor already moved past the full first page, so rows 3 to 5 are not retried now.
+        monitor.poll()
+        visited shouldBe (rows.take(2) + rows.drop(5)).map { it.rootCaseId }
+        // That short last page reset the cursor: the skipped rows come back on the next cycle.
+        monitor.poll()
+        visited shouldBe (rows.take(2) + rows.drop(5) + rows.take(5)).map { it.rootCaseId }
     }
 })

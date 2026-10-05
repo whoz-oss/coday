@@ -29,8 +29,12 @@ class GitWorkspaceStatusServiceSpec : StringSpec({
         check(process.waitFor(10, TimeUnit.SECONDS) && process.exitValue() == 0) { text }
         return text.trim()
     }
-    data class Fixture(val path: Path, val binding: CaseResourceBinding,
-        val bindings: InMemoryCaseResourceBindingService, val service: GitWorkspaceStatusService)
+    data class Fixture(
+        val path: Path,
+        val binding: CaseResourceBinding,
+        val bindings: InMemoryCaseResourceBindingService,
+        val service: GitWorkspaceStatusService,
+    )
 
     fun fixture(maxOutputChars: Int = 100_000, hosting: GitHostingProvider = mockk()): Fixture {
         val root = Files.createTempDirectory("agentos-status-spec-")
@@ -48,16 +52,45 @@ class GitWorkspaceStatusServiceSpec : StringSpec({
         val path = root.resolve(caseId.toString())
         git(common, "worktree", "add", "--quiet", "--detach", path.toString(), "main")
         val namespaceId = UUID.randomUUID()
-        val settings = GitRepositorySettings(UUID.randomUUID(), namespaceId, origin.toUri().toString(), "main", UUID.randomUUID(), true, null)
+        val settings = GitRepositorySettings(
+            configId = UUID.randomUUID(),
+            namespaceId = namespaceId,
+            repositoryUrl = origin.toUri().toString(),
+            mainBranch = "main",
+            serviceAuthSettingId = UUID.randomUUID(),
+            autoWorktreeForRootCases = true,
+            setupCommand = null,
+        )
         val mapper = jacksonObjectMapper().findAndRegisterModules()
         val bindings = InMemoryCaseResourceBindingService()
-        val binding = bindings.create(CaseResourceBinding(rootCaseId = caseId, namespaceId = namespaceId,
-            integrationConfigId = settings.configId, status = CaseResourceStatus.READY,
-            baseSha = git(path, "rev-parse", "HEAD"), settingsJson = mapper.writeValueAsString(settings)))
+        val binding = bindings.create(
+            CaseResourceBinding(
+                rootCaseId = caseId,
+                namespaceId = namespaceId,
+                integrationConfigId = settings.configId,
+                status = CaseResourceStatus.READY,
+                baseSha = git(path, "rev-parse", "HEAD"),
+                settingsJson = mapper.writeValueAsString(settings),
+            ),
+        )
         val storage = mockk<ExchangeStorageService> { every { namespaceGitDirectory(namespaceId) } returns common }
-        val account = mockk<GitServiceAccountResolver> { every { resolve(any()) } returns GitCredentials.UsernamePassword("fixture", "fake") }
-        val runner = GitCommandRunner(GitExecutionProperties(maxOutputChars = maxOutputChars, allowedRemoteProtocols = setOf("file")))
-        return Fixture(path, binding, bindings, GitWorkspaceStatusService(bindings, mockk(), storage, runner, account, hosting, mapper))
+        val account = mockk<GitServiceAccountResolver> {
+            every { resolve(any()) } returns GitCredentials.UsernamePassword("fixture", "fake")
+        }
+        val runner = GitCommandRunner(
+            GitExecutionProperties(maxOutputChars = maxOutputChars, allowedRemoteProtocols = setOf("file")),
+        )
+        val service = GitWorkspaceStatusService(
+            bindings = bindings,
+            // The binding carries its own settingsJson, so the association is never consulted.
+            associations = mockk(),
+            storage = storage,
+            runner = runner,
+            accounts = account,
+            hosting = hosting,
+            mapper = mapper,
+        )
+        return Fixture(path, binding, bindings, service)
     }
 
     "a truncated list of untracked entries still proves dirty without refreshing the index" {

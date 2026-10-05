@@ -154,13 +154,16 @@ class CaseWorktreeProvisionerSpec :
                 ),
             )
 
-        fun statusService(f: Fixture, settings: GitRepositorySettings, hosting: GitHostingProvider) = GitWorkspaceStatusService(
-            f.bindings,
-            mockk { every { findSettings(any()) } returns settings },
-            f.storage, runner,
-            mockk { every { resolve(any()) } returns GitCredentials.UsernamePassword("test", "unused") },
-            hosting, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().findAndRegisterModules(),
-        )
+        fun statusService(f: Fixture, settings: GitRepositorySettings, hosting: GitHostingProvider) =
+            GitWorkspaceStatusService(
+                bindings = f.bindings,
+                associations = mockk { every { findSettings(any()) } returns settings },
+                storage = f.storage,
+                runner = runner,
+                accounts = mockk { every { resolve(any()) } returns GitCredentials.UsernamePassword("test", "unused") },
+                hosting = hosting,
+                mapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper().findAndRegisterModules(),
+            )
 
         "status follows the branch created by the agent and clears when detached again" {
             val f = fixture()

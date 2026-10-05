@@ -133,7 +133,12 @@ internal class GitWorkspace(
     private fun guard() = runner.assertNoHostileLocalConfig(context.gitDir)
 
     private fun local(vararg args: String) =
-        GitInvocation(args.toList(), gitDir = context.gitDir, workTree = context.workingDirectory, workingDirectory = context.workingDirectory)
+        GitInvocation(
+            args.toList(),
+            gitDir = context.gitDir,
+            workTree = context.workingDirectory,
+            workingDirectory = context.workingDirectory,
+        )
 
     private fun successful(result: GitCommandResult, action: String): String {
         if (result is GitCommandResult.Completed && result.successful && !result.truncated) return result.stdout

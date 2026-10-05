@@ -1,15 +1,21 @@
 package io.whozoss.agentos.git
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitCommandResult
 import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitInvocation
+import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_DETACHED
+import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_LOCAL_ONLY
+import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_PUSHED
+import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_UNPUSHED_COMMITS
+import io.whozoss.agentos.git.GitWorkspaceStates.PR_NONE
+import io.whozoss.agentos.git.GitWorkspaceStates.UNKNOWN
 import io.whozoss.agentos.git.core.GitLayout
 import io.whozoss.agentos.git.core.GitRefs
 import mu.KLogging
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import java.nio.file.Path
 import java.time.Instant
@@ -33,16 +39,24 @@ class GitWorkspaceStatusService(
     fun commonGitDir(binding: CaseResourceBinding): Path =
         storage.namespaceGitDirectory(binding.namespaceId).toAbsolutePath().normalize()
 
-    fun worktreeGitDir(binding: CaseResourceBinding): Path = commonGitDir(binding).resolve(GitLayout.WORKTREES_DIR).resolve(binding.rootCaseId.toString())
+    fun worktreeGitDir(binding: CaseResourceBinding): Path =
+        commonGitDir(binding).resolve(GitLayout.WORKTREES_DIR).resolve(binding.rootCaseId.toString())
 
     fun summary(binding: CaseResourceBinding): GitWorkspaceSummary? = binding.summaryJson?.let {
         mapper.readValue(it, GitWorkspaceSummary::class.java)
     }
 
     fun view(root: GitExchangeRoot): CaseWorkspaceView {
-        val b = root.binding ?: return CaseWorkspaceView(equipped = false)
-        return CaseWorkspaceView(true, b.rootCaseId, b.status.name, b.branchName, b.failureReason,
-            b.cleanupReason, summary(b))
+        val binding = root.binding ?: return CaseWorkspaceView(equipped = false)
+        return CaseWorkspaceView(
+            equipped = true,
+            rootCaseId = binding.rootCaseId,
+            status = binding.status.name,
+            branchName = binding.branchName,
+            failureReason = binding.failureReason,
+            cleanupReason = binding.cleanupReason,
+            git = summary(binding),
+        )
     }
 
     fun refresh(binding: CaseResourceBinding, path: Path): CaseResourceBinding {
@@ -54,37 +68,62 @@ class GitWorkspaceStatusService(
         var observedBranch = current.branchName
         var state = GitWorkspaceSummary(observedAt = Instant.now())
         try {
-            val settings = settings(binding)
-            val common = commonGitDir(binding)
+            // Everything below observes `current`, the state re-read under the lock: `binding` may
+            // already be stale when the caller handed it over.
+            val settings = settings(current)
+            val common = commonGitDir(current)
             runner.assertNoHostileLocalConfig(common)
-            val administrativeDir = worktreeGitDir(binding)
+            val administrativeDir = worktreeGitDir(current)
             val symbolic = runner.run(GitInvocation(listOf("symbolic-ref", "--quiet", "HEAD"), gitDir = administrativeDir))
             check(symbolic is GitCommandResult.Completed) { "Cannot inspect the worktree branch" }
             observedBranch = when (symbolic.exitCode) {
-                0 -> symbolic.stdout.trim().also { check(it.startsWith(GitRefs.HEADS)) }.removePrefix(GitRefs.HEADS)
+                0 -> symbolic.stdout.trim()
+                    .also { check(it.startsWith(GitRefs.HEADS)) { "HEAD resolves outside ${GitRefs.HEADS}" } }
+                    .removePrefix(GitRefs.HEADS)
+
                 1 -> null // detached HEAD, not an error and not a branch named HEAD
                 else -> error("Cannot inspect the worktree branch")
             }
-            val head = runner.runOrThrow(GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = administrativeDir))
-            val dirty = isDirty(binding, path)
+            val head = runner.runOrThrow(
+                GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = administrativeDir),
+            )
+            val dirty = isDirty(current, path)
             state = state.copy(headSha = head, dirty = dirty)
             val branch = observedBranch
             if (branch == null) {
-                state = state.copy(branchState = "DETACHED", prState = "NONE")
+                state = state.copy(branchState = BRANCH_DETACHED, prState = PR_NONE)
                 return publish(current, null, state)
             }
-            val remote = runner.runOrThrow(GitInvocation(listOf("ls-remote", settings.repositoryUrl, GitRefs.head(branch)),
-                gitDir = common, credentials = accounts.resolve(settings))).lineSequence().firstOrNull { it.isNotBlank() }?.substringBefore('\t')
+            val remote = runner.runOrThrow(
+                GitInvocation(
+                    listOf("ls-remote", settings.repositoryUrl, GitRefs.head(branch)),
+                    gitDir = common,
+                    credentials = accounts.resolve(settings),
+                ),
+            ).lineSequence().firstOrNull { it.isNotBlank() }?.substringBefore('\t')
             if (remote == null) {
-                state = state.copy(branchState = "LOCAL_ONLY")
+                state = state.copy(branchState = BRANCH_LOCAL_ONLY)
             } else {
                 // Only the objects are needed to count unpushed commits. Never update the agent's
                 // refs/remotes/origin/*: `push --force-with-lease` uses them as its expected value.
-                runner.runOrThrow(GitInvocation(listOf("fetch", "--quiet", settings.repositoryUrl,
-                    "+${GitRefs.head(branch)}:${GitRefs.AGENTOS_OBSERVED}${binding.rootCaseId}"), gitDir = common,
-                    credentials = accounts.resolve(settings)))
-                val ahead = runner.runOrThrow(GitInvocation(listOf("rev-list", "--count", "$remote..$head"), gitDir = common)).toInt()
-                state = state.copy(branchState = if (ahead > 0) "UNPUSHED_COMMITS" else "PUSHED", remoteSha = remote, unpushedCommits = ahead)
+                runner.runOrThrow(
+                    GitInvocation(
+                        listOf(
+                            "fetch", "--quiet", settings.repositoryUrl,
+                            "+${GitRefs.head(branch)}:${GitRefs.AGENTOS_OBSERVED}${current.rootCaseId}",
+                        ),
+                        gitDir = common,
+                        credentials = accounts.resolve(settings),
+                    ),
+                )
+                val ahead = runner.runOrThrow(
+                    GitInvocation(listOf("rev-list", "--count", "$remote..$head"), gitDir = common),
+                ).toInt()
+                state = state.copy(
+                    branchState = if (ahead > 0) BRANCH_UNPUSHED_COMMITS else BRANCH_PUSHED,
+                    remoteSha = remote,
+                    unpushedCommits = ahead,
+                )
             }
             // A PR checkout can use a local alias (e.g. pr-1301) instead of its remote branch name.
             // Do not infer a PR from the untouched starting commit shared by every new workspace.
@@ -93,8 +132,8 @@ class GitWorkspaceStatusService(
         } catch (e: Exception) {
             // Never translate unavailable/stale data into NONE or CLOSED.
             // Network libraries may include credentials in exception messages or causes.
-            logger.warn(e) { "Git status unavailable for case ${binding.rootCaseId}" }
-            state = state.copy(prState = "UNKNOWN", error = "Git status unavailable. Check repository access and service account settings.")
+            logger.warn(e) { "Git status unavailable for case ${current.rootCaseId}" }
+            state = state.copy(prState = UNKNOWN, error = STATUS_UNAVAILABLE)
         }
         return publish(current, observedBranch, state)
     }
@@ -110,13 +149,24 @@ class GitWorkspaceStatusService(
 
     private fun isDirty(binding: CaseResourceBinding, path: Path): Boolean {
         // Submodule contents are not inspected: that would run the submodule's own filters.
-        val result = runner.run(GitInvocation(listOf("--no-optional-locks", "status", "--porcelain", "--untracked-files=normal",
-            "--ignore-submodules=dirty"),
-            gitDir = worktreeGitDir(binding), workTree = path))
+        // `--no-optional-locks` keeps the observer from refreshing the index the agent is using.
+        val result = runner.run(
+            GitInvocation(
+                listOf(
+                    "--no-optional-locks", "status", "--porcelain",
+                    "--untracked-files=normal", "--ignore-submodules=dirty",
+                ),
+                gitDir = worktreeGitDir(binding),
+                workTree = path,
+            ),
+        )
         check(result is GitCommandResult.Completed && result.successful) { "Cannot inspect local Git changes" }
         // Any porcelain entry proves dirty. A bounded, truncated list is sufficient for this boolean.
         return result.stdout.isNotEmpty()
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /** Fixed public wording: an exception message may carry credentials. */
+        const val STATUS_UNAVAILABLE = "Git status unavailable. Check repository access and service account settings."
+    }
 }
