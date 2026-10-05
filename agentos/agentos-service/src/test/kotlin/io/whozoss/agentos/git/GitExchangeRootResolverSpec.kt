@@ -232,11 +232,11 @@ class GitExchangeRootResolverSpec :
         "the exchange contract refuses every unavailable Git state without a directory fallback" {
             val root = case("Root")
             val f = fixture(root)
-            val binding = equip(f, root)
+            var binding = equip(f, root)
             val resolver: ExchangeRootResolver = f.resolver
 
             CaseResourceStatus.entries.filter { !it.isUsable }.forEach { status ->
-                f.bindings.update(binding.copy(status = status))
+                binding = f.bindings.update(binding.copy(status = status))
                 val resolved = resolver.resolve(root)
                 shouldThrow<ConflictException> { resolved.requireUsable() }
             }

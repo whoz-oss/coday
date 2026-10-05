@@ -303,12 +303,12 @@ class GitRepositoryConfigPolicySpec :
             java.nio.file.Files.createDirectory(directory)
             actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
             java.nio.file.Files.delete(directory)
-            val unused = bindingStore.create(CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId,
+            var unused = bindingStore.create(CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId,
                 integrationConfigId = checkout.integrationConfigId))
             actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
-            bindingStore.update(unused.copy(status = CaseResourceStatus.FAILED))
+            unused = bindingStore.update(unused.copy(status = CaseResourceStatus.FAILED))
             actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
-            bindingStore.update(unused.copy(status = CaseResourceStatus.REMOVED))
+            unused = bindingStore.update(unused.copy(status = CaseResourceStatus.REMOVED))
             actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe true
             bindingStore.update(unused.copy(status = CaseResourceStatus.REMOVED, baseSha = "a".repeat(40)))
             actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false

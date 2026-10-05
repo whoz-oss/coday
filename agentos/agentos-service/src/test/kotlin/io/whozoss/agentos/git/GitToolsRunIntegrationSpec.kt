@@ -102,9 +102,9 @@ class GitToolsRunIntegrationSpec :
             mayWrite(false)
             integration.customize(git, context(child.id)) shouldBe listOf(bash)
             mayWrite(true)
-            bindings.update(binding.copy(settingsJson = null))
+            val withoutSettings = bindings.update(binding.copy(settingsJson = null))
             integration.customize(git, context(child.id)) shouldBe listOf(bash)
-            bindings.update(binding)
+            bindings.update(withoutSettings.copy(settingsJson = binding.settingsJson))
         }
 
         "outside an equipped family a GIT integration reaches the run as configured" {

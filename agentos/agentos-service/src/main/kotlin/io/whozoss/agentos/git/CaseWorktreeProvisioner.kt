@@ -47,7 +47,8 @@ class CaseWorktreeProvisioner(
             val worktreePath = worktreePath(rootCase)
             val commonGitDir = exchangeStorageService.namespaceGitDirectory(settings.namespaceId).toAbsolutePath().normalize()
             if (binding.status == CaseResourceStatus.READY && isWorktree(worktreePath, commonGitDir)) return binding
-            bindingService.markStatus(binding.id, CaseResourceStatus.PREPARING)
+            // Later writes start from this row: the copy received is older than the PREPARING mark.
+            val preparing = bindingService.markStatus(binding.id, CaseResourceStatus.PREPARING)
             failureReason = "Cannot prepare the namespace repository. Check its Git settings and service account."
             val checkout = checkoutProvisioner.ensureReady(settings)
             check(checkout.status == RepositoryCheckoutStatus.READY) {
@@ -60,7 +61,7 @@ class CaseWorktreeProvisioner(
                     .normalize()
 
             failureReason = "Cannot fetch the case base. Check repository access, the main branch and local Git configuration."
-            val withBase = freezeBaseSha(binding, settings, gitDir)
+            val withBase = freezeBaseSha(preparing, settings, gitDir)
             failureReason = "Cannot create or recover the worktree. Inspect its directory and Git registration before retrying."
             setAsideInterruptedCheckout(withBase, gitDir, worktreePath)
             addWorktree(withBase, gitDir, worktreePath)
