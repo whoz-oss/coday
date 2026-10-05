@@ -65,6 +65,7 @@ interface AgentRuntimeAdapter {
         turn: TurnToken,
         timeoutMs: Long,
         onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit = {},
+        onAnswerObserved: (CaseEventView) -> Unit = {},
     ): AgentOsExecutionVerdict
 
     /**

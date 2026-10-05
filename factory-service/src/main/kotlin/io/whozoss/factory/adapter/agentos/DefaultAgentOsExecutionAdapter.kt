@@ -158,6 +158,7 @@ class DefaultAgentOsExecutionAdapter(
         turn: TurnToken,
         timeoutMs: Long,
         onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
+        onAnswerObserved: (CaseEventView) -> Unit,
     ): AgentOsExecutionVerdict {
         val caseId = turn.caseId
         val record = executions[turn.attemptId] ?: executions.values.firstOrNull { it.caseId == caseId }
@@ -173,6 +174,7 @@ class DefaultAgentOsExecutionAdapter(
             context = contextFor(caseId),
             reconcile = { reconcileResult(caseId, record?.externalUserId, baseline.takeIf { it.isPositioned() }) },
             onIntermediateVerdict = onIntermediateVerdict,
+            onAnswerObserved = onAnswerObserved,
         )
         when (verdict) {
             is AgentOsExecutionVerdict.WaitingHuman -> registry.markState(caseId, ActiveCaseState.WAITING_HUMAN)
@@ -287,14 +289,15 @@ class DefaultAgentOsExecutionAdapter(
         caseId: String,
         attemptId: String,
         timeoutMs: Long,
-    ): AgentOsExecutionVerdict = observeTurn(caseId, attemptId, timeoutMs) { }
+    ): AgentOsExecutionVerdict = observeTurn(caseId, attemptId, timeoutMs, { }, { })
 
     override fun observeTurn(
         caseId: String,
         attemptId: String,
         timeoutMs: Long,
         onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
-    ): AgentOsExecutionVerdict = observeTurn(TurnToken.unbaselined(caseId, attemptId), timeoutMs, onIntermediateVerdict)
+        onAnswerObserved: (CaseEventView) -> Unit,
+    ): AgentOsExecutionVerdict = observeTurn(TurnToken.unbaselined(caseId, attemptId), timeoutMs, onIntermediateVerdict, onAnswerObserved)
 
     override fun reconcile(caseId: String): AgentOsExecutionVerdict =
         reconcile(TurnToken.unbaselined(caseId, attemptId = ""))

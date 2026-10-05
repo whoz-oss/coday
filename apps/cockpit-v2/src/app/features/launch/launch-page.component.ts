@@ -101,6 +101,7 @@ export class LaunchPageComponent {
     namespaceId: ['', Validators.required],
     title: ['', Validators.maxLength(200)],
     ticket: ['', Validators.maxLength(64)],
+    initialRequest: ['', Validators.maxLength(4000)],
   })
 
   constructor() {
@@ -150,9 +151,10 @@ export class LaunchPageComponent {
       return
     }
 
-    const { workflowType, namespaceId, title, ticket } = this.form.getRawValue()
+    const { workflowType, namespaceId, title, ticket, initialRequest } = this.form.getRawValue()
     const trimmedTitle = title.trim()
     const trimmedTicket = ticket.trim()
+    const trimmedInitialRequest = initialRequest.trim()
     const idempotencyKey = generateCorrelationId()
 
     this.submitting.set(true)
@@ -164,6 +166,7 @@ export class LaunchPageComponent {
         {
           workflowType,
           ...(trimmedTitle ? { title: trimmedTitle } : {}),
+          ...(trimmedInitialRequest ? { initialRequest: trimmedInitialRequest } : {}),
           ...(trimmedTicket ? { parameters: { ticket: trimmedTicket } } : {}),
         },
         namespaceId,

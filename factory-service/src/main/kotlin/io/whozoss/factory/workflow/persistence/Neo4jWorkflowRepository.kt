@@ -31,6 +31,7 @@ class Neo4jWorkflowRepository(
     private val projections: SpringDataNeo4jWorkflowProjectionRepository,
     private val stepStates: SpringDataNeo4jWorkflowStepStateRepository,
     private val transitions: SpringDataNeo4jWorkflowTransitionRepository,
+    private val transitionAppender: WorkflowTransitionAppender,
     private val codeTransitions: SpringDataNeo4jWorkflowCodeTransitionRepository,
     private val objectMapper: ObjectMapper,
 ) : WorkflowRepository {
@@ -155,20 +156,18 @@ class Neo4jWorkflowRepository(
             workflowId,
             transitionId,
         )
-        if (transitions.existsById(id)) return
-        transitions.save(
-            WorkflowTransitionNode.fromDomain(
-                scope = scope,
-                namespaceId = namespaceId,
-                workflowId = workflowId,
-                transitionId = transitionId,
-                fromStepId = fromStepId,
-                toStepId = toStepId,
-                eventName = request.requestedStatus,
-                payload = payload,
-                objectMapper = objectMapper,
-            ),
+        val node = WorkflowTransitionNode.fromDomain(
+            scope = scope,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            transitionId = transitionId,
+            fromStepId = fromStepId,
+            toStepId = toStepId,
+            eventName = request.requestedStatus,
+            payload = payload,
+            objectMapper = objectMapper,
         )
+        transitionAppender.appendIfAbsent(node)
     }
 
     override fun listTransitionTimestamps(scope: TenantScope, namespaceId: String, workflowId: String): List<String> =

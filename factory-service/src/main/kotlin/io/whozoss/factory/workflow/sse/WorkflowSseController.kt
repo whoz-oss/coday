@@ -17,8 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 /**
  * Server-Sent Events stream of projection invalidations.
  *
- * Port of the Stage 4 SSE endpoint from `factory/WORKFLOW_PROJECTION.md` and
- * `factory/dashboard/workflow-projection-sse.mjs`:
+ * Factory workflow projection stream consumed by Cockpit V2:
  *
  * ```http
  * GET /api/factory/workflows/stream?namespaceId=<uuid>

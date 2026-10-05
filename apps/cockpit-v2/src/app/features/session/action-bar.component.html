@@ -23,6 +23,87 @@
     </header>
 
     <div class="actions-body">
+      @if (agentQuestionsError(); as error) {
+        <div class="action-card agent-question">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">warning</mat-icon>
+            <span>Question disponible dans AgentOS</span>
+          </div>
+          <p class="action-feedback" role="alert">{{ error.message }}</p>
+          @if (error.caseId) {
+            <div class="action-row">
+              <a mat-stroked-button [href]="caseLink(error.caseId, error.namespaceId)">Ouvrir la Case</a>
+            </div>
+          }
+        </div>
+      }
+
+      @for (question of agentQuestions(); track question.questionEventId) {
+        <div class="action-card agent-question">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">question_answer</mat-icon>
+            <span>Question de l'agent</span>
+          </div>
+          @if (question.question) {
+            <p class="action-prompt">{{ question.question }}</p>
+          }
+          <div class="action-row">
+            <a mat-stroked-button [href]="caseLink(question.caseId, question.case?.namespaceId)">Ouvrir la Case</a>
+          </div>
+          @if (!supportedQuestion(question)) {
+            <p class="action-feedback" role="alert">Type de question non pris en charge.</p>
+          } @else {
+            @if (question.questionType === 'SINGLE_CHOICE') {
+              <div class="action-row">
+                @for (option of question.options ?? []; track option) {
+                  <button
+                    mat-stroked-button
+                    [disabled]="answeringQuestionId() !== null"
+                    (click)="submitAgentQuestion(question, option)"
+                  >
+                    {{ option }}
+                  </button>
+                }
+              </div>
+            } @else {
+              <input
+                class="reply-text"
+                type="text"
+                [attr.list]="question.questionType === 'OPEN_CHOICE' ? 'options-' + question.questionEventId : null"
+                placeholder="Votre réponse"
+                [disabled]="answeringQuestionId() !== null"
+                [value]="draftFor(question.questionEventId)"
+                (input)="setDraft(question.questionEventId, $any($event.target).value)"
+              />
+              @if (question.questionType === 'OPEN_CHOICE' && question.options?.length) {
+                <datalist [id]="'options-' + question.questionEventId">
+                  @for (option of question.options ?? []; track option) {
+                    <option [value]="option"></option>
+                  }
+                </datalist>
+              }
+              <div class="action-row">
+                <button
+                  mat-flat-button
+                  class="sf-primary"
+                  [disabled]="answeringQuestionId() !== null || !draftFor(question.questionEventId).trim()"
+                  (click)="submitAgentQuestion(question)"
+                >
+                  Répondre
+                </button>
+              </div>
+            }
+          }
+          @if (questionFeedback(); as feedback) {
+            @if (feedback.interactionId === question.questionEventId) {
+              <p class="action-feedback" [class.action-feedback--conflict]="feedback.kind === 'conflict'" role="alert">
+                {{ feedback.message }}
+              </p>
+            }
+          }
+        </div>
+      }
+
       @for (action of replyActions(); track $index) {
         <div class="action-card">
           <div class="action-title">

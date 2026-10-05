@@ -17,7 +17,8 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
     @Query(
         """
         MATCH (e:OutboxEvent)
-        WHERE e.status = 'pending'
+        WHERE e.status IN ['pending', 'failed']
+          AND e.attempts < 10
         RETURN DISTINCT e.organizationId AS organizationId
         """,
     )
@@ -27,7 +28,8 @@ interface SpringDataNeo4jOutboxRepository : Neo4jRepository<OutboxEventNode, Str
         """
         MATCH (e:OutboxEvent)
         WHERE e.organizationId = ${'$'}organizationId
-          AND e.status = 'pending'
+          AND e.status IN ['pending', 'failed']
+          AND e.attempts < 10
         RETURN e
         ORDER BY e.createdAt ASC
         LIMIT toInteger(${'$'}limit)

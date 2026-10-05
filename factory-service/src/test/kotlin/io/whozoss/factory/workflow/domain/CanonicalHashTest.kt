@@ -52,6 +52,25 @@ class CanonicalHashTest {
     }
 
     @Test
+    fun `workflow start identity includes initial request text but ignores observation metadata`() {
+        val definition = WorkflowDefinitionInput("demo", "1", definitionHash, emptyList())
+        val first = WorkflowStartCommand(
+            "wf", "demo", "Title",
+            controllerRequest = ControllerRequestInput("Analyse only", "ns", "2026-01-01T00:00:00Z", "alice", "create-run"),
+        )
+        val retry = first.copy(
+            controllerRequest = ControllerRequestInput("Analyse only", "ns", "2026-01-02T00:00:00Z", "alice", "create-run"),
+        )
+        val changed = first.copy(
+            controllerRequest = ControllerRequestInput("Implement it", "ns", "2026-01-02T00:00:00Z", "alice", "create-run"),
+        )
+
+        assertThat(CanonicalHash.workflowStartCommandHash(first, definition))
+            .isEqualTo(CanonicalHash.workflowStartCommandHash(retry, definition))
+            .isNotEqualTo(CanonicalHash.workflowStartCommandHash(changed, definition))
+    }
+
+    @Test
     fun `workflowProjectionHash matches the Node vector`() {
         val projection = linkedMapOf<String, Any?>(
             "schemaVersion" to "2",

@@ -1,33 +1,23 @@
 package io.whozoss.factory.web
 
 import io.swagger.v3.oas.annotations.Hidden
-import org.springframework.core.io.Resource
-import org.springframework.http.MediaType
-import org.springframework.http.ResponseEntity
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.GetMapping
 
 /**
- * Entry points of the vanilla cockpit served same-origin by `factory-service`.
+ * Compatibility redirects to the sole Factory UI, Cockpit V2.
  *
- * `GET /` redirects to `GET /cockpit`, which returns the `cockpit.html` shell;
- * the shell then loads `/js/app.mjs`, the `/css` tree and the relative `/api`
- * endpoints from the same origin.
- *
- * Hidden from the generated OpenAPI document: this is a browser entry point,
- * not a JSON operation.
+ * The legacy vanilla dashboard assets are no longer served. Keeping these
+ * redirects avoids breaking saved entry-point URLs while ensuring every
+ * browser entry reaches the Angular cockpit.
  */
 @Hidden
 @Controller
-class CockpitController(private val assets: CockpitAssets) {
+class CockpitController {
 
     @GetMapping("/")
-    fun root(): String = "redirect:/cockpit"
+    fun root(): String = "redirect:/cockpit-v2"
 
     @GetMapping("/cockpit", "/cockpit/", "/cockpit.html")
-    fun cockpit(): ResponseEntity<Resource> {
-        val resource = assets.resolve("cockpit.html")
-            ?: factoryError(404, "COCKPIT_ASSETS_MISSING", "Cockpit assets are not deployed.")
-        return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(resource)
-    }
+    fun cockpit(): String = "redirect:/cockpit-v2"
 }

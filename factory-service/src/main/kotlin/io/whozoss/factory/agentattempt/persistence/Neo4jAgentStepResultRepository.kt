@@ -17,6 +17,7 @@ import io.whozoss.factory.agentattempt.domain.ResultCapabilityAlreadyIssuedExcep
 import io.whozoss.factory.agentattempt.domain.ResultCapabilityExpiredException
 import io.whozoss.factory.agentattempt.domain.ResultCapabilityIdentityConflictException
 import io.whozoss.factory.agentattempt.domain.ResultCapabilityInvalidException
+import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableException
 import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.ResultSemanticCollisionException
 import io.whozoss.factory.agentattempt.domain.SubmitOutcome
@@ -116,6 +117,61 @@ class Neo4jAgentStepResultRepository(
         insertCapability(scope, resultId, capability, now)
 
         return IssuedCapability(token = token, expiresAt = expiresAt)
+    }
+
+    @Transactional
+    override fun refresh(
+        scope: TenantScope,
+        identity: AgentStepResultObservedIdentity,
+        runtimeId: String,
+        refreshKey: String,
+        now: Instant,
+        ttlSeconds: Long,
+    ): IssuedCapability {
+        val namespaceId = identity.namespaceId ?: throw ResultIdentityMismatchException()
+        val attemptId = identity.attemptId ?: throw ResultIdentityMismatchException()
+        val caseId = identity.caseId ?: throw ResultIdentityMismatchException()
+        val agentName = identity.agentName ?: throw ResultIdentityMismatchException()
+        val node = capabilities.findByNamespaceAndAttempt(
+            scope.organizationId,
+            scope.workstreamId,
+            namespaceId,
+            attemptId,
+            CAPABILITY_TYPE,
+        ) ?: throw ResultCapabilityInvalidException()
+        val current = deserialize(node.payload, AgentStepResultCapability::class.java)
+        if (current.caseId != caseId || current.agentName != agentName || runtimeId.isBlank()) {
+            throw ResultIdentityMismatchException()
+        }
+        val result = findResult(scope, current)
+        if (result == null || payloadType(result.payload) != RESERVATION_TYPE) {
+            throw ResultAttemptNotRefreshableException()
+        }
+        if (refreshKey.isBlank()) throw ResultIdentityMismatchException()
+        val attempt = attempts.find(scope, namespaceId, current.workflowId, current.stepId, attemptId)
+        if (attempt == null || attempt.status in TERMINAL_REFRESH_STATUSES) {
+            throw ResultAttemptNotRefreshableException()
+        }
+        val token = newToken()
+        val renewed = current.copy(
+            tokenHash = CanonicalJsonHash.sha256(token),
+            issuedAt = now.toString(),
+            expiresAt = now.plusSeconds(ttlSeconds).toString(),
+            submissionBudget = AgentStepResultLimits.SUBMISSION_BUDGET,
+        )
+        val updated = capabilities.rotateIfRefreshable(
+            id = node.id,
+            resultId = AgentStepResultNode.compositeId(
+                scope.organizationId, scope.workstreamId, current.namespaceId,
+                current.workflowId, current.stepId, current.attemptId, node.resultId,
+            ),
+            expectedTokenHash = current.tokenHash,
+            tokenHash = renewed.tokenHash,
+            payload = serialize(renewed),
+            createdAt = now,
+        )
+        if (updated != 1L) throw ResultAttemptNotRefreshableException("Capability was concurrently renewed or consumed")
+        return IssuedCapability(token, renewed.expiresAt)
     }
 
     @Transactional
@@ -478,6 +534,7 @@ class Neo4jAgentStepResultRepository(
         const val COLLISION_DB_STATUS = "collision_detected"
         const val RESULT_SUBMITTED = "result_submitted"
         const val PENDING = "pending"
+        val TERMINAL_REFRESH_STATUSES = setOf("completed", "failed", "interrupted", "indeterminate", "superseded")
 
         val DB_RESULT_STATUS: Map<AgentStepResultStatus, String> = mapOf(
             AgentStepResultStatus.PASS to "success",

@@ -8,6 +8,34 @@ import java.time.ZoneOffset
 import java.util.UUID
 
 class FactoryStepResultBindingRegistrySpec : StringSpec({
+    "expired binding can only be leased explicitly for server-authorized renewal" {
+        val clock = object : java.time.Clock() {
+            var now = java.time.Instant.parse("2026-01-01T00:00:00Z")
+            override fun getZone() = java.time.ZoneOffset.UTC
+            override fun withZone(zone: java.time.ZoneId) = this
+            override fun instant() = now
+        }
+        val registry = FactoryStepResultBindingRegistry(clock)
+        val caseId = java.util.UUID.randomUUID()
+        val namespaceId = java.util.UUID.randomUUID()
+        registry.bind(
+            FactoryStepResultBinding(
+                caseId,
+                namespaceId,
+                "Worker",
+                "attempt-1",
+                "runtime-1",
+                "old-token-value-with-sufficient-length",
+                java.time.Instant.parse("2026-01-01T00:00:01Z"),
+            ),
+        )
+        clock.now = java.time.Instant.parse("2026-01-01T00:00:02Z")
+        registry.acquire(caseId, namespaceId, "Worker") shouldBe null
+        val expiredBinding = registry.acquire(caseId, namespaceId, "Worker", allowExpired = true)
+        expiredBinding?.attemptId shouldBe "attempt-1"
+        registry.release(expiredBinding!!)
+    }
+
     "binding is case namespace agent scoped, bounded and volatile" {
         val now = Instant.parse("2030-01-01T00:00:00Z")
         val registry = FactoryStepResultBindingRegistry(Clock.fixed(now, ZoneOffset.UTC))

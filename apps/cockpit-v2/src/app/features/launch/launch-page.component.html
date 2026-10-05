@@ -90,6 +90,25 @@
       <input matInput class="sf-mono" formControlName="ticket" placeholder="ABC-123" data-launch-ticket="true" />
     </mat-form-field>
 
+    <mat-form-field appearance="outline" class="field field--wide">
+      <mat-label>Que souhaitez-vous faire ? (optionnel)</mat-label>
+      <textarea
+        matInput
+        id="launch-initial-request"
+        formControlName="initialRequest"
+        aria-describedby="launch-initial-request-help"
+        rows="5"
+        maxlength="4000"
+        data-launch-initial-request="true"
+      ></textarea>
+      @if (form.controls.initialRequest.hasError('maxlength')) {
+        <mat-error>L’objectif ne doit pas dépasser 4 000 caractères.</mat-error>
+      }
+      <mat-hint id="launch-initial-request-help">
+        Décrivez votre objectif, même brièvement. L’agent vous demandera les précisions nécessaires.
+      </mat-hint>
+    </mat-form-field>
+
     <div class="form-actions">
       <button mat-flat-button class="sf-primary" type="submit" [disabled]="submitting()" data-launch-submit="true">
         <mat-icon>{{ submitting() ? 'hourglass_top' : 'play_arrow' }}</mat-icon>

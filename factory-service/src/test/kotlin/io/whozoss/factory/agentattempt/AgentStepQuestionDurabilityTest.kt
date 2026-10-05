@@ -24,6 +24,7 @@ import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.workflow.persistence.HumanInteractionLookupRepository
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.Neo4jHumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.SpringDataNeo4jHumanInteractionEventRepository
@@ -117,6 +118,7 @@ class AgentStepQuestionDurabilityTest {
                     .contains("agent_question_asked")
                 assertThat(stack.outboxNodes.findAllByOrganization(scope.organizationId).map { it.eventType })
                     .contains("agent_question_asked")
+                    .doesNotContain("agent_question_answered")
 
                 // The answer lands after the restart: N superseded, N+1 pending.
                 val answered = stack.questions.answer(
@@ -195,6 +197,7 @@ class AgentStepQuestionDurabilityTest {
         val attemptService = DurableAgentAttemptService(durableAttempts)
         val interactions: HumanInteractionRepository = Neo4jHumanInteractionRepository(
             context.getBean(SpringDataNeo4jHumanInteractionRepository::class.java),
+            HumanInteractionLookupRepository(context.getBean(Neo4jClient::class.java)),
             context.getBean(SpringDataNeo4jHumanInteractionEventRepository::class.java),
             objectMapper,
         )

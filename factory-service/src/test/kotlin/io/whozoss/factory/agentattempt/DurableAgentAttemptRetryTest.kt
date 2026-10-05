@@ -133,11 +133,30 @@ class DurableAgentAttemptRetryTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `latest step attempt selects the question successor rather than stable attempt one`() {
+        service.register(scope, attempt(ATTEMPT_ID_1, attemptNumber = 1))
+        claimToRunning(ATTEMPT_ID_1, "owner-a")
+        service.transition(
+            scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, ATTEMPT_ID_1, "owner-a",
+            AgentAttemptStatus.WAITING_HUMAN,
+        )
+        service.supersede(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID, ATTEMPT_ID_1)
+
+        val successorId = CapabilityExecutionService.retryAttemptId(WORKFLOW_ID, STEP_ID, 2)
+        service.registerRetry(scope, attempt(successorId, attemptNumber = 2))
+
+        assertThat(service.findLatestForStep(scope, NAMESPACE_ID, WORKFLOW_ID, STEP_ID)?.attemptId)
+            .isEqualTo(successorId)
+    }
+
+    @Test
     fun `attempt one keeps the stable attempt id form`() {
         assertThat(CapabilityExecutionService.retryAttemptId(WORKFLOW_ID, STEP_ID, 1))
             .isEqualTo(CapabilityExecutionService.stableAttemptId(WORKFLOW_ID, STEP_ID))
         assertThat(CapabilityExecutionService.retryAttemptId(WORKFLOW_ID, STEP_ID, 2))
-            .isEqualTo("$WORKFLOW_ID#$STEP_ID#2")
+            .isNotEqualTo(CapabilityExecutionService.stableAttemptId(WORKFLOW_ID, STEP_ID))
+        assertThat(CapabilityExecutionService.retryAttemptId(WORKFLOW_ID, STEP_ID, 2))
+            .matches("^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
     }
 
     private fun claimToRunning(attemptId: String, ownerToken: String) {

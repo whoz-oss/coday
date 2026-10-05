@@ -216,6 +216,8 @@ object AgentAttemptErrorCodes {
     const val INVALID_RESULT_CAPABILITY_IDENTITY = "INVALID_RESULT_CAPABILITY_IDENTITY"
     const val INVALID_RESULT_REQUEST = "INVALID_RESULT_REQUEST"
     const val TRUST_CONTEXT_UNAVAILABLE = "TRUST_CONTEXT_UNAVAILABLE"
+    const val RESULT_CAPABILITY_REFRESH_FORBIDDEN = "RESULT_CAPABILITY_REFRESH_FORBIDDEN"
+    const val RESULT_ATTEMPT_NOT_REFRESHABLE = "RESULT_ATTEMPT_NOT_REFRESHABLE"
 
     // Phase 4 ask-step-question vocabulary (dedicated worker question channel).
     const val QUESTION_SCHEMA_INVALID = "QUESTION_SCHEMA_INVALID"
@@ -308,6 +310,14 @@ class TrustContextUnavailableException(
     message: String = "A verified trust context is required",
     details: Any? = null,
 ) : AgentAttemptException(AgentAttemptErrorCodes.TRUST_CONTEXT_UNAVAILABLE, 401, message, details)
+
+class ResultCapabilityRefreshForbiddenException(
+    message: String = "The caller cannot refresh this result capability",
+) : AgentAttemptException(AgentAttemptErrorCodes.RESULT_CAPABILITY_REFRESH_FORBIDDEN, 403, message)
+
+class ResultAttemptNotRefreshableException(
+    message: String = "The attempt cannot receive a renewed result capability",
+) : AgentAttemptException(AgentAttemptErrorCodes.RESULT_ATTEMPT_NOT_REFRESHABLE, 409, message)
 
 /** 400 — the structured step question fails validation. */
 class QuestionSchemaInvalidException(

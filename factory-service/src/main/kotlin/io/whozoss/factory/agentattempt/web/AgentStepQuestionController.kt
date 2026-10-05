@@ -119,6 +119,8 @@ class AgentStepQuestionController(
                     interactionId = asked.interactionId,
                     status = asked.status,
                     idempotent = asked.idempotent,
+                    revision = asked.revision,
+                    workflowId = asked.workflowId,
                 ),
             ),
         )

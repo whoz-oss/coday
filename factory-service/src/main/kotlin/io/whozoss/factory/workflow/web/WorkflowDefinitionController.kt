@@ -31,8 +31,7 @@ import org.springframework.web.multipart.MultipartFile
 /**
  * Read/write surface of the workflow definition registry.
  *
- * Port of `factory/dashboard/workflow-definition-routes.mjs`. Definitions are
- * tenant-scoped; the validated, canonical SHA-256 hash is computed server-side
+ * Definitions are tenant-scoped; the validated, canonical SHA-256 hash is computed server-side
  * and never trusted from the client.
  */
 @RestController

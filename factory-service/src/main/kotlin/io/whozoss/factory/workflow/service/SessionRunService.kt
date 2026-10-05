@@ -1,5 +1,6 @@
 package io.whozoss.factory.workflow.service
 
+import io.whozoss.factory.agentattempt.domain.AttemptLeaseFencingException
 import io.whozoss.factory.capability.AgentObservationUpdate
 import io.whozoss.factory.capability.CapabilityExecution
 import io.whozoss.factory.capability.CapabilityExecutionService
@@ -367,12 +368,28 @@ class SessionRunService(
             capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, step, repoRoot, ticket) { update ->
                 projectAgentObservation(scope, namespaceId, workflowId, step.id, statuses, update)
             }
+        } catch (fenced: AttemptLeaseFencingException) {
+            // Another claimant became authoritative while this run was observing
+            // AgentOS. Fencing is a hand-off, not a business failure: the loser
+            // must stop without publishing FAILED or blocking dependants. The
+            // current owner/recovery path will publish the terminal projection.
+            logger.info {
+                "Step '${step.id}' of workflow '$workflowId' lost its attempt lease; " +
+                    "leaving the step running for authoritative reconciliation"
+            }
+            return null
         } catch (error: Exception) {
             // The failure is handled OUTSIDE any (possibly dead) transaction: the
             // recovery writes run in a FRESH short transaction so they succeed
             // even when the prior query/operation failed.
             recordStepFailure(scope, namespaceId, workflowId, step, error, expectedRevision, statuses)
             return WorkflowStatuses.FAILED
+        }
+        if (execution.outcome is CapabilityOutcome.AgentDeferred) {
+            // A competing live claimant owns the durable attempt. This runner is
+            // non-authoritative and must not turn claim contention into a failed
+            // workflow step.
+            return null
         }
         var terminal = classify(execution.outcome)
         // Auto-oracles: once the step's own capability has succeeded, run every

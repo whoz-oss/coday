@@ -187,7 +187,7 @@ class FactoryGetWorkflowToolSpec : StringSpec({
         }
         // The worker tools live exclusively on the worker plugin.
         FactoryTestFixtures.workerTools().map { it.name }.toSet() shouldBe
-            setOf("FACTORY_WORKER__submit_step_result", "FACTORY_WORKER__ask_step_question")
+            setOf("FACTORY_WORKER__submit_step_result")
     }
 
     "workstream and worker plugins keep strictly separated surfaces and expose no deprecated command tool" {
@@ -234,7 +234,7 @@ class FactoryGetWorkflowToolSpec : StringSpec({
             )
     }
 
-    "worker tool plugin exposes exactly the two worker tools and registers in the catalog" {
+    "worker tool plugin exposes only the terminal result tool and registers in the catalog" {
         val plugin = FactoryWorkerToolPlugin { FactoryTestFixtures.services() }
         plugin.integrationType shouldBe "FACTORY_WORKER"
         plugin.configSchema.path("type").asText() shouldBe "object"
@@ -242,9 +242,6 @@ class FactoryGetWorkflowToolSpec : StringSpec({
         plugin
             .provideTools(null, null, ToolContext(UUID.randomUUID(), null, null, emptyList()))
             .map { it.name }
-            .shouldContainExactly(
-                "FACTORY_WORKER__submit_step_result",
-                "FACTORY_WORKER__ask_step_question",
-            )
+            .shouldContainExactly("FACTORY_WORKER__submit_step_result")
     }
 })

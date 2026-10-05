@@ -79,6 +79,26 @@ class AgentStepResultService(
     fun resolveCapability(scope: TenantScope, token: String): AgentStepResultCapability? =
         results.findByToken(scope, token)
 
+    /** Authoritative terminal result accepted for this exact durable attempt. */
+    @Transactional(readOnly = true)
+    fun acceptedResult(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ) = results.getByAttempt(scope, namespaceId, workflowId, stepId, attemptId)
+
+    @Transactional
+    fun refresh(
+        scope: TenantScope,
+        observed: AgentStepResultObservedIdentity,
+        runtimeId: String,
+        refreshKey: String,
+        now: Instant = Instant.now(),
+        ttlSeconds: Long = io.whozoss.factory.agentattempt.domain.AgentStepResultLimits.CAPABILITY_TTL_SECONDS,
+    ): IssuedCapability = results.refresh(scope, observed, runtimeId, refreshKey, now, ttlSeconds)
+
     /**
      * Redeem a capability with a structured business result.
      *

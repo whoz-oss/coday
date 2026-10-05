@@ -9,8 +9,7 @@ import java.util.Locale
 /**
  * Extracts the trusted identity + security context at the HTTP boundary.
  *
- * Faithful port of `extractTrustContext` in
- * `factory/dashboard/http-utils.mjs`. Identity is never inferred from the body
+ * Identity is never inferred from the body
  * or the working directory; it comes only from a *verified* credential:
  *
  *   1. a valid `Authorization: Bearer <jwt>` verified against the Fake IdP;

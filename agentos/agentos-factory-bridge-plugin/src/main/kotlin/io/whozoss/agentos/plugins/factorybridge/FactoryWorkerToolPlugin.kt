@@ -2,7 +2,6 @@ package io.whozoss.agentos.plugins.factorybridge
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.plugins.factorybridge.tools.FactoryAskStepQuestionTool
 import io.whozoss.agentos.plugins.factorybridge.tools.FactorySubmitStepResultTool
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -10,25 +9,34 @@ import io.whozoss.agentos.sdk.tool.ToolPlugin
 import org.pf4j.Extension
 
 /**
- * Builds the two worker `FACTORY_WORKER__*` tools from the shared plugin services.
+ * Builds the terminal worker result tool from the shared plugin services.
+ *
+ * Human questions are emitted exclusively by AgentOS' standard `queryUser`
+ * capability. The retired Factory ask-step tool remains source-compatible for
+ * old in-flight data, but is no longer exposed to agents.
  */
 internal fun buildFactoryWorkerTools(services: FactoryBridgeServices): List<StandardTool<*>> {
     val baseUrl = services.config.baseUrl
     val httpClient = services.httpClient
     val objectMapper = services.objectMapper
     return listOf(
-        FactorySubmitStepResultTool(baseUrl, httpClient, objectMapper, services.stepResultBindings),
-        FactoryAskStepQuestionTool(baseUrl, httpClient, objectMapper, services.stepResultBindings),
+        FactorySubmitStepResultTool(
+            baseUrl,
+            httpClient,
+            objectMapper,
+            services.stepResultBindings,
+            services.capabilityRefresher,
+        ),
     )
 }
 
 /**
  * Tool provider for the `FACTORY_WORKER` integration — the Worker trust boundary.
  *
- * Exposes exactly the two worker tools (`FACTORY_WORKER__submit_step_result`,
- * `FACTORY_WORKER__ask_step_question`). AgentConfig and IntegrationConfig determine
- * exposure; the tools themselves authorize each invocation against the active Factory
- * attempt binding and resolve attempt identity from it, never from model-authored input.
+ * Exposes only `FACTORY_WORKER__submit_step_result`. AgentConfig and
+ * IntegrationConfig determine exposure; the tool authorizes each invocation
+ * against the active Factory attempt binding and resolves attempt identity from
+ * it, never from model-authored input. Agent questions use AgentOS `queryUser`.
  *
  * The integration needs no parameters, but unlike the retired config-less `FACTORY`
  * plugin it declares a non-null empty-object [configSchema] so it registers in the
@@ -59,7 +67,7 @@ class FactoryWorkerToolPlugin
                 {
                     "type": "object",
                     "title": "Factory Worker Integration",
-                    "description": "Case-scoped worker result channel (submit step result, ask step question), fail-closed on an active Factory attempt binding. No configuration required.",
+                    "description": "Case-scoped worker result channel. Human questions use AgentOS queryUser. Fail-closed on an active Factory attempt binding. No configuration required.",
                     "properties": {},
                     "additionalProperties": false
                 }

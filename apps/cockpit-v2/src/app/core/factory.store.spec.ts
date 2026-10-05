@@ -111,6 +111,7 @@ describe('FactoryStore', () => {
     http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: interactions })
     http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush(attempts)
     http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: actions })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
   }
 
   // ---------------------------------------------------------------------------
@@ -273,6 +274,7 @@ describe('FactoryStore', () => {
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
     http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
     http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
 
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')
@@ -329,6 +331,7 @@ describe('FactoryStore', () => {
       .expectOne((r) => r.url.endsWith('/wf-1/attempts'))
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
     http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
 
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')
@@ -381,6 +384,61 @@ describe('FactoryStore', () => {
   // Governed actions & blockers: backend authority, preserved verbatim
   // ---------------------------------------------------------------------------
 
+  it('preserves agent questions when later enrichment responses merge', () => {
+    flushInitialWorkflows([snapshot])
+
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/agent-questions'))
+      .flush({
+        data: [
+          {
+            questionEventId: 'q-1',
+            caseId: 'case-1',
+            attemptId: 'a-1',
+            stepId: 'build',
+            question: 'Choose',
+            questionType: 'SINGLE_CHOICE',
+            options: ['A', 'B'],
+            answered: false,
+          },
+        ],
+      })
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+
+    expect(store.session('wf-1')?.agentQuestions?.map((question) => question.questionEventId)).toEqual(['q-1'])
+  })
+
+  it('keeps Case metadata when question projection is unavailable', () => {
+    flushInitialWorkflows([snapshot])
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: {} })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/agent-questions'))
+      .flush(
+        {
+          error: {
+            code: 'AGENT_QUESTIONS_UNAVAILABLE',
+            message: 'AgentOS unavailable',
+            details: { caseId: 'case-9', namespaceId: 'ns-1', workflowId: 'wf-1', stepId: 'build' },
+          },
+        },
+        { status: 503, statusText: 'Unavailable' }
+      )
+
+    expect(store.session('wf-1')?.agentQuestionsError).toEqual(
+      expect.objectContaining({ code: 'AGENT_QUESTIONS_UNAVAILABLE', caseId: 'case-9', namespaceId: 'ns-1' })
+    )
+  })
+
   it('enriches the session with backend allowedActions and blockers', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment(
@@ -416,6 +474,7 @@ describe('FactoryStore', () => {
     http
       .expectOne((r) => r.url.endsWith('/wf-1/actions'))
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
 
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')

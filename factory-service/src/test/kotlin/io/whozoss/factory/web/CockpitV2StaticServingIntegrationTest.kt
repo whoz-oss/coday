@@ -1,6 +1,5 @@
 package io.whozoss.factory.web
 
-import io.whozoss.factory.config.CockpitProperties
 import io.whozoss.factory.config.CockpitV2Properties
 import io.whozoss.factory.config.CockpitV2WebConfig
 import io.whozoss.factory.config.FactoryProperties
@@ -23,20 +22,19 @@ import java.nio.file.Path
 /**
  * HTTP tests of the Cockpit V2 same-origin hosting.
  *
- * Uses a MockMvc slice (no Neo4j) with two temporary asset directories so the
+ * Uses a MockMvc slice (no Neo4j) with a temporary asset directory so the
  * assertions do not depend on a prior `nx build cockpit-v2`:
  *
  *  1. `/cockpit-v2` (and a client route below it) returns the SPA shell as
  *     `text/html`;
  *  2. a missing `.js` / `.css` asset returns `404` and never the HTML shell;
- *  3. the legacy `/cockpit` surface still serves the vanilla cockpit unchanged.
+ *  3. former legacy entry points redirect to Cockpit V2.
  */
 @WebMvcTest(controllers = [CockpitV2Controller::class, CockpitController::class])
-@EnableConfigurationProperties(FactoryProperties::class, CockpitProperties::class, CockpitV2Properties::class)
+@EnableConfigurationProperties(FactoryProperties::class, CockpitV2Properties::class)
 @Import(
     CockpitV2Assets::class,
     CockpitV2WebConfig::class,
-    CockpitAssets::class,
     TrustContextExtractor::class,
     LocalDevMembershipResolver::class,
     FactoryExceptionHandler::class,
@@ -92,11 +90,12 @@ class CockpitV2StaticServingIntegrationTest {
     }
 
     @Test
-    fun `keeps the legacy cockpit surface unchanged`() {
-        mockMvc.get("/cockpit").andExpect {
-            status { isOk() }
-            content { contentTypeCompatibleWith(MediaType.TEXT_HTML) }
-            content { string(containsString("<title>Factory</title>")) }
+    fun `redirects former legacy entry points to Cockpit V2`() {
+        listOf("/", "/cockpit", "/cockpit/", "/cockpit.html").forEach { path ->
+            mockMvc.get(path).andExpect {
+                status { is3xxRedirection() }
+                redirectedUrl("/cockpit-v2")
+            }
         }
     }
 
@@ -109,19 +108,10 @@ class CockpitV2StaticServingIntegrationTest {
             Files.writeString(root.resolve("main-abc123.js"), "console.log('cockpit-v2')")
         }
 
-        private val cockpitDir: Path = Files.createTempDirectory("cockpit-assets").also { root ->
-            Files.writeString(
-                root.resolve("cockpit.html"),
-                "<!doctype html><html><head><title>Factory</title></head>" +
-                    "<body><div id=\"cockpit-topbar\"></div></body></html>",
-            )
-        }
-
         @JvmStatic
         @DynamicPropertySource
         fun registerAssets(registry: DynamicPropertyRegistry) {
             registry.add("factory.cockpit.v2.assets-dir") { cockpitV2Dir.toAbsolutePath().toString() }
-            registry.add("factory.cockpit.assets-dir") { cockpitDir.toAbsolutePath().toString() }
         }
     }
 }

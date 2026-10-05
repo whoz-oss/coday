@@ -1,13 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
-import { AllowedAction, HumanInteraction, WorkflowBlocker } from '../../core/models'
+
+import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../core/models'
 
 export interface ReplyIntent {
   interactionId: string
   actionId?: string
   text?: string
   expectedRevision?: number
+}
+
+export interface AgentQuestionAnswerIntent {
+  question: AgentQuestion
+  answer: string
 }
 
 export interface RetryIntent {
@@ -46,14 +52,35 @@ export class ActionBarComponent {
   readonly allowedActions = input<AllowedAction[]>([])
   readonly blockers = input<WorkflowBlocker[]>([])
   readonly interactions = input<HumanInteraction[]>([])
+  readonly agentQuestionsInput = input<AgentQuestion[]>([])
+  readonly selectedStepId = input<string>('')
+  readonly namespaceId = input<string>('')
+  readonly agentQuestionsError = input<{
+    code: string
+    message: string
+    caseId?: string
+    namespaceId?: string
+    workflowId?: string
+    stepId?: string
+  } | null>(null)
+  readonly answeringQuestionId = input<string | null>(null)
+  readonly questionFeedback = input<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(null)
 
   readonly reply = output<ReplyIntent>()
+  readonly agentQuestionAnswered = output<AgentQuestionAnswerIntent>()
   readonly retryRequested = output<RetryIntent>()
   readonly cancelAttempt = output<CancelIntent>()
   readonly continueCost = output<ContinueCostIntent>()
   readonly stopCost = output<void>()
 
-  protected readonly replyActions = computed(() => this.allowedActions().filter((action) => action.type === 'reply'))
+  protected readonly replyActions = computed(() =>
+    this.allowedActions().filter(
+      (action) => action.type === 'reply' && this.interactionFor(action)?.interactionType !== 'agent_question'
+    )
+  )
+  protected readonly agentQuestions = computed(() =>
+    this.agentQuestionsInput().filter((question) => !question.answered)
+  )
   protected readonly retryActions = computed(() => this.allowedActions().filter((action) => action.type === 'retry'))
   protected readonly cancelActions = computed(() =>
     this.allowedActions().filter((action) => action.type === 'cancel_attempt')
@@ -65,7 +92,9 @@ export class ActionBarComponent {
     this.allowedActions().filter((action) => action.type === 'stop_cost')
   )
 
-  protected readonly hasActions = computed(() => this.allowedActions().length > 0)
+  protected readonly hasActions = computed(
+    () => this.allowedActions().length > 0 || this.agentQuestions().length > 0 || this.agentQuestionsError() !== null
+  )
   protected readonly hasBlockers = computed(() => this.blockers().length > 0)
 
   /** Draft reply texts, keyed by interaction id (only used when a field shows). */
@@ -110,6 +139,26 @@ export class ActionBarComponent {
       default:
         return 'help'
     }
+  }
+
+  protected supportedQuestion(question: AgentQuestion): boolean {
+    return ['FREE_TEXT', 'SINGLE_CHOICE', 'OPEN_CHOICE'].includes(question.questionType ?? '')
+  }
+
+  protected caseLink(caseId: string, namespaceId?: string): string {
+    const params = new URLSearchParams()
+    const namespace = namespaceId || this.namespaceId()
+    if (namespace) params.set('ns', namespace)
+    params.set('case', caseId)
+    return `/agentos/home?${params.toString()}`
+  }
+
+  protected submitAgentQuestion(question: AgentQuestion, choice?: string): void {
+    if (!this.supportedQuestion(question) || this.answeringQuestionId()) return
+    const answer = (choice ?? this.draftFor(question.questionEventId)).trim()
+    if (!answer) return
+    if (question.questionType === 'SINGLE_CHOICE' && !question.options?.includes(answer)) return
+    this.agentQuestionAnswered.emit({ question, answer })
   }
 
   protected submitReply(action: AllowedAction, actionId?: string): void {

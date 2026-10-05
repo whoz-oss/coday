@@ -1,7 +1,11 @@
 package io.whozoss.agentos.plugins.factorybridge.tools
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.plugins.factorybridge.FactoryCapabilityRefreshException
+import io.whozoss.agentos.plugins.factorybridge.FactoryStepResultBinding
 import io.whozoss.agentos.plugins.factorybridge.FactoryStepResultBindingRegistry
+import io.whozoss.agentos.plugins.factorybridge.FactoryStepResultCapabilityRefresher
+import mu.KLogging
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -18,6 +22,7 @@ class FactorySubmitStepResultTool(
     private val http: OkHttpClient,
     private val mapper: ObjectMapper,
     private val bindings: FactoryStepResultBindingRegistry,
+    private val refresher: FactoryStepResultCapabilityRefresher? = null,
 ) : StandardTool<FactorySubmitStepResultTool.Input> {
     data class Artifact(val kind: String, val encoding: String = "markdown", val content: String)
 
@@ -55,12 +60,35 @@ class FactorySubmitStepResultTool(
             ?: return failure("FACTORY_WORKER_BINDING_INVALID", "Factory worker invocation requires exactly one controlling case.")
         val agent = context.agentName
             ?: return failure("FACTORY_WORKER_BINDING_INVALID", "Factory worker invocation requires an agent identity.")
-        val binding = bindings.acquire(caseId, context.namespaceId, agent)
+        var binding = bindings.acquire(caseId, context.namespaceId, agent, allowExpired = refresher != null)
             ?: return failure(
                 "FACTORY_WORKER_BINDING_MISSING",
                 "No active Factory attempt binding matches this case, namespace, and agent, or the binding is unavailable.",
             )
-        val body = mapper.writeValueAsString(mapOf("attemptId" to binding.attemptId, "result" to input))
+        if (!binding.expiresAt.isAfter(java.time.Instant.now())) {
+            binding = refresh(binding, context).getOrElse { error ->
+                bindings.release(binding)
+                val code = (error as? FactoryCapabilityRefreshException)?.code ?: "FACTORY_CAPABILITY_REFRESH_FAILED"
+                return failure(code, "Factory result capability could not be renewed: $code.")
+            }
+        }
+        val resultPayload = linkedMapOf<String, Any?>(
+            "status" to input.status,
+            "summary" to input.summary,
+            "artifacts" to input.artifacts,
+            "claims" to input.claims,
+            "findings" to input.findings.map { finding ->
+                linkedMapOf<String, Any?>(
+                    "severity" to finding.severity,
+                    "code" to finding.code,
+                    "summary" to finding.summary,
+                ).apply {
+                    finding.file?.let { put("file", it) }
+                    finding.line?.let { put("line", it) }
+                }
+            },
+        )
+        val body = mapper.writeValueAsString(mapOf("attemptId" to binding.attemptId, "result" to resultPayload))
         val request =
             Request
                 .Builder()
@@ -75,10 +103,23 @@ class FactorySubmitStepResultTool(
                 http.newCall(request).execute().use { r ->
                     val root = runCatching { mapper.readTree(r.body?.string()) }.getOrNull()
                     val code = root?.path("error")?.path("code")?.asText("FACTORY_REQUEST_FAILED") ?: "FACTORY_REQUEST_FAILED"
+                    logger.info {
+                        "Factory result submission: HTTP ${r.code} code=$code caseId=$caseId attemptId=${binding.attemptId} agent=$agent"
+                    }
                     when {
                         r.isSuccessful -> {
                             bindings.acknowledge(binding)
                             ToolExecutionResult.success(mapper.writeValueAsString(root?.path("data")))
+                        }
+
+                        r.code == 410 && code == "RESULT_CAPABILITY_EXPIRED" && refresher != null -> {
+                            val refreshed = refresh(binding, context).getOrElse { error ->
+                                bindings.release(binding)
+                                val refreshCode = (error as? FactoryCapabilityRefreshException)?.code ?: "FACTORY_CAPABILITY_REFRESH_FAILED"
+                                return@use failure(refreshCode, "Factory result capability could not be renewed: $refreshCode.")
+                            }
+                            binding = refreshed
+                            submitOnce(caseId, agent, binding, body)
                         }
 
                         r.code >= 500 || code == "RESULT_SCHEMA_INVALID" -> {
@@ -99,8 +140,64 @@ class FactorySubmitStepResultTool(
         }
     }
 
+    private suspend fun refresh(
+        binding: FactoryStepResultBinding,
+        context: ToolContext,
+    ): Result<FactoryStepResultBinding> {
+        val refreshed = refresher?.refresh(binding, context)
+            ?: return Result.failure(IllegalStateException("Capability refresh is unavailable"))
+        return refreshed.mapCatching { replacement ->
+            check(bindings.replaceLeased(binding, replacement)) { "Factory result binding changed while capability was renewed" }
+            replacement
+        }
+    }
+
+    private suspend fun submitOnce(
+        caseId: java.util.UUID,
+        agent: String,
+        binding: FactoryStepResultBinding,
+        body: String,
+    ): ToolExecutionResult =
+        try {
+            withContext(Dispatchers.IO) {
+                val request = Request.Builder()
+                    .url("${baseUrl.trimEnd('/')}/api/factory/agent-step-results")
+                    .header("Authorization", "Bearer ${binding.capabilityToken}")
+                    .header("X-AgentOS-Case-Id", caseId.toString())
+                    .header("X-AgentOS-Agent-Name", agent)
+                    .post(body.toRequestBody("application/json".toMediaType()))
+                    .build()
+                http.newCall(request).execute().use { response ->
+                    val root = runCatching { mapper.readTree(response.body?.string()) }.getOrNull()
+                    val code = root?.path("error")?.path("code")?.asText("FACTORY_REQUEST_FAILED") ?: "FACTORY_REQUEST_FAILED"
+                    logger.info {
+                        "Factory result resubmission: HTTP ${response.code} code=$code caseId=$caseId attemptId=${binding.attemptId} agent=$agent"
+                    }
+                    when {
+                        response.isSuccessful -> {
+                            bindings.acknowledge(binding)
+                            ToolExecutionResult.success(mapper.writeValueAsString(root?.path("data")))
+                        }
+                        response.code >= 500 || code == "RESULT_SCHEMA_INVALID" -> {
+                            bindings.release(binding)
+                            failure(code, "Factory rejected the result: $code (HTTP ${response.code}). Correct the structured arguments and retry.")
+                        }
+                        else -> {
+                            bindings.invalidate(binding)
+                            failure(code, "Factory rejected the result after one controlled renewal: $code (HTTP ${response.code}).")
+                        }
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            bindings.release(binding)
+            failure("FACTORY_UNAVAILABLE", "Factory is unavailable; the result may be retried.")
+        }
+
     private fun failure(
         code: String,
         message: String,
     ) = ToolExecutionResult.error(message, errorType = code, errorMessage = message)
+
+    companion object : KLogging()
 }

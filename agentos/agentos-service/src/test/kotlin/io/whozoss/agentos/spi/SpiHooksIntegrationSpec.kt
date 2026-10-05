@@ -173,6 +173,43 @@ class SpiHooksIntegrationSpec : StringSpec({
         savedEvents.filterIsInstance<AnswerEvent>() shouldHaveSize 1
     }
 
+    "externally handled AnswerInterceptor: no AnswerEvent is created and the predecessor case is not resumed" {
+        val caseId = UUID.randomUUID()
+        val savedEvents = mutableListOf<CaseEvent>()
+        var agentRuns = 0
+        val interceptor =
+            object : AnswerInterceptor {
+                override fun interceptAnswer(
+                    caseId: UUID,
+                    questionEvent: QuestionEvent,
+                    answerText: String,
+                    actor: Actor,
+                ): AnswerInterceptResult = AnswerInterceptResult.ExternallyHandled
+            }
+        val question = questionEvent(caseId)
+        val runtime =
+            CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> savedEvents.add(event); event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = { _, _ -> true },
+                runAgent = { _, _, _, _, _ -> agentRuns++ },
+                inputEvents = listOf(question),
+                answerInterceptors = listOf(interceptor),
+            )
+
+        runtime.addUserMessage(userActor, listOf(MessageContent.Text("Approve")), answerToEventId = question.id)
+        kotlinx.coroutines.runBlocking { runtime.run() }
+
+        savedEvents.filterIsInstance<AnswerEvent>().shouldBeEmpty()
+        savedEvents.filterIsInstance<AgentSelectedEvent>().shouldBeEmpty()
+        savedEvents.filterIsInstance<WarnEvent>().shouldBeEmpty()
+        agentRuns shouldBe 0
+    }
+
     "rejecting AnswerInterceptor: no AnswerEvent, WarnEvent surfaced" {
         val caseId = UUID.randomUUID()
         val savedEvents = mutableListOf<CaseEvent>()

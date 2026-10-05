@@ -1,8 +1,8 @@
 package io.whozoss.factory.error
 
 /**
- * Canonical HTTP error envelope, byte-for-byte compatible with the Node Factory
- * HTTP boundary (`factory/dashboard/http-utils.mjs`):
+ * Canonical HTTP error envelope retained from the former Node Factory HTTP
+ * boundary contract:
  *
  * ```json
  * { "error": { "code": "NOT_FOUND", "message": "...", "details": null } }

@@ -1,8 +1,9 @@
 import { Injectable, computed, inject, signal } from '@angular/core'
 import { Subscription, catchError, forkJoin, of } from 'rxjs'
-import { FactoryApiService } from './factory-api.service'
+import { FactoryApiError, FactoryApiService } from './factory-api.service'
 import { mapProjectionToRunSummary, mapProjectionToSessionDetail, namespaceOf, workflowIdOf } from './mappers'
 import {
+  AgentQuestion,
   CostSummary,
   GetActionsResponse,
   RecentTask,
@@ -40,6 +41,10 @@ export class FactoryStore {
   /** No real recent-teardown API exists yet; kept empty for backwards-compat. */
   readonly recentTasks = signal<RecentTask[]>([])
   readonly showDestroyed = signal(false)
+  readonly answeringQuestionId = signal<string | null>(null)
+  readonly questionFeedback = signal<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(
+    null
+  )
 
   readonly activeSandboxes = computed(() => this.sandboxes().filter((s) => s.status !== 'destroyed'))
   readonly destroyedSandboxes = computed(() => this.sandboxes().filter((s) => s.status === 'destroyed'))
@@ -74,6 +79,8 @@ export class FactoryStore {
       interactions?: unknown
       attempts?: unknown
       actions?: GetActionsResponse
+      agentQuestions?: AgentQuestion[]
+      agentQuestionsError?: SessionDetail['agentQuestionsError']
     }
   >()
   private readonly subscriptions = new Subscription()
@@ -188,6 +195,8 @@ export class FactoryStore {
       interactions?: unknown
       attempts?: unknown
       actions?: GetActionsResponse
+      agentQuestions?: AgentQuestion[]
+      agentQuestionsError?: SessionDetail['agentQuestionsError']
     }): void => {
       const next = { ...(this.enrichment.get(id) ?? {}), ...partial }
       this.enrichment.set(id, next)
@@ -198,8 +207,10 @@ export class FactoryStore {
         next.metrics,
         next.interactions,
         next.attempts,
-        next.actions
+        next.actions,
+        next.agentQuestions
       )
+      if (next.agentQuestionsError) detail.agentQuestionsError = next.agentQuestionsError
       this.sessions.update((map) => {
         const updated = new Map(map)
         updated.set(detail.id, detail)
@@ -228,6 +239,13 @@ export class FactoryStore {
     // failed fetch degrades to an empty action set (never crashes the store and
     // never lets the UI decide an action on its own).
     this.api.getActions(id, namespaceId).subscribe({ next: (actions) => merge({ actions }), error: () => undefined })
+    this.api.getAgentQuestions(id, namespaceId).subscribe({
+      next: (agentQuestions) => merge({ agentQuestions, agentQuestionsError: undefined }),
+      error: (error: FactoryApiError) => {
+        if (error.code !== 'AGENT_QUESTIONS_UNAVAILABLE') return
+        merge({ agentQuestions: [], agentQuestionsError: agentQuestionError(error, id, namespaceId) })
+      },
+    })
   }
 
   // ---------------------------------------------------------------------------
@@ -252,6 +270,34 @@ export class FactoryStore {
       next: () => this.load(),
       error: () => undefined,
     })
+  }
+
+  /** Answer an AgentOS queryUser question; AgentOS remains the authority. */
+  answerAgentQuestion(workflowId: string, question: AgentQuestion, answer: string): void {
+    if (this.answeringQuestionId()) return
+    this.answeringQuestionId.set(question.questionEventId)
+    this.questionFeedback.set(null)
+    const namespaceId = this.namespaceFor(workflowId)
+    this.api
+      .answerAgentQuestion(workflowId, question.questionEventId, { stepId: question.stepId, answer }, namespaceId)
+      .subscribe({
+        next: () => {
+          this.answeringQuestionId.set(null)
+          this.load()
+        },
+        error: (error: FactoryApiError) => {
+          this.answeringQuestionId.set(null)
+          const conflict = error.status === 409
+          this.questionFeedback.set({
+            interactionId: question.questionEventId,
+            kind: conflict ? 'conflict' : 'error',
+            message: conflict
+              ? "La question a changé. L'état autorisé a été actualisé; vérifiez votre réponse."
+              : error.message,
+          })
+          if (conflict) this.load()
+        },
+      })
   }
 
   /** Open a retry for a blocked step, then re-fetch the authoritative state. */
@@ -322,6 +368,26 @@ export class FactoryStore {
   /** Replace the run attached to a sandbox once its real cost is known. */
   private updateSandboxRun(run: RunSummary): void {
     this.sandboxes.update((list) => list.map((sandbox) => (sandbox.run?.id === run.id ? { ...sandbox, run } : sandbox)))
+  }
+}
+
+function agentQuestionError(
+  error: FactoryApiError,
+  workflowId: string,
+  namespaceId?: string
+): NonNullable<SessionDetail['agentQuestionsError']> {
+  const details = error.details
+  const readDetail = (key: string): string | undefined => {
+    const value = details?.[key]
+    return typeof value === 'string' && value.length > 0 ? value : undefined
+  }
+  return {
+    code: error.code,
+    message: error.message,
+    caseId: readDetail('caseId'),
+    namespaceId: readDetail('namespaceId') ?? namespaceId,
+    workflowId: readDetail('workflowId') ?? workflowId,
+    stepId: readDetail('stepId'),
   }
 }
 

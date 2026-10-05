@@ -45,16 +45,28 @@ class ObservationEscalationPolicy(
     ): Escalation {
         val steps = mutableListOf<String>()
 
+        // IDLE without a structured Factory result is a completed protocol
+        // exchange with a missing contract submission, not evidence that the
+        // runtime is stuck. Killing that already-idle case is destructive and
+        // cannot make the missing result appear.
+        if (initial.reason == VerdictDeriver.AGENT_NO_STRUCTURED_RESULT) {
+            return Escalation(indeterminateAfter(initial, steps), steps)
+        }
+
         // (1) REST snapshot: the durable case state is authoritative and cheap.
         steps += STEP_SNAPSHOT
-        runCatching { adapter.reconcile(caseId) }.getOrNull()?.terminalOrNull()?.let { return Escalation(it, steps) }
+        runCatching { adapter.reconcile(caseId) }.getOrNull()?.let { reconciled ->
+            if (reconciled is AgentOsExecutionVerdict.WaitingHuman) return Escalation(reconciled, steps)
+            reconciled.terminalOrNull()?.let { return Escalation(it, steps) }
+        }
 
         // (2) Bounded SSE reconnection: may observe the terminal event the lost
         // stream missed, with checkpoint deduplication.
         steps += STEP_RECONNECT
-        runCatching { adapter.observeTurn(caseId, attemptId, reconnectBudgetMs) }.getOrNull()
-            ?.terminalOrNull()
-            ?.let { return Escalation(it, steps) }
+        runCatching { adapter.observeTurn(caseId, attemptId, reconnectBudgetMs) }.getOrNull()?.let { observed ->
+            if (observed is AgentOsExecutionVerdict.WaitingHuman) return Escalation(observed, steps)
+            observed.terminalOrNull()?.let { return Escalation(it, steps) }
+        }
 
         // (3) Explicit kill, only when the timeout policy allows it.
         if (!killOnTimeout) {

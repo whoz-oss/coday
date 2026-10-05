@@ -1,11 +1,8 @@
 package io.whozoss.factory.proxy
 
 /**
- * Thin HTTP client for AgentOS, used by the dashboard relay endpoints and the
- * W8.3 agent-turn capability.
- *
- * Port of `factory/dashboard/agentos-proxy.mjs` and
- * `factory/src/adapters/agentos/agentos-http-client.ts`. Every method relays the
+ * Thin HTTP client for AgentOS, used by the Cockpit V2 relay endpoints and the
+ * W8.3 agent-turn capability. Every method relays the
  * `X-External-User-Id` trusted identity when supplied. The boundary is HTTP
  * only: nothing here imports an AgentOS Kotlin class.
  */

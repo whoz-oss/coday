@@ -111,8 +111,9 @@ class FactoryStepResultBindingRegistry(
         caseId: UUID,
         namespaceId: UUID,
         agentName: String,
+        allowExpired: Boolean = false,
     ): FactoryStepResultBinding? {
-        val binding = validated(caseId, namespaceId, agentName, "acquire") ?: return null
+        val binding = validated(caseId, namespaceId, agentName, "acquire", allowExpired) ?: return null
         if (!binding.leased.compareAndSet(false, true)) {
             logger.warn { "Factory result binding acquire: already leased caseId=$caseId attemptId=${binding.attemptId}" }
             return null
@@ -120,6 +121,23 @@ class FactoryStepResultBindingRegistry(
         store?.setLease(caseId, true)
         logger.info { "Factory result binding acquire: accepted caseId=$caseId attemptId=${binding.attemptId} agent=$agentName" }
         return binding
+    }
+
+    fun replaceLeased(
+        current: FactoryStepResultBinding,
+        replacement: FactoryStepResultBinding,
+    ): Boolean {
+        require(current.caseId == replacement.caseId)
+        require(current.namespaceId == replacement.namespaceId)
+        require(current.agentName == replacement.agentName)
+        require(current.attemptId == replacement.attemptId)
+        require(current.runtimeId == replacement.runtimeId)
+        require(replacement.expiresAt.isAfter(clock.instant()))
+        require(replacement.capabilityToken.length in 32..256)
+        replacement.leased.set(true)
+        val replaced = bindings.replace(current.caseId, current, replacement)
+        if (replaced) store?.putBinding(toState(replacement, leased = true))
+        return replaced
     }
 
     fun acknowledge(binding: FactoryStepResultBinding) {
@@ -161,14 +179,14 @@ class FactoryStepResultBindingRegistry(
         namespaceId: UUID,
         agentName: String,
         operation: String,
+        allowExpired: Boolean = false,
     ): FactoryStepResultBinding? {
         val binding = bindings[caseId]
         if (binding == null) {
             logger.warn { "Factory result binding $operation: absent caseId=$caseId agent=$agentName" }
             return null
         }
-        if (!binding.expiresAt.isAfter(clock.instant())) {
-            expire(caseId, binding)
+        if (!binding.expiresAt.isAfter(clock.instant()) && !allowExpired) {
             logger.warn { "Factory result binding $operation: expired caseId=$caseId attemptId=${binding.attemptId}" }
             return null
         }

@@ -259,6 +259,46 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `create run accepts an optional initial request and persists it as controller request text`() {
+        registerDefinition()
+        val request = mapOf(
+            "workflowType" to "wf-http",
+            "initialRequest" to "Analyse the incident and identify the unresolved questions.",
+        )
+        val requestHeaders = headers().apply { set("Idempotency-Key", "create-run-initial-request") }
+
+        val created = restTemplate.exchange(
+            "/api/factory/workflows",
+            HttpMethod.POST,
+            HttpEntity(request, requestHeaders),
+            jsonType(),
+        )
+
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        val controllerRequest = data(created.body)["controllerRequest"] as Map<*, *>
+        assertThat(controllerRequest["text"]).isEqualTo("Analyse the incident and identify the unresolved questions.")
+        assertThat(controllerRequest["source"]).isEqualTo("factory-create-run")
+        assertThat(data(created.body)["title"]).isEqualTo("Wf http")
+    }
+
+    @Test
+    fun `create run keeps title ticket and initial request optional`() {
+        registerDefinition()
+        val requestHeaders = headers().apply { set("Idempotency-Key", "create-run-minimal") }
+
+        val created = restTemplate.exchange(
+            "/api/factory/workflows",
+            HttpMethod.POST,
+            HttpEntity(mapOf("workflowType" to "wf-http"), requestHeaders),
+            jsonType(),
+        )
+
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(created.body)["controllerRequest"]).isNull()
+        assertThat(data(created.body)["title"]).isEqualTo("Wf http")
+    }
+
+    @Test
     fun `start returns 201 with the created snapshot and detail returns existing`() {
         registerDefinition()
         val startBody = mapOf(

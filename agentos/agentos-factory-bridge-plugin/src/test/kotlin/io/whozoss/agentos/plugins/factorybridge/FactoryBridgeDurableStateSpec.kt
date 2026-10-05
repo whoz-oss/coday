@@ -34,6 +34,16 @@ class FactoryBridgeDurableStateSpec : StringSpec({
         }
     }
 
+    "step-question correlation survives a restart" {
+        withDir { dir ->
+            val questionId = UUID.randomUUID()
+            val reference = FactoryCheckpointRef("wf-1", "question-1", 7L)
+            FactoryTestFixtures.services(dataDir = dir).pendingStepQuestions[questionId] = reference
+
+            FactoryTestFixtures.services(dataDir = dir).pendingStepQuestions[questionId] shouldBe reference
+        }
+    }
+
     "a terminal lifecycle invalidation removes the binding and pending checkpoint durably" {
         withDir { dir ->
             val caseId = UUID.randomUUID()

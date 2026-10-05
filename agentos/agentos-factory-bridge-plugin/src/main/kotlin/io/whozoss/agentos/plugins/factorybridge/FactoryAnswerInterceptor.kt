@@ -42,7 +42,14 @@ class FactoryAnswerInterceptor
             answerText: String,
             actor: Actor,
         ): AnswerInterceptResult {
-            val checkpoint = services().pendingCheckpoints.remove(caseId) ?: return AnswerInterceptResult.Accept
+            val resolved = services()
+            // Standard AgentOS queryUser questions always stay under AgentOS
+            // authority: persist AnswerEvent and resume the same run. The
+            // legacy step-question map is intentionally not consumed here;
+            // old Factory questions remain explicit legacy state and are not
+            // silently converted to the standard channel.
+            val checkpoint = resolved.pendingCheckpoints[caseId]
+                ?: return AnswerInterceptResult.Accept
             val result =
                 runBlocking {
                     checkpointClient.submitDecision(
@@ -50,10 +57,15 @@ class FactoryAnswerInterceptor
                         decision = answerText,
                         caseId = caseId.toString(),
                         actorId = actor.id,
+                        namespaceId = questionEvent.namespaceId.toString(),
+                        stepQuestion = false,
                     )
                 }
             return result.fold(
-                onSuccess = { AnswerInterceptResult.Accept },
+                onSuccess = {
+                    resolved.pendingCheckpoints.remove(caseId, checkpoint)
+                    AnswerInterceptResult.Accept
+                },
                 onFailure = { error ->
                     val reason = error.message ?: "Factory rejected the decision"
                     logger.warn { "Factory rejected answer for case=$caseId workflow=${checkpoint.workflowId}: $reason" }

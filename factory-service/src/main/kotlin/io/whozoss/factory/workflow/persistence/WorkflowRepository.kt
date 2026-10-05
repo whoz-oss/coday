@@ -169,6 +169,9 @@ interface WorkflowEvidenceRepository {
 interface HumanInteractionRepository {
     fun find(scope: TenantScope, namespaceId: String, workflowId: String, interactionId: String): HumanInteractionRecord?
 
+    /** Locate the authoritative open interaction without trusting a browser namespace. */
+    fun findOpenByWorkflowAndId(scope: TenantScope, workflowId: String, interactionId: String): HumanInteractionRecord?
+
     fun list(scope: TenantScope, namespaceId: String, workflowId: String, openOnly: Boolean): List<HumanInteractionRecord>
 
     fun insert(scope: TenantScope, record: HumanInteractionRecord): HumanInteractionRecord

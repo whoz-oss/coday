@@ -233,10 +233,11 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         ticket: String?,
     ): String {
-        val legacyBase = briefFromTicket(ticket) ?: "Execute Factory session step '${step.id}'."
+        val ticketInstruction = briefFromTicket(ticket)
+        val entryStep = step.dependsOn.isEmpty()
+        val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
         val inputs = LinkedHashMap<String, Any?>()
         if (step.dependsOn.isNotEmpty()) {
-            val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
             for (dependency in step.dependsOn) {
                 val item = evidence.lastOrNull {
                     it.stepId == dependency && it.kind == AGENT_RESULT_EVIDENCE_KIND && it.outcome == "pass"
@@ -244,7 +245,11 @@ class CapabilityExecutionService(
                 inputs[dependency] = item.facts["outputs"] ?: item.facts
             }
         }
-        val legacyBrief = if (inputs.isEmpty()) legacyBase else "$legacyBase Inputs:${renderValue(inputs)}"
+        // Only direct dependency outputs are trusted here. Intermediate agent
+        // steps are instructed to relay the original run-brief unchanged, which
+        // provides transitive handoff without selecting an artifact from an
+        // unrelated parallel branch.
+        val runBrief = inputs.values.firstNotNullOfOrNull(::findRunBrief)
         val controllerRequest = workflowRepository.findInstance(scope, namespaceId, workflowId)
             ?.instance
             ?.get("controllerRequest")
@@ -252,25 +257,59 @@ class CapabilityExecutionService(
             ?.get("text")
             .let { it as? String }
             ?.takeIf { it.isNotBlank() }
-            ?: return legacyBrief
-
-        // Some older/custom launch paths may already have embedded the request in
-        // their step context. Keep that command byte-for-byte instead of adding a
-        // second copy of the same user request.
-        if (legacyBrief.contains(controllerRequest)) return legacyBrief
 
         return buildString {
-            appendLine("## Global user request")
-            appendLine(controllerRequest)
-            appendLine()
+            controllerRequest?.let {
+                appendLine("## User request")
+                appendLine(it)
+                appendLine()
+            }
             appendLine("## Current step")
+            appendLine("Id: ${step.id}")
             appendLine("Name: ${step.name}")
-            appendLine("Instructions: $legacyBase")
+            appendLine("Role: ${step.responsibility.name ?: step.responsibility.kind.wire}")
+            appendLine("Scope: Work only on this step.")
+            ticketInstruction?.let { appendLine("Ticket context: $it") }
+            if (inputs.isNotEmpty()) appendLine("Inputs: ${renderValue(inputs)}")
+            if (!entryStep && runBrief != null) appendLine("Run brief handoff: ${renderValue(runBrief)}")
             appendLine()
-            appendLine("## Scope and structured result")
-            append("Work only on this step. Return a structured result for downstream Factory steps.")
-            if (inputs.isNotEmpty()) append(" Inputs:${renderValue(inputs)}")
+            appendLine("## Execution contract")
+            if (entryStep) {
+                appendLine("- This is an entry step. Frame the handoff before completing it: objective, scope and exclusions, criteria explicitly supplied by the user or workflow, constraints, and open questions.")
+                appendLine("- If the initial intention is absent or ambiguous, call queryUser and wait for the answer. Do not submit FAIL merely because clarification is needed.")
+                appendLine("- If queryUser is unavailable, do not bypass clarification by guessing or silently widening scope; report the clarification blocker only as a justified terminal failure when no supported continuation exists.")
+                appendLine("- Include one durable Markdown artifact in the normal artifacts list with kind 'run-brief', encoding 'markdown', and content sections: Objectif, Périmètre et exclusions, Critères, Contraintes, Questions ouvertes.")
+                appendLine("- Do not invent criteria or turn a request for analysis into an implementation task.")
+            } else {
+                appendLine("- Consume the structured dependency inputs and the run-brief handoff above while following this step's own instructions; the original user request remains the governing intention.")
+                appendLine("- Preserve every run-brief artifact received from direct dependencies unchanged in this step's artifacts so later steps can relay the correct branch framing. Add separate artifacts for this step's own work; never rewrite or merge independent framings.")
+            }
+            appendLine("- Choose deliverables from the work actually requested when the definition has no explicit deliverable metadata:")
+            appendLine("  - Analysis or design: provide reasoned findings, decisions/options, constraints, open questions, and a durable Markdown artifact; do not implement unless requested.")
+            appendLine("  - Implementation: provide the scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.")
+            appendLine("  - Review: provide prioritized findings with locations/evidence and residual risks; do not modify code unless requested.")
+            appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If that tool is unavailable, do not guess or bypass the clarification requirement.")
+            appendLine("- Call FACTORY_WORKER__submit_step_result only when the analysis, editing, or review work is complete, or when a justified terminal failure prevents completion.")
+            appendLine("- Use PASS or FAIL according to this step's criteria. Do not invent criteria.")
+            appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
+            appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
+            append("- Once Factory accepts the result, stop working on this step.")
         }
+    }
+
+    /** Finds the first standard run-brief artifact in a structured result value. */
+    private fun findRunBrief(value: Any?): Map<String, Any?>? = when (value) {
+        is Map<*, *> -> {
+            val normalized = value.entries.associate { it.key.toString() to it.value }
+            if (normalized["kind"] == RUN_BRIEF_KIND && normalized["encoding"] == "markdown") {
+                normalized
+            } else {
+                normalized.values.firstNotNullOfOrNull(::findRunBrief)
+            }
+        }
+        is Iterable<*> -> value.firstNotNullOfOrNull(::findRunBrief)
+        is Array<*> -> value.firstNotNullOfOrNull(::findRunBrief)
+        else -> null
     }
 
     /** Renders a nested fact value as compact JSON so a brief stays readable. */
@@ -445,7 +484,13 @@ class CapabilityExecutionService(
         onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
-        val attemptId = stableAttemptId(workflowId, step.id)
+        // Attempt #1 has a stable id, but a human answer supersedes it and
+        // registers N+1. The DAG must follow that authoritative successor;
+        // otherwise only the recovery scanner can drive N+1 while this path
+        // remains anchored to the terminal predecessor.
+        val attemptId = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
+            ?.attemptId
+            ?: stableAttemptId(workflowId, step.id)
         val ownerToken = UUID.randomUUID().toString()
         val brief = buildBrief(scope, namespaceId, workflowId, step, ticket)
 
@@ -660,7 +705,11 @@ class CapabilityExecutionService(
         }
         var waitingQuestion: String? = null
         val observed = try {
-            adapter.observeTurn(caseId, reservation.attemptId, agentObservationTimeoutMs) { waiting ->
+            adapter.observeTurn(
+                caseId,
+                reservation.attemptId,
+                agentObservationTimeoutMs,
+                { waiting ->
                 if (waitingQuestion != waiting.questionRef) {
                     waitingQuestion = waiting.questionRef
                     newTransaction {
@@ -680,7 +729,24 @@ class CapabilityExecutionService(
                         ),
                     )
                 }
-            }
+                },
+                { answer ->
+                    val question = waitingQuestion
+                    if (question != null && answer.answeredQuestionId == question) {
+                        newTransaction {
+                            val current = attempts.find(scope, namespaceId, workflowId, step.id, reservation.attemptId)
+                            if (current?.status == AgentAttemptStatus.WAITING_HUMAN) {
+                                attempts.transition(
+                                    scope, namespaceId, workflowId, step.id, reservation.attemptId,
+                                    reservation.ownerToken, AgentAttemptStatus.RUNNING,
+                                    lastObservedEventId = answer.eventId,
+                                )
+                                onAgentObservation(AgentObservationUpdate(status = "running"))
+                            }
+                        }
+                    }
+                },
+            )
         } catch (error: Exception) {
             runCatching { adapter.reconcile(caseId) }.getOrElse {
                 AgentOsExecutionVerdict.Indeterminate(
@@ -708,8 +774,34 @@ class CapabilityExecutionService(
                 }
             }
         }
-        // An indeterminate observation is only the START of the escalation
-        // chain; it is never returned as-is when a proof can still be found.
+        // A structured result accepted by Factory is the terminal authority.
+        // AgentOS commonly becomes IDLE after the submit tool, so consult the
+        // durable result before any reconnect/kill escalation.
+        val acceptedResult = agentStepResultService?.acceptedResult(
+            scope, namespaceId, workflowId, step.id, reservation.attemptId,
+        )
+        if (acceptedResult != null) {
+            return when (acceptedResult.status) {
+                io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.PASS ->
+                    AgentOsExecutionVerdict.Succeeded(
+                        outputs = mapOf(
+                            "summary" to acceptedResult.summary,
+                            "claims" to acceptedResult.claims,
+                            "findings" to acceptedResult.findings,
+                            "artifacts" to acceptedResult.artifacts,
+                        ),
+                        evidence = mapOf("resultId" to acceptedResult.resultId, "source" to "factory-step-result"),
+                    )
+                io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.FAIL ->
+                    AgentOsExecutionVerdict.Failed(
+                        code = "FACTORY_STEP_RESULT_FAILED",
+                        message = acceptedResult.summary,
+                        evidence = mapOf("resultId" to acceptedResult.resultId, "source" to "factory-step-result"),
+                    )
+            }
+        }
+        // Without an accepted result, an indeterminate observation starts the
+        // normal reconnect/kill escalation chain.
         return if (observed is AgentOsExecutionVerdict.Indeterminate) {
             observationEscalation.escalate(adapter, caseId, reservation.attemptId, observed).verdict
         } else {
@@ -1097,6 +1189,7 @@ class CapabilityExecutionService(
     companion object {
         /** Evidence kind carrying the durable, structured outputs of an agent step. */
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
+        private const val RUN_BRIEF_KIND = "run-brief"
 
         /** Failure code returned when another execution holds a live lease on the attempt. */
         const val AGENT_ATTEMPT_CONFLICT = "AGENT_ATTEMPT_CONFLICT"

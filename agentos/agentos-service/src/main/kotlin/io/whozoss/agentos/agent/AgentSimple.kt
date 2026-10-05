@@ -517,6 +517,7 @@ class AgentSimple(
                         caseEvents = filteredEvents,
                         agentName = name,
                         toolRequestId = toolRequestId,
+                        emitEvent = ::sendEvent,
                     )
 
                 val executionResult: ToolExecutionResult

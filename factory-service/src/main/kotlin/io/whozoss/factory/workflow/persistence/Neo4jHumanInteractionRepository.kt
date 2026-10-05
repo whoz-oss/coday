@@ -20,6 +20,7 @@ import java.time.Instant
 @Primary
 class Neo4jHumanInteractionRepository(
     private val interactions: SpringDataNeo4jHumanInteractionRepository,
+    private val interactionLookup: HumanInteractionLookupRepository,
     private val events: SpringDataNeo4jHumanInteractionEventRepository,
     private val objectMapper: ObjectMapper,
 ) : HumanInteractionRepository {
@@ -30,6 +31,16 @@ class Neo4jHumanInteractionRepository(
         workflowId: String,
         interactionId: String,
     ): HumanInteractionRecord? = read(scope, namespaceId, workflowId, interactionId)
+
+    override fun findOpenByWorkflowAndId(
+        scope: TenantScope,
+        workflowId: String,
+        interactionId: String,
+    ): HumanInteractionRecord? =
+        interactionLookup
+            .findIdByWorkflowAndInteractionId(scope, workflowId, interactionId)
+            ?.let { interactions.findById(it).orElse(null) }
+            ?.toDomain(objectMapper)
 
     override fun list(
         scope: TenantScope,

@@ -35,11 +35,20 @@ class FakeIdpTest {
 
     @Test
     fun `verifies signed proxy headers`() {
-        val headers = TestJwt.signProxyHeaders("p1", "human", listOf("a", "b"), secret = secret)
+        val headers = TestJwt.signProxyHeaders(
+            "p1",
+            "human",
+            listOf("a", "b"),
+            namespaceId = "namespace-1",
+            caseId = "case-1",
+            secret = secret,
+        )
         val result = FakeIdp.verifyProxyHeaders(headers, secret)
         assertThat(result.valid).isTrue()
         assertThat(result.principalId).isEqualTo("p1")
         assertThat(result.scopes).containsExactly("a", "b")
+        assertThat(result.namespaceId).isEqualTo("namespace-1")
+        assertThat(result.caseId).isEqualTo("case-1")
     }
 
     @Test

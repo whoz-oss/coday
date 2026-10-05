@@ -56,25 +56,36 @@ open class FactoryCheckpointClient(
         decision: String,
         caseId: String,
         actorId: String,
+        namespaceId: String? = null,
+        stepQuestion: Boolean = false,
     ): Result<Unit> {
         val workflowId = URLEncoder.encode(ref.workflowId, Charsets.UTF_8).replace("+", "%20")
         val interactionId = URLEncoder.encode(ref.interactionId, Charsets.UTF_8).replace("+", "%20")
-        val url = "${baseUrl.trimEnd('/')}/api/factory/workflows/$workflowId/interactions/$interactionId/reply"
-        val body =
-            objectMapper.writeValueAsString(
-                mapOf(
-                    "interactionRevision" to ref.interactionRevision,
-                    "decision" to decision,
-                ),
-            )
-        val request =
-            Request
-                .Builder()
-                .url(url)
-                .header("x-factory-case-id", caseId)
-                .header("x-factory-actor-id", actorId)
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
+        val url = if (stepQuestion) {
+            "${baseUrl.trimEnd('/')}/api/factory/workflows/$workflowId/agent-step-questions/$interactionId/answer"
+        } else {
+            "${baseUrl.trimEnd('/')}/api/factory/workflows/$workflowId/interactions/$interactionId/reply"
+        }
+        val body = objectMapper.writeValueAsString(
+            if (stepQuestion) {
+                buildMap<String, Any> {
+                    put("expectedRevision", ref.interactionRevision)
+                    put("answer", decision)
+                }
+            } else {
+                mapOf("interactionRevision" to ref.interactionRevision, "decision" to decision)
+            },
+        )
+        val requestBuilder = Request.Builder().url(url)
+            .header("x-factory-case-id", caseId)
+            .header("x-factory-actor-id", actorId)
+        if (stepQuestion) {
+            requestBuilder.header("x-factory-principal-type", "human")
+            namespaceId?.takeIf { it.isNotBlank() }?.let {
+                requestBuilder.header("x-factory-namespace-id", it)
+            }
+        }
+        val request = requestBuilder.post(body.toRequestBody("application/json".toMediaType())).build()
         return try {
             withContext(Dispatchers.IO) {
                 httpClient.newCall(request).execute().use { response ->

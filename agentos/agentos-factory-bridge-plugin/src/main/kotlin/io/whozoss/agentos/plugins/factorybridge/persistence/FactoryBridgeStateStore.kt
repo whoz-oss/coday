@@ -88,10 +88,15 @@ class FactoryBridgeStateStore(
     private val lock = ReentrantLock()
     private val bindings: MutableMap<UUID, FactoryStepResultBindingState> = LinkedHashMap()
     private val checkpoints: MutableMap<UUID, FactoryCheckpointRef> = LinkedHashMap()
+    private val stepQuestions: MutableMap<UUID, FactoryCheckpointRef> = LinkedHashMap()
 
     /** Live [MutableMap] view used by [FactoryBridgeServices.pendingCheckpoints]. */
     val checkpointMap: MutableMap<UUID, FactoryCheckpointRef> =
         DurableCheckpointMap(lock, checkpoints) { persist() }
+
+    /** Restart-safe question-event to Factory interaction correlation. */
+    val stepQuestionMap: MutableMap<UUID, FactoryCheckpointRef> =
+        DurableCheckpointMap(lock, stepQuestions) { persist() }
 
     init {
         load()
@@ -166,11 +171,15 @@ class FactoryBridgeStateStore(
             lock.withLock {
                 bindings.clear()
                 checkpoints.clear()
+                stepQuestions.clear()
                 persisted.bindings.forEach { binding ->
                     toState(binding)?.let { bindings[it.caseId] = it }
                 }
                 persisted.checkpoints.forEach { checkpoint ->
                     toCheckpoint(checkpoint)?.let { checkpoints[it.first] = it.second }
+                }
+                persisted.stepQuestions.forEach { checkpoint ->
+                    toCheckpoint(checkpoint)?.let { stepQuestions[it.first] = it.second }
                 }
             }
         }.onFailure { error ->
@@ -178,6 +187,7 @@ class FactoryBridgeStateStore(
             lock.withLock {
                 bindings.clear()
                 checkpoints.clear()
+                stepQuestions.clear()
             }
         }
     }
@@ -188,6 +198,7 @@ class FactoryBridgeStateStore(
             PersistedBridgeState(
                 bindings = bindings.values.map { toPersisted(it) },
                 checkpoints = checkpoints.map { (caseId, ref) -> toPersisted(caseId, ref) },
+                stepQuestions = stepQuestions.map { (questionId, ref) -> toPersisted(questionId, ref) },
             )
         runCatching {
             target.parent?.let { Files.createDirectories(it) }
@@ -308,6 +319,7 @@ internal class DurableCheckpointMap(
 internal data class PersistedBridgeState(
     val bindings: List<PersistedBinding> = emptyList(),
     val checkpoints: List<PersistedCheckpoint> = emptyList(),
+    val stepQuestions: List<PersistedCheckpoint> = emptyList(),
 )
 
 internal data class PersistedBinding(

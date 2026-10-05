@@ -9,8 +9,14 @@ import java.util.UUID
  * Outcome of an [AnswerInterceptor.interceptAnswer] call.
  */
 sealed interface AnswerInterceptResult {
-    /** The answer is accepted and processed as usual. */
+    /** The answer is accepted and processed as usual by AgentOS. */
     data object Accept : AnswerInterceptResult
+
+    /**
+     * The answer was accepted and fully handled by the interceptor. AgentOS acknowledges
+     * the user message without persisting an AnswerEvent or resuming the existing case.
+     */
+    data object ExternallyHandled : AnswerInterceptResult
 
     /**
      * The answer is rejected. No [io.whozoss.agentos.sdk.caseEvent.AnswerEvent] is persisted
@@ -25,7 +31,9 @@ sealed interface AnswerInterceptResult {
  *
  * Implementations are discovered as extensions (e.g. via PF4J) and/or registered as
  * ordinary beans. Several interceptors may be active at once; the answer is accepted
- * only when every interceptor returns [AnswerInterceptResult.Accept].
+ * only when every interceptor returns [AnswerInterceptResult.Accept]. An
+ * [AnswerInterceptResult.ExternallyHandled] result ends processing successfully because
+ * the interceptor has transferred ownership of the continuation to an external system.
  *
  * ### Safe default
  *
@@ -47,8 +55,9 @@ interface AnswerInterceptor : ExtensionPoint {
      * @param questionEvent the question being answered.
      * @param answerText the textual answer supplied by [actor].
      * @param actor the user (or actor) providing the answer.
-     * @return [AnswerInterceptResult.Accept] to continue, or
-     *   [AnswerInterceptResult.Reject] with a human-readable reason to stop.
+     * @return [AnswerInterceptResult.Accept] to continue normal processing,
+     *   [AnswerInterceptResult.ExternallyHandled] when no local answer or resumption must occur,
+     *   or [AnswerInterceptResult.Reject] with a human-readable reason to stop.
      */
     fun interceptAnswer(
         caseId: UUID,

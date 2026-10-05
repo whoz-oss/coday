@@ -42,6 +42,8 @@ data class AgentStepQuestionAsked(
     val interactionId: String,
     val status: String,
     val idempotent: Boolean,
+    val revision: Int,
+    val workflowId: String,
 )
 
 /** Canonical response payload of a human answer to a step question. */
@@ -98,8 +100,7 @@ data class AgentStepQuestionAnswered(
  * None is ever read from model-authored prompt strings.
  *
  * ## Notifications
- * An outbox event (`agent_question_asked` / `agent_question_answered`) is
- * enqueued inside the transaction and a best-effort SSE hint is published
+ * The ask notification is enqueued inside the transaction and a best-effort SSE hint is published
  * after commit. Delivery is NOT a correctness prerequisite: the durable
  * transitions are authoritative on their own.
  */
@@ -171,7 +172,7 @@ class AgentStepQuestionService(
                 existing != null &&
                 existing.interactionType == AGENT_QUESTION_INTERACTION_TYPE &&
                 existing.payload["contextHash"] == question.contextHash ->
-                return AgentStepQuestionAsked(attempt.attemptId, interactionId, WAITING_HUMAN_STATUS, idempotent = true)
+                return AgentStepQuestionAsked(attempt.attemptId, interactionId, WAITING_HUMAN_STATUS, idempotent = true, existing.revision, workflowId)
 
             attempt.status == AgentAttemptStatus.WAITING_HUMAN && existing != null ->
                 throw QuestionAlreadyAskedException(
@@ -245,7 +246,7 @@ class AgentStepQuestionService(
             mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "interactionId" to interactionId),
         )
         logger.info { "Step question $interactionId recorded; attempt '${attempt.attemptId}' waits for a human" }
-        return AgentStepQuestionAsked(attempt.attemptId, interaction.interactionId, WAITING_HUMAN_STATUS, idempotent = false)
+        return AgentStepQuestionAsked(attempt.attemptId, interaction.interactionId, WAITING_HUMAN_STATUS, idempotent = false, interaction.revision, workflowId)
     }
 
     // ------------------------------------------------------------------
@@ -259,7 +260,7 @@ class AgentStepQuestionService(
     @Transactional
     fun answer(
         scope: TenantScope,
-        namespaceId: String,
+        legacyNamespaceId: String?,
         workflowId: String,
         interactionId: String,
         expectedRevision: Int,
@@ -268,7 +269,7 @@ class AgentStepQuestionService(
         now: Instant = Instant.now(),
     ): AgentStepQuestionAnswered {
         if (actorId.isBlank()) throw QuestionAnswerInvalidException("An authenticated actorId is required")
-        val interaction = interactions.find(scope, namespaceId, workflowId, interactionId)
+        val interaction = interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId)
             ?.takeIf { it.interactionType == AGENT_QUESTION_INTERACTION_TYPE }
             ?: throw QuestionInteractionNotFoundException(
                 details = mapOf("workflowId" to workflowId, "interactionId" to interactionId),
@@ -288,6 +289,11 @@ class AgentStepQuestionService(
                 ),
             )
         }
+        val namespaceId = interaction.namespaceId
+        if (legacyNamespaceId != null && legacyNamespaceId != namespaceId) {
+            logger.warn { "Ignoring untrusted namespace '$legacyNamespaceId' for interaction '$interactionId'; authoritative namespace is '$namespaceId'" }
+        }
+        val authoritativeWorkflowId = interaction.workflowId
         val normalized = validateAnswer(interaction, answer)
         val stepId = interaction.stepId
         val predecessorAttemptId = interaction.payload["attemptId"] as? String
@@ -295,7 +301,7 @@ class AgentStepQuestionService(
                 "The question interaction carries no attemptId",
                 details = mapOf("interactionId" to interactionId),
             )
-        val predecessor = attempts.find(scope, namespaceId, workflowId, stepId, predecessorAttemptId)
+        val predecessor = attempts.find(scope, namespaceId, authoritativeWorkflowId, stepId, predecessorAttemptId)
             ?: throw QuestionInteractionStaleException(
                 "No durable attempt '$predecessorAttemptId' exists for the question",
                 details = mapOf("interactionId" to interactionId, "attemptId" to predecessorAttemptId),
@@ -309,8 +315,8 @@ class AgentStepQuestionService(
 
         // Successor identity, derived BEFORE the mutation so the closed
         // interaction can carry the N -> N+1 link.
-        val nextNumber = attempts.nextAttemptNumber(scope, namespaceId, workflowId, stepId)
-        val successorAttemptId = CapabilityExecutionService.retryAttemptId(workflowId, stepId, nextNumber)
+        val nextNumber = attempts.nextAttemptNumber(scope, namespaceId, authoritativeWorkflowId, stepId)
+        val successorAttemptId = CapabilityExecutionService.retryAttemptId(authoritativeWorkflowId, stepId, nextNumber)
         val resumptionContext = resumptionContext(interaction, normalized, actorId, predecessorAttemptId, now)
 
         // ONE transaction: close the interaction (CAS — single-use), supersede
@@ -320,7 +326,7 @@ class AgentStepQuestionService(
         val closed = interactions.update(
             scope,
             namespaceId,
-            workflowId,
+            authoritativeWorkflowId,
             interactionId,
             expectedRevision,
             interaction.copy(
@@ -340,14 +346,14 @@ class AgentStepQuestionService(
                 details = mapOf("interactionId" to interactionId, "expectedRevision" to expectedRevision),
             )
         }
-        attempts.supersede(scope, namespaceId, workflowId, stepId, predecessorAttemptId, predecessor.revision, now)
+        attempts.supersede(scope, namespaceId, authoritativeWorkflowId, stepId, predecessorAttemptId, predecessor.revision, now)
         val successor = attempts.registerRetry(
             scope,
             DurableAgentAttempt(
                 attemptId = successorAttemptId,
                 caseId = predecessor.caseId,
                 namespaceId = namespaceId,
-                workflowId = workflowId,
+                workflowId = authoritativeWorkflowId,
                 stepId = stepId,
                 attemptNumber = nextNumber,
                 agentName = predecessor.agentName,
@@ -362,7 +368,7 @@ class AgentStepQuestionService(
         interactions.appendEvent(
             scope,
             namespaceId,
-            workflowId,
+            authoritativeWorkflowId,
             HumanInteractionEventRecord(
                 eventId = UUID.randomUUID().toString(),
                 interactionId = interactionId,
@@ -374,25 +380,13 @@ class AgentStepQuestionService(
                 ),
             ),
         )
-        enqueueOutbox(
-            scope,
-            AGENT_QUESTION_ANSWERED,
-            mapOf(
-                "attemptId" to predecessorAttemptId,
-                "interactionId" to interactionId,
-                "namespaceId" to namespaceId,
-                "workflowId" to workflowId,
-                "stepId" to stepId,
-                "actorId" to actorId,
-                "supersededAttemptId" to predecessorAttemptId,
-                "successorAttemptId" to successorAttemptId,
-            ),
-            now,
-        )
+        // The answer audit record and successor attempt are authoritative.
+        // No outbox event is emitted: the former sole consumer targeted a removed
+        // AgentOS endpoint and would leave an undeliverable poison row.
         sseHub?.publish(
             scope,
             namespaceId,
-            mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "interactionId" to interactionId),
+            mapOf("workflowId" to authoritativeWorkflowId, "namespaceId" to namespaceId, "interactionId" to interactionId),
         )
         logger.info {
             "Step question $interactionId answered by $actorId; attempt '$predecessorAttemptId' superseded " +
@@ -567,5 +561,6 @@ class AgentStepQuestionService(
             UUID.nameUUIDFromBytes(
                 "factory-step-question|$attemptId|$contextHash".toByteArray(StandardCharsets.UTF_8),
             ).toString()
+
     }
 }

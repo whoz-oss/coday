@@ -138,9 +138,11 @@ class AgentStepQuestionServiceIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(dto.resumptionContext).isEqualTo(successor.resumptionContext)
         assertThat(dto.status).isEqualTo("pending")
 
-        // The deferred notifications are durably enqueued, still pending.
+        // Only the ask notification is deferred. Answers no longer create an
+        // undeliverable projection row targeting AgentOS core.
         val outbox = outboxNodes.findAllByOrganization(scope.organizationId)
-        assertThat(outbox.map { it.eventType }).contains("agent_question_asked", "agent_question_answered")
+        assertThat(outbox.map { it.eventType }).contains("agent_question_asked")
+        assertThat(outbox.map { it.eventType }).doesNotContain("agent_question_answered")
         assertThat(outbox.all { it.status == "pending" }).isTrue()
 
         // 3) Double-unblock protection: a second answer is rejected and no

@@ -23,7 +23,8 @@ import org.springframework.web.bind.annotation.GetMapping
  * browser that receives HTML where it expects JavaScript fails loudly, so a
  * missing asset must stay a `404`.
  *
- * The legacy `/cockpit` surface is untouched (see `CockpitController`).
+ * Former `/cockpit` entry points redirect to this SPA (see
+ * [CockpitController]); no legacy UI assets are served.
  */
 @Hidden
 @Controller

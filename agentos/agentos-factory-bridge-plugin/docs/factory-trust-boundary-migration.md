@@ -44,7 +44,7 @@ the same `agentos-factory-bridge-plugin` JAR.
 | `FACTORY__start_workflow` | `FACTORY_WORKSTREAM__start_workflow` | `FactoryWorkstreamToolPlugin` |
 | `FACTORY__request_agent_retry` | `FACTORY_WORKSTREAM__request_agent_retry` | `FactoryWorkstreamToolPlugin` |
 | `FACTORY__submit_step_result` | `FACTORY_WORKER__submit_step_result` | `FactoryWorkerToolPlugin` |
-| `FACTORY__ask_step_question` | `FACTORY_WORKER__ask_step_question` | `FactoryWorkerToolPlugin` |
+| `FACTORY__ask_step_question` | **legacy only — not exposed**; use AgentOS standard `queryUser` | none |
 
 > The `FACTORY_WORKSTREAM` boundary is no longer strictly read-only: alongside the six
 > reads it carries two boundary request commands. Authority remains strictly with the
@@ -98,7 +98,7 @@ the path `start_workflow` and `request_agent_retry` followed.
 ## D. `FactoryToolGrantPolicy` usages
 
 - `STEP_RESULT_TOOL = "FACTORY__submit_step_result"` → `"FACTORY_WORKER__submit_step_result"`.
-- `ASK_STEP_QUESTION_TOOL = "FACTORY__ask_step_question"` → `"FACTORY_WORKER__ask_step_question"`.
+- The former `ASK_STEP_QUESTION_TOOL` is legacy-only and no longer exposed; agents use AgentOS standard `queryUser`.
 - Tested by `FactoryBridgeExtensionsSpec` (deny-without-binding / neutral-once-bound /
   deny-on-lookup-failure). Behaviour is unchanged — **fail-closed**: enabling the
   `FACTORY_WORKER` plugin in an `AgentConfig` is NOT sufficient to submit a result
@@ -155,7 +155,7 @@ mapping is:
 | `IntegrationConfig` of type `FACTORY` used for reads | `IntegrationConfig` of type `FACTORY_WORKSTREAM`, **name it `FACTORY_WORKSTREAM`** |
 | `IntegrationConfig` of type `FACTORY` used by workers | `IntegrationConfig` of type `FACTORY_WORKER`, **name it `FACTORY_WORKER`** |
 | `AgentConfig.integrations["FACTORY"] = [get_workstream, list_workflows, get_workflow, get_step_attempts, get_blockers, get_required_human_actions]` | `integrations["FACTORY_WORKSTREAM"]` with the same suffixes, plus `start_workflow` and `request_agent_retry` for the two boundary request commands |
-| `AgentConfig.integrations["FACTORY"] = [submit_step_result, ask_step_question]` | `integrations["FACTORY_WORKER"]` with the same suffixes |
+| `AgentConfig.integrations["FACTORY"] = [submit_step_result, ask_step_question]` | Keep only `submit_step_result` under `FACTORY_WORKER`; remove `ask_step_question` and use AgentOS standard `queryUser` |
 | Tool names `FACTORY__<suffix>` in allowlists / prompts | `FACTORY_WORKSTREAM__<suffix>` / `FACTORY_WORKER__<suffix>` |
 | Command/transition suffixes (`transition_workflow`, `request_transition`, `request_human_decision`, `interrupt_attempt`, `propose_plan_change`, `publish_projection`, `provision_environment`, `record_agent_result`, `record_artifact`) | **Deprecated — no longer exposed by any plugin.** Remove from allowlists; see section B for the re-exposure path if ever needed. |
 
@@ -167,9 +167,9 @@ Transition notes:
    `AgentConfig` still pointing at `FACTORY` after the upgrade resolves **no tools**
    (fail-closed — the resolver warns "No plugin found for type FACTORY"), it never
    silently widens.
-3. Worker submissions stay fail-closed throughout: `FactoryToolGrantPolicy` denies
-   `FACTORY_WORKER__submit_step_result` / `FACTORY_WORKER__ask_step_question` unless the
-   running case holds an active attempt binding, regardless of the allowlist.
+3. Worker result submissions stay fail-closed throughout: `FactoryToolGrantPolicy` denies
+   `FACTORY_WORKER__submit_step_result` unless the running case holds an active attempt binding.
+   Human questions are standard AgentOS `queryUser` events and are not Factory worker tools.
 4. The two reactivated Workstream commands change nothing about human authority:
    unblocking/skipping steps remains **human-only** in the Factory cockpit, and
    `FACTORY_WORKSTREAM__request_agent_retry` creates a `pending-human` request under a

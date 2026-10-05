@@ -12,8 +12,7 @@ data class AdminAuthorizationDecision(
 /**
  * The single, named authorization point every admin use case must pass through.
  *
- * Port of `checkAdminAuthorization` / `requireAdminRole` in
- * `factory/dashboard/http-utils.mjs`. The principal passes only when it carries
+ * The principal passes only when it carries
  * the AgentOS-derived `admin` role, the explicit `admin:*` scope, or the
  * loopback-dev wildcard `*` scope. An anonymous, missing or member-only context
  * fails closed.

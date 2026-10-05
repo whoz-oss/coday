@@ -18,8 +18,7 @@ import org.springframework.web.bind.annotation.RestController
 /**
  * Explicit admin HTTP boundary for factory-artifact governance.
  *
- * Faithful port of `factory/dashboard/artifact-admin-routes.mjs`. Three commands
- * — GC, purge and legal hold — are exposed under
+ * Three commands — GC, purge and legal hold — are exposed under
  * `/api/factory/admin/artifacts/…`. Every one of them funnels through the same
  * explicit authorization point, [AdminGuard.requireAdminRole], before any use
  * case runs: a non-admin caller gets a `403 FORBIDDEN_ADMIN_REQUIRED` and the

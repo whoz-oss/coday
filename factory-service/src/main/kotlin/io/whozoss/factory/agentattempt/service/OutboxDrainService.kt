@@ -57,7 +57,8 @@ class OutboxDrainService(
      * Drain up to [limit] pending events of [organizationId].
      *
      * [handler] receives each selected event; throwing marks that event
-     * `failed`, returning normally marks it `dispatched`.
+     * `failed`, returning normally marks it `dispatched`. Failed rows remain
+     * selectable for bounded retry by the scheduled worker.
      */
     @Transactional
     fun drainPending(

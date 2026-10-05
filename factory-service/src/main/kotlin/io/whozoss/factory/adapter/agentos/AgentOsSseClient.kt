@@ -78,6 +78,7 @@ class AgentOsSseClient(
         reconcile: (String) -> ReconcileResult? = { null },
         onEvent: (CaseEventView) -> Unit = {},
         onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit = {},
+        onAnswerObserved: (CaseEventView) -> Unit = {},
     ): AgentOsExecutionVerdict {
         var activeBudgetMs = timeoutMs
         var deadline = now() + activeBudgetMs
@@ -145,6 +146,7 @@ class AgentOsSseClient(
                             observed.add(event)
                             onEvent(event)
                             applyLifecycleEvent(event)
+                            if (event.type == CaseEventView.ANSWER_EVENT) onAnswerObserved(event)
                         }
                     }
                     evaluateVerdict()?.let { return it }
@@ -173,7 +175,7 @@ class AgentOsSseClient(
             when (
                 val outcome = streamOnce(
                     caseId, externalUserId, attemptId, capabilityToken, checkpoint,
-                    ::currentDeadline, observed, onEvent, ::applyLifecycleEvent, ::evaluateVerdict,
+                    ::currentDeadline, observed, onEvent, onAnswerObserved, ::applyLifecycleEvent, ::evaluateVerdict,
                 )
             ) {
                 is StreamOutcome.Verdict -> return outcome.verdict
@@ -229,6 +231,7 @@ class AgentOsSseClient(
         deadline: () -> Long,
         observed: MutableList<CaseEventView>,
         onEvent: (CaseEventView) -> Unit,
+        onAnswerObserved: (CaseEventView) -> Unit,
         onLifecycleEvent: (CaseEventView) -> Unit,
         evaluateVerdict: () -> AgentOsExecutionVerdict?,
     ): StreamOutcome {
@@ -290,7 +293,7 @@ class AgentOsSseClient(
                         val frame = parser.finish()
                         if (frame != null) {
                             handleFrame(
-                                frame, caseId, checkpoint, observed, onEvent, onLifecycleEvent, evaluateVerdict,
+                                frame, caseId, checkpoint, observed, onEvent, onAnswerObserved, onLifecycleEvent, evaluateVerdict,
                             )?.let { return it }
                         }
                         return StreamOutcome.Dropped
@@ -298,7 +301,7 @@ class AgentOsSseClient(
                     is Signal.Line -> {
                         val frame = parser.feedLine(signal.value) ?: continue
                         handleFrame(
-                            frame, caseId, checkpoint, observed, onEvent, onLifecycleEvent, evaluateVerdict,
+                            frame, caseId, checkpoint, observed, onEvent, onAnswerObserved, onLifecycleEvent, evaluateVerdict,
                         )?.let { return it }
                     }
                 }
@@ -323,6 +326,7 @@ class AgentOsSseClient(
         checkpoint: EventCheckpoint,
         observed: MutableList<CaseEventView>,
         onEvent: (CaseEventView) -> Unit,
+        onAnswerObserved: (CaseEventView) -> Unit,
         onLifecycleEvent: (CaseEventView) -> Unit,
         evaluateVerdict: () -> AgentOsExecutionVerdict?,
     ): StreamOutcome.Verdict? {
@@ -334,6 +338,7 @@ class AgentOsSseClient(
         observed.add(view)
         onEvent(view)
         onLifecycleEvent(view)
+        if (view.type == CaseEventView.ANSWER_EVENT) onAnswerObserved(view)
         return evaluateVerdict()?.let(StreamOutcome::Verdict)
     }
 

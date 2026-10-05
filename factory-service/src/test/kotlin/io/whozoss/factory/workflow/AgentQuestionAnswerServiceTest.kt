@@ -8,6 +8,7 @@ import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.error.FactoryException
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
@@ -24,7 +25,7 @@ class AgentQuestionAnswerServiceTest {
     private val namespace = "00000000-0000-4000-8000-000000000001"
     private val workflowId = "workflow-1"
     private val stepId = "agent-step"
-    private val attemptId = "$workflowId#$stepId"
+    private val attemptId = CapabilityExecutionService.stableAttemptId(workflowId, stepId)
     private val caseId = "case-1"
     private val attempts = mockk<DurableAgentAttemptService>()
     private val adapter = mockk<AgentOsExecutionAdapter>()
@@ -56,7 +57,7 @@ class AgentQuestionAnswerServiceTest {
 
     @Test
     fun `accepted answer forwards exact correlation and actual answering identity without state transition`() {
-        every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns attempt()
+        every { attempts.findLatestForStep(scope, namespace, workflowId, stepId) } returns attempt()
         every { adapter.persistedEvents(caseId) } returns listOf(question())
         every { adapter.answerQuestion(caseId, "question-1", "custom", attemptId, "alice") } returns Unit
 
@@ -70,7 +71,7 @@ class AgentQuestionAnswerServiceTest {
 
     @Test
     fun `internal recipient id is delegated to AgentOS identity resolution`() {
-        every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns attempt()
+        every { attempts.findLatestForStep(scope, namespace, workflowId, stepId) } returns attempt()
         every { adapter.persistedEvents(caseId) } returns listOf(question(userId = "agentos-internal-user-uuid"))
         every { adapter.answerQuestion(caseId, "question-1", "answer", attemptId, "alice") } returns Unit
 
@@ -84,7 +85,7 @@ class AgentQuestionAnswerServiceTest {
 
     @Test
     fun `blank authenticated identity is denied without forwarding`() {
-        every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns attempt()
+        every { attempts.findLatestForStep(scope, namespace, workflowId, stepId) } returns attempt()
         every { adapter.persistedEvents(caseId) } returns listOf(question(userId = "agentos-internal-user-uuid"))
 
         val error = assertThrows(FactoryException::class.java) {
@@ -96,7 +97,7 @@ class AgentQuestionAnswerServiceTest {
 
     @Test
     fun `duplicate persisted answer is rejected`() {
-        every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns attempt()
+        every { attempts.findLatestForStep(scope, namespace, workflowId, stepId) } returns attempt()
         every { adapter.persistedEvents(caseId) } returns listOf(
             question(),
             CaseEventView("answer-1", CaseEventView.ANSWER_EVENT, caseId, null, mapOf("questionId" to "question-1")),
@@ -111,7 +112,7 @@ class AgentQuestionAnswerServiceTest {
 
     @Test
     fun `single choice validates options while open choice permits custom text and oauth fails closed`() {
-        every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns attempt()
+        every { attempts.findLatestForStep(scope, namespace, workflowId, stepId) } returns attempt()
         every { adapter.persistedEvents(caseId) } returns listOf(question("SINGLE_CHOICE", listOf("A", "B")))
         assertThat(assertThrows(FactoryException::class.java) {
             service.submitAgentQuestionAnswer(scope, namespace, workflowId, stepId, "question-1", "custom", "alice")
@@ -129,7 +130,7 @@ class AgentQuestionAnswerServiceTest {
 
     @Test
     fun `attempt correlation and waiting status are authoritative`() {
-        every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns attempt(AgentAttemptStatus.RUNNING)
+        every { attempts.findLatestForStep(scope, namespace, workflowId, stepId) } returns attempt(AgentAttemptStatus.RUNNING)
         assertThat(assertThrows(FactoryException::class.java) {
             service.submitAgentQuestionAnswer(scope, namespace, workflowId, stepId, "question-1", "answer", "alice")
         }.errorCode).isEqualTo("AGENT_QUESTION_STALE")

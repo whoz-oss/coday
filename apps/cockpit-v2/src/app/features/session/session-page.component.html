@@ -8,18 +8,22 @@
       </div>
 
       <div class="meta-row">
-        @switch (s.status) {
-          @case ('running') {
-            <sf-status-chip tone="blue" icon="progress_activity" spin>running</sf-status-chip>
-          }
-          @case ('succeeded') {
-            <sf-status-chip tone="green" icon="check">terminé</sf-status-chip>
-          }
-          @case ('failed') {
-            <sf-status-chip tone="red" icon="close">échec</sf-status-chip>
-          }
-          @default {
-            <sf-status-chip tone="neutral">en attente</sf-status-chip>
+        @if (s.executionState === 'waiting_human') {
+          <sf-status-chip tone="amber" icon="person_alert">attente humaine</sf-status-chip>
+        } @else {
+          @switch (s.status) {
+            @case ('running') {
+              <sf-status-chip tone="blue" icon="progress_activity" spin>running</sf-status-chip>
+            }
+            @case ('succeeded') {
+              <sf-status-chip tone="green" icon="check">terminé</sf-status-chip>
+            }
+            @case ('failed') {
+              <sf-status-chip tone="red" icon="close">échec</sf-status-chip>
+            }
+            @default {
+              <sf-status-chip tone="neutral">en attente</sf-status-chip>
+            }
           }
         }
         <span class="sf-muted started"
@@ -44,11 +48,14 @@
             class="step"
             [class]="'step--' + step.tone"
             [class.step--running]="step.status === 'running'"
-            [attr.aria-current]="step.status === 'running' ? 'step' : null"
+            [class.step--waiting]="step.status === 'waiting_human'"
+            [attr.aria-current]="step.status === 'running' || step.status === 'waiting_human' ? 'step' : null"
           >
             <span class="node">
               @if (step.status === 'done') {
                 <mat-icon>check</mat-icon>
+              } @else if (step.status === 'waiting_human') {
+                <mat-icon>person_alert</mat-icon>
               } @else {
                 <span class="core"></span>
               }
@@ -56,7 +63,14 @@
             <span class="step-name">{{ step.key }}</span>
             @if (step.durationSec !== undefined) {
               <span class="step-dur sf-mono">
-                {{ step.durationSec | duration }}{{ step.status === 'running' ? ' · en cours' : '' }}
+                {{ step.durationSec | duration
+                }}{{
+                  step.status === 'running'
+                    ? ' · en cours'
+                    : step.status === 'waiting_human'
+                      ? ' · en attente humaine'
+                      : ''
+                }}
               </span>
             }
           </li>
@@ -72,7 +86,14 @@
       [allowedActions]="s.allowedActions ?? []"
       [blockers]="s.blockers ?? []"
       [interactions]="s.interactions ?? []"
+      [agentQuestionsInput]="s.agentQuestions ?? []"
+      [selectedStepId]="selectedStepId()"
+      [namespaceId]="currentNamespaceId()"
+      [agentQuestionsError]="s.agentQuestionsError ?? null"
+      [answeringQuestionId]="store.answeringQuestionId()"
+      [questionFeedback]="store.questionFeedback()"
       (reply)="onReply($event)"
+      (agentQuestionAnswered)="onAgentQuestionAnswered($event)"
       (retryRequested)="onRetry($event)"
       (cancelAttempt)="onCancelAttempt($event)"
       (continueCost)="onContinueCost()"
@@ -83,7 +104,7 @@
     <sf-agent-timeline
       [lanes]="s.lanes"
       [nowSec]="s.nowSec"
-      [status]="s.status"
+      [activelyRunning]="s.activelyRunning"
       [startedAt]="s.startedAt"
       [selected]="selectedBlock()"
       (blockSelect)="selectBlock($event)"
@@ -94,7 +115,13 @@
       <section class="phase sf-panel" aria-labelledby="phase-title">
         <header class="phase-head">
           <h2 id="phase-title">{{ s.phase.name }}</h2>
-          <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>{{ s.phase.status }}</sf-status-chip>
+          @if (s.phase.stepStatus === 'waiting_human') {
+            <sf-status-chip tone="amber" size="sm" icon="person_alert">attente humaine</sf-status-chip>
+          } @else if (s.phase.stepStatus === 'running') {
+            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>running</sf-status-chip>
+          } @else {
+            <sf-status-chip tone="neutral" size="sm">{{ s.phase.status }}</sf-status-chip>
+          }
           <span class="sf-mono">{{ s.phase.durationSec | duration }}</span>
         </header>
         <div class="phase-tags">
@@ -133,7 +160,11 @@
                           <span class="item-status">{{ item.status }}</span>
                         }
                         @if (item.subtitle) {
-                          <span class="item-subtitle">{{ item.subtitle }}</span>
+                          @if (item.title === 'Case') {
+                            <a class="item-subtitle" [href]="caseLink(item.subtitle)">{{ item.subtitle }}</a>
+                          } @else {
+                            <span class="item-subtitle">{{ item.subtitle }}</span>
+                          }
                         }
                         @if (item.actions?.length) {
                           <span class="item-actions">
@@ -157,7 +188,11 @@
         </mat-accordion>
       </section>
 
-      <sf-event-log [events]="s.events" [running]="s.status === 'running'" activityLabel="builder écrit du code…" />
+      <sf-event-log
+        [events]="s.events"
+        [running]="s.activelyRunning"
+        [activityLabel]="(s.phase.agentName || s.phase.owner) + ' travaille…'"
+      />
     </div>
   </div>
 } @else {

@@ -411,22 +411,125 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
 
         assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
         val brief = adapter.startTurns.single().brief
-        assertThat(brief).isEqualTo(
-            """## Global user request
-$requestText
-
-## Current step
-Name: Step A
-Instructions: Execute Factory session step 'A'.
-
-## Scope and structured result
-Work only on this step. Return a structured result for downstream Factory steps.""",
-        )
+        assertThat(brief)
+            .contains("## User request")
+            .contains(requestText)
+            .contains("## Current step")
+            .contains("Id: A")
+            .contains("Role: architect")
+            .contains("Scope: Work only on this step.")
+            .contains("kind 'run-brief'")
+            .contains("Objectif, Périmètre et exclusions, Critères, Contraintes, Questions ouvertes")
+            .contains("Do not invent criteria")
+            .contains("Do not submit FAIL merely because clarification is needed")
+            .contains("If queryUser is unavailable, do not bypass clarification")
+            .contains("Analysis or design")
+            .contains("Implementation")
+            .contains("Review")
         val attempt = durableAgentAttemptService.find(
             scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
         )
         assertThat(attempt!!.brief).isEqualTo(brief)
         assertThat(brief.split(requestText)).hasSize(2)
+    }
+
+    @Test
+    fun `downstream brief keeps the structured run brief artifact from its dependency`() {
+        val workflowId = isolatedWorkflowId("wf-bridge-run-brief")
+        startSession(
+            "bridge-run-brief",
+            workflowId,
+            listOf(stepJson("A", "agent", "architect", emptyList()), stepJson("B", "agent", "architect", listOf("A"))),
+        )
+        val runBrief = mapOf(
+            "kind" to "run-brief",
+            "encoding" to "markdown",
+            "content" to "# Objectif\nComprendre l'incident.\n# Questions ouvertes\n- Quel environnement ?",
+        )
+        val adapter = FakeAdapter(caseSteps(workflowId, "A", "B")) { stepId ->
+            if (stepId == "A") {
+                AgentOsExecutionVerdict.Succeeded(mapOf("artifacts" to listOf(runBrief)))
+            } else {
+                AgentOsExecutionVerdict.Succeeded(emptyMap())
+            }
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        val downstreamBrief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "B") }.brief
+        assertThat(downstreamBrief)
+            .contains("run-brief")
+            .contains("Comprendre l'incident")
+            .contains("Consume the structured dependency inputs and the run-brief handoff above")
+            .contains("Preserve every run-brief artifact received from direct dependencies unchanged")
+    }
+
+    @Test
+    fun `run brief handoff survives an intermediate step that does not repeat the artifact`() {
+        val workflowId = isolatedWorkflowId("wf-bridge-transitive-run-brief")
+        startSession(
+            "bridge-transitive-run-brief",
+            workflowId,
+            listOf(
+                stepJson("A", "agent", "architect", emptyList()),
+                stepJson("B", "agent", "architect", listOf("A")),
+                stepJson("C", "agent", "architect", listOf("B")),
+            ),
+        )
+        val runBrief = mapOf(
+            "kind" to "run-brief",
+            "encoding" to "markdown",
+            "content" to "# Objectif\nPréserver le cadrage transitif.",
+        )
+        val adapter = FakeAdapter(caseSteps(workflowId, "A", "B", "C")) { stepId ->
+            when (stepId) {
+                "A" -> AgentOsExecutionVerdict.Succeeded(mapOf("artifacts" to listOf(runBrief)))
+                "B" -> AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "intermediate output without artifacts"))
+                else -> AgentOsExecutionVerdict.Succeeded(emptyMap())
+            }
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        val cBrief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "C") }.brief
+        assertThat(cBrief)
+            .contains("Run brief handoff")
+            .contains("Préserver le cadrage transitif")
+    }
+
+    @Test
+    fun `a run brief from an independent branch is not injected into another branch`() {
+        val workflowId = isolatedWorkflowId("wf-bridge-isolated-run-brief")
+        startSession(
+            "bridge-isolated-run-brief",
+            workflowId,
+            listOf(
+                stepJson("A", "agent", "architect", emptyList()),
+                stepJson("X", "agent", "architect", emptyList()),
+                stepJson("B", "agent", "architect", listOf("X")),
+            ),
+        )
+        val branchABrief = mapOf(
+            "kind" to "run-brief",
+            "encoding" to "markdown",
+            "content" to "# Objectif\nSecret framing from independent branch A.",
+        )
+        val adapter = FakeAdapter(caseSteps(workflowId, "A", "X", "B")) { stepId ->
+            when (stepId) {
+                "A" -> AgentOsExecutionVerdict.Succeeded(mapOf("artifacts" to listOf(branchABrief)))
+                "X" -> AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "branch X output"))
+                else -> AgentOsExecutionVerdict.Succeeded(emptyMap())
+            }
+        }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        val bBrief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "B") }.brief
+        assertThat(bBrief).doesNotContain("Secret framing from independent branch A")
+        assertThat(bBrief).doesNotContain("Run brief handoff")
     }
 
     // ----- 3b. Reservation BEFORE case creation; caseId BEFORE the turn ----

@@ -16,8 +16,8 @@ import org.springframework.web.bind.annotation.RestController
 /**
  * AgentOS relay endpoints.
  *
- * Port of the `/api/agents` and `/api/cases/:caseId/events` pass-throughs in
- * `factory/dashboard/composition-root.mjs`. The trusted `X-External-User-Id` is
+ * Preserves the `/api/agents` and `/api/cases/:caseId/events` relay contract
+ * used by Cockpit V2. The trusted `X-External-User-Id` is
  * propagated from the verified trust context.
  */
 @RestController

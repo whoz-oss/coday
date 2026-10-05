@@ -2,6 +2,7 @@ package io.whozoss.factory.agentattempt.persistence
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import java.time.Instant
 
 /**
  * Spring Data Neo4j repository for [ResultCapabilityNode].
@@ -57,6 +58,67 @@ interface SpringDataNeo4jResultCapabilityRepository : Neo4jRepository<ResultCapa
         workstreamId: String,
         tokenHash: String,
     ): ResultCapabilityNode?
+
+    /** The capability of an attempt when only its trusted namespace identity is available. */
+    @Query(
+        """
+        MATCH (c:ResultCapability)
+        WHERE c.organizationId = ${'$'}organizationId
+          AND c.workstreamId = ${'$'}workstreamId
+          AND c.namespaceId = ${'$'}namespaceId
+          AND c.attemptId = ${'$'}attemptId
+          AND c.capabilityType = ${'$'}capabilityType
+        RETURN c
+        LIMIT 1
+        """,
+    )
+    fun findByNamespaceAndAttempt(
+        organizationId: String,
+        workstreamId: String,
+        namespaceId: String,
+        attemptId: String,
+        capabilityType: String,
+    ): ResultCapabilityNode?
+
+    /**
+     * Atomically rotates a capability only while its reservation is unconsumed,
+     * its attempt is non-terminal and its token digest still matches the caller's
+     * observed digest.
+     */
+    @Query(
+        """
+        MATCH (c:ResultCapability {id: ${'$'}id}),
+              (r:AgentStepResult {id: ${'$'}resultId}),
+              (a:AgentStepAttempt)
+        WHERE r.resultStatus = 'collision_detected'
+          AND r.organizationId = c.organizationId
+          AND r.workstreamId = c.workstreamId
+          AND r.namespaceId = c.namespaceId
+          AND r.workflowId = c.workflowId
+          AND r.stepId = c.stepId
+          AND r.attemptId = c.attemptId
+          AND a.organizationId = c.organizationId
+          AND a.workstreamId = c.workstreamId
+          AND a.namespaceId = c.namespaceId
+          AND a.workflowId = c.workflowId
+          AND a.stepId = c.stepId
+          AND a.attemptId = c.attemptId
+          AND NOT a.status IN ['completed', 'failed', 'interrupted', 'indeterminate', 'superseded']
+          AND c.tokenHash = ${'$'}expectedTokenHash
+        SET c.tokenHash = ${'$'}tokenHash,
+            c.payload = ${'$'}payload,
+            c.createdAt = ${'$'}createdAt
+        RETURN count(c) AS updated
+        """,
+    )
+    fun rotateIfRefreshable(
+        id: String,
+        resultId: String,
+        expectedTokenHash: String,
+        tokenHash: String,
+        payload: String,
+        createdAt: Instant,
+    ): Long
 
     /**
      * Read-only startup-reconciliation sweep: every capability still backed by

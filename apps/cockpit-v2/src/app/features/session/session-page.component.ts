@@ -12,7 +12,13 @@ import { ShellState } from '../../core/shell-state'
 import { DurationPipe, TokensPipe, UsdPipe } from '../../shared/pipes/format.pipes'
 import { MetricChipComponent } from '../../shared/ui/metric-chip.component'
 import { StatusChipComponent } from '../../shared/ui/status-chip.component'
-import { ActionBarComponent, CancelIntent, ReplyIntent, RetryIntent } from './action-bar.component'
+import {
+  ActionBarComponent,
+  AgentQuestionAnswerIntent,
+  CancelIntent,
+  ReplyIntent,
+  RetryIntent,
+} from './action-bar.component'
 import { AgentTimelineComponent } from './agent-timeline.component'
 import { EventLogComponent } from './event-log.component'
 
@@ -41,7 +47,7 @@ export class SessionPageComponent {
   readonly runId = input<string>('')
 
   private readonly route = inject(ActivatedRoute)
-  private readonly store = inject(FactoryStore)
+  protected readonly store = inject(FactoryStore)
   private readonly shell = inject(ShellState)
 
   private readonly routeRunId = toSignal(this.route.paramMap.pipe(map((p) => p.get('runId') ?? '')), {
@@ -50,11 +56,13 @@ export class SessionPageComponent {
 
   protected readonly effectiveRunId = computed(() => this.runId() || this.routeRunId())
   protected readonly session = computed(() => this.store.session(this.effectiveRunId()))
-  protected readonly selectedBlock = signal('build')
+  protected readonly selectedBlock = signal('')
+  protected readonly selectedStepId = signal('')
 
   constructor() {
     effect(() => {
       const s = this.session()
+      if (s?.phase.stepId && !this.selectedStepId()) this.selectedStepId.set(s.phase.stepId)
       this.shell.crumbs.set([
         { label: 'Sandboxes', link: '/sandboxes' },
         { label: s?.sandbox ?? '…', link: '/sandboxes', mono: true },
@@ -65,6 +73,24 @@ export class SessionPageComponent {
 
   protected selectBlock(b: TimelineBlock): void {
     this.selectedBlock.set(b.label)
+    this.selectedStepId.set(b.stepId ?? b.label)
+  }
+
+  protected caseLink(caseId: string): string {
+    const params = new URLSearchParams()
+    const namespaceId = this.currentNamespaceId()
+    if (namespaceId) params.set('ns', namespaceId)
+    params.set('case', caseId)
+    return `/agentos/home?${params.toString()}`
+  }
+
+  protected currentNamespaceId(): string {
+    const session = this.session()
+    return (
+      session?.agentQuestions?.find((question) => question.case?.namespaceId)?.case?.namespaceId ??
+      session?.agentQuestionsError?.namespaceId ??
+      ''
+    )
   }
 
   protected onReply(intent: ReplyIntent): void {
@@ -75,6 +101,12 @@ export class SessionPageComponent {
       text: intent.text,
       expectedRevision: intent.expectedRevision,
     })
+  }
+
+  protected onAgentQuestionAnswered(intent: AgentQuestionAnswerIntent): void {
+    const id = this.effectiveRunId()
+    if (!id) return
+    this.store.answerAgentQuestion(id, intent.question, intent.answer)
   }
 
   protected onRetry(intent: RetryIntent): void {

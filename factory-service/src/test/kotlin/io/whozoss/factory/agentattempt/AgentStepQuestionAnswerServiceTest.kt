@@ -81,7 +81,7 @@ class AgentStepQuestionAnswerServiceTest {
     )
 
     private fun stubHappyPath() {
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns interaction()
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns interaction()
         every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns predecessor()
         every { attempts.nextAttemptNumber(scope, namespace, workflowId, stepId) } returns 2
         every { interactions.update(scope, namespace, workflowId, interactionId, 5, any()) } returns true
@@ -145,14 +145,35 @@ class AgentStepQuestionAnswerServiceTest {
                 match { it.eventType == "agent_question_answered" && it.actorId == "alice" && it.payload["successorAttemptId"] == successorId },
             )
         }
-        verify(exactly = 1) {
-            outbox.save(match<OutboxEventNode> { it.eventType == "agent_question_answered" && it.status == "pending" })
+        verify(exactly = 0) {
+            outbox.save(match<OutboxEventNode> { it.eventType == "agent_question_answered" })
         }
     }
 
     @Test
+    fun `an absent legacy namespace uses the interaction authoritative namespace`() {
+        stubHappyPath()
+
+        val answered = service.answer(scope, null, workflowId, interactionId, 5, "yes", "alice", now)
+
+        assertThat(answered.status).isEqualTo("closed")
+        verify(exactly = 1) { attempts.find(scope, namespace, workflowId, stepId, attemptId) }
+        verify(exactly = 1) { interactions.update(scope, namespace, workflowId, interactionId, 5, any()) }
+    }
+
+    @Test
+    fun `a mismatching legacy namespace hint does not replace the interaction namespace`() {
+        stubHappyPath()
+
+        service.answer(scope, "00000000-0000-4000-8000-000000000099", workflowId, interactionId, 5, "yes", "alice", now)
+
+        verify(exactly = 1) { attempts.find(scope, namespace, workflowId, stepId, attemptId) }
+        verify(exactly = 1) { interactions.update(scope, namespace, workflowId, interactionId, 5, any()) }
+    }
+
+    @Test
     fun `answering twice is rejected and never creates an attempt N+2`() {
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns interaction(status = "closed", revision = 6)
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns interaction(status = "closed", revision = 6)
 
         val error = assertThrows(QuestionAlreadyAnsweredException::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 6, "again", "alice", now)
@@ -166,7 +187,7 @@ class AgentStepQuestionAnswerServiceTest {
 
     @Test
     fun `a stale interaction revision is a conflict without any mutation`() {
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns interaction(revision = 5)
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns interaction(revision = 5)
 
         assertThrows(RevisionConflictException::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 4, "yes", "alice", now)
@@ -177,7 +198,7 @@ class AgentStepQuestionAnswerServiceTest {
 
     @Test
     fun `a lost interaction CAS is a conflict and supersedes nothing`() {
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns interaction()
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns interaction()
         every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns predecessor()
         every { attempts.nextAttemptNumber(scope, namespace, workflowId, stepId) } returns 2
         every { interactions.update(scope, namespace, workflowId, interactionId, 5, any()) } returns false
@@ -191,7 +212,7 @@ class AgentStepQuestionAnswerServiceTest {
 
     @Test
     fun `an answer for a non-waiting attempt is a supersede conflict`() {
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns interaction()
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns interaction()
         every { attempts.find(scope, namespace, workflowId, stepId, attemptId) } returns predecessor(AgentAttemptStatus.RUNNING)
 
         val error = assertThrows(QuestionSupersedeConflictException::class.java) {
@@ -203,12 +224,12 @@ class AgentStepQuestionAnswerServiceTest {
 
     @Test
     fun `an unknown interaction or a non-question interaction is not found`() {
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns null
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns null
         assertThat(assertThrows(QuestionInteractionNotFoundException::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 5, "yes", "alice", now)
         }.errorCode).isEqualTo("QUESTION_INTERACTION_NOT_FOUND")
 
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns interaction().copy(interactionType = "approval")
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns interaction().copy(interactionType = "approval")
         assertThat(assertThrows(QuestionInteractionNotFoundException::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 5, "yes", "alice", now)
         }.errorCode).isEqualTo("QUESTION_INTERACTION_NOT_FOUND")
@@ -216,7 +237,7 @@ class AgentStepQuestionAnswerServiceTest {
 
     @Test
     fun `the answer is validated against the question type`() {
-        every { interactions.find(scope, namespace, workflowId, interactionId) } returns
+        every { interactions.findOpenByWorkflowAndId(scope, workflowId, interactionId) } returns
             interaction(type = "SINGLE_CHOICE", options = listOf("A", "B"))
 
         assertThat(assertThrows(QuestionAnswerInvalidException::class.java) {
@@ -235,6 +256,6 @@ class AgentStepQuestionAnswerServiceTest {
         assertThat(assertThrows(QuestionAnswerInvalidException::class.java) {
             service.answer(scope, namespace, workflowId, interactionId, 5, "yes", "", now)
         }.errorCode).isEqualTo("QUESTION_ANSWER_INVALID")
-        verify(exactly = 0) { interactions.find(any(), any(), any(), any()) }
+        verify(exactly = 0) { interactions.findOpenByWorkflowAndId(any(), any(), any()) }
     }
 }

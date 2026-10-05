@@ -31,7 +31,10 @@ data class FactoryBridgeServices(
     val httpClient: OkHttpClient,
     val trustedHeaderSigner: FactoryTrustedHeaderSigner,
     val stepResultBindings: FactoryStepResultBindingRegistry,
+    val capabilityRefresher: FactoryStepResultCapabilityRefresher? = null,
     val pendingCheckpoints: MutableMap<UUID, FactoryCheckpointRef> = ConcurrentHashMap(),
+    /** Factory step-question correlation keyed by deterministic AgentOS QuestionEvent id. */
+    val pendingStepQuestions: MutableMap<UUID, FactoryCheckpointRef> = ConcurrentHashMap(),
     val stateStore: FactoryBridgeStateStore? = null,
     val sseHighWaterMarks: FactorySseHighWaterMarkStore? = null,
 ) {
@@ -45,7 +48,14 @@ data class FactoryBridgeServices(
                 httpClient = config.httpClient(),
                 trustedHeaderSigner = FactoryTrustedHeaderSigner(config.secret, config.serviceIdentityId, config.scopes),
                 stepResultBindings = FactoryStepResultBindingRegistry(store = store),
+                capabilityRefresher = FactoryStepResultCapabilityRefresher(
+                    config.baseUrl,
+                    config.httpClient(),
+                    mapper,
+                    FactoryTrustedHeaderSigner(config.secret, config.serviceIdentityId, config.scopes),
+                ),
                 pendingCheckpoints = store.checkpointMap,
+                pendingStepQuestions = store.stepQuestionMap,
                 stateStore = store,
                 sseHighWaterMarks = FactorySseHighWaterMarkStore.open(config.dataDir, mapper),
             )

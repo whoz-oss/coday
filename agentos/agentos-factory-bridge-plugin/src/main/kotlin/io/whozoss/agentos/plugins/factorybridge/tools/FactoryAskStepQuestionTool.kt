@@ -1,7 +1,10 @@
 package io.whozoss.agentos.plugins.factorybridge.tools
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.plugins.factorybridge.FactoryCheckpointRef
 import io.whozoss.agentos.plugins.factorybridge.FactoryStepResultBindingRegistry
+import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -12,6 +15,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.security.MessageDigest
+import java.util.UUID
 
 /**
  * `FACTORY_WORKER__ask_step_question` — the WORKER tool of the Phase 4
@@ -45,11 +49,16 @@ import java.security.MessageDigest
  * (consumed) and never `invalidate`d, so the result capability stays fully
  * available for the resumed attempt to submit its final `PASS`/`FAIL`.
  */
+@Deprecated(
+    "Legacy Factory-owned question channel; agents must use AgentOS standard queryUser",
+    level = DeprecationLevel.WARNING,
+)
 class FactoryAskStepQuestionTool(
     private val baseUrl: String,
     private val http: OkHttpClient,
     private val mapper: ObjectMapper,
     private val bindings: FactoryStepResultBindingRegistry,
+    private val registerQuestion: (UUID, FactoryCheckpointRef) -> Unit = { _, _ -> },
 ) : StandardTool<FactoryAskStepQuestionTool.Input> {
     data class Input(
         val prompt: String,
@@ -110,7 +119,35 @@ class FactoryAskStepQuestionTool(
                     // attempt N+1 must still be able to submit its PASS/FAIL.
                     bindings.release(binding)
                     when {
-                        r.isSuccessful -> ToolExecutionResult.success(mapper.writeValueAsString(root?.path("data")))
+                        r.isSuccessful -> {
+                            val data = root?.path("data")
+                            val interactionId = data?.path("interactionId")?.asText()?.takeIf { it.isNotBlank() }
+                                ?: return@use failure("FACTORY_RESPONSE_INVALID", "Factory accepted the question without an interactionId.")
+                            val questionId = UUID.nameUUIDFromBytes("factory-question|$interactionId".toByteArray())
+                            val workflowId = data.path("workflowId").asText().takeIf { it.isNotBlank() }
+                                ?: return@use failure("FACTORY_RESPONSE_INVALID", "Factory accepted the question without a workflowId.")
+                            val revision = data.path("revision").asLong(0L).takeIf { it > 0L }
+                                ?: return@use failure("FACTORY_RESPONSE_INVALID", "Factory accepted the question without a revision.")
+                            registerQuestion(questionId, FactoryCheckpointRef(workflowId, interactionId, revision))
+                            val existing = context.caseEvents.filterIsInstance<QuestionEvent>()
+                                .firstOrNull { it.id == questionId }
+                            if (existing == null) {
+                                val questionType = runCatching { QuestionType.valueOf(input.type) }.getOrDefault(QuestionType.FREE_TEXT)
+                                context.emitEvent?.invoke(
+                                    QuestionEvent(
+                                        metadata = io.whozoss.agentos.sdk.entity.EntityMetadata(id = questionId),
+                                        namespaceId = context.namespaceId,
+                                        caseId = caseId,
+                                        agentId = UUID.nameUUIDFromBytes(agent.toByteArray()),
+                                        agentName = agent,
+                                        question = input.prompt,
+                                        options = input.options.takeIf { it.isNotEmpty() },
+                                        questionType = questionType,
+                                    ),
+                                ) ?: return@use failure("FACTORY_MIRROR_UNAVAILABLE", "AgentOS cannot durably mirror the Factory question.")
+                            }
+                            ToolExecutionResult.success(mapper.writeValueAsString(data))
+                        }
 
                         r.code >= 500 || code == "QUESTION_SCHEMA_INVALID" ->
                             failure(code, "Factory rejected the question: $code (HTTP ${r.code}). Correct the question arguments and retry.")

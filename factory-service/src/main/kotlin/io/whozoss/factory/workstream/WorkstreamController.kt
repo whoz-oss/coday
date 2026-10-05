@@ -33,8 +33,8 @@ import org.springframework.web.bind.annotation.RestController
 /**
  * Workstream query/creation surface.
  *
- * Port of `factory/dashboard/workstream-routes.mjs`, backed by the existing
- * tenant-scoped `workstreams` table (never recreated here), enriched into a
+ * Backed by the existing tenant-scoped `workstreams` table (never recreated
+ * here), enriched into a
  * versioned registry (Phase 5) with a read-only aggregated projection
  * (`GET /{workstreamId}/projection`) carrying a stable ETag revision.
  */

@@ -207,6 +207,22 @@ class DurableAgentAttemptService(
     ): List<DurableAgentAttempt> = repository.findByWorkflow(scope, namespaceId, workflowId)
 
     /**
+     * The authoritative execution attempt of a step. Question answers create a
+     * successor attempt, so callers must not remain anchored to the deterministic
+     * id of attempt #1.
+     */
+    @Transactional(readOnly = true)
+    fun findLatestForStep(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): DurableAgentAttempt? = repository.findByWorkflow(scope, namespaceId, workflowId)
+        .asSequence()
+        .filter { it.stepId == stepId }
+        .maxByOrNull { it.attemptNumber }
+
+    /**
      * The append-only transition journal of the attempt, oldest entry first.
      * Every landed state change (registration, claim, transition, finalization,
      * cancellation) is recorded with its monotone sequence; fenced/conflicted

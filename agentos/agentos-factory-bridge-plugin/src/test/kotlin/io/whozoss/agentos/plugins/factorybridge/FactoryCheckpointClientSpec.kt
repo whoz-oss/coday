@@ -78,6 +78,29 @@ class FactoryCheckpointClientSpec : StringSpec({
         ex.code shouldBe "FACTORY_UNAVAILABLE"
     }
 
+    "sends step-question answers through the revision-safe Factory operation" {
+        var capturedPath = ""
+        var namespaceHeader = ""
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            capturedPath = exchange.requestURI.path
+            namespaceHeader = exchange.requestHeaders.getFirst("x-factory-namespace-id")
+            exchange.requestBody.close()
+            val bytes = """{"data":{"ok":true}}""".toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val client = FactoryCheckpointClient("http://127.0.0.1:${server.address.port}", OkHttpClient(), mapper)
+            client.submitDecision(ref, "answer", "case-1", "actor-1", "namespace-1", stepQuestion = true).isSuccess shouldBe true
+            capturedPath shouldBe "/api/factory/workflows/wf-1/agent-step-questions/gate-1/answer"
+            namespaceHeader shouldBe "namespace-1"
+        } finally {
+            server.stop(0)
+        }
+    }
+
     "sends correct URL path, headers, and body" {
         var capturedPath = ""
         var capturedBody = ""

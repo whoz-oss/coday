@@ -13,8 +13,8 @@ marks **restart-safe**.
 | Extension point (`agentos-sdk`) | Implementation |
 |---|---|
 | `ToolPlugin` | `FactoryWorkstreamToolPlugin` (`FACTORY_WORKSTREAM` integration: 8 tools — the six read-only `FACTORY_WORKSTREAM__*` views plus the boundary request commands `FACTORY_WORKSTREAM__start_workflow` and governed `FACTORY_WORKSTREAM__request_agent_retry`) |
-| `ToolPlugin` | `FactoryWorkerToolPlugin` (`FACTORY_WORKER` integration: `FACTORY_WORKER__submit_step_result`, `FACTORY_WORKER__ask_step_question`) |
-| `AnswerInterceptor` | `FactoryAnswerInterceptor` (submits the user decision to the Factory checkpoint) |
+| `ToolPlugin` | `FactoryWorkerToolPlugin` (`FACTORY_WORKER` integration: terminal `FACTORY_WORKER__submit_step_result` only; human questions use AgentOS standard `queryUser`) |
+| `AnswerInterceptor` | `FactoryAnswerInterceptor` (handles only independent Factory business checkpoints; standard `queryUser` answers remain owned and persisted by AgentOS) |
 | `CaseLifecycleObserver` | `FactoryCaseLifecycleObserver` (invalidates a binding + checkpoint on a terminal case) |
 | `ExternalExecutionContextProvider` | `FactoryExternalExecutionContextProvider` (injects `capabilityToken` / `attemptId` / `runtimeId`) |
 | `ToolGrantPolicy` | `FactoryToolGrantPolicy` (gates the `FACTORY_WORKER__*` tools on an active binding, fail-closed) |

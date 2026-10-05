@@ -1,7 +1,8 @@
 import { provideHttpClient } from '@angular/common/http'
 import { provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
-import { AllowedAction, HumanInteraction, WorkflowBlocker } from '../../core/models'
+import { provideRouter } from '@angular/router'
+import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../core/models'
 import { ActionBarComponent, CancelIntent, ReplyIntent, RetryIntent } from './action-bar.component'
 
 const interaction: HumanInteraction = {
@@ -22,7 +23,7 @@ describe('ActionBarComponent', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [ActionBarComponent],
-      providers: [provideHttpClient(), provideHttpClientTesting()],
+      providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])],
     }).compileComponents()
     fixture = TestBed.createComponent(ActionBarComponent)
   })
@@ -80,6 +81,86 @@ describe('ActionBarComponent', () => {
     buttons(host)[0]?.click()
 
     expect(emitted).toEqual([{ interactionId: 'i-1', actionId: 'approve', expectedRevision: 3 }])
+  })
+
+  it('answers only the selected open agent question with matching reply revision', () => {
+    const emitted: unknown[] = []
+    fixture.componentInstance.agentQuestionAnswered.subscribe((intent) => emitted.push(intent))
+    fixture.componentRef.setInput('selectedStepId', 'another-step')
+    fixture.componentRef.setInput('namespaceId', 'ns-1')
+    const question: AgentQuestion = {
+      questionEventId: 'q-1',
+      caseId: 'case-1',
+      attemptId: 'a-1',
+      stepId: 'build',
+      question: 'Choose',
+      questionType: 'SINGLE_CHOICE',
+      options: ['A', 'B'],
+      answered: false,
+    }
+    fixture.componentRef.setInput('agentQuestionsInput', [question])
+    const host = render([], [], [])
+
+    buttons(host)[0]?.click()
+
+    expect(emitted).toEqual([{ question, answer: 'A' }])
+    expect(host.querySelector('a')?.getAttribute('href')).toBe('/agentos/home?ns=ns-1&case=case-1')
+    expect(emitted[0]).not.toHaveProperty('namespaceId')
+    expect(emitted[0]).not.toHaveProperty('attemptId')
+    expect(emitted[0]).not.toHaveProperty('caseId')
+    expect(emitted[0]).not.toHaveProperty('actorId')
+  })
+
+  it('shows every open question independently from the selected timeline step', () => {
+    fixture.componentRef.setInput('selectedStepId', 'build')
+    fixture.componentRef.setInput('agentQuestionsInput', [
+      {
+        questionEventId: 'q-design',
+        caseId: 'case-design',
+        attemptId: 'a-1',
+        stepId: 'technical-design',
+        question: 'Architecture?',
+        questionType: 'FREE_TEXT',
+        answered: false,
+      },
+    ])
+
+    const host = render([], [], [])
+
+    expect(host.textContent).toContain('Architecture?')
+    expect(host.querySelector('input[placeholder="Votre réponse"]')).not.toBeNull()
+  })
+
+  it('renders a Case fallback when question projection is unavailable', () => {
+    fixture.componentRef.setInput('agentQuestionsError', {
+      code: 'AGENT_QUESTIONS_UNAVAILABLE',
+      message: 'Question projection unavailable',
+      caseId: 'case-9',
+      namespaceId: 'ns-9',
+    })
+
+    const host = render([], [], [])
+
+    expect(host.textContent).toContain('Question projection unavailable')
+    expect(host.querySelector('a')?.getAttribute('href')).toBe('/agentos/home?ns=ns-9&case=case-9')
+  })
+
+  it('fails closed for unsupported questions and mismatched revisions', () => {
+    fixture.componentRef.setInput('selectedStepId', 'build')
+    const unsupported: AgentQuestion = {
+      questionEventId: 'q-1',
+      caseId: 'case-1',
+      attemptId: 'a-1',
+      stepId: 'build',
+      question: 'Unsupported',
+      questionType: 'MULTI_CHOICE',
+      options: ['A'],
+      answered: false,
+    }
+    fixture.componentRef.setInput('agentQuestionsInput', [unsupported])
+    const host = render([], [], [])
+    expect(host.textContent).toContain('Type de question non pris en charge')
+    expect(buttons(host)).toHaveLength(0)
   })
 
   it('emits a RetryIntent carrying the step and the expected revision', () => {

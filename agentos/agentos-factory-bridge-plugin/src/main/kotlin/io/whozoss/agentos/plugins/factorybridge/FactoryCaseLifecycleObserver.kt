@@ -31,8 +31,9 @@ class FactoryCaseLifecycleObserver
             if (oldStatus == newStatus) return
             logger.debug { "Factory bridge observed case $caseId status $oldStatus -> $newStatus" }
             if (newStatus.isTerminal()) {
-                services().stepResultBindings.remove(caseId)
-                services().pendingCheckpoints.remove(caseId)
+                val resolved = services()
+                resolved.stepResultBindings.remove(caseId)
+                resolved.pendingCheckpoints.remove(caseId)
                 logger.info { "Factory bridge invalidated step-result binding for terminal case $caseId ($newStatus)" }
             }
         }

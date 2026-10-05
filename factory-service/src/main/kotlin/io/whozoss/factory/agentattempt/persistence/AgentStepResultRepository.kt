@@ -46,6 +46,19 @@ interface AgentStepResultRepository {
         ttlSeconds: Long = 15L * 60L,
     ): IssuedCapability
 
+    /**
+     * Atomically rotates the capability of an active, unconsumed attempt. Concurrent
+     * refreshes converge on the token already active for the same refresh generation.
+     */
+    fun refresh(
+        scope: TenantScope,
+        identity: AgentStepResultObservedIdentity,
+        runtimeId: String,
+        refreshKey: String,
+        now: Instant = Instant.now(),
+        ttlSeconds: Long = 15L * 60L,
+    ): IssuedCapability
+
     /** Redeem a capability with a structured business result; replays are idempotent. */
     fun submit(
         scope: TenantScope,

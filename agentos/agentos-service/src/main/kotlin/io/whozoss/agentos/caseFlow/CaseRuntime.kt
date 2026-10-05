@@ -298,18 +298,27 @@ class CaseRuntime(
                                                 "threw for question $answerToEventId, ignoring"
                                         }
                                     }.getOrElse { AnswerInterceptResult.Accept }
-                            if (result is AnswerInterceptResult.Reject) {
-                                logger.warn {
-                                    "[CaseRuntime $id] Answer rejected by interceptor for question $answerToEventId: ${result.reason}"
+                            when (result) {
+                                AnswerInterceptResult.Accept -> Unit
+                                AnswerInterceptResult.ExternallyHandled -> {
+                                    logger.info {
+                                        "[CaseRuntime $id] Answer for question $answerToEventId was handled externally"
+                                    }
+                                    return // acknowledged; external owner schedules any successor work
                                 }
-                                storeAndEmitEvent(
-                                    WarnEvent(
-                                        namespaceId = namespaceId,
-                                        caseId = id,
-                                        message = "Answer rejected: ${result.reason}. Please try again.",
-                                    ),
-                                )
-                                return // do NOT create AnswerEvent; agent stays suspended
+                                is AnswerInterceptResult.Reject -> {
+                                    logger.warn {
+                                        "[CaseRuntime $id] Answer rejected by interceptor for question $answerToEventId: ${result.reason}"
+                                    }
+                                    storeAndEmitEvent(
+                                        WarnEvent(
+                                            namespaceId = namespaceId,
+                                            caseId = id,
+                                            message = "Answer rejected: ${result.reason}. Please try again.",
+                                        ),
+                                    )
+                                    return // do NOT create AnswerEvent; agent stays suspended
+                                }
                             }
                         }
                         storeAndEmitEvent(questionEvent.createAnswer(actor, answerText))

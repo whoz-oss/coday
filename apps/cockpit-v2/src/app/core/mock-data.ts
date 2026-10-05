@@ -10,6 +10,8 @@ export const SESSION_872641A8: SessionDetail = {
   sandbox: 'coday-agentos-execution-adapter-03b2',
   goal: '@Archay Goal: Implement explicit AgentOS Execution Adapter boundary & robust SSE Client in factory-service',
   status: 'running',
+  executionState: 'running',
+  activelyRunning: true,
   startedAt: '2026-09-30T18:08:22+02:00',
   workflow: 'adw_simple_sdlc',
   costUsd: 1.07,
@@ -88,6 +90,7 @@ export const SESSION_872641A8: SessionDetail = {
   phase: {
     name: 'build',
     status: 'running',
+    stepStatus: 'running',
     durationSec: 619,
     owner: 'builder',
     kind: 'agent',

@@ -603,8 +603,52 @@ class WorkflowService(
     }
 
     // ------------------------------------------------------------------
-    // AgentOS question answers
+    // AgentOS questions (authoritative durable projection + answers)
     // ------------------------------------------------------------------
+
+    /**
+     * Projects unresolved standard AgentOS QuestionEvents for reconnecting
+     * Factory clients. Factory stores no duplicate question state: type,
+     * options and closure are derived from AgentOS' durable event history.
+     */
+    fun listAgentQuestions(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+    ): List<Map<String, Any?>> {
+        val attemptsService = durableAgentAttemptService
+            ?: throw workflowException("AGENT_QUESTIONS_UNAVAILABLE", "The durable AgentOS attempt store is unavailable.")
+        val adapter = agentOsExecutionAdapter
+            ?: throw workflowException("AGENT_QUESTIONS_UNAVAILABLE", "The AgentOS execution bridge is unavailable.")
+        val attempts = attemptsService.findByWorkflow(scope, namespaceId, workflowId)
+        return attempts
+            .filter { it.status == AgentAttemptStatus.WAITING_HUMAN }
+            .flatMap { attempt ->
+                val events = adapter.persistedEvents(attempt.caseId)
+                val answeredIds = events
+                    .filter { it.type == CaseEventView.ANSWER_EVENT }
+                    .mapNotNull { it.answeredQuestionId }
+                    .toSet()
+                events.filter { it.type == CaseEventView.QUESTION_EVENT }.map { question ->
+                    mapOf(
+                        "questionEventId" to question.eventId,
+                        "caseId" to attempt.caseId,
+                        "attemptId" to attempt.attemptId,
+                        "stepId" to attempt.stepId,
+                        "question" to (question.questionText ?: ""),
+                        "questionType" to (question.questionType ?: "FREE_TEXT"),
+                        "options" to question.questionOptions,
+                        "answered" to answeredIds.contains(question.eventId),
+                        "case" to mapOf(
+                            "id" to attempt.caseId,
+                            "namespaceId" to attempt.namespaceId,
+                            "workflowId" to attempt.workflowId,
+                            "stepId" to attempt.stepId,
+                        ),
+                    )
+                }
+            }
+    }
 
     fun submitAgentQuestionAnswer(
         scope: TenantScope,
@@ -619,9 +663,9 @@ class WorkflowService(
             ?: throw workflowException("AGENT_ANSWER_UNAVAILABLE", "The AgentOS execution bridge is unavailable.")
         val adapter = agentOsExecutionAdapter
             ?: throw workflowException("AGENT_ANSWER_UNAVAILABLE", "The AgentOS execution bridge is unavailable.")
-        val attemptId = io.whozoss.factory.capability.CapabilityExecutionService.stableAttemptId(workflowId, stepId)
-        val attempt = attempts.find(scope, namespaceId, workflowId, stepId, attemptId)
+        val attempt = attempts.findLatestForStep(scope, namespaceId, workflowId, stepId)
             ?: throw workflowException("AGENT_ATTEMPT_NOT_FOUND", "No AgentOS attempt belongs to this workflow step.")
+        val attemptId = attempt.attemptId
         if (attempt.status != AgentAttemptStatus.WAITING_HUMAN) {
             throw workflowException("AGENT_QUESTION_STALE", "The AgentOS attempt is not awaiting a human answer.")
         }

@@ -1,5 +1,6 @@
 import {
   AgentAttempt,
+  AgentQuestion,
   AllowedAction,
   AllowedActionType,
   BlockerCode,
@@ -50,9 +51,8 @@ import {
  *
  * Every function here is pure and defensive: a missing/odd field degrades to a
  * sensible default instead of throwing, so a partially-migrated backend never
- * crashes the cockpit. The lane classification mirrors the vanilla
- * `factory/dashboard/js/components/temporal-lanes.mjs` logic (explicit `lane`
- * first, then `responsibility.kind`, then name hints, defaulting to `agent`).
+ * crashes the cockpit. Lane classification prefers an explicit `lane`, then
+ * `responsibility.kind`, then name hints, defaulting to `agent`.
  */
 
 type JsonObject = Record<string, unknown>
@@ -344,6 +344,79 @@ export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): Run
 // ---------------------------------------------------------------------------
 
 const MIN_BLOCK_SEC = 2
+const TERMINAL_ATTEMPT_STATUSES = new Set([
+  'succeeded',
+  'completed',
+  'failed',
+  'indeterminate',
+  'interrupted',
+  'superseded',
+  'cancelled',
+])
+
+function compareAttempts(left: AgentAttempt, right: AgentAttempt): number {
+  const numberOrder = left.attemptNumber - right.attemptNumber
+  if (numberOrder !== 0) return numberOrder
+  const leftTime = toEpochMs(left.startedAt ?? left.createdAt ?? left.completedAt) ?? Number.POSITIVE_INFINITY
+  const rightTime = toEpochMs(right.startedAt ?? right.createdAt ?? right.completedAt) ?? Number.POSITIVE_INFINITY
+  return leftTime - rightTime || left.attemptId.localeCompare(right.attemptId)
+}
+
+function attemptStepStatus(attempt: AgentAttempt): TimelineStepStatus {
+  const status = attempt.status.toLowerCase()
+  if (status === 'succeeded' || status === 'completed' || status === 'superseded') return 'completed'
+  if (status === 'interrupted' || status === 'cancelled') return 'cancelled'
+  if (status === 'failed' || status === 'indeterminate' || status === 'running' || status === 'waiting_human') {
+    return status
+  }
+  return 'pending'
+}
+
+/**
+ * Replace agent steps with their durable execution attempts for the timeline.
+ * Each retry becomes a separate, chronologically ordered block; non-agent
+ * steps and agent steps without attempt history remain unchanged.
+ */
+function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unknown[] {
+  const byStep = new Map<string, AgentAttempt[]>()
+  for (const attempt of attempts) {
+    if (!attempt.stepId) continue
+    const history = byStep.get(attempt.stepId) ?? []
+    history.push(attempt)
+    byStep.set(attempt.stepId, history)
+  }
+
+  return steps.flatMap((step) => {
+    const obj = asObject(step) ?? {}
+    const stepId = getString(obj, 'id')
+    const history = stepId ? byStep.get(stepId) : undefined
+    if (classifyActorKind(obj) !== 'agent' || !history?.length) return [step]
+
+    const ordered = [...history].sort(compareAttempts)
+    return ordered.map((attempt) => {
+      const terminal = TERMINAL_ATTEMPT_STATUSES.has(attempt.status.toLowerCase())
+      return {
+        ...obj,
+        id: `${stepId}:attempt:${attempt.attemptId}`,
+        sourceStepId: stepId,
+        name:
+          ordered.length > 1
+            ? `${getString(obj, 'name') ?? stepId} · attempt ${attempt.attemptNumber || '?'}`
+            : (getString(obj, 'name') ?? stepId),
+        agentName: attempt.agentName || getString(obj, 'agentName'),
+        responsibility: {
+          ...(asObject(obj['responsibility']) ?? {}),
+          kind: 'agent',
+          name: attempt.agentName || actorName(obj),
+        },
+        status: attemptStepStatus(attempt),
+        startedAt: attempt.startedAt,
+        completedAt: terminal ? attempt.completedAt : undefined,
+        durationMs: undefined,
+      }
+    })
+  })
+}
 
 /**
  * Normalized engineer request carried by a snapshot (backend
@@ -420,10 +493,10 @@ function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: n
  * initial human command) is surfaced as the engineer lane's `request` block
  * when no `request` step already provides one.
  */
-export function mapProjectionToLanes(input: unknown, timing?: unknown): TimelineLane[] {
+export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?: unknown): TimelineLane[] {
   const snapshot = asObject(input) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
-  const steps = asArray(projection['steps'])
+  const steps = timelineSteps(asArray(projection['steps']), extractAttempts(attempts))
   const controllerRequest = readControllerRequest(snapshot, projection)
   if (steps.length === 0 && !controllerRequest) return []
 
@@ -491,6 +564,9 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown): Timeline
 
     const block: TimelineBlock = {
       label: getString(entry.obj, 'name') ?? getString(entry.obj, 'id') ?? 'step',
+      ...((getString(entry.obj, 'sourceStepId') ?? getString(entry.obj, 'id'))
+        ? { stepId: getString(entry.obj, 'sourceStepId') ?? getString(entry.obj, 'id') }
+        : {}),
       startSec,
       endSec,
       status,
@@ -627,11 +703,13 @@ function mapStepsToSessionSteps(steps: unknown[]): SessionStep[] {
       key: getString(obj, 'id') ?? getString(obj, 'name') ?? `step-${index + 1}`,
       tone: phaseTone(obj),
       status:
-        state === 'running' || state === 'waiting_human'
-          ? 'running'
-          : state === 'pending' || state === 'ready'
-            ? 'pending'
-            : 'done',
+        state === 'waiting_human'
+          ? 'waiting_human'
+          : state === 'running'
+            ? 'running'
+            : state === 'pending' || state === 'ready'
+              ? 'pending'
+              : 'done',
     }
     const duration = stepDurationSec(obj)
     if (duration !== null) result.durationSec = Math.round(duration)
@@ -686,12 +764,26 @@ export function extractInteractions(payload: unknown): HumanInteraction[] {
       interactionType: getString(obj, 'interactionType') ?? getString(obj, 'type') ?? 'unknown',
       status: getString(obj, 'status') ?? 'unknown',
     }
+    const workflowId = getString(obj, 'workflowId')
+    if (workflowId) interaction.workflowId = workflowId
+    const revision = getNumber(obj, 'revision')
+    if (revision !== undefined) interaction.revision = revision
     const prompt = getString(payloadObj, 'prompt') ?? getString(payloadObj, 'question') ?? getString(obj, 'prompt')
     if (prompt) interaction.prompt = prompt
+    const questionType =
+      getString(obj, 'questionType') ?? getString(payloadObj, 'questionType') ?? getString(payloadObj, 'type')
+    if (questionType) interaction.questionType = questionType
+    const rawOptions = payloadObj['options'] ?? obj['options']
+    if (Array.isArray(rawOptions))
+      interaction.options = rawOptions.filter((option): option is string => typeof option === 'string')
     const actions = extractActions(payloadObj['actions'] ?? obj['actions'])
     if (actions) interaction.actions = actions
     const recipient = getString(payloadObj, 'recipient') ?? getString(obj, 'recipient')
     if (recipient) interaction.recipient = recipient
+    const recipientRole = getString(obj, 'recipientRole') ?? getString(payloadObj, 'recipientRole')
+    if (recipientRole) interaction.recipientRole = recipientRole
+    const namespaceId = getString(obj, 'namespaceId') ?? getString(payloadObj, 'namespaceId')
+    if (namespaceId) interaction.namespaceId = namespaceId
     const createdAt = getString(obj, 'createdAt') ?? getString(payloadObj, 'createdAt')
     if (createdAt) interaction.createdAt = createdAt
     return interaction
@@ -885,6 +977,7 @@ function buildPhaseDetail(
   const detail: PhaseDetail = {
     name: getString(obj, 'name') ?? getString(obj, 'id') ?? 'phase',
     status: getString(obj, 'status') ? mapWorkflowStateToRunStatus(getString(obj, 'status'), [obj]) : fallbackStatus,
+    stepStatus: resolveStepState(obj),
     durationSec: Math.round(duration),
     owner,
     kind,
@@ -893,6 +986,8 @@ function buildPhaseDetail(
     attempt: '1/1',
     sections: [],
   }
+
+  if (stepId) detail.stepId = stepId
 
   if (stepAttempts.length > 0 && currentAttempt) {
     detail.attempt = `${currentAttempt.attemptNumber}/${stepAttempts.length}`
@@ -979,7 +1074,8 @@ export function mapProjectionToSessionDetail(
   metrics?: unknown,
   interactions?: unknown,
   attempts?: unknown,
-  actions?: unknown
+  actions?: unknown,
+  agentQuestions?: AgentQuestion[]
 ): SessionDetail {
   const snapshot = asObject(workflow) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
@@ -1008,7 +1104,20 @@ export function mapProjectionToSessionDetail(
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
-  const lanes = mapProjectionToLanes(snapshot, timing)
+  const stepStates = steps.map(resolveStepState)
+  const waitingHuman =
+    stepStates.includes('waiting_human') || mappedAttempts.some((attempt) => attempt.status === 'waiting_human')
+  const activelyRunning = !waitingHuman && stepStates.includes('running')
+  const executionState: TimelineStepStatus = waitingHuman
+    ? 'waiting_human'
+    : activelyRunning
+      ? 'running'
+      : status === 'succeeded'
+        ? 'completed'
+        : status === 'failed'
+          ? 'failed'
+          : 'pending'
+  const lanes = mapProjectionToLanes(snapshot, timing, mappedAttempts)
   const laneEnd = lanes.reduce((max, lane) => {
     const requestEnd = lane.request?.endSec ?? 0
     const blocksEnd = lane.blocks.reduce((end, block) => Math.max(end, block.endSec), 0)
@@ -1029,6 +1138,8 @@ export function mapProjectionToSessionDetail(
       getString(relations, 'ticket') ?? getString(controller, 'caseId') ?? getString(snapshot, 'namespaceId') ?? id,
     goal: getString(projection, 'goal') ?? getString(projection, 'title') ?? '',
     status,
+    executionState,
+    activelyRunning,
     startedAt:
       getString(timingObj, 'startedAt') ??
       getString(projection, 'startedAt') ??
@@ -1057,6 +1168,7 @@ export function mapProjectionToSessionDetail(
     attempts: mappedAttempts,
     allowedActions: mappedAllowedActions,
     blockers: mappedBlockers,
+    agentQuestions: agentQuestions ?? [],
     ...(activeAttemptId !== undefined ? { activeAttemptId } : {}),
     ...(activeAttemptRevision !== undefined ? { activeAttemptRevision } : {}),
   }

@@ -13,8 +13,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * against the process working directory first, then against its parent — the
  * service is normally launched from `factory-service/`.
  *
- * This is deliberately additive: the legacy `/cockpit` surface keeps its own
- * [CockpitProperties] (`factory.cockpit.assets-dir`) and is left untouched.
+ * Legacy `/cockpit` entry points redirect here; no separate legacy asset tree
+ * is configured or served.
  */
 @ConfigurationProperties(prefix = "factory.cockpit.v2")
 data class CockpitV2Properties(

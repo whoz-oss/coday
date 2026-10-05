@@ -310,6 +310,90 @@ describe('mappers', () => {
       ])
     })
 
+    it('keeps a waiting-human agent attempt visible with its suspended status', () => {
+      const lanes = mapProjectionToLanes(
+        {
+          projection: {
+            steps: [
+              {
+                id: 'technical-design',
+                name: 'Architect',
+                status: 'waiting_human',
+                responsibility: { kind: 'agent', name: 'Architect' },
+              },
+            ],
+          },
+        },
+        { startedAt },
+        [
+          {
+            attemptId: 'attempt-1',
+            stepId: 'technical-design',
+            attemptNumber: 1,
+            agentName: 'Architect',
+            status: 'waiting_human',
+            caseId: 'case-1',
+            startedAt,
+          },
+        ]
+      )
+
+      expect(lanes[0]?.blocks).toEqual([
+        expect.objectContaining({ label: 'Architect', stepId: 'technical-design', status: 'waiting_human' }),
+      ])
+    })
+
+    it('renders each agent attempt as a distinct ordered timeline block', () => {
+      const lanes = mapProjectionToLanes(
+        {
+          projection: {
+            steps: [
+              {
+                id: 'plan',
+                name: 'Plan',
+                status: 'running',
+                responsibility: { kind: 'agent', name: 'planner' },
+              },
+            ],
+          },
+        },
+        { startedAt },
+        [
+          {
+            attemptId: 'attempt-2',
+            stepId: 'plan',
+            attemptNumber: 2,
+            agentName: 'planner',
+            status: 'running',
+            caseId: 'case-2',
+            startedAt: isoOffset(20),
+          },
+          {
+            attemptId: 'attempt-1',
+            stepId: 'plan',
+            attemptNumber: 1,
+            agentName: 'planner',
+            status: 'failed',
+            caseId: 'case-1',
+            startedAt: isoOffset(5),
+            completedAt: isoOffset(15),
+          },
+        ]
+      )
+
+      expect(lanes).toHaveLength(1)
+      expect(lanes[0]?.blocks).toEqual([
+        expect.objectContaining({
+          label: 'Plan · attempt 1',
+          stepId: 'plan',
+          startSec: 0,
+          endSec: 10,
+          status: 'failed',
+        }),
+        expect.objectContaining({ label: 'Plan · attempt 2', stepId: 'plan', startSec: 15, status: 'running' }),
+      ])
+    })
+
     it('groups a code step into the workspace lane', () => {
       const lanes = mapProjectionToLanes({
         projection: { steps: [{ id: 'build', name: 'build', status: 'running', responsibility: { kind: 'code' } }] },
@@ -486,6 +570,8 @@ describe('mappers', () => {
       expect(session.id).toBe('wf-1')
       expect(session.sandbox).toBe('ABC-1')
       expect(session.status).toBe('running')
+      expect(session.executionState).toBe('running')
+      expect(session.activelyRunning).toBe(true)
       expect(session.startedAt).toBe(startedAt)
       expect(session.tokens).toBe(1234)
       expect(session.tokensRead).toBe(1200)
@@ -494,6 +580,40 @@ describe('mappers', () => {
       expect(session.events[0]).toMatchObject({ type: 'tool_call', tool: 'read', durationSec: 0.5 })
       expect(session.phase.kind).toBe('code')
       expect(session.nowSec).toBeGreaterThan(0)
+    })
+
+    it('marks waiting-human separately from the coarse running run status', () => {
+      const session = mapProjectionToSessionDetail(
+        {
+          ...snapshot,
+          projection: {
+            ...projection,
+            status: 'waiting_human',
+            steps: projection.steps.map((step) => (step.id === 'build' ? { ...step, status: 'waiting_human' } : step)),
+          },
+        },
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        [
+          {
+            attemptId: 'a-1',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'Architect',
+            status: 'waiting_human',
+            caseId: 'case-1',
+            startedAt,
+          },
+        ]
+      )
+
+      expect(session.status).toBe('running')
+      expect(session.executionState).toBe('waiting_human')
+      expect(session.activelyRunning).toBe(false)
+      expect(session.steps.find((step) => step.key === 'build')?.status).toBe('waiting_human')
+      expect(session.phase.stepStatus).toBe('waiting_human')
     })
 
     it('degrades gracefully on an empty/malformed snapshot', () => {

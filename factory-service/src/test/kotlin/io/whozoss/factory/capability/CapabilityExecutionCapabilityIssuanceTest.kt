@@ -55,6 +55,25 @@ class CapabilityExecutionCapabilityIssuanceTest {
     )
 
     @Test
+    fun `brief always carries step identity scope and the structured execution contract`() {
+        val turns = mutableListOf<AgentTurnRequest>()
+        val service = service(turns)
+
+        service.resolveAndRecord(scope, namespaceId, workflowId, agentStep, repoRoot)
+
+        val brief = turns.single().brief.orEmpty()
+        assertThat(brief).contains("Id: step-1")
+        assertThat(brief).contains("Name: Step step-1")
+        assertThat(brief).contains("Scope: Work only on this step.")
+        assertThat(brief).contains("call queryUser, wait for the answer, then continue")
+        assertThat(brief).contains("FACTORY_WORKER__submit_step_result")
+        assertThat(brief).contains("Use PASS or FAIL according to this step's criteria")
+        assertThat(brief).contains("Do not return free-form JSON")
+        assertThat(brief).contains("correct the tool payload and retry")
+        assertThat(brief).contains("Once Factory accepts the result, stop working")
+    }
+
+    @Test
     fun `an agent step issues a capability and forwards the attempt facts to the turn`() {
         clearMocks(issuer)
         val identity = slot<AgentStepResultCapabilityIdentity>()

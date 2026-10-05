@@ -332,7 +332,46 @@ describe('FactoryApiService', () => {
     })
   })
 
+  it('preserves structured backend error details for safe fallback links', () => {
+    let error: FactoryApiError | undefined
+    service.getAgentQuestions('wf-1', 'ns-1').subscribe({ error: (value: FactoryApiError) => (error = value) })
+
+    http
+      .expectOne((r) => r.url.endsWith('/wf-1/agent-questions'))
+      .flush(
+        {
+          error: {
+            code: 'AGENT_QUESTIONS_UNAVAILABLE',
+            message: 'AgentOS unavailable',
+            details: { caseId: 'case-1', namespaceId: 'ns-1', workflowId: 'wf-1', stepId: 'design' },
+          },
+        },
+        { status: 503, statusText: 'Unavailable' }
+      )
+
+    expect(error).toEqual(
+      expect.objectContaining({
+        code: 'AGENT_QUESTIONS_UNAVAILABLE',
+        details: { caseId: 'case-1', namespaceId: 'ns-1', workflowId: 'wf-1', stepId: 'design' },
+      })
+    )
+  })
+
   describe('governed action POSTs', () => {
+    it('answers an AgentOS queryUser question through the standard answer projection', () => {
+      service.answerAgentQuestion('wf/1', 'q/1', { stepId: 'build', answer: 'Option A' }, 'ns-1').subscribe()
+
+      const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1/agent-questions/q%2F1/answer')
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({ stepId: 'build', answer: 'Option A' })
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.body.attemptId).toBeUndefined()
+      expect(request.request.body.caseId).toBeUndefined()
+      expect(request.request.body.actorId).toBeUndefined()
+      request.flush({ data: { status: 'accepted' } })
+    })
+
     it('replyInteraction posts to the reply route with the payload, namespace and correlation id', () => {
       let result: unknown
       service

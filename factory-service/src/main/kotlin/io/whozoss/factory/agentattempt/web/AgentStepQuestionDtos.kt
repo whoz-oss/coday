@@ -33,4 +33,6 @@ data class AgentStepQuestionData(
     val interactionId: String,
     val status: String,
     val idempotent: Boolean,
+    val revision: Int,
+    val workflowId: String,
 )

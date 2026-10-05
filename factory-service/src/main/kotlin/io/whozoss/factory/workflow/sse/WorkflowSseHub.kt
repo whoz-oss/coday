@@ -30,8 +30,7 @@ object WorkflowProjectionEvents {
  * Namespace-scoped, best-effort in-memory SSE hub for projection invalidation
  * hints.
  *
- * Port of `factory/dashboard/workflow-projection-sse.mjs`. It is deliberately
- * mono-process and in-memory: on reconnect the HTTP list/detail APIs stay
+ * Deliberately mono-process and in-memory: on reconnect the HTTP list/detail APIs stay
  * authoritative and close any notification gap.
  *
  * Framing is byte-for-byte identical to the Node hub:

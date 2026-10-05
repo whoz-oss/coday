@@ -87,7 +87,7 @@ export interface CostSummary {
 export interface SessionStep {
   key: string
   tone: Tone
-  status: 'done' | 'running' | 'pending'
+  status: 'done' | 'running' | 'waiting_human' | 'pending'
   durationSec?: number
 }
 
@@ -103,6 +103,7 @@ export type TimelineStepStatus =
 
 export interface TimelineBlock {
   label: string
+  stepId?: string
   description?: string
   startSec: number
   endSec: number
@@ -182,7 +183,9 @@ export interface PhaseSection {
 
 export interface PhaseDetail {
   name: string
+  stepId?: string
   status: RunStatus
+  stepStatus: TimelineStepStatus
   durationSec: number
   owner: string
   kind: string
@@ -204,14 +207,39 @@ export interface PhaseDetail {
   sections: PhaseSection[]
 }
 
+export type AgentQuestionType = 'FREE_TEXT' | 'SINGLE_CHOICE' | 'OPEN_CHOICE' | string
+
+export interface AgentQuestion {
+  questionEventId: string
+  caseId: string
+  attemptId: string
+  stepId: string
+  question: string
+  questionType: AgentQuestionType
+  options?: string[]
+  answered: boolean
+  case?: {
+    id: string
+    namespaceId: string
+    workflowId: string
+    stepId: string
+  }
+}
+
 export interface HumanInteraction {
   interactionId: string
+  workflowId?: string
   stepId: string
   interactionType: string
   status: string
+  revision?: number
   prompt?: string
+  questionType?: AgentQuestionType
+  options?: string[]
   actions?: Array<{ id: string; label: string }>
   recipient?: string
+  recipientRole?: string
+  namespaceId?: string
   createdAt?: string
 }
 
@@ -268,6 +296,10 @@ export interface SessionDetail {
   sandbox: string
   goal: string
   status: RunStatus
+  /** Authoritative execution state, kept separate from the coarse run status. */
+  executionState: TimelineStepStatus
+  /** True only while execution is actively progressing (never while waiting for a human). */
+  activelyRunning: boolean
   startedAt: string // ISO
   workflow: string
   costUsd: number
@@ -319,4 +351,15 @@ export interface SessionDetail {
    * Empty when none are active or when the fetch degraded gracefully.
    */
   blockers?: WorkflowBlocker[]
+  /** Active durable AgentOS queryUser questions projected for this workflow. */
+  agentQuestions?: AgentQuestion[]
+  /** Read failure of the question projection; case metadata enables a safe fallback link. */
+  agentQuestionsError?: {
+    code: string
+    message: string
+    caseId?: string
+    namespaceId?: string
+    workflowId?: string
+    stepId?: string
+  }
 }

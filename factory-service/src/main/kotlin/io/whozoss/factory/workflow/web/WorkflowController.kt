@@ -178,7 +178,7 @@ class WorkflowController(
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
-        if (request.keys.any { it !in setOf("workflowType", "title", "parameters") }) {
+        if (request.keys.any { it !in setOf("workflowType", "title", "initialRequest", "parameters") }) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         }
         val workflowType = request["workflowType"] as? String
@@ -195,7 +195,13 @@ class WorkflowController(
                 caller.namespaceId,
                 caller.actorId,
                 trustContext?.caseId,
-                CreateWorkflowRunService.Command(workflowType, request["title"] as? String, parameters, suppliedKey),
+                CreateWorkflowRunService.Command(
+                    workflowType = workflowType,
+                    title = request["title"] as? String,
+                    initialRequest = request["initialRequest"] as? String,
+                    parameters = parameters,
+                    idempotencyKey = suppliedKey,
+                ),
                 repoRoot,
             ),
         )
@@ -696,6 +702,17 @@ class WorkflowController(
 
     // ----- interactions --------------------------------------------------
 
+    @GetMapping(path = ["/{workflowId}/agent-questions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "List unresolved standard AgentOS questions from durable case history.")
+    fun listAgentQuestions(
+        @PathVariable workflowId: String,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @Parameter(hidden = true) trustContext: TrustContext?,
+    ): WorkflowDataEnvelope<List<Map<String, Any?>>> {
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId)
+        return WorkflowDataEnvelope(service.listAgentQuestions(caller.scope, caller.namespaceId, workflowId))
+    }
+
     @PostMapping(path = ["/{workflowId}/agent-questions/{questionEventId}/answer"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Submit an authenticated answer to the active AgentOS question.")
     fun answerAgentQuestion(
@@ -764,19 +781,22 @@ class WorkflowController(
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
         if (request.keys.any { it !in setOf("namespaceId", "expectedRevision", "answer") }) {
-            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only namespaceId, expectedRevision and answer are accepted.")
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only optional legacy namespaceId, expectedRevision and answer are accepted.")
         }
         val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
         val answer = request["answer"] as? String
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "answer is required.")
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, request["namespaceId"] as? String)
+        // The durable interaction owns the authoritative namespace. At this boundary we
+        // authenticate the human and resolve only the trusted tenant scope; a body namespace
+        // remains an optional legacy hint whose mismatch is handled by the service.
+        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, requireNamespace = false)
         if (!trustContext?.authenticated.orFalse() || trustContext?.principalType != TrustContext.PRINCIPAL_TYPE_HUMAN || !isSafeActor(caller.actorId)) {
             throw workflowException(WorkflowErrorCodes.UNAUTHENTICATED_ACTOR)
         }
         val answered = agentStepQuestionService.answer(
             caller.scope,
-            caller.namespaceId,
+            request["namespaceId"] as? String,
             workflowId,
             interactionId,
             expectedRevision,

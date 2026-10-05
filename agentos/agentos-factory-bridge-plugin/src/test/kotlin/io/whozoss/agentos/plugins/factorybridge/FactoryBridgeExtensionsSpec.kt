@@ -47,7 +47,7 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         result shouldBe AnswerInterceptResult.Accept
     }
 
-    "answer interceptor accepts when the Factory accepts the decision" {
+    "answer interceptor accepts when the Factory accepts a regular checkpoint decision" {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange ->
             exchange.requestBody.close()
@@ -70,6 +70,37 @@ class FactoryBridgeExtensionsSpec : StringSpec({
                     Actor("user-1", "User", ActorRole.USER),
                 )
             result shouldBe AnswerInterceptResult.Accept
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    "answer interceptor leaves legacy Factory step-question state untouched and accepts the standard AgentOS answer" {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            exchange.requestBody.close()
+            val bytes = """{"data":{"ok":true}}""".toByteArray()
+            exchange.sendResponseHeaders(200, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            val services = FactoryTestFixtures.services("http://127.0.0.1:${server.address.port}")
+            val interceptor = FactoryAnswerInterceptor { services }
+            val namespaceId = UUID.randomUUID()
+            val caseId = UUID.randomUUID()
+            val pendingQuestion = question(namespaceId, caseId)
+            services.pendingStepQuestions[pendingQuestion.id] = FactoryCheckpointRef("wf-1", "interaction-1", 4L)
+
+            val result = interceptor.interceptAnswer(
+                caseId,
+                pendingQuestion,
+                "approve",
+                Actor("user-1", "User", ActorRole.USER),
+            )
+
+            result shouldBe AnswerInterceptResult.Accept
+            services.pendingStepQuestions.containsKey(pendingQuestion.id) shouldBe true
         } finally {
             server.stop(0)
         }
@@ -166,7 +197,6 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         val context = ToolContext(UUID.randomUUID(), UUID.randomUUID(), "user", emptyList(), "Worker")
 
         policy.evaluateToolGrant("Worker", "FACTORY_WORKER__submit_step_result", context) shouldBe ToolGrantDecision.Neutral
-        policy.evaluateToolGrant("Worker", "FACTORY_WORKER__ask_step_question", context) shouldBe ToolGrantDecision.Neutral
         policy.evaluateToolGrant("Worker", "FACTORY_WORKSTREAM__get_workflow", context) shouldBe ToolGrantDecision.Neutral
     }
 })

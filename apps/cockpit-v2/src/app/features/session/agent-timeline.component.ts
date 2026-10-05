@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core'
 import { MatIconModule } from '@angular/material/icon'
 import { MatTooltipModule } from '@angular/material/tooltip'
-import { RunStatus, TimelineBlock, TimelineLane } from '../../core/models'
+import { TimelineBlock, TimelineLane } from '../../core/models'
 import { DurationPipe } from '../../shared/pipes/format.pipes'
 
 /** Chronologie en couloirs : un couloir par acteur (humain, workspace, agents). */
@@ -15,26 +15,33 @@ import { DurationPipe } from '../../shared/pipes/format.pipes'
 export class AgentTimelineComponent {
   readonly lanes = input.required<TimelineLane[]>()
   readonly nowSec = input.required<number>()
-  /** Run status; the live clock only advances while it is `running`. */
-  readonly status = input<RunStatus>('running')
+  /** True only while execution is actively progressing, never while waiting for a human. */
+  readonly activelyRunning = input(false)
   /** ISO instant the run started from, used to derive the live elapsed time. */
   readonly startedAt = input<string>()
   readonly tickEverySec = input(120)
   readonly selected = input<string>()
   readonly blockSelect = output<TimelineBlock>()
 
-  /** Wall-clock instant, refreshed once per second while the run is running. */
+  /** Local display clock. Its accumulated delta excludes every suspended interval. */
   private readonly liveNowMs = signal(Date.now())
-  /** Instant the component was created, used as the fallback clock anchor. */
-  private readonly createdMs = Date.now()
+  private readonly activeDeltaSec = signal(0)
 
   constructor() {
-    // Local clock: start a 1s interval only while running, and tear it down both
-    // when the status becomes terminal and when the component is destroyed
-    // (`onCleanup` runs on every re-run and on destroy — no leaked timer).
+    // The projection supplies the last known active position. We only add local
+    // deltas while execution is active, so human wait time is never invented as
+    // active duration. A refresh/resume resets the local anchor to the new base.
     effect((onCleanup) => {
-      if (this.status() !== 'running') return
-      const handle = setInterval(() => this.liveNowMs.set(Date.now()), 1000)
+      this.nowSec()
+      this.activeDeltaSec.set(0)
+      if (!this.activelyRunning()) return
+      let previous = Date.now()
+      const handle = setInterval(() => {
+        const current = Date.now()
+        this.activeDeltaSec.update((elapsed) => elapsed + Math.max(current - previous, 0) / 1000)
+        previous = current
+        this.liveNowMs.set(current)
+      }, 1000)
       onCleanup(() => clearInterval(handle))
     })
   }
@@ -42,21 +49,12 @@ export class AgentTimelineComponent {
   /**
    * Effective "now" in seconds.
    *
-   * While running the local clock advances each second. Once the status is
-   * terminal the interval is torn down, so `liveNowMs` stops changing and the
-   * value freezes on the last tick (never retreating below the input value).
-   * A `queued` run ignores wall-clock elapsed time entirely.
+   * The value advances from the persisted projection position only during
+   * active execution. `startedAt` remains available for wall-clock metadata but
+   * is deliberately not used as active duration while timing aggregates are
+   * incomplete.
    */
-  protected readonly effectiveNowSec = computed(() => {
-    const base = this.nowSec()
-    if (this.status() === 'queued') return base
-    const started = this.startedAt()
-    const startedMs = started ? Date.parse(started) : Number.NaN
-    const elapsedSec = Number.isFinite(startedMs)
-      ? (this.liveNowMs() - startedMs) / 1000
-      : base + (this.liveNowMs() - this.createdMs) / 1000
-    return Math.max(base, elapsedSec)
-  })
+  protected readonly effectiveNowSec = computed(() => this.nowSec() + this.activeDeltaSec())
 
   /** Visible execution lanes, with any running block stretched to the effective now. */
   protected readonly effectiveLanes = computed(() => {

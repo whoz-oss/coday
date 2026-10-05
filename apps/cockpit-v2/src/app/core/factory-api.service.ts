@@ -1,7 +1,7 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
 import { Observable, catchError, map, of, throwError } from 'rxjs'
-import { AllowedAction, GetActionsResponse, WorkflowBlocker } from './models'
+import { AgentQuestion, AllowedAction, GetActionsResponse, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
 
@@ -10,6 +10,7 @@ export interface FactoryApiError {
   code: string
   message: string
   status: number
+  details?: Record<string, unknown>
   raw: unknown
 }
 
@@ -92,6 +93,7 @@ export interface NamespaceItem {
 export interface CreateWorkflowRunRequest {
   workflowType: string
   title?: string
+  initialRequest?: string
   parameters?: { ticket?: string }
 }
 
@@ -291,6 +293,50 @@ export class FactoryApiService {
       payload,
       namespaceId
     )
+  }
+
+  /**
+   * Answer the authoritative AgentOS queryUser question through Factory's
+   * trusted projection endpoint. Factory forwards to AgentOS' standard
+   * POST /api/cases/{caseId}/messages contract with answerToEventId.
+   */
+  answerAgentQuestion(
+    workflowId: string,
+    questionEventId: string,
+    payload: { stepId: string; answer: string },
+    namespaceId?: string
+  ): Observable<unknown> {
+    return this.post<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/agent-questions/${encodeURIComponent(questionEventId)}/answer`,
+      payload,
+      namespaceId
+    )
+  }
+
+  /** @deprecated Legacy Factory-owned step-question endpoint, kept for explicit old data only. */
+  answerAgentStepQuestion(
+    workflowId: string,
+    interactionId: string,
+    payload: { expectedRevision: number; answer: string }
+  ): Observable<unknown> {
+    return this.post<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/agent-step-questions/${encodeURIComponent(interactionId)}/answer`,
+      payload
+    )
+  }
+
+  /**
+   * Derive the active AgentOS questions from the authoritative attempts and
+   * AgentOS case-event histories exposed by Factory. This read is replay-safe:
+   * reconnect simply re-fetches durable events and AnswerEvent correlation
+   * closes the question in both UIs.
+   */
+  getAgentQuestions(workflowId: string, namespaceId?: string): Observable<AgentQuestion[]> {
+    return this.request<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/agent-questions`,
+      {},
+      namespaceId
+    ).pipe(map((payload) => (Array.isArray(payload) ? (payload as AgentQuestion[]) : [])))
   }
 
   /** POST `/api/factory/workflows/:id/retries` (opens a retry for a blocked step). */
@@ -572,9 +618,10 @@ function normalizeFullWorkflowDefinition(payload: unknown): FullWorkflowDefiniti
 export function normalizeError(error: unknown): FactoryApiError {
   if (error instanceof HttpErrorResponse) {
     const body = error.error as {
-      error?: { code?: unknown; message?: unknown }
+      error?: { code?: unknown; message?: unknown; details?: unknown }
       code?: unknown
       message?: unknown
+      details?: unknown
     } | null
     const envelope = body?.error
     const code =
@@ -589,7 +636,12 @@ export function normalizeError(error: unknown): FactoryApiError {
         : typeof body?.message === 'string'
           ? body.message
           : error.message || 'Factory API request failed'
-    return { code, message, status: error.status, raw: error }
+    const detailsRaw = envelope?.details ?? body?.details
+    const details =
+      typeof detailsRaw === 'object' && detailsRaw !== null && !Array.isArray(detailsRaw)
+        ? (detailsRaw as Record<string, unknown>)
+        : undefined
+    return { code, message, status: error.status, ...(details ? { details } : {}), raw: error }
   }
   if (error instanceof Error) {
     return { code: 'UNKNOWN_ERROR', message: error.message, status: 0, raw: error }

@@ -92,6 +92,7 @@ interface AgentOsExecutionAdapter : AgentRuntimeAdapter {
         attemptId: String,
         timeoutMs: Long,
         onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
+        onAnswerObserved: (CaseEventView) -> Unit,
     ): AgentOsExecutionVerdict = observeTurn(caseId, attemptId, timeoutMs)
 
     /**
@@ -129,7 +130,8 @@ interface AgentOsExecutionAdapter : AgentRuntimeAdapter {
         turn: TurnToken,
         timeoutMs: Long,
         onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
-    ): AgentOsExecutionVerdict = observeTurn(turn.caseId, turn.attemptId, timeoutMs, onIntermediateVerdict)
+        onAnswerObserved: (CaseEventView) -> Unit,
+    ): AgentOsExecutionVerdict = observeTurn(turn.caseId, turn.attemptId, timeoutMs, onIntermediateVerdict, onAnswerObserved)
 
     override fun reconcile(turn: TurnToken): AgentOsExecutionVerdict = reconcile(turn.caseId)
 
