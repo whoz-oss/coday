@@ -1,0 +1,14 @@
+# Model tier shared by every checkout. Requires an AI provider named `requesty` in the
+# namespace (or at platform level) holding your own Requesty key; without it this model is
+# ignored. Prices are Requesty's, in USD per million tokens.
+alias: BIG
+apiModelName: anthropic/claude-sonnet-5-5
+provider: requesty
+description: Default Anthropic tier via Requesty
+priority: 10
+contextWindow: 1000000
+pricing:
+  inputMTokens: 2
+  outputMTokens: 10
+  cacheRead: 0.2
+  cacheWrite: 2.5
