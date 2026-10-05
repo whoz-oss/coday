@@ -37,7 +37,7 @@ class RepositoryCheckoutProvisioner(
         // JVM working directory, and git subprocesses run with a working directory of their own,
         // so a relative path would name a different place in the parent and in the child.
         val namespaceRoot = exchangeStorageService.namespaceGitDirectory(settings.namespaceId).toAbsolutePath().normalize()
-        val existing = checkoutService.findByNamespaceId(settings.namespaceId)?.let { adoptIfSameRepository(it, settings) }
+        val existing = checkoutService.findByNamespaceId(settings.namespaceId)?.let { reconcile(it, settings) }
         if (existing != null && !existing.matches(settings)) {
             throw ConflictException(
                 "Namespace ${settings.namespaceId} already has a checkout of ${existing.repositoryUrl} " +
@@ -92,7 +92,7 @@ class RepositoryCheckoutProvisioner(
      * up PREPARING rows, so a misconfigured repository is never retried on every timer tick.
      */
     fun requestPreparation(settings: GitRepositorySettings): RepositoryCheckout {
-        val existing = checkoutService.findByNamespaceId(settings.namespaceId)?.let { adoptIfSameRepository(it, settings) }
+        val existing = checkoutService.findByNamespaceId(settings.namespaceId)?.let { reconcile(it, settings) }
         if (existing != null) {
             check(existing.matches(settings)) { "The checkout belongs to another repository or main branch" }
             return when (existing.status) {
@@ -115,11 +115,24 @@ class RepositoryCheckoutProvisioner(
         checkout.status == RepositoryCheckoutStatus.FAILED &&
             checkout.lastFetchedAt == null &&
             !Files.exists(exchangeStorageService.namespaceGitDirectory(checkout.namespaceId), NOFOLLOW_LINKS) &&
-            bindingService?.findByParent(checkout.namespaceId)?.all {
-                // Deleted, never-provisioned families retain their audit rows. They must not
-                // permanently prevent an admin from correcting an unused failed association.
-                it.status == CaseResourceStatus.REMOVED && it.baseSha == null && !it.setupStarted && !it.setupCompleted
-            } ?: true
+            // Deleted, never-provisioned families retain their audit rows. They must not
+            // permanently prevent an admin from correcting an unused failed association.
+            bindingService?.findByParent(checkout.namespaceId)?.all { it.removedBeforePreparation } ?: true
+
+    /**
+     * The checkout [settings] use: the same repository is adopted, a failed unused first attempt is
+     * re-pointed, and any other is returned as it is for the caller to refuse.
+     */
+    private fun reconcile(
+        existing: RepositoryCheckout,
+        settings: GitRepositorySettings,
+    ): RepositoryCheckout =
+        when {
+            existing.repositoryUrl == settings.repositoryUrl && existing.mainBranch == settings.mainBranch ->
+                adoptUnderRecreatedAssociation(existing, settings)
+            canReplaceFailedCheckout(existing) -> replaceFailedCheckout(existing, settings)
+            else -> existing
+        }
 
     /**
      * Re-point a checkout of the *same* repository at a re-created association.
@@ -129,35 +142,38 @@ class RepositoryCheckoutProvisioner(
      * association deletes its config row, and creating it again mints a new id — so associating the
      * very same repository twice left a checkout no configuration could ever match, and every later
      * provisioning threw the permanent conflict below with no way out.
-     *
-     * Existing resources require identical URL and branch. A failed first attempt may change them
-     * only when [canReplaceFailedCheckout] proves there is no published repository or bound family.
      */
-    private fun adoptIfSameRepository(
+    private fun adoptUnderRecreatedAssociation(
         existing: RepositoryCheckout,
         settings: GitRepositorySettings,
-    ): RepositoryCheckout {
-        val sameRepository =
-            existing.repositoryUrl == settings.repositoryUrl && existing.mainBranch == settings.mainBranch
-        if (!sameRepository && canReplaceFailedCheckout(existing)) {
-            return checkoutService.update(
-                existing.copy(
-                    integrationConfigId = settings.configId,
-                    repositoryUrl = settings.repositoryUrl,
-                    mainBranch = settings.mainBranch,
-                    status = RepositoryCheckoutStatus.PREPARING,
-                    failureReason = null,
-                ),
-            )
+    ): RepositoryCheckout =
+        if (existing.integrationConfigId == settings.configId) {
+            existing
+        } else {
+            logger.info {
+                "Adopting the existing checkout of ${existing.repositoryUrl} in namespace " +
+                    "${settings.namespaceId} under the re-created association ${settings.configId}"
+            }
+            checkoutService.update(existing.copy(integrationConfigId = settings.configId))
         }
-        if (existing.integrationConfigId == settings.configId || !sameRepository) return existing
 
-        logger.info {
-            "Adopting the existing checkout of ${existing.repositoryUrl} in namespace " +
-                "${settings.namespaceId} under the re-created association ${settings.configId}"
-        }
-        return checkoutService.update(existing.copy(integrationConfigId = settings.configId))
-    }
+    /**
+     * Point a failed first attempt at other settings. Existing resources otherwise require an
+     * identical URL and branch: only [canReplaceFailedCheckout] proves nothing can be orphaned.
+     */
+    private fun replaceFailedCheckout(
+        existing: RepositoryCheckout,
+        settings: GitRepositorySettings,
+    ): RepositoryCheckout =
+        checkoutService.update(
+            existing.copy(
+                integrationConfigId = settings.configId,
+                repositoryUrl = settings.repositoryUrl,
+                mainBranch = settings.mainBranch,
+                status = RepositoryCheckoutStatus.PREPARING,
+                failureReason = null,
+            ),
+        )
 
     private fun newCheckout(settings: GitRepositorySettings): RepositoryCheckout =
         RepositoryCheckout(

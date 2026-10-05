@@ -35,4 +35,8 @@ data class CaseResourceBinding(
     val cleanupReason: String? = null,
     val setupStarted: Boolean = false,
     val setupCompleted: Boolean = false,
-) : Entity
+) : Entity {
+    /** A family deleted before its workspace was ever prepared: nothing on disk depends on it. */
+    val removedBeforePreparation: Boolean
+        get() = status == CaseResourceStatus.REMOVED && baseSha == null && !setupStarted && !setupCompleted
+}
