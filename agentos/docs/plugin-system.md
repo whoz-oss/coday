@@ -78,6 +78,30 @@ and will simply fail at runtime, which is accepted power-user behaviour.
 Typical consumers: the **BASH** plugin (`workingDirectory`, tool `command`), **MCP_STDIO**
 (`cwd`, and paths embedded in `args`), and **FILE_ACCESS** (`rootPath`).
 
+## Filesystem AiModel (`<configPath>/ai-models/`)
+
+AI models can be committed next to agents and integrations, as YAML files under the namespace's
+`<configPath>/ai-models/`. They are loaded read-only, cached for 5 minutes, and take part in alias
+resolution like persisted models (namespace scope, then `priority`).
+
+```yaml
+alias: BIG
+apiModelName: anthropic/claude-sonnet-5-5
+provider: requesty          # provider *name*, resolved in this namespace, then at platform level
+priority: 10
+contextWindow: 1000000
+pricing:                    # per million tokens
+  inputMTokens: 2
+  outputMTokens: 10
+  cacheRead: 0.2
+  cacheWrite: 2.5
+```
+
+A file names its provider instead of referencing an id: the provider, which holds the API key, stays
+in each installation's database. A model whose provider does not exist there is skipped. A persisted
+namespace model with the same provider and alias (or `apiModelName`) wins over the file. To change a
+filesystem model, edit its file; the API cannot update or delete it.
+
 ## Credentials Delivered to Plugins
 
 An `IntegrationConfig.authSettingName` is resolved into a `ToolContext.credentialProvider` once per

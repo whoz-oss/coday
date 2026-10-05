@@ -7,6 +7,7 @@ import io.whozoss.agentos.agentConfig.FilesystemAgentConfigRepository
 import io.whozoss.agentos.agentConfig.Neo4jAgentConfigRepository
 import io.whozoss.agentos.aiModel.AiModelNodeNeo4jRepository
 import io.whozoss.agentos.aiModel.AiModelRepository
+import io.whozoss.agentos.aiModel.FilesystemAiModelRepository
 import io.whozoss.agentos.aiModel.Neo4JAiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderNodeNeo4jRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
@@ -364,9 +365,17 @@ class Neo4jPersistenceConfiguration {
     fun neo4jAiModelRepository(
         aiModelNodeNeo4JRepository: AiModelNodeNeo4jRepository,
         childLinkService: Neo4jChildLinkService,
+        namespaceRepository: NamespaceRepository,
+        aiProviderRepository: AiProviderRepository,
+        @Qualifier("yamlMapper") yamlMapper: ObjectMapper,
     ): AiModelRepository {
-        logger.info { "[Persistence] Neo4jAiModelRepository active" }
-        return Neo4JAiModelRepository(aiModelNodeNeo4JRepository, childLinkService)
+        logger.info { "[Persistence] Neo4jAiModelRepository active (filesystem augmentation enabled)" }
+        return FilesystemAiModelRepository(
+            delegate = Neo4JAiModelRepository(aiModelNodeNeo4JRepository, childLinkService),
+            namespaceRepository = namespaceRepository,
+            aiProviderRepository = aiProviderRepository,
+            yamlMapper = yamlMapper,
+        )
     }
 
     @Bean
