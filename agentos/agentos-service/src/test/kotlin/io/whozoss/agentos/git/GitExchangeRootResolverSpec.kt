@@ -2,6 +2,10 @@ package io.whozoss.agentos.git
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.headers
+import io.kotest.data.row
+import io.kotest.data.table
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.every
@@ -121,6 +125,37 @@ class GitExchangeRootResolverSpec :
 
             shouldThrow<ConflictException> { f.resolver.resolveRootCase(child) }.message shouldBe
                 "Invalid case ancestry: it crosses namespaces"
+        }
+
+        "the family of a root counts every lineage that reaches it, or that cannot be followed to another top-level case" {
+            val root = case("Root")
+            val child = case("Child", parent = root)
+            val removedChild = case("Removed child", parent = root).let { it.copy(metadata = it.metadata.copy(removed = true)) }
+            val grandchild = case("Grandchild", parent = removedChild)
+            val otherRoot = case("Other root")
+            val otherChild = case("Other child", parent = otherRoot)
+            val orphan = Case(metadata = EntityMetadata(), namespaceId = namespaceId, title = "Orphan", parentCaseId = UUID.randomUUID())
+            // Thirty-two hops from another top-level case: still followed to its end.
+            val chain = (1..32).runningFold(otherRoot) { parent, level -> case("Level $level", parent = parent) }
+            val exactlyBounded = chain.last()
+            val tooDeep = case("Too deep", parent = exactlyBounded)
+            val foreign = Case(metadata = EntityMetadata(), namespaceId = UUID.randomUUID(), title = "Foreign", parentCaseId = root.id)
+            val f = fixture(root, child, removedChild, grandchild, otherChild, orphan, tooDeep, foreign, *chain.toTypedArray())
+
+            table(
+                headers("candidate", "member"),
+                row(root, true),
+                row(child, true),
+                row(grandchild, true),
+                row(otherRoot, false),
+                row(otherChild, false),
+                row(orphan, true),
+                row(exactlyBounded, false),
+                row(tooDeep, true),
+                row(foreign, false),
+            ).forAll { candidate, member ->
+                f.resolver.familyAmong(root, listOf(candidate)).isNotEmpty() shouldBe member
+            }
         }
 
         "an ordinary sub-case keeps its own directory, separate from its parent" {
