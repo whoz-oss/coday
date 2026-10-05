@@ -206,37 +206,27 @@ class CaseWorkspaceWorker(
     }
 
     /** The status this pass left the workspace in, or null when it did not handle the binding. */
-    private fun provisionLocked(requested: CaseResourceBinding): CaseResourceStatus? {
-        val bindings = bindingService ?: return null
-        val binding = bindings.findByRootCaseId(requested.rootCaseId) ?: return null
-        if (binding.status != CaseResourceStatus.REQUESTED) return null
-        // Deletion may have happened after the pending batch was read.
-        lifecycle
-            ?.cleanupDeleted(binding.rootCaseId)
-            ?.status
-            ?.takeIf { it == CaseResourceStatus.DELETING || it == CaseResourceStatus.REMOVED }
-            ?.let { return it }
+    private fun provisionLocked(requested: CaseResourceBinding): CaseResourceStatus? =
+        bindingService
+            ?.findByRootCaseId(requested.rootCaseId)
+            ?.takeIf { it.status == CaseResourceStatus.REQUESTED }
+            ?.let { binding -> removalStarted(binding) ?: prepare(binding) }
+
+    /** Deletion may have happened after the pending batch was read. */
+    private fun removalStarted(binding: CaseResourceBinding): CaseResourceStatus? =
+        lifecycle?.cleanupDeleted(binding.rootCaseId)?.status?.takeIf { it.isRemovalStarted }
+
+    private fun prepare(binding: CaseResourceBinding): CaseResourceStatus =
         try {
-            val rootCase =
-                caseRepository.findByIds(listOf(binding.rootCaseId), withRemoved = true).firstOrNull()
-                    ?: run {
-                        // The case vanished under its binding. Nothing to provision, and leaving it
-                        // REQUESTED would make the sweep retry it forever.
-                        logger.warn { "Binding ${binding.id} references missing case ${binding.rootCaseId}; marking it failed" }
-                        bindings.markStatus(binding.id, CaseResourceStatus.FAILED, "The owning case no longer exists")
-                        return CaseResourceStatus.FAILED
-                    }
-
-            // The family keeps the settings frozen when it was equipped, never the namespace's current ones.
-            val settings =
-                binding.settings
-                    ?: run {
-                        logger.warn { "Binding ${binding.id} has no readable settings and is marked failed" }
-                        bindings.markStatus(binding.id, CaseResourceStatus.FAILED, NO_READABLE_SETTINGS)
-                        return CaseResourceStatus.FAILED
-                    }
-
-            return requireNotNull(provisioner).ensureReady(binding, settings, rootCase).status
+            val rootCase = caseRepository.findByIds(listOf(binding.rootCaseId), withRemoved = true).firstOrNull()
+            val settings = binding.settings
+            when {
+                // The case vanished under its binding: left REQUESTED, the sweep would retry it forever.
+                rootCase == null -> fail(binding, OWNER_GONE)
+                // The family keeps the settings frozen when it was equipped, never the namespace's current ones.
+                settings == null -> fail(binding, NO_READABLE_SETTINGS)
+                else -> requireNotNull(provisioner).ensureReady(binding, settings, rootCase).status
+            }
         } catch (e: Exception) {
             // ensureReady records FAILED with the cause. An error before it, such as an unavailable
             // database, leaves the binding REQUESTED for the next pass. Keep going through the batch so
@@ -244,8 +234,16 @@ class CaseWorkspaceWorker(
             // back to the gate, which reads the binding again: one still pending keeps them waiting.
             countError(OPERATION_WORKTREE)
             logger.error(e) { "Could not provision workspace ${binding.id} for case ${binding.rootCaseId}" }
-            return CaseResourceStatus.FAILED
+            CaseResourceStatus.FAILED
         }
+
+    /** Record why preparation cannot happen, so the sweep never picks the binding up again. */
+    private fun fail(
+        binding: CaseResourceBinding,
+        reason: String,
+    ): CaseResourceStatus {
+        logger.warn { "Workspace ${binding.id} of case ${binding.rootCaseId} cannot be prepared: $reason" }
+        return requireNotNull(bindingService).markStatus(binding.id, CaseResourceStatus.FAILED, reason).status
     }
 
     /**
@@ -286,6 +284,8 @@ class CaseWorkspaceWorker(
 
         /** Failed preparations, tagged by `operation`: checkout, worktree or the whole sweep. */
         const val ERROR_COUNTER = "agentos.git.worker.errors"
+
+        private const val OWNER_GONE = "The owning case no longer exists"
 
         /** Settings absent or unreadable never come back: a retry fails the same way. */
         private const val NO_READABLE_SETTINGS = "No readable settings were recorded for this workspace. Retrying cannot help."
