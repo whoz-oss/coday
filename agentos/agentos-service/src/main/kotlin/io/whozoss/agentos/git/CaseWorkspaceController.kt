@@ -1,6 +1,7 @@
 package io.whozoss.agentos.git
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -30,7 +31,7 @@ class CaseWorkspaceController(
     @GetMapping("/api/namespaces/{namespaceId}/workspaces")
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     fun list(@PathVariable namespaceId: UUID): List<CaseWorkspaceView> = bindings.findByParent(namespaceId)
-        .filter { canRead(it.rootCaseId) }.map { get(it.rootCaseId) }
+        .filter { canRead(it.rootCaseId) }.mapNotNull { viewUnlessVanished(it.rootCaseId) }
 
     @PostMapping("/api/cases/{caseId}/workspace/retry")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
@@ -43,6 +44,14 @@ class CaseWorkspaceController(
     private fun authorizedRoot(caseId: UUID, action: Action): GitExchangeRoot = roots.resolveGit(caseId).also {
         capabilities.requireCaseAccess(users.getCurrentUser().id.toString(), caseId, it.exchange, action)
     }
+
+    /** A root case removed from the store must not hide every other workspace of the namespace. */
+    private fun viewUnlessVanished(rootCaseId: UUID): CaseWorkspaceView? =
+        try {
+            get(rootCaseId)
+        } catch (e: ResourceNotFoundException) {
+            null
+        }
 
     private fun canRead(caseId: UUID): Boolean = permissions.hasPermission(
         users.getCurrentUser().id.toString(), EntityType.CASE, caseId.toString(), Action.READ,

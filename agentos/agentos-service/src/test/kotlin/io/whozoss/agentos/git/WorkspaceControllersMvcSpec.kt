@@ -181,6 +181,25 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { cases.findByIds(listOf(hidden.id), any()) }
         }
 
+        "a root case missing from the store leaves the other workspaces of the namespace listed" {
+            val namespaceId = UUID.randomUUID()
+            val listed = Case(namespaceId = namespaceId)
+            val vanishedId = UUID.randomUUID()
+            val listedBinding = CaseResourceBinding(rootCaseId = listed.id, namespaceId = namespaceId, integrationConfigId = UUID.randomUUID())
+            val vanishedBinding = CaseResourceBinding(rootCaseId = vanishedId, namespaceId = namespaceId, integrationConfigId = UUID.randomUUID())
+            stubCase(listed, listedBinding)
+            every { cases.findByIds(listOf(vanishedId), any()) } returns emptyList()
+            every { bindings.findByParent(namespaceId) } returns listOf(vanishedBinding, listedBinding)
+            allow(EntityType.NAMESPACE, namespaceId, Action.READ)
+            allow(EntityType.CASE, listed.id, Action.READ)
+            allow(EntityType.CASE, vanishedId, Action.READ)
+
+            mockMvc.perform(get("/api/namespaces/$namespaceId/workspaces"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].rootCaseId").value(listed.id.toString()))
+        }
+
         "a sub-case permission never grants access to its root's Exchange or Git metadata" {
             val root = Case(namespaceId = UUID.randomUUID())
             val child = Case(namespaceId = root.namespaceId, parentCaseId = root.id)
