@@ -82,12 +82,7 @@ class GitRepositorySettingsFactory(
             repositoryUrl = repositoryUrl,
             mainBranch = mainBranch,
             serviceAuthSettingId = serviceAuthSettingId,
-            autoWorktreeForRootCases =
-                parameters
-                    .get(GitRepositoryIntegration.PARAM_AUTO_WORKTREE)
-                    ?.takeIf { !it.isNull }
-                    ?.asBoolean(false)
-                    ?: false,
+            autoWorktreeForRootCases = GitRepositoryIntegration.autoWorktree(parameters),
             setupCommand = setupCommand,
         )
     }

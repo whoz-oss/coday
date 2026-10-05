@@ -1,5 +1,6 @@
 package io.whozoss.agentos.git
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.integrationConfig.IntegrationTypeConstraints
 
 /**
@@ -38,4 +39,7 @@ object GitRepositoryIntegration {
 
     /** Default when [PARAM_MAIN_BRANCH] is absent. */
     const val DEFAULT_MAIN_BRANCH: String = "main"
+
+    /** Whether saved [parameters] give each new root case a worktree. Off unless explicitly enabled. */
+    fun autoWorktree(parameters: JsonNode?): Boolean = parameters?.get(PARAM_AUTO_WORKTREE)?.asBoolean(false) ?: false
 }
