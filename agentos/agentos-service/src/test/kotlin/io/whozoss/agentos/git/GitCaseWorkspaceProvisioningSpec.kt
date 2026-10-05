@@ -9,6 +9,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitRemoteUrlValidator
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
@@ -18,7 +19,7 @@ import java.util.UUID
  *
  * The rules are all about *not* acting: a sub-case never allocates, an unassociated namespace
  * never allocates, an association with automation off never allocates, and a broken association
- * is rejected instead of silently creating an unequipped family.
+ * is refused for the admin to fix instead of silently creating an unequipped family.
  */
 class GitCaseWorkspaceProvisioningSpec :
     StringSpec({
@@ -107,13 +108,14 @@ class GitCaseWorkspaceProvisioningSpec :
             bindings.findByRootCaseId(case.id).shouldBeNull()
         }
 
-        "a broken association is rejected before creating an unequipped family" {
+        "a broken association is rejected as a conflict for the admin to fix, before creating an unequipped family" {
             val bindings = InMemoryCaseResourceBindingService()
             val case = rootCase()
 
-            shouldThrow<BadRequestException> {
+            shouldThrow<ConflictException> {
                 hook(bindings) { throw BadRequestException("serviceAuthSettingId must be a UUID") }.onCaseCreated(case)
-            }
+            }.message shouldBe "The namespace Git settings are invalid (serviceAuthSettingId must be a UUID): " +
+                "a namespace admin must fix them before new conversations can start"
 
             bindings.findByRootCaseId(case.id).shouldBeNull()
         }

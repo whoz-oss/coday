@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper
 
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseWorkspaceProvisioning
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import mu.KLogging
 import org.springframework.beans.factory.ObjectProvider
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -18,8 +20,10 @@ import org.springframework.stereotype.Component
  * re-deriving would make the automation switch retroactive in both directions.
  *
  * This records the intent only. Cloning, worktree creation and setup happen in
- * [CaseWorktreeProvisioner], driven separately, so creating a case stays fast and a provisioning
- * failure never turns into a failure to create the conversation.
+ * [CaseWorktreeProvisioner], driven separately, so creating a case stays fast and a failed
+ * preparation never turns into a failure to create the conversation. Invalid namespace settings do
+ * refuse a root case that automation should equip: the family could never be equipped later, and
+ * only a namespace admin can fix them.
  *
  * Installed only with `agentos.git.workspaces.enabled`. No family is equipped while the worker is
  * disabled: nothing would prepare its workspace, and its turns would wait forever.
@@ -49,7 +53,7 @@ class GitCaseWorkspaceProvisioning(
             return
         }
         // Disabled automation remains independent of Git validation and availability.
-        val settings = associationService.findAutomaticSettings(case.namespaceId) ?: return
+        val settings = automaticSettings(case) ?: return
 
         if (!settings.autoWorktreeForRootCases) return
 
@@ -67,6 +71,18 @@ class GitCaseWorkspaceProvisioning(
             )
         logger.info { "Case ${case.id} equipped with workspace ${binding.id} (title '${case.title}')" }
     }
+
+    /** The settings automation equips [case] with. Invalid ones are the admin's to fix, not the caller's. */
+    private fun automaticSettings(case: Case): GitRepositorySettings? =
+        try {
+            associationService.findAutomaticSettings(case.namespaceId)
+        } catch (e: BadRequestException) {
+            throw ConflictException(
+                "The namespace Git settings are invalid (${e.message}): " +
+                    "a namespace admin must fix them before new conversations can start",
+                e,
+            )
+        }
 
     companion object : KLogging()
 }
