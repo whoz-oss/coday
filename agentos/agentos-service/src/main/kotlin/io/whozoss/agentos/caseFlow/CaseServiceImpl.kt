@@ -127,10 +127,7 @@ class CaseServiceImpl(
 
     @Transactional
     override fun create(entity: Case): Case {
-        // Soft-deleted ids count: reusing one would resurrect the old node with its existing
-        // relationships, including its place in another family.
-        require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
-        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
+        checkCaseCreationPreconditions(entity)
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -151,6 +148,17 @@ class CaseServiceImpl(
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
         return saved
+    }
+
+    /**
+     * Guards case creation: rejects duplicate ids (including soft-deleted ones) and
+     * validates the parent when one is provided.
+     */
+    private fun checkCaseCreationPreconditions(entity: Case) {
+        // Soft-deleted ids count: reusing one would resurrect the old node with its existing
+        // relationships, including its place in another family.
+        require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
+        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
     }
 
     /** A sub-case needs an existing parent in its namespace, below the depth limit, that still accepts input. */

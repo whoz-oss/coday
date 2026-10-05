@@ -25,7 +25,7 @@ interface ExchangeRootResolver {
      * Run a file mutation on [case]'s Exchange. An implementation whose directory can be
      * prepared or removed in the background coordinates with that work and resolves again inside.
      */
-    fun <T> withCaseMutation(
+    fun <T> withFileMutation(
         case: Case,
         action: (ResolvedExchangeRoot) -> T,
     ): T

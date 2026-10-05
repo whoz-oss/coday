@@ -45,7 +45,7 @@ class GitExchangeRootResolver(
         caseCreatedAt: Instant,
     ): ResolvedExchangeRoot = resolve(requireCase(caseId))
 
-    override fun <T> withCaseMutation(
+    override fun <T> withFileMutation(
         case: Case,
         action: (ResolvedExchangeRoot) -> T,
     ): T {

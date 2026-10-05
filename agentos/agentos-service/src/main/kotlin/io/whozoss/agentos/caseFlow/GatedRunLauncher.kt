@@ -160,43 +160,53 @@ internal class GatedRunLauncher(
         synchronized(runtime) {
             // A worker completion and a lock callback can both try: only one consumes the turn.
             if (!deferredRuns.remove(runtime.id)) return@synchronized
-            when (val preCheck = try { gate.launchDecision(runtime.id) } catch (e: Exception) {
+            val preCheck = try { gate.launchDecision(runtime.id) } catch (e: Exception) {
                 failAdmission(runtime, e)
                 return@synchronized
-            }) {
+            }
+            when (preCheck) {
                 is LaunchDecision.Wait -> { deferredRuns.add(runtime.id); return@synchronized }
                 is LaunchDecision.Refuse -> { refuseAdmission(runtime, preCheck.reason); return@synchronized }
-                is LaunchDecision.Admit -> { /* continue to job creation below */ }
-            }
-            var admittedJob: Job? = null
-            var finishingJob: Job? = null
-            executionJobs.compute(runtime.id) { _, previous ->
-                if (previous?.isCompleted == false) {
-                    // A stopped launch may still be finishing: keep this turn for its completion.
-                    deferredRuns.add(runtime.id)
-                    finishingJob = previous
-                    previous
-                } else {
-                    // Lazy, so the job is published before it can complete and clean up.
-                    scope.launch(start = CoroutineStart.LAZY) {
-                        // Preparation or cleanup may have started since the pre-check admission.
-                        when (val decision = try { gate.launchDecision(runtime.id) } catch (e: Exception) {
-                            failAdmission(runtime, e)
-                            return@launch
-                        }) {
-                            is LaunchDecision.Admit -> runtime.run()
-                            is LaunchDecision.Wait -> deferredRuns.add(runtime.id)
-                            is LaunchDecision.Refuse -> refuseAdmission(runtime, decision.reason)
-                        }
-                    }.also { admittedJob = it }
-                }
-            }
-            finishingJob?.invokeOnCompletion { scope.launch { resumeIfPending(runtime.id) } }
-            admittedJob?.let { job ->
-                job.invokeOnCompletion { executionJobs.remove(runtime.id, job) }
-                job.start()
+                is LaunchDecision.Admit -> startAdmittedJob(runtime)
             }
         }
+
+    /**
+     * Creates and starts the lazy coroutine for an admitted turn.
+     * Called inside `synchronized(runtime)` after the pre-check has returned [LaunchDecision.Admit].
+     * The in-job re-check re-evaluates [gate.launchDecision] outside the lock because preparation
+     * or cleanup may have changed the workspace state since the pre-check.
+     */
+    private fun startAdmittedJob(runtime: CaseRuntime) {
+        var admittedJob: Job? = null
+        var finishingJob: Job? = null
+        executionJobs.compute(runtime.id) { _, previous ->
+            if (previous?.isCompleted == false) {
+                // A stopped launch may still be finishing: keep this turn for its completion.
+                deferredRuns.add(runtime.id)
+                finishingJob = previous
+                previous
+            } else {
+                // Lazy, so the job is published before it can complete and clean up.
+                scope.launch(start = CoroutineStart.LAZY) {
+                    // Preparation or cleanup may have started since the pre-check admission.
+                    when (val decision = try { gate.launchDecision(runtime.id) } catch (e: Exception) {
+                        failAdmission(runtime, e)
+                        return@launch
+                    }) {
+                        is LaunchDecision.Admit -> runtime.run()
+                        is LaunchDecision.Wait -> deferredRuns.add(runtime.id)
+                        is LaunchDecision.Refuse -> refuseAdmission(runtime, decision.reason)
+                    }
+                }.also { admittedJob = it }
+            }
+        }
+        finishingJob?.invokeOnCompletion { scope.launch { resumeIfPending(runtime.id) } }
+        admittedJob?.let { job ->
+            job.invokeOnCompletion { executionJobs.remove(runtime.id, job) }
+            job.start()
+        }
+    }
 
     /**
      * The gate could not decide due to a technical error: never start the run, tell the user
