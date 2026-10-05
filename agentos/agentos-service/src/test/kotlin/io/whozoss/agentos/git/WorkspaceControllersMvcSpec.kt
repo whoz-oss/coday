@@ -119,11 +119,11 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(jsonPath("$.branchName").doesNotExist())
         }
 
-        "a caller without case READ cannot inspect a workspace" {
+        "a caller without case READ cannot inspect a workspace, nor learn that the case exists" {
             val caseId = UUID.randomUUID()
             listOf("workspace").forEach { suffix ->
                 mockMvc.perform(get("/api/cases/$caseId/$suffix"))
-                    .andExpect(status().isForbidden)
+                    .andExpect(status().isNotFound)
             }
             verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
         }
@@ -213,7 +213,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 mockMvc.perform(get("/api/cases/${child.id}/files/$suffix")).andExpect(status().isNotFound)
             }
             listOf("workspace").forEach { suffix ->
-                mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isForbidden)
+                mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isNotFound)
             }
             mockMvc.perform(delete("/api/cases/${child.id}/files").param("path", "private.txt"))
                 .andExpect(status().isForbidden)

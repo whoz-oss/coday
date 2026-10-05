@@ -6,6 +6,7 @@ import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
@@ -26,6 +27,7 @@ class CaseWorkspaceController(
 ) {
     @GetMapping("/api/cases/{caseId}/workspace")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    @HideOnAccessDenied
     fun get(@PathVariable caseId: UUID): CaseWorkspaceView = status.view(authorizedRoot(caseId, Action.READ))
 
     @GetMapping("/api/namespaces/{namespaceId}/workspaces")
