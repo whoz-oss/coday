@@ -58,7 +58,7 @@ All existing Case/Namespace permission checks apply.
 
 - `GET /api/cases/{caseId}/workspace`
 - `GET /api/namespaces/{namespaceId}/workspaces`
-- `POST /api/cases/{rootCaseId}/workspace/retry`
+- `POST /api/cases/{caseId}/workspace/retry` (the family's root case)
 
 `retry` belongs to the root case and accepts `acknowledgeSetupReplay` (default false). Deletion continues to use the existing Case DELETE endpoint.
 
@@ -66,7 +66,7 @@ All existing Case/Namespace permission checks apply.
 
 Managed workspaces require Git and CA certificates; cleanup also requires `lsof`, and repositories using Git LFS require `git-lfs`. The service Dockerfile adds these runtime dependencies and a writable data directory. Repository-specific toolchains and plugin deployment follow the existing deployment configuration.
 
-Managed Git runs on Linux or macOS only: it relies on a POSIX shell, POSIX permissions and `lsof`. Deploy the `agentos-git-plugin` JAR with the other plugins (`./gradlew deployPlugins` locally) to enable Git on an instance. Server-side Git runs through the `agentos-git` library, shared by the service and the plugin; the service binds the `agentos.git` settings, while the agents' Git tools in the plugin use the default limits and the integration's own `allowPrivateRemoteHosts` flag. Also enable the background worker with `AGENTOS_GIT_WORKER_ENABLED=true`: it prepares repositories and, with `AGENTOS_GIT_WORKSPACES_ENABLED=true`, worktrees and their cleanup. Both are off by default. The service logs a notice when the GIT plugin is loaded without the worker, saving a repository association is refused without it, and no case is equipped while workspaces are enabled without it: nothing would prepare their worktree. Its metrics, `agentos.git.worker.sweep` (timer) and `agentos.git.worker.errors` (counter tagged by operation), are exposed through Actuator.
+Managed Git runs on Linux or macOS only: it relies on a POSIX shell, POSIX permissions and `lsof`. Deploy the `agentos-git-plugin` JAR with the other plugins (`./gradlew deployPlugins` locally) to enable Git on an instance. Server-side Git runs through the `agentos-git` library, and the service binds the `agentos.git` settings. Also enable the background worker with `AGENTOS_GIT_WORKER_ENABLED=true`: it prepares repositories and, with `AGENTOS_GIT_WORKSPACES_ENABLED=true`, worktrees and their cleanup. Both are off by default. The service logs a notice when the GIT plugin is loaded without the worker, saving a repository association is refused without it, and no case is equipped while workspaces are enabled without it: nothing would prepare their worktree. Its metrics, `agentos.git.worker.sweep` (timer) and `agentos.git.worker.errors` (counter tagged by operation), are exposed through Actuator.
 
 Only HTTPS remotes are allowed by default. Private network remotes (a self-hosted forge) require `AGENTOS_GIT_ALLOW_PRIVATE_REMOTE_HOSTS=true`. Managed clone and fetch authenticate with the namespace-shared service account, through a temporary askpass helper: credentials are never embedded in the remote URL. `AGENTOS_GIT_BINARY` pins the Git executable; the other `agentos.git` settings are listed in `GitExecutionProperties`.
 

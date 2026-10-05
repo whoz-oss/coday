@@ -13,7 +13,10 @@ import java.util.UUID
  */
 @Schema(name = "NamespaceGit")
 data class NamespaceGitResource(
-    /** False when the namespace has no repository associated; every other field is then null. */
+    /**
+     * False when the namespace has no repository associated. Every other field is then empty: null,
+     * or false for [autoWorktreeForRootCases].
+     */
     val associated: Boolean,
     val repositoryUrl: String? = null,
     val mainBranch: String? = null,
