@@ -1,68 +1,90 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import mu.KLogging
 import java.util.UUID
 
 /**
- * A zero-LLM agent that executes a hardcoded pipeline over a set of entities.
+ * A zero-LLM agent that executes a hardcoded SEARCH → ACT pipeline over a set of entities.
  *
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider.
  * It is designed to be triggered programmatically (e.g. by a scheduler or a UI form)
- * to process entities in bulk using a predefined SEARCH → EXTRACT → ACT sequence.
+ * to process entities in bulk by calling a Search tool and then (eventually) launching
+ * one case per returned entity.
  *
- * ## MVP scope
+ * ## Flow
  *
- * The current implementation is a skeleton:
- * - Parses the initial [MessageEvent] payload as JSON
- * - Emits [ThinkingEvent] to signal processing to the UI
- * - Logs the parsed payload
- * - Emits [AgentFinishedEvent] to close the run
- *
- * The full SEARCH → EXTRACT → ACT pipeline will be implemented in subsequent tickets
- * once the Search* structured-output contract and CreateCase tool are available.
+ * 1. Parse the JSON payload from the first user [MessageEvent].
+ * 2. Find the Search tool by name in [resolvedTools].
+ * 3. Call the tool with [AgentLoopPayload.searchInput] (first page only for MVP).
+ * 4. Parse the structured result as [SearchResult].
+ * 5. For each item in [SearchResult.data]:
+ *    a. Resolve the end-user via [UserService.findByExternalId] — skip if null.
+ *    b. Expand [AgentLoopAct.promptTemplate] with the entity id.
+ *    c. Log the intended action (case creation not yet implemented — see TODO below).
+ * 6. Emit a summary [MessageEvent] and [AgentFinishedEvent].
  *
  * ## Expected payload format
  *
  * The first user [MessageEvent] must carry a JSON text content:
  * ```json
  * {
- *   "entityType": "TALENT",
- *   "filters": { ... },
- *   "searchOptions": { "limit": 25 },
+ *   "tool": "SearchTalents",
+ *   "searchInput": { "endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"] },
  *   "act": {
  *     "agentName": "talent-analyzer",
- *     "promptTemplate": "Analyse ce talent : {entityId}"
+ *     "promptTemplate": "Analyse this entity: {entityId}"
  *   }
  * }
  * ```
  *
- * If the payload cannot be parsed, the agent logs a warning and finishes immediately
- * without error — this is intentional: a misconfigured trigger should not crash the case.
+ * ## Search tool output format
+ *
+ * The tool must return a [ToolExecutionResult][io.whozoss.agentos.sdk.tool.ToolExecutionResult]
+ * whose [structuredOutput][io.whozoss.agentos.sdk.tool.ToolExecutionResult.structuredOutput]
+ * conforms to:
+ * ```json
+ * {
+ *   "data": [{"entityType": "TALENT", "entityId": "ext-user-123"}],
+ *   "metadata": {"totalCount": 42, "next": null}
+ * }
+ * ```
  *
  * ## Interruption
  *
  * [shouldContinue] is polled before processing starts. When it returns false
  * (e.g. a kill signal was received), the agent emits [AgentFinishedEvent] immediately.
  *
- * @param metadata Agent identity, inherited from [Entity].
- * @param name Display name of this agent instance.
- * @param objectMapper Used to parse the JSON payload from the initial message.
+ * @param metadata          Agent identity, inherited from [Entity].
+ * @param name              Display name of this agent instance.
+ * @param objectMapper      Used to parse the JSON payload and search results.
+ * @param resolvedTools     Full set of tools available to this agent — used to look up
+ *                          the Search tool by name.
+ * @param userService       Used to resolve end-users from their external id.
+ * @param triggerUserId     Internal UUID of the user who triggered the AgentLoop run.
+ *                          Used to build the [ToolContext] for the Search tool call.
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
     private val objectMapper: ObjectMapper,
+    private val resolvedTools: Collection<StandardTool<*>> = emptyList(),
+    private val userService: UserService? = null,
+    private val triggerUserId: UUID? = null,
 ) : Agent {
     /**
      * AgentLoop does not call any LLM — these fields satisfy the [Agent] contract
@@ -76,10 +98,12 @@ class AgentLoop(
         shouldContinue: () -> Boolean,
     ): Flow<CaseEvent> =
         flow {
-            val namespaceId = events.firstOrNull()?.namespaceId
-                ?: throw IllegalArgumentException("[AgentLoop] No events provided — cannot resolve namespaceId")
-            val caseId = events.firstOrNull()?.caseId
-                ?: throw IllegalArgumentException("[AgentLoop] No events provided — cannot resolve caseId")
+            val namespaceId =
+                events.firstOrNull()?.namespaceId
+                    ?: throw IllegalArgumentException("[AgentLoop] No events provided — cannot resolve namespaceId")
+            val caseId =
+                events.firstOrNull()?.caseId
+                    ?: throw IllegalArgumentException("[AgentLoop] No events provided — cannot resolve caseId")
 
             // Honour kill/interrupt signal before doing any work.
             if (!shouldContinue()) {
@@ -102,24 +126,121 @@ class AgentLoop(
             }
 
             logger.info {
-                "[AgentLoop] '$name' starting — entityType=${payload.entityType}, " +
-                    "actAgent=${payload.act?.agentName} (caseId=$caseId)"
+                "[AgentLoop] '$name' starting — tool=${payload.tool}, " +
+                    "actAgent=${payload.act.agentName} (caseId=$caseId)"
             }
 
-            // TODO: implement SEARCH → EXTRACT → ACT pipeline
-            // Blocked on: Search* structured-output contract (peer PR).
-            //
-            // Expected flow per page of results:
-            //   1. SEARCH  — call Search* tool with payload.filters and payload.searchOptions
-            //   2. EXTRACT — for each entity, resolve the user context associated with that entity
-            //                (userId, possibly a different namespaceId). The AgentLoop trigger
-            //                userId must NOT be used as-is for the sub-cases.
-            //   3. ACT     — call SubCaseManager.startSubCase() with the resolved context,
-            //                then emit SubCaseStartedEvent for traceability.
-            //   4. Repeat until no more pages or shouldContinue() returns false.
-            //
-            // For now, the loop finishes immediately after logging the payload.
-            // This skeleton validates the ExecutionMode.LOOP wiring end-to-end.
+            // Find the Search tool by name.
+            val searchTool = resolvedTools.find { it.name == payload.tool }
+            if (searchTool == null) {
+                logger.error {
+                    "[AgentLoop] '$name' could not find Search tool '${payload.tool}' in resolved tools " +
+                        "(available: ${resolvedTools.map { it.name }}). Finishing."
+                }
+                emit(finishedEvent(namespaceId, caseId))
+                return@flow
+            }
+
+            // Build a ToolContext scoped to the trigger user.
+            val toolContext =
+                ToolContext(
+                    namespaceId = namespaceId,
+                    userId = triggerUserId,
+                    userExternalId = null,
+                    caseEvents = events,
+                    agentName = name,
+                )
+
+            // SEARCH phase: call the tool with the opaque searchInput.
+            val searchJson = objectMapper.writeValueAsString(payload.searchInput)
+            val searchResult =
+                runCatching { searchTool.executeWithJson(searchJson, toolContext) }
+                    .getOrElse { e ->
+                        logger.error(e) { "[AgentLoop] '$name' Search tool '${payload.tool}' threw an exception (caseId=$caseId)" }
+                        emit(finishedEvent(namespaceId, caseId))
+                        return@flow
+                    }
+
+            if (!searchResult.success) {
+                logger.error {
+                    "[AgentLoop] '$name' Search tool '${payload.tool}' returned failure: ${searchResult.output} (caseId=$caseId)"
+                }
+                emit(finishedEvent(namespaceId, caseId))
+                return@flow
+            }
+
+            // Parse the structured output from the Search tool.
+            val structured = searchResult.structuredOutput
+            if (structured == null) {
+                logger.error {
+                    "[AgentLoop] '$name' Search tool '${payload.tool}' returned no structuredOutput. " +
+                        "Check the tool's outputSchema() (caseId=$caseId)"
+                }
+                emit(finishedEvent(namespaceId, caseId))
+                return@flow
+            }
+
+            val parsedSearch =
+                runCatching { objectMapper.treeToValue(structured, SearchResult::class.java) }
+                    .getOrElse { e ->
+                        logger.error(e) { "[AgentLoop] '$name' Failed to parse SearchResult from structuredOutput (caseId=$caseId)" }
+                        emit(finishedEvent(namespaceId, caseId))
+                        return@flow
+                    }
+
+            logger.info {
+                "[AgentLoop] '$name' search returned ${parsedSearch.data.size} item(s) " +
+                    "(totalCount=${parsedSearch.metadata?.totalCount}, caseId=$caseId)"
+            }
+
+            // ACT phase: log intended action per entity — case creation not yet implemented.
+            var launchedCount = 0
+            var skippedCount = 0
+
+            for (item in parsedSearch.data) {
+                if (!shouldContinue()) {
+                    logger.info { "[AgentLoop] '$name' interrupted during ACT phase after $launchedCount item(s) processed (caseId=$caseId)" }
+                    break
+                }
+
+                // Resolve the end-user from the entity external id.
+                val endUser = userService?.findByExternalId(item.entityId)
+                if (endUser == null) {
+                    logger.warn { "[AgentLoop] No user found for entityId='${item.entityId}' — skipping" }
+                    skippedCount++
+                    continue
+                }
+
+                // Expand the prompt template.
+                val task = payload.act.promptTemplate.replace("{entityId}", item.entityId)
+
+                logger.info {
+                    "[AgentLoop] Would create case for entity '${item.entityId}' " +
+                        "(user=${endUser.metadata.id}), agent=${payload.act.agentName}, task=$task"
+                }
+                // TODO: create a standard Case on behalf of endUser via a dedicated tool or service
+                launchedCount++
+            }
+
+            // Emit a summary message for traceability.
+            val summary =
+                "AgentLoop '$name' completed: launched $launchedCount case(s), " +
+                    "skipped $skippedCount out of ${parsedSearch.data.size} entity/entities " +
+                    "(totalCount=${parsedSearch.metadata?.totalCount})."
+            logger.info { "[AgentLoop] $summary (caseId=$caseId)" }
+            emit(
+                MessageEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    actor =
+                        io.whozoss.agentos.sdk.actor.Actor(
+                            id = id.toString(),
+                            displayName = name,
+                            role = io.whozoss.agentos.sdk.actor.ActorRole.AGENT,
+                        ),
+                    content = listOf(MessageContent.Text(summary)),
+                ),
+            )
 
             emit(finishedEvent(namespaceId, caseId))
         }
@@ -147,34 +268,36 @@ class AgentLoop(
      * Returns null when:
      * - No [MessageEvent] with USER role is found in [events]
      * - The text content cannot be parsed as [AgentLoopPayload]
-     * - The payload is missing the required [AgentLoopPayload.entityType] field
+     * - The payload has a blank [AgentLoopPayload.tool] field
      */
     private fun parsePayload(events: List<CaseEvent>): AgentLoopPayload? {
-        val firstUserMessage = events
-            .filterIsInstance<MessageEvent>()
-            .firstOrNull { it.actor.role == ActorRole.USER }
-            ?: run {
-                logger.warn { "[AgentLoop] No user MessageEvent found in event history" }
-                return null
-            }
+        val firstUserMessage =
+            events
+                .filterIsInstance<MessageEvent>()
+                .firstOrNull { it.actor.role == ActorRole.USER }
+                ?: run {
+                    logger.warn { "[AgentLoop] No user MessageEvent found in event history" }
+                    return null
+                }
 
-        val text = firstUserMessage.content
-            .filterIsInstance<MessageContent.Text>()
-            .joinToString("\n") { it.content }
-            .takeIf { it.isNotBlank() }
-            ?: run {
-                logger.warn { "[AgentLoop] First user message has no text content" }
-                return null
-            }
+        val text =
+            firstUserMessage.content
+                .filterIsInstance<MessageContent.Text>()
+                .joinToString("\n") { it.content }
+                .takeIf { it.isNotBlank() }
+                ?: run {
+                    logger.warn { "[AgentLoop] First user message has no text content" }
+                    return null
+                }
 
         return runCatching {
             objectMapper.readValue(text, AgentLoopPayload::class.java)
         }.getOrElse { e ->
             logger.warn(e) { "[AgentLoop] Failed to parse payload JSON: $text" }
             null
-        }?.takeIf { it.entityType.isNotBlank() }
+        }?.takeIf { it.tool.isNotBlank() }
             ?: run {
-                logger.warn { "[AgentLoop] Payload is missing required 'entityType' field" }
+                logger.warn { "[AgentLoop] Payload is missing required 'tool' field" }
                 null
             }
     }
@@ -192,38 +315,58 @@ class AgentLoop(
 /**
  * Parsed representation of the JSON payload expected in the first user message of an AgentLoop case.
  *
- * All fields except [entityType] are optional — the pipeline will use sensible defaults
- * when they are absent.
- *
- * @param entityType The type of entities to process (e.g. "TALENT", "TASK", "DOSSIER").
- * @param filters Opaque filter map passed verbatim to the Search* tool.
- * @param searchOptions Pagination and limit options for the search phase.
- * @param act Configuration for the action to execute per entity.
+ * @param tool        Name of the Search tool to invoke (e.g. "SearchTalents").
+ * @param searchInput Opaque JSON block passed verbatim to the Search tool.
+ * @param act         Configuration for the action to execute per entity.
  */
 data class AgentLoopPayload(
-    val entityType: String,
-    val filters: Map<String, Any?>? = null,
-    val searchOptions: AgentLoopSearchOptions? = null,
-    val act: AgentLoopActConfig? = null,
+    val tool: String,
+    val searchInput: JsonNode,
+    val act: AgentLoopAct,
 )
 
 /**
- * Pagination options for the SEARCH phase.
+ * Configuration for the ACT phase: one case per entity.
  *
- * @param limit Maximum number of entities per page (default: 25).
- */
-data class AgentLoopSearchOptions(
-    val limit: Int = 25,
-)
-
-/**
- * Configuration for the ACT phase: one sub-case per entity.
- *
- * @param agentName Name of the agent to invoke for each entity.
+ * @param agentName      Name of the agent to invoke for each entity.
  * @param promptTemplate Template for the initial message sent to the agent.
- *   Use `{entityId}` as a placeholder for the entity identifier.
+ *   Use `{entityId}` as a placeholder for the entity external identifier.
  */
-data class AgentLoopActConfig(
+data class AgentLoopAct(
     val agentName: String,
     val promptTemplate: String,
+)
+
+/**
+ * A single entity returned by the Search tool.
+ *
+ * @param entityType Category of the entity (e.g. "TALENT", "TASK").
+ * @param entityId   External identifier used to resolve the end-user via
+ *                   [io.whozoss.agentos.user.UserService.findByExternalId].
+ */
+data class SearchResultItem(
+    val entityType: String,
+    val entityId: String,
+)
+
+/**
+ * Pagination metadata returned alongside [SearchResult.data].
+ *
+ * @param totalCount Total number of matching entities across all pages.
+ * @param next       Cursor for the next page, or null when this is the last page.
+ */
+data class SearchResultMetadata(
+    val totalCount: Int?,
+    val next: String?,
+)
+
+/**
+ * Structured output of a Search tool call.
+ *
+ * @param data     List of entities on the current page.
+ * @param metadata Pagination metadata.
+ */
+data class SearchResult(
+    val data: List<SearchResultItem>,
+    val metadata: SearchResultMetadata?,
 )

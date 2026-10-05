@@ -557,6 +557,9 @@ class AgentServiceImpl(
                     metadata = EntityMetadata(id = agentId),
                     name = agentName,
                     objectMapper = objectMapper,
+                    resolvedTools = resolvedTools,
+                    userService = userService,
+                    triggerUserId = resolvedUser?.metadata?.id,
                 )
 
             ExecutionMode.ADVANCED -> {
