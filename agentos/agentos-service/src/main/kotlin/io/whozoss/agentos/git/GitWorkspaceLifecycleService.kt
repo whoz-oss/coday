@@ -33,6 +33,11 @@ class GitWorkspaceLifecycleService(
     private val processes: WorkspaceProcessGuard = WorkspaceProcessGuard(),
     private val gitProperties: GitExecutionProperties = GitExecutionProperties(),
 ) {
+    /**
+     * Position of the cleanup sweep. Only the worker's sweep reads and writes it, one pass at a time,
+     * so passes on different pool threads always see the last position.
+     */
+    @Volatile
     private var cleanupCursor: CaseResourceBindingCursor? = null
 
     fun retry(rootId: UUID): CaseResourceBinding = requested(rootId) {
