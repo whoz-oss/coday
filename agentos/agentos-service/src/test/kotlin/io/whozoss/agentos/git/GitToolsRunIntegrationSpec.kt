@@ -95,13 +95,10 @@ class GitToolsRunIntegrationSpec :
             saved.parameters!!["gitDir"].asText() shouldBe "/elsewhere/.git"
         }
 
-        "Git tools exist only inside a Git workspace the user may write, other integrations are untouched" {
+        "in an equipped family Git tools exist only for a user who may write the workspace" {
             val bash = config("BASH", """{"workingDirectory":"/srv/project"}""")
             val git = listOf(config("GIT"), bash)
 
-            mayWrite(true)
-            integration.customize(git, context(null)) shouldBe listOf(bash)
-            integration.customize(git, context(ordinary.id)) shouldBe listOf(bash)
             mayWrite(false)
             integration.customize(git, context(child.id)) shouldBe listOf(bash)
             mayWrite(true)
@@ -110,10 +107,12 @@ class GitToolsRunIntegrationSpec :
             bindings.update(binding)
         }
 
-        "without Git workspaces a saved GIT integration never reaches the plugin" {
-            val bash = config("BASH")
-            val saved = config("GIT", """{"workingDirectory":"/elsewhere","gitDir":"/elsewhere/.git"}""")
+        "outside an equipped family a GIT integration reaches the run as configured" {
+            val bash = config("BASH", """{"workingDirectory":"/srv/project"}""")
+            val git = listOf(config("GIT", """{"workingDirectory":"/srv/repository"}"""), bash)
 
-            GitToolsRunIntegration(null, capabilities, storage, mapper).customize(listOf(saved, bash), context(child.id)) shouldBe listOf(bash)
+            mayWrite(true)
+            integration.customize(git, context(null)) shouldBe git
+            integration.customize(git, context(ordinary.id)) shouldBe git
         }
     })

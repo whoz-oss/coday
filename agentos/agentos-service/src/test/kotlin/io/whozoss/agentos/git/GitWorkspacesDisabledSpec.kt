@@ -5,6 +5,7 @@ import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.whozoss.agentos.agent.RunIntegrationCustomizer
 import io.whozoss.agentos.caseFlow.CaseLaunchGate
 import io.whozoss.agentos.caseFlow.CaseWorkspaceProvisioning
 import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
@@ -76,6 +77,10 @@ class GitWorkspacesDisabledSpec : StringSpec() {
                 WorkspaceProcessGuard::class,
                 GitWorkspaceStatusService::class,
             ).forEach { type -> context.getBeanNamesForType(type.java).toList().shouldBeEmpty() }
+        }
+
+        "without agentos.git.workspaces.enabled a GIT integration reaches runs as configured" {
+            context.getBeanNamesForType(RunIntegrationCustomizer::class.java).toList().shouldBeEmpty()
         }
 
         "without agentos.git.workspaces.enabled the workspace routes answer 404" {
