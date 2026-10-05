@@ -44,18 +44,6 @@
     letter-spacing: -0.02em;
   }
 
-  &__platform-badge {
-    display: inline-block;
-    align-self: flex-start;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    background: var(--color-surface);
-    border: 1px solid var(--color-divider);
-    padding: 0.125rem 0.5rem;
-    letter-spacing: 0.02em;
-  }
-
   // ── Intro text ──────────────────────────────────────────
 
   &__intro {

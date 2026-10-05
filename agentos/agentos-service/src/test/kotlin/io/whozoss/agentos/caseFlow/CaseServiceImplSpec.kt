@@ -3,9 +3,10 @@ package io.whozoss.agentos.caseFlow
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
-import io.kotest.matchers.shouldBe
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.Called
 import io.mockk.clearMocks
@@ -24,6 +25,8 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
@@ -37,20 +40,21 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
+import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.InMemoryUsageRecordRepository
-import io.whozoss.agentos.usage.UsageOutcome
-import io.whozoss.agentos.usage.UsageRecordServiceImpl
-import io.whozoss.agentos.usage.UsageRecordService
 import io.whozoss.agentos.usage.RunCostService
+import io.whozoss.agentos.usage.UsageOutcome
+import io.whozoss.agentos.usage.UsageRecordService
+import io.whozoss.agentos.usage.UsageRecordServiceImpl
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -1623,6 +1627,81 @@ class CaseServiceImplSpec :
                     userId = userId,
                 )
             }
+        }
+
+        // -------------------------------------------------------------------------
+        // launchCase: standalone cases started on behalf of another user (AgentLoop)
+        // -------------------------------------------------------------------------
+
+        "launchCase creates a standalone case owned by the user and routes the task to the agent" {
+            val receivedEvents = CompletableDeferred<List<CaseEvent>>()
+            val capturingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val events = firstArg<List<CaseEvent>>()
+                        receivedEvents.complete(events)
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = events.first().caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+            val service = buildService(agent = capturingAgent)
+
+            val launchedId =
+                service.launchCase(
+                    namespaceId = namespaceId,
+                    agentName = agentName,
+                    task = "do something",
+                    onBehalfOfUserId = userId,
+                )
+
+            val launched = service.getById(launchedId)
+            launched.namespaceId shouldBe namespaceId
+            launched.parentCaseId shouldBe null
+            launched.title shouldBe "do something"
+            verify {
+                permissionService.grantPermission(
+                    userId.toString(),
+                    EntityType.CASE,
+                    launchedId.toString(),
+                    PermissionRelation.ADMIN,
+                )
+            }
+            val userMessage =
+                withTimeout(8_000) { receivedEvents.await() }
+                    .filterIsInstance<MessageEvent>()
+                    .first { it.actor.role == ActorRole.USER }
+            userMessage.actor.id shouldBe userId.toString()
+            (userMessage.content.single() as MessageContent.Text).content shouldBe "@$agentName do something"
+        }
+
+        "killing the launcher case does not kill the cases it launched" {
+            val service = buildService()
+            val loopCase = service.create(Case(namespaceId = namespaceId))
+            val launchedId =
+                service.launchCase(
+                    namespaceId = namespaceId,
+                    agentName = agentName,
+                    task = "do something",
+                    onBehalfOfUserId = userId,
+                )
+
+            service.killCase(loopCase.id)
+
+            service.getById(loopCase.id).status shouldBe CaseStatus.KILLED
+            service.getById(launchedId).status shouldNotBe CaseStatus.KILLED
         }
 
         "killing a parent case also kills its active sub-cases" {

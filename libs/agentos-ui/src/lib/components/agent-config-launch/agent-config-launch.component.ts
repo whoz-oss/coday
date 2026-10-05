@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core'
 import { HttpClient } from '@angular/common/http'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Case, Configuration } from '@whoz-oss/agentos-api-client'
+import { AgentConfigControllerService, Case, Configuration } from '@whoz-oss/agentos-api-client'
 import { firstValueFrom } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 
@@ -12,10 +12,13 @@ import { CaseStateService } from '../../services/case-state.service'
  * creates a Case, sends the payload as the first message, and navigates to
  * the new case chat.
  *
- * Route (namespace): `/:namespaceId/agent-configs/:agentConfigId/launch`
- * Route (platform):  `admin/agent-configs/:agentConfigId/launch`
+ * The message is prefixed with `@<agentName>` so the case routes it to this LOOP agent
+ * rather than to the namespace default agent; AgentLoop strips the mention before parsing.
  *
- * Navigation mirrors CaseHomeComponent.submit() exactly:
+ * Route: `/:namespaceId/agent-configs/:agentConfigId/launch` — namespace only, since a
+ * loop creates cases and cases always live in a namespace.
+ *
+ * Navigation mirrors CaseHomeComponent.submit():
  *   POST /api/cases → addCase() → POST /api/cases/:id/messages → navigate
  */
 @Component({
@@ -31,11 +34,9 @@ export class AgentConfigLaunchComponent {
   private readonly http = inject(HttpClient)
   private readonly config = inject(Configuration)
   private readonly caseState = inject(CaseStateService)
-  protected readonly namespaceId: string | undefined = this.route.snapshot.params['namespaceId'] as string | undefined
+  private readonly agentConfigController = inject(AgentConfigControllerService)
+  protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   protected readonly agentConfigId = this.route.snapshot.params['agentConfigId'] as string
-
-  /** True when there is no namespaceId in the route (platform-level agent config). */
-  protected readonly isPlatformMode = !this.namespaceId
 
   /** Raw JSON entered by the user. */
   protected readonly payloadJson = signal('')
@@ -52,9 +53,8 @@ export class AgentConfigLaunchComponent {
   /** Placeholder illustrating the AgentLoopPayload shape. */
   protected readonly placeholder = JSON.stringify(
     {
-      entityType: 'TALENT',
-      filters: { status: 'active' },
-      searchOptions: { limit: 25 },
+      tool: 'SearchTalents',
+      searchInput: { endDatePeriod: ['THIS_WEEK'], resolveTargets: ['OWNER'] },
       act: {
         agentName: 'talent-analyzer',
         promptTemplate: 'Analyse this entity: {entityId}',
@@ -71,12 +71,11 @@ export class AgentConfigLaunchComponent {
   /**
    * Launch sequence:
    * 1. Validate the textarea content as JSON.
-   * 2. POST /api/cases to create a new case in the current namespace.
-   * 3. POST /api/cases/:id/messages with the JSON string as content.
+   * 2. Resolve the agent name used for the `@mention`.
+   * 3. POST /api/cases to create a new case in the current namespace.
    * 4. Prepend the case to CaseStateService.
-   * 5. Navigate to the case chat.
-   *
-   * Platform-mode launch is not supported (no namespaceId → no case context).
+   * 5. POST /api/cases/:id/messages with `@<agentName> <json>` as content.
+   * 6. Navigate to the case chat.
    */
   protected async launch(): Promise<void> {
     const raw = this.payloadJson().trim()
@@ -95,32 +94,30 @@ export class AgentConfigLaunchComponent {
       return
     }
 
-    if (!this.namespaceId) {
-      this.launchError.set('Launch is not available for platform-level agent configs.')
-      return
-    }
-
     this.isLaunching.set(true)
     try {
-      // Step 2: create the case.
+      // Step 2: resolve the agent name for the @mention routing.
+      const agentConfig = await firstValueFrom(this.agentConfigController.getByIdAgentConfig(this.agentConfigId))
+
+      // Step 3: create the case.
       const createdCase = await firstValueFrom(
         this.http.post<Case>(`${this.config.basePath}/api/cases`, {
           namespaceId: this.namespaceId,
         })
       )
-      // Step 3: register the case in the drawer immediately.
+      // Step 4: register the case in the drawer immediately.
       this.caseState.addCase(createdCase)
       const caseId = createdCase.id ?? ''
 
-      // Step 4: send the loop payload as the first message.
+      // Step 5: send the loop payload as the first message, routed to this agent.
       await firstValueFrom(
         this.http.post(`${this.config.basePath}/api/cases/${caseId}/messages`, {
-          content: raw,
+          content: `@${agentConfig.name} ${raw}`,
           userId: 'default-user',
         })
       )
 
-      // Step 5: navigate to the new case.
+      // Step 6: navigate to the new case.
       this.router.navigate(['/agentos/home'], {
         queryParams: { ns: this.namespaceId, case: caseId },
       })
@@ -132,10 +129,6 @@ export class AgentConfigLaunchComponent {
   }
 
   protected back(): void {
-    if (this.isPlatformMode) {
-      this.router.navigate(['/agentos', 'admin', 'agent-configs', this.agentConfigId, 'edit'])
-    } else {
-      this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', this.agentConfigId, 'edit'])
-    }
+    this.router.navigate(['/agentos', this.namespaceId, 'agent-configs', this.agentConfigId, 'edit'])
   }
 }

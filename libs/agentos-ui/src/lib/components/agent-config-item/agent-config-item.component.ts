@@ -56,25 +56,19 @@ export class AgentConfigItemComponent {
   })
 
   /**
-   * True when the agent's execution mode is LOOP.
-   * Determines whether the "Launch" entry appears in the kebab menu.
+   * True when the "Launch loop" entry should appear in the kebab menu: LOOP agents only, and
+   * never in platform mode since a loop creates cases, which always live in a namespace.
    */
-  protected readonly isLoop = computed(() => {
-    const cfg = this.config()
-    return (
-      cfg.executionMode === AgentConfigExecutionModeEnum.LOOP ||
-      // Backward compat: no executionMode field but mode badge shows LOOP is impossible
-      // via advancedExecution alone — this guard is just for safety.
-      false
-    )
-  })
+  protected readonly canLaunch = computed(
+    () => !this.platformMode() && this.config().executionMode === AgentConfigExecutionModeEnum.LOOP
+  )
 
   protected get menuItems(): KebabMenuItem[] {
     const items: KebabMenuItem[] = [
       { key: 'edit', label: 'Edit agent config', icon: 'edit' },
       { key: 'inspect', label: 'Inspect definition', icon: 'search' },
     ]
-    if (this.isLoop()) {
+    if (this.canLaunch()) {
       items.push({ key: 'launch', label: 'Launch loop', icon: 'play_arrow' })
     }
     items.push({ key: 'delete', label: 'Delete agent config', icon: 'delete', variant: 'danger' })
@@ -102,11 +96,7 @@ export class AgentConfigItemComponent {
         }
         break
       case 'launch':
-        if (this.platformMode()) {
-          this.router.navigate(['/agentos', 'admin', 'agent-configs', this.config().id, 'launch'])
-        } else {
-          this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'launch'])
-        }
+        this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'launch'])
         break
       case 'delete':
         this.pendingDelete.set(true)

@@ -5,15 +5,12 @@
       Edit agent config
     </button>
     <h1 class="agent-config-launch__title">Launch loop agent</h1>
-    @if (isPlatformMode) {
-      <span class="agent-config-launch__platform-badge">Platform level</span>
-    }
   </header>
 
   <p class="agent-config-launch__intro">
     Provide the <code class="agent-config-launch__code">AgentLoopPayload</code> as JSON. The payload defines which
     entities to iterate over and what action to apply to each one. A new Case will be created and the agent loop will
-    start immediately.
+    start immediately; it launches one child case per entity found.
   </p>
 
   <div class="agent-config-launch__field">

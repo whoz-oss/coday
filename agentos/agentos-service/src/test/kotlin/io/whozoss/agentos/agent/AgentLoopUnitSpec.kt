@@ -2,12 +2,16 @@ package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
-import io.mockk.every
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.slot
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
@@ -15,71 +19,71 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
-import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.user.User
-import io.whozoss.agentos.user.UserService
 import kotlinx.coroutines.flow.toList
 import java.util.UUID
 
 /**
  * Unit tests for [AgentLoop].
  *
- * AgentLoop is a zero-LLM agent: no Spring AI, no chat client, minimal mocks needed.
- * All tests collect the emitted [CaseEvent] flow and assert on its structure.
+ * AgentLoop is a thin adapter: these tests cover payload parsing and the mapping of
+ * [LoopRunOutcome] to case events. The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
  */
 class AgentLoopUnitSpec : StringSpec({
 
     val objectMapper = ObjectMapper().registerKotlinModule()
     val namespaceId: UUID = UUID.randomUUID()
     val caseId: UUID = UUID.randomUUID()
-    val userId: UUID = UUID.randomUUID()
+
+    val validPayload =
+        """
+        {
+            "tool": "SearchTalents",
+            "searchInput": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]},
+            "act": {"agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}"}
+        }
+        """.trimIndent()
+
+    val completed =
+        LoopRunOutcome.Completed(
+            searchTool = "SearchTalents",
+            returned = 1,
+            totalCount = 1,
+            hasMorePages = false,
+            launchedCaseIds = listOf(UUID.randomUUID()),
+            unknownUser = 0,
+            noAgentAccess = 0,
+            failed = 0,
+            overLimit = 0,
+            maxItems = 50,
+            targetAgent = "talent-analyzer",
+            interrupted = false,
+        )
 
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
-    fun mockUser(externalId: String = "ext-user-123"): User =
-        User(
-            metadata = EntityMetadata(id = UUID.randomUUID()),
-            externalId = externalId,
-            email = "test@example.com",
-        )
-
-    fun mockSearchTool(
-        name: String = "SearchTalents",
-        structuredOutput: String = """
-            {"data": [{"entityType": "TALENT", "entityId": "ext-user-123"}],
-             "metadata": {"totalCount": 1, "next": null}}
-        """.trimIndent(),
-        success: Boolean = true,
-    ): StandardTool<*> {
-        val tool = mockk<StandardTool<*>>()
-        every { tool.name } returns name
-        val node = objectMapper.readTree(structuredOutput)
-        io.mockk.coEvery {
-            tool.executeWithJson(any(), any())
-        } returns ToolExecutionResult(
-            output = "search done",
-            success = success,
-            structuredOutput = node,
-        )
-        return tool
-    }
+    fun runnerReturning(outcome: LoopRunOutcome): LoopWorkflowRunner =
+        mockk<LoopWorkflowRunner>().also { coEvery { it.run(any(), any(), any()) } returns outcome }
 
     fun agent(
+        runner: LoopWorkflowRunner = runnerReturning(completed),
         name: String = "loop-agent",
         resolvedTools: Collection<StandardTool<*>> = emptyList(),
-        userService: UserService? = null,
-        triggerUserId: UUID? = userId,
+        triggerUser: User? = null,
+        caseLauncher: CaseLauncher? = null,
     ) = AgentLoop(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         name = name,
         objectMapper = objectMapper,
+        runner = runner,
         resolvedTools = resolvedTools,
-        userService = userService,
-        triggerUserId = triggerUserId,
+        triggerUser = triggerUser,
+        caseLauncher = caseLauncher,
     )
 
     fun userMessage(text: String) =
@@ -98,34 +102,122 @@ class AgentLoopUnitSpec : StringSpec({
             content = listOf(MessageContent.Text(text)),
         )
 
-    val validPayload =
-        """
-        {
-            "tool": "SearchTalents",
-            "searchInput": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]},
-            "act": {"agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}"}
-        }
-        """.trimIndent()
+    fun List<CaseEvent>.warnMessage(): String = filterIsInstance<WarnEvent>().single().message
 
     // -------------------------------------------------------------------------
-    // Happy path — with no tools/services (skeleton still finishes cleanly)
+    // Completed outcome
     // -------------------------------------------------------------------------
 
-    "run with valid payload but no search tool emits ThinkingEvent then AgentFinishedEvent" {
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
+    "completed run emits ThinkingEvent, summary MessageEvent then AgentFinishedEvent" {
+        val emitted = agent().run(listOf(userMessage(validPayload))).toList()
 
-        val emitted = agent().run(events).toList()
-
-        emitted shouldHaveSize 2
+        emitted shouldHaveSize 3
         emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
+        val summary = emitted[1].shouldBeInstanceOf<MessageEvent>()
+        summary.actor.role shouldBe ActorRole.AGENT
+        (summary.content.single() as MessageContent.Text).content shouldContain "Launched 1 case(s)"
+        emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
     }
 
-    "run emits AgentFinishedEvent with correct agentName and no llmProvider" {
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
+    "payload is passed to the runner with the case context" {
+        val runner = runnerReturning(completed)
+        val user = User(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "ext-trigger", email = "t@example.com")
+        val launcher = CaseLauncher { _, _, _, _ -> UUID.randomUUID() }
+        val payloadSlot = slot<AgentLoopPayload>()
+        val contextSlot = slot<LoopRunContext>()
+
+        agent(runner = runner, name = "my-loop", triggerUser = user, caseLauncher = launcher)
+            .run(listOf(userMessage(validPayload)))
+            .toList()
+
+        coVerify { runner.run(capture(payloadSlot), capture(contextSlot), any()) }
+        payloadSlot.captured.tool shouldBe "SearchTalents"
+        payloadSlot.captured.act shouldBe AgentLoopAct("talent-analyzer", "Analyse this entity: {entityId}")
+        contextSlot.captured.namespaceId shouldBe namespaceId
+        contextSlot.captured.caseId shouldBe caseId
+        contextSlot.captured.agentName shouldBe "my-loop"
+        contextSlot.captured.triggerUser shouldBe user
+        contextSlot.captured.caseLauncher shouldBe launcher
+    }
+
+    "leading @mention used to route the message is ignored when parsing" {
+        val runner = runnerReturning(completed)
+
+        agent(runner = runner).run(listOf(userMessage("@loop-agent $validPayload"))).toList()
+
+        coVerify(exactly = 1) { runner.run(match { it.tool == "SearchTalents" }, any(), any()) }
+    }
+
+    // -------------------------------------------------------------------------
+    // Aborted outcome
+    // -------------------------------------------------------------------------
+
+    "aborted run emits a WarnEvent carrying the reason" {
+        val emitted =
+            agent(runner = runnerReturning(LoopRunOutcome.Aborted("Search tool 'X' is not available")))
+                .run(listOf(userMessage(validPayload)))
+                .toList()
+
+        emitted shouldHaveSize 3
+        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
+        emitted.warnMessage() shouldContain "Search tool 'X' is not available"
+        emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+    }
+
+    // -------------------------------------------------------------------------
+    // Malformed / missing payload — visible warning, runner never called
+    // -------------------------------------------------------------------------
+
+    listOf(
+        "invalid JSON" to "not json at all",
+        "missing tool field" to """{"searchInput": {}, "act": {"agentName": "a", "promptTemplate": "t"}}""",
+        "blank tool field" to """{"tool": " ", "searchInput": {}, "act": {"agentName": "a", "promptTemplate": "t"}}""",
+        "blank message" to "   ",
+        "mention only" to "@loop-agent",
+    ).forEach { (label, text) ->
+        "payload with $label emits a WarnEvent and does not call the runner" {
+            val runner = runnerReturning(completed)
+
+            val emitted = agent(runner = runner).run(listOf(userMessage(text))).toList()
+
+            emitted shouldHaveSize 3
+            emitted[0].shouldBeInstanceOf<ThinkingEvent>()
+            emitted[1].shouldBeInstanceOf<WarnEvent>()
+            emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+    }
+
+    "no user MessageEvent emits a WarnEvent" {
+        val emitted = agent().run(listOf(agentMessage("I am the agent."))).toList()
+
+        emitted.warnMessage() shouldContain "No user message"
+    }
+
+    // -------------------------------------------------------------------------
+    // Interruption and invariants
+    // -------------------------------------------------------------------------
+
+    "shouldContinue=false emits only AgentFinishedEvent and does not call the runner" {
+        val runner = runnerReturning(completed)
+
+        val emitted = agent(runner = runner).run(listOf(userMessage(validPayload)), shouldContinue = { false }).toList()
+
+        emitted shouldHaveSize 1
+        emitted[0].shouldBeInstanceOf<AgentFinishedEvent>()
+        coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+    }
+
+    "empty event list throws IllegalArgumentException" {
+        shouldThrow<IllegalArgumentException> {
+            agent().run(emptyList()).toList()
+        }
+    }
+
+    "AgentFinishedEvent carries agent identity and no llmProvider" {
         val loop = agent(name = "my-loop")
 
-        val finished = loop.run(events).toList().last() as AgentFinishedEvent
+        val finished = loop.run(listOf(userMessage(validPayload))).toList().last() as AgentFinishedEvent
 
         finished.agentName shouldBe "my-loop"
         finished.agentId shouldBe loop.id
@@ -133,162 +225,12 @@ class AgentLoopUnitSpec : StringSpec({
         finished.llmModel shouldBe null
     }
 
-    "run emits events with correct namespaceId and caseId" {
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
-
-        val emitted = agent().run(events).toList()
-
-        emitted.forEach { event ->
+    "all events carry the case namespaceId and caseId" {
+        agent().run(listOf(userMessage(validPayload))).toList().forEach { event ->
             event.namespaceId shouldBe namespaceId
             event.caseId shouldBe caseId
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Full SEARCH → ACT happy path
-    // -------------------------------------------------------------------------
-
-    "run with search tool and matching user logs intent and counts as launched" {
-        val searchTool = mockSearchTool()
-        val user = mockUser()
-        val userServiceMock = mockk<UserService>()
-
-        every { userServiceMock.findByExternalId("ext-user-123") } returns user
-
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
-        val emitted =
-            agent(
-                resolvedTools = listOf(searchTool),
-                userService = userServiceMock,
-            ).run(events).toList()
-
-        // ThinkingEvent + MessageEvent (summary) + AgentFinishedEvent
-        emitted shouldHaveSize 3
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<MessageEvent>()
-        emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
-
-        val summary = (emitted[1] as MessageEvent).content.filterIsInstance<MessageContent.Text>().first().content
-        summary.contains("launched 1") shouldBe true
-        summary.contains("skipped 0") shouldBe true
-    }
-
-    "run skips entity when userService returns null for entityId" {
-        val searchTool = mockSearchTool()
-        val userServiceMock = mockk<UserService>()
-
-        every { userServiceMock.findByExternalId("ext-user-123") } returns null
-
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
-        val emitted =
-            agent(
-                resolvedTools = listOf(searchTool),
-                userService = userServiceMock,
-            ).run(events).toList()
-
-        // ThinkingEvent + MessageEvent (summary: 0 launched, 1 skipped) + AgentFinishedEvent
-        emitted shouldHaveSize 3
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<MessageEvent>()
-        emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
-
-        val summary = (emitted[1] as MessageEvent).content.filterIsInstance<MessageContent.Text>().first().content
-        summary.contains("launched 0") shouldBe true
-        summary.contains("skipped 1") shouldBe true
-    }
-
-    "run finishes immediately when search tool is not found" {
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
-        // No tools registered — SearchTalents will not be found.
-        val emitted = agent(resolvedTools = emptyList()).run(events).toList()
-
-        emitted shouldHaveSize 2
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
-    }
-
-    "run finishes immediately when search tool returns failure" {
-        val failingTool =
-            mockSearchTool(
-                structuredOutput = """{"data": [], "metadata": {"totalCount": 0, "next": null}}""",
-                success = false,
-            )
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
-        val emitted = agent(resolvedTools = listOf(failingTool)).run(events).toList()
-
-        emitted shouldHaveSize 2
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
-    }
-
-    // -------------------------------------------------------------------------
-    // shouldContinue = false — early exit before ThinkingEvent
-    // -------------------------------------------------------------------------
-
-    "run with shouldContinue=false emits only AgentFinishedEvent without ThinkingEvent" {
-        val events: List<CaseEvent> = listOf(userMessage(validPayload))
-
-        val emitted = agent().run(events, shouldContinue = { false }).toList()
-
-        emitted shouldHaveSize 1
-        emitted[0].shouldBeInstanceOf<AgentFinishedEvent>()
-    }
-
-    // -------------------------------------------------------------------------
-    // Malformed / missing payload — fail-safe finish
-    // -------------------------------------------------------------------------
-
-    "run with invalid JSON payload emits ThinkingEvent then AgentFinishedEvent without throwing" {
-        val events: List<CaseEvent> = listOf(userMessage("not json at all"))
-
-        val emitted = agent().run(events).toList()
-
-        emitted shouldHaveSize 2
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
-    }
-
-    "run with payload missing tool field emits ThinkingEvent then AgentFinishedEvent" {
-        val noTool = """{"searchInput": {}, "act": {"agentName": "a", "promptTemplate": "t"}}"""
-        val events: List<CaseEvent> = listOf(userMessage(noTool))
-
-        val emitted = agent().run(events).toList()
-
-        emitted shouldHaveSize 2
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
-    }
-
-    "run with blank payload emits ThinkingEvent then AgentFinishedEvent" {
-        val events: List<CaseEvent> = listOf(userMessage("   "))
-
-        val emitted = agent().run(events).toList()
-
-        emitted shouldHaveSize 2
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
-    }
-
-    "run with no user MessageEvent emits ThinkingEvent then AgentFinishedEvent" {
-        // Only an agent message — no user turn.
-        val events: List<CaseEvent> = listOf(agentMessage("I am the agent."))
-
-        val emitted = agent().run(events).toList()
-
-        emitted shouldHaveSize 2
-        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-        emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
-    }
-
-    "run with empty event list throws IllegalArgumentException" {
-        io.kotest.assertions.throwables.shouldThrow<IllegalArgumentException> {
-            agent().run(emptyList()).toList()
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Agent identity
-    // -------------------------------------------------------------------------
 
     "llmProvider and llmModel are sentinel values signalling no LLM usage" {
         val loop = agent()

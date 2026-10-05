@@ -130,6 +130,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentConfigProperties = AgentConfigProperties(),
             limitsConfig = LimitsConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
+            loopWorkflowRunner = mockk(relaxed = true),
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -523,6 +524,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    loopWorkflowRunner = mockk(relaxed = true),
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -857,6 +859,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    loopWorkflowRunner = mockk(relaxed = true),
                 )
             val configs =
                 listOf(

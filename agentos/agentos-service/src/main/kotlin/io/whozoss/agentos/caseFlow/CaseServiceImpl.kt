@@ -3,6 +3,7 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
+import io.whozoss.agentos.agent.CaseLauncher
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -77,7 +78,8 @@ class CaseServiceImpl(
     private val runCostService: RunCostService? = null,
     private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) : CaseService,
-    SubCaseManager {
+    SubCaseManager,
+    CaseLauncher {
     /**
      * Coroutine scope used to run case execution loops and fire-and-forget
      * post-processing tasks (e.g. automatic naming) in the background.
@@ -437,8 +439,7 @@ class CaseServiceImpl(
                 .filterIsInstance<MessageContent.Text>()
                 .firstOrNull()
                 ?.content
-                ?.trim()
-                ?.let { MENTION_REGEX.find(it)?.groupValues?.get(1) }
+                ?.let { AgentMention.extractName(it) }
 
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
         val userId = pastEvents.lastUserIdOrNull()
@@ -631,6 +632,7 @@ class CaseServiceImpl(
                     saved
                 },
                 usageAccumulator = usageAccumulator,
+                caseLauncher = this,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agent = agentService.findAgentByName(agentName, context, this)
@@ -999,6 +1001,41 @@ class CaseServiceImpl(
         return runtime
     }
 
+    /**
+     * [CaseLauncher] implementation: a standalone case owned by [onBehalfOfUserId], with no parent
+     * link so its lifecycle is independent from the launching case. Same sequence as
+     * [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor]: create, grant ADMIN, add message.
+     */
+    override fun launchCase(
+        namespaceId: UUID,
+        agentName: String,
+        task: String,
+        onBehalfOfUserId: UUID,
+    ): UUID {
+        val case = create(Case(namespaceId = namespaceId, title = task.take(MAX_LAUNCHED_CASE_TITLE_LENGTH)))
+        try {
+            permissionService.grantPermission(
+                onBehalfOfUserId.toString(),
+                EntityType.CASE,
+                case.id.toString(),
+                PermissionRelation.ADMIN,
+            )
+        } catch (e: Exception) {
+            logger.error(e) { "Auto-ADMIN grant failed for launched case ${case.id} (user $onBehalfOfUserId) — killing case" }
+            runCatching { killCase(case.id) }
+                .onFailure { killErr -> logger.warn(killErr) { "Failed to kill orphaned launched case ${case.id}" } }
+            throw IllegalStateException("Failed to grant permissions on launched case ${case.id}: ${e.message}", e)
+        }
+        // @mention routes the first message to the requested agent through the normal selectAgent resolution.
+        addMessage(
+            caseId = case.id,
+            actor = resolveActor(onBehalfOfUserId),
+            content = listOf(MessageContent.Text("@$agentName $task")),
+        )
+        logger.info { "Launched case ${case.id} for user $onBehalfOfUserId, agent=$agentName" }
+        return case.id
+    }
+
     // ======================================================
     // Lifecycle
     // ======================================================
@@ -1093,17 +1130,7 @@ class CaseServiceImpl(
         /** Maximum character length for a sub-case title derived from the task description. */
         private const val MAX_SUBCASE_TITLE_LENGTH = 50
 
-        /**
-         * Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`.
-         *
-         * Agent names may contain letters, digits, hyphens and underscores only.
-         * Using `\S+` was too broad: a message like `@inspector https://...` would
-         * capture the entire `inspector https://...` string when the separator is a
-         * non-breaking space (U+00A0) or any other non-ASCII whitespace character,
-         * because `\S` in Java/Kotlin regex only excludes ASCII whitespace by default.
-         * The tighter character class `[\w-]+` stops at the first space-like or
-         * special character, ensuring only the agent name token is captured.
-         */
-        private val MENTION_REGEX = """^@([\w-]+)""".toRegex()
+        /** Maximum character length for a launched case title derived from its task. */
+        private const val MAX_LAUNCHED_CASE_TITLE_LENGTH = 80
     }
 }

@@ -43,6 +43,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *   limits:
  *     case-max-iterations: 100
  *     agent-max-iterations: 20
+ *     agent-loop-max-items: 50
  *     run-cost-threshold: 10.0
  * ```
  */
@@ -77,6 +78,16 @@ data class LimitsConfigProperties(
      * Defaults to 20.
      */
     val agentMaxIterations: Int = 20,
+    /**
+     * Maximum number of entities processed by a single [io.whozoss.agentos.agent.AgentLoop] run.
+     *
+     * Each processed entity launches one case immediately, so this bounds the number of
+     * agent runs started concurrently by one loop. Entities beyond the limit are ignored
+     * and reported in the loop summary.
+     *
+     * Defaults to 50.
+     */
+    val agentLoopMaxItems: Int = 50,
     /**
      * Maximum amount AgentOS accepts to spend WITHOUT human verification, expressed in the
      * platform's single implicit currency unit (see [io.whozoss.agentos.usage.UsageRecord]).

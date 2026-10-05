@@ -87,6 +87,7 @@ class AgentServiceImpl(
     private val agentConfigProperties: AgentConfigProperties,
     private val limitsConfig: LimitsConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val loopWorkflowRunner: LoopWorkflowRunner,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -557,9 +558,10 @@ class AgentServiceImpl(
                     metadata = EntityMetadata(id = agentId),
                     name = agentName,
                     objectMapper = objectMapper,
+                    runner = loopWorkflowRunner,
                     resolvedTools = resolvedTools,
-                    userService = userService,
-                    triggerUserId = resolvedUser?.metadata?.id,
+                    triggerUser = resolvedUser,
+                    caseLauncher = context.caseLauncher,
                 )
 
             ExecutionMode.ADVANCED -> {
