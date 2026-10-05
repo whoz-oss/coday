@@ -1,9 +1,7 @@
 package io.whozoss.agentos.git
 
 import com.fasterxml.jackson.core.JacksonException
-import com.fasterxml.jackson.core.StreamReadFeature
-import com.fasterxml.jackson.databind.json.JsonMapper
-import com.fasterxml.jackson.module.kotlin.kotlinModule
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
 import org.springframework.data.annotation.CreatedBy
@@ -81,9 +79,8 @@ data class CaseResourceBindingNode(
         )
 
     companion object : KLogging() {
-        /** Settings are written and read here only. Source text stays out of parse errors. */
-        private val MAPPER =
-            JsonMapper.builder().addModule(kotlinModule()).disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).build()
+        /** Settings are written and read here only. */
+        private val MAPPER = jacksonObjectMapper()
 
         private fun readSettings(
             id: String,
@@ -93,7 +90,10 @@ data class CaseResourceBindingNode(
                 try {
                     MAPPER.readValue(it, GitRepositorySettings::class.java)
                 } catch (e: JacksonException) {
-                    logger.warn(e) { "Binding $id has unreadable workspace settings and is read without them" }
+                    // Jackson quotes the offending text in its messages: name the failure, never the content.
+                    logger.warn {
+                        "Binding $id has unreadable workspace settings (${e.javaClass.simpleName}) and is read without them"
+                    }
                     null
                 }
             }

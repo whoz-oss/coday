@@ -57,14 +57,18 @@ class CaseResourceBindingNodeSpec : StringSpec({
         val logs = ListAppender<ILoggingEvent>().also { it.start() }
         logger.addAppender(logs)
         try {
-            node("""{"setupCommand":"echo synthetic-secret", "configId": """).toDomain().settings shouldBe null
+            listOf(
+                """{"setupCommand":"echo synthetic-secret", "configId": """,
+                """{"setupCommand": synthetic-secret }""",
+                """{"configId":"synthetic-secret"}""",
+            ).forEach { node(it).toDomain().settings shouldBe null }
             node(null).toDomain().settings shouldBe null
         } finally {
             logger.detachAppender(logs)
             logs.stop()
         }
 
-        logs.list.count { it.level == Level.WARN } shouldBe 1
+        logs.list.count { it.level == Level.WARN } shouldBe 3
         val rendered = logs.list.joinToString("\n") {
             it.formattedMessage + (it.throwableProxy?.let(ThrowableProxyUtil::asString) ?: "")
         }
