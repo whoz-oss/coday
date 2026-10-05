@@ -302,5 +302,41 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.associated").value(false))
         }
+
+       "a PREPARING worktree returns 409 on workspace/diff" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            val binding = CaseResourceBinding(
+                rootCaseId = case.id,
+                namespaceId = case.namespaceId,
+                integrationConfigId = UUID.randomUUID(),
+                status = CaseResourceStatus.PREPARING,
+            )
+            stubCase(case, binding)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/diff").param("path", "README.md"))
+                .andExpect(status().isConflict)
+        }
+
+        "a PREPARING worktree returns 200 on workspace/changes with equipped=true and status" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            val binding = CaseResourceBinding(
+                rootCaseId = case.id,
+                namespaceId = case.namespaceId,
+                integrationConfigId = UUID.randomUUID(),
+                status = CaseResourceStatus.PREPARING,
+            )
+            stubCase(case, binding)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/changes"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(true))
+                .andExpect(jsonPath("$.status").value("PREPARING"))
+            // Verify that no Git inspection was attempted: the worktree may not be ready on disk.
+            verify(exactly = 0) { diffs.branch(any()) }
+            verify(exactly = 0) { diffs.changes(any()) }
+        }
     }
 }

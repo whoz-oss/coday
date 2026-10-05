@@ -181,6 +181,20 @@ class ExchangeGitDiffSpec : StringSpec({
         shouldThrow<BadRequestException> { service.file(target, "../secret") }
         shouldThrow<BadRequestException> { service.file(target, ".git/config") }
     }
+
+    "a symlinked intermediate directory is refused even when the final path looks safe" {
+        val (service, target) = fixture()
+        Files.createSymbolicLink(target.path.resolve("escape"), Path.of("/etc"))
+        shouldThrow<BadRequestException> { service.file(target, "escape/passwd") }
+    }
+
+    "a symlinked directory nested more than one level deep is also refused" {
+        val (service, target) = fixture()
+        val a = Files.createDirectory(target.path.resolve("a"))
+        Files.createSymbolicLink(a.resolve("b"), Path.of("/etc"))
+        shouldThrow<BadRequestException> { service.file(target, "a/b/passwd") }
+    }
+
     "a filename containing pathspec magic is inspected literally" {
         val (service, target) = fixture()
         Files.writeString(target.path.resolve("[name].txt"), "literal\n")
