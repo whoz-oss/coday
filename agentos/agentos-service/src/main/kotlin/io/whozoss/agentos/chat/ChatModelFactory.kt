@@ -27,6 +27,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.bind.DefaultValue
 import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
+import org.springframework.web.client.RestClient
+import org.springframework.web.reactive.function.client.WebClient
 
 /**
  * Configuration for Anthropic-specific features.
@@ -62,6 +64,8 @@ class ChatModelFactory(
         /** Maximum tokens to generate in the completion. Does not affect the input context window. */
         maxCompletionTokens: Int? = null,
         headers: Map<String, String> = emptyMap(),
+        /** Receives the cost reported in OpenAI-compatible responses (e.g. Requesty `usage.cost`). */
+        providerCost: ProviderReportedCost? = null,
     ): ChatModel {
         val resolvedApiKey = apiKey ?: ""
         return when (apiType) {
@@ -72,6 +76,7 @@ class ChatModelFactory(
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
                     maxCompletionTokens = maxCompletionTokens,
+                    providerCost = providerCost,
                 )
             }
 
@@ -122,13 +127,20 @@ class ChatModelFactory(
         model: String,
         temp: Double,
         maxCompletionTokens: Int?,
+        providerCost: ProviderReportedCost? = null,
     ): ChatModel {
-        val api =
+        val builder =
             OpenAiApi
                 .Builder()
                 .baseUrl(baseUrl)
                 .apiKey(apiKey)
-                .build()
+        if (providerCost != null) {
+            // Same defaults as OpenAiApi.Builder, plus the hooks reading the reported cost.
+            builder
+                .restClientBuilder(RestClient.builder().requestInterceptor(ProviderCostCapture.interceptor(providerCost)))
+                .webClientBuilder(WebClient.builder().filter(ProviderCostCapture.filter(providerCost)))
+        }
+        val api = builder.build()
 
         val optionsBuilder =
             OpenAiChatOptions
