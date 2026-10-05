@@ -45,6 +45,10 @@ class GitWorkspaceLifecycleService(
     fun acknowledgeSetup(rootId: UUID): CaseResourceBinding = requested(rootId) {
         val b = requireBinding(rootId)
         if (b.status != CaseResourceStatus.FAILED) throw ConflictException("Workspace is not failed")
+        // Only an interrupted setup needs its replay acknowledged. A completed one is never run again.
+        if (!b.setupStarted || b.setupCompleted) {
+            throw ConflictException("No interrupted setup to acknowledge: retry the preparation instead")
+        }
         bindings.update(b.copy(setupStarted = false, setupCompleted = false, status = CaseResourceStatus.REQUESTED, failureReason = null))
     }
 
