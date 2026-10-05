@@ -8,6 +8,7 @@ import io.whozoss.agentos.agent.RunIntegrationCustomizer
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.git.core.GitLayout
+import io.whozoss.agentos.git.core.GitToolParameters
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -60,11 +61,12 @@ class GitToolsRunIntegration(
         root.requireUsable()
         val common = exchangeStorageService.namespaceGitDirectory(binding.namespaceId).toAbsolutePath().normalize()
         return mapOf(
-            "workingDirectory" to root.repositoryPath.toAbsolutePath().normalize().toString(),
-            "gitDir" to common.resolve(GitLayout.WORKTREES_DIR).resolve(binding.rootCaseId.toString()).toString(),
-            "commonGitDir" to common.toString(),
-            "repositoryUrl" to settings.repositoryUrl,
-            "mainBranch" to settings.mainBranch,
+            GitToolParameters.WORKING_DIRECTORY to root.repositoryPath.toAbsolutePath().normalize().toString(),
+            GitToolParameters.GIT_DIR to
+                common.resolve(GitLayout.WORKTREES_DIR).resolve(binding.rootCaseId.toString()).toString(),
+            GitToolParameters.COMMON_GIT_DIR to common.toString(),
+            GitToolParameters.REPOSITORY_URL to settings.repositoryUrl,
+            GitToolParameters.MAIN_BRANCH to settings.mainBranch,
         )
     }
 
