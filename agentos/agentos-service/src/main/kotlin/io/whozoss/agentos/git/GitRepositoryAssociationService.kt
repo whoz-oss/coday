@@ -29,6 +29,10 @@ class GitRepositoryAssociationService(
     fun findSettings(namespaceId: UUID): GitRepositorySettings? =
         activeConfig(namespaceId)?.let { gitRepoSettingsFactory.fromConfig(it, validateRemote = false) }
 
+    /** Whether the namespace equips each new root case. Reads that switch alone, never the other fields. */
+    fun automationEnabled(namespaceId: UUID): Boolean =
+        activeConfig(namespaceId)?.let { GitRepositoryIntegration.autoWorktree(it.parameters) } ?: false
+
     /**
      * Disabled automation must never make ordinary conversation creation depend on Git. The saved
      * shape is parsed here. DNS and transport checks belong to actual Git execution.

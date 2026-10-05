@@ -49,7 +49,10 @@ class GitCaseWorkspaceProvisioning(
         // Without the GIT plugin no new family is equipped; families equipped earlier keep working.
         if (!gitAvailability.isAvailable()) return
         if (worker.getIfAvailable() == null) {
-            logger.warn { "Case ${case.id} not equipped: Git workspaces are enabled but the Git worker is disabled" }
+            // Only a namespace with automation on would have been equipped: say so for it, and only for it.
+            if (associationService.automationEnabled(case.namespaceId)) {
+                logger.warn { "Case ${case.id} not equipped: Git workspaces are enabled but the Git worker is disabled" }
+            }
             return
         }
         // Disabled automation remains independent of Git validation and availability.

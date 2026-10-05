@@ -1,7 +1,16 @@
 package io.whozoss.agentos.git
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.headers
+import io.kotest.data.row
+import io.kotest.data.table
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -12,6 +21,8 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitRemoteUrlValidator
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.ObjectProvider
 import java.util.UUID
 
 /**
@@ -146,6 +157,7 @@ class GitCaseWorkspaceProvisioningSpec :
             GitCaseWorkspaceProvisioning(association, bindings, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper(), availability(), workerOn())
                 .onCaseCreated(case)
             bindings.findByRootCaseId(case.id).shouldBeNull()
+            association.automationEnabled(namespaceId) shouldBe false
             io.mockk.verify(exactly = 0) { validator.validate(any()) }
         }
 
@@ -168,20 +180,38 @@ class GitCaseWorkspaceProvisioningSpec :
             val case = rootCase()
             GitCaseWorkspaceProvisioning(association, bindings, mapper, availability(), workerOn()).onCaseCreated(case)
             bindings.findByRootCaseId(case.id)?.status shouldBe CaseResourceStatus.REQUESTED
+            association.automationEnabled(namespaceId) shouldBe true
             io.mockk.verify(exactly = 0) { validator.validate(any()) }
         }
 
     
-        "no family is equipped while the Git worker is disabled: its turns would wait forever" {
-            val bindings = InMemoryCaseResourceBindingService()
-            val case = rootCase()
-            val association = mockk<GitRepositoryAssociationService> { every { findAutomaticSettings(any()) } returns settings(autoWorktree = true) }
-            val workerOff = mockk<org.springframework.beans.factory.ObjectProvider<CaseWorkspaceWorker>> { every { getIfAvailable() } returns null }
+        "no family is equipped while the Git worker is disabled, and only a namespace with automation on is warned about" {
+            table(
+                headers("automation", "warnings"),
+                row(true, 1),
+                row(false, 0),
+            ).forAll { automation, warnings ->
+                val bindings = InMemoryCaseResourceBindingService()
+                val case = rootCase()
+                val association = mockk<GitRepositoryAssociationService> {
+                    every { automationEnabled(namespaceId) } returns automation
+                    every { findAutomaticSettings(any()) } returns settings(autoWorktree = automation)
+                }
+                val workerOff = mockk<ObjectProvider<CaseWorkspaceWorker>> { every { getIfAvailable() } returns null }
+                val logger = LoggerFactory.getLogger(GitCaseWorkspaceProvisioning::class.java) as Logger
+                val logs = ListAppender<ILoggingEvent>().also { it.start() }
+                logger.addAppender(logs)
+                try {
+                    GitCaseWorkspaceProvisioning(association, bindings, jacksonObjectMapper(), availability(), workerOff)
+                        .onCaseCreated(case)
+                } finally {
+                    logger.detachAppender(logs)
+                    logs.stop()
+                }
 
-            GitCaseWorkspaceProvisioning(association, bindings, com.fasterxml.jackson.module.kotlin.jacksonObjectMapper(), availability(), workerOff)
-                .onCaseCreated(case)
-
-            bindings.findByRootCaseId(case.id).shouldBeNull()
+                bindings.findByRootCaseId(case.id).shouldBeNull()
+                logs.list.count { it.level == Level.WARN && it.formattedMessage.contains("Git worker is disabled") } shouldBe warnings
+            }
         }
 })
 
