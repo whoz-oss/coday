@@ -31,7 +31,7 @@ class GitRepositoryAllocationRaceSpec : StringSpec({
             val namespaceId = UUID.randomUUID()
             val oldUrl = "https://forge.example/old.git"
             val newUrl = "https://forge.example/correct.git"
-            val checkouts = InMemoryRepositoryCheckouts()
+            val checkouts = InMemoryRepositoryCheckoutService()
             val bindings = InMemoryCaseResourceBindingService()
             val root = Files.createTempDirectory("git-allocation-race-")
             val storage = mockk<ExchangeStorageService> {

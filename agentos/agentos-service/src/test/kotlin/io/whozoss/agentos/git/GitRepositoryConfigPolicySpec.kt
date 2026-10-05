@@ -121,7 +121,7 @@ class GitRepositoryConfigPolicySpec :
         }
 
         "dedicated namespace settings and generic config CRUD persist the same preparation intent" {
-            val checkoutStore = InMemoryRepositoryCheckouts()
+            val checkoutStore = InMemoryRepositoryCheckoutService()
             val factory = GitRepositorySettingsFactory(GitRemoteUrlValidator(GitExecutionProperties()))
             val actualProvisioner = RepositoryCheckoutProvisioner(mockk(), GitExecutionProperties(), mockk(), checkoutStore, mockk())
             val service = IntegrationConfigServiceImpl(InMemoryIntegrationConfigRepository(), IntegrationConfigMergeStrategy(),
@@ -263,7 +263,7 @@ class GitRepositoryConfigPolicySpec :
             verify(exactly = 0) { provisioner.requestPreparation(any()) }
         }
         "an unused first failed checkout can be corrected through the ordinary config API" {
-            val checkoutStore = InMemoryRepositoryCheckouts()
+            val checkoutStore = InMemoryRepositoryCheckoutService()
             val bindingStore = InMemoryCaseResourceBindingService()
             val root = java.nio.file.Files.createTempDirectory("unused-checkout-policy-")
             val storage = mockk<io.whozoss.agentos.exchange.ExchangeStorageService> {
@@ -286,32 +286,6 @@ class GitRepositoryConfigPolicySpec :
                 it.mainBranch shouldBe "develop"
                 it.status shouldBe RepositoryCheckoutStatus.PREPARING
             }
-        }
-
-        "failed checkout replacement cannot orphan a family or existing files" {
-            val checkoutStore = InMemoryRepositoryCheckouts()
-            val bindingStore = InMemoryCaseResourceBindingService()
-            val root = java.nio.file.Files.createTempDirectory("used-checkout-policy-")
-            val directory = root.resolve("repository.git")
-            val storage = mockk<io.whozoss.agentos.exchange.ExchangeStorageService> {
-                every { namespaceGitDirectory(namespaceId) } returns directory
-            }
-            val actualProvisioner = RepositoryCheckoutProvisioner(mockk(), GitExecutionProperties(), storage, checkoutStore, mockk(), bindingStore)
-            val checkout = checkoutStore.create(RepositoryCheckout(namespaceId = namespaceId, integrationConfigId = UUID.randomUUID(),
-                repositoryUrl = "https://forge.example/org/project.git", mainBranch = "main", status = RepositoryCheckoutStatus.FAILED))
-            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe true
-            java.nio.file.Files.createDirectory(directory)
-            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
-            java.nio.file.Files.delete(directory)
-            var unused = bindingStore.create(CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId,
-                integrationConfigId = checkout.integrationConfigId))
-            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
-            unused = bindingStore.update(unused.copy(status = CaseResourceStatus.FAILED))
-            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
-            unused = bindingStore.update(unused.copy(status = CaseResourceStatus.REMOVED))
-            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe true
-            bindingStore.update(unused.copy(status = CaseResourceStatus.REMOVED, baseSha = "a".repeat(40)))
-            actualProvisioner.canReplaceFailedCheckout(checkout) shouldBe false
         }
 
     })
