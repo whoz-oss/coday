@@ -11,9 +11,10 @@ object WorkspaceLifecycleLocks {
         val waiting = ConcurrentHashMap<UUID, () -> Unit>()
 
         fun notifyAvailable() {
-            if (lock.isLocked) return
-            waiting.entries.toList().forEach { (id, callback) ->
-                if (waiting.remove(id, callback)) callback()
+            if (!lock.isLocked) {
+                waiting.entries.toList().forEach { (id, callback) ->
+                    if (waiting.remove(id, callback)) callback()
+                }
             }
         }
     }

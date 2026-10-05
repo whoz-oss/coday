@@ -27,6 +27,8 @@ class CaseResourceBindingSchemaInitializer(
         assertNoDuplicateRootCaseKeys()
         ensureIdConstraint()
         ensureRootCaseUniqueConstraint()
+        ensureNamespaceIndex()
+        backfillVersion()
     }
 
     private fun assertNoDuplicateRootCaseKeys() {
@@ -70,6 +72,23 @@ class CaseResourceBindingSchemaInitializer(
                 """.trimIndent(),
             ).run()
         logger.info { "[CaseResourceBindingSchema] constraint 'case_resource_binding_active_root_case_unique' ensured" }
+    }
+
+    /** Serves [CaseResourceBindingNodeNeo4jRepository.findActiveByNamespaceId], which filters by namespace. */
+    private fun ensureNamespaceIndex() {
+        neo4jClient
+            .query(
+                """
+                CREATE INDEX case_resource_binding_namespace_lookup IF NOT EXISTS
+                FOR (b:CaseResourceBinding) ON (b.namespaceId)
+                """.trimIndent(),
+            ).run()
+        logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_namespace_lookup' ensured" }
+    }
+
+    /** Rows saved before [CaseResourceBindingNode.version] existed need one for optimistic locking. */
+    private fun backfillVersion() {
+        neo4jClient.query("MATCH (b:CaseResourceBinding) WHERE b.version IS NULL SET b.version = 0").run()
     }
 
     companion object : KLogging()

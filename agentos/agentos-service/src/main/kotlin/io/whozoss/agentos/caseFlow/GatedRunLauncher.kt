@@ -55,8 +55,6 @@ internal class GatedRunLauncher(
     }
 
     fun resumeIfPending(caseId: UUID) {
-        // Only turns deferred by this process: a restart never replays an old instruction.
-        if (caseId !in deferredRuns) return
         // Policy: a deferred turn whose persisted status is no longer PENDING is silently dropped.
         //
         // This covers the concurrent-message case: if a second message arrives while turn 1 is
@@ -69,11 +67,12 @@ internal class GatedRunLauncher(
         // A turn that could not claim PENDING is lost; the user must send a new message.
         // The behaviour is pinned by the test
         // "a second message sent while a gated turn is running is silently dropped".
-        if (statusOf(caseId) != CaseStatus.PENDING) {
-            deferredRuns.remove(caseId)
-            return
+        when {
+            // Only turns deferred by this process: a restart never replays an old instruction.
+            caseId !in deferredRuns -> Unit
+            statusOf(caseId) != CaseStatus.PENDING -> deferredRuns.remove(caseId)
+            else -> runtimeOf(caseId)?.let { admit(it) }
         }
-        runtimeOf(caseId)?.let { admit(it) }
     }
 
     /**
@@ -100,13 +99,13 @@ internal class GatedRunLauncher(
     ) {
         if (runtime == null) {
             deferredRuns.remove(caseId)
-            return
-        }
-        synchronized(runtime) {
-            deferredRuns.remove(caseId)
-            // A launch admitted but not running must not clear the Kill flag when it enters run().
-            if (!runtime.isRunning()) executionJobs[caseId]?.cancel()
-            runtime.requestKill()
+        } else {
+            synchronized(runtime) {
+                deferredRuns.remove(caseId)
+                // A launch admitted but not running must not clear the Kill flag when it enters run().
+                if (!runtime.isRunning()) executionJobs[caseId]?.cancel()
+                runtime.requestKill()
+            }
         }
     }
 

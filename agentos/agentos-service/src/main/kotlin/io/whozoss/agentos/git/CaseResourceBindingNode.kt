@@ -1,8 +1,11 @@
 package io.whozoss.agentos.git
 
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import org.springframework.data.annotation.CreatedBy
+import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedBy
 import org.springframework.data.annotation.LastModifiedDate
+import org.springframework.data.annotation.Version
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import java.time.Instant
@@ -18,8 +21,8 @@ import java.util.UUID
  * No `BELONGS_TO` edge is materialised: a binding is reached by its root case id, and adding a
  * second edge into the case graph would make the family-enumeration queries ambiguous.
  *
- * Only the modification fields are audited. The id is assigned by the application, so without a
- * `@Version` Spring Data treats every save as new and `@CreatedDate` would reset [created].
+ * [version] carries optimistic locking and tells Spring Data whether a save creates the row, so the
+ * creation fields are audited only once.
  */
 @Node("CaseResourceBinding")
 data class CaseResourceBindingNode(
@@ -31,8 +34,9 @@ data class CaseResourceBindingNode(
     val status: String,
     val failureReason: String? = null,
     // EntityMetadata fields
-    val created: Instant = Instant.now(),
-    val createdBy: String? = null,
+    @Version val version: Long? = null,
+    @CreatedDate val created: Instant = Instant.now(),
+    @CreatedBy val createdBy: String? = null,
     @LastModifiedDate val modified: Instant = Instant.now(),
     @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
@@ -47,6 +51,7 @@ data class CaseResourceBindingNode(
                     modified = modified,
                     modifiedBy = modifiedBy,
                     removed = removed ?: false,
+                    version = version,
                 ),
             rootCaseId = UUID.fromString(rootCaseId),
             namespaceId = UUID.fromString(namespaceId),
@@ -64,6 +69,7 @@ data class CaseResourceBindingNode(
                 integrationConfigId = binding.integrationConfigId.toString(),
                 status = binding.status.name,
                 failureReason = binding.failureReason,
+                version = binding.metadata.version,
                 created = binding.metadata.created,
                 createdBy = binding.metadata.createdBy,
                 modified = binding.metadata.modified,

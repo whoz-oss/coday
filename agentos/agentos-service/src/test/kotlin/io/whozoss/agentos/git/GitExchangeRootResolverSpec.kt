@@ -85,6 +85,44 @@ class GitExchangeRootResolverSpec :
             resolved.path shouldBe f.storage.caseRoot(namespaceId, ordinary.id, ordinary.metadata.created)
         }
 
+        "the walk to the root follows 32 ancestors and refuses a deeper chain" {
+            val chain = (1..33).runningFold(case("Root")) { parent, level -> case("Level $level", parent = parent) }
+            val f = fixture(*chain.toTypedArray())
+
+            f.resolver.resolveRootCase(chain[32]) shouldBe chain[0]
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(chain[33]) }.message shouldBe
+                "Invalid case ancestry: cycle or excessive depth"
+        }
+
+        "the walk to the root refuses a cycle" {
+            val firstId = UUID.randomUUID()
+            val secondId = UUID.randomUUID()
+            val first = Case(metadata = EntityMetadata(id = firstId), namespaceId = namespaceId, title = "First", parentCaseId = secondId)
+            val second = Case(metadata = EntityMetadata(id = secondId), namespaceId = namespaceId, title = "Second", parentCaseId = firstId)
+            val f = fixture(first, second)
+
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(first) }.message shouldBe
+                "Invalid case ancestry: cycle or excessive depth"
+        }
+
+        "the walk to the root refuses a missing parent" {
+            val missingParentId = UUID.randomUUID()
+            val orphan = Case(metadata = EntityMetadata(), namespaceId = namespaceId, title = "Orphan", parentCaseId = missingParentId)
+            val f = fixture(orphan)
+
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(orphan) }.message shouldBe
+                "The parent case $missingParentId is unavailable"
+        }
+
+        "the walk to the root refuses an ancestor from another namespace" {
+            val foreignParent = Case(metadata = EntityMetadata(), namespaceId = UUID.randomUUID(), title = "Foreign")
+            val child = case("Child", parent = foreignParent)
+            val f = fixture(foreignParent, child)
+
+            shouldThrow<ConflictException> { f.resolver.resolveRootCase(child) }.message shouldBe
+                "Invalid case ancestry: it crosses namespaces"
+        }
+
         "an ordinary sub-case keeps its own directory, separate from its parent" {
             val parent = case("Parent")
             val child = case("Child", parent = parent)

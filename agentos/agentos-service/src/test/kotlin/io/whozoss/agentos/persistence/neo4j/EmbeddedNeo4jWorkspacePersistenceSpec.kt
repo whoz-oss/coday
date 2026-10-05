@@ -79,5 +79,19 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             ready.status shouldBe CaseResourceStatus.READY
         }
 
+        "a stale write is refused instead of overwriting a newer one" {
+            val original = bindings.create(binding(UUID.randomUUID()))
+            bindings.update(original.copy(status = CaseResourceStatus.PREPARING))
+            shouldThrowAny { bindings.update(original.copy(status = CaseResourceStatus.READY)) }
+            bindings.findByRootCaseId(original.rootCaseId)?.status shouldBe CaseResourceStatus.PREPARING
+        }
+
+        "a namespace's bindings are found through an index" {
+            driver.session().use { session ->
+                session.run("SHOW INDEXES YIELD name WHERE name = 'case_resource_binding_namespace_lookup' RETURN count(*) AS n")
+                    .single()["n"].asInt() shouldBe 1
+            }
+        }
+
     }
 }

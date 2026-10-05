@@ -69,12 +69,13 @@ class GitCaseLaunchGate(
         exchangeRootResolver.resolveGit(caseId).binding != null
 
     override fun requireAccepting(caseId: UUID) {
-        val binding = exchangeRootResolver.resolveGit(caseId).binding ?: return
-        if (binding.status in setOf(CaseResourceStatus.DELETING, CaseResourceStatus.REMOVED)) {
-            throw ConflictException("The workspace is being removed or has been removed")
-        }
-        if (caseRepository.findById(caseId)?.status?.isTerminal() != false) {
-            throw ConflictException("This case is closed and cannot accept new messages")
+        exchangeRootResolver.resolveGit(caseId).binding?.let { binding ->
+            if (binding.status.isRemovalStarted) {
+                throw ConflictException("The workspace is being removed or has been removed")
+            }
+            if (caseRepository.findById(caseId)?.status?.isTerminal() != false) {
+                throw ConflictException("This case is closed and cannot accept new messages")
+            }
         }
     }
 
