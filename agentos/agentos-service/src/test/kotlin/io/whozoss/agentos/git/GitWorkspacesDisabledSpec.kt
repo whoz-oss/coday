@@ -72,6 +72,7 @@ class GitWorkspacesDisabledSpec : StringSpec() {
                 GitExchangeRootResolver::class,
                 CaseWorkspaceController::class,
                 CaseWorktreeProvisioner::class,
+                CaseWorkspaceSweep::class,
                 GitWorkspaceLifecycleService::class,
                 WorktreeSetupRunner::class,
                 WorkspaceProcessGuard::class,

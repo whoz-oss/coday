@@ -71,24 +71,17 @@ class CaseWorkspaceWorkerSpec :
             val checkouts = mockk<RepositoryCheckoutService>(relaxed = true) { every { findByStatusIn(any(), any()) } returns emptyList() }
             val checkoutProvisioner = mockk<RepositoryCheckoutProvisioner>(relaxed = true)
             val meters = SimpleMeterRegistry()
+            // Without a lifecycle under test, nothing is deleted: cleanup leaves every binding as it is.
+            val cleanup = lifecycle ?: mockk(relaxed = true) {
+                every { cleanupDeleted(any()) } answers { requireNotNull(bindings.findByRootCaseId(firstArg())) }
+            }
+            val sweep = CaseWorkspaceSweep(bindings, provisioner, cleanup, caseRepository, caseService, meters)
             return Harness(
                 bindings,
                 association,
                 provisioner,
                 caseService,
-                CaseWorkspaceWorker(
-                    bindings,
-                    association,
-                    provisioner,
-                    caseRepository,
-                    caseService,
-                    checkouts,
-                    checkoutProvisioner,
-                    lifecycle,
-                    executor,
-                    meters,
-                    control,
-                ),
+                CaseWorkspaceWorker(sweep, association, checkouts, checkoutProvisioner, executor, meters, control),
                 meters,
             )
         }
