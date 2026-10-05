@@ -93,7 +93,7 @@ Mount persistent storage for `/app/data` (Neo4j and Exchange), and keep the Exch
 
 The managed Git runner clears sensitive service environment variables, disables hooks and credential helpers, restricts transports and pins Git metadata paths. Exchange APIs deny `.git` access, including symlink aliases. Shell-capable agents remain trusted at the service OS-user level and share a namespace's Git object store; existing Case permissions are not a filesystem sandbox.
 
-Repository URL replacement or storage relocation remains an explicit operator action: configuration changes must not silently move a shared clone or destroy local files. The creation automation switch can be changed independently.
+Repository URL replacement or storage relocation remains an explicit operator action: configuration changes must not silently move a shared clone or destroy local files. The creation automation switch can be changed independently. Without workspaces, a failed first clone that was never published can still be pointed at another repository. Families recorded while workspaces were on keep the repository they were created with and can only be deleted.
 
 ## Documents and repository files
 

@@ -105,7 +105,12 @@ class RepositoryCheckoutProvisioner(
         return checkoutService.create(newCheckout(settings))
     }
 
-    /** A failed first attempt is replaceable only while no repository or active family can be orphaned. */
+    /**
+     * A failed first attempt is replaceable only while no repository or active family can be orphaned.
+     *
+     * Without `agentos.git.workspaces.enabled` there is no binding service and no family to check:
+     * a checkout that never fetched and never published its directory cannot hold any worktree.
+     */
     fun canReplaceFailedCheckout(checkout: RepositoryCheckout): Boolean =
         checkout.status == RepositoryCheckoutStatus.FAILED &&
             checkout.lastFetchedAt == null &&
@@ -114,7 +119,7 @@ class RepositoryCheckoutProvisioner(
                 // Deleted, never-provisioned families retain their audit rows. They must not
                 // permanently prevent an admin from correcting an unused failed association.
                 it.status == CaseResourceStatus.REMOVED && it.baseSha == null && !it.setupStarted && !it.setupCompleted
-            } == true
+            } ?: true
 
     /**
      * Re-point a checkout of the *same* repository at a re-created association.

@@ -20,6 +20,7 @@ import io.whozoss.agentos.git.core.GitInvocation
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.exists
@@ -70,7 +71,7 @@ class RepositoryCheckoutProvisionerSpec :
 
         fun fixture(
             checkoutStore: InMemoryRepositoryCheckoutService = InMemoryRepositoryCheckoutService(),
-            bindings: CaseResourceBindingService = mockk { every { findByParent(any()) } returns emptyList() },
+            bindings: CaseResourceBindingService? = mockk { every { findByParent(any()) } returns emptyList() },
             properties: GitExecutionProperties = gitProperties,
         ): Triple<ExchangeStorageService, RepositoryCheckoutProvisioner, UUID> {
             val mount = Files.createTempDirectory("agentos-mount-")
@@ -266,6 +267,24 @@ class RepositoryCheckoutProvisionerSpec :
             provisioner.canReplaceFailedCheckout(failed) shouldBe false
             shouldThrow<IllegalStateException> { provisioner.requestPreparation(original.copy(mainBranch = "main")) }
             store.findByNamespaceId(namespaceId)!!.mainBranch shouldBe "missing"
+        }
+
+        "without workspaces a failed unused first checkout can be corrected, never a published or fetched one" {
+            val store = InMemoryRepositoryCheckoutService()
+            val (storage, provisioner, namespaceId) = fixture(store, bindings = null)
+            val original = settings(namespaceId, originRepository()).copy(mainBranch = "missing")
+            shouldThrow<GitCommandException> { provisioner.ensureReady(original) }
+            val failed = store.findByNamespaceId(namespaceId)!!
+            failed.lastFetchedAt shouldBe null
+            provisioner.canReplaceFailedCheckout(failed) shouldBe true
+            val common = storage.namespaceGitDirectory(namespaceId)
+            Files.createDirectories(common)
+            provisioner.canReplaceFailedCheckout(failed) shouldBe false
+            Files.delete(common)
+            provisioner.canReplaceFailedCheckout(failed.copy(lastFetchedAt = Instant.now())) shouldBe false
+            val corrected = settings(namespaceId, originRepository()).copy(configId = original.configId)
+            provisioner.requestPreparation(corrected).repositoryUrl shouldBe corrected.repositoryUrl
+            provisioner.ensureReady(corrected).status shouldBe RepositoryCheckoutStatus.READY
         }
 
         "preparation is idempotent once ready" {
