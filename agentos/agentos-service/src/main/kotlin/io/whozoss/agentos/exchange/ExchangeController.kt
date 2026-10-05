@@ -142,14 +142,14 @@ class ExchangeController(
     fun uploadCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam("file") file: MultipartFile,
-    ): ExchangeFileEntry = withCaseMutation(caseId) { root -> uploadTo(root, ExchangeScope.CASE, file, "case $caseId") }
+    ): ExchangeFileEntry = withFileMutation(caseId) { root -> uploadTo(root, ExchangeScope.CASE, file, "case $caseId") }
 
     @DeleteMapping("/api/cases/{caseId}/files", produces = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
     override fun deleteCaseFile(
         @PathVariable caseId: UUID,
         @RequestParam path: String,
-    ): ExchangeDeleteResponse = withCaseMutation(caseId) { root -> deleteFrom(root, path, "case $caseId") }
+    ): ExchangeDeleteResponse = withFileMutation(caseId) { root -> deleteFrom(root, path, "case $caseId") }
 
     // ========================================
     // Namespace scope (reads for any member; writes gated on Namespace WRITE = namespace admin / super-admin)
@@ -336,11 +336,11 @@ class ExchangeController(
     private fun resolvedCase(caseId: UUID): ResolvedExchangeRoot =
         exchangeRootResolver.resolve(findCase(caseId)).also { requireOwnerAccess(caseId, it, Action.READ) }
 
-    private fun <T> withCaseMutation(
+    private fun <T> withFileMutation(
         caseId: UUID,
         action: (Path) -> T,
     ): T =
-        exchangeRootResolver.withCaseMutation(findCase(caseId)) { root ->
+        exchangeRootResolver.withFileMutation(findCase(caseId)) { root ->
             requireOwnerAccess(caseId, root, Action.WRITE)
             action(root.requireUsable())
         }

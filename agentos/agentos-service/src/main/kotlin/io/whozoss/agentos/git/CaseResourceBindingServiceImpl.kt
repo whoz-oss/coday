@@ -2,13 +2,17 @@ package io.whozoss.agentos.git
 
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import mu.KLogging
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
  * Default [CaseResourceBindingService], delegating persistence to [CaseResourceBindingRepository].
+ *
+ * Registered only with `agentos.git.workspaces.enabled`.
  */
 @Service
+@ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
 class CaseResourceBindingServiceImpl(
     private val repository: CaseResourceBindingRepository,
 ) : CaseResourceBindingService {

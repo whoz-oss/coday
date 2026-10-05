@@ -29,6 +29,6 @@ class DefaultExchangeRootResolverSpec : StringSpec({
     "a mutation runs on the case's own directory" {
         val case = Case(namespaceId = java.util.UUID.randomUUID())
 
-        resolver.withCaseMutation(case) { it.path } shouldBe storage.caseRoot(case.namespaceId, case.id, case.metadata.created)
+        resolver.withFileMutation(case) { it.path } shouldBe storage.caseRoot(case.namespaceId, case.id, case.metadata.created)
     }
 })
