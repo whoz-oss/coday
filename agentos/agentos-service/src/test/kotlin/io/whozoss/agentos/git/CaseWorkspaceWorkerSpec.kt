@@ -156,8 +156,54 @@ class CaseWorkspaceWorkerSpec :
 
             verify(exactly = 1) { lifecycle.cleanupDeletedCases(any()) }
             verify(exactly = 0) { h.provisioner.ensureReady(any(), any(), any()) }
-            verify(exactly = 0) { h.caseService.resumeIfPending(any()) }
+            // Held turns go back to the gate, which refuses them on a removed workspace.
+            verify(exactly = 1) { h.caseService.resumeIfPending(case.id) }
             h.bindings.findByRootCaseId(case.id)!!.status shouldBe CaseResourceStatus.REMOVED
+        }
+
+        "a failed preparation hands the family's held turns back to the gate" {
+            // Leaving them PENDING kept the case waiting forever without a word: the gate now
+            // refuses them with a warning and returns the cases to IDLE.
+            val case = rootCase()
+            val child = Case(metadata = EntityMetadata(), namespaceId = namespaceId, title = "Delegated")
+            val h = harness(listOf(case), descendants = listOf(child))
+            request(h, case)
+            every { h.provisioner.ensureReady(any(), any(), any()) } throws GitCommandException("clone refused")
+
+            h.worker.provisionPending()
+
+            verify(exactly = 1) { h.caseService.resumeIfPending(case.id) }
+            verify(exactly = 1) { h.caseService.resumeIfPending(child.id) }
+        }
+
+        "a workspace failed for a lost association or a vanished case hands its held turns back" {
+            val orphan = rootCase()
+            val unassociated = rootCase()
+            val h = harness(listOf(unassociated), resolveSettings = { null })
+            request(h, orphan)
+            request(h, unassociated)
+
+            h.worker.provisionPending()
+
+            verify(exactly = 1) { h.caseService.resumeIfPending(orphan.id) }
+            verify(exactly = 1) { h.caseService.resumeIfPending(unassociated.id) }
+        }
+
+        "a binding that left REQUESTED after the batch was read releases nothing" {
+            val first = rootCase()
+            val second = rootCase()
+            val h = harness(listOf(first, second))
+            request(h, first)
+            val moved = request(h, second)
+            every { h.provisioner.ensureReady(match { it.rootCaseId == first.id }, any(), any()) } answers {
+                h.bindings.update(moved.copy(status = CaseResourceStatus.PREPARING))
+                firstArg()
+            }
+
+            h.worker.provisionPending()
+
+            verify(exactly = 0) { h.provisioner.ensureReady(match { it.rootCaseId == second.id }, any(), any()) }
+            verify(exactly = 0) { h.caseService.resumeIfPending(second.id) }
         }
 
         "a workspace reaching ready releases the turn that was held back" {

@@ -12,6 +12,7 @@ import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
+import io.whozoss.agentos.sdk.usage.LlmUsage
 import java.time.Instant
 import java.util.UUID
 
@@ -156,6 +157,8 @@ data class AgentSelectedEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
+    /** Non-null only when this selection resumes a specific answered question. */
+    val questionId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_SELECTED
 }
@@ -169,6 +172,9 @@ data class AgentFinishedEvent(
     val agentName: String,
     val llmProvider: String? = null,
     val llmModel: String? = null,
+    /** Aggregated token usage for this agent run. Null when tracking is not configured. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val llmUsage: LlmUsage? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }

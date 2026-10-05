@@ -46,7 +46,8 @@ import java.util.concurrent.atomic.AtomicBoolean
     matchIfMissing = false,
 )
 class CaseWorkspaceWorker(
-    private val bindingService: CaseResourceBindingService,
+    /** Null without `agentos.git.workspaces.enabled`, like [provisioner]. */
+    private val bindingService: CaseResourceBindingService?,
     private val associationService: GitRepositoryAssociationService,
     /** Null without `agentos.git.workspaces.enabled`: the worker then only prepares namespace checkouts. */
     private val provisioner: CaseWorktreeProvisioner?,
@@ -95,14 +96,15 @@ class CaseWorkspaceWorker(
      */
     @EventListener(ApplicationReadyEvent::class)
     fun reclaimInterruptedPreparations() {
+        val bindings = bindingService ?: return
         try {
-            val interrupted = bindingService.findByStatusIn(listOf(CaseResourceStatus.PREPARING), RECLAIM_LIMIT)
+            val interrupted = bindings.findByStatusIn(listOf(CaseResourceStatus.PREPARING), RECLAIM_LIMIT)
             if (interrupted.isEmpty()) return
             logger.warn {
                 "Found ${interrupted.size} workspace(s) left preparing by a previous run; queueing them again"
             }
             interrupted.forEach { binding ->
-                bindingService.markStatus(binding.id, CaseResourceStatus.REQUESTED, null)
+                bindings.markStatus(binding.id, CaseResourceStatus.REQUESTED, null)
             }
         } catch (e: Exception) {
             // Startup must not fail because reconciliation did: the sweep still works for everything
@@ -133,8 +135,9 @@ class CaseWorkspaceWorker(
             lifecycle?.cleanupDeletedCases(::stopRequested)
             if (stopRequested()) return
             prepareRequestedCheckouts()
-            if (stopRequested() || provisioner == null) return
-            val pending = bindingService.findByStatusIn(listOf(CaseResourceStatus.REQUESTED), BATCH_SIZE)
+            val bindings = bindingService
+            if (stopRequested() || provisioner == null || bindings == null) return
+            val pending = bindings.findByStatusIn(listOf(CaseResourceStatus.REQUESTED), BATCH_SIZE)
             if (pending.isEmpty()) return
             logger.info { "Provisioning ${pending.size} pending workspace(s)" }
             pending.forEach {
@@ -200,15 +203,21 @@ class CaseWorkspaceWorker(
     }
 
     private fun provisionOne(binding: CaseResourceBinding) {
-        val ready = WorkspaceLifecycleLocks.withRoot(binding.rootCaseId) { provisionLocked(binding) }
-        if (ready) releaseHeldTurns(binding.rootCaseId)
+        val outcome = WorkspaceLifecycleLocks.withRoot(binding.rootCaseId) { provisionLocked(binding) }
+        if (outcome != null && !outcome.isPending) releaseHeldTurns(binding.rootCaseId)
     }
 
-    private fun provisionLocked(requested: CaseResourceBinding): Boolean {
-        val binding = bindingService.findByRootCaseId(requested.rootCaseId) ?: return false
-        if (binding.status != CaseResourceStatus.REQUESTED) return false
+    /** The status this pass left the workspace in, or null when it did not handle the binding. */
+    private fun provisionLocked(requested: CaseResourceBinding): CaseResourceStatus? {
+        val bindings = bindingService ?: return null
+        val binding = bindings.findByRootCaseId(requested.rootCaseId) ?: return null
+        if (binding.status != CaseResourceStatus.REQUESTED) return null
         // Deletion may have happened after the pending batch was read.
-        if (lifecycle?.cleanupDeleted(binding.rootCaseId)?.status in setOf(CaseResourceStatus.DELETING, CaseResourceStatus.REMOVED)) return false
+        lifecycle
+            ?.cleanupDeleted(binding.rootCaseId)
+            ?.status
+            ?.takeIf { it == CaseResourceStatus.DELETING || it == CaseResourceStatus.REMOVED }
+            ?.let { return it }
         try {
             val rootCase =
                 caseRepository.findByIds(listOf(binding.rootCaseId), withRemoved = true).firstOrNull()
@@ -216,8 +225,8 @@ class CaseWorkspaceWorker(
                         // The case vanished under its binding. Nothing to provision, and leaving it
                         // REQUESTED would make the sweep retry it forever.
                         logger.warn { "Binding ${binding.id} references missing case ${binding.rootCaseId}; marking it failed" }
-                        bindingService.markStatus(binding.id, CaseResourceStatus.FAILED, "The owning case no longer exists")
-                        return false
+                        bindings.markStatus(binding.id, CaseResourceStatus.FAILED, "The owning case no longer exists")
+                        return CaseResourceStatus.FAILED
                     }
 
             val settings =
@@ -225,28 +234,31 @@ class CaseWorkspaceWorker(
                     ?: associationService.findSettings(binding.namespaceId)
                     ?: run {
                         logger.warn { "Namespace ${binding.namespaceId} is no longer associated with a repository" }
-                        bindingService.markStatus(
+                        bindings.markStatus(
                             binding.id,
                             CaseResourceStatus.FAILED,
                             "The namespace is no longer associated with a repository",
                         )
-                        return false
+                        return CaseResourceStatus.FAILED
                     }
 
-            val ready = requireNotNull(provisioner).ensureReady(binding, settings, rootCase)
-
-            return ready.status == CaseResourceStatus.READY
+            return requireNotNull(provisioner).ensureReady(binding, settings, rootCase).status
         } catch (e: Exception) {
             // ensureReady already recorded FAILED with the cause; keep going through the batch so
-            // one broken workspace does not block every other one behind it.
+            // one broken workspace does not block every other one behind it. Held turns are handed
+            // back to the gate, which reads the binding again: one still pending keeps them waiting.
             countError(OPERATION_WORKTREE)
             logger.error(e) { "Could not provision workspace ${binding.id} for case ${binding.rootCaseId}" }
-            return false
+            return CaseResourceStatus.FAILED
         }
     }
 
     /**
      * Release every turn the launch gate held back for this family, not just the root's.
+     *
+     * Called once preparation has settled, whatever the outcome: the gate starts held turns on a
+     * ready workspace, and refuses them with a warning on a failed or removed one rather than
+     * leaving them `PENDING` with no explanation. A refused turn is not replayed after a retry.
      *
      * The whole family shares one workspace, so the gate defers the whole family. A sub-case created
      * by delegation while the workspace was preparing had its message persisted and its run refused

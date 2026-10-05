@@ -137,6 +137,7 @@ class ExchangeStorageService(
                 ): FileVisitResult {
                     // A reserved entry can be a file, such as a linked worktree's `.git`.
                     if (reservedEntries.reserves(file.fileName?.toString())) {
+                            logger.debug { "Skipping reserved file entry in manifest: $file" }
                         return FileVisitResult.CONTINUE
                     }
                     if (attrs.isRegularFile) {

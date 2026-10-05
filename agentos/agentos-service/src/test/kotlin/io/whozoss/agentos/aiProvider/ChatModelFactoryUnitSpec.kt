@@ -2,14 +2,17 @@ package io.whozoss.agentos.aiProvider
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.google.genai.GoogleGenAiChatModel
 import org.springframework.ai.openai.OpenAiChatModel
+import org.springframework.ai.openai.OpenAiChatOptions
 
 class ChatModelFactoryUnitSpec : StringSpec({
 
@@ -106,4 +109,21 @@ class ChatModelFactoryUnitSpec : StringSpec({
         model.shouldNotBeNull()
         model.shouldBeInstanceOf<OpenAiChatModel>()
     }
+    listOf(AiApiType.OpenAI, AiApiType.vLLM).forEach { apiType ->
+        "${apiType} requests stream usage only after explicit opt in" {
+            val defaultModel = factory.createChatModel(apiType, "http://localhost:8000", "test", "test")
+            val nativeOptions = OpenAiChatOptions.builder().build()
+            (defaultModel.defaultOptions as OpenAiChatOptions).streamOptions shouldBe nativeOptions.streamOptions
+            (defaultModel.defaultOptions as OpenAiChatOptions).streamUsage shouldBe nativeOptions.streamUsage
+
+            val enabledFactory = ChatModelFactory(
+                ObservationRegistry.NOOP,
+                AnthropicProperties(promptCachingEnabled = true),
+                UsageConfigProperties(enabled = true),
+            )
+            val trackedModel = enabledFactory.createChatModel(apiType, "http://localhost:8000", "test", "test")
+            (trackedModel.defaultOptions as OpenAiChatOptions).streamUsage shouldBe true
+        }
+    }
+
 })

@@ -4,11 +4,13 @@
 
 Git is an optional namespace integration. With no `GIT_REPOSITORY` association, cases, file Exchanges and tool configuration retain their existing behavior. Associating a repository prepares an internal **bare repository** (Git objects and references, without a shared checkout) at `<mountRoot>/<namespaceId>/repository.git`, outside both Exchange roots. The Namespace Exchange holds shared documents only. The separate `autoWorktreeForRootCases` option defaults to false.
 
-Git is available only when the `agentos-git-plugin` is loaded. The plugin registers the `GIT` integration type, which gives agents their Git tools; its presence also enables the namespace association. Without it the **Git** entry is hidden, the namespace Git endpoints answer 404, the generic integration configuration API refuses `GIT_REPOSITORY`, and no new root case is equipped. Families equipped earlier keep their worktree, tools and cleanup. Associating a repository never requires defining a `GIT` integration.
+Git is available only when the `agentos-git-plugin` is loaded. The plugin registers the `GIT` integration type, and its presence enables the namespace association. Without it the **Git** entry is hidden, the namespace Git endpoints answer 404, the generic integration configuration API refuses `GIT_REPOSITORY`, and no new root case is equipped. Families equipped earlier keep their worktree, tools and cleanup. Associating a repository never requires defining a `GIT` integration.
 
-Case-family workspaces are behind `agentos.git.workspaces.enabled` (`AGENTOS_GIT_WORKSPACES_ENABLED`, off by default). While it is off, every case keeps its own Exchange directory through `DefaultExchangeRootResolver`, which returns the same directory as before the flag existed, runs start immediately, no case is equipped and the workspace beans and endpoints are not loaded. The namespace association and its internal clone do not depend on this flag.
+Case-family workspaces are behind `agentos.git.workspaces.enabled` (`AGENTOS_GIT_WORKSPACES_ENABLED`, off by default). While it is off, every case keeps its own Exchange directory through `DefaultExchangeRootResolver`, which returns the same directory as before the flag existed, runs start immediately, no case is equipped, the workspace beans and endpoints are not loaded, and the binding service, its repository bean and its Neo4j constraints do not exist. The namespace association and its internal clone do not depend on this flag.
 
 When enabled, each **new root case** gets a worktree in `repo/` under its Case Exchange root. All descendants share the entire Case Exchange, including documents outside Git. Existing families are never retroactively equipped, and disabling automation does not disconnect existing workspaces. Persisted bindings retain the settings used to create them.
+
+Turning the flag off later leaves existing workspaces untouched: bindings stay in the database and worktrees stay on disk. While it is off, every case, sub-cases of an equipped family included, uses its own Exchange directory. Files a sub-case writes in that period are not visible to its family once the flag is back on. The root case's `repo/` shows as an ordinary folder, its `.git` still hidden. Runs start immediately and nothing is prepared or cleaned up. When the flag is turned back on, equipped families share the root directory again, root cases created in between stay ordinary, and the cleanup of cases deleted in between resumes on the worker's next passes.
 
 **AgentOS does not create, name or rename working branches or pull requests.** A new worktree starts with a detached HEAD at the configured main branch's fetched commit. Agents create branches and PRs using their workflow tools, such as the tools of a `GIT` integration. The case title has no effect on Git. Retrying preparation preserves any branch or local work already created by an agent.
 
@@ -32,9 +34,9 @@ Provisioning and lifecycle coordination target **one AgentOS instance per workst
 
 ## Tools and configuration
 
-The built-in Exchange integration and REST API use `ExchangeRootResolver`: `DefaultExchangeRootResolver` while the flag is off, `GitExchangeRootResolver` when it is on. Admission goes through `CaseLaunchGate`, installed only with the flag.
+The built-in Exchange integration and REST API use `ExchangeRootResolver`: `DefaultExchangeRootResolver` while the flag is off, `GitExchangeRootResolver` when it is on. Admission goes through `CaseLaunchGate`, installed only with the flag. A message sent while the family's workspace is being prepared waits and starts once it is ready. If the preparation fails or the workspace is removed, the waiting message is refused with a warning, and a later successful retry does not replay it: the user sends it again.
 
-A `GIT` integration only exists inside a Git workspace. It always targets the family's worktree, with the administrative directory pinned from the binding rather than read from the worktree's `.git` file, and the repository URL and main branch recorded when the family was equipped. `GitToolsRunIntegration` gives it, on per-run copies, the worktree as `workingDirectory` plus `gitDir`, `commonGitDir`, `repositoryUrl` and `mainBranch`; saved values never override this context and the saved integration is not rewritten. Outside a Git workspace, for a user without write access to it, or on an instance without `agentos.git.workspaces.enabled`, agents receive no Git tool.
+In an equipped family, a `GIT` integration always targets the family's worktree, with the administrative directory pinned from the binding rather than read from the worktree's `.git` file, and the repository URL and main branch recorded when the family was equipped. `GitToolsRunIntegration` gives it, on per-run copies, the worktree as `workingDirectory` plus `gitDir`, `commonGitDir`, `repositoryUrl` and `mainBranch`; saved values never override this context and the saved integration is not rewritten. A user without write access to the workspace receives no Git tool. Outside an equipped family, and on an instance without `agentos.git.workspaces.enabled`, a `GIT` integration is an ordinary one: it reaches the run as configured, like any other integration.
 
 Before deleting a worktree, cleanup stops the processes still using it, found with `lsof`: background jobs, tmux shells or MCP servers started there, including jobs surviving an AgentOS restart. They receive SIGTERM, then SIGKILL after 5 seconds. Only processes of the service's own OS user are touched, never the service itself. Cleanup then checks again that nothing holds a file or working directory in the worktree; missing or inconclusive inspection blocks it. An MCP connection stopped this way is recreated at its next use. These tools remain trusted shell execution, not an OS sandbox.
 
@@ -95,6 +97,12 @@ Only HTTPS remotes are allowed by default. Private network remotes (a self-hoste
 
 The setup command runs with a cleared environment, so service secrets are not readable from it. Anyone able to push a branch can still run code through dependency lifecycle scripts: prefer a command that disables them, such as `npm ci --ignore-scripts` or `pnpm install --ignore-scripts`.
 
+Workspace-backed execution is single-instance **by construction**, not just by configuration.
+`WorkspaceLifecycleLocks` is a JVM singleton (`object`), and the admission model (`deferredRuns`,
+`executionJobs`, `whenAvailable` callbacks) is entirely in-process. Horizontal scaling would
+require a distributed lease *and* persisting the intent to run — which reopens the deliberate
+"nothing is replayed after a restart" trade-off.
+
 The sweep runs on a dedicated `git-workspace` thread pool, never on Spring's scheduler thread, so a
 long clone does not delay other scheduled work. An operator can pause it on a live instance through
 the `gitworkspaces` Actuator endpoint, registered only with the worker, over HTTP or JMX:
@@ -113,7 +121,7 @@ Mount persistent storage for `/app/data` (Neo4j and Exchange), and keep the Exch
 
 The managed Git runner clears sensitive service environment variables, disables hooks and credential helpers, restricts transports and pins Git metadata paths. Exchange APIs deny `.git` access, including symlink aliases. Shell-capable agents remain trusted at the service OS-user level and share a namespace's Git object store; existing Case permissions are not a filesystem sandbox.
 
-Repository URL replacement or storage relocation remains an explicit operator action: configuration changes must not silently move a shared clone or destroy local files. The creation automation switch can be changed independently.
+Repository URL replacement or storage relocation remains an explicit operator action: configuration changes must not silently move a shared clone or destroy local files. The creation automation switch can be changed independently. Without workspaces, a failed first clone that was never published can still be pointed at another repository. Families recorded while workspaces were on keep the repository they were created with and can only be deleted.
 
 ## Documents and repository files
 

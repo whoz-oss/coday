@@ -103,6 +103,10 @@ management:
 # datadog/agent:latest
 
 agentos:
+  usage:
+    # Opt in to LLM usage accounting, analytical records and the run-cost guard.
+    # Disabled by default in every profile, including Whoz.
+    enabled: ${AGENTOS_USAGE_ENABLED:false}
   git:
     workspaces:
       # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
@@ -193,7 +197,7 @@ agentos:
     # the QUERY_USER key to an empty list [] in its integrations map — the right choice for fully
     # autonomous agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
-    # enabled-by-default: true
+    enabled-by-default: true
   limits:
     # Maximum number of internal steps per user message in the CaseRuntime before the case
     # transitions to ERROR status. A "step" is one processNextStep() call covering agent

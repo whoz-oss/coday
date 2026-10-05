@@ -222,14 +222,14 @@ class GitExchangeRootResolverSpec :
                 acquired.await(5, TimeUnit.SECONDS) shouldBe true
                 var mutated = false
                 shouldThrow<ConflictException> {
-                    f.resolver.withCaseMutation(child) { mutated = true }
+                    f.resolver.withFileMutation(child) { mutated = true }
                 }
                 mutated shouldBe false
             } finally {
                 release.countDown()
                 owner.join(5000)
             }
-            f.resolver.withCaseMutation(child) { it.ownerCaseId } shouldBe root.id
+            f.resolver.withFileMutation(child) { it.ownerCaseId } shouldBe root.id
         }
 
         "mutation rechecks availability after taking the lifecycle lock" {
@@ -248,7 +248,7 @@ class GitExchangeRootResolverSpec :
             var mutated = false
 
             shouldThrow<ConflictException> {
-                resolver.withCaseMutation(root) { mutated = true }
+                resolver.withFileMutation(root) { mutated = true }
             }
 
             mutated shouldBe false

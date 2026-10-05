@@ -34,7 +34,7 @@ class ExchangeControllerBoundarySpec : StringSpec({
         val resolver = object : ExchangeRootResolver {
             override fun resolve(case: Case) = root
             override fun resolve(caseId: UUID, namespaceId: UUID, caseCreatedAt: Instant) = root
-            override fun <T> withCaseMutation(case: Case, action: (ResolvedExchangeRoot) -> T): T {
+            override fun <T> withFileMutation(case: Case, action: (ResolvedExchangeRoot) -> T): T {
                 onMutation()
                 return action(root)
             }

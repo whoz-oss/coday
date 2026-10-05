@@ -10,23 +10,24 @@ import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.git.core.GitLayout
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 import java.util.UUID
 
 /**
- * Binds the `GIT` tool integration to the family's worktree for each run.
+ * Binds the `GIT` tool integration to the family's worktree for each run of an equipped family.
  *
- * The tools only ever work there, with the Git context recorded when the family was equipped. The
- * administrative directory is pinned by name, so they never trust the worktree's own `.git` pointer
- * file, which an agent can rewrite, and saved values never override this context. Outside a Git
- * workspace, or for a user who cannot write to it, the run gets no Git tool. Installed even without
- * `agentos.git.workspaces.enabled`: a saved `GIT` integration must never reach the plugin with
- * directories of its own choosing.
+ * There the tools only ever work in the worktree, with the Git context recorded when the family was
+ * equipped. The administrative directory is pinned by name, so they never trust the worktree's own
+ * `.git` pointer file, which an agent can rewrite, and saved values never override this context. A
+ * user who cannot write to the workspace gets no Git tool. Outside an equipped family, a `GIT`
+ * integration is an ordinary one and reaches the run as configured, as it does on an instance
+ * without `agentos.git.workspaces.enabled`, where this customizer is not installed.
  */
 @Component
+@ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
 class GitToolsRunIntegration(
-    /** Absent without Git workspaces: there is then no worktree to bind, and no Git tool. */
-    private val resolver: GitExchangeRootResolver?,
+    private val resolver: GitExchangeRootResolver,
     private val exchangeCapabilityService: ExchangeCapabilityService,
     private val exchangeStorageService: ExchangeStorageService,
     private val objectMapper: ObjectMapper,
@@ -36,7 +37,10 @@ class GitToolsRunIntegration(
         context: AgentExecutionContext,
     ): List<IntegrationConfig> {
         if (configs.none { it.integrationType == GitAvailability.TOOLS_INTEGRATION_TYPE }) return configs
-        val parameters = context.caseId?.let { toolParameters(it, context.userId) }
+        val caseId = context.caseId ?: return configs
+        val root = resolver.resolveGit(caseId)
+        if (root.binding == null) return configs
+        val parameters = toolParameters(root, caseId, context.userId)
         return configs.mapNotNull { config ->
             if (config.integrationType != GitAvailability.TOOLS_INTEGRATION_TYPE) config
             else parameters?.let { withParameters(config, it) }
@@ -44,10 +48,10 @@ class GitToolsRunIntegration(
     }
 
     private fun toolParameters(
+        root: GitExchangeRoot,
         caseId: UUID,
         userId: UUID?,
     ): Map<String, String>? {
-        val root = resolver?.resolveGit(caseId) ?: return null
         val binding = root.binding ?: return null
         val settings =
             binding.settingsJson?.let { objectMapper.readValue(it, GitRepositorySettings::class.java) }
