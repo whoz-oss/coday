@@ -49,7 +49,11 @@ class CaseWorktreeProvisioner(
         return try {
             val worktreePath = worktreePath(rootCase)
             val gitDir = exchangeStorageService.namespaceGitDirectory(settings.namespaceId).toAbsolutePath().normalize()
-            if (binding.status == CaseResourceStatus.READY && isWorktree(worktreePath, gitDir, binding.rootCaseId)) return binding
+            if (binding.status == CaseResourceStatus.READY &&
+                verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)
+            ) {
+                return binding
+            }
             // Later writes start from this row: the copy received is older than the PREPARING mark.
             val preparing = bindingService.markStatus(binding.id, CaseResourceStatus.PREPARING)
             failureReason = "Cannot prepare the namespace repository. Check its Git settings and service account."
@@ -137,9 +141,9 @@ class CaseWorktreeProvisioner(
 
     /**
      * A checkout interrupted before the workspace was ever ready (typically a redeploy during
-     * `worktree add`) is refused by [isWorktree] on every retry. Nothing but Git wrote into it:
-     * agents and setup only start once the checkout has completed. Keep its files for inspection
-     * in workspace support storage, drop its registration, and let the checkout start over.
+     * `worktree add`) is refused by [verifyAndAdoptWorktree] on every retry. Nothing but Git wrote
+     * into it: agents and setup only start once the checkout has completed. Keep its files for
+     * inspection in workspace support storage, drop its registration, and let the checkout start over.
      */
     private fun setAsideInterruptedCheckout(
         binding: CaseResourceBinding,
@@ -149,7 +153,7 @@ class CaseWorktreeProvisioner(
         if (binding.setup != SetupState.NOT_STARTED) return
         val registration =
             try {
-                isWorktree(worktreePath, gitDir, binding.rootCaseId)
+                verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)
                 return
             } catch (e: IncompleteWorktreeException) {
                 e.registration
@@ -169,7 +173,7 @@ class CaseWorktreeProvisioner(
         gitDir: Path,
         worktreePath: Path,
     ) {
-        if (isWorktree(worktreePath, gitDir, binding.rootCaseId)) return
+        if (verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)) return
 
         // `git worktree add` refuses a target that exists and is not empty. An empty directory is
         // fine, and one is routinely pre-created by the exchange tool grant, so only a populated
@@ -196,12 +200,22 @@ class CaseWorktreeProvisioner(
         )
         // Git chooses an administrative name from the leaf directory (now always "repo").
         // Pin it to the root case id so status/lifecycle never trust the writable pointer file.
-        check(isWorktree(worktreePath, gitDir, binding.rootCaseId)) { "Git did not register the new worktree" }
+        check(verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)) { "Git did not register the new worktree" }
         logger.info { "Worktree for root case ${binding.rootCaseId} created at $worktreePath at ${binding.baseSha} (detached)" }
     }
 
-    /** A linked worktree carries a `.git` pointer file; the managed clone carries a directory. */
-    private fun isWorktree(path: Path, commonGitDir: Path, rootCaseId: UUID): Boolean {
+    /**
+     * Whether [path] is the registered worktree of [rootCaseId]: a linked worktree carries a `.git`
+     * pointer file, the managed clone a directory. False when there is no pointer at all.
+     *
+     * Not a pure check: a crash during `worktree add` can leave the registration under Git's own
+     * name, or renamed before the pointer was rewritten. A registration that points back to this
+     * exact Exchange is adopted, by renaming it to the root case id and rewriting the pointer.
+     *
+     * @throws IncompleteWorktreeException when Git registered the worktree but never completed its checkout
+     * @throws IllegalStateException when the directory or its registration belongs to something else
+     */
+    private fun verifyAndAdoptWorktree(path: Path, commonGitDir: Path, rootCaseId: UUID): Boolean {
         val pointer = path.resolve(GitLayout.DOT_GIT)
         if (!Files.exists(pointer, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return false
         val admin = commonGitDir.toRealPath().worktreeRegistration(rootCaseId)
