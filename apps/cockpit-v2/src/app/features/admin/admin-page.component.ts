@@ -141,7 +141,7 @@ export class AdminPageComponent {
   protected readonly formatBytes = formatBytes
 
   constructor() {
-    inject(ShellState).crumbs.set([{ label: 'Workflows' }])
+    inject(ShellState).crumbs.set([{ label: 'Gouvernance des artefacts' }])
     this.loadDefinitions()
   }
 

@@ -60,6 +60,26 @@ export interface WorkflowDefinition {
   [key: string]: unknown
 }
 
+/** One step of a full workflow definition (`GET /api/factory/workflow-definitions/:type/:version`). */
+export interface FullWorkflowStep {
+  id: string
+  name: string
+  responsibility?: { kind?: string; name?: string }
+  dependsOn?: string[]
+  [key: string]: unknown
+}
+
+/** Unwrapped payload of `GET /api/factory/workflow-definitions/:workflowType/:version`. */
+export interface FullWorkflowDefinition {
+  schemaVersion?: string
+  workflowType?: string
+  version?: string
+  title?: string
+  trustedExecution?: boolean
+  steps?: FullWorkflowStep[]
+  [key: string]: unknown
+}
+
 /** One AgentOS namespace exposed by `GET /api/namespaces`. */
 export interface NamespaceItem {
   id?: string
@@ -356,6 +376,23 @@ export class FactoryApiService {
   }
 
   /**
+   * GET `/api/factory/workflow-definitions/:workflowType/:version[?namespaceId=…]`.
+   *
+   * Both path segments are URL-encoded. The `{ data }` envelope is unwrapped by
+   * {@link request}; the payload is then defensively normalized so a
+   * double-wrapped envelope or a direct object both resolve to a
+   * {@link FullWorkflowDefinition}.
+   */
+  getWorkflowDefinition(
+    workflowType: string,
+    version: string,
+    namespaceId?: string
+  ): Observable<FullWorkflowDefinition> {
+    const path = `/api/factory/workflow-definitions/${encodeURIComponent(workflowType)}/${encodeURIComponent(version)}`
+    return this.request<unknown>(path, {}, namespaceId).pipe(map((payload) => normalizeFullWorkflowDefinition(payload)))
+  }
+
+  /**
    * GET `/api/namespaces` → AgentOS namespaces. Unwraps a raw array or a
    * `{ items: […] }` payload and degrades gracefully to `[]` when the endpoint
    * is missing, unavailable or returns an error.
@@ -516,6 +553,19 @@ function isEnvelope(value: unknown): value is { data: unknown } {
     !Array.isArray(value) &&
     Object.prototype.hasOwnProperty.call(value, 'data')
   )
+}
+
+/**
+ * Defensively coerce a workflow-definition payload into a plain object. A
+ * payload that is still wrapped in one or more `{ data }` envelopes is
+ * unwrapped; anything that is not an object degrades to `{}`.
+ */
+function normalizeFullWorkflowDefinition(payload: unknown): FullWorkflowDefinition {
+  let normalized: unknown = payload
+  while (isEnvelope(normalized)) {
+    normalized = normalized.data
+  }
+  return (typeof normalized === 'object' && normalized !== null ? normalized : {}) as FullWorkflowDefinition
 }
 
 /** Normalize an HTTP/transport failure into a structured, serializable error. */

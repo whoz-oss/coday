@@ -38,5 +38,6 @@ export class ShellComponent {
     { label: 'Sandboxes', icon: 'grid_view', link: '/sandboxes' },
     { label: 'Historique', icon: 'history', link: '/historique' },
     { label: 'Workflows', icon: 'account_tree', link: '/workflows' },
+    { label: 'Réglages', icon: 'settings', link: '/reglages' },
   ]
 }
