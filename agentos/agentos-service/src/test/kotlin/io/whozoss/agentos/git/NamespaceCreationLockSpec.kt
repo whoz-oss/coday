@@ -11,6 +11,7 @@ import io.whozoss.agentos.caseFlow.CaseConfigProperties
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.CaseServiceImpl
 import io.whozoss.agentos.caseFlow.CaseWorkspaceProvisioning
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.caseFlow.InMemoryCaseRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import org.neo4j.configuration.GraphDatabaseSettings
@@ -77,7 +78,8 @@ class NamespaceCreationLockSpec : StringSpec({
         }
         val service = CaseServiceImpl(mockk(relaxed = true), mockk(relaxed = true), AgentConfigProperties(),
             repository, mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), CaseConfigProperties(),
-            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), caseWorkspaceProvisioning = observed)
+            mockk(relaxed = true), mockk(relaxed = true), mockk(relaxed = true), limitsConfig = LimitsConfigProperties(),
+            usageRecordService = mockk(relaxed = true), caseWorkspaceProvisioning = observed)
         val policy = GitRepositoryConfigPolicy(mockk(), mockk(), mockk(), mockk(), mockk())
         val config = IntegrationConfig(namespaceId = namespaceId, name = "git", integrationType = GitRepositoryIntegration.TYPE)
         val executor = Executors.newFixedThreadPool(2)

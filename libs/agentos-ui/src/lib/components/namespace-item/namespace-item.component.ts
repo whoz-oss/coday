@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { ActionCardChipsDirective, ActionCardComponent, ActionCardMenuItem } from '../action-card/action-card.component'
+import { UsageConfigurationService } from '../../services/usage-configuration.service'
 
 @Component({
   selector: 'agentos-namespace-item',
@@ -11,6 +12,7 @@ import { ActionCardChipsDirective, ActionCardComponent, ActionCardMenuItem } fro
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
+  readonly usageConfiguration = inject(UsageConfigurationService)
   readonly namespace = input.required<Namespace>()
   /** Git settings exist only while the GIT plugin is loaded on the server. */
   readonly gitAvailable = input(false)
@@ -24,6 +26,7 @@ export class NamespaceItemComponent {
   readonly promptsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
+  readonly usageRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
   readonly gitRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()

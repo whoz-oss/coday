@@ -1342,6 +1342,65 @@ paths:
       summary: Mark case as read
       tags:
       - case-controller
+  /api/cases/{caseId}/run-cost:
+    get:
+      operationId: getRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/continue:
+    post:
+      operationId: continueCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContinueCostRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/stop:
+    post:
+      operationId: stopCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - run-cost-controller
   /api/cases/{caseId}/workspace:
     get:
       operationId: getCaseWorkspace
@@ -3110,6 +3169,18 @@ paths:
       summary: Update a Skill
       tags:
       - skill-controller
+  /api/usage-configuration:
+    get:
+      operationId: getUsageConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageConfiguration"
+          description: OK
+      tags:
+      - usage-configuration-controller
   /api/usage-records/aggregate/by-agent:
     get:
       operationId: aggregateByAgentUsageRecord
@@ -3782,6 +3853,8 @@ components:
             type: string
           llmProvider:
             type: string
+          llmUsage:
+            $ref: "#/components/schemas/LlmUsage"
       required:
       - agentId
       - agentName
@@ -3824,6 +3897,9 @@ components:
             format: uuid
           agentName:
             type: string
+          questionId:
+            type: string
+            format: uuid
       required:
       - agentId
       - agentName
@@ -4220,6 +4296,14 @@ components:
       - resultText
       - timestamp
       - type
+    ContinueCostRequest:
+      type: object
+      properties:
+        expectedThreshold:
+          type: number
+          format: double
+      required:
+      - expectedThreshold
     EnrichmentPhaseTrace:
       type: object
       properties:
@@ -4632,6 +4716,33 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    LlmUsage:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        estimatedCostUsd:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - inputTokens
+      - outputTokens
+      - totalTokens
     MemberItem:
       type: object
       properties:
@@ -4971,6 +5082,28 @@ components:
       required:
       - authType
       - name
+    PausedCostDto:
+      type: object
+      properties:
+        ancestor:
+          type: boolean
+        canContinue:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        threshold:
+          type: number
+          format: double
+      required:
+      - ancestor
+      - canContinue
+      - caseId
+      - cost
+      - threshold
     PendingConfirmationEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -5277,6 +5410,44 @@ components:
       - days
       - timeUtc
       - unit
+    RunCostDto:
+      type: object
+      properties:
+        active:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        liveTokens:
+          type: integer
+          format: int64
+        paused:
+          type: boolean
+        pausedCases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PausedCostDto"
+        runCostThreshold:
+          type: number
+          format: double
+        since:
+          type: string
+          format: date-time
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - active
+      - caseId
+      - cost
+      - liveTokens
+      - paused
+      - pausedCases
+      - since
+      - unknownCostCount
     ScheduledPrompt:
       type: object
       properties:
@@ -5292,6 +5463,9 @@ components:
           type: string
         enabled:
           type: boolean
+        externalMetadata:
+          type: object
+          additionalProperties: {}
         id:
           type: string
           format: uuid
@@ -5676,6 +5850,13 @@ components:
       required:
       - aggregate
       - key
+    UsageConfiguration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
     UsageRecord:
       type: object
       properties:

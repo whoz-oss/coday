@@ -70,6 +70,12 @@ Only HTTPS remotes are allowed by default. Private network remotes (a self-hoste
 
 The setup command runs with a cleared environment, so service secrets are not readable from it. Anyone able to push a branch can still run code through dependency lifecycle scripts: prefer a command that disables them, such as `npm ci --ignore-scripts` or `pnpm install --ignore-scripts`.
 
+Workspace-backed execution is single-instance **by construction**, not just by configuration.
+`WorkspaceLifecycleLocks` is a JVM singleton (`object`), and the admission model (`deferredRuns`,
+`executionJobs`, `whenAvailable` callbacks) is entirely in-process. Horizontal scaling would
+require a distributed lease *and* persisting the intent to run — which reopens the deliberate
+"nothing is replayed after a restart" trade-off.
+
 The sweep runs on a dedicated `git-workspace` thread pool, never on Spring's scheduler thread, so a
 long clone does not delay other scheduled work. An operator can pause it on a live instance through
 the `gitworkspaces` Actuator endpoint, registered only with the worker, over HTTP or JMX:
