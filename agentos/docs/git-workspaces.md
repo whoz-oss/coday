@@ -10,6 +10,8 @@ Case-family workspaces are behind `agentos.git.workspaces.enabled` (`AGENTOS_GIT
 
 When enabled, each **new root case** gets a worktree in `repo/` under its Case Exchange root. All descendants share the entire Case Exchange, including documents outside Git. Existing families are never retroactively equipped, and disabling automation does not disconnect existing workspaces. Persisted bindings retain the settings used to create them.
 
+Turning the flag off later leaves existing workspaces untouched: bindings stay in the database and worktrees stay on disk. While it is off, every case, sub-cases of an equipped family included, uses its own Exchange directory. Files a sub-case writes in that period are not visible to its family once the flag is back on. The root case's `repo/` shows as an ordinary folder, its `.git` still hidden. Runs start immediately and nothing is prepared or cleaned up. When the flag is turned back on, equipped families share the root directory again, root cases created in between stay ordinary, and the cleanup of cases deleted in between resumes on the worker's next passes.
+
 **AgentOS does not create, name or rename working branches or pull requests.** A new worktree starts with a detached HEAD at the configured main branch's fetched commit. Agents create branches and PRs using their workflow tools. The case title has no effect on Git. Retrying preparation preserves any branch or local work already created by an agent.
 
 The root case owns the durable workspace. Killing or replacing a contributor conversation does not delete it. Factory controllers and contributors can be sub-cases of this durable root.
