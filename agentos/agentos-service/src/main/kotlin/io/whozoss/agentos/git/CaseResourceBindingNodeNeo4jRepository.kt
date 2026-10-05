@@ -14,6 +14,7 @@ interface CaseResourceBindingNodeNeo4jRepository : Neo4jRepository<CaseResourceB
     @Query($$"MATCH (b:CaseResourceBinding {id: $id}) REMOVE b:ActiveCaseResourceBinding")
     fun setInactive(id: String)
 
+    /** Behind [CaseResourceBindingRepository.deleteByParent]: a binding's parent is its namespace. */
     @Query(
         $$"MATCH (b:CaseResourceBinding:ActiveCaseResourceBinding) WHERE b.namespaceId = $namespaceId REMOVE b:ActiveCaseResourceBinding",
     )
@@ -53,7 +54,7 @@ interface CaseResourceBindingNodeNeo4jRepository : Neo4jRepository<CaseResourceB
         afterId: String?,
     ): List<CaseResourceBindingNode>
 
-    /** Active bindings of a namespace, used by lifecycle sweeps and by namespace deletion. */
+    /** Active bindings of a namespace, behind [CaseResourceBindingRepository.findByParent]. */
     @Query(
         $$"""
             MATCH (b:CaseResourceBinding:ActiveCaseResourceBinding)

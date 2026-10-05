@@ -124,58 +124,53 @@ internal class GatedRunLauncher(
         }
 
     private fun admit(runtime: CaseRuntime) {
+        var refusal: String? = null
         try {
             // Publish the waiting turn before trying the lock: a completing preparation may resume
             // the family concurrently, and a short lock owner calls back once it is done.
             gate.withAdmission(runtime.id, onAvailable = { scope.launch { resumeIfPending(runtime.id) } }) {
-                admitRun(runtime)
+                refusal = admitRun(runtime)
             }
         } catch (e: Exception) {
             // The message is already stored: a gate error must not become an HTTP failure.
             failAdmission(runtime, e)
         }
+        refusal?.let { refuseAdmission(runtime, it) }
     }
 
     /**
-     * Try to start a deferred turn under the admission lock.
+     * Decide whether a deferred turn starts. Runs under the capability's lifecycle lock
+     * ([CaseLaunchGate.withAdmission]) but outside the admission lock, since the decision reads the store.
      *
-     * The pre-check ([gate.launchDecision] called here, before creating a coroutine) runs inside
-     * `synchronized(runtime)` **and** inside the [WorkspaceLifecycleLocks] root lock held by
-     * [GitCaseLaunchGate.withAdmission]. This means two Neo4j reads are held under two locks.
+     * [LaunchDecision.Wait] leaves the turn in [deferredRuns]: a preparation resumes held turns once
+     * its workspace is ready, and that resume must still find the turn. Holding the lifecycle lock
+     * until the job is published keeps an admission valid until a cleanup can see it running. Only
+     * taking the turn and publishing its launch need the admission lock, which keeps Stop and Kill
+     * from falling between them. A runtime replaced since the turn was deferred starts nothing.
      *
-     * The trade-off is deliberate:
-     * - The lazy job already re-checks [gate.launchDecision] once it starts, because preparation
-     *   or cleanup may have changed the workspace state since the pre-check. So the outcome is
-     *   identical whether the pre-check is present or not.
-     * - The pre-check avoids creating a coroutine when the gate would immediately refuse or
-     *   re-defer, keeping [trackedExecutionCount] accurate and lifecycle assertions cheap.
-     * - The critical section is short: [gate.launchDecision] on the Git gate resolves two cached
-     *   or indexed Neo4j reads (binding status + case status), not a full query.
-     *
-     * If this becomes a bottleneck, the pre-check can be dropped: the in-job check handles both
-     * [LaunchDecision.Wait] and [LaunchDecision.Refuse] correctly, and the only observable
-     * difference is that [trackedExecutionCount] transiently reaches 1 for refused turns.
+     * Returns the reason of a [LaunchDecision.Refuse], reported by the caller outside both locks.
      */
-    private fun admitRun(runtime: CaseRuntime): Unit =
-        synchronized(runtime) {
-            // A worker completion and a lock callback can both try: only one consumes the turn.
-            if (!deferredRuns.remove(runtime.id)) return@synchronized
-            val preCheck = try { gate.launchDecision(runtime.id) } catch (e: Exception) {
-                failAdmission(runtime, e)
-                return@synchronized
-            }
-            when (preCheck) {
-                is LaunchDecision.Wait -> { deferredRuns.add(runtime.id); return@synchronized }
-                is LaunchDecision.Refuse -> { refuseAdmission(runtime, preCheck.reason); return@synchronized }
-                is LaunchDecision.Admit -> startAdmittedJob(runtime)
+    private fun admitRun(runtime: CaseRuntime): String? =
+        when (val decision = gate.launchDecision(runtime.id)) {
+            is LaunchDecision.Wait -> null
+            is LaunchDecision.Refuse -> decision.reason
+            is LaunchDecision.Admit -> {
+                synchronized(runtime) {
+                    // A worker completion and a lock callback can both try: only one consumes the turn.
+                    if (isCurrent(runtime) && deferredRuns.remove(runtime.id)) startAdmittedJob(runtime)
+                }
+                null
             }
         }
 
+    /** A Kill evicts the runtime: a turn deferred since then belongs to the runtime that replaced it. */
+    private fun isCurrent(runtime: CaseRuntime): Boolean = runtimeOf(runtime.id) === runtime
+
     /**
-     * Creates and starts the lazy coroutine for an admitted turn.
-     * Called inside `synchronized(runtime)` after the pre-check has returned [LaunchDecision.Admit].
-     * The in-job re-check re-evaluates [gate.launchDecision] outside the lock because preparation
-     * or cleanup may have changed the workspace state since the pre-check.
+     * Creates and starts the lazy coroutine for an admitted turn, under the admission lock.
+     *
+     * The job is published while the lifecycle lock is still held, so a cleanup that checks running
+     * executions under that lock sees it before the runtime starts.
      */
     private fun startAdmittedJob(runtime: CaseRuntime) {
         var admittedJob: Job? = null
@@ -188,17 +183,7 @@ internal class GatedRunLauncher(
                 previous
             } else {
                 // Lazy, so the job is published before it can complete and clean up.
-                scope.launch(start = CoroutineStart.LAZY) {
-                    // Preparation or cleanup may have started since the pre-check admission.
-                    when (val decision = try { gate.launchDecision(runtime.id) } catch (e: Exception) {
-                        failAdmission(runtime, e)
-                        return@launch
-                    }) {
-                        is LaunchDecision.Admit -> runtime.run()
-                        is LaunchDecision.Wait -> deferredRuns.add(runtime.id)
-                        is LaunchDecision.Refuse -> refuseAdmission(runtime, decision.reason)
-                    }
-                }.also { admittedJob = it }
+                scope.launch(start = CoroutineStart.LAZY) { runtime.run() }.also { admittedJob = it }
             }
         }
         finishingJob?.invokeOnCompletion { scope.launch { resumeIfPending(runtime.id) } }
@@ -217,19 +202,10 @@ internal class GatedRunLauncher(
         cause: Exception,
     ) {
         logger.error(cause) { "Could not check whether case ${runtime.id} may run; its instruction was not started" }
-        deferredRuns.remove(runtime.id)
-        runtime.emitEvent(
-            storeEvent(
-                WarnEvent(
-                    namespaceId = runtime.namespaceId,
-                    caseId = runtime.id,
-                    message = "This message could not be started because its workspace could not be checked. Send it again.",
-                ),
-            ),
+        dropTurn(
+            runtime,
+            "This message could not be started because its workspace could not be checked. Send it again.",
         )
-        // Claim the IDLE transition atomically (no lock needed here — deferredRuns is already
-        // removed and we are the only caller on this path), then persist outside any lock.
-        runtime.claimCancelPending()?.let(runtime::publishStatus)
     }
 
     /**
@@ -242,18 +218,44 @@ internal class GatedRunLauncher(
         reason: String,
     ) {
         logger.warn { "Case ${runtime.id} was permanently refused by the gate: $reason" }
-        deferredRuns.remove(runtime.id)
-        runtime.emitEvent(
-            storeEvent(
-                WarnEvent(
-                    namespaceId = runtime.namespaceId,
-                    caseId = runtime.id,
-                    message = "This message could not be started because its workspace is unavailable: $reason",
-                ),
-            ),
-        )
-        runtime.claimCancelPending()?.let(runtime::publishStatus)
+        dropTurn(runtime, "This message could not be started because its workspace is unavailable: $reason")
     }
+
+    /**
+     * Take back a turn that will not start, then warn the user and return the case to `IDLE`.
+     *
+     * Taking the turn and claiming `IDLE` happen together under the admission lock, so only one
+     * caller reports it, and nothing is claimed while an admitted launch is still active. The
+     * warning and the status are persisted after the lock is released. `IDLE` is not published once
+     * a newer turn has claimed the runtime or a Kill has already been saved.
+     */
+    private fun dropTurn(
+        runtime: CaseRuntime,
+        message: String,
+    ) {
+        val dropped =
+            synchronized(runtime) {
+                if (isCurrent(runtime) && deferredRuns.remove(runtime.id)) {
+                    val launchActive = executionJobs[runtime.id]?.isActive == true
+                    DroppedTurn(idle = if (launchActive) null else runtime.claimCancelPending())
+                } else {
+                    null
+                }
+            }
+        dropped?.let {
+            runtime.emitEvent(
+                storeEvent(WarnEvent(namespaceId = runtime.namespaceId, caseId = runtime.id, message = message)),
+            )
+            it.idle
+                ?.takeIf { runtime.statusFlow.value == CaseStatus.IDLE && statusOf(runtime.id)?.isTerminal() != true }
+                ?.let(runtime::publishStatus)
+        }
+    }
+
+    /** A turn taken back by [dropTurn], with the `IDLE` transition it claimed, if any. */
+    private data class DroppedTurn(
+        val idle: CaseStatus?,
+    )
 
     companion object : KLogging()
 }
