@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Clock
+import java.util.UUID
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
@@ -47,8 +48,8 @@ class CaseWorktreeProvisioner(
         var failureReason = "Cannot validate the existing worktree. Inspect its location and Git metadata before retrying."
         return try {
             val worktreePath = worktreePath(rootCase)
-            val commonGitDir = exchangeStorageService.namespaceGitDirectory(settings.namespaceId).toAbsolutePath().normalize()
-            if (binding.status == CaseResourceStatus.READY && isWorktree(worktreePath, commonGitDir)) return binding
+            val gitDir = exchangeStorageService.namespaceGitDirectory(settings.namespaceId).toAbsolutePath().normalize()
+            if (binding.status == CaseResourceStatus.READY && isWorktree(worktreePath, gitDir, binding.rootCaseId)) return binding
             // Later writes start from this row: the copy received is older than the PREPARING mark.
             val preparing = bindingService.markStatus(binding.id, CaseResourceStatus.PREPARING)
             failureReason = "Cannot prepare the namespace repository. Check its Git settings and service account."
@@ -56,11 +57,6 @@ class CaseWorktreeProvisioner(
             check(checkout.status == RepositoryCheckoutStatus.READY) {
                 "The namespace checkout is ${checkout.status}; a case workspace cannot be derived from it yet"
             }
-            val gitDir =
-                exchangeStorageService
-                    .namespaceGitDirectory(settings.namespaceId)
-                    .toAbsolutePath()
-                    .normalize()
 
             failureReason = "Cannot fetch the case base. Check repository access, the main branch and local Git configuration."
             val withBase = freezeBaseSha(preparing, settings, gitDir)
@@ -153,7 +149,7 @@ class CaseWorktreeProvisioner(
         if (binding.setup != SetupState.NOT_STARTED) return
         val registration =
             try {
-                isWorktree(worktreePath, gitDir)
+                isWorktree(worktreePath, gitDir, binding.rootCaseId)
                 return
             } catch (e: IncompleteWorktreeException) {
                 e.registration
@@ -164,7 +160,7 @@ class CaseWorktreeProvisioner(
         val setAside = support.resolve("interrupted-checkout-${clock.millis()}")
         Files.move(worktreePath, setAside)
         // Its HEAD is the frozen base, still referenced by refs/agentos/base/<root case id>.
-        Files.walk(registration).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+        deleteTreeWithoutFollowingLinks(registration)
         logger.warn { "Interrupted checkout of root case ${binding.rootCaseId} set aside in $setAside" }
     }
 
@@ -173,7 +169,7 @@ class CaseWorktreeProvisioner(
         gitDir: Path,
         worktreePath: Path,
     ) {
-        if (isWorktree(worktreePath, gitDir)) return
+        if (isWorktree(worktreePath, gitDir, binding.rootCaseId)) return
 
         // `git worktree add` refuses a target that exists and is not empty. An empty directory is
         // fine, and one is routinely pre-created by the exchange tool grant, so only a populated
@@ -200,16 +196,16 @@ class CaseWorktreeProvisioner(
         )
         // Git chooses an administrative name from the leaf directory (now always "repo").
         // Pin it to the root case id so status/lifecycle never trust the writable pointer file.
-        check(isWorktree(worktreePath, gitDir)) { "Git did not register the new worktree" }
+        check(isWorktree(worktreePath, gitDir, binding.rootCaseId)) { "Git did not register the new worktree" }
         logger.info { "Worktree for root case ${binding.rootCaseId} created at $worktreePath at ${binding.baseSha} (detached)" }
     }
 
     /** A linked worktree carries a `.git` pointer file; the managed clone carries a directory. */
-    private fun isWorktree(path: Path, commonGitDir: Path): Boolean {
+    private fun isWorktree(path: Path, commonGitDir: Path, rootCaseId: UUID): Boolean {
         val pointer = path.resolve(GitLayout.DOT_GIT)
         if (!Files.exists(pointer, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return false
-        val registrations = commonGitDir.resolve(GitLayout.WORKTREES_DIR).toRealPath()
-        val admin = registrations.resolve(path.parent.fileName)
+        val admin = commonGitDir.toRealPath().worktreeRegistration(rootCaseId)
+        val registrations = admin.parent
         check(Files.isRegularFile(pointer, java.nio.file.LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(admin)) {
             "The case Exchange is not the registered workspace"
         }

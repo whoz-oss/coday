@@ -22,7 +22,7 @@ internal fun removeMissingWorktreeRegistration(
     val registrations = common.resolve(GitLayout.WORKTREES_DIR)
     if (Files.notExists(registrations, NOFOLLOW_LINKS)) return
     check(Files.isDirectory(registrations, NOFOLLOW_LINKS)) { "The worktree registry is not a directory" }
-    val admin = registrations.resolve(rootCaseId.toString())
+    val admin = common.worktreeRegistration(rootCaseId)
     if (Files.notExists(admin, NOFOLLOW_LINKS)) return
     check(Files.isDirectory(admin, NOFOLLOW_LINKS)) { "The worktree registration is not a directory" }
     check(Files.notExists(admin.resolve(GitLayout.LOCKED_FILE), NOFOLLOW_LINKS)) { "The missing worktree is locked" }
@@ -53,7 +53,7 @@ internal fun removeMissingWorktreeRegistration(
         listOf("update-ref", "--no-deref", GitRefs.AGENTOS_RETAINED + rootCaseId, head), gitDir = common,
     ))
     // This directory belongs to the deleted root. Do not follow links or touch sibling entries.
-    Files.walk(admin).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+    deleteTreeWithoutFollowingLinks(admin)
 }
 
 /** Resolve existing ancestors so absent paths compare correctly through storage symlinks. */

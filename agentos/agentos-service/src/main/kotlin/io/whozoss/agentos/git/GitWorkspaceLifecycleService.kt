@@ -117,13 +117,13 @@ class GitWorkspaceLifecycleService(
                 // Background jobs, tmux shells or MCP servers an agent left in the worktree.
                 processes.stopProcesses(path)
                 processes.assertIdle(path)
-                val admin = commonGitDir(b).resolve(GitLayout.WORKTREES_DIR).resolve(rootId.toString())
+                val admin = commonGitDir(b).worktreeRegistration(rootId)
                 if (isInterruptedRemoval(b, admin, rootId)) {
                     // Only this service writes the marker, after the inspection below passed and the
                     // commit was retained: what is missing now is what the killed removal deleted.
                     reason = "Cannot finish a worktree removal that was interrupted."
-                    deleteTree(path)
-                    deleteTree(admin)
+                    deleteTreeWithoutFollowingLinks(path)
+                    deleteTreeWithoutFollowingLinks(admin)
                 } else {
                     removeWorktree(b, admin, path, rootId) { reason = it }
                 }
@@ -139,7 +139,7 @@ class GitWorkspaceLifecycleService(
                 processes.stopProcesses(support)
                 processes.assertIdle(support)
                 // Setup can create symlinks. Delete links themselves, never their external targets.
-                Files.walk(support).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
+                deleteTreeWithoutFollowingLinks(support)
             }
             bindings.update(b.copy(status = CaseResourceStatus.REMOVED, cleanupReason = null))
         } catch (e: Exception) {
@@ -216,12 +216,6 @@ class GitWorkspaceLifecycleService(
             .map { runCatching { it.toRealPath() }.getOrElse { _ -> it.toAbsolutePath().normalize() } }
             .filter { it != root && it.startsWith(root) }
             .toList()
-    }
-
-    /** Symbolic links are deleted themselves, never followed to their targets. */
-    private fun deleteTree(path: Path) {
-        if (Files.notExists(path, NOFOLLOW_LINKS)) return
-        Files.walk(path).use { paths -> paths.sorted(Comparator.reverseOrder()).forEach(Files::delete) }
     }
 
     private fun commonGitDir(binding: CaseResourceBinding) =
