@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.tool.ToolPlugin
 import mu.KLogging
 import org.pf4j.Extension
 import org.pf4j.Plugin
+import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 
 class GitPlugin : Plugin() {
@@ -30,9 +31,11 @@ class GitPlugin : Plugin() {
  *
  * Loading this plugin makes Git available on the instance: the service then offers the namespace
  * repository association and equips new case families with a worktree it manages itself. This
- * provider never offers an agent a tool to create or remove a worktree, nor a free Git command. Its
- * tools work only in the family's worktree the service designates for each run, and act with the
- * credentials of the user running the case, from the auth setting bound to the integration.
+ * provider never offers an agent a tool to create or remove a worktree, nor a free Git command. In
+ * an equipped family its tools work in the worktree the service designates for each run. Elsewhere
+ * the integration is an ordinary one: its tools work in the repository its configuration names.
+ * Either way they act with the credentials of the user running the case, from the auth setting
+ * bound to the integration.
  */
 @Extension
 class GitToolProvider : ToolPlugin {
@@ -44,17 +47,38 @@ class GitToolProvider : ToolPlugin {
     private val runners = ConcurrentHashMap<Boolean, GitCommandRunner>()
 
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
-        val workspace = GitWorkspaceContext.from(config) ?: run {
-            logger.debug { "GIT integration '$configName': no tool outside a case Git workspace" }
-            return emptyList()
-        }
+        // A case Git workspace injects its whole context. Elsewhere the configuration names the repository.
+        val injected = GitWorkspaceContext.from(config)
+        val directory = injected?.workingDirectory ?: configuredDirectory(config, configName) ?: return emptyList()
         val allowPrivateRemoteHosts = config?.path("allowPrivateRemoteHosts")?.asBoolean(false) ?: false
         val runner = runners.computeIfAbsent(allowPrivateRemoteHosts) {
             GitCommandRunner(GitExecutionProperties(allowPrivateRemoteHosts = it))
         }
+        val workspace =
+            if (injected != null) GitWorkspace(injected, runner)
+            else GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner)
         val gitHub = GitHubApi()
         val access = GitForgeAccess(context?.credentialProvider, context?.userExternalId, gitHub)
-        return gitTools(configName ?: INTEGRATION_TYPE, GitWorkspace(workspace, runner), access, gitHub)
+        return gitTools(configName ?: INTEGRATION_TYPE, workspace, access, gitHub)
+    }
+
+    private fun configuredDirectory(
+        config: JsonNode?,
+        configName: String?,
+    ): Path? {
+        val directory = GitWorkspaceContext.configuredDirectory(config) ?: run {
+            logger.debug { "GIT integration '$configName': no Git workspace and no configured workingDirectory" }
+            return null
+        }
+        if (!directory.isAbsolute) {
+            logger.error { "GIT integration '$configName': workingDirectory must be an absolute path, no tools registered" }
+            return null
+        }
+        if (GitWorkspaceContext.configuredRepositoryUrl(config) == null) {
+            logger.error { "GIT integration '$configName': repositoryUrl is required with workingDirectory, no tools registered" }
+            return null
+        }
+        return directory
     }
 
     companion object : KLogging() {
@@ -65,8 +89,23 @@ class GitToolProvider : ToolPlugin {
             {
                 "type": "object",
                 "title": "Git Integration Configuration",
-                "description": "Git tools for agents working in a case's Git workspace. Bind an auth setting holding each user's forge token: agents act with the identity of the user running the case.",
+                "description": "Git tools for agents. In a case's Git workspace they work in its worktree, whatever is configured here. Elsewhere they work in the repository named by workingDirectory. Bind an auth setting holding each user's forge token: agents act with the identity of the user running the case.",
                 "properties": {
+                    "workingDirectory": {
+                        "type": "string",
+                        "title": "Repository directory",
+                        "description": "Absolute path of the root of a non-bare repository the tools work in outside a case Git workspace."
+                    },
+                    "repositoryUrl": {
+                        "type": "string",
+                        "title": "Repository URL",
+                        "description": "Required with workingDirectory: HTTPS remote the tools fetch from, push to and open pull requests on. Never read from the repository, whose configuration an agent can change."
+                    },
+                    "mainBranch": {
+                        "type": "string",
+                        "title": "Main branch",
+                        "description": "Branch pull requests target, never pushed by the tools. Defaults to main."
+                    },
                     "allowPrivateRemoteHosts": {
                         "type": "boolean",
                         "title": "Allow private remote hosts",

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.plugins.git
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.sun.net.httpserver.HttpServer
@@ -130,9 +131,100 @@ class GitToolsSpec :
         suspend fun Map<String, StandardTool<*>>.call(tool: String, input: Any? = null): ToolExecutionResult =
             (getValue(tool) as StandardTool<Any>).execute(input, toolContext)
 
+        // --- Configured repository, outside a Git workspace -------------------------------------
+
+        fun configured(
+            directory: Path,
+            settings: Map<String, String> = emptyMap(),
+        ): GitWorkspace {
+            val config = jacksonObjectMapper().valueToTree<JsonNode>(settings + ("workingDirectory" to directory.toString()))
+            return GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner)
+        }
+
+        fun cloneOf(fixture: Fixture): Path =
+            Files.createTempDirectory("agentos-git-configured-").also {
+                git(it, "clone", "--quiet", fixture.origin.toUri().toString(), ".")
+            }
+
         // --- Tests ---------------------------------------------------------------------------------
 
-        "the provider gives Git tools only inside a Git workspace, named after the integration" {
+        "outside a Git workspace the tools work in the configured repository and push to the configured remote" {
+            val fixture = managed()
+            val clone = cloneOf(fixture)
+            val workspace = configured(clone, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
+            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+
+            tools.call("git_create_branch", GitCreateBranchTool.Input("feature/configured")).success shouldBe true
+            clone.resolve("configured.txt").writeText("configured\n")
+            tools.call("git_commit", GitCommitTool.Input("Configured")).success shouldBe true
+            tools.call("git_push").success shouldBe true
+
+            git(fixture.origin, "rev-parse", "refs/heads/feature/configured") shouldBe git(clone, "rev-parse", "HEAD")
+        }
+
+        "the remote and the main branch come from the integration, never from the repository's configuration" {
+            // An agent with a shell can rewrite the repository's configuration; the remote decides where the token goes.
+            val fixture = managed()
+            val clone = cloneOf(fixture)
+            val decoy = Files.createTempDirectory("agentos-git-decoy-").resolve("decoy.git")
+            git(clone, "clone", "--quiet", "--bare", fixture.origin.toString(), decoy.toString())
+            git(clone, "remote", "set-url", "origin", decoy.toUri().toString())
+            git(clone, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
+            val workspace = configured(clone, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
+            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+
+            workspace.repositoryUrl shouldBe fixture.origin.toUri().toString()
+            workspace.mainBranch shouldBe "main"
+            configured(clone, mapOf("repositoryUrl" to "https://github.com/org/project.git", "mainBranch" to "develop")).mainBranch shouldBe "develop"
+            tools.call("git_create_branch", GitCreateBranchTool.Input("feature/pinned"))
+            clone.resolve("pinned.txt").writeText("pinned\n")
+            tools.call("git_commit", GitCommitTool.Input("Pinned"))
+            tools.call("git_push").success shouldBe true
+            git(fixture.origin, "rev-parse", "refs/heads/feature/pinned") shouldBe git(clone, "rev-parse", "HEAD")
+            git(decoy, "for-each-ref", "refs/heads/feature/") shouldBe ""
+        }
+
+        "a configured linked worktree works through its common directory" {
+            val fixture = managed()
+            val workspace = configured(fixture.worktree, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
+            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+
+            tools.call("git_create_branch", GitCreateBranchTool.Input("feature/linked")).success shouldBe true
+            fixture.worktree.resolve("linked.txt").writeText("linked\n")
+            tools.call("git_commit", GitCommitTool.Input("Linked")).success shouldBe true
+            tools.call("git_push").success shouldBe true
+
+            git(fixture.origin, "rev-parse", "refs/heads/feature/linked") shouldBe git(fixture.worktree, "rev-parse", "HEAD")
+        }
+
+        "only the root of a non-bare repository is accepted, and the tool says why" {
+            val fixture = managed()
+            val clone = cloneOf(fixture)
+            val subdirectory = Files.createDirectories(clone.resolve("sub"))
+            val origin = mapOf("repositoryUrl" to fixture.origin.toUri().toString())
+
+            listOf(Files.createTempDirectory("agentos-git-not-a-repository-"), subdirectory, subdirectory.resolve("."), fixture.origin)
+                .forEach { directory ->
+                    val status = gitTools("git", configured(directory, origin), access(), gitHub)
+                        .associateBy { it.name.removePrefix("git__") }
+                        .call("git_status")
+                    status.success shouldBe false
+                    status.output shouldContain "is not the root of a Git working tree"
+                }
+            git(clone, "status", "--porcelain") shouldBe ""
+        }
+
+        "outside a Git workspace a remote must be configured" {
+            val fixture = managed()
+            val status = gitTools("git", configured(cloneOf(fixture)), access(), gitHub)
+                .associateBy { it.name.removePrefix("git__") }
+                .call("git_status")
+
+            status.success shouldBe false
+            status.output shouldContain "Configure repositoryUrl"
+        }
+
+        "the provider gives a Git workspace its tools, named after the integration" {
             val fixture = managed()
             val mapper = jacksonObjectMapper()
             val config = mapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(

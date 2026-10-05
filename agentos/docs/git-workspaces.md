@@ -44,7 +44,7 @@ The namespace service account is used for managed clone/fetch and PR observation
 
 ### Git tools for agents
 
-A `GIT` integration, associated with an agent like any other integration, gives it these tools in its family's worktree:
+A `GIT` integration, associated with an agent like any other integration, gives it these tools. In an equipped family they work in the family's worktree, whatever the integration configures. Elsewhere, and on an instance without `agentos.git.workspaces.enabled`, they work in the repository named by the integration's `workingDirectory`, the absolute path of the root of a non-bare repository. The integration must also set `repositoryUrl`, the HTTPS remote the tools fetch from, push to and open pull requests on, and may set `mainBranch` (default `main`). Both come from the integration only, never from the repository's configuration, which an agent can change: the remote decides where the user's token goes. Without `workingDirectory` and `repositoryUrl` outside a workspace, the integration gives no tool. Like a BASH integration, such a configuration can point at any directory the service user can read, so operators who restrict BASH should restrict `GIT` the same way.
 
 | Tool | Effect |
 | ---- | ------ |
