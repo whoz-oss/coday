@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "eval": "promptfoo eval --no-cache",
-    "view": "promptfoo view --yes"
+    "ui": "promptfoo view --yes"
   },
   "devDependencies": {
     "promptfoo": "0.123.1"

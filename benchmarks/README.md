@@ -23,7 +23,7 @@ AgentOS must be running (default `http://localhost:8124`) with usage tracking en
 ```bash
 pnpm eval                      # runs promptfooconfig.yaml (cache disabled: latency/cost are real)
 pnpm eval -c my-suite.yaml     # any other suite
-pnpm view                      # web UI on http://localhost:15500
+pnpm ui                        # web UI on http://localhost:15500
 ```
 
 Each result cell shows output, pass/fail, cost, tokens and latency. Its details hold the metadata
