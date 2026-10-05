@@ -4263,15 +4263,29 @@ components:
       properties:
         cleanupReason:
           type: string
+          description: Why the workspace of a deleted family is still kept. Never
+            a secret
         equipped:
           type: boolean
+          description: Whether the case's family owns a Git workspace
         failureReason:
           type: string
+          description: Why the last preparation failed. Never a secret
         rootCaseId:
           type: string
           format: uuid
+          description: Root case that owns the family's workspace. Null when the family
+            is not equipped
         status:
           type: string
+          description: Lifecycle of the workspace. Null when the family is not equipped
+          enum:
+          - REQUESTED
+          - PREPARING
+          - READY
+          - FAILED
+          - DELETING
+          - REMOVED
       required:
       - equipped
     ConfirmationResolvedEvent:

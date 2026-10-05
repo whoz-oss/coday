@@ -1,10 +1,10 @@
 import { provideHttpClient } from '@angular/common/http'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
-import { Configuration } from '@whoz-oss/agentos-api-client'
+import { CaseWorkspaceViewStatusEnum, Configuration } from '@whoz-oss/agentos-api-client'
 import { CaseWorkspaceService, WorkspaceState, WorkspaceView } from './case-workspace.service'
 
-const root: WorkspaceView = { equipped: true, rootCaseId: 'root', status: 'PREPARING' }
+const root: WorkspaceView = { equipped: true, rootCaseId: 'root', status: CaseWorkspaceViewStatusEnum.PREPARING }
 
 describe('shared workspace state', () => {
   let http: HttpTestingController

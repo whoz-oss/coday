@@ -12,7 +12,7 @@ class GitWorkspaceStatusService {
         return CaseWorkspaceView(
             equipped = true,
             rootCaseId = binding.rootCaseId,
-            status = binding.status.name,
+            status = binding.status,
             failureReason = binding.failureReason,
             cleanupReason = binding.cleanupReason,
         )

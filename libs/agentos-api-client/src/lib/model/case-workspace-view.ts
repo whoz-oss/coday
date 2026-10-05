@@ -9,9 +9,32 @@
  */
 
 export interface CaseWorkspaceView {
+  /**
+   * Why the workspace of a deleted family is still kept. Never a secret
+   */
   cleanupReason?: string
+  /**
+   * Whether the case\'s family owns a Git workspace
+   */
   equipped: boolean
+  /**
+   * Why the last preparation failed. Never a secret
+   */
   failureReason?: string
+  /**
+   * Root case that owns the family\'s workspace. Null when the family is not equipped
+   */
   rootCaseId?: string
-  status?: string
+  /**
+   * Lifecycle of the workspace. Null when the family is not equipped
+   */
+  status?: CaseWorkspaceViewStatusEnum
+}
+export enum CaseWorkspaceViewStatusEnum {
+  REQUESTED = 'REQUESTED',
+  PREPARING = 'PREPARING',
+  READY = 'READY',
+  FAILED = 'FAILED',
+  DELETING = 'DELETING',
+  REMOVED = 'REMOVED',
 }
