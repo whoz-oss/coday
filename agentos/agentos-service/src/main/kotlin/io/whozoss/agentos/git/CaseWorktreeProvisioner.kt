@@ -68,15 +68,17 @@ class CaseWorktreeProvisioner(
             setAsideInterruptedCheckout(withBase, gitDir, worktreePath)
             addWorktree(withBase, gitDir, worktreePath)
             val current = bindingService.findByRootCaseId(binding.rootCaseId) ?: withBase
-            if (!current.setupCompleted) {
+            if (current.setup != SetupState.COMPLETED) {
                 failureReason = "Setup was interrupted; inspect its effects and acknowledge its replay before retrying."
-                check(!current.setupStarted) { "Setup was interrupted; acknowledge its replay before retrying" }
-                bindingService.update(current.copy(setupStarted = true))
+                check(current.setup == SetupState.NOT_STARTED) {
+                    "Setup was interrupted; acknowledge its replay before retrying"
+                }
+                bindingService.update(current.copy(setup = SetupState.STARTED))
                 failureReason = "Setup failed or was interrupted. Inspect the setup command and its effects before retrying."
                 setupRunner.run(settings, worktreePath,
                     exchangeStorageService.workspaceSupportDirectory(binding.namespaceId, binding.rootCaseId))
                 val afterSetup = bindingService.findByRootCaseId(binding.rootCaseId) ?: current
-                bindingService.update(afterSetup.copy(setupCompleted = true))
+                bindingService.update(afterSetup.copy(setup = SetupState.COMPLETED))
             }
 
             bindingService.markStatus(withBase.id, CaseResourceStatus.READY)
@@ -148,7 +150,7 @@ class CaseWorktreeProvisioner(
         gitDir: Path,
         worktreePath: Path,
     ) {
-        if (binding.setupStarted || binding.setupCompleted) return
+        if (binding.setup != SetupState.NOT_STARTED) return
         val registration =
             try {
                 isWorktree(worktreePath, gitDir)

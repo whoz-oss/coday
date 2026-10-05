@@ -43,7 +43,7 @@ class GitWorkspaceLifecycleService(
     fun retry(rootId: UUID): CaseResourceBinding = requested(rootId) {
         val b = requireBinding(rootId)
         if (b.status != CaseResourceStatus.FAILED) throw ConflictException("Only failed preparation can be retried")
-        if (b.setupStarted && !b.setupCompleted) throw ConflictException("Setup was interrupted; inspect its effects and acknowledge setup recovery first")
+        if (b.setup == SetupState.STARTED) throw ConflictException("Setup was interrupted; inspect its effects and acknowledge setup recovery first")
         bindings.markStatus(b.id, CaseResourceStatus.REQUESTED)
     }
 
@@ -51,10 +51,10 @@ class GitWorkspaceLifecycleService(
         val b = requireBinding(rootId)
         if (b.status != CaseResourceStatus.FAILED) throw ConflictException("Workspace is not failed")
         // Only an interrupted setup needs its replay acknowledged. A completed one is never run again.
-        if (!b.setupStarted || b.setupCompleted) {
+        if (b.setup != SetupState.STARTED) {
             throw ConflictException("No interrupted setup to acknowledge: retry the preparation instead")
         }
-        bindings.update(b.copy(setupStarted = false, setupCompleted = false, status = CaseResourceStatus.REQUESTED, failureReason = null))
+        bindings.update(b.copy(setup = SetupState.NOT_STARTED, status = CaseResourceStatus.REQUESTED, failureReason = null))
     }
 
     /**

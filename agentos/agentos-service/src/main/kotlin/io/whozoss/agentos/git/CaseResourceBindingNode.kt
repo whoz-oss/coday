@@ -47,8 +47,8 @@ data class CaseResourceBindingNode(
     val failureReason: String? = null,
     val settingsJson: String? = null,
     val cleanupReason: String? = null,
-    val setupStarted: Boolean = false,
-    val setupCompleted: Boolean = false,
+    /** A [SetupState] name, like [status]. */
+    val setupState: String = SetupState.NOT_STARTED.name,
     // EntityMetadata fields
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -77,8 +77,7 @@ data class CaseResourceBindingNode(
             failureReason = failureReason,
             settings = readSettings(id, settingsJson),
             cleanupReason = cleanupReason,
-            setupStarted = setupStarted,
-            setupCompleted = setupCompleted,
+            setup = SetupState.valueOf(setupState),
         )
 
     companion object : KLogging() {
@@ -110,8 +109,7 @@ data class CaseResourceBindingNode(
                 failureReason = binding.failureReason,
                 settingsJson = binding.settings?.let { MAPPER.writeValueAsString(it) },
                 cleanupReason = binding.cleanupReason,
-                setupStarted = binding.setupStarted,
-                setupCompleted = binding.setupCompleted,
+                setupState = binding.setup.name,
                 version = binding.metadata.version,
                 created = binding.metadata.created,
                 createdBy = binding.metadata.createdBy,

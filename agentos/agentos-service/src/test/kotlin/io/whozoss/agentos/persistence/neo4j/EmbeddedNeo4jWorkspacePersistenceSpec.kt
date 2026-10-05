@@ -2,6 +2,10 @@ package io.whozoss.agentos.persistence.neo4j
 
 import io.kotest.assertions.throwables.shouldThrowAny
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.headers
+import io.kotest.data.row
+import io.kotest.data.table
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
@@ -11,6 +15,7 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.DefaultApplicationArguments
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
@@ -29,6 +34,7 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
     @Autowired lateinit var caseService: CaseService
     @Autowired lateinit var driver: Driver
     @Autowired lateinit var roots: GitExchangeRootResolver
+    @Autowired lateinit var schema: CaseResourceBindingSchemaInitializer
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
@@ -44,7 +50,7 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             val root = cases.save(Case(namespaceId = ns.id, title = "Case title"))
             val value = bindings.create(CaseResourceBinding(rootCaseId = root.id, namespaceId = ns.id,
                 integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY,
-                settings = settings(ns.id), setupStarted = true, setupCompleted = true))
+                settings = settings(ns.id), setup = SetupState.COMPLETED))
             bindings.findByRootCaseId(root.id) shouldBe value
             bindings.findByRootCaseId(root.id)?.settings?.setupCommand shouldBe "pnpm install --ignore-scripts"
         }
@@ -69,6 +75,27 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
 
             bindings.findByParent(namespaceId).associate { it.id to it.settings } shouldBe
                 mapOf(unreadable.id to null, readable.id to readable.settings)
+        }
+
+        "bindings saved with the former setup flags read their setup state after the schema backfill" {
+            table(
+                headers("setupStarted", "setupCompleted", "setup"),
+                row(false, false, SetupState.NOT_STARTED),
+                row(true, false, SetupState.STARTED),
+                row(true, true, SetupState.COMPLETED),
+            ).forAll { started, completed, setup ->
+                val former = bindings.create(binding(UUID.randomUUID()))
+                driver.session().use { session ->
+                    session.run(
+                        "MATCH (b:CaseResourceBinding {id: \$id}) REMOVE b.setupState SET b.setupStarted = \$started, b.setupCompleted = \$completed",
+                        mapOf("id" to former.id.toString(), "started" to started, "completed" to completed),
+                    ).consume()
+                }
+
+                schema.run(DefaultApplicationArguments())
+
+                bindings.findByRootCaseId(former.rootCaseId)?.setup shouldBe setup
+            }
         }
 
         "an active binding carries the Active label and the database refuses a second one for the same root case" {

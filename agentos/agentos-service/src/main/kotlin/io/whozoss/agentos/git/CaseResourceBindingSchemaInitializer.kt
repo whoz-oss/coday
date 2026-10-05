@@ -30,6 +30,7 @@ class CaseResourceBindingSchemaInitializer(
         ensureNamespaceIndex()
         ensureStatusIndex()
         backfillVersion()
+        backfillSetupState()
     }
 
     private fun assertNoDuplicateRootCaseKeys() {
@@ -102,6 +103,22 @@ class CaseResourceBindingSchemaInitializer(
     /** Rows saved before [CaseResourceBindingNode.version] existed need one for optimistic locking. */
     private fun backfillVersion() {
         neo4jClient.query("MATCH (b:CaseResourceBinding) WHERE b.version IS NULL SET b.version = 0").run()
+    }
+
+    /** Rows saved before [CaseResourceBindingNode.setupState] kept the setup progress in two flags. */
+    private fun backfillSetupState() {
+        neo4jClient
+            .query(
+                """
+                MATCH (b:CaseResourceBinding) WHERE b.setupState IS NULL
+                SET b.setupState = CASE
+                    WHEN b.setupCompleted THEN 'COMPLETED'
+                    WHEN b.setupStarted THEN 'STARTED'
+                    ELSE 'NOT_STARTED'
+                END
+                REMOVE b.setupStarted, b.setupCompleted
+                """.trimIndent(),
+            ).run()
     }
 
     companion object : KLogging()

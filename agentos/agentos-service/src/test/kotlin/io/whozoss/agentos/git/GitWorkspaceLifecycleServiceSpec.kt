@@ -14,13 +14,12 @@ import java.util.UUID
 class GitWorkspaceLifecycleServiceSpec : StringSpec({
     fun failed(
         bindings: InMemoryCaseResourceBindingService,
-        setupStarted: Boolean,
-        setupCompleted: Boolean,
+        setup: SetupState,
     ): CaseResourceBinding =
         bindings.create(CaseResourceBinding(
             rootCaseId = UUID.randomUUID(), namespaceId = UUID.randomUUID(), integrationConfigId = UUID.randomUUID(),
             status = CaseResourceStatus.FAILED, failureReason = "Cannot fetch the case base.",
-            setupStarted = setupStarted, setupCompleted = setupCompleted,
+            setup = setup,
         ))
 
     fun lifecycle(bindings: CaseResourceBindingService) =
@@ -28,12 +27,12 @@ class GitWorkspaceLifecycleServiceSpec : StringSpec({
 
     "acknowledging a setup replay is refused when no setup was interrupted" {
         table(
-            headers("setupStarted", "setupCompleted"),
-            row(false, false),
-            row(true, true),
-        ).forAll { started, completed ->
+            headers("setup"),
+            row(SetupState.NOT_STARTED),
+            row(SetupState.COMPLETED),
+        ).forAll { setup ->
             val bindings = InMemoryCaseResourceBindingService()
-            val binding = failed(bindings, setupStarted = started, setupCompleted = completed)
+            val binding = failed(bindings, setup)
 
             shouldThrow<ConflictException> { lifecycle(bindings).acknowledgeSetup(binding.rootCaseId) }.message shouldBe
                 "No interrupted setup to acknowledge: retry the preparation instead"
@@ -43,13 +42,12 @@ class GitWorkspaceLifecycleServiceSpec : StringSpec({
 
     "acknowledging an interrupted setup requests a new preparation that runs it again" {
         val bindings = InMemoryCaseResourceBindingService()
-        val binding = failed(bindings, setupStarted = true, setupCompleted = false)
+        val binding = failed(bindings, SetupState.STARTED)
 
         val requested = lifecycle(bindings).acknowledgeSetup(binding.rootCaseId)
 
         requested.status shouldBe CaseResourceStatus.REQUESTED
         requested.failureReason shouldBe null
-        requested.setupStarted shouldBe false
-        requested.setupCompleted shouldBe false
+        requested.setup shouldBe SetupState.NOT_STARTED
     }
 })

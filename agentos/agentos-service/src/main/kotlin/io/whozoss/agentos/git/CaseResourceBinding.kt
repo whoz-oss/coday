@@ -37,10 +37,10 @@ data class CaseResourceBinding(
      */
     val settings: GitRepositorySettings? = null,
     val cleanupReason: String? = null,
-    val setupStarted: Boolean = false,
-    val setupCompleted: Boolean = false,
+    /** Progress of the setup command, which a retry must never replay without acknowledgement. */
+    val setup: SetupState = SetupState.NOT_STARTED,
 ) : Entity {
     /** A family deleted before its workspace was ever prepared: nothing on disk depends on it. */
     val removedBeforePreparation: Boolean
-        get() = status == CaseResourceStatus.REMOVED && baseSha == null && !setupStarted && !setupCompleted
+        get() = status == CaseResourceStatus.REMOVED && baseSha == null && setup == SetupState.NOT_STARTED
 }
