@@ -1,3 +1,15 @@
+## 3.26.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** inspect workspace changes and participating agents ([#1370](https://github.com/whoz-oss/coday/pull/1370))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.25.0 (2026-10-06)
 
 ### 🚀 Features
