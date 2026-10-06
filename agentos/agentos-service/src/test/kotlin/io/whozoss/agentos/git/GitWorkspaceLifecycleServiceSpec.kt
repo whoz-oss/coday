@@ -126,7 +126,7 @@ class GitWorkspaceLifecycleServiceSpec :
             visited shouldBe rows.map { it.rootCaseId } + rows.map { it.rootCaseId }
         }
 
-        "only case deletion triggers cleanup" {
+        "only case deletion triggers cleanup, even once the branch PR is merged" {
                 val f = fixture()
                 val configured = settings(f.namespaceId, originRepository(), "printf cache > \"${'$'}HOME/cache\"")
                 var root = rootCase(f.namespaceId, "Delete")
@@ -138,6 +138,7 @@ class GitWorkspaceLifecycleServiceSpec :
                 outside.writeText("Keep external files")
                 Files.createSymbolicLink(support.resolve("link"), outside.parent)
                 rawGit(path, "switch", "-c", "workflow/keep-branch")
+                f.bindings.update(ready.copy(summary = GitWorkspaceSummary(prState = PrState.MERGED)))
                 val cases = mockk<io.whozoss.agentos.caseFlow.CaseRepository> {
                     every { findByIds(any(), any()) } answers { listOf(root) }
                     every { findByParent(any()) } answers { listOf(root).filter { !it.metadata.removed } }

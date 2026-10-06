@@ -12,8 +12,12 @@ data class CaseWorkspaceView(
     val rootCaseId: UUID? = null,
     @Schema(description = "Lifecycle of the workspace. Null when the family is not equipped")
     val status: CaseResourceStatus? = null,
+    @Schema(description = "Last observed branch of the worktree. Null for a detached HEAD or a family that is not equipped")
+    val branchName: String? = null,
     @Schema(description = "Why the last preparation failed. Never a secret")
     val failureReason: String? = null,
     @Schema(description = "Why the workspace of a deleted family is still kept. Never a secret")
     val cleanupReason: String? = null,
+    @Schema(description = "Last observed Git and pull request state of the worktree. Null until first observed")
+    val git: GitWorkspaceSummary? = null,
 )

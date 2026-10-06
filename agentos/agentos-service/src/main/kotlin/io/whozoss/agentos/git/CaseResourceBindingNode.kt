@@ -1,6 +1,7 @@
 package io.whozoss.agentos.git
 
 import com.fasterxml.jackson.core.JacksonException
+import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import mu.KLogging
@@ -27,11 +28,12 @@ import java.util.UUID
  * [version] carries optimistic locking and tells Spring Data whether a save creates the row, so the
  * creation fields are audited only once.
  *
- * [settingsJson] holds the frozen [GitRepositorySettings]. Unlike other nodes, reading it never
- * fails: one unreadable row would otherwise break every sweep and file access of the namespace that
- * lists it. Such a binding reads with null settings, which fails its preparation with a clear reason
- * and gives its family no Git tool. The warning names the binding, never the JSON, since an admin
- * wrote its setup command.
+ * [settingsJson] holds the frozen [GitRepositorySettings] and [summaryJson] the last
+ * [GitWorkspaceSummary]. Unlike other nodes, reading them never fails: one unreadable row would
+ * otherwise break every sweep, file access and workspace list of the namespace that lists it. Such
+ * a binding reads with null settings, which fails its preparation with a clear reason and gives its
+ * family no Git tool, or with no summary, which the next observation replaces. The warning names
+ * the binding, never the JSON, since an admin wrote its setup command.
  */
 @Node("CaseResourceBinding")
 data class CaseResourceBindingNode(
@@ -41,9 +43,11 @@ data class CaseResourceBindingNode(
     val namespaceId: String,
     val integrationConfigId: String,
     val status: String,
+    val branchName: String? = null,
     val baseSha: String? = null,
     val failureReason: String? = null,
     val settingsJson: String? = null,
+    val summaryJson: String? = null,
     val cleanupReason: String? = null,
     /** A [SetupState] name, like [status]. */
     val setupState: String = SetupState.NOT_STARTED.name,
@@ -71,29 +75,30 @@ data class CaseResourceBindingNode(
             namespaceId = UUID.fromString(namespaceId),
             integrationConfigId = UUID.fromString(integrationConfigId),
             status = CaseResourceStatus.valueOf(status),
+            branchName = branchName,
             baseSha = baseSha,
             failureReason = failureReason,
-            settings = readSettings(id, settingsJson),
+            settings = read(id, settingsJson, "workspace settings"),
+            summary = read(id, summaryJson, "workspace summary"),
             cleanupReason = cleanupReason,
             setup = SetupState.valueOf(setupState),
         )
 
     companion object : KLogging() {
-        /** Settings are written and read here only. */
-        private val MAPPER = jacksonObjectMapper()
+        /** Settings and summaries are written and read here only. Dates as ISO-8601 text. */
+        private val MAPPER = jacksonObjectMapper().findAndRegisterModules().disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
 
-        private fun readSettings(
+        private inline fun <reified T> read(
             id: String,
             json: String?,
-        ): GitRepositorySettings? =
+            what: String,
+        ): T? =
             json?.let {
                 try {
-                    MAPPER.readValue(it, GitRepositorySettings::class.java)
+                    MAPPER.readValue(it, T::class.java)
                 } catch (e: JacksonException) {
                     // Jackson quotes the offending text in its messages: name the failure, never the content.
-                    logger.warn {
-                        "Binding $id has unreadable workspace settings (${e.javaClass.simpleName}) and is read without them"
-                    }
+                    logger.warn { "Binding $id has an unreadable $what (${e.javaClass.simpleName}) and is read without it" }
                     null
                 }
             }
@@ -105,9 +110,11 @@ data class CaseResourceBindingNode(
                 namespaceId = binding.namespaceId.toString(),
                 integrationConfigId = binding.integrationConfigId.toString(),
                 status = binding.status.name,
+                branchName = binding.branchName,
                 baseSha = binding.baseSha,
                 failureReason = binding.failureReason,
                 settingsJson = binding.settings?.let { MAPPER.writeValueAsString(it) },
+                summaryJson = binding.summary?.let { MAPPER.writeValueAsString(it) },
                 cleanupReason = binding.cleanupReason,
                 setupState = binding.setup.name,
                 version = binding.metadata.version,

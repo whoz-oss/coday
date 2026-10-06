@@ -1,5 +1,10 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { CaseWorkspaceControllerService, CaseWorkspaceView, WorkspaceRetryRequest } from '@whoz-oss/agentos-api-client'
+import {
+  CaseWorkspaceControllerService,
+  CaseWorkspaceView,
+  GitWorkspaceSummaryPrStateEnum,
+  WorkspaceRetryRequest,
+} from '@whoz-oss/agentos-api-client'
 import {
   BehaviorSubject,
   catchError,
@@ -20,7 +25,7 @@ import {
 } from 'rxjs'
 
 export type WorkspaceView = CaseWorkspaceView
-export type WorkspaceAction = 'retry'
+export type WorkspaceAction = 'refresh' | 'retry'
 export interface WorkspaceState {
   view: WorkspaceView | null
   errorStatus?: number
@@ -126,10 +131,11 @@ export class CaseWorkspaceService {
   }
   act(
     caseId: string,
-    _action: WorkspaceAction,
+    action: WorkspaceAction,
     body: WorkspaceRetryRequest = { acknowledgeSetupReplay: false }
   ): Observable<WorkspaceView> {
-    const request = this.api.retryCaseWorkspace(caseId, body)
+    const request =
+      action === 'refresh' ? this.api.refreshCaseWorkspace(caseId) : this.api.retryCaseWorkspace(caseId, body)
     return request.pipe(
       tap((view) => {
         // A child's response must never overwrite the root's state in the sidebar.
@@ -137,5 +143,30 @@ export class CaseWorkspaceService {
         this.actions.next({ caseId, view })
       })
     )
+  }
+}
+
+export function pullRequestIndicator(view?: WorkspaceView): { icon: string; label: string; color: string } | null {
+  if (!view?.equipped || !view.branchName || !view.git || view.git.error) return null
+  let state: { icon: string; label: string; color: string }
+  switch (view.git.prState) {
+    case GitWorkspaceSummaryPrStateEnum.DRAFT:
+      state = { icon: 'edit_note', label: 'Draft', color: 'var(--color-text-secondary, currentColor)' }
+      break
+    case GitWorkspaceSummaryPrStateEnum.OPEN:
+      state = { icon: 'call_split', label: 'Open', color: 'var(--color-success, #218739)' }
+      break
+    case GitWorkspaceSummaryPrStateEnum.MERGED:
+      state = { icon: 'merge', label: 'Merged', color: 'var(--color-info, #8957e5)' }
+      break
+    case GitWorkspaceSummaryPrStateEnum.CLOSED_UNMERGED:
+      state = { icon: 'cancel', label: 'Closed', color: 'var(--color-error, #d34444)' }
+      break
+    default:
+      return null
+  }
+  return {
+    ...state,
+    label: `PR${view.git.prNumber ? ` #${view.git.prNumber}` : ''} — ${state.label}`,
   }
 }

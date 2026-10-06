@@ -52,6 +52,7 @@
         [class.case-drawer-compact__tooltip-status--killed]="hovered.status === Status.KILLED"
         >{{ hovered.status.toLowerCase() }}</span
       >
+      <agentos-case-git-badge [view]="workspaces()[hovered.id]" />
       <span class="case-drawer-compact__tooltip-actions">
         @if (compactConfirmingDeleteId() !== hovered.id) {
           @if (hovered.canCreateSubCase) {
@@ -271,6 +272,7 @@
           aria-hidden="true"
           >{{ node.status.toLowerCase() }}</span
         >
+        <agentos-case-git-badge [view]="workspaces()[node.id]" />
       </span>
 
       <!-- Inline actions: star + delete (ou confirmation), visibles au hover -->

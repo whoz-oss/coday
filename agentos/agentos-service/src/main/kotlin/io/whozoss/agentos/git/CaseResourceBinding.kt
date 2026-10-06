@@ -27,6 +27,8 @@ data class CaseResourceBinding(
     /** The `GIT_REPOSITORY` configuration this workspace was provisioned from. */
     val integrationConfigId: UUID,
     val status: CaseResourceStatus = CaseResourceStatus.REQUESTED,
+    /** Last observed worktree branch; null for a detached HEAD. Never controls provisioning. */
+    val branchName: String? = null,
     /** Starting commit of the detached worktree, frozen at first successful resolution. */
     val baseSha: String? = null,
     /** Operator-facing failure cause; never a secret. */
@@ -36,6 +38,8 @@ data class CaseResourceBinding(
      * the family then cannot be prepared and gets no Git tool (see [CaseResourceBindingNode]).
      */
     val settings: GitRepositorySettings? = null,
+    /** The last observation of the worktree's branch and pull request. Null until first observed. */
+    val summary: GitWorkspaceSummary? = null,
     val cleanupReason: String? = null,
     /** Progress of the setup command, which a retry must never replay without acknowledgement. */
     val setup: SetupState = SetupState.NOT_STARTED,

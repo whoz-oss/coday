@@ -20,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.TestPropertySource
+import java.time.Instant
 import java.util.UUID
 
 @SpringBootTest
@@ -50,7 +51,9 @@ class EmbeddedNeo4jWorkspacePersistenceSpec : StringSpec() {
             val root = cases.save(Case(namespaceId = ns.id, title = "Case title"))
             val value = bindings.create(CaseResourceBinding(rootCaseId = root.id, namespaceId = ns.id,
                 integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY,
-                settings = settings(ns.id), setup = SetupState.COMPLETED))
+                settings = settings(ns.id), branchName = "chosen-by-agent", setup = SetupState.COMPLETED,
+                summary = GitWorkspaceSummary(branchState = BranchState.PUSHED, prState = PrState.OPEN, prNumber = 42,
+                    observedAt = Instant.parse("2026-10-06T08:00:00Z"))))
             bindings.findByRootCaseId(root.id) shouldBe value
             bindings.findByRootCaseId(root.id)?.settings?.setupCommand shouldBe "pnpm install --ignore-scripts"
         }

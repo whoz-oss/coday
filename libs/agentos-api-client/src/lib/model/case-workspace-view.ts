@@ -7,8 +7,13 @@
  * https://openapi-generator.tech
  * Do not edit the class manually.
  */
+import { GitWorkspaceSummary } from './git-workspace-summary'
 
 export interface CaseWorkspaceView {
+  /**
+   * Last observed branch of the worktree. Null for a detached HEAD or a family that is not equipped
+   */
+  branchName?: string
   /**
    * Why the workspace of a deleted family is still kept. Never a secret
    */
@@ -21,6 +26,10 @@ export interface CaseWorkspaceView {
    * Why the last preparation failed. Never a secret
    */
   failureReason?: string
+  /**
+   * Last observed Git and pull request state of the worktree. Null until first observed
+   */
+  git?: GitWorkspaceSummary
   /**
    * Root case that owns the family\'s workspace. Null when the family is not equipped
    */

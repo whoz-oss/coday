@@ -1,3 +1,4 @@
+import { WorkspaceView } from '../../../services/case-workspace.service'
 import {
   ChangeDetectionStrategy,
   Component,
@@ -139,6 +140,7 @@ export class ShellSidebarComponent {
   readonly nsMenuOpen = input.required<boolean>()
 
   // Cases
+  readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly cases = input.required<Case[]>()
   readonly activeCaseId = input.required<string | null>()
 
