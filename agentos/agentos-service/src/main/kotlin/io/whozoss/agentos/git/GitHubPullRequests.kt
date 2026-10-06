@@ -33,10 +33,18 @@ class GitHubPullRequests internal constructor(
 
     private val api = GitHubApi(client, mapper)
 
-    override fun inspect(settings: GitRepositorySettings, branch: String, headSha: String?): GitWorkspaceSummary {
-        val repository = requireNotNull(GitHubRepository.fromRemoteUrl(settings.repositoryUrl)) {
-            "Automatic PR status is currently supported for github.com repositories"
-        }
+    /** Another host is no failure: its pull request state is unknown, and nothing is sent to GitHub. */
+    override fun inspect(settings: GitRepositorySettings, branch: String, headSha: String?): GitWorkspaceSummary =
+        GitHubRepository.fromRemoteUrl(settings.repositoryUrl)
+            ?.let { inspectOn(it, settings, branch, headSha) }
+            ?: GitWorkspaceSummary(prState = UNKNOWN)
+
+    private fun inspectOn(
+        repository: GitHubRepository,
+        settings: GitRepositorySettings,
+        branch: String,
+        headSha: String?,
+    ): GitWorkspaceSummary {
         val fullName = repository.fullName
         val head = URLEncoder.encode("${repository.owner}:$branch", Charsets.UTF_8)
         val array = request(

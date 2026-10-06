@@ -183,11 +183,13 @@ class GitHubPullRequestsSpec : StringSpec({
         shouldThrow<IllegalStateException> { f.provider.inspect(settings, "local-review", headSha) }
     }
 
-    "a non-GitHub repository cannot redirect the service account token" {
+    "another host gets an unknown PR state without error, and its token never reaches GitHub" {
         val f = fixture()
-        shouldThrow<IllegalArgumentException> {
-            f.provider.inspect(settings.copy(repositoryUrl = "https://attacker.example/whoz-oss/coday"), "local-review", headSha)
-        }
+
+        val observed = f.provider.inspect(settings.copy(repositoryUrl = "https://gitlab.example/whoz-oss/coday.git"), "local-review", headSha)
+
+        observed.prState shouldBe "UNKNOWN"
+        observed.error shouldBe null
         f.requests.size shouldBe 0
     }
 })
