@@ -22,6 +22,7 @@
     "build-angular": {
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
       "options": {
         "outputPath": "{projectRoot}/dist",
         "baseHref": "/cockpit-v2/",
@@ -61,12 +62,12 @@
           "extractLicenses": false,
           "sourceMap": true
         }
-      },
-      "defaultConfiguration": "production"
+      }
     },
     "serve": {
       "continuous": true,
       "executor": "@angular/build:dev-server",
+      "defaultConfiguration": "development",
       "options": {
         "port": 4300,
         "host": "localhost",
@@ -79,14 +80,25 @@
         "development": {
           "buildTarget": "cockpit-v2:build-angular:development"
         }
-      },
-      "defaultConfiguration": "development"
+      }
     },
     "test": {
-      "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/jest.preset.cjs",
+        {
+          "externalDependencies": ["jest", "@nx/jest", "ts-jest", "jest-preset-angular"]
+        }
+      ],
       "options": {
-        "jestConfig": "apps/cockpit-v2/jest.config.ts"
+        "passWithNoTests": true
+      },
+      "configurations": {
+        "ci": {
+          "ci": true,
+          "coverage": true
+        }
       }
     },
     "lint": {
