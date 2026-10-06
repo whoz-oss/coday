@@ -55,23 +55,23 @@ class GitWorkspaceStatusServiceSpec :
             val configured = settings(f.namespaceId, originRepository())
             val root = rootCase(f.namespaceId, "Arbitrary title")
             val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
-            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = "NONE") }
+            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.NONE) }
             val status = statusService(f, configured, hosting)
             val path = f.provisioner.worktreePath(root)
             val detached = status.refresh(ready, path)
             detached.branchName shouldBe null
-            status.summary(detached)!!.branchState shouldBe "DETACHED"
+            status.summary(detached)!!.branchState shouldBe BranchState.DETACHED
             verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
             rawGit(path, "switch", "-c", "workflow/my-branch")
             val local = status.refresh(detached, path)
             local.branchName shouldBe "workflow/my-branch"
-            status.summary(local)!!.branchState shouldBe "LOCAL_ONLY"
+            status.summary(local)!!.branchState shouldBe BranchState.LOCAL_ONLY
             verify { hosting.inspect(configured, "workflow/my-branch", null) }
             rawGit(path, "push", "origin", "workflow/my-branch")
             val pushed = status.refresh(local, path)
-            status.summary(pushed)!!.branchState shouldBe "PUSHED"
-            every { hosting.inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = "OPEN", prNumber = 42)
-            status.summary(status.refresh(pushed, path))!!.prState shouldBe "OPEN"
+            status.summary(pushed)!!.branchState shouldBe BranchState.PUSHED
+            every { hosting.inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.OPEN, prNumber = 42)
+            status.summary(status.refresh(pushed, path))!!.prState shouldBe PrState.OPEN
             rawGit(path, "switch", "--detach", "HEAD")
             val cleared = status.refresh(pushed, path)
             cleared.branchName shouldBe null
@@ -93,14 +93,14 @@ class GitWorkspaceStatusServiceSpec :
             rawGit(origin, "switch", "--quiet", "feature")
             origin.resolve("README.md").writeText("collaborator\n")
             rawGit(origin, "commit", "--quiet", "-am", "Collaborator change")
-            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = "NONE") }
+            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.NONE) }
             val status = statusService(f, configured, hosting)
 
             val observed = status.refresh(ready, path)
 
             rawGit(path, "rev-parse", "refs/remotes/origin/feature").trim() shouldBe leased
             status.summary(observed)!!.remoteSha shouldBe rawGit(origin, "rev-parse", "feature").trim()
-            status.summary(observed)!!.branchState shouldBe "PUSHED"
+            status.summary(observed)!!.branchState shouldBe BranchState.PUSHED
         }
 
         "status observation never runs filters configured inside a submodule" {
@@ -118,7 +118,7 @@ class GitWorkspaceStatusServiceSpec :
             rawGit(path.resolve("lib"), "config", "filter.evil.clean", "sh -c 'touch $marker; cat'")
             path.resolve("lib/.gitattributes").writeText("* filter=evil\n")
             path.resolve("lib/README.md").toFile().setLastModified(System.currentTimeMillis() + 5_000) shouldBe true
-            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = "NONE") }
+            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.NONE) }
 
             statusService(f, configured, hosting).refresh(ready, path)
 
@@ -140,8 +140,8 @@ class GitWorkspaceStatusServiceSpec :
             rawGit(path, "switch", "pr-1301")
             val hosting = mockk<GitHostingProvider> {
                 every { inspect(configured, "pr-1301", prHead) } returns
-                    GitWorkspaceSummary(prState = "OPEN", prNumber = 1301, prHeadSha = prHead)
-                every { inspect(configured, "another-task", null) } returns GitWorkspaceSummary(prState = "NONE")
+                    GitWorkspaceSummary(prState = PrState.OPEN, prNumber = 1301, prHeadSha = prHead)
+                every { inspect(configured, "another-task", null) } returns GitWorkspaceSummary(prState = PrState.NONE)
             }
             val status = statusService(f, configured, hosting)
             val observed = status.refresh(ready, path)
@@ -150,14 +150,14 @@ class GitWorkspaceStatusServiceSpec :
                 it.error shouldBe null
                 it.headSha shouldBe prHead
                 it.prNumber shouldBe 1301
-                it.prState shouldBe "OPEN"
+                it.prState shouldBe PrState.OPEN
             }
             verify(exactly = 1) { hosting.inspect(configured, "pr-1301", prHead) }
             // The previous PR must not stick to the case after the agent switches elsewhere.
             rawGit(path, "switch", "-c", "another-task", ready.baseSha!!)
             val switched = status.refresh(observed, path)
             switched.branchName shouldBe "another-task"
-            status.summary(switched)!!.prState shouldBe "NONE"
+            status.summary(switched)!!.prState shouldBe PrState.NONE
             status.summary(switched)!!.prNumber shouldBe null
         }
 
@@ -213,7 +213,7 @@ class GitWorkspaceStatusServiceSpec :
             val saved = status.refresh(ready, path)
 
             val observed = status.summary(saved)!!
-            observed.prState shouldBe "UNKNOWN"
+            observed.prState shouldBe PrState.UNKNOWN
             observed.error shouldBe "Git status unavailable. Check repository access and service account settings."
             saved.summaryJson!! shouldNotContain secret
         }
@@ -225,7 +225,7 @@ class GitWorkspaceStatusServiceSpec :
                 every { inspect(any(), any(), any()) } answers {
                     entered.countDown()
                     check(release.await(10, TimeUnit.SECONDS))
-                    GitWorkspaceSummary(prState = "NONE")
+                    GitWorkspaceSummary(prState = PrState.NONE)
                 }
             }
             val f = fixture()

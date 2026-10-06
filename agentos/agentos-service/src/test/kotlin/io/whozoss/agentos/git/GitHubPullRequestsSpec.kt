@@ -77,7 +77,7 @@ class GitHubPullRequestsSpec : StringSpec({
         val f = fixture(response(), response(pr(), pr(number = 1358, sha = otherSha)))
         val result = f.provider.inspect(settings, "pr-1301", headSha)
         result.prNumber shouldBe 1301
-        result.prState shouldBe "OPEN"
+        result.prState shouldBe PrState.OPEN
         result.prHeadSha shouldBe headSha
         result.prUrl shouldBe "https://github.com/whoz-oss/coday/pull/1301"
         f.requests.map { it.uri().toString() } shouldBe listOf(
@@ -97,12 +97,12 @@ class GitHubPullRequestsSpec : StringSpec({
 
     "a PR targeting a different repository is not associated" {
         val f = fixture(response(), response(pr(baseRepo = "other/coday")))
-        f.provider.inspect(settings, "local-review", headSha).prState shouldBe "NONE"
+        f.provider.inspect(settings, "local-review", headSha).prState shouldBe PrState.NONE
     }
 
     "a PR merely containing the commit is not associated" {
         val f = fixture(response(), response(pr(sha = otherSha)))
-        f.provider.inspect(settings, "local-review", headSha).prState shouldBe "NONE"
+        f.provider.inspect(settings, "local-review", headSha).prState shouldBe PrState.NONE
     }
 
     "multiple exact heads are ambiguous even when only one PR remains open" {
@@ -113,13 +113,13 @@ class GitHubPullRequestsSpec : StringSpec({
 
     "the namespace main branch does not fall back to the latest merged PR" {
         val f = fixture(response())
-        f.provider.inspect(settings, settings.mainBranch, headSha).prState shouldBe "NONE"
+        f.provider.inspect(settings, settings.mainBranch, headSha).prState shouldBe PrState.NONE
         f.requests.size shouldBe 1
     }
 
     "an absent commit does not trigger a fallback lookup" {
         val f = fixture(response())
-        f.provider.inspect(settings, "local-review").prState shouldBe "NONE"
+        f.provider.inspect(settings, "local-review").prState shouldBe PrState.NONE
         f.requests.size shouldBe 1
     }
 
@@ -137,8 +137,8 @@ class GitHubPullRequestsSpec : StringSpec({
     }
 
     listOf(
-        Triple("open", false, "OPEN"), Triple("open", true, "DRAFT"),
-        Triple("closed", false, "CLOSED_UNMERGED"), Triple("merged", false, "MERGED"),
+        Triple("open", false, PrState.OPEN), Triple("open", true, PrState.DRAFT),
+        Triple("closed", false, PrState.CLOSED_UNMERGED), Triple("merged", false, PrState.MERGED),
     ).forEach { (state, draft, expected) ->
         "an existing named branch retains $expected status without a fallback request" {
             val f = fixture(response(pr(
@@ -199,7 +199,7 @@ class GitHubPullRequestsSpec : StringSpec({
 
         val observed = f.provider.inspect(settings.copy(repositoryUrl = "https://gitlab.example/whoz-oss/coday.git"), "local-review", headSha)
 
-        observed.prState shouldBe "UNKNOWN"
+        observed.prState shouldBe PrState.UNKNOWN
         observed.error shouldBe null
         f.requests.size shouldBe 0
     }

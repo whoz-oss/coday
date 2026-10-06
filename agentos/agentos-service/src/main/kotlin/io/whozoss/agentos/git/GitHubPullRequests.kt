@@ -2,12 +2,6 @@ package io.whozoss.agentos.git
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_CLOSED_UNMERGED
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_DRAFT
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_MERGED
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_NONE
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_OPEN
-import io.whozoss.agentos.git.GitWorkspaceStates.UNKNOWN
 import io.whozoss.agentos.git.core.GitHubApi
 import io.whozoss.agentos.git.core.GitHubRepository
 import io.whozoss.agentos.git.core.GitObjectIds
@@ -37,7 +31,7 @@ class GitHubPullRequests internal constructor(
     override fun inspect(settings: GitRepositorySettings, branch: String, headSha: String?): GitWorkspaceSummary =
         GitHubRepository.fromRemoteUrl(settings.repositoryUrl)
             ?.let { inspectOn(it, settings, branch, headSha) }
-            ?: GitWorkspaceSummary(prState = UNKNOWN)
+            ?: GitWorkspaceSummary(prState = PrState.UNKNOWN)
 
     private fun inspectOn(
         repository: GitHubRepository,
@@ -59,7 +53,7 @@ class GitHubPullRequests internal constructor(
         val open = matching.filter { it.path("state").asText() == STATE_OPEN }
         val pr = openPullRequest(open, settings.mainBranch) ?: matching.firstOrNull()
             ?: findByHead(settings, fullName, branch, headSha)
-            ?: return GitWorkspaceSummary(prState = PR_NONE)
+            ?: return GitWorkspaceSummary(prState = PrState.NONE)
         return summary(pr)
     }
 
@@ -107,11 +101,11 @@ class GitHubPullRequests internal constructor(
         val state = pr.path("state").asText()
         val merged = !pr.path("merged_at").isNull && !pr.path("merged_at").isMissingNode
         val projected = when {
-            state == STATE_OPEN && pr.path("draft").asBoolean() -> PR_DRAFT
-            state == STATE_OPEN -> PR_OPEN
-            merged -> PR_MERGED
-            state == STATE_CLOSED -> PR_CLOSED_UNMERGED
-            else -> UNKNOWN
+            state == STATE_OPEN && pr.path("draft").asBoolean() -> PrState.DRAFT
+            state == STATE_OPEN -> PrState.OPEN
+            merged -> PrState.MERGED
+            state == STATE_CLOSED -> PrState.CLOSED_UNMERGED
+            else -> PrState.UNKNOWN
         }
         return GitWorkspaceSummary(
             prState = projected,

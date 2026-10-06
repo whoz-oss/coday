@@ -1,5 +1,10 @@
 import { inject, Injectable, signal } from '@angular/core'
-import { CaseWorkspaceControllerService, CaseWorkspaceView, WorkspaceRetryRequest } from '@whoz-oss/agentos-api-client'
+import {
+  CaseWorkspaceControllerService,
+  CaseWorkspaceView,
+  GitWorkspaceSummaryPrStateEnum,
+  WorkspaceRetryRequest,
+} from '@whoz-oss/agentos-api-client'
 import {
   BehaviorSubject,
   catchError,
@@ -145,16 +150,16 @@ export function pullRequestIndicator(view?: WorkspaceView): { icon: string; labe
   if (!view?.equipped || !view.branchName || !view.git || view.git.error) return null
   let state: { icon: string; label: string; color: string }
   switch (view.git.prState) {
-    case 'DRAFT':
+    case GitWorkspaceSummaryPrStateEnum.DRAFT:
       state = { icon: 'edit_note', label: 'Draft', color: 'var(--color-text-secondary, currentColor)' }
       break
-    case 'OPEN':
+    case GitWorkspaceSummaryPrStateEnum.OPEN:
       state = { icon: 'call_split', label: 'Open', color: 'var(--color-success, #218739)' }
       break
-    case 'MERGED':
+    case GitWorkspaceSummaryPrStateEnum.MERGED:
       state = { icon: 'merge', label: 'Merged', color: 'var(--color-info, #8957e5)' }
       break
-    case 'CLOSED_UNMERGED':
+    case GitWorkspaceSummaryPrStateEnum.CLOSED_UNMERGED:
       state = { icon: 'cancel', label: 'Closed', color: 'var(--color-error, #d34444)' }
       break
     default:

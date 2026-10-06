@@ -6,12 +6,6 @@ import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitCommandResult
 import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitInvocation
-import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_DETACHED
-import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_LOCAL_ONLY
-import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_PUSHED
-import io.whozoss.agentos.git.GitWorkspaceStates.BRANCH_UNPUSHED_COMMITS
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_NONE
-import io.whozoss.agentos.git.GitWorkspaceStates.UNKNOWN
 import io.whozoss.agentos.git.core.GitLayout
 import io.whozoss.agentos.git.core.GitRefs
 import mu.KLogging
@@ -89,7 +83,7 @@ class GitWorkspaceStatusService(
             state = state.copy(headSha = head, dirty = dirty)
             val branch = observedBranch
             if (branch == null) {
-                state = state.copy(branchState = BRANCH_DETACHED, prState = PR_NONE)
+                state = state.copy(branchState = BranchState.DETACHED, prState = PrState.NONE)
                 return publish(current, null, state)
             }
             val remote = runner.runOrThrow(
@@ -100,7 +94,7 @@ class GitWorkspaceStatusService(
                 ),
             ).lineSequence().firstOrNull { it.isNotBlank() }?.substringBefore('\t')
             if (remote == null) {
-                state = state.copy(branchState = BRANCH_LOCAL_ONLY)
+                state = state.copy(branchState = BranchState.LOCAL_ONLY)
             } else {
                 // Only the objects are needed to count unpushed commits. Never update the agent's
                 // refs/remotes/origin/*: `push --force-with-lease` uses them as its expected value.
@@ -118,7 +112,7 @@ class GitWorkspaceStatusService(
                     GitInvocation(listOf("rev-list", "--count", "$remote..$head"), gitDir = common),
                 ).toInt()
                 state = state.copy(
-                    branchState = if (ahead > 0) BRANCH_UNPUSHED_COMMITS else BRANCH_PUSHED,
+                    branchState = if (ahead > 0) BranchState.UNPUSHED_COMMITS else BranchState.PUSHED,
                     remoteSha = remote,
                     unpushedCommits = ahead,
                 )
@@ -131,7 +125,7 @@ class GitWorkspaceStatusService(
             // Never translate unavailable/stale data into NONE or CLOSED.
             // Network libraries may include credentials in exception messages or causes.
             logger.warn(e) { "Git status unavailable for case ${current.rootCaseId}" }
-            state = state.copy(prState = UNKNOWN, error = STATUS_UNAVAILABLE)
+            state = state.copy(prState = PrState.UNKNOWN, error = STATUS_UNAVAILABLE)
         }
         return publish(current, observedBranch, state)
     }
