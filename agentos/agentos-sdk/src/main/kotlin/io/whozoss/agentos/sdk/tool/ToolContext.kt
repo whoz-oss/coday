@@ -12,22 +12,9 @@ import java.util.UUID
  * - verify that a read operation was performed before a mutation (anti-hallucination guard)
  * - resolve credentials for authenticated integrations
  *
- * @param namespaceId The namespace in which the current case is running.
- * @param userId The internal AgentOS UUID of the requesting user, or null when the
- *   user could not be resolved (e.g. unauthenticated or service-to-service call).
- * @param userExternalId The identity-provider key of the requesting user (e.g. email
- *   from Cloudflare JWT). Plugins that manage their own auth use this to resolve
- *   the user in their own system without going through AgentOS user management.
- * @param caseEvents A live snapshot of the current case's event list at the moment
- *   of tool invocation. Evaluated lazily — each call reflects events added during
- *   the current agent run, including prior tool responses in the same turn.
- * @param agentName The name of the agent that owns this tool invocation, or null when
- *   the context is not associated with a specific agent (e.g. tool-set resolution at
- *   namespace level). Plugins may use this to exclude the running agent from lists they
- *   build (e.g. the redirect tool excludes the calling agent from eligible targets).
- * @param credentialProvider Pre-scoped credential supplier for the integration this tool
- *   belongs to. Returns the user's stored credential (OAuth tokens, API keys, etc.) or
- *   null if not yet authenticated. Null when no AuthSetting is bound to the integration.
+ * [emitEvent] is available only during a live agent run. It lets a tool publish an
+ * additional durable case event through the normal agent event flow; preview contexts
+ * leave it null.
  */
 data class ToolContext(
     val namespaceId: UUID,
@@ -38,4 +25,6 @@ data class ToolContext(
     val credentialProvider: CredentialProvider? = null,
     /** Identifier of the ToolRequestEvent that caused this invocation, when available. */
     val toolRequestId: String? = null,
+    /** Emits an additional case event into the current agent flow. Null in preview contexts. */
+    val emitEvent: ((CaseEvent) -> Unit)? = null,
 )
