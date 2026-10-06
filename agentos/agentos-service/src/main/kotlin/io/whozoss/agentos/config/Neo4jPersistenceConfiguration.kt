@@ -29,6 +29,9 @@ import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
 import io.whozoss.agentos.feedback.FeedbackRepository
 import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
+import io.whozoss.agentos.git.CaseResourceBindingNodeNeo4jRepository
+import io.whozoss.agentos.git.CaseResourceBindingRepository
+import io.whozoss.agentos.git.Neo4jCaseResourceBindingRepository
 import io.whozoss.agentos.git.Neo4jRepositoryCheckoutRepository
 import io.whozoss.agentos.git.RepositoryCheckoutNodeNeo4jRepository
 import io.whozoss.agentos.git.RepositoryCheckoutRepository
@@ -75,6 +78,7 @@ import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -159,6 +163,16 @@ class Neo4jPersistenceConfiguration {
     ): RepositoryCheckoutRepository {
         logger.info { "[Persistence] Neo4jRepositoryCheckoutRepository active" }
         return Neo4jRepositoryCheckoutRepository(repositoryCheckoutNodeNeo4jRepository, childLinkService)
+    }
+
+    /** Case-family workspace bindings: registered only with `agentos.git.workspaces.enabled`. */
+    @Bean
+    @ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
+    fun neo4jCaseResourceBindingRepository(
+        caseResourceBindingNodeNeo4jRepository: CaseResourceBindingNodeNeo4jRepository,
+    ): CaseResourceBindingRepository {
+        logger.info { "[Persistence] Neo4jCaseResourceBindingRepository active" }
+        return Neo4jCaseResourceBindingRepository(caseResourceBindingNodeNeo4jRepository)
     }
 
     @Bean

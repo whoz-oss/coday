@@ -1,3 +1,14 @@
+## 3.22.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** resolve case-family workspaces and gate their runs behind a flag ([#1367](https://github.com/whoz-oss/coday/pull/1367))
+
+### ❤️ Thank You
+
+- ctraon
+- selim-bensenouci-ep-whoz
+
 ## 3.21.0 (2026-10-01)
 
 ### 🚀 Features
