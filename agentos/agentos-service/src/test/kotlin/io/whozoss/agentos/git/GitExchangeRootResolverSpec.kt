@@ -75,7 +75,6 @@ class GitExchangeRootResolverSpec :
                     namespaceId = namespaceId,
                     integrationConfigId = UUID.randomUUID(),
                     status = status,
-                    branchName = "corriger-les-exports",
                 ),
             )
 

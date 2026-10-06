@@ -167,7 +167,6 @@ class CaseWorktreeProvisionerSpec :
             val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
 
             ready.status shouldBe CaseResourceStatus.READY
-            ready.branchName shouldBe null
             val worktree = f.storage.caseRoot(f.namespaceId, root.id, root.metadata.created).resolve("repo")
             worktree.resolve("README.md").readText() shouldBe "v1\n"
             worktree.resolve(".git").exists() shouldBe true
@@ -184,7 +183,6 @@ class CaseWorktreeProvisionerSpec :
             val first = f.provisioner.ensureReady(created, configured, root)
             val second = f.provisioner.ensureReady(f.bindings.findByRootCaseId(root.id)!!, configured, root)
 
-            second.branchName shouldBe first.branchName
             second.baseSha shouldBe first.baseSha
         }
 
@@ -208,7 +206,6 @@ class CaseWorktreeProvisionerSpec :
             val retried = f.provisioner.ensureReady(f.bindings.findByRootCaseId(root.id)!!, configured, root)
 
             retried.baseSha shouldBe frozen
-            retried.branchName shouldBe first.branchName
         }
 
         "retry retains an absent family's index and succeeds when its checkout returns" {
@@ -292,8 +289,6 @@ class CaseWorktreeProvisionerSpec :
             val a = f.provisioner.ensureReady(binding(f, first, configured), configured, first)
             val b = f.provisioner.ensureReady(binding(f, second, configured), configured, second)
 
-            a.branchName shouldBe null
-            b.branchName shouldBe null
             rawGit(f.storage.namespaceGitDirectory(f.namespaceId), "for-each-ref", "--format=%(refname)", "refs/heads/").trim() shouldBe ""
             f.storage.caseRoot(f.namespaceId, first.id, first.metadata.created) shouldNotBe
                 f.storage.caseRoot(f.namespaceId, second.id, second.metadata.created)
