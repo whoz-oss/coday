@@ -43,7 +43,6 @@ class GitWorkspaceStatusServiceSpec :
         ) =
             GitWorkspaceStatusService(
                 bindings = f.bindings,
-                associations = mockk { every { findSettings(f.namespaceId) } returns settings },
                 storage = f.storage,
                 runner = statusRunner,
                 accounts = mockk { every { resolve(settings) } returns GitCredentials.UsernamePassword("test", "unused") },
@@ -160,6 +159,21 @@ class GitWorkspaceStatusServiceSpec :
             switched.branchName shouldBe "another-task"
             status.summary(switched)!!.prState shouldBe "NONE"
             status.summary(switched)!!.prNumber shouldBe null
+        }
+
+        "a workspace without readable settings is reported unavailable, never observed with other settings" {
+            val f = fixture()
+            val configured = settings(f.namespaceId, originRepository())
+            val root = rootCase(f.namespaceId, "No settings")
+            val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
+            val unreadable = f.bindings.update(ready.copy(settings = null))
+            val hosting = mockk<GitHostingProvider>()
+
+            val status = statusService(f, configured, hosting)
+            val observed = status.summary(status.refresh(unreadable, f.provisioner.worktreePath(root)))!!
+
+            observed.error shouldBe GitWorkspaceStatusService.STATUS_UNAVAILABLE
+            verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
         }
 
         "a truncated list of untracked entries still proves dirty without refreshing the index" {

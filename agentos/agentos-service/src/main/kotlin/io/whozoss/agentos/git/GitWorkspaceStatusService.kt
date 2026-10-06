@@ -24,16 +24,15 @@ import java.time.Instant
 @ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
 class GitWorkspaceStatusService(
     private val bindings: CaseResourceBindingService,
-    private val associations: GitRepositoryAssociationService,
     private val storage: ExchangeStorageService,
     private val runner: GitCommandRunner,
     private val accounts: GitServiceAccountResolver,
     private val hosting: GitHostingProvider,
     private val mapper: ObjectMapper,
 ) {
-    fun settings(binding: CaseResourceBinding): GitRepositorySettings = binding.settings
-        ?: associations.findSettings(binding.namespaceId)
-        ?: throw ConflictException("The namespace no longer has a Git repository association")
+    /** The settings frozen when the family was equipped, never the namespace's current ones. */
+    fun settings(binding: CaseResourceBinding): GitRepositorySettings =
+        binding.settings ?: throw ConflictException("No readable settings were recorded for this workspace")
 
     fun commonGitDir(binding: CaseResourceBinding): Path =
         storage.namespaceGitDirectory(binding.namespaceId).toAbsolutePath().normalize()
