@@ -18,10 +18,6 @@ import java.net.URLEncoder
 import java.net.http.HttpClient
 import java.time.Duration
 
-interface GitHostingProvider {
-    fun inspect(settings: GitRepositorySettings, branch: String, headSha: String? = null): GitWorkspaceSummary
-}
-
 /** GitHub.com adapter. Other Git hosts remain usable without a PR status projection. */
 @Component
 @ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
