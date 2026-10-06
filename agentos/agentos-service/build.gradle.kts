@@ -261,9 +261,9 @@ tasks.withType<Test> {
     // than Gradle's default 512m. The measured peak across the whole agentos-service
     // suite is ~1.2 GiB (JMX/GC sampled), so 1.5g keeps comfortable headroom while
     // leaving the memory-constrained build sandbox (cgroup ~6 GiB) enough room for the
-    // Gradle daemon and embedded-Neo4j off-heap. Raising this back to 2g requires more
-    // container memory.
-    maxHeapSize = "1536m"
+    // than Gradle's default 512m. 2g gives comfortable headroom for the embedded engine,
+    // cached Spring contexts, and parallel coroutine execution (Dispatchers.IO).
+    maxHeapSize = "2g"
     // Docker Engine 29.x raised its minimum API version to 1.40.
     // Testcontainers 1.x / docker-java 3.4.x defaults to API v1.32 which is
     // rejected with HTTP 400. Force a supported version until Testcontainers
