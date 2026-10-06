@@ -23,14 +23,14 @@ class GitWorkspaceStatusService(
     private val clock: Clock,
 ) {
     /** The settings frozen when the family was equipped, never the namespace's current ones. */
-    private fun settings(binding: CaseResourceBinding): GitRepositorySettings =
+    fun settings(binding: CaseResourceBinding): GitRepositorySettings =
         binding.settings ?: throw ConflictException("No readable settings were recorded for this workspace")
 
-    private fun commonGitDir(binding: CaseResourceBinding): Path =
+    fun commonGitDir(binding: CaseResourceBinding): Path =
         storage.namespaceGitDirectory(binding.namespaceId).toAbsolutePath().normalize()
 
     /** Git's administrative directory of the family's worktree, pinned rather than read from its `.git` file. */
-    private fun worktreeGitDir(binding: CaseResourceBinding): Path =
+    fun worktreeGitDir(binding: CaseResourceBinding): Path =
         commonGitDir(binding).worktreeRegistration(binding.rootCaseId)
 
     fun view(root: GitExchangeRoot): CaseWorkspaceView {

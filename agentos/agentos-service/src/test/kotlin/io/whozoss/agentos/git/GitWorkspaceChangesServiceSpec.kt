@@ -21,6 +21,8 @@ import java.util.UUID
  */
 class GitWorkspaceChangesServiceSpec : StringSpec({
 
+    val summary = GitWorkspaceSummary(prState = PrState.OPEN, branchState = BranchState.PUSHED)
+
     fun makeBinding(
         status: CaseResourceStatus,
         branchName: String? = "feature/work",
@@ -34,6 +36,7 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         branchName = branchName,
         baseSha = baseSha,
         settings = settings,
+        summary = summary,
     )
 
     fun makeRoot(
@@ -51,8 +54,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         autoWorktreeForRootCases = true,
         setupCommand = null,
     )
-
-    val summary = GitWorkspaceSummary(prState = "OPEN", branchState = "PUSHED")
 
     // (a) A case with no binding at all has no Git workspace.
     // environment() must return immediately with equipped=false and never touch ExchangeGitDiff:
@@ -78,9 +79,7 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         "a $pending binding is reported without any Git inspection" {
             val binding = makeBinding(pending)
             val root = makeRoot(binding = binding)
-            val status = mockk<GitWorkspaceStatusService> {
-                every { summary(binding) } returns summary
-            }
+            val status = mockk<GitWorkspaceStatusService>()
             val diffs = mockk<ExchangeGitDiff>()
             val service = GitWorkspaceChangesService(status, diffs)
 
@@ -98,7 +97,7 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
     }
 
     // (c) When the binding is READY and the observed branch matches binding.branchName,
-    // the git summary from the status service is kept in the result.
+    // the git summary recorded on the binding is kept in the result.
     // This is the normal case: the forge monitor's PR information is current.
     "a READY binding where the observed branch matches branchName keeps the git summary" {
         val branchName = "feature/current"
@@ -107,7 +106,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         val root = makeRoot(binding = binding)
         val changes = ExchangeGitChanges(base = "abc", files = emptyList())
         val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
             every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
             every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
             every { settings(binding) } returns settings
@@ -139,7 +137,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         val root = makeRoot(binding = binding)
         val changes = ExchangeGitChanges(base = "abc", files = emptyList())
         val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
             every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
             every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
             every { settings(binding) } returns settings
@@ -170,7 +167,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         val root = makeRoot(binding = binding)
         val changes = ExchangeGitChanges(base = "deadbeef", files = emptyList())
         val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
             every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
             every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
             every { settings(binding) } returns settings
@@ -197,7 +193,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         val settings = makeSettings()
         val root = makeRoot(binding = binding)
         val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
             every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
             every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
             every { settings(binding) } returns settings
@@ -223,7 +218,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         val settings = makeSettings()
         val root = makeRoot(binding = binding)
         val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
             every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
             every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
             every { settings(binding) } returns settings
@@ -306,7 +300,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         val settings = makeSettings()
         val root = makeRoot(binding = binding)
         val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
             every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
             every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
             every { settings(binding) } returns settings
@@ -327,7 +320,6 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         val binding = makeBinding(CaseResourceStatus.READY)
         val root = makeRoot(binding = binding)
         val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
             every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
             every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
             every { settings(binding) } throws ConflictException("The namespace no longer has a Git repository association")

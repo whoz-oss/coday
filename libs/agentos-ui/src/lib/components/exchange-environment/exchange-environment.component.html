@@ -38,10 +38,10 @@
           <code class="environment__path">{{ env.path }}</code>
         }
         @if (env.git; as git) {
-          @if (git.branchState === 'LOCAL_ONLY') {
+          @if (git.branchState === BranchState.LOCAL_ONLY) {
             <p class="environment__path">Not pushed</p>
           }
-          @if (git.branchState === 'PUSHED') {
+          @if (git.branchState === BranchState.PUSHED) {
             <p class="environment__path">Pushed</p>
           }
           @if (git.observedAt) {
@@ -87,7 +87,7 @@
           rel="noopener noreferrer"
         >
           <span class="material-icons environment__icon" aria-hidden="true">
-            {{ env.git!.prState === 'MERGED' ? 'merge_type' : 'alt_route' }}
+            {{ env.git!.prState === PrState.MERGED ? 'merge_type' : 'alt_route' }}
           </span>
           <span class="environment__label">PR #{{ env.git!.prNumber }}</span>
           <span class="environment__status">{{ env.git!.prState }}</span>

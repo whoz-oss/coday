@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common'
 import { ChangeDetectionStrategy, Component, effect, inject, input, output, signal } from '@angular/core'
 import { MatDialog, MatDialogRef } from '@angular/material/dialog'
+import { GitWorkspaceSummaryBranchStateEnum, GitWorkspaceSummaryPrStateEnum } from '@whoz-oss/agentos-api-client'
 import {
   catchError,
   combineLatest,
@@ -36,6 +37,8 @@ export class ExchangeEnvironmentComponent {
   readonly canWrite = input(false)
   readonly environmentChanged = output<{ scope: EnvironmentScope; view: ExchangeEnvironment | null }>()
   protected readonly view = signal<ExchangeEnvironment | null>(null)
+  protected readonly BranchState = GitWorkspaceSummaryBranchStateEnum
+  protected readonly PrState = GitWorkspaceSummaryPrStateEnum
   protected readonly error = signal(false)
   private readonly service = inject(ExchangeEnvironmentService)
   private readonly dialog = inject(MatDialog)

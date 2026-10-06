@@ -15,7 +15,7 @@ class GitWorkspaceChangesService(
 ) {
     fun environment(root: GitExchangeRoot): ExchangeEnvironment {
         val binding = root.binding ?: return ExchangeEnvironment(false)
-        val view = ExchangeEnvironment(true, binding.status.name, root.repositoryPath.toAbsolutePath().normalize().toString(), git = status.summary(binding))
+        val view = ExchangeEnvironment(true, binding.status.name, root.repositoryPath.toAbsolutePath().normalize().toString(), git = binding.summary)
         if (binding.status != CaseResourceStatus.READY) return view
         val observed = inspect(view, target(root))
         // The forge monitor is asynchronous; never attach its previous branch's PR to a new HEAD.
