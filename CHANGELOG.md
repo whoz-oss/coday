@@ -1,3 +1,13 @@
+## 3.23.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** configure global and per-agent delegation timeouts ([#1338](https://github.com/whoz-oss/coday/pull/1338))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 3.22.0 (2026-10-06)
 
 ### 🚀 Features
