@@ -72,7 +72,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         val launchedIds = mutableListOf<UUID>()
         var failLaunchFor: String? = null
         val launcher =
-            CaseLauncher { namespaceId, agentName, task, userId ->
+            CaseLauncher { namespaceId, agentName, task, userId, _ ->
                 if (failLaunchFor != null && task.contains(failLaunchFor!!)) error("boom")
                 launches += Launch(namespaceId, agentName, task, userId)
                 UUID.randomUUID().also { launchedIds += it }

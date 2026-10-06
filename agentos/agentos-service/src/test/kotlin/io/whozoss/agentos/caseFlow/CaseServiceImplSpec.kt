@@ -1665,6 +1665,7 @@ class CaseServiceImplSpec :
                     agentName = agentName,
                     task = "do something",
                     onBehalfOfUserId = userId,
+                    sessionContext = null,
                 )
 
             val launched = service.getById(launchedId)
@@ -1696,6 +1697,7 @@ class CaseServiceImplSpec :
                     agentName = agentName,
                     task = "do something",
                     onBehalfOfUserId = userId,
+                    sessionContext = null,
                 )
 
             service.killCase(loopCase.id)

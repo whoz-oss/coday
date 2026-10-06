@@ -17,11 +17,16 @@ fun interface CaseLauncher {
     /**
      * Create a case owned by [onBehalfOfUserId], send [task] to [agentName] as its first message
      * and start it. Returns immediately with the new case id; the case runs in the background.
+     *
+     * [sessionContext] is forwarded to [io.whozoss.agentos.caseFlow.CaseService.addMessage] as-is.
+     * When provided it is embedded on the first [io.whozoss.agentos.sdk.caseEvent.MessageEvent] and
+     * injected into the LLM prompt (e.g. business context, preferred language).
      */
     fun launchCase(
         namespaceId: UUID,
         agentName: String,
         task: String,
         onBehalfOfUserId: UUID,
+        sessionContext: Map<String, Any?>?,
     ): UUID
 }

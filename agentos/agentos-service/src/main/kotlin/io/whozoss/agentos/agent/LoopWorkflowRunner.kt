@@ -6,7 +6,9 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.scheduledPrompt.UserSessionContextResolver
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.user.User
@@ -43,6 +45,7 @@ class LoopWorkflowRunner(
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
     private val limitsConfig: LimitsConfigProperties,
+    private val userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
 ) {
     suspend fun run(
         payload: AgentLoopPayload,
@@ -168,6 +171,39 @@ class LoopWorkflowRunner(
             logger.warn { "[LoopWorkflowRunner] User $endUserId cannot access agent '${act.agentName}' — refusing" }
             return ItemOutcome.NoAgentAccess
         }
+
+        // Resolve user session context (business context + preferred language).
+        // PermanentFailure and TransientFailure are both treated as failures in v0 (no retry):
+        // the entity is counted as failed and the loop continues with the next one.
+        // Without a provider, resolve() returns Success(null) and execution continues without context.
+        val preferredLanguage = endUser.preferredLanguage?.takeIf { it.isNotBlank() }
+        val sessionContext: Map<String, Any?>? =
+            when (val result = userSessionContextResolver.resolve(endUser.externalId, context.namespaceId)) {
+                is UserContextResult.Success -> {
+                    if (result.sessionContext == null && userSessionContextResolver.hasProvider()) {
+                        logger.warn {
+                            "[LoopWorkflowRunner] UserContextProvider returned Success(null)" +
+                                " for entity='${item.entityId}' — no sessionContext will be injected"
+                        }
+                    }
+                    userSessionContextResolver.mergePreferredLanguage(result.sessionContext, preferredLanguage)
+                }
+                is UserContextResult.PermanentFailure -> {
+                    logger.error {
+                        "[LoopWorkflowRunner] Permanent context failure for entity='${item.entityId}'" +
+                            " user=$endUserId — counting as failed. Reason: ${result.reason}"
+                    }
+                    return ItemOutcome.Failed
+                }
+                is UserContextResult.TransientFailure -> {
+                    logger.warn {
+                        "[LoopWorkflowRunner] Transient context failure for entity='${item.entityId}'" +
+                            " user=$endUserId — counting as failed (no retry in v0). Reason: ${result.reason}"
+                    }
+                    return ItemOutcome.Failed
+                }
+            }
+
         val task = act.promptTemplate.replace("{entityId}", item.entityId)
         return try {
             val launchedCaseId =
@@ -176,6 +212,7 @@ class LoopWorkflowRunner(
                     agentName = act.agentName,
                     task = task,
                     onBehalfOfUserId = endUserId,
+                    sessionContext = sessionContext,
                 )
             logger.info {
                 "[LoopWorkflowRunner] Launched case $launchedCaseId for entity '${item.entityId}' " +

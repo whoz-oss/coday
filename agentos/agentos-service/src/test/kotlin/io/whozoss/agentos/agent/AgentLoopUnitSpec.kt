@@ -122,7 +122,7 @@ class AgentLoopUnitSpec : StringSpec({
     "payload is passed to the runner with the case context" {
         val runner = runnerReturning(completed)
         val user = User(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "ext-trigger", email = "t@example.com")
-        val launcher = CaseLauncher { _, _, _, _ -> UUID.randomUUID() }
+        val launcher = CaseLauncher { _, _, _, _, _ -> UUID.randomUUID() }
         val payloadSlot = slot<AgentLoopPayload>()
         val contextSlot = slot<LoopRunContext>()
 

@@ -494,6 +494,12 @@ class ScheduledPromptExecutor(
      *
      * Unexpected exceptions from the provider are caught and returned as
      * [UserContextResult.TransientFailure].
+     *
+     * TODO: consolidate with [io.whozoss.agentos.agent.LoopWorkflowRunner] — both paths
+     *   (ScheduledPrompt and LOOP) perform the same user context resolution.
+     *   [io.whozoss.agentos.scheduledPrompt.UserSessionContextResolver] already encapsulates
+     *   this logic; injecting it here instead of calling [userContextProvider] directly
+     *   would eliminate the duplication.
      */
     private fun resolveUserContext(
         userRun: ScheduledPromptUserRun,
@@ -547,6 +553,11 @@ class ScheduledPromptExecutor(
         // without an LLM language-detection call. The user's stored preferredLanguage is the
         // authoritative source for language — it always wins over anything a UserContextProvider
         // might put under the same key (providers supply business context, not language choice).
+        //
+        // TODO: consolidate with [io.whozoss.agentos.agent.LoopWorkflowRunner] — this block
+        //   is duplicated across both paths. [UserSessionContextResolver.mergePreferredLanguage]
+        //   already encapsulates this logic and can replace this inline code once the resolver
+        //   is injected here (see TODO in resolveUserContext).
         val effectiveSessionContext: Map<String, Any?>? =
             if (context.preferredLanguage == null) {
                 context.sessionContext

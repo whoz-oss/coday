@@ -1005,12 +1005,17 @@ class CaseServiceImpl(
      * [CaseLauncher] implementation: a standalone case owned by [onBehalfOfUserId], with no parent
      * link so its lifecycle is independent from the launching case. Same sequence as
      * [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor]: create, grant ADMIN, add message.
+     *
+     * [sessionContext] is forwarded to [addMessage] and embedded on the first [MessageEvent].
+     * Callers (e.g. [io.whozoss.agentos.agent.LoopWorkflowRunner]) should resolve it via
+     * [io.whozoss.agentos.scheduledPrompt.UserSessionContextResolver] before calling this method.
      */
     override fun launchCase(
         namespaceId: UUID,
         agentName: String,
         task: String,
         onBehalfOfUserId: UUID,
+        sessionContext: Map<String, Any?>?,
     ): UUID {
         val case = create(Case(namespaceId = namespaceId, title = task.take(MAX_LAUNCHED_CASE_TITLE_LENGTH)))
         try {
@@ -1031,6 +1036,7 @@ class CaseServiceImpl(
             caseId = case.id,
             actor = resolveActor(onBehalfOfUserId),
             content = listOf(MessageContent.Text("@$agentName $task")),
+            sessionContext = sessionContext,
         )
         logger.info { "Launched case ${case.id} for user $onBehalfOfUserId, agent=$agentName" }
         return case.id
