@@ -1,6 +1,7 @@
 package io.whozoss.agentos.git
 
 import com.ninjasquad.springmockk.MockkBean
+import com.ninjasquad.springmockk.SpykBean
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.mockk.every
@@ -66,6 +67,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var integrationConfigs: IntegrationConfigService
     @MockkBean(relaxed = true) lateinit var checkoutProvisioner: RepositoryCheckoutProvisioner
     @MockkBean(relaxed = true) lateinit var gitAvailability: GitAvailability
+    @SpykBean lateinit var statuses: GitWorkspaceStatusService
 
     private val user = User(
         metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -271,6 +273,30 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(jsonPath("$.equipped").value(false))
             verify(exactly = 1) { lifecycle.acknowledgeSetup(case.id) }
             verify(exactly = 0) { lifecycle.retry(case.id) }
+        }
+
+        "a writer refreshes the family's repository and receives what was observed" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            val ready = CaseResourceBinding(rootCaseId = case.id, namespaceId = case.namespaceId,
+                integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY)
+            val observed = ready.copy(
+                branchName = "agent-branch",
+                summary = GitWorkspaceSummary(branchState = BranchState.PUSHED, prState = PrState.OPEN, prNumber = 42),
+            )
+            var refreshed = false
+            stubCase(case)
+            every { bindings.findByRootCaseId(case.id) } answers { if (refreshed) observed else ready }
+            every { statuses.refresh(any(), any()) } answers { observed.also { refreshed = true } }
+            allow(EntityType.CASE, case.id, Action.WRITE)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(post("/api/cases/${case.id}/workspace/refresh"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.branchName").value("agent-branch"))
+                .andExpect(jsonPath("$.git.branchState").value("PUSHED"))
+                .andExpect(jsonPath("$.git.prState").value("OPEN"))
+                .andExpect(jsonPath("$.git.prNumber").value(42))
+            verify(exactly = 1) { statuses.refresh(ready, Path.of("/fixture/exchange/${case.id}/repo")) }
         }
 
         "even a super-admin cannot associate a missing or removed namespace" {
