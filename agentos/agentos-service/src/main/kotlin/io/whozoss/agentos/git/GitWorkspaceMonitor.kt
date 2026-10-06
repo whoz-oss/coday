@@ -90,7 +90,10 @@ class GitWorkspaceMonitor(
         /** Observations that ended with an unavailable status or failed outright, and failed sweeps. */
         const val ERROR_COUNTER = "agentos.git.monitor.errors"
 
-        /** Small enough that a paused operator waits at most this many slow observations. */
+        /**
+         * Workspaces observed per tick: with N ready workspaces, each is observed about every
+         * N / PAGE_SIZE intervals.
+         */
         private const val PAGE_SIZE = 5
         private val READY_ONLY = listOf(CaseResourceStatus.READY)
     }
