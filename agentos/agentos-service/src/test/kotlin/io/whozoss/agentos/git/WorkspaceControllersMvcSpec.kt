@@ -329,7 +329,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(jsonPath("$.associated").value(false))
         }
 
-       "a PREPARING worktree returns 409 on workspace/diff" {
+        "a PREPARING worktree returns 409 on workspace/diff" {
             val case = Case(namespaceId = UUID.randomUUID())
             val binding = CaseResourceBinding(
                 rootCaseId = case.id,
@@ -360,9 +360,21 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.equipped").value(true))
                 .andExpect(jsonPath("$.status").value("PREPARING"))
-            // Verify that no Git inspection was attempted: the worktree may not be ready on disk.
             verify(exactly = 0) { diffs.branch(any()) }
             verify(exactly = 0) { diffs.changes(any()) }
+        }
+
+        "refreshing a workspace-less case is a no-op that still returns the unequipped projection" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.WRITE)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(post("/api/cases/${case.id}/workspace/refresh"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(false))
+                .andExpect(jsonPath("$.branchName").doesNotExist())
         }
     }
 }

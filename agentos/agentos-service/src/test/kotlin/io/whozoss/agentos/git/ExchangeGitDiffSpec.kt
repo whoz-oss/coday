@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitExecutionProperties
 import java.nio.file.Files
@@ -200,5 +201,44 @@ class ExchangeGitDiffSpec : StringSpec({
         Files.writeString(target.path.resolve("[name].txt"), "literal\n")
         git(target.path, "add", ".")
         service.file(target, "[name].txt").patch shouldContain "+literal"
+    }
+
+    "a missing origin main with no frozen base is reported as an unavailable main branch" {
+        val (service, target) = fixture()
+        git(target.path, "update-ref", "-d", "refs/remotes/origin/main")
+
+        val error = shouldThrow<ConflictException> { service.changes(target.copy(fallbackBase = null)) }
+        error.message shouldContain "main branch is unavailable locally"
+    }
+
+    "a frozen base that is not an object id is refused instead of reaching merge-base" {
+        val (service, target) = fixture()
+        git(target.path, "update-ref", "-d", "refs/remotes/origin/main")
+
+        val error = shouldThrow<ConflictException> { service.changes(target.copy(fallbackBase = "not-a-sha")) }
+        error.message shouldContain "Invalid main branch reference"
+    }
+
+    "a branch with no common ancestor with main is refused rather than diffed against nothing" {
+        val (service, target) = fixture()
+        git(target.path, "checkout", "--orphan", "unrelated")
+        Files.writeString(target.path.resolve("only.txt"), "orphan\n")
+        git(target.path, "add", ".")
+        git(target.path, "commit", "-m", "orphan root")
+
+        val error = shouldThrow<ConflictException> { service.changes(target) }
+        error.message shouldContain "no common ancestor"
+    }
+
+    "a pure rename is reported as a delete and an add because of --no-renames" {
+        val (service, target) = fixture()
+        git(target.path, "mv", "file.txt", "renamed.txt")
+        git(target.path, "commit", "-m", "rename only")
+
+        val files = service.changes(target).files.associate { it.path to it.status }
+        files shouldBe mapOf(
+            "file.txt" to ExchangeGitFileStatus.DELETED,
+            "renamed.txt" to ExchangeGitFileStatus.ADDED,
+        )
     }
 })
