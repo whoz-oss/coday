@@ -1,6 +1,5 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
@@ -47,7 +46,6 @@ class GitWorkspaceStatusServiceSpec :
                 runner = statusRunner,
                 accounts = mockk { every { resolve(settings) } returns GitCredentials.UsernamePassword("test", "unused") },
                 hosting = hosting,
-                mapper = jacksonObjectMapper().findAndRegisterModules(),
             )
 
         "status follows the branch created by the agent and clears when detached again" {
@@ -60,22 +58,22 @@ class GitWorkspaceStatusServiceSpec :
             val path = f.provisioner.worktreePath(root)
             val detached = status.refresh(ready, path)
             detached.branchName shouldBe null
-            status.summary(detached)!!.branchState shouldBe BranchState.DETACHED
+            detached.summary!!.branchState shouldBe BranchState.DETACHED
             verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
             rawGit(path, "switch", "-c", "workflow/my-branch")
             val local = status.refresh(detached, path)
             local.branchName shouldBe "workflow/my-branch"
-            status.summary(local)!!.branchState shouldBe BranchState.LOCAL_ONLY
+            local.summary!!.branchState shouldBe BranchState.LOCAL_ONLY
             verify { hosting.inspect(configured, "workflow/my-branch", null) }
             rawGit(path, "push", "origin", "workflow/my-branch")
             val pushed = status.refresh(local, path)
-            status.summary(pushed)!!.branchState shouldBe BranchState.PUSHED
+            pushed.summary!!.branchState shouldBe BranchState.PUSHED
             every { hosting.inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.OPEN, prNumber = 42)
-            status.summary(status.refresh(pushed, path))!!.prState shouldBe PrState.OPEN
+            status.refresh(pushed, path).summary!!.prState shouldBe PrState.OPEN
             rawGit(path, "switch", "--detach", "HEAD")
             val cleared = status.refresh(pushed, path)
             cleared.branchName shouldBe null
-            status.summary(cleared)!!.prNumber shouldBe null
+            cleared.summary!!.prNumber shouldBe null
         }
 
         "status observation never moves the origin tracking ref that force-with-lease relies on" {
@@ -99,8 +97,8 @@ class GitWorkspaceStatusServiceSpec :
             val observed = status.refresh(ready, path)
 
             rawGit(path, "rev-parse", "refs/remotes/origin/feature").trim() shouldBe leased
-            status.summary(observed)!!.remoteSha shouldBe rawGit(origin, "rev-parse", "feature").trim()
-            status.summary(observed)!!.branchState shouldBe BranchState.PUSHED
+            observed.summary!!.remoteSha shouldBe rawGit(origin, "rev-parse", "feature").trim()
+            observed.summary!!.branchState shouldBe BranchState.PUSHED
         }
 
         "status observation never runs filters configured inside a submodule" {
@@ -146,7 +144,7 @@ class GitWorkspaceStatusServiceSpec :
             val status = statusService(f, configured, hosting)
             val observed = status.refresh(ready, path)
             observed.branchName shouldBe "pr-1301"
-            status.summary(observed)!!.let {
+            observed.summary!!.let {
                 it.error shouldBe null
                 it.headSha shouldBe prHead
                 it.prNumber shouldBe 1301
@@ -157,8 +155,8 @@ class GitWorkspaceStatusServiceSpec :
             rawGit(path, "switch", "-c", "another-task", ready.baseSha!!)
             val switched = status.refresh(observed, path)
             switched.branchName shouldBe "another-task"
-            status.summary(switched)!!.prState shouldBe PrState.NONE
-            status.summary(switched)!!.prNumber shouldBe null
+            switched.summary!!.prState shouldBe PrState.NONE
+            switched.summary!!.prNumber shouldBe null
         }
 
         "a workspace without readable settings is reported unavailable, never observed with other settings" {
@@ -170,7 +168,7 @@ class GitWorkspaceStatusServiceSpec :
             val hosting = mockk<GitHostingProvider>()
 
             val status = statusService(f, configured, hosting)
-            val observed = status.summary(status.refresh(unreadable, f.provisioner.worktreePath(root)))!!
+            val observed = status.refresh(unreadable, f.provisioner.worktreePath(root)).summary!!
 
             observed.error shouldBe GitWorkspaceStatusService.STATUS_UNAVAILABLE
             verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
@@ -188,7 +186,7 @@ class GitWorkspaceStatusServiceSpec :
             repeat(30) { Files.writeString(path.resolve("untracked-file-with-a-long-name-$it.txt"), "test") }
             val smallOutput = GitCommandRunner(gitProperties.copy(maxOutputChars = 512))
 
-            val observed = statusService(f, configured, mockk(), smallOutput).let { it.summary(it.refresh(ready, path))!! }
+            val observed = statusService(f, configured, mockk(), smallOutput).refresh(ready, path).summary!!
 
             observed.dirty shouldBe true
             observed.error shouldBe null
@@ -212,10 +210,10 @@ class GitWorkspaceStatusServiceSpec :
 
             val saved = status.refresh(ready, path)
 
-            val observed = status.summary(saved)!!
+            val observed = saved.summary!!
             observed.prState shouldBe PrState.UNKNOWN
             observed.error shouldBe "Git status unavailable. Check repository access and service account settings."
-            saved.summaryJson!! shouldNotContain secret
+            CaseResourceBindingNode.fromDomain(saved).summaryJson!! shouldNotContain secret
         }
 
         "slow forge observation does not hold admission lock or overwrite a concurrent lifecycle transition" {

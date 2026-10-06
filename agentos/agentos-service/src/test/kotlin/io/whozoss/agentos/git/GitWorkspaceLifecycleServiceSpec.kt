@@ -138,7 +138,7 @@ class GitWorkspaceLifecycleServiceSpec :
                 outside.writeText("Keep external files")
                 Files.createSymbolicLink(support.resolve("link"), outside.parent)
                 rawGit(path, "switch", "-c", "workflow/keep-branch")
-                f.bindings.update(ready.copy(summaryJson = "{\"prState\":\"MERGED\"}"))
+                f.bindings.update(ready.copy(summary = GitWorkspaceSummary(prState = PrState.MERGED)))
                 val cases = mockk<io.whozoss.agentos.caseFlow.CaseRepository> {
                     every { findByIds(any(), any()) } answers { listOf(root) }
                     every { findByParent(any()) } answers { listOf(root).filter { !it.metadata.removed } }

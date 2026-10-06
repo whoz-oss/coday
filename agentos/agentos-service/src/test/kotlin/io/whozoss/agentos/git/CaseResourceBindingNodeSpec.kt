@@ -9,6 +9,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
 import org.slf4j.LoggerFactory
+import java.time.Instant
 import java.util.UUID
 
 /** The frozen settings of a binding outlive the code that wrote them: their stored form is a contract. */
@@ -22,9 +23,16 @@ class CaseResourceBindingNodeSpec : StringSpec({
         setupCommand = "pnpm install --ignore-scripts",
     )
 
-    fun node(settingsJson: String?) = CaseResourceBindingNode(
+    fun node(settingsJson: String?, summaryJson: String? = null) = CaseResourceBindingNode(
         id = UUID.randomUUID().toString(), rootCaseId = UUID.randomUUID().toString(), namespaceId = namespaceId.toString(),
         integrationConfigId = configId.toString(), status = CaseResourceStatus.REQUESTED.name, settingsJson = settingsJson,
+        summaryJson = summaryJson,
+    )
+    val head = "c".repeat(40)
+    val observed = GitWorkspaceSummary(
+        branchState = BranchState.PUSHED, prState = PrState.OPEN, headSha = head, remoteSha = head, unpushedCommits = 0,
+        dirty = false, prNumber = 42, prUrl = "https://github.com/org/project/pull/42", prHeadSha = head,
+        observedAt = Instant.parse("2026-10-06T08:00:00Z"),
     )
 
     "settings stored in the current format still read, field for field" {
@@ -73,5 +81,22 @@ class CaseResourceBindingNodeSpec : StringSpec({
             it.formattedMessage + (it.throwableProxy?.let(ThrowableProxyUtil::asString) ?: "")
         }
         rendered shouldNotContain "synthetic-secret"
+    }
+
+    "a summary stored in the current format still reads, field for field" {
+        // Never edit this literal to make a change pass: rows already stored keep this shape.
+        val stored = """{"branchState":"PUSHED","dirty":false,"error":null,"headSha":"$head",""" +
+            """"observedAt":"2026-10-06T08:00:00Z","prHeadSha":"$head","prNumber":42,"prState":"OPEN",""" +
+            """"prUrl":"https://github.com/org/project/pull/42","remoteSha":"$head","unpushedCommits":0}"""
+
+        node(settingsJson = null, summaryJson = stored).toDomain().summary shouldBe observed
+    }
+
+    "a summary written by the node reads back identically, and an unreadable one reads as none" {
+        val binding = CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId, integrationConfigId = configId,
+            summary = observed)
+
+        CaseResourceBindingNode.fromDomain(binding).toDomain().summary shouldBe observed
+        node(settingsJson = null, summaryJson = """{"prState":"QUEUED"}""").toDomain().summary shouldBe null
     }
 })

@@ -1,6 +1,5 @@
 package io.whozoss.agentos.git
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitCommandResult
@@ -22,7 +21,6 @@ class GitWorkspaceStatusService(
     private val runner: GitCommandRunner,
     private val accounts: GitServiceAccountResolver,
     private val hosting: GitHostingProvider,
-    private val mapper: ObjectMapper,
 ) {
     /** The settings frozen when the family was equipped, never the namespace's current ones. */
     fun settings(binding: CaseResourceBinding): GitRepositorySettings =
@@ -34,10 +32,6 @@ class GitWorkspaceStatusService(
     fun worktreeGitDir(binding: CaseResourceBinding): Path =
         commonGitDir(binding).resolve(GitLayout.WORKTREES_DIR).resolve(binding.rootCaseId.toString())
 
-    fun summary(binding: CaseResourceBinding): GitWorkspaceSummary? = binding.summaryJson?.let {
-        mapper.readValue(it, GitWorkspaceSummary::class.java)
-    }
-
     fun view(root: GitExchangeRoot): CaseWorkspaceView {
         val binding = root.binding ?: return CaseWorkspaceView(equipped = false)
         return CaseWorkspaceView(
@@ -47,7 +41,7 @@ class GitWorkspaceStatusService(
             branchName = binding.branchName,
             failureReason = binding.failureReason,
             cleanupReason = binding.cleanupReason,
-            git = summary(binding),
+            git = binding.summary,
         )
     }
 
@@ -135,8 +129,8 @@ class GitWorkspaceStatusService(
             val fresh = bindings.findByRootCaseId(binding.rootCaseId) ?: return@tryWithRoot binding
             // A deletion or a newer observer may have won while the network call was running.
             if (fresh.status != CaseResourceStatus.READY ||
-                (summary(fresh)?.observedAt?.isAfter(state.observedAt) == true)) return@tryWithRoot fresh
-            bindings.update(fresh.copy(branchName = branch, summaryJson = mapper.writeValueAsString(state)))
+                (fresh.summary?.observedAt?.isAfter(state.observedAt) == true)) return@tryWithRoot fresh
+            bindings.update(fresh.copy(branchName = branch, summary = state))
         }
 
     private fun isDirty(binding: CaseResourceBinding, path: Path): Boolean {

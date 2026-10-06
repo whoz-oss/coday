@@ -38,7 +38,8 @@ data class CaseResourceBinding(
      * the family then cannot be prepared and gets no Git tool (see [CaseResourceBindingNode]).
      */
     val settings: GitRepositorySettings? = null,
-    val summaryJson: String? = null,
+    /** The last observation of the worktree's branch and pull request. Null until first observed. */
+    val summary: GitWorkspaceSummary? = null,
     val cleanupReason: String? = null,
     /** Progress of the setup command, which a retry must never replay without acknowledgement. */
     val setup: SetupState = SetupState.NOT_STARTED,
