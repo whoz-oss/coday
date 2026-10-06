@@ -45,7 +45,7 @@ class LoopWorkflowRunner(
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
     private val limitsConfig: LimitsConfigProperties,
-    private val userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
+    private val userSessionContextResolver: UserSessionContextResolver,
 ) {
     suspend fun run(
         payload: AgentLoopPayload,

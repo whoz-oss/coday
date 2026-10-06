@@ -146,6 +146,19 @@ class AgentLoopUnitSpec : StringSpec({
         contextSlot.captured.caseLauncher shouldBe launcher
     }
 
+    "unknown fields in the payload are ignored" {
+        val runner = runnerReturning(completed)
+        val withExtraFields =
+            """
+            {"tool": "SearchTalents", "searchInput": {}, "version": 0,
+             "act": {"agentName": "talent-analyzer", "promptTemplate": "t", "note": "x"}}
+            """.trimIndent()
+
+        agent(runner = runner).run(listOf(userMessage(withExtraFields))).toList()
+
+        coVerify(exactly = 1) { runner.run(match { it.tool == "SearchTalents" && it.act.agentName == "talent-analyzer" }, any(), any()) }
+    }
+
     "leading @mention used to route the message is ignored when parsing" {
         val runner = runnerReturning(completed)
 

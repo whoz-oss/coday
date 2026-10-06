@@ -426,7 +426,7 @@ class ScheduledPromptExecutor(
 
     /**
      * Resolve all execution context for a [ScheduledPromptUserRun], except [UserRunContext.sessionContext]
-     * which is determined later by branching on [resolveSessionContext].
+     * which is resolved later in [processUserRun] via [UserSessionContextResolver].
      *
      * Throws [IllegalStateException] on any missing entity — propagates to the
      * try/catch in [processUserRun] which marks the UserRun FAILED.

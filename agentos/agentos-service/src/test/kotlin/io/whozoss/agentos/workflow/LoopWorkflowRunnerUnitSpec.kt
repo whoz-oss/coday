@@ -262,6 +262,32 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
             listOf(Launch(namespaceId, "talent-analyzer", "Analyse this entity: task-alice", alice.metadata.id))
     }
 
+    "rows without entityType and with unknown fields are still processed" {
+        val f = Fixture(objectMapper)
+        val alice = f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        // The spec's plain ObjectMapper fails on unknown properties by default: this also checks
+        // that SearchResult types ignore them explicitly, independently of the mapper configuration.
+        val node =
+            objectMapper.readTree(
+                """
+                {"data": [{"entityId": "task-alice", "name": "Task A", "targets": [{"entityId": "alice", "role": "OWNER"}]}],
+                 "metadata": {"totalCount": 1, "next": null, "page": 1}, "extra": true}
+                """.trimIndent(),
+            )
+        val tool =
+            mockk<StandardTool<*>>().also {
+                every { it.name } returns "SearchTalents"
+                coEvery { it.executeWithJson(any(), any()) } returns
+                    ToolExecutionResult(output = "ok", success = true, structuredOutput = node)
+            }
+
+        val outcome = f.run(listOf(tool)).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.launched shouldBe 1
+        f.launches.single().userId shouldBe alice.metadata.id
+        f.launches.single().task shouldBe "Analyse this entity: task-alice"
+    }
+
     "skips entities whose targets list is null" {
         val f = Fixture(objectMapper)
         // Build a tool returning an item with no targets field

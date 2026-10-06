@@ -1,5 +1,6 @@
 package io.whozoss.agentos.workflow
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.JsonNode
 
 /**
@@ -9,6 +10,7 @@ import com.fasterxml.jackson.databind.JsonNode
  * @param searchInput Opaque JSON block passed verbatim to the Search tool.
  * @param act         Configuration for the action to execute per entity.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class AgentLoopPayload(
     val tool: String,
     val searchInput: JsonNode,
@@ -22,6 +24,7 @@ data class AgentLoopPayload(
  * @param promptTemplate Template for the initial message sent to the agent.
  *   Use `{entityId}` as a placeholder for the entity external identifier.
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class AgentLoopAct(
     val agentName: String,
     val promptTemplate: String,
