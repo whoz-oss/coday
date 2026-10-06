@@ -24,11 +24,10 @@ class ToolResolverService(
      * leaves the plugin without one.
      *
      * This is the single, standard resolution path: there is no config-less bypass and no
-     * plugin-specific branch. In particular the Factory bridge (`FACTORY_WORKSTREAM` /
-     * `FACTORY_WORKER` integration types, see the `agentos-factory-bridge-plugin`) resolves
-     * through this ordinary catalog + allowlist flow like every other integration — its
-     * plugins declare a non-null (empty-object) config schema, so they are normal catalog
-     * entries and never circumvent [isToolAllowed].
+     * plugin-specific branch. External integrations resolve through this ordinary catalog +
+     * allowlist flow like every other integration — their plugins declare a non-null
+     * (empty-object) config schema, so they are normal catalog entries and never circumvent
+     * [isToolAllowed].
      *
      * @param agentIntegrations Optional integration filter from AgentConfig.integrations.
      *   When null, the agent has no integration bindings and this resolver returns no tools.

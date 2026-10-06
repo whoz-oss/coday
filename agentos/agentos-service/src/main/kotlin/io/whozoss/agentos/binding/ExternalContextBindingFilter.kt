@@ -15,12 +15,12 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Intercepts `POST /api/cases` so a case created with the `X-Factory-*` headers binds its
- * external step-result capability in the same round-trip.
+ * Intercepts `POST /api/cases` so a case created with the `X-External-Context-*` headers
+ * binds its external step-result capability in the same round-trip.
  *
- * The Factory creates the case and immediately posts the brief; binding at creation time
- * (rather than on a later message) removes the race where the agent turn starts before the
- * capability is known. The filter is a strict no-op when no
+ * An external integration creates the case and immediately posts the brief; binding at
+ * creation time (rather than on a later message) removes the race where the agent turn
+ * starts before the capability is known. The filter is a strict no-op when no
  * [ExternalContextBindingRegistrar] is loaded or when the request carries no binding
  * attributes, so ordinary case creation is untouched.
  *
@@ -53,7 +53,7 @@ class ExternalContextBindingFilter(
             return
         }
 
-        val credential = request.getHeader(SECRET_HEADER) ?: request.getHeader(SECRET_HEADER_LEGACY)
+        val credential = request.getHeader(SECRET_HEADER)
         val expiresAt = request.getHeader(EXPIRES_AT_HEADER)?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
         val wrapped = ContentCachingResponseWrapper(response)
@@ -86,12 +86,11 @@ class ExternalContextBindingFilter(
 
     companion object : KLogging() {
         const val CASES_PATH = "/api/cases"
-        const val ATTEMPT_ID_HEADER = "X-Factory-Attempt-Id"
-        const val CAPABILITY_TOKEN_HEADER = "X-Factory-Capability-Token"
-        const val RUNTIME_ID_HEADER = "X-Factory-Runtime-Id"
-        const val AGENT_NAME_HEADER = "X-Factory-Agent-Name"
-        const val EXPIRES_AT_HEADER = "X-Factory-Expires-At"
-        const val SECRET_HEADER = "X-Factory-Agentos-Secret"
-        const val SECRET_HEADER_LEGACY = "X-Factory-Secret"
+        const val ATTEMPT_ID_HEADER = "X-External-Context-Attempt-Id"
+        const val CAPABILITY_TOKEN_HEADER = "X-External-Context-Capability-Token"
+        const val RUNTIME_ID_HEADER = "X-External-Context-Runtime-Id"
+        const val AGENT_NAME_HEADER = "X-External-Context-Agent-Name"
+        const val EXPIRES_AT_HEADER = "X-External-Context-Expires-At"
+        const val SECRET_HEADER = "X-External-Context-Secret"
     }
 }

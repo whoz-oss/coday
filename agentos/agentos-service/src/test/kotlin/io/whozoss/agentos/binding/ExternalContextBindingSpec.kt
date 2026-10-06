@@ -22,8 +22,8 @@ import java.util.UUID
 /**
  * Host transport wiring for external execution bindings.
  *
- * Verifies that the `X-Factory-*` headers (and the shared credential) received on case
- * creation, or on the dedicated binding endpoint, are forwarded to the loaded
+ * Verifies that the `X-External-Context-*` headers (and the shared credential) received on
+ * case creation, or on the dedicated binding endpoint, are forwarded to the loaded
  * [ExternalContextBindingRegistrar] — the plugin side of the bridge — and that the
  * transport is fail-closed when no registrar accepts.
  */
@@ -43,13 +43,13 @@ class ExternalContextBindingSpec : StringSpec({
             every { it.findById(caseId, false) } returns Case(metadata = EntityMetadata(id = caseId), namespaceId = namespaceId)
         }
 
-    "the binding endpoint forwards X-Factory-* headers to the registrar" {
+    "the binding endpoint forwards X-External-Context-* headers to the registrar" {
         val caseId = UUID.randomUUID()
         val namespaceId = UUID.randomUUID()
         val registrar = RecordingBindingRegistrar()
         val controller = ExternalContextBindingController(caseService(caseId, namespaceId), pluginManager(listOf(registrar)))
 
-        controller.bind(caseId, "shared-secret", null, "attempt", token, "runtime", "Worker", null)
+        controller.bind(caseId, "shared-secret", "attempt", token, "runtime", "Worker", null)
 
         val call = registrar.calls.single()
         call.caseId shouldBe caseId
@@ -66,7 +66,7 @@ class ExternalContextBindingSpec : StringSpec({
         val controller = ExternalContextBindingController(caseService(caseId, UUID.randomUUID()), pluginManager(emptyList()))
 
         val error = shouldThrow<ResponseStatusException> {
-            controller.bind(caseId, "shared-secret", null, "attempt", token, "runtime", "Worker", null)
+            controller.bind(caseId, "shared-secret", "attempt", token, "runtime", "Worker", null)
         }
         error.statusCode shouldBe HttpStatus.NOT_FOUND
     }
@@ -80,21 +80,21 @@ class ExternalContextBindingSpec : StringSpec({
             )
 
         val error = shouldThrow<ResponseStatusException> {
-            controller.bind(caseId, "wrong-secret", null, "attempt", token, "runtime", "Worker", null)
+            controller.bind(caseId, "wrong-secret", "attempt", token, "runtime", "Worker", null)
         }
         error.statusCode shouldBe HttpStatus.UNAUTHORIZED
     }
 
-    "a case created with X-Factory-* headers is bound from the created-case response" {
+    "a case created with X-External-Context-* headers is bound from the created-case response" {
         val namespaceId = UUID.randomUUID()
         val registrar = RecordingBindingRegistrar()
         val filter = ExternalContextBindingFilter(pluginManager(listOf(registrar)), jacksonObjectMapper())
         val caseId = UUID.randomUUID()
 
         val request = MockHttpServletRequest("POST", "/api/cases").apply {
-            addHeader("X-Factory-Attempt-Id", "attempt")
-            addHeader("X-Factory-Capability-Token", token)
-            addHeader("X-Factory-Agentos-Secret", "shared-secret")
+            addHeader("X-External-Context-Attempt-Id", "attempt")
+            addHeader("X-External-Context-Capability-Token", token)
+            addHeader("X-External-Context-Secret", "shared-secret")
         }
         val response = MockHttpServletResponse()
         val body = """{"id":"$caseId","namespaceId":"$namespaceId"}"""

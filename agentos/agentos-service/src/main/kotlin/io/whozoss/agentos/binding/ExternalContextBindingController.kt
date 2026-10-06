@@ -19,13 +19,11 @@ import java.util.UUID
  * Host transport that admits an out-of-band external execution binding for a case.
  *
  * The core owns the HTTP endpoint but knows nothing about the binding's semantics: this
- * controller extracts the opaque `X-Factory-*` attributes and the shared credential and
- * forwards them to every [ExternalContextBindingRegistrar] discovered via PF4J (typically
- * the Factory Bridge plugin). The plugin validates the credential and records the binding
- * durably; how the bound capability then reaches the case run is the plugin's own concern.
- *
- * Both the historical `/internal/factory/...` path and the generic
- * `/internal/external-context/...` path are exposed for compatibility.
+ * controller extracts the opaque `X-External-Context-*` attributes and the shared credential
+ * and forwards them to every [ExternalContextBindingRegistrar] discovered via PF4J (typically
+ * an external context binding registrar plugin). The plugin validates the credential and
+ * records the binding durably; how the bound capability then reaches the case run is the
+ * plugin's own concern.
  *
  * The endpoint is fail-closed:
  * - unknown case → 404;
@@ -38,20 +36,16 @@ class ExternalContextBindingController(
     private val caseService: CaseService,
     private val pluginManager: PluginManager,
 ) {
-    @PutMapping(
-        "/external-context/cases/{caseId}/bindings",
-        "/factory/cases/{caseId}/step-result-binding",
-    )
+    @PutMapping("/external-context/cases/{caseId}/bindings")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun bind(
         @PathVariable caseId: UUID,
-        @RequestHeader(name = "X-Factory-Agentos-Secret", required = false) factoryAgentosSecret: String?,
-        @RequestHeader(name = "X-Factory-Secret", required = false) factorySecret: String?,
-        @RequestHeader(name = "X-Factory-Attempt-Id", required = false) attemptId: String?,
-        @RequestHeader(name = "X-Factory-Capability-Token", required = false) capabilityToken: String?,
-        @RequestHeader(name = "X-Factory-Runtime-Id", required = false) runtimeId: String?,
-        @RequestHeader(name = "X-Factory-Agent-Name", required = false) agentName: String?,
-        @RequestHeader(name = "X-Factory-Expires-At", required = false) expiresAt: String?,
+        @RequestHeader(name = "X-External-Context-Secret", required = false) externalContextSecret: String?,
+        @RequestHeader(name = "X-External-Context-Attempt-Id", required = false) attemptId: String?,
+        @RequestHeader(name = "X-External-Context-Capability-Token", required = false) capabilityToken: String?,
+        @RequestHeader(name = "X-External-Context-Runtime-Id", required = false) runtimeId: String?,
+        @RequestHeader(name = "X-External-Context-Agent-Name", required = false) agentName: String?,
+        @RequestHeader(name = "X-External-Context-Expires-At", required = false) expiresAt: String?,
     ) {
         val namespaceId =
             caseService.findById(caseId, false)?.namespaceId
@@ -68,7 +62,7 @@ class ExternalContextBindingController(
                 registrars = registrars,
                 caseId = caseId,
                 namespaceId = namespaceId,
-                credential = factoryAgentosSecret ?: factorySecret,
+                credential = externalContextSecret,
                 attributes = attributes(attemptId, capabilityToken, runtimeId, agentName),
                 expiresAt = expiresAt?.let { runCatching { Instant.parse(it) }.getOrNull() },
             )
