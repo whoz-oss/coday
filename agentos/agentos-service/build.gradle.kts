@@ -258,9 +258,6 @@ kotlin {
 tasks.withType<Test> {
     useJUnitPlatform()
     // Neo4j embedded + Spring context caching across 2500+ tests requires more heap
-    // than Gradle's default 512m. The measured peak across the whole agentos-service
-    // suite is ~1.2 GiB (JMX/GC sampled), so 1.5g keeps comfortable headroom while
-    // leaving the memory-constrained build sandbox (cgroup ~6 GiB) enough room for the
     // than Gradle's default 512m. 2g gives comfortable headroom for the embedded engine,
     // cached Spring contexts, and parallel coroutine execution (Dispatchers.IO).
     maxHeapSize = "2g"
