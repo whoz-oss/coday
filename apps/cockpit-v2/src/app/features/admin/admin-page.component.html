@@ -1,0 +1,265 @@
+<div class="page">
+  <header class="page-head">
+    <div class="titles">
+      <h1>Gouvernance des artefacts</h1>
+      <p class="sf-muted">Administration des artefacts et des définitions de workflow.</p>
+    </div>
+    <sf-status-chip [tone]="adminDisabled() ? 'red' : 'green'" dot>
+      {{ adminDisabled() ? 'Accès refusé' : 'Admin' }}
+    </sf-status-chip>
+  </header>
+
+  @if (forbiddenError(); as forbidden) {
+    <div class="banner banner--error" role="alert" data-admin-forbidden="true">
+      <mat-icon aria-hidden="true">gpp_bad</mat-icon>
+      <span>{{ forbidden }}</span>
+    </div>
+  }
+
+  <!-- 1. Garbage collection -->
+  <section class="section sf-panel" data-admin-gc="true">
+    <h2 class="section-title">Garbage collection</h2>
+    <p class="sf-muted section-desc">
+      Réconcilie le stockage objet et les lignes de métadonnées ; recycle les uploads de staging orphelins.
+    </p>
+    <div class="row">
+      <mat-checkbox
+        [checked]="gcDryRun()"
+        [disabled]="adminDisabled() || gcRunning()"
+        (change)="gcDryRun.set($event.checked)"
+        data-admin-gc-dry-run="true"
+      >
+        Dry-run
+      </mat-checkbox>
+      <span class="sf-spacer"></span>
+      <button
+        mat-flat-button
+        class="sf-primary"
+        (click)="runGc()"
+        [disabled]="adminDisabled() || gcRunning()"
+        data-admin-gc-run="true"
+      >
+        <mat-icon>{{ gcRunning() ? 'hourglass_top' : 'recycling' }}</mat-icon>
+        {{ gcRunning() ? 'GC en cours…' : 'Lancer GC' }}
+      </button>
+    </div>
+    @if (gcReport()) {
+      <div class="result" data-admin-gc-result="true">
+        <span class="result-chip" [attr.data-gc-reclaimed]="gcReclaimed()">staging recyclés : {{ gcReclaimed() }}</span>
+        <span class="result-chip" [attr.data-gc-blobs]="gcBlobs()">blobs scannés : {{ gcBlobs() }}</span>
+        <span class="result-chip" [attr.data-gc-rows]="gcRows()">lignes métadonnées : {{ gcRows() }}</span>
+        <span
+          class="result-chip"
+          [class.result-chip--error]="gcAnomalies() > 0"
+          [attr.data-gc-anomalies]="gcAnomalies()"
+        >
+          anomalies : {{ gcAnomalies() }}
+        </span>
+        @if (gcTimestamp(); as timestamp) {
+          <span class="sf-mono timestamp">{{ timestamp }}</span>
+        }
+      </div>
+    }
+    @if (gcError(); as message) {
+      <div class="banner banner--warn" role="alert" data-admin-gc-error="true">{{ message }}</div>
+    }
+  </section>
+
+  <!-- 2. Purge -->
+  <section class="section sf-panel" data-admin-purge="true">
+    <h2 class="section-title">Purger un artefact</h2>
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Identifiant d’artefact</mat-label>
+      <input
+        matInput
+        class="sf-mono"
+        [value]="purgeArtifactId()"
+        (input)="purgeArtifactId.set($any($event.target).value)"
+        [disabled]="adminDisabled() || purgeRunning()"
+        data-admin-purge-id="true"
+      />
+    </mat-form-field>
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Motif (optionnel)</mat-label>
+      <input
+        matInput
+        class="sf-mono"
+        [value]="purgeReason()"
+        (input)="purgeReason.set($any($event.target).value)"
+        [disabled]="adminDisabled() || purgeRunning()"
+        data-admin-purge-reason="true"
+      />
+    </mat-form-field>
+    <div class="row">
+      <button
+        mat-flat-button
+        class="sf-danger"
+        (click)="purge()"
+        [disabled]="adminDisabled() || purgeRunning()"
+        data-admin-purge-submit="true"
+      >
+        <mat-icon>delete_forever</mat-icon>
+        {{ purgeRunning() ? 'Purge…' : 'Purger l’artefact' }}
+      </button>
+    </div>
+    @if (purgeResult(); as result) {
+      <div class="result" data-admin-purge-result="true">
+        <span class="result-chip result-chip--success">{{ result.status ?? 'purged' }}</span>
+        <span class="sf-mono">{{ result.artifactId ?? purgeArtifactId() }}</span>
+        @if (purgeFreed(); as freed) {
+          <span class="result-chip">libéré : {{ freed }}</span>
+        }
+        @if (result.reason) {
+          <span class="result-chip">motif : {{ result.reason }}</span>
+        }
+      </div>
+    }
+    @if (purgeError(); as message) {
+      <div class="banner banner--warn" role="alert" data-admin-purge-error="true">{{ message }}</div>
+    }
+  </section>
+
+  <!-- 3. Legal hold -->
+  <section class="section sf-panel" data-admin-legal="true">
+    <h2 class="section-title">Legal hold</h2>
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Identifiant d’artefact</mat-label>
+      <input
+        matInput
+        class="sf-mono"
+        [value]="legalArtifactId()"
+        (input)="legalArtifactId.set($any($event.target).value)"
+        [disabled]="adminDisabled() || legalRunning()"
+        data-admin-legal-id="true"
+      />
+    </mat-form-field>
+    <mat-checkbox
+      [checked]="legalHold()"
+      [disabled]="adminDisabled() || legalRunning()"
+      (change)="legalHold.set($event.checked)"
+      data-admin-legal-state="true"
+    >
+      Placer le legal hold
+    </mat-checkbox>
+    <mat-form-field appearance="outline" class="field">
+      <mat-label>Motif (optionnel)</mat-label>
+      <input
+        matInput
+        class="sf-mono"
+        [value]="legalReason()"
+        (input)="legalReason.set($any($event.target).value)"
+        [disabled]="adminDisabled() || legalRunning()"
+        data-admin-legal-reason="true"
+      />
+    </mat-form-field>
+    <div class="row">
+      <button
+        mat-flat-button
+        class="sf-primary"
+        (click)="applyLegalHold()"
+        [disabled]="adminDisabled() || legalRunning()"
+        data-admin-legal-submit="true"
+      >
+        <mat-icon>lock</mat-icon>
+        {{ legalRunning() ? 'Application…' : 'Appliquer le legal hold' }}
+      </button>
+    </div>
+    @if (legalResult(); as result) {
+      <div class="result" data-admin-legal-result="true">
+        <span
+          class="result-chip"
+          [class.result-chip--error]="legalActive()"
+          [class.result-chip--success]="!legalActive()"
+        >
+          legal hold : {{ legalActive() ? 'actif' : 'inactif' }}
+        </span>
+        <span class="sf-mono">{{ result.id ?? result.artifactId ?? legalArtifactId() }}</span>
+        @if (legalReasonText(); as reason) {
+          <span class="result-chip">motif : {{ reason }}</span>
+        }
+      </div>
+    }
+    @if (legalError(); as message) {
+      <div class="banner banner--warn" role="alert" data-admin-legal-error="true">{{ message }}</div>
+    }
+  </section>
+
+  <!-- 4. Workflow definitions -->
+  <section class="section sf-panel" data-admin-definitions="true">
+    <h2 class="section-title">Workflow definitions</h2>
+    <p class="sf-muted section-desc">Importez une définition JSON (format v1) et gérez les définitions enregistrées.</p>
+    <div class="row file-row">
+      <input
+        type="file"
+        accept=".json,application/json"
+        (change)="onFileSelected($event)"
+        [disabled]="adminDisabled() || uploading()"
+        data-admin-definition-file="true"
+      />
+      @if (selectedFile(); as file) {
+        <span class="result-chip" data-admin-definition-filename="true">{{ file.name }}</span>
+      }
+      <span class="sf-spacer"></span>
+      <button
+        mat-flat-button
+        class="sf-primary"
+        (click)="uploadDefinition()"
+        [disabled]="adminDisabled() || uploading()"
+        data-admin-definition-upload="true"
+      >
+        <mat-icon>upload</mat-icon>
+        {{ uploading() ? 'Import…' : 'Importer la définition' }}
+      </button>
+      <button
+        mat-stroked-button
+        class="sf-secondary"
+        (click)="loadDefinitions()"
+        [disabled]="adminDisabled() || definitionsLoading()"
+        data-admin-definition-refresh="true"
+      >
+        <mat-icon>refresh</mat-icon>
+        Rafraîchir
+      </button>
+    </div>
+
+    @if (definitionsError(); as message) {
+      <div class="banner banner--warn" role="alert" data-admin-definition-error="true">{{ message }}</div>
+    }
+
+    <table mat-table [dataSource]="definitions()" class="definitions-table">
+      <ng-container matColumnDef="workflowType">
+        <th mat-header-cell *matHeaderCellDef>Type</th>
+        <td mat-cell *matCellDef="let def" class="sf-mono" data-definition-type="true">{{ def.workflowType }}</td>
+      </ng-container>
+      <ng-container matColumnDef="version">
+        <th mat-header-cell *matHeaderCellDef>Version</th>
+        <td mat-cell *matCellDef="let def" class="sf-mono" data-definition-version="true">{{ def.version }}</td>
+      </ng-container>
+      <ng-container matColumnDef="definitionHash">
+        <th mat-header-cell *matHeaderCellDef>Hash</th>
+        <td mat-cell *matCellDef="let def" class="sf-mono" data-definition-hash="true">{{ def.definitionHash }}</td>
+      </ng-container>
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef></th>
+        <td mat-cell *matCellDef="let def">
+          <button
+            mat-stroked-button
+            class="sf-danger"
+            (click)="deleteDefinition(def)"
+            [disabled]="adminDisabled() || deletingKey() === definitionKey(def)"
+            data-admin-definition-delete="true"
+          >
+            {{ deletingKey() === definitionKey(def) ? 'Suppression…' : 'Supprimer' }}
+          </button>
+        </td>
+      </ng-container>
+      <tr mat-header-row *matHeaderRowDef="definitionColumns"></tr>
+      <tr mat-row *matRowDef="let row; columns: definitionColumns"></tr>
+    </table>
+    @if (definitions().length === 0) {
+      <p class="sf-muted empty" data-definition-empty="true">
+        {{ definitionsLoading() ? 'Chargement…' : 'Aucune définition enregistrée.' }}
+      </p>
+    }
+  </section>
+</div>
