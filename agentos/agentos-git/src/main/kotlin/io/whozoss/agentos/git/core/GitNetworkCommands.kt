@@ -73,12 +73,10 @@ internal class GitNetworkCommands(
         require(MANAGED_FETCH_DESTINATIONS.any { destination.startsWith(it) }) {
             "Managed fetch may only update an origin tracking ref, a frozen case base or a workspace observation ref"
         }
-        val common = requireNotNull(invocation.gitDir) { "Managed fetch requires a pinned common Git directory" }
-            .toAbsolutePath().normalize()
-        val format = output(execute(GitInvocation(listOf("rev-parse", "--show-object-format"), gitDir = common), emptyMap())).trim()
-        require(format in setOf(GitObjectIds.SHA1_FORMAT, GitObjectIds.SHA256_FORMAT)) { "Unsupported repository object format" }
+        val common = pinnedCommon(invocation, "fetch")
+        val format = objectFormat(common)
         val context = createContext(temporary, format)
-        val environment = mapOf("GIT_OBJECT_DIRECTORY" to common.resolve("objects").toString())
+        val environment = sharedObjects(common)
         refspec.forEach { ref -> output(execute(GitInvocation(listOf("check-ref-format", ref), gitDir = context), environment)) }
         require(refspec.none { '*' in it }) { "Managed fetch requires exact ref names" }
 
@@ -132,19 +130,12 @@ internal class GitNetworkCommands(
         }
         val branch = refspec[0]
         require('*' !in branch) { "Managed push requires an exact branch name" }
-        val common = requireNotNull(invocation.gitDir) { "Managed push requires a pinned common Git directory" }
-            .toAbsolutePath().normalize()
-        val format = output(execute(GitInvocation(listOf("rev-parse", "--show-object-format"), gitDir = common), emptyMap())).trim()
-        require(format in setOf(GitObjectIds.SHA1_FORMAT, GitObjectIds.SHA256_FORMAT)) { "Unsupported repository object format" }
+        val common = pinnedCommon(invocation, "push")
+        val format = objectFormat(common)
         val expected = GitObjectIds.pattern(format)
-        val lease = options.singleOrNull()?.removePrefix(GitPushLease.OPTION)?.split(':', limit = 2)?.let { parts ->
-            require(parts.size == 2 && parts[0] == branch && (parts[1].isEmpty() || parts[1].matches(expected))) {
-                "The lease must name the pushed branch and an explicit object ID"
-            }
-            "${GitPushLease.OPTION}$branch:${parts[1]}"
-        }
+        val lease = options.singleOrNull()?.let { checkedLease(it, branch, expected) }
         val context = createContext(temporary, format)
-        val environment = mapOf("GIT_OBJECT_DIRECTORY" to common.resolve("objects").toString())
+        val environment = sharedObjects(common)
         output(execute(GitInvocation(listOf("check-ref-format", branch), gitDir = context), environment))
         val sha = output(execute(GitInvocation(listOf("rev-parse", "--verify", "$branch^{commit}"), gitDir = common), emptyMap())).trim()
         require(sha.matches(expected)) { "Invalid object ID for the pushed branch" }
@@ -171,6 +162,29 @@ internal class GitNetworkCommands(
         // never followed, and a concurrent change is kept: the next fetch refreshes it.
         execute(GitInvocation(listOf("update-ref", "--no-deref", tracking, sha, previous), gitDir = common), emptyMap())
         return pushed
+    }
+
+    /** The common Git directory a managed [operation] reads and writes, pinned by its caller. */
+    private fun pinnedCommon(invocation: GitInvocation, operation: String): Path =
+        requireNotNull(invocation.gitDir) { "Managed $operation requires a pinned common Git directory" }
+            .toAbsolutePath().normalize()
+
+    /** Object format of [common]: the private context must use the same one to share its objects. */
+    private fun objectFormat(common: Path): String =
+        output(execute(GitInvocation(listOf("rev-parse", "--show-object-format"), gitDir = common), emptyMap())).trim()
+            .also { require(it in SUPPORTED_OBJECT_FORMATS) { "Unsupported repository object format" } }
+
+    /** Lets the private context read and write [common]'s objects, never its configuration or refs. */
+    private fun sharedObjects(common: Path): Map<String, String> =
+        mapOf(OBJECT_DIRECTORY_VARIABLE to common.resolve("objects").toString())
+
+    /** The lease [option] as sent: it must name the pushed [branch] and an explicit object ID, or none. */
+    private fun checkedLease(option: String, branch: String, expected: Regex): String {
+        val parts = option.removePrefix(GitPushLease.OPTION).split(':', limit = 2)
+        require(parts.size == 2 && parts[0] == branch && (parts[1].isEmpty() || parts[1].matches(expected))) {
+            "The lease must name the pushed branch and an explicit object ID"
+        }
+        return "${GitPushLease.OPTION}$branch:${parts[1]}"
     }
 
     /**
@@ -237,6 +251,11 @@ internal class GitNetworkCommands(
     }
 
     private companion object : KLogging() {
+        private val SUPPORTED_OBJECT_FORMATS = setOf(GitObjectIds.SHA1_FORMAT, GitObjectIds.SHA256_FORMAT)
+
+        /** Points Git at another object store, here the namespace's, from a private context. */
+        private const val OBJECT_DIRECTORY_VARIABLE = "GIT_OBJECT_DIRECTORY"
+
         /** Recent commit tips offered to the server so a new case negotiates history it already has. */
         private const val NEGOTIATION_TIPS = 64
 
