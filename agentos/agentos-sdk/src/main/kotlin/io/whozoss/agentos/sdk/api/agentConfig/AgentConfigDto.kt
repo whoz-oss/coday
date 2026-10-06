@@ -42,13 +42,20 @@ data class AgentConfigDto(
     val integrations: Map<String, List<String>?>? = null,
     /**
      * Execution mode for this agent. Replaces the legacy [advancedExecution] boolean.
-     * When both are present, [executionMode] takes precedence.
-     * When null, [advancedExecution] is used as a fallback for backward compatibility.
+     * On input: when both are present, [executionMode] takes precedence; when null,
+     * [advancedExecution] is used as a fallback for backward compatibility.
+     * On output: always the resolved mode.
      */
+    @field:Schema(
+        description =
+            "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental and may change or be removed " +
+                "without notice). Takes precedence over advancedExecution on input; always resolved on output.",
+    )
     val executionMode: ExecutionMode? = null,
     /**
      * @deprecated Use [executionMode] instead. Kept for backward compatibility with existing configs.
-     * When [executionMode] is null: `true` → ADVANCED, `false`/null → SIMPLE.
+     * On input, when [executionMode] is null: `true` → ADVANCED, `false`/null → SIMPLE.
+     * On output, derived from the resolved [executionMode]: `true` when ADVANCED, omitted otherwise.
      */
     @Deprecated("Use executionMode instead")
     val advancedExecution: Boolean? = null,

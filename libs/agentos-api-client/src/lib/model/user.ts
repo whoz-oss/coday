@@ -16,6 +16,5 @@ export interface User {
   id?: string
   isAdmin: boolean
   lastname?: string
-  /** BCP 47 language tag (e.g. "en", "fr", "en-US"). Null means no preference — callers fall back to English. */
   preferredLanguage?: string
 }

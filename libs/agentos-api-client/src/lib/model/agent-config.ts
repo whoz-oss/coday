@@ -18,6 +18,9 @@ export interface AgentConfig {
   createdOn?: string
   description?: string
   enabled?: boolean
+  /**
+   * Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental and may change or be removed without notice). Takes precedence over advancedExecution on input; always resolved on output.
+   */
   executionMode?: AgentConfigExecutionModeEnum
   externalMetadata?: { [key: string]: any }
   id?: string

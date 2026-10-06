@@ -38,7 +38,11 @@ data class AgentDefinitionDto(
     val resolvedProviderName: String,
     @field:Schema(description = "Summary of tools that would be made available to this agent.")
     val tools: List<ToolSummary>,
-    @field:Schema(description = "The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP).")
+    @field:Schema(
+        description =
+            "The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP). " +
+                "LOOP is experimental and may change or be removed without notice.",
+    )
     val executionMode: ExecutionMode,
     @field:Schema(description = "Whether the agent uses the advanced multi-step execution engine. Deprecated: use executionMode instead.")
     @Deprecated("Use executionMode instead")

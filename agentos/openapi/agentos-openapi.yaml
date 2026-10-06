@@ -3653,6 +3653,9 @@ components:
           type: boolean
         executionMode:
           type: string
+          description: "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental\
+            \ and may change or be removed without notice). Takes precedence over\
+            \ advancedExecution on input; always resolved on output."
           enum:
           - SIMPLE
           - ADVANCED
@@ -3736,7 +3739,8 @@ components:
         executionMode:
           type: string
           description: "The resolved execution mode for this agent (SIMPLE, ADVANCED,\
-            \ or LOOP)."
+            \ or LOOP). LOOP is experimental and may change or be removed without\
+            \ notice."
           enum:
           - SIMPLE
           - ADVANCED

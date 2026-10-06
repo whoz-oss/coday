@@ -133,11 +133,11 @@
         <select id="agent-config-execution-mode" class="agent-config-form__select" [formControl]="executionModeControl">
           <option [value]="ExecutionMode.SIMPLE">SIMPLE — Standard agent (single LLM call)</option>
           <option [value]="ExecutionMode.ADVANCED">ADVANCED — Multi-step reasoning loop</option>
-          <option [value]="ExecutionMode.LOOP">LOOP — Bulk loop agent (no LLM)</option>
+          <option [value]="ExecutionMode.LOOP">LOOP — Bulk loop agent (no LLM, experimental)</option>
         </select>
         <p class="agent-config-form__field-hint">
-          SIMPLE runs a single LLM pass. ADVANCED uses an intention loop for complex tasks. LOOP iterates over a dataset
-          without an LLM — configure the run via the Launch section below.
+          SIMPLE runs a single LLM pass. ADVANCED uses an intention loop for complex tasks. LOOP (experimental) starts
+          one case per result of a tool, without an LLM — run it with "Launch loop" in the agent list menu.
         </p>
       </div>
 

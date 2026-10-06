@@ -7,8 +7,12 @@ package io.whozoss.agentos.sdk.api.agentConfig
  * - [ADVANCED]: Multi-step loop with explicit intention generation, parameter generation,
  *   optional confirmation gate, and final response generation. All orchestration is
  *   LLM-driven but with richer structure than [SIMPLE].
- * - [LOOP]: Zero LLM calls. A predefined sequence of tools is executed programmatically.
- *   Used by AgentLoop to orchestrate agentic workflows at scale without involving any LLM.
+ * - [LOOP]: **Experimental.** Zero LLM calls. A predefined sequence of tools is executed
+ *   programmatically. Used by AgentLoop to orchestrate agentic workflows at scale without
+ *   involving any LLM.
+ *
+ * [SIMPLE] and [ADVANCED] are the stable replacement of `advancedExecution`; only [LOOP] is
+ * experimental.
  *
  * Replaces the legacy `advancedExecution: Boolean` flag.
  * Backward compatibility: when [executionMode] is null on an [AgentConfigDto] or [AgentConfig],
@@ -18,5 +22,10 @@ package io.whozoss.agentos.sdk.api.agentConfig
 enum class ExecutionMode {
     SIMPLE,
     ADVANCED,
+
+    /**
+     * Experimental: proof of concept of programmatic loops. May change or be removed without notice,
+     * independently of the [SIMPLE] / [ADVANCED] contract.
+     */
     LOOP,
 }

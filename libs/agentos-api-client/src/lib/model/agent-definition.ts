@@ -20,7 +20,7 @@ export interface AgentDefinition {
    */
   agentConfigId: string
   /**
-   * The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP).
+   * The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP). LOOP is experimental and may change or be removed without notice.
    */
   executionMode: AgentDefinitionExecutionModeEnum
   /**

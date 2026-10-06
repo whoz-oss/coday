@@ -76,24 +76,7 @@ class AgentConfigController(
             permissions = permissionService,
             entityType = EntityType.AGENT_CONFIG,
             toResource = { toDto(it as AgentConfig) },
-            toDomain = { resource ->
-                @Suppress("DEPRECATION")
-                AgentConfig(
-                    metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-                    namespaceId = resource.namespaceId,
-                    name = resource.name,
-                    description = resource.description,
-                    instructions = resource.instructions,
-                    modelName = resource.modelName,
-                    integrations = resource.integrations,
-                    executionMode = resource.executionMode,
-                    advancedExecution = resource.advancedExecution ?: false,
-                    externalMetadata = resource.externalMetadata,
-                    enabled = resource.enabled ?: false,
-                    subAgents = resource.subAgents.nullOrNotBlankItems(),
-                    skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
-                )
-            },
+            toDomain = { resource -> toDomain(resource) },
         )
 
     @GetMapping("/{id}")
@@ -138,6 +121,7 @@ class AgentConfigController(
         val existing =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val executionMode = resource.requestedExecutionMode()
         @Suppress("DEPRECATION")
         return toDto(
             agentConfigService.update(
@@ -147,8 +131,8 @@ class AgentConfigController(
                     instructions = resource.instructions,
                     modelName = resource.modelName,
                     integrations = resource.integrations,
-                    executionMode = resource.executionMode,
-                    advancedExecution = resource.advancedExecution ?: false,
+                    executionMode = executionMode,
+                    advancedExecution = executionMode == ExecutionMode.ADVANCED,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: existing.enabled,
                     subAgents = resource.subAgents.nullOrNotBlankItems(),
@@ -266,9 +250,21 @@ class AgentConfigController(
     companion object : KLogging()
 }
 
+/**
+ * Execution mode requested by a client: [AgentConfigDto.executionMode] when present, otherwise the
+ * deprecated [AgentConfigDto.advancedExecution] flag (`true` → ADVANCED, absent/`false` → SIMPLE).
+ *
+ * Both persisted fields are derived from this single value so the deprecated flag stays consistent
+ * for legacy readers, whichever field the client sent.
+ */
+@Suppress("DEPRECATION")
+private fun AgentConfigDto.requestedExecutionMode(): ExecutionMode =
+    executionMode ?: if (advancedExecution == true) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
+
 @Suppress("DEPRECATION")
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {
     val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+    val executionMode = resource.requestedExecutionMode()
     return AgentConfig(
         metadata = metadata,
         namespaceId = resource.namespaceId,
@@ -277,8 +273,8 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         instructions = resource.instructions,
         modelName = resource.modelName,
         integrations = resource.integrations,
-        executionMode = resource.executionMode,
-        advancedExecution = resource.advancedExecution ?: false,
+        executionMode = executionMode,
+        advancedExecution = executionMode == ExecutionMode.ADVANCED,
         externalMetadata = resource.externalMetadata,
         enabled = resource.enabled ?: false,
         subAgents = resource.subAgents.nullOrNotBlankItems(),
@@ -296,8 +292,10 @@ internal fun toDto(entity: AgentConfig) =
         instructions = entity.instructions,
         modelName = entity.modelName,
         integrations = entity.integrations,
-        executionMode = entity.executionMode,
-        advancedExecution = entity.advancedExecution.takeIf { it },
+        // Both derived from the resolved mode: legacy configs (executionMode = null) expose their mode,
+        // and the deprecated flag never contradicts executionMode.
+        executionMode = entity.resolvedExecutionMode,
+        advancedExecution = (entity.resolvedExecutionMode == ExecutionMode.ADVANCED).takeIf { it },
         externalMetadata = entity.externalMetadata,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
