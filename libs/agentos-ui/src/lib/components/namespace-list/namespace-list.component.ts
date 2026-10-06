@@ -127,10 +127,16 @@ export class NamespaceListComponent {
     this.router.navigate(['/agentos', ns.id, 'auth-settings'])
   }
 
-  protected openUsage(ns: Namespace): void { this.router.navigate(['/agentos', ns.id, 'usage']) }
+  protected openUsage(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'usage'])
+  }
 
   protected openMembers(ns: Namespace): void {
     this.router.navigate(['/agentos', ns.id, 'members'])
+  }
+
+  protected openToolInvoke(ns: Namespace): void {
+    this.router.navigate(['/agentos', ns.id, 'tool-invoke'])
   }
 
   protected openGit(ns: Namespace): void {
