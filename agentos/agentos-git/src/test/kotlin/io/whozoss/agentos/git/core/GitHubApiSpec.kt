@@ -95,6 +95,8 @@ class GitHubApiSpec :
                 "https://github.com/whoz-oss/coday/extra.git",
                 "https://github.com/whoz oss/coday.git",
                 "https://github.com/",
+                "https://github.com/../coday.git",
+                "https://github.com/whoz-oss/..",
                 "not a url",
             ).forEach { GitHubRepository.fromRemoteUrl(it) shouldBe null }
         }
