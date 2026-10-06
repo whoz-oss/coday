@@ -2,9 +2,12 @@ package io.whozoss.agentos.persistence.neo4j
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
+import io.kotest.matchers.collections.shouldNotContainAnyOf
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.git.CaseResourceBinding
 import io.whozoss.agentos.git.CaseResourceBindingCursor
+import io.whozoss.agentos.git.CaseResourceBindingNodeNeo4jRepository
 import io.whozoss.agentos.git.CaseResourceBindingService
 import io.whozoss.agentos.git.CaseResourceStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -12,9 +15,11 @@ import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.data.neo4j.repository.query.Query
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.TestPropertySource
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 
 @SpringBootTest
@@ -90,6 +95,37 @@ class EmbeddedNeo4jCaseResourceBindingPaginationSpec : StringSpec() {
                 CaseResourceBindingCursor.after(second.last()))
             listOf(first.size, second.size, third.size) shouldBe listOf(5_000, 5_000, 7)
             (first + second + third).map { it.id } shouldBe expected
+        }
+
+        "a first page seeks on status and the next pages walk the creation order without a sort" {
+            // Operator and index of each step of the plan Neo4j chooses for a repository query.
+            fun plan(method: String, params: Map<String, Any>): List<String> {
+                val query =
+                    CaseResourceBindingNodeNeo4jRepository::class.java.methods
+                        .single { it.name == method }
+                        .getAnnotation(Query::class.java)
+                        .value
+                val root = driver.session().use { it.run("EXPLAIN $query", params).consume().plan() }
+                return generateSequence(listOf(root)) { level -> level.flatMap { it.children() }.ifEmpty { null } }
+                    .flatten()
+                    .map { "${it.operatorType().substringBefore('@')} ${it.arguments()["Details"]?.asString()}" }
+                    .toList()
+            }
+            val statuses = CaseResourceStatus.entries.filter { it != CaseResourceStatus.REMOVED }.map { it.name }
+            val first = plan("findActiveByStatusIn", mapOf("statuses" to statuses, "limit" to 5))
+            first.single { it.startsWith("NodeIndexSeek") } shouldContain "(status, created)"
+            val next =
+                plan(
+                    "findActiveByStatusInAfter",
+                    mapOf(
+                        "statuses" to statuses,
+                        "limit" to 5,
+                        "afterCreated" to Instant.parse("2026-01-01T00:00:00Z").atZone(ZoneOffset.UTC),
+                        "afterId" to UUID(0, 1).toString(),
+                    ),
+                )
+            next.single { it.startsWith("NodeIndexSeek") } shouldContain "(created, id)"
+            next.map { it.substringBefore(' ') } shouldNotContainAnyOf listOf("Sort", "PartialSort", "Top", "PartialTop")
         }
     }
 }
