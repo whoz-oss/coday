@@ -5,7 +5,6 @@ import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.git.core.GitCommandResult
 import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitInvocation
-import io.whozoss.agentos.git.core.GitLayout
 import io.whozoss.agentos.git.core.GitRefs
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -24,14 +23,14 @@ class GitWorkspaceStatusService(
     private val clock: Clock,
 ) {
     /** The settings frozen when the family was equipped, never the namespace's current ones. */
-    fun settings(binding: CaseResourceBinding): GitRepositorySettings =
+    private fun settings(binding: CaseResourceBinding): GitRepositorySettings =
         binding.settings ?: throw ConflictException("No readable settings were recorded for this workspace")
 
-    fun commonGitDir(binding: CaseResourceBinding): Path =
+    private fun commonGitDir(binding: CaseResourceBinding): Path =
         storage.namespaceGitDirectory(binding.namespaceId).toAbsolutePath().normalize()
 
-    fun worktreeGitDir(binding: CaseResourceBinding): Path =
-        commonGitDir(binding).resolve(GitLayout.WORKTREES_DIR).resolve(binding.rootCaseId.toString())
+    /** Git's administrative directory of the family's worktree, pinned rather than read from its `.git` file. */
+    private fun worktreeGitDir(binding: CaseResourceBinding): Path = commonGitDir(binding).worktreeRegistration(binding.rootCaseId)
 
     fun view(root: GitExchangeRoot): CaseWorkspaceView {
         val binding = root.binding ?: return CaseWorkspaceView(equipped = false)
