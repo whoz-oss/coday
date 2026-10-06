@@ -1,3 +1,15 @@
+## 3.24.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** activate optional case-family worktrees ([#1368](https://github.com/whoz-oss/coday/pull/1368))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.23.0 (2026-10-06)
 
 ### 🚀 Features
