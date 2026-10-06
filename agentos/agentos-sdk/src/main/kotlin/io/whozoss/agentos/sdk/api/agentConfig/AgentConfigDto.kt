@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonInclude
 import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Positive
 import java.time.Instant
 import java.util.UUID
 
@@ -61,6 +62,9 @@ data class AgentConfigDto(
             ),
     )
     val subAgents: List<String>? = null,
+    @field:Positive
+    @field:Schema(description = "Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.", minimum = "1", nullable = true)
+    val delegationTimeoutSeconds: Int? = null,
     @ArraySchema(
         schema =
             Schema(

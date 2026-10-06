@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import java.time.Instant
@@ -151,6 +152,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             val activeCase =
                 mockk<CaseRuntime> {
                     every { events } returns liveFlow
+                    every { deliveryFailureCount } returns MutableStateFlow(0L)
                 }
             val caseService =
                 mockk<CaseService> {
@@ -185,6 +187,7 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             val activeCase =
                 mockk<CaseRuntime> {
                     every { events } returns liveFlow
+                    every { deliveryFailureCount } returns MutableStateFlow(0L)
                 }
             val caseService =
                 mockk<CaseService> {
@@ -233,7 +236,11 @@ class CaseEventSseControllerUnitSpec : StringSpec() {
             val liveFlow = MutableSharedFlow<CaseEvent>(replay = 0)
             val subscriptionCount: StateFlow<Int> = liveFlow.subscriptionCount
 
-            val activeCase = mockk<CaseRuntime> { every { events } returns liveFlow }
+            val activeCase =
+                mockk<CaseRuntime> {
+                    every { events } returns liveFlow
+                    every { deliveryFailureCount } returns MutableStateFlow(0L)
+                }
             val caseService = mockk<CaseService> { every { findActiveRuntime(caseId) } returns activeCase }
             val caseEventService = mockk<CaseEventService> { every { findByParent(caseId) } returns emptyList() }
 
