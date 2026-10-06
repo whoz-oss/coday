@@ -161,9 +161,14 @@ class LoopWorkflowRunner(
         context: LoopRunContext,
         caseLauncher: CaseLauncher,
     ): ItemOutcome {
-        val endUser = userService.findByExternalId(item.entityId)
+        val userExternalId = item.targets?.firstOrNull()?.entityId
+        if (userExternalId == null) {
+            logger.warn { "[LoopWorkflowRunner] No target found for entity='${item.entityId}' — skipping" }
+            return ItemOutcome.UnknownUser
+        }
+        val endUser = userService.findByExternalId(userExternalId)
         if (endUser == null) {
-            logger.warn { "[LoopWorkflowRunner] No user found for entityId='${item.entityId}' — skipping" }
+            logger.warn { "[LoopWorkflowRunner] No user found for userExternalId='$userExternalId' (entity='${item.entityId}') — skipping" }
             return ItemOutcome.UnknownUser
         }
         val endUserId = endUser.metadata.id
@@ -178,7 +183,7 @@ class LoopWorkflowRunner(
         // Without a provider, resolve() returns Success(null) and execution continues without context.
         val preferredLanguage = endUser.preferredLanguage?.takeIf { it.isNotBlank() }
         val sessionContext: Map<String, Any?>? =
-            when (val result = userSessionContextResolver.resolve(endUser.externalId, context.namespaceId)) {
+            when (val result = userSessionContextResolver.resolve(userExternalId, context.namespaceId)) {
                 is UserContextResult.Success -> {
                     if (result.sessionContext == null && userSessionContextResolver.hasProvider()) {
                         logger.warn {

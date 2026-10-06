@@ -29,6 +29,10 @@ import java.util.UUID
 /**
  * Unit tests for [LoopWorkflowRunner]: guards, SEARCH phase error handling and ACT phase
  * per-entity outcomes. Case creation is observed through a recording [CaseLauncher].
+ *
+ * Convention used in search tool JSON:
+ * - `entityId` (root) = business entity id, e.g. `"task-alice"` — injected into the prompt.
+ * - `targets[0].entityId` = AgentOS user external id, e.g. `"alice"` — used for user resolution.
  */
 class LoopWorkflowRunnerUnitSpec : StringSpec({
 
@@ -103,14 +107,33 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         }
     }
 
+    /**
+     * Builds a mock search tool whose structured output contains items with:
+     * - `entityId` = `"task-$userExternalId"` (business entity id)
+     * - `targets[0].entityId` = `userExternalId` (AgentOS user external id)
+     *
+     * This validates that the runner correctly reads the user id from `targets`, not from `entityId`.
+     */
     fun searchTool(
-        entityIds: List<String>,
+        userExternalIds: List<String>,
         next: String? = null,
         success: Boolean = true,
         structured: Boolean = true,
     ): StandardTool<*> {
-        val data = entityIds.joinToString(",") { """{"entityType": "TALENT", "entityId": "$it"}""" }
-        val node = objectMapper.readTree("""{"data": [$data], "metadata": {"totalCount": ${entityIds.size}, "next": ${next?.let { "\"$it\"" }}}}""")
+        val data =
+            userExternalIds.joinToString(",") { userExtId ->
+                """
+                {
+                    "entityType": "TALENT",
+                    "entityId": "task-$userExtId",
+                    "targets": [{"entityType": "USER", "entityId": "$userExtId"}]
+                }
+                """.trimIndent()
+            }
+        val node =
+            objectMapper.readTree(
+                """{"data": [$data], "metadata": {"totalCount": ${userExternalIds.size}, "next": ${next?.let { "\"$it\"" } ?: "null"}}}""",
+            )
         return mockk<StandardTool<*>>().also { tool ->
             every { tool.name } returns "SearchTalents"
             coEvery { tool.executeWithJson(any(), any()) } returns
@@ -227,12 +250,51 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         outcome.launchedCaseIds shouldBe f.launchedIds
         outcome.summary() shouldContain f.launchedIds.single().toString()
+        // task uses entityId (root) = "task-alice", not the user external id
         f.launches shouldBe
-            listOf(Launch(namespaceId, "talent-analyzer", "Analyse this entity: alice", alice.metadata.id))
+            listOf(Launch(namespaceId, "talent-analyzer", "Analyse this entity: task-alice", alice.metadata.id))
     }
 
-    "skips entities without a matching user" {
+    "skips entities whose targets list is null" {
         val f = Fixture(objectMapper)
+        // Build a tool returning an item with no targets field
+        val node = objectMapper.readTree(
+            """{"data": [{"entityType": "TALENT", "entityId": "task-ghost"}], "metadata": {"totalCount": 1, "next": null}}"""
+        )
+        val tool = mockk<StandardTool<*>>().also {
+            every { it.name } returns "SearchTalents"
+            coEvery { it.executeWithJson(any(), any()) } returns
+                ToolExecutionResult(output = "ok", success = true, structuredOutput = node)
+        }
+
+        val outcome = f.run(listOf(tool)).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.unknownUser shouldBe 1
+        outcome.launched shouldBe 0
+        f.launches shouldBe emptyList()
+    }
+
+    "skips entities whose targets list is empty" {
+        val f = Fixture(objectMapper)
+        val node = objectMapper.readTree(
+            """{"data": [{"entityType": "TALENT", "entityId": "task-ghost", "targets": []}], "metadata": {"totalCount": 1, "next": null}}"""
+        )
+        val tool = mockk<StandardTool<*>>().also {
+            every { it.name } returns "SearchTalents"
+            coEvery { it.executeWithJson(any(), any()) } returns
+                ToolExecutionResult(output = "ok", success = true, structuredOutput = node)
+        }
+
+        val outcome = f.run(listOf(tool)).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.unknownUser shouldBe 1
+        outcome.launched shouldBe 0
+        f.launches shouldBe emptyList()
+    }
+
+    "skips entities without a matching AgentOS user (target present but unknown)" {
+        val f = Fixture(objectMapper)
+        // targets[0].entityId = "ghost" but no user registered with that external id
         every { f.userService.findByExternalId("ghost") } returns null
 
         val outcome = f.run(listOf(searchTool(listOf("ghost")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
@@ -254,7 +316,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
     "a failed launch is counted and does not stop the loop" {
         val f = Fixture(objectMapper)
-        f.failLaunchFor = "alice"
+        f.failLaunchFor = "task-alice"
         f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
         f.knownUser("bob").also { f.grantAgent(it, "talent-analyzer") }
 
@@ -262,7 +324,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         outcome.failed shouldBe 1
         outcome.launched shouldBe 1
-        f.launches.map { it.task } shouldBe listOf("Analyse this entity: bob")
+        f.launches.map { it.task } shouldBe listOf("Analyse this entity: task-bob")
     }
 
     "processes at most agentLoopMaxItems entities" {
@@ -295,5 +357,20 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         outcome.interrupted shouldBe true
         outcome.launched shouldBe 0
         f.launches shouldBe emptyList()
+    }
+
+    "uses targets entityId for user resolution, not root entityId" {
+        val f = Fixture(objectMapper)
+        // entityId root = "task-alice", targets[0].entityId = "alice"
+        // The runner must call findByExternalId("alice"), NOT findByExternalId("task-alice")
+        val alice = f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        every { f.userService.findByExternalId("task-alice") } returns null // must NOT be called
+
+        val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.launched shouldBe 1
+        f.launches.single().userId shouldBe alice.metadata.id
+        verify(exactly = 0) { f.userService.findByExternalId("task-alice") }
+        verify(exactly = 1) { f.userService.findByExternalId("alice") }
     }
 })

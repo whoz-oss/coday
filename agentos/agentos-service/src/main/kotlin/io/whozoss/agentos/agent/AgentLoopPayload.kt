@@ -31,10 +31,24 @@ data class AgentLoopAct(
  * A single entity returned by the Search tool.
  *
  * @param entityType Category of the entity (e.g. "TALENT", "TASK").
- * @param entityId   External identifier used to resolve the end-user via
- *                   [io.whozoss.agentos.user.UserService.findByExternalId].
+ * @param entityId   External identifier of the business entity (e.g. task ID). Injected into
+ *                   the prompt template via `{entityId}`.
+ * @param targets    AgentOS users associated with this entity. The first target's [SearchResultTarget.entityId]
+ *                   is used to resolve the end-user via [io.whozoss.agentos.user.UserService.findByExternalId].
  */
 data class SearchResultItem(
+    val entityType: String,
+    val entityId: String,
+    val targets: List<SearchResultTarget>? = null,
+)
+
+/**
+ * A target user linked to a [SearchResultItem].
+ *
+ * @param entityType Category of the target entity (e.g. "USER").
+ * @param entityId   External identifier of the AgentOS user.
+ */
+data class SearchResultTarget(
     val entityType: String,
     val entityId: String,
 )
