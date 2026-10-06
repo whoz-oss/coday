@@ -7,6 +7,7 @@ import { CaseShellComponent } from './case-shell.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { UserStateService } from '../../services/user-state.service'
 import { THEME_PORT } from '../../services/theme.service'
+import { NamespaceStateService } from '@whoz-oss/agentos-dataflow'
 
 describe('CaseShellComponent', () => {
   const NS_ID = 'ns-1'
@@ -26,6 +27,7 @@ describe('CaseShellComponent', () => {
   let userStateMock: { currentUser: jest.Mock; loadMe: jest.Mock }
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
   let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
+  let namespaceStateMock: { selectNamespace: jest.Mock; namespaces$: any; initialized$: any }
 
   function makeComponent(queryParams: Record<string, string> = {}, cases: Case[] = []): CaseShellComponent {
     queryParams$ = new Subject()
@@ -49,6 +51,11 @@ describe('CaseShellComponent', () => {
       theme: jest.fn().mockReturnValue('light'),
       setTheme: jest.fn(),
     }
+    namespaceStateMock = {
+      selectNamespace: jest.fn(),
+      namespaces$: of([]),
+      initialized$: of(false),
+    }
 
     TestBed.configureTestingModule({
       providers: [
@@ -65,6 +72,7 @@ describe('CaseShellComponent', () => {
         { provide: NamespaceControllerService, useValue: namespaceControllerMock },
         { provide: THEME_PORT, useValue: themeMock },
         { provide: ElementRef, useValue: { nativeElement: document.createElement('div') } },
+        { provide: NamespaceStateService, useValue: namespaceStateMock },
       ],
     })
 
@@ -177,6 +185,21 @@ describe('CaseShellComponent', () => {
 
       expect(errorSpy).toHaveBeenCalled()
       expect(alertSpy).toHaveBeenCalled()
+    })
+  })
+
+  // ── Namespace navigation ───────────────────────────────────────────────────
+
+  describe('onNamespaceSelected', () => {
+    it('navigates to the selected namespace', () => {
+      const component = makeComponent({ ns: NS_ID })
+      routerMock.navigate.mockClear()
+
+      component['onNamespaceSelected']({ id: 'ns-2', name: 'NS2' } as any)
+
+      expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos/home'], {
+        queryParams: { ns: 'ns-2' },
+      })
     })
   })
 })

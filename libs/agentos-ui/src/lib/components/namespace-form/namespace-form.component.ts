@@ -101,22 +101,28 @@ export class NamespaceFormComponent implements OnInit {
   }
 
   protected submit(): void {
-    if (this.nameControl.invalid || this.isSubmitting()) return
+    if (this.form.controls.name.invalid || this.isSubmitting()) return
+
+    // Guard explicite avant d'utiliser l'id en mode édition
+    if (this.isEditMode() && !this.existingNamespace?.id) {
+      this.isSubmitting.set(false)
+      return
+    }
 
     this.isSubmitting.set(true)
 
     const payload: Namespace = {
       ...this.existingNamespace,
-      name: this.nameControl.value.trim(),
-      description: this.descriptionControl.value.trim() || undefined,
-      configPath: this.configPathControl.value.trim() || undefined,
-      externalId: this.externalIdControl.value.trim() || undefined,
-      defaultAgentName: this.defaultAgentNameControl.value.trim() || undefined,
+      name: this.form.controls.name.value.trim(),
+      description: this.form.controls.description.value.trim() || undefined,
+      configPath: this.form.controls.configPath.value.trim() || undefined,
+      externalId: this.form.controls.externalId.value.trim() || undefined,
+      defaultAgentName: this.form.controls.defaultAgentName.value.trim() || undefined,
       runCostThreshold: this.runCostThresholdControl.value ?? undefined,
     }
 
     const call$ = this.isEditMode()
-      ? this.namespaceController.updateNamespace(this.existingNamespace!.id ?? '', payload)
+      ? this.namespaceController.updateNamespace(this.existingNamespace!.id!, payload)
       : this.namespaceController.createNamespace(payload)
 
     call$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({

@@ -16,6 +16,9 @@ import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.sdk.spi.AnswerInterceptResult
+import io.whozoss.agentos.sdk.spi.AnswerInterceptor
+import io.whozoss.agentos.sdk.spi.CaseLifecycleObserver
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,6 +61,14 @@ private data class PendingCommand(
  * @param isAgentAuthorized defensive check called when [processNextStep] encounters an
  *   [AgentSelectedEvent] emitted by an agent (redirect). Returns true if the target agent
  *   is accessible to the current user. Called at redirect time — not pre-computed.
+ * @param answerInterceptors optional SPI hooks consulted for every answer to a [QuestionEvent]
+ *   before the [AnswerEvent] is persisted. Empty by default: no interception, behavior unchanged.
+ *   A rejection emits a [WarnEvent] and skips the [AnswerEvent].
+ *   This is the sole extension point for integration-specific answer gating: no
+ *   integration concept is modelled in this runtime.
+ * @param lifecycleObservers optional SPI observers notified when an event produced by this
+ *   runtime has been stored ([CaseLifecycleObserver.onEventStored]). Empty by default: no-op.
+ *   Status-transition notifications are handled by the service (see `CaseServiceImpl`).
  * @param runAgent fetches the named agent, runs it against the current event history,
  *   and pipes each produced event through [storeEvent]. The implementation is responsible
  *   for deciding whether to emit [AgentRunningEvent] by inspecting the event history
@@ -93,6 +104,8 @@ class CaseRuntime(
      * Defaults to 100 to preserve the previous hardcoded value.
      */
     private val maxIterations: Int = 100,
+    private val answerInterceptors: List<AnswerInterceptor> = emptyList(),
+    private val lifecycleObservers: List<CaseLifecycleObserver> = emptyList(),
 ) : CaseEventEmitter by emitter {
     private val eventList = InMemoryCaseEventList(inputEvents)
 
@@ -273,6 +286,23 @@ class CaseRuntime(
         val saved = storeEvent(event)
         eventList.add(saved)
         emit(saved)
+        notifyEventStored(saved)
+    }
+
+    /**
+     * Notify registered [CaseLifecycleObserver]s that [event] has been stored.
+     * Observers are notifications only: a faulty hook is logged and never breaks execution.
+     */
+    private fun notifyEventStored(event: CaseEvent) {
+        if (lifecycleObservers.isEmpty()) return
+        lifecycleObservers.forEach { observer ->
+            runCatching { observer.onEventStored(id, event) }
+                .onFailure { error ->
+                    logger.warn(error) {
+                        "[CaseRuntime $id] CaseLifecycleObserver ${observer::class.simpleName} failed on event ${event.id}"
+                    }
+                }
+        }
     }
 
     /**
@@ -326,6 +356,41 @@ class CaseRuntime(
                     if (answerText.isBlank()) {
                         logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
                     } else {
+                        // SPI gate: let registered interceptors validate the answer before it is
+                        // persisted. Empty by default, so existing behavior is unchanged. A rejection
+                        // surfaces a WarnEvent and skips the AnswerEvent.
+                        for (interceptor in answerInterceptors) {
+                            val result =
+                                runCatching { interceptor.interceptAnswer(id, questionEvent, answerText, actor) }
+                                    .onFailure { error ->
+                                        logger.warn(error) {
+                                            "[CaseRuntime $id] AnswerInterceptor ${interceptor::class.simpleName} " +
+                                                "threw for question $answerToEventId, ignoring"
+                                        }
+                                    }.getOrElse { AnswerInterceptResult.Accept }
+                            when (result) {
+                                AnswerInterceptResult.Accept -> Unit
+                                AnswerInterceptResult.ExternallyHandled -> {
+                                    logger.info {
+                                        "[CaseRuntime $id] Answer for question $answerToEventId was handled externally"
+                                    }
+                                    return // acknowledged; external owner schedules any successor work
+                                }
+                                is AnswerInterceptResult.Reject -> {
+                                    logger.warn {
+                                        "[CaseRuntime $id] Answer rejected by interceptor for question $answerToEventId: ${result.reason}"
+                                    }
+                                    storeAndEmitEvent(
+                                        WarnEvent(
+                                            namespaceId = namespaceId,
+                                            caseId = id,
+                                            message = "Answer rejected: ${result.reason}. Please try again.",
+                                        ),
+                                    )
+                                    return // do NOT create AnswerEvent; agent stays suspended
+                                }
+                            }
+                        }
                         storeAndEmitEvent(questionEvent.createAnswer(actor, answerText))
                         logger.info { "[CaseRuntime $id] Answer added for question: ${questionEvent.question}" }
                         return // answer is passive — waits for agent to process it

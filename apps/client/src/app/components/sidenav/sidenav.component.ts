@@ -335,6 +335,17 @@ export class SidenavComponent implements OnInit, OnDestroy {
   }
 
   /**
+   * Navigate to the Workstream Cockpit page
+   */
+  openWorkstream(): void {
+    if (!this.requireProjectSelection('open workstream cockpit')) {
+      return
+    }
+    const projectName = this.selectedProjectName()
+    this.router.navigate(['project', projectName, 'workstream'])
+  }
+
+  /**
    * Toggle section expansion.
    *
    * - 'settings' is the top-level Control Center toggle.

@@ -13,7 +13,7 @@ import {
 } from '@coday/model'
 import { AiTools, DelegateTools } from '@coday/integrations-ai'
 import { McpToolsFactory } from '@coday/mcp'
-import { CoreTools, MemoryTools, ProjectScriptsTools, ThreadTools, TmuxTools } from '@coday/integration'
+import { CoreTools, FactoryTools, MemoryTools, ProjectScriptsTools, ThreadTools, TmuxTools } from '@coday/integration'
 import { FileTools } from '@coday/integrations-file'
 import { GitTools, GitWorktreeTools } from '@coday/integrations-git'
 import { GitLabTools } from '@coday/integrations-gitlab'
@@ -107,6 +107,8 @@ export class Toolbox implements Killable {
       () => new HttpConfigTools(interactor, services.integrationConfig)
     )
     this.factoryConstructors.set(TmuxTools.TYPE, (name) => new TmuxTools(interactor, name))
+    // Transitional Express adapter; remove when AgentOS FactoryPublishProjectionTool is the only runtime path.
+    this.factoryConstructors.set(FactoryTools.TYPE, (name, config) => new FactoryTools(interactor, name, config))
     this.factoryConstructors.set(ExcelTools.TYPE, (name, config) => new ExcelTools(interactor, name, config))
   }
 

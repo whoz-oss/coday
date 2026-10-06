@@ -1,0 +1,3 @@
+# Backup dumps are local artefacts: never commit them.
+*
+!.gitignore
