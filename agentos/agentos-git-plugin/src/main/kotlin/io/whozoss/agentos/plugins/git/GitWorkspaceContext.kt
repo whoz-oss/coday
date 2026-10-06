@@ -29,13 +29,11 @@ internal data class GitWorkspaceContext(
 
         /** The context a case Git workspace injects, or null when one of its values is missing. */
         fun from(config: JsonNode?): GitWorkspaceContext? =
-            GitWorkspaceContext(
-                workingDirectory = Path.of(text(config, GitToolParameters.WORKING_DIRECTORY) ?: return null),
-                gitDir = Path.of(text(config, GitToolParameters.GIT_DIR) ?: return null),
-                commonGitDir = Path.of(text(config, GitToolParameters.COMMON_GIT_DIR) ?: return null),
-                repositoryUrl = text(config, GitToolParameters.REPOSITORY_URL) ?: return null,
-                mainBranch = text(config, GitToolParameters.MAIN_BRANCH) ?: return null,
-            )
+            INJECTED_KEYS.mapNotNull { text(config, it) }
+                .takeIf { it.size == INJECTED_KEYS.size }
+                ?.let { (workingDirectory, gitDir, commonGitDir, repositoryUrl, mainBranch) ->
+                    GitWorkspaceContext(Path.of(workingDirectory), Path.of(gitDir), Path.of(commonGitDir), repositoryUrl, mainBranch)
+                }
 
         /** The repository root a configuration names outside a workspace, or null when it names none. */
         fun configuredDirectory(config: JsonNode?): Path? =
@@ -83,6 +81,15 @@ internal data class GitWorkspaceContext(
             config: JsonNode?,
             key: String,
         ): String? = config?.get(key)?.takeIf { it.isTextual }?.asText()?.takeIf { it.isNotBlank() }
+
+        /** Every value a case Git workspace injects, in constructor order. */
+        private val INJECTED_KEYS = listOf(
+            GitToolParameters.WORKING_DIRECTORY,
+            GitToolParameters.GIT_DIR,
+            GitToolParameters.COMMON_GIT_DIR,
+            GitToolParameters.REPOSITORY_URL,
+            GitToolParameters.MAIN_BRANCH,
+        )
 
         /** Keeps a Git error readable in a tool answer. */
         private const val MAX_DETAIL = 500

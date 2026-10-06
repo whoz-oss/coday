@@ -69,32 +69,35 @@ class GitToolProvider(
 
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
         // A case Git workspace injects its whole context. Elsewhere the configuration names the repository.
-        val injected = GitWorkspaceContext.from(config)
-        val directory = injected?.workingDirectory ?: configuredDirectory(config, configName) ?: return emptyList()
         val workspace =
-            if (injected != null) GitWorkspace(injected, runner, properties.cloneTimeout)
-            else GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner, properties.cloneTimeout)
+            GitWorkspaceContext.from(config)?.let { injected -> GitWorkspace(injected, runner, properties.cloneTimeout) }
+                ?: configuredDirectory(config, configName)?.let { directory ->
+                    GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner, properties.cloneTimeout)
+                }
         val access = GitForgeAccess(context?.credentialProvider, context?.userExternalId, gitHub)
-        return gitTools(configName ?: INTEGRATION_TYPE, workspace, access, gitHub)
+        return workspace?.let { gitTools(configName ?: INTEGRATION_TYPE, it, access, gitHub) }.orEmpty()
     }
 
     private fun configuredDirectory(
         config: JsonNode?,
         configName: String?,
     ): Path? {
-        val directory = GitWorkspaceContext.configuredDirectory(config) ?: run {
-            logger.debug { "GIT integration '$configName': no Git workspace and no configured workingDirectory" }
-            return null
+        val directory = GitWorkspaceContext.configuredDirectory(config)
+        return when {
+            directory == null -> {
+                logger.debug { "GIT integration '$configName': no Git workspace and no configured workingDirectory" }
+                null
+            }
+            !directory.isAbsolute -> {
+                logger.error { "GIT integration '$configName': workingDirectory must be an absolute path, no tools registered" }
+                null
+            }
+            GitWorkspaceContext.configuredRepositoryUrl(config) == null -> {
+                logger.error { "GIT integration '$configName': repositoryUrl is required with workingDirectory, no tools registered" }
+                null
+            }
+            else -> directory
         }
-        if (!directory.isAbsolute) {
-            logger.error { "GIT integration '$configName': workingDirectory must be an absolute path, no tools registered" }
-            return null
-        }
-        if (GitWorkspaceContext.configuredRepositoryUrl(config) == null) {
-            logger.error { "GIT integration '$configName': repositoryUrl is required with workingDirectory, no tools registered" }
-            return null
-        }
-        return directory
     }
 
     companion object : KLogging() {
