@@ -1,6 +1,9 @@
-package io.whozoss.agentos.agent
+package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.agent.AgentLoopAct
+import io.whozoss.agentos.agent.AgentLoopPayload
+import io.whozoss.agentos.agent.CaseLauncher
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.permissions.Action
@@ -19,10 +22,10 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Executes the hardcoded SEARCH → ACT workflow of an [AgentLoop] run.
+ * Executes the hardcoded SEARCH → ACT workflow of an [io.whozoss.agentos.agent.AgentLoop] run.
  *
- * Kept separate from [AgentLoop] so the workflow logic does not depend on how it is triggered:
- * [AgentLoop] only parses the case message and turns the [LoopRunOutcome] into case events.
+ * Kept separate from [io.whozoss.agentos.agent.AgentLoop] so the workflow logic does not depend on how it is triggered:
+ * [io.whozoss.agentos.agent.AgentLoop] only parses the case message and turns the [LoopRunOutcome] into case events.
  *
  * ## Flow
  *
@@ -232,7 +235,7 @@ class LoopWorkflowRunner(
 
     /**
      * [AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName] is a prefix match, so the
-     * result is narrowed to an exact (case-insensitive) name — same as [AgentServiceImpl.findAgentByName].
+     * result is narrowed to an exact (case-insensitive) name — same as [io.whozoss.agentos.agent.AgentServiceImpl.findAgentByName].
      */
     private fun hasAgentAccess(
         userId: UUID,
@@ -272,7 +275,7 @@ class LoopWorkflowRunner(
 }
 
 /**
- * Everything an [AgentLoop] run needs from its case and agent definition.
+ * Everything an [io.whozoss.agentos.agent.AgentLoop] run needs from its case and agent definition.
  *
  * @param triggerUser  The user who launched the run, or null when it cannot be resolved.
  * @param tools        Tools resolved for the loop agent — the Search tool is looked up here.
