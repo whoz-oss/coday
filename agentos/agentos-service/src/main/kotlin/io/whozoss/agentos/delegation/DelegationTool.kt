@@ -56,7 +56,7 @@ import java.util.UUID
  * @param namespaceId      Namespace both cases belong to.
  * @param allowedAgents    Allowlist of agent names this tool may delegate to.
  * @param loadCaseEvents   Lambda that loads persisted events for a case id.
- * @param timeoutMs        Max active time per delegation, excluding cost confirmation (default 5 min).
+ * @param timeoutMs        Max active time per delegation, including nested work and excluding cost confirmation.
  */
 class DelegationTool(
     private val subCaseManager: SubCaseManager,
@@ -64,7 +64,7 @@ class DelegationTool(
     private val namespaceId: UUID,
     private val allowedAgents: List<String>,
     private val loadCaseEvents: suspend (UUID) -> List<CaseEvent>,
-    private val timeoutMs: Long = 5 * 60 * 1_000L,
+    private val timeoutMs: Long,
     private val eventLoadTimeoutMs: Long = EVENT_LOAD_TIMEOUT_MS,
 ) : StandardTool<DelegationTool.Args> {
     /**

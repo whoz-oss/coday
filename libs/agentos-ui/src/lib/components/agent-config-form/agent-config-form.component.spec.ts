@@ -1,8 +1,12 @@
+import { provideHttpClient } from '@angular/common/http'
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
 import {
   AgentConfig,
+  BASE_PATH,
   AgentConfigControllerService,
+  AgentConfigDefaultsControllerService,
   AgentConfigExportService,
   IntegrationTypeControllerService,
 } from '@whoz-oss/agentos-api-client'
@@ -25,6 +29,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
     createAgentConfig: jest.Mock
     updateAgentConfig: jest.Mock
   }
+  let defaultsController: { getAgentConfigDefaults: jest.Mock }
   let integrationState: { loadNamespaceConfigs: jest.Mock; loadPlatformConfigs: jest.Mock }
   let integrationType: { listTypesIntegrationType: jest.Mock }
   let router: { navigate: jest.Mock }
@@ -60,6 +65,9 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
 
   const internals = () =>
     component as unknown as {
+      delegationTimeoutControl: { setValue: (v: number | null) => void; value: number | null; invalid: boolean }
+      useDefaultDelegationTimeout: () => void
+      defaultDelegationTimeoutSeconds: () => number | null
       nameControl: { setValue: (v: string) => void }
       builtInRows: () => Array<{
         type: string
@@ -82,6 +90,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
   }
 
   beforeEach(() => {
+    defaultsController = { getAgentConfigDefaults: jest.fn().mockReturnValue(of({ delegationTimeoutSeconds: 1800 })) }
     routeAgentConfigId = null
     controller = {
       getByIdAgentConfig: jest.fn(),
@@ -109,6 +118,7 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       providers: [
         { provide: ActivatedRoute, useValue: activatedRoute },
         { provide: Router, useValue: router },
+        { provide: AgentConfigDefaultsControllerService, useValue: defaultsController },
         { provide: AgentConfigControllerService, useValue: controller },
         { provide: IntegrationConfigStateService, useValue: integrationState },
         { provide: IntegrationTypeControllerService, useValue: integrationType },
@@ -397,5 +407,105 @@ describe('AgentConfigFormComponent (built-in exchange integrations)', () => {
       )
       expect(restriction?.textContent).toContain('readFile, ls')
     })
+  })
+  it('keeps a new agent inheriting the actual server default', () => {
+    component.ngOnInit()
+    expect(internals().defaultDelegationTimeoutSeconds()).toBe(1800)
+    internals().nameControl.setValue('new-agent')
+    internals().submit()
+    expect(controller.createAgentConfig.mock.calls[0][0].delegationTimeoutSeconds).toBeNull()
+  })
+
+  it('preserves a stored timeout when saving another field', () => {
+    routeAgentConfigId = 'a-1'
+    controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ delegationTimeoutSeconds: 3600 })))
+    component.ngOnInit()
+    expect(internals().delegationTimeoutControl.value).toBe(3600)
+    internals().nameControl.setValue('renamed')
+    internals().submit()
+    expect(controller.updateAgentConfig.mock.calls[0][1].delegationTimeoutSeconds).toBe(3600)
+  })
+
+  it('clears an existing override explicitly when returning to the server default', () => {
+    routeAgentConfigId = 'a-1'
+    controller.getByIdAgentConfig.mockReturnValue(of(editConfig({ delegationTimeoutSeconds: 3600 })))
+    component.ngOnInit()
+    internals().useDefaultDelegationTimeout()
+    internals().submit()
+    expect(controller.updateAgentConfig.mock.calls[0][1].delegationTimeoutSeconds).toBeNull()
+  })
+
+  it.each([0, -1, 1.5, 2147483648])('rejects invalid timeout %s', (value) => {
+    component.ngOnInit()
+    internals().nameControl.setValue('agent')
+    internals().delegationTimeoutControl.setValue(value)
+    internals().submit()
+    expect(internals().delegationTimeoutControl.invalid).toBe(true)
+    expect(controller.createAgentConfig).not.toHaveBeenCalled()
+  })
+
+  it('allows a custom timeout even if loading defaults fails', () => {
+    defaultsController.getAgentConfigDefaults.mockReturnValue(throwError(() => new Error('unavailable')))
+    component.ngOnInit()
+    expect(internals().defaultDelegationTimeoutSeconds()).toBeNull()
+    internals().nameControl.setValue('agent')
+    internals().delegationTimeoutControl.setValue(1200)
+    internals().submit()
+    expect(controller.createAgentConfig.mock.calls[0][0].delegationTimeoutSeconds).toBe(1200)
+  })
+
+  it('renders the server default and lets users clear an override', () => {
+    fixture.detectChanges()
+    const input: HTMLInputElement = fixture.nativeElement.querySelector('#delegation-timeout')
+    expect(fixture.nativeElement.textContent).toContain('1800 s (30 min)')
+    input.value = '3600'
+    input.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    const reset = Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>).find(
+      (button) => button.textContent?.includes('Use server default')
+    )!
+    reset.click()
+    fixture.detectChanges()
+    expect(input.value).toBe('')
+    expect(internals().delegationTimeoutControl.value).toBeNull()
+  })
+})
+
+describe('AgentConfigFormComponent (generated defaults HTTP client)', () => {
+  it('requests JSON through the generated client and displays the server default', () => {
+    TestBed.configureTestingModule({
+      imports: [AgentConfigFormComponent],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: BASE_PATH, useValue: '' },
+        {
+          provide: ActivatedRoute,
+          useValue: { snapshot: { params: { namespaceId: 'ns-1' }, paramMap: { get: () => null } } },
+        },
+        { provide: Router, useValue: { navigate: jest.fn() } },
+        { provide: AgentConfigControllerService, useValue: {} },
+        { provide: AgentConfigExportService, useValue: {} },
+        {
+          provide: IntegrationConfigStateService,
+          useValue: { loadNamespaceConfigs: () => of([]), loadPlatformConfigs: () => of([]) },
+        },
+        { provide: IntegrationTypeControllerService, useValue: { listTypesIntegrationType: () => of([]) } },
+      ],
+    })
+    const fixture = TestBed.createComponent(AgentConfigFormComponent)
+    const http = TestBed.inject(HttpTestingController)
+    fixture.detectChanges()
+
+    const request = http.expectOne('/api/agent-configs/defaults')
+    expect(request.request.method).toBe('GET')
+    expect(request.request.responseType).toBe('json')
+    expect(request.request.headers.get('Accept')).toBe('application/json')
+    request.flush({ delegationTimeoutSeconds: 1800 }, { headers: { 'Content-Type': 'application/json' } })
+    fixture.detectChanges()
+
+    expect(fixture.nativeElement.querySelector('#delegation-timeout-hint').textContent).toContain('1800 s (30 min)')
+    expect(fixture.nativeElement.querySelector('#delegation-timeout').value).toBe('')
+    http.verify()
   })
 })

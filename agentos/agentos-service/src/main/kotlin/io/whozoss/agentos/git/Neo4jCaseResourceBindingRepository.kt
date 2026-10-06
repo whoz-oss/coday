@@ -49,10 +49,13 @@ open class Neo4jCaseResourceBindingRepository(
         statuses: Collection<CaseResourceStatus>,
         limit: Int,
         after: CaseResourceBindingCursor?,
-    ): List<CaseResourceBinding> =
-        neo4jRepository
-            .findActiveByStatusIn(statuses.map { it.name }, limit, after?.created, after?.id?.toString())
-            .map { it.toDomain() }
+    ): List<CaseResourceBinding> {
+        val names = statuses.map { it.name }
+        return when (after) {
+            null -> neo4jRepository.findActiveByStatusIn(names, limit)
+            else -> neo4jRepository.findActiveByStatusInAfter(names, limit, after.created, after.id.toString())
+        }.map { it.toDomain() }
+    }
 
     @Transactional
     open override fun delete(id: UUID): Boolean =

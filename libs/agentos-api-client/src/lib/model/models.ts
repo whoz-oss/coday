@@ -1,6 +1,7 @@
 export * from './actor'
 export * from './add-message-request'
 export * from './agent-config'
+export * from './agent-config-defaults-dto'
 export * from './agent-config-search-request'
 export * from './agent-definition'
 export * from './agent-definition-tool-summary'
