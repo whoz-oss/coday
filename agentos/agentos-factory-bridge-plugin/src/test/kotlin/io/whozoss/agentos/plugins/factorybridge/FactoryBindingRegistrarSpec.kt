@@ -7,7 +7,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Host transport wiring: attributes extracted by the AgentOS host from the `X-Factory-*`
+ * Host transport wiring: attributes extracted by the AgentOS host from the `X-External-Context-*`
  * headers (and the shared credential) are turned into a durable binding that the
  * [FactoryExternalExecutionContextProvider] can expose — no longer an empty `{}`.
  */
@@ -29,7 +29,7 @@ class FactoryBindingRegistrarSpec : StringSpec({
         agentName?.let { put(FactoryBindingRegistrar.ATTRIBUTE_AGENT_NAME, it) }
     }
 
-    "a case bound from X-Factory-* attributes is visible through the execution context provider" {
+    "a case bound from X-External-Context-* attributes is visible through the execution context provider" {
         val caseId = UUID.randomUUID()
         val namespaceId = UUID.randomUUID()
         val services = FactoryTestFixtures.services(secret = "shared-secret")

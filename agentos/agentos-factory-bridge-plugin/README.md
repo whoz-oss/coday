@@ -98,15 +98,14 @@ classloader; nothing is added to the SDK or the host.
 
 The AgentOS host owns the HTTP transport, the plugin owns the trust decision:
 
-1. The Factory creates a case with the `X-Factory-Attempt-Id` and
-   `X-Factory-Capability-Token` headers (optionally `X-Factory-Runtime-Id`,
-   `X-Factory-Agent-Name`, `X-Factory-Expires-At`) and the shared secret.
+1. The Factory creates a case with the `X-External-Context-Attempt-Id` and
+   `X-External-Context-Capability-Token` headers (optionally `X-External-Context-Runtime-Id`,
+   `X-External-Context-Agent-Name`, `X-External-Context-Expires-At`) and the shared secret.
 2. `io.whozoss.agentos.binding.ExternalContextBindingFilter` intercepts `POST /api/cases`,
    reads the created case id/namespace from the response, and forwards the opaque
    attributes to every `ExternalContextBindingRegistrar` found via PF4J.
 3. Alternatively, bind explicitly with
-   `PUT /internal/external-context/cases/{caseId}/bindings` (alias
-   `PUT /internal/factory/cases/{caseId}/step-result-binding`) and the same headers.
+   `PUT /internal/external-context/cases/{caseId}/bindings` and the same headers.
 4. `FactoryBindingRegistrar` validates the shared secret (constant-time), resolves the
    binding facts and records a durable binding. `FactoryExternalExecutionContextProvider`
    then exposes `capabilityToken` / `attemptId` / `runtimeId` to the case run instead of an

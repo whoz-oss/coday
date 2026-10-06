@@ -11,7 +11,7 @@ import java.util.UUID
  * case it has just created (or via the dedicated binding endpoint).
  *
  * The host owns the transport but knows nothing about the binding's semantics: it extracts
- * the opaque `X-Factory-*` attributes and the shared credential and forwards them to every
+ * the opaque `X-External-Context-*` attributes and the shared credential and forwards them to every
  * registered [ExternalContextBindingRegistrar]. This extension validates the shared secret
  * (constant-time compare) and records the binding durably in
  * [FactoryStepResultBindingRegistry].
@@ -20,11 +20,11 @@ import java.util.UUID
  * id or capability token all yield `false`.
  *
  * Recognised attribute keys (case-insensitive, produced by the host from the
- * `X-Factory-*` headers):
- * - [ATTRIBUTE_ATTEMPT_ID] (`X-Factory-Attempt-Id`)
- * - [ATTRIBUTE_CAPABILITY_TOKEN] (`X-Factory-Capability-Token`)
- * - [ATTRIBUTE_RUNTIME_ID] (`X-Factory-Runtime-Id`, defaults to the configured runtime id)
- * - [ATTRIBUTE_AGENT_NAME] (`X-Factory-Agent-Name`, defaults to the wildcard so a
+ * `X-External-Context-*` headers):
+ * - [ATTRIBUTE_ATTEMPT_ID] (`X-External-Context-Attempt-Id`)
+ * - [ATTRIBUTE_CAPABILITY_TOKEN] (`X-External-Context-Capability-Token`)
+ * - [ATTRIBUTE_RUNTIME_ID] (`X-External-Context-Runtime-Id`, defaults to the configured runtime id)
+ * - [ATTRIBUTE_AGENT_NAME] (`X-External-Context-Agent-Name`, defaults to the wildcard so a
  *   capability bound before the agent identity is known can still be redeemed)
  */
 @Extension
