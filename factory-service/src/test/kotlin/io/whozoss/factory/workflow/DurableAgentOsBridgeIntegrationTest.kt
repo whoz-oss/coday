@@ -3,6 +3,7 @@ package io.whozoss.factory.workflow
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
+import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.adapter.agentos.CaseHandle
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
@@ -257,6 +258,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
             attemptId: String,
             timeoutMs: Long,
             onIntermediateVerdict: (AgentOsExecutionVerdict.WaitingHuman) -> Unit,
+            onAnswerObserved: (CaseEventView) -> Unit,
         ): AgentOsExecutionVerdict {
             val verdict = observeTurn(caseId, attemptId, timeoutMs)
             if (verdict is AgentOsExecutionVerdict.WaitingHuman) onIntermediateVerdict(verdict)
