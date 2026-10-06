@@ -40,7 +40,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties(prefix = "agentos.defaults")
 data class AgentConfigProperties(
     val agentName: String? = null,
-    /** Default wall-clock budget for each outgoing delegation, in seconds. */
+    /** Default active-time budget for each outgoing delegation, in seconds, excluding cost confirmation. */
     val delegationTimeoutSeconds: Int = 300,
     /**
      * Char-equivalent cost of one attached image against the detailed-tool budget.

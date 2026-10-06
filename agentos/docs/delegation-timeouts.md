@@ -62,9 +62,11 @@ bounds the wait for the entire Orchestrator turn, including its wait for Builder
 Giving Orchestrator a longer budget for Builder does not extend ProductEngineer's
 budget. Configure the outer agent with enough time for the whole delegated task.
 
-The timer measures elapsed time, not inactivity. Each parallel delegation has its
-own timer, starting after its child case has been created or resumed. Loading the
-completed case's event history has a separate timeout.
+The timer measures elapsed time, not inactivity. When usage tracking is enabled,
+time spent waiting for a human cost confirmation, on the child or on one of its
+descendants, is not counted. Each parallel delegation has its own timer, starting
+after its child case has been created or resumed. Loading the completed case's
+event history has a separate timeout.
 
 On expiration, AgentOS requests termination of the child and its active
 descendants and returns `TIMEOUT`. A killed case cannot be resumed through
