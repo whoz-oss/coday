@@ -306,7 +306,7 @@ sealed interface LoopRunOutcome {
     data class Completed(
         val searchTool: String,
         val returned: Int,
-        val totalCount: Int?,
+        val totalCount: Long?,
         val hasMorePages: Boolean,
         val launchedCaseIds: List<UUID>,
         val unknownUser: Int,

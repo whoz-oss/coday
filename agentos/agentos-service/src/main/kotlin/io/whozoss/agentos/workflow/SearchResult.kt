@@ -42,7 +42,7 @@ data class SearchResultTarget(
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class SearchResultMetadata(
-    val totalCount: Int?,
+    val totalCount: Long?,
     val next: String?,
 )
 
