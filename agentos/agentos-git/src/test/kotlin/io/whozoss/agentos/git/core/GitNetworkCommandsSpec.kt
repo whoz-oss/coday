@@ -5,13 +5,13 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Duration
 import java.util.Base64
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -28,19 +28,6 @@ class GitNetworkCommandsSpec :
         )
         val runner = GitCommandRunner(properties)
         val credentials = GitCredentials.UsernamePassword("synthetic-user", "synthetic-test-token")
-
-        fun git(directory: Path, vararg args: String): String {
-            val process = ProcessBuilder(listOf("git", *args)).directory(directory.toFile()).redirectErrorStream(true).also {
-                it.environment().clear()
-                it.environment()["PATH"] = System.getenv("PATH") ?: "/usr/bin:/bin"
-                it.environment()["GIT_CONFIG_GLOBAL"] = "/dev/null"
-                it.environment()["GIT_CONFIG_SYSTEM"] = "/dev/null"
-                it.environment()["GIT_TERMINAL_PROMPT"] = "0"
-            }.start()
-            val output = process.inputStream.bufferedReader().readText()
-            check(process.waitFor(30, TimeUnit.SECONDS) && process.exitValue() == 0) { output }
-            return output.trim()
-        }
 
         fun repository(): Path {
             val root = Files.createTempDirectory("agentos-network-spec-")
@@ -309,6 +296,151 @@ class GitNetworkCommandsSpec :
             runner.assertNoHostileLocalConfig(local.resolve(".git"))
             runner.runOrThrow(GitInvocation(listOf("branch", "managed"), gitDir = local.resolve(".git")))
             marker.exists() shouldBe false
+        }
+
+        // Managed push: a file remote only, so nothing here may reach a network or a private host.
+        val pushRunner = GitCommandRunner(
+            GitExecutionProperties(allowedRemoteProtocols = setOf("file"), defaultTimeout = Duration.ofSeconds(10)),
+        )
+
+        fun remote(): Path = Files.createTempDirectory("agentos-push-remote-").also { git(it, "init", "--quiet", "--bare") }
+
+        fun workspace(): Path {
+            val root = Files.createTempDirectory("agentos-push-local-")
+            git(root, "init", "--quiet", "--initial-branch=main")
+            git(root, "config", "user.name", "CI")
+            git(root, "config", "user.email", "ci@example.com")
+            git(root, "config", "commit.gpgsign", "false")
+            root.resolve("README.md").writeText("initial\n")
+            git(root, "add", ".")
+            git(root, "commit", "--quiet", "-m", "initial")
+            git(root, "switch", "--quiet", "-c", "feature")
+            root.resolve("feature.txt").writeText("work\n")
+            git(root, "add", ".")
+            git(root, "commit", "--quiet", "-m", "work")
+            return root
+        }
+
+        fun push(local: Path, url: String, vararg options: String): GitCommandResult =
+            pushRunner.run(
+                GitInvocation(
+                    listOf("push") + options + listOf("--", url, "refs/heads/feature:refs/heads/feature"),
+                    gitDir = local.resolve(".git"),
+                    credentials = credentials,
+                ),
+            )
+
+        fun Path.url(): String = toUri().toString()
+
+        "a push publishes the branch to the explicit remote and records its tracking ref" {
+            val origin = remote()
+            val local = workspace()
+
+            val result = push(local, origin.url())
+
+            result.shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe true
+            val head = git(local, "rev-parse", "HEAD")
+            git(origin, "rev-parse", "refs/heads/feature") shouldBe head
+            git(local, "rev-parse", "refs/remotes/origin/feature") shouldBe head
+        }
+
+        "shared configuration can neither redirect a push nor run a hook" {
+            val origin = remote()
+            val attacker = remote()
+            val local = workspace()
+            val marker = local.resolve("hook-fired")
+            val hooks = Files.createDirectories(local.resolve("planted-hooks"))
+            hooks.resolve("pre-push").writeText("#!/bin/sh\ntouch '$marker'\n")
+            hooks.resolve("pre-push").toFile().setExecutable(true)
+            git(local, "config", "url.${attacker.url()}.pushInsteadOf", origin.url())
+            git(local, "config", "core.hooksPath", hooks.toString())
+            // Control: ordinary Git obeys both and pushes to the attacker's remote.
+            git(local, "push", "--quiet", origin.url(), "refs/heads/feature:refs/heads/feature")
+            git(attacker, "rev-parse", "refs/heads/feature") shouldBe git(local, "rev-parse", "HEAD")
+            marker.exists() shouldBe true
+            Files.delete(marker)
+
+            val result = push(local, origin.url())
+
+            result.shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe true
+            git(origin, "rev-parse", "refs/heads/feature") shouldBe git(local, "rev-parse", "HEAD")
+            marker.exists() shouldBe false
+        }
+
+        "a lease refuses to overwrite remote work it has not seen" {
+            val origin = remote()
+            val local = workspace()
+            push(local, origin.url()).shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe true
+            val seen = git(local, "rev-parse", "HEAD")
+            // Someone else advances the remote branch.
+            val other = Files.createTempDirectory("agentos-push-other-")
+            git(other, "clone", "--quiet", "--branch", "feature", origin.url(), ".")
+            git(other, "-c", "user.name=Other", "-c", "user.email=other@example.com", "commit", "--quiet", "--allow-empty", "-m", "other")
+            git(other, "push", "--quiet", "origin", "feature")
+            val theirs = git(origin, "rev-parse", "refs/heads/feature")
+            // The agent rewrites its branch.
+            git(local, "commit", "--quiet", "--amend", "-m", "rewritten")
+
+            push(local, origin.url()).shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe false
+            push(local, origin.url(), GitPushLease.of("feature", seen))
+                .shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe false
+            // An empty lease means "the branch must not exist yet": it cannot replace one.
+            push(local, origin.url(), GitPushLease.of("feature", ""))
+                .shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe false
+            git(origin, "rev-parse", "refs/heads/feature") shouldBe theirs
+
+            push(local, origin.url(), "--force-with-lease=refs/heads/feature:$theirs")
+                .shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe true
+            git(origin, "rev-parse", "refs/heads/feature") shouldBe git(local, "rev-parse", "HEAD")
+        }
+
+        "only one branch can be pushed to the branch of the same name, with a lease on that branch only" {
+            val origin = remote()
+            val url = origin.url()
+            val local = workspace()
+            val head = git(local, "rev-parse", "HEAD")
+            val feature = "refs/heads/feature:refs/heads/feature"
+            val marker = Files.createTempDirectory("agentos-receive-pack-").resolve("ran")
+            // Control: ordinary Git runs the receive-pack program it is given.
+            shouldThrow<IllegalStateException> { git(local, "push", "--receive-pack=touch $marker", url, feature) }
+            marker.exists() shouldBe true
+            Files.delete(marker)
+            val refused = listOf(
+                listOf("push", "--", url, "refs/heads/feature:refs/heads/main"),
+                listOf("push", "--", url, ":refs/heads/feature"),
+                listOf("push", "--", url, "+$feature"),
+                listOf("push", "--", url, "refs/heads/*:refs/heads/*"),
+                listOf("push", "--", url, "refs/tags/v1:refs/tags/v1"),
+                listOf("push", "--mirror", "--", url, feature),
+                listOf("push", "--receive-pack=touch $marker", "--", url, feature),
+                listOf("push", "--force-with-lease", "--", url, feature),
+                listOf("push", GitPushLease.of("main", head), "--", url, feature),
+                listOf("push", GitPushLease.of("feature", "main"), "--", url, feature),
+                listOf("push", GitPushLease.of("feature", head.take(7)), "--", url, feature),
+                listOf("push", url, feature),
+            )
+
+            refused.forEach { args ->
+                pushRunner.run(GitInvocation(args, gitDir = local.resolve(".git"), credentials = credentials))
+                    .shouldBeInstanceOf<GitCommandResult.Failed>()
+            }
+            git(origin, "for-each-ref", "--format=%(refname)") shouldBe ""
+            marker.exists() shouldBe false
+        }
+
+        "a push replaces a symbolic tracking ref without changing its local branch target" {
+            val origin = remote()
+            val local = workspace()
+            val head = git(local, "rev-parse", "HEAD")
+            val other = git(local, "rev-parse", "main")
+            git(local, "branch", "agent-work", other)
+            git(local, "symbolic-ref", "refs/remotes/origin/feature", "refs/heads/agent-work")
+
+            push(local, origin.url()).shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe true
+
+            git(local, "rev-parse", "refs/remotes/origin/feature") shouldBe head
+            git(local, "for-each-ref", "--format=%(symref)", "refs/remotes/origin/feature") shouldBe ""
+            git(local, "rev-parse", "refs/heads/agent-work") shouldBe other
         }
     })
 

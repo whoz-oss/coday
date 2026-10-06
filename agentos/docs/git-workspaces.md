@@ -61,6 +61,8 @@ These tools run through the same hardened runner as the service: hooks, credenti
 
 The observer reads `HEAD` from the managed worktree's administrative directory. Detached HEAD means `branchName = null` and **no Git icon beside the case title**. After an agent checks out a branch, its name and status are observed. Switching back to detached HEAD clears the old branch/PR projection. The remote branch is fetched into a private `refs/agentos/observed/<root case id>` ref: observation never updates the agents' `refs/remotes/origin/*`, which `push --force-with-lease` uses as its expected value. The dirty-state check does not enter submodules, so their own filters never run in the service.
 
+The status polling observes five ready workspaces per interval (`agentos.git.status.interval-ms`, one minute by default). With N ready workspaces, each one is observed about every N / 5 intervals: with 100 of them, a new PR can take 20 minutes to appear. `POST /api/cases/{caseId}/workspace/refresh` observes a workspace at once.
+
 The icon beside the root case title represents only a known associated PR: draft, open, merged or closed without merge. No PR icon appears for local branches, pushed branches without a PR, unavailable status or authentication errors. Its tooltip gives the PR number and state. The icon is independent of the runtime glyph and tree chevron, including root cases with children. Branch names, PR details and changed files appear in the Files environment panel. The conversation banner is reserved for preparation, failure and cleanup notices; preparation retry remains available when Files is closed.
 
 When case files are opened during worktree preparation, the drawer shows a spinner and an explanation instead of a file-loading error. It shares workspace status with the conversation banner and namespace list, and loads the files automatically when ready. Failed preparation remains an error, and leaving the case cancels the wait. Namespaces and cases without Git keep their normal file loading behavior.
@@ -116,7 +118,9 @@ the `gitworkspaces` Actuator endpoint, registered only with the worker, over HTT
 
 A pause takes effect after the item in progress: a clone, worktree or setup already running is not
 interrupted. It applies to this instance only and is lost on restart. The
-`agentos.git.worker.paused` and `agentos.git.monitor.paused` gauges report it.
+`agentos.git.worker.paused` and `agentos.git.monitor.paused` gauges report it. The status polling
+has its own metrics: `agentos.git.monitor.sweep` (timer) and `agentos.git.monitor.errors` (counter of
+observations that ended without a status, and of failed sweeps).
 
 Mount persistent storage for `/app/data` (Neo4j and Exchange), and keep the Exchange mount path stable. Git worktrees record absolute paths; moving the volume to another container path requires explicit repair. `AGENTOS_EXCHANGE_MOUNT_ROOT` selects the Exchange root. The default image uses `/app/data/exchange`.
 

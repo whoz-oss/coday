@@ -15,7 +15,7 @@ import java.time.Duration
  * reaches an exception either; an unusable header value is reported without it.
  */
 class GitHubApi(
-    private val client: HttpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(),
+    private val client: HttpClient = newClient(),
     private val mapper: ObjectMapper = ObjectMapper(),
     private val apiRoot: URI = GITHUB_API,
 ) {
@@ -37,9 +37,9 @@ class GitHubApi(
     private fun request(path: String, token: String): HttpRequest.Builder =
         try {
             HttpRequest.newBuilder(apiRoot.resolve(path))
-                .timeout(Duration.ofSeconds(20))
-                .header("Accept", "application/vnd.github+json")
-                .header("X-GitHub-Api-Version", "2022-11-28")
+                .timeout(REQUEST_TIMEOUT)
+                .header("Accept", MEDIA_TYPE)
+                .header("X-GitHub-Api-Version", API_VERSION)
                 .header("Authorization", "Bearer $token")
         } catch (_: IllegalArgumentException) {
             // HttpRequest includes an invalid header's value in its exception message.
@@ -55,26 +55,14 @@ class GitHubApi(
 
     companion object {
         private val GITHUB_API = URI("https://api.github.com/")
-    }
-}
+        private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(15)
+        private val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(20)
+        private const val MEDIA_TYPE = "application/vnd.github+json"
 
-/** A github.com repository, named by the HTTPS remote URL a workspace was cloned from. */
-data class GitHubRepository(
-    val owner: String,
-    val name: String,
-) {
-    val fullName: String get() = "$owner/$name"
+        /** The REST API version every call asks for, so a GitHub change of default never alters an answer. */
+        private const val API_VERSION = "2022-11-28"
 
-    companion object {
-        private val SEGMENT = Regex("[A-Za-z0-9_.-]+")
-
-        /** The repository behind [remoteUrl], or null when it is not an HTTPS github.com repository. */
-        fun fromRemoteUrl(remoteUrl: String): GitHubRepository? {
-            val remote = runCatching { URI(remoteUrl) }.getOrNull() ?: return null
-            if (remote.scheme != "https" || remote.host?.equals("github.com", ignoreCase = true) != true) return null
-            val parts = remote.path.orEmpty().trim('/').removeSuffix(".git").split('/')
-            if (parts.size != 2 || !parts.all { it.matches(SEGMENT) }) return null
-            return GitHubRepository(parts[0], parts[1])
-        }
+        /** A client for this API: it connects within the same bound as every call made through it. */
+        fun newClient(): HttpClient = HttpClient.newBuilder().connectTimeout(CONNECT_TIMEOUT).build()
     }
 }

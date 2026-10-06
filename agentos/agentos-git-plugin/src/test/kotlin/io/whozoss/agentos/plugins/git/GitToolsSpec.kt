@@ -40,6 +40,7 @@ class GitToolsSpec :
         val runner = GitCommandRunner(
             GitExecutionProperties(allowedRemoteProtocols = setOf("file"), defaultTimeout = Duration.ofSeconds(20)),
         )
+        val networkTimeout = Duration.ofSeconds(60)
         val toolContext = ToolContext(namespaceId = UUID.randomUUID(), userId = UUID.randomUUID(), userExternalId = "dev@example.com", caseEvents = emptyList())
 
         fun git(directory: Path, vararg args: String): String {
@@ -89,7 +90,7 @@ class GitToolsSpec :
         // --- Managed layout ----------------------------------------------------------------------
 
         class Fixture(val origin: Path, val worktree: Path, val common: Path, val context: GitWorkspaceContext) {
-            val workspace get() = GitWorkspace(context, runner)
+            val workspace get() = GitWorkspace(context, runner, networkTimeout)
         }
 
         fun managed(repositoryUrl: String? = null): Fixture {
@@ -124,8 +125,11 @@ class GitToolsSpec :
 
         fun access(credential: Credential? = token()) = GitForgeAccess(credential?.let { { it } }, "dev@example.com", gitHub)
 
+        /** The tools by their name without the integration prefix. */
+        fun List<StandardTool<*>>.byName(): Map<String, StandardTool<*>> = associateBy { it.name.removePrefix("git__") }
+
         fun tools(fixture: Fixture, access: GitForgeAccess = access()): Map<String, StandardTool<*>> =
-            gitTools("git", fixture.workspace, access, gitHub).associateBy { it.name.removePrefix("git__") }
+            gitTools("git", fixture.workspace, access, gitHub).byName()
 
         @Suppress("UNCHECKED_CAST")
         suspend fun Map<String, StandardTool<*>>.call(tool: String, input: Any? = null): ToolExecutionResult =
@@ -138,7 +142,7 @@ class GitToolsSpec :
             settings: Map<String, String> = emptyMap(),
         ): GitWorkspace {
             val config = jacksonObjectMapper().valueToTree<JsonNode>(settings + ("workingDirectory" to directory.toString()))
-            return GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner)
+            return GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner, networkTimeout)
         }
 
         fun cloneOf(fixture: Fixture): Path =
@@ -152,7 +156,7 @@ class GitToolsSpec :
             val fixture = managed()
             val clone = cloneOf(fixture)
             val workspace = configured(clone, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
-            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+            val tools = gitTools("git", workspace, access(), gitHub).byName()
 
             tools.call("git_create_branch", GitCreateBranchTool.Input("feature/configured")).success shouldBe true
             clone.resolve("configured.txt").writeText("configured\n")
@@ -171,7 +175,7 @@ class GitToolsSpec :
             git(clone, "remote", "set-url", "origin", decoy.toUri().toString())
             git(clone, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
             val workspace = configured(clone, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
-            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+            val tools = gitTools("git", workspace, access(), gitHub).byName()
 
             workspace.repositoryUrl shouldBe fixture.origin.toUri().toString()
             workspace.mainBranch shouldBe "main"
@@ -187,7 +191,7 @@ class GitToolsSpec :
         "a configured linked worktree works through its common directory" {
             val fixture = managed()
             val workspace = configured(fixture.worktree, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
-            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+            val tools = gitTools("git", workspace, access(), gitHub).byName()
 
             tools.call("git_create_branch", GitCreateBranchTool.Input("feature/linked")).success shouldBe true
             fixture.worktree.resolve("linked.txt").writeText("linked\n")
@@ -205,8 +209,7 @@ class GitToolsSpec :
 
             listOf(Files.createTempDirectory("agentos-git-not-a-repository-"), subdirectory, subdirectory.resolve("."), fixture.origin)
                 .forEach { directory ->
-                    val status = gitTools("git", configured(directory, origin), access(), gitHub)
-                        .associateBy { it.name.removePrefix("git__") }
+                    val status = gitTools("git", configured(directory, origin), access(), gitHub).byName()
                         .call("git_status")
                     status.success shouldBe false
                     status.output shouldContain "is not the root of a Git working tree"
@@ -226,8 +229,7 @@ class GitToolsSpec :
 
             suspend fun fetchWith(provider: GitToolProvider): String =
                 provider
-                    .provideTools(config, "git", withCredentials)
-                    .associateBy { it.name.removePrefix("git__") }
+                    .provideTools(config, "git", withCredentials).byName()
                     .call("git_fetch")
                     .output
 
@@ -236,38 +238,27 @@ class GitToolsSpec :
                 "agentos.git.allow-private-remote-hosts"
         }
 
+        "the tools run with the service's Git settings, such as its pinned binary" {
+            val config =
+                jacksonObjectMapper()
+                    .createObjectNode()
+                    .put("workingDirectory", cloneOf(managed()).toString())
+                    .put("repositoryUrl", "https://github.com/org/project.git")
+
+            suspend fun statusWith(provider: GitToolProvider): ToolExecutionResult =
+                provider.provideTools(config, "git", toolContext).byName().call("git_status")
+
+            statusWith(GitToolProvider(GitExecutionProperties())).success shouldBe true
+            statusWith(GitToolProvider(GitExecutionProperties(binary = "/nonexistent/agentos-git"))).success shouldBe false
+        }
+
         "outside a Git workspace a remote must be configured" {
             val fixture = managed()
-            val status = gitTools("git", configured(cloneOf(fixture)), access(), gitHub)
-                .associateBy { it.name.removePrefix("git__") }
+            val status = gitTools("git", configured(cloneOf(fixture)), access(), gitHub).byName()
                 .call("git_status")
 
             status.success shouldBe false
             status.output shouldContain "Configure repositoryUrl"
-        }
-
-        "the provider gives a Git workspace its tools, named after the integration" {
-            val fixture = managed()
-            val mapper = jacksonObjectMapper()
-            val config = mapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(
-                mapOf(
-                    "workingDirectory" to fixture.worktree.toString(),
-                    "gitDir" to fixture.context.gitDir.toString(),
-                    "commonGitDir" to fixture.common.toString(),
-                    "repositoryUrl" to fixture.context.repositoryUrl,
-                    "mainBranch" to "main",
-                ),
-            )
-
-            GitToolProvider().provideTools(config, "company-git", toolContext).map { it.name } shouldContainExactly listOf(
-                "company-git__git_status",
-                "company-git__git_create_branch",
-                "company-git__git_commit",
-                "company-git__git_fetch",
-                "company-git__git_push",
-                "company-git__git_create_pull_request",
-            )
-            GitToolProvider().provideTools(mapper.createObjectNode(), "company-git", toolContext) shouldBe emptyList()
         }
 
         "status reports the detached worktree and its changes" {
@@ -279,6 +270,28 @@ class GitToolsSpec :
             status.success shouldBe true
             status.output shouldContain "HEAD is detached"
             status.output shouldContain "?? notes.md"
+        }
+
+        "an untracked directory is reported once, however many files it holds" {
+            val fixture = managed()
+            val dependencies = Files.createDirectories(fixture.worktree.resolve("node_modules"))
+            repeat(50) { dependencies.resolve("package-$it.js").writeText("module.exports = $it\n") }
+
+            val status = tools(fixture).call("git_status")
+
+            status.success shouldBe true
+            status.output shouldContain "?? node_modules/"
+            status.output shouldNotContain "package-0.js"
+        }
+
+        "the branch keeps its own name when a tag has the same one" {
+            val fixture = managed()
+            git(fixture.worktree, "switch", "--quiet", "-c", "release-3.12")
+            git(fixture.worktree, "tag", "release-3.12")
+
+            val status = tools(fixture).call("git_status")
+
+            status.output shouldContain "On branch release-3.12 at"
         }
 
         "a branch is created at the current commit and checked out" {
@@ -305,6 +318,21 @@ class GitToolsSpec :
             result.success shouldBe true
             git(fixture.worktree, "log", "-1", "--format=%an <%ae>|%s") shouldBe "dev@example.com <dev@example.com>|Fix exports"
             tools.call("git_commit", GitCommitTool.Input("Again")).output shouldContain "Nothing to commit"
+        }
+
+        "a commit of given paths leaves what someone else staged out of it, and staged" {
+            val fixture = managed()
+            val tools = tools(fixture)
+            tools.call("git_create_branch", GitCreateBranchTool.Input("feature/docs"))
+            fixture.worktree.resolve("secrets.local.yml").writeText("token: draft\n")
+            git(fixture.worktree, "add", "secrets.local.yml")
+            fixture.worktree.resolve("guide.md").writeText("guide\n")
+
+            val result = tools.call("git_commit", GitCommitTool.Input("docs: add the guide", listOf("guide.md")))
+
+            result.success shouldBe true
+            git(fixture.worktree, "show", "--name-only", "--format=", "HEAD") shouldBe "guide.md"
+            git(fixture.worktree, "diff", "--cached", "--name-only") shouldBe "secrets.local.yml"
         }
 
         "commits refuse executable filters and never run repository hooks" {

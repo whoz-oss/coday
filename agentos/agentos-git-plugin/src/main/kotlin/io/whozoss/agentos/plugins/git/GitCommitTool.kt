@@ -11,7 +11,7 @@ internal class GitCommitTool(
     override val description: String =
         """
         Commit changes of the repository on the current branch, authored as the user running the case.
-        Stages the given paths, or every change when none is given. Refused on a detached HEAD.
+        Stages and commits only the given paths, or every change when none is given. Refused on a detached HEAD.
         """.trimIndent()
 
     override val paramType: Class<Input> = Input::class.java

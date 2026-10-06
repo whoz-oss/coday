@@ -137,6 +137,8 @@ object GitWorktreeTestKit {
                 rootCaseId = rootCase.id,
                 namespaceId = fixture.namespaceId,
                 integrationConfigId = configured.configId,
+                // Frozen on every binding, as case creation records them.
+                settings = configured,
             ),
         )
 

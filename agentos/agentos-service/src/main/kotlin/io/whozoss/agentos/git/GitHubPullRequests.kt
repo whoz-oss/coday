@@ -2,25 +2,15 @@ package io.whozoss.agentos.git
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_CLOSED_UNMERGED
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_DRAFT
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_MERGED
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_NONE
-import io.whozoss.agentos.git.GitWorkspaceStates.PR_OPEN
-import io.whozoss.agentos.git.GitWorkspaceStates.UNKNOWN
 import io.whozoss.agentos.git.core.GitHubApi
 import io.whozoss.agentos.git.core.GitHubRepository
 import io.whozoss.agentos.git.core.GitObjectIds
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.http.HttpClient
-import java.time.Duration
-
-interface GitHostingProvider {
-    fun inspect(settings: GitRepositorySettings, branch: String, headSha: String? = null): GitWorkspaceSummary
-}
 
 /** GitHub.com adapter. Other Git hosts remain usable without a PR status projection. */
 @Component
@@ -32,15 +22,23 @@ class GitHubPullRequests internal constructor(
 ) : GitHostingProvider {
     @Autowired
     constructor(accounts: GitServiceAccountResolver, mapper: ObjectMapper) : this(
-        accounts, mapper, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(),
+        accounts, mapper, GitHubApi.newClient(),
     )
 
     private val api = GitHubApi(client, mapper)
 
-    override fun inspect(settings: GitRepositorySettings, branch: String, headSha: String?): GitWorkspaceSummary {
-        val repository = requireNotNull(GitHubRepository.fromRemoteUrl(settings.repositoryUrl)) {
-            "Automatic PR status is currently supported for github.com repositories"
-        }
+    /** Another host is no failure: its pull request state is unknown, and nothing is sent to GitHub. */
+    override fun inspect(settings: GitRepositorySettings, branch: String, headSha: String?): GitWorkspaceSummary =
+        GitHubRepository.fromRemoteUrl(settings.repositoryUrl)
+            ?.let { inspectOn(it, settings, branch, headSha) }
+            ?: GitWorkspaceSummary(prState = PrState.UNKNOWN)
+
+    private fun inspectOn(
+        repository: GitHubRepository,
+        settings: GitRepositorySettings,
+        branch: String,
+        headSha: String?,
+    ): GitWorkspaceSummary {
         val fullName = repository.fullName
         val head = URLEncoder.encode("${repository.owner}:$branch", Charsets.UTF_8)
         val array = request(
@@ -53,11 +51,23 @@ class GitHubPullRequests internal constructor(
                 it.path("base").path("repo").path("full_name").asText().equals(fullName, true)
         }
         val open = matching.filter { it.path("state").asText() == STATE_OPEN }
-        check(open.size <= 1) { "Several open PRs reference this branch" }
-        val pr = open.firstOrNull() ?: matching.firstOrNull()
+        val pr = openPullRequest(open, settings.mainBranch) ?: matching.firstOrNull()
             ?: findByHead(settings, fullName, branch, headSha)
-            ?: return GitWorkspaceSummary(prState = PR_NONE)
+            ?: return GitWorkspaceSummary(prState = PrState.NONE)
         return summary(pr)
+    }
+
+    /**
+     * The open pull request of a branch. GitHub allows one per base branch: the one targeting the
+     * main branch wins, and several left after that are ambiguous.
+     */
+    private fun openPullRequest(open: List<JsonNode>, mainBranch: String): JsonNode? {
+        val towardsMain = open.filter { it.path("base").path("ref").asText() == mainBranch }
+        return when {
+            open.size <= 1 -> open.singleOrNull()
+            towardsMain.size == 1 -> towardsMain.single()
+            else -> error("Several open PRs reference this branch")
+        }
     }
 
     private fun findByHead(settings: GitRepositorySettings, fullName: String, branch: String, headSha: String?): JsonNode? {
@@ -77,10 +87,10 @@ class GitHubPullRequests internal constructor(
     private fun request(settings: GitRepositorySettings, repositoryPath: String): JsonNode {
         // The API host is fixed; repository configuration cannot redirect service credentials.
         val response = api.get("repos/$repositoryPath", accounts.resolve(settings).secret)
-        check(response.status == 200) { "PR status unavailable (HTTP ${response.status})" }
+        check(response.status == HttpURLConnection.HTTP_OK) { "PR status unavailable (HTTP ${response.status})" }
         val array = response.body
-        // A full page may be truncated: GitHub never says so, and a wrong answer here would be
-        // projected as a PR state. Refuse rather than guess.
+        // The response headers are not read, so a full page cannot be told apart from a truncated
+        // one: refuse rather than guess, since a wrong answer here would be projected as a PR state.
         check(array != null && array.isArray && array.size() < PAGE_SIZE) {
             "PR result is incomplete; cannot determine its status"
         }
@@ -91,11 +101,11 @@ class GitHubPullRequests internal constructor(
         val state = pr.path("state").asText()
         val merged = !pr.path("merged_at").isNull && !pr.path("merged_at").isMissingNode
         val projected = when {
-            state == STATE_OPEN && pr.path("draft").asBoolean() -> PR_DRAFT
-            state == STATE_OPEN -> PR_OPEN
-            merged -> PR_MERGED
-            state == STATE_CLOSED -> PR_CLOSED_UNMERGED
-            else -> UNKNOWN
+            state == STATE_OPEN && pr.path("draft").asBoolean() -> PrState.DRAFT
+            state == STATE_OPEN -> PrState.OPEN
+            merged -> PrState.MERGED
+            state == STATE_CLOSED -> PrState.CLOSED_UNMERGED
+            else -> PrState.UNKNOWN
         }
         return GitWorkspaceSummary(
             prState = projected,

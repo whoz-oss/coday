@@ -1764,7 +1764,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`) cannot be created in either user scope (403).
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created in either user scope (403).
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -4755,29 +4755,59 @@ components:
       properties:
         branchState:
           type: string
+          description: Where the workspace branch stands against the remote
+          enum:
+          - DETACHED
+          - LOCAL_ONLY
+          - PUSHED
+          - UNPUSHED_COMMITS
+          - UNKNOWN
         dirty:
           type: boolean
+          description: "Whether the worktree has local changes, untracked files included.\
+            \ Null when it could not be read"
         error:
           type: string
+          description: Why the observation failed. Null when it succeeded. Never a
+            secret
         headSha:
           type: string
+          description: Commit checked out in the workspace. Null when it could not
+            be read
         observedAt:
           type: string
           format: date-time
+          description: When this observation started
         prHeadSha:
           type: string
+          description: Head commit of the pull request. Null without one
         prNumber:
           type: integer
           format: int32
+          description: Number of the pull request. Null without one
         prState:
           type: string
+          description: The pull request of the workspace branch. UNKNOWN never means
+            that there is none
+          enum:
+          - DRAFT
+          - OPEN
+          - MERGED
+          - CLOSED_UNMERGED
+          - NONE
+          - UNKNOWN
         prUrl:
           type: string
+          description: Web address of the pull request. Null without one
         remoteSha:
           type: string
+          description: Commit of the remote branch. Null when the branch is not on
+            the remote
         unpushedCommits:
           type: integer
           format: int32
+          description: Commits of the workspace branch missing from the remote. Null
+            unless the branch is on the remote
       required:
       - branchState
       - prState

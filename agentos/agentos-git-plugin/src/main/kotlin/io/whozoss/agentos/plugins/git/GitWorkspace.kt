@@ -2,8 +2,10 @@ package io.whozoss.agentos.plugins.git
 
 import io.whozoss.agentos.git.core.GitCommandResult
 import io.whozoss.agentos.git.core.GitCommandRunner
+import io.whozoss.agentos.git.core.GitCredentials
 import io.whozoss.agentos.git.core.GitInvocation
 import io.whozoss.agentos.git.core.GitOutputFormat
+import io.whozoss.agentos.git.core.GitPushLease
 import io.whozoss.agentos.git.core.GitRefNames
 import io.whozoss.agentos.git.core.GitRefs
 import java.time.Duration
@@ -21,9 +23,11 @@ import java.time.Duration
 internal class GitWorkspace(
     resolveContext: () -> GitWorkspaceContext,
     private val runner: GitCommandRunner,
-    private val networkTimeout: Duration = Duration.ofMinutes(10),
+    /** Fetch and push, like the service's clone and fetch: `agentos.git.clone-timeout`. */
+    private val networkTimeout: Duration,
 ) {
-    constructor(context: GitWorkspaceContext, runner: GitCommandRunner) : this({ context }, runner)
+    constructor(context: GitWorkspaceContext, runner: GitCommandRunner, networkTimeout: Duration) :
+        this({ context }, runner, networkTimeout)
 
     private val context by lazy(resolveContext)
 
@@ -31,15 +35,22 @@ internal class GitWorkspace(
 
     val repositoryUrl: String get() = context.repositoryUrl
 
-    /** The checked-out branch, or null on a detached HEAD. */
+    /**
+     * The checked-out branch, or null on a detached HEAD. Read as a full ref: `--short` answers
+     * `heads/<name>` when a tag has the same name.
+     */
     fun branch(): String? {
-        val result = runner.run(local("symbolic-ref", "--quiet", "--short", "HEAD"))
+        val result = runner.run(local("symbolic-ref", "--quiet", "HEAD"))
         return when {
-            result is GitCommandResult.Completed && result.successful && !result.truncated -> result.stdout.trim()
+            result is GitCommandResult.Completed && result.successful && !result.truncated -> branchOf(result.stdout.trim())
             result is GitCommandResult.Completed && result.exitCode == 1 -> null
             else -> throw GitToolException("Cannot read the current branch: ${describe(result)}")
         }
     }
+
+    private fun branchOf(ref: String): String =
+        ref.takeIf { it.startsWith(GitRefs.HEADS) }?.removePrefix(GitRefs.HEADS)
+            ?: throw GitToolException("HEAD points outside the branches: $ref")
 
     fun head(): String? = commitOf("HEAD")
 
@@ -50,7 +61,9 @@ internal class GitWorkspace(
         guard()
         val output = successful(
             runner.run(
-                local("status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=dirty", "--no-renames"),
+                // An untracked directory is one entry, as in plain `git status`: a dependency or build
+                // directory left out of .gitignore must not overflow the output.
+                local("status", "--porcelain=v1", "-z", "--untracked-files=normal", "--ignore-submodules=dirty", "--no-renames"),
             ),
             "read the status",
         )
@@ -64,11 +77,15 @@ internal class GitWorkspace(
         successful(runner.run(local("switch", "--quiet", "--create", name)), "create the branch")
     }
 
-    /** Stage [paths] (every change when empty) and commit them. Returns the new commit. */
+    /**
+     * Stage [paths] (every change when empty) and commit them. Returns the new commit. With paths,
+     * only they are committed: what someone else staged in a shared worktree stays staged for them.
+     */
     fun commit(message: String, paths: List<String>, author: GitForgeAccess.Identity): String {
         guard()
+        val only = if (paths.isEmpty()) emptyList() else listOf("--") + paths
         successful(runner.run(local("add", "--all", "--", *paths.ifEmpty { listOf(".") }.toTypedArray())), "stage the changes")
-        val staged = runner.run(local("diff", "--cached", "--quiet", "--ignore-submodules=dirty"))
+        val staged = runner.run(local("diff", "--cached", "--quiet", "--ignore-submodules=dirty", *only.toTypedArray()))
         if (staged is GitCommandResult.Completed && staged.exitCode == 0) throw GitToolException("Nothing to commit")
         if (staged !is GitCommandResult.Completed || staged.exitCode != 1) {
             throw GitToolException("Cannot inspect the staged changes: ${describe(staged)}")
@@ -80,7 +97,7 @@ internal class GitWorkspace(
                     "-c", "user.email=${author.email}",
                     // A repository setting could otherwise run its signing program.
                     "-c", "commit.gpgsign=false",
-                    "commit", "--quiet", "--no-verify", "-m", message,
+                    "commit", "--quiet", "--no-verify", "-m", message, *only.toTypedArray(),
                 ),
             ),
             "commit",
@@ -88,7 +105,7 @@ internal class GitWorkspace(
         return head() ?: throw GitToolException("The commit did not produce a HEAD")
     }
 
-    fun fetch(branch: String, token: GitForgeAccess.Token): String {
+    fun fetch(branch: String, token: GitCredentials.UsernamePassword): String {
         requireBranchName(branch)
         successful(
             runner.run(
@@ -96,7 +113,7 @@ internal class GitWorkspace(
                     listOf("fetch", "--quiet", context.repositoryUrl, "+${GitRefs.head(branch)}:${GitRefs.remoteTracking(branch)}"),
                     gitDir = context.commonGitDir,
                     timeout = networkTimeout,
-                    credentials = token.git,
+                    credentials = token,
                 ),
             ),
             "fetch '$branch'",
@@ -108,15 +125,15 @@ internal class GitWorkspace(
      * Push [branch] to the branch of the same name. With [lease], the remote branch may be rewritten
      * only if it is still where the last fetch or push saw it.
      */
-    fun push(branch: String, token: GitForgeAccess.Token, lease: Boolean) {
-        val leaseOption = if (lease) listOf("--force-with-lease=${GitRefs.head(branch)}:${trackedCommit(branch).orEmpty()}") else emptyList()
+    fun push(branch: String, token: GitCredentials.UsernamePassword, lease: Boolean) {
+        val leaseOption = if (lease) listOf(GitPushLease.of(branch, trackedCommit(branch).orEmpty())) else emptyList()
         successful(
             runner.run(
                 GitInvocation(
                     listOf("push") + leaseOption + listOf("--", context.repositoryUrl, "${GitRefs.head(branch)}:${GitRefs.head(branch)}"),
                     gitDir = context.commonGitDir,
                     timeout = networkTimeout,
-                    credentials = token.git,
+                    credentials = token,
                 ),
             ),
             "push '$branch'",
@@ -160,7 +177,8 @@ internal class GitWorkspace(
             is GitCommandResult.Failed -> result.message.take(MAX_MESSAGE)
         }
 
-    private companion object {
+    internal companion object {
+        /** Longest Git explanation returned to the agent. */
         const val MAX_MESSAGE = 1_000
     }
 }

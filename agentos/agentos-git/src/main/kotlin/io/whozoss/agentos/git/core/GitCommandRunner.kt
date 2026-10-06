@@ -185,7 +185,7 @@ class GitCommandRunner(
 
     /** `config -z` prints `name\nvalue\0`, or `name\0` for a key without a value. */
     private fun configEntries(output: String): List<Pair<String, String?>> =
-        output.split(CONFIG_ENTRY_TERMINATOR).filter { it.isNotEmpty() }.map { entry ->
+        output.split(GitOutputFormat.NUL).filter { it.isNotEmpty() }.map { entry ->
             if (CONFIG_NAME_VALUE_SEPARATOR in entry) {
                 entry.substringBefore(CONFIG_NAME_VALUE_SEPARATOR) to entry.substringAfter(CONFIG_NAME_VALUE_SEPARATOR)
             } else {
@@ -378,9 +378,6 @@ class GitCommandRunner(
 
         /** `git config --get-regexp` exits with 1 when no key matches, which is the clean case here. */
         private const val CONFIG_KEY_NOT_FOUND = 1
-
-        /** `git config -z` ends each entry with a NUL character. */
-        private const val CONFIG_ENTRY_TERMINATOR = '\u0000'
 
         /** Within a `git config -z` entry, a newline separates the key name from its value. */
         private const val CONFIG_NAME_VALUE_SEPARATOR = '\n'

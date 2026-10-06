@@ -36,8 +36,10 @@ class GitPlugin : Plugin() {
  * Either way they act with the credentials of the user running the case, from the auth setting
  * bound to the integration.
  *
- * Remotes on a private network follow the service's `agentos.git.allow-private-remote-hosts`, as
- * HTTP_API and MCP_HTTP refuse them: an integration cannot allow them on its own.
+ * The tools run with the service's `agentos.git` settings: the pinned binary, the output cap, the
+ * timeouts, and the protocols and private network remotes allowed. Remotes on a private network are
+ * refused unless `agentos.git.allow-private-remote-hosts` allows them, as HTTP_API and MCP_HTTP
+ * refuse them: an integration cannot allow them on its own.
  */
 @Extension
 class GitToolProvider(
@@ -50,46 +52,52 @@ class GitToolProvider(
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
-    private val allowPrivateRemoteHosts: Boolean = serviceProperties?.allowPrivateRemoteHosts ?: false
+    /** The service's settings, or the defaults when this provider is built outside the service. */
+    private val properties: GitExecutionProperties = serviceProperties ?: GitExecutionProperties()
 
     /** Keeps its private support directory for the JVM lifetime. */
-    private val runner: GitCommandRunner by lazy {
-        GitCommandRunner(GitExecutionProperties(allowPrivateRemoteHosts = allowPrivateRemoteHosts))
-    }
+    private val runner: GitCommandRunner by lazy { GitCommandRunner(properties) }
+
+    /** One HTTP client for every run, as HTTP_API shares one per plugin. */
+    private val gitHub: GitHubApi by lazy { GitHubApi() }
 
     init {
-        if (allowPrivateRemoteHosts) logger.info { "GIT tools may reach private network remotes (agentos.git.allow-private-remote-hosts)" }
+        if (properties.allowPrivateRemoteHosts) {
+            logger.info { "GIT tools may reach private network remotes (agentos.git.allow-private-remote-hosts)" }
+        }
     }
 
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
         // A case Git workspace injects its whole context. Elsewhere the configuration names the repository.
-        val injected = GitWorkspaceContext.from(config)
-        val directory = injected?.workingDirectory ?: configuredDirectory(config, configName) ?: return emptyList()
         val workspace =
-            if (injected != null) GitWorkspace(injected, runner)
-            else GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner)
-        val gitHub = GitHubApi()
+            GitWorkspaceContext.from(config)?.let { injected -> GitWorkspace(injected, runner, properties.cloneTimeout) }
+                ?: configuredDirectory(config, configName)?.let { directory ->
+                    GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner, properties.cloneTimeout)
+                }
         val access = GitForgeAccess(context?.credentialProvider, context?.userExternalId, gitHub)
-        return gitTools(configName ?: INTEGRATION_TYPE, workspace, access, gitHub)
+        return workspace?.let { gitTools(configName ?: INTEGRATION_TYPE, it, access, gitHub) }.orEmpty()
     }
 
     private fun configuredDirectory(
         config: JsonNode?,
         configName: String?,
     ): Path? {
-        val directory = GitWorkspaceContext.configuredDirectory(config) ?: run {
-            logger.debug { "GIT integration '$configName': no Git workspace and no configured workingDirectory" }
-            return null
+        val directory = GitWorkspaceContext.configuredDirectory(config)
+        return when {
+            directory == null -> {
+                logger.debug { "GIT integration '$configName': no Git workspace and no configured workingDirectory" }
+                null
+            }
+            !directory.isAbsolute -> {
+                logger.error { "GIT integration '$configName': workingDirectory must be an absolute path, no tools registered" }
+                null
+            }
+            GitWorkspaceContext.configuredRepositoryUrl(config) == null -> {
+                logger.error { "GIT integration '$configName': repositoryUrl is required with workingDirectory, no tools registered" }
+                null
+            }
+            else -> directory
         }
-        if (!directory.isAbsolute) {
-            logger.error { "GIT integration '$configName': workingDirectory must be an absolute path, no tools registered" }
-            return null
-        }
-        if (GitWorkspaceContext.configuredRepositoryUrl(config) == null) {
-            logger.error { "GIT integration '$configName': repositoryUrl is required with workingDirectory, no tools registered" }
-            return null
-        }
-        return directory
     }
 
     companion object : KLogging() {

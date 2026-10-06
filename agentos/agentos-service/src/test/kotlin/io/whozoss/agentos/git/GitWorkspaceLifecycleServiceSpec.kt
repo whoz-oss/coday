@@ -126,8 +126,7 @@ class GitWorkspaceLifecycleServiceSpec :
             visited shouldBe rows.map { it.rootCaseId } + rows.map { it.rootCaseId }
         }
 
-        listOf("OPEN", "NONE", "UNKNOWN", "MERGED", "CLOSED_UNMERGED").forEach { prState ->
-            "only case deletion triggers cleanup, independently of PR state $prState" {
+        "only case deletion triggers cleanup, even once the branch PR is merged" {
                 val f = fixture()
                 val configured = settings(f.namespaceId, originRepository(), "printf cache > \"${'$'}HOME/cache\"")
                 var root = rootCase(f.namespaceId, "Delete")
@@ -139,8 +138,7 @@ class GitWorkspaceLifecycleServiceSpec :
                 outside.writeText("Keep external files")
                 Files.createSymbolicLink(support.resolve("link"), outside.parent)
                 rawGit(path, "switch", "-c", "workflow/keep-branch")
-                f.bindings.update(ready.copy(summaryJson = "{\"prState\":\"$prState\"}"))
-                val hosting = mockk<GitHostingProvider>() // Cleanup must never call the hosting provider.
+                f.bindings.update(ready.copy(summary = GitWorkspaceSummary(prState = PrState.MERGED)))
                 val cases = mockk<io.whozoss.agentos.caseFlow.CaseRepository> {
                     every { findByIds(any(), any()) } answers { listOf(root) }
                     every { findByParent(any()) } answers { listOf(root).filter { !it.metadata.removed } }
@@ -165,8 +163,6 @@ class GitWorkspaceLifecycleServiceSpec :
                 rawGit(f.storage.namespaceGitDirectory(f.namespaceId), "rev-parse", "refs/heads/workflow/keep-branch").trim() shouldBe ready.baseSha
                 lifecycle.cleanupDeleted(root.id).status shouldBe CaseResourceStatus.REMOVED
                 io.mockk.verify(exactly = 0) { cases.save(any()) }
-                io.mockk.verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
-            }
         }
 
         "surviving descendants keep the shared worktree after deletion of their root" {

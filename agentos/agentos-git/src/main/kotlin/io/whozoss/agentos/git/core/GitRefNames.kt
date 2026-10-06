@@ -1,7 +1,7 @@
 package io.whozoss.agentos.git.core
 
 /**
- * Validation of branch names: the namespace main branch, and branches agents create or push.
+ * Validation of branch names: the namespace main branch, and branches agents create or fetch.
  *
  * An allow-list, stricter than `git check-ref-format`. It is checked here rather than by a
  * subprocess so configuration validation stays pure, fast and available on a host where the git

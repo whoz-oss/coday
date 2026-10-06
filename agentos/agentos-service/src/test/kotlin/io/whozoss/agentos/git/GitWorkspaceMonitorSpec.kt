@@ -2,8 +2,10 @@ package io.whozoss.agentos.git
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Path
 import java.time.Instant
@@ -18,9 +20,12 @@ class GitWorkspaceMonitorSpec : StringSpec({
         ))
     }
 
-    /** Every workspace resolves; only the observation itself differs between the status tests. */
-    fun resolver() = mockk<GitExchangeRootResolver> {
-        every { resolveGit(any<UUID>()) } returns GitExchangeRoot(Path.of("/tmp/unused-workspace"), null, UUID.randomUUID())
+    /** Every family resolves to its own Exchange directory, bound to its stored workspace. */
+    fun resolver(bindings: InMemoryCaseResourceBindingService) = mockk<GitExchangeRootResolver> {
+        every { resolveGit(any<UUID>()) } answers {
+            val rootCaseId = firstArg<UUID>()
+            GitExchangeRoot(Path.of("/exchange/$rootCaseId"), bindings.findByRootCaseId(rootCaseId), rootCaseId)
+        }
     }
 
     fun observer(visited: MutableList<UUID>, onVisit: (CaseResourceBinding) -> Unit = {}) =
@@ -37,7 +42,7 @@ class GitWorkspaceMonitorSpec : StringSpec({
         val bindings = InMemoryCaseResourceBindingService()
         val rows = rows(bindings, 5)
         val visited = mutableListOf<UUID>()
-        val monitor = GitWorkspaceMonitor(bindings, resolver(), observer(visited))
+        val monitor = GitWorkspaceMonitor(bindings, resolver(bindings), observer(visited))
         repeat(2) { monitor.poll() }
         visited shouldBe rows.map { it.rootCaseId } + rows.map { it.rootCaseId }
     }
@@ -49,7 +54,7 @@ class GitWorkspaceMonitorSpec : StringSpec({
         val statuses = observer(visited) {
             if (it.id == rows.first().id) error("transient observation failure")
         }
-        val monitor = GitWorkspaceMonitor(bindings, resolver(), statuses)
+        val monitor = GitWorkspaceMonitor(bindings, resolver(bindings), statuses)
         monitor.poll()
         visited shouldBe rows.take(5).map { it.rootCaseId }
         rows.take(5).forEach { bindings.delete(it.id) }
@@ -64,7 +69,7 @@ class GitWorkspaceMonitorSpec : StringSpec({
         val rows = rows(bindings, 2)
         val visited = mutableListOf<UUID>()
         val control = GitWorkspacesControl().also { it.pauseMonitor() }
-        val monitor = GitWorkspaceMonitor(bindings, resolver(), observer(visited), control = control)
+        val monitor = GitWorkspaceMonitor(bindings, resolver(bindings), observer(visited), control = control)
         monitor.poll()
         visited shouldBe emptyList()
         control.resumeMonitor()
@@ -79,7 +84,7 @@ class GitWorkspaceMonitorSpec : StringSpec({
         val control = GitWorkspacesControl()
         // An operator pauses while the second workspace of the first page is being observed.
         val statuses = observer(visited) { if (visited.size == 2) control.pauseMonitor() }
-        val monitor = GitWorkspaceMonitor(bindings, resolver(), statuses, control = control)
+        val monitor = GitWorkspaceMonitor(bindings, resolver(bindings), statuses, control = control)
 
         monitor.poll()
 
@@ -91,5 +96,34 @@ class GitWorkspaceMonitorSpec : StringSpec({
         // That short last page reset the cursor: the skipped rows come back on the next cycle.
         monitor.poll()
         visited shouldBe (rows.take(2) + rows.drop(5) + rows.take(5)).map { it.rootCaseId }
+    }
+
+    "each sweep is timed and every observation that ends without a status is counted" {
+        val bindings = InMemoryCaseResourceBindingService()
+        val rows = rows(bindings, 3)
+        val statuses = mockk<GitWorkspaceStatusService> {
+            every { refresh(any(), any()) } answers { firstArg() }
+            every { refresh(rows[0], any()) } throws IllegalStateException("observation failure")
+            every { refresh(rows[1], any()) } returns
+                rows[1].copy(summary = GitWorkspaceSummary(error = GitWorkspaceStatusService.STATUS_UNAVAILABLE))
+        }
+        val meters = SimpleMeterRegistry()
+        val monitor = GitWorkspaceMonitor(bindings, resolver(bindings), statuses, meterRegistry = meters)
+        meters.get(GitWorkspaceMonitor.ERROR_COUNTER).counter().count() shouldBe 0.0
+
+        monitor.poll()
+
+        meters.get(GitWorkspaceMonitor.SWEEP_TIMER).timer().count() shouldBe 1L
+        meters.get(GitWorkspaceMonitor.ERROR_COUNTER).counter().count() shouldBe 2.0
+    }
+
+    "each workspace is observed in the repository directory of its own family" {
+        val bindings = InMemoryCaseResourceBindingService()
+        val rows = rows(bindings, 2)
+        val statuses = observer(mutableListOf())
+
+        GitWorkspaceMonitor(bindings, resolver(bindings), statuses).poll()
+
+        rows.forEach { verify(exactly = 1) { statuses.refresh(it, Path.of("/exchange/${it.rootCaseId}/repo")) } }
     }
 })

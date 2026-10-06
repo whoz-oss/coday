@@ -33,11 +33,12 @@ class GitHubPullRequestsSpec : StringSpec({
         merged: Boolean = false,
         headRepo: String = "whoz-oss/coday",
         baseRepo: String = "whoz-oss/coday",
+        base: String = "master",
     ): Map<String, Any?> = mapOf(
         "number" to number, "html_url" to "https://github.com/whoz-oss/coday/pull/$number",
         "state" to state, "draft" to draft, "merged_at" to if (merged) "2026-09-22T10:00:00Z" else null,
         "head" to mapOf("ref" to branch, "sha" to sha, "repo" to mapOf("full_name" to headRepo)),
-        "base" to mapOf("repo" to mapOf("full_name" to baseRepo)),
+        "base" to mapOf("ref" to base, "repo" to mapOf("full_name" to baseRepo)),
     )
 
     data class Fixture(val provider: GitHubPullRequests, val requests: MutableList<HttpRequest>)
@@ -76,7 +77,7 @@ class GitHubPullRequestsSpec : StringSpec({
         val f = fixture(response(), response(pr(), pr(number = 1358, sha = otherSha)))
         val result = f.provider.inspect(settings, "pr-1301", headSha)
         result.prNumber shouldBe 1301
-        result.prState shouldBe "OPEN"
+        result.prState shouldBe PrState.OPEN
         result.prHeadSha shouldBe headSha
         result.prUrl shouldBe "https://github.com/whoz-oss/coday/pull/1301"
         f.requests.map { it.uri().toString() } shouldBe listOf(
@@ -96,12 +97,12 @@ class GitHubPullRequestsSpec : StringSpec({
 
     "a PR targeting a different repository is not associated" {
         val f = fixture(response(), response(pr(baseRepo = "other/coday")))
-        f.provider.inspect(settings, "local-review", headSha).prState shouldBe "NONE"
+        f.provider.inspect(settings, "local-review", headSha).prState shouldBe PrState.NONE
     }
 
     "a PR merely containing the commit is not associated" {
         val f = fixture(response(), response(pr(sha = otherSha)))
-        f.provider.inspect(settings, "local-review", headSha).prState shouldBe "NONE"
+        f.provider.inspect(settings, "local-review", headSha).prState shouldBe PrState.NONE
     }
 
     "multiple exact heads are ambiguous even when only one PR remains open" {
@@ -112,13 +113,13 @@ class GitHubPullRequestsSpec : StringSpec({
 
     "the namespace main branch does not fall back to the latest merged PR" {
         val f = fixture(response())
-        f.provider.inspect(settings, settings.mainBranch, headSha).prState shouldBe "NONE"
+        f.provider.inspect(settings, settings.mainBranch, headSha).prState shouldBe PrState.NONE
         f.requests.size shouldBe 1
     }
 
     "an absent commit does not trigger a fallback lookup" {
         val f = fixture(response())
-        f.provider.inspect(settings, "local-review").prState shouldBe "NONE"
+        f.provider.inspect(settings, "local-review").prState shouldBe PrState.NONE
         f.requests.size shouldBe 1
     }
 
@@ -136,8 +137,8 @@ class GitHubPullRequestsSpec : StringSpec({
     }
 
     listOf(
-        Triple("open", false, "OPEN"), Triple("open", true, "DRAFT"),
-        Triple("closed", false, "CLOSED_UNMERGED"), Triple("merged", false, "MERGED"),
+        Triple("open", false, PrState.OPEN), Triple("open", true, PrState.DRAFT),
+        Triple("closed", false, PrState.CLOSED_UNMERGED), Triple("merged", false, PrState.MERGED),
     ).forEach { (state, draft, expected) ->
         "an existing named branch retains $expected status without a fallback request" {
             val f = fixture(response(pr(
@@ -152,6 +153,16 @@ class GitHubPullRequestsSpec : StringSpec({
     "the open named PR takes precedence over an older closed PR" {
         val f = fixture(response(pr(number = 1000, state = "closed"), pr()))
         f.provider.inspect(settings, "feature/original-name", headSha).prNumber shouldBe 1301
+    }
+
+    "of open PRs from one branch to several bases, the one targeting the main branch is the branch's PR" {
+        val f = fixture(response(pr(number = 1000, base = "release/3.12"), pr()))
+        f.provider.inspect(settings, "feature/original-name", headSha).prNumber shouldBe 1301
+    }
+
+    "open PRs from one branch to several bases, none the main branch, remain ambiguous" {
+        val f = fixture(response(pr(number = 1000, base = "release/3.11"), pr(base = "release/3.12")))
+        shouldThrow<IllegalStateException> { f.provider.inspect(settings, "feature/original-name", headSha) }
     }
 
     "multiple open named PRs remain ambiguous" {
@@ -183,11 +194,13 @@ class GitHubPullRequestsSpec : StringSpec({
         shouldThrow<IllegalStateException> { f.provider.inspect(settings, "local-review", headSha) }
     }
 
-    "a non-GitHub repository cannot redirect the service account token" {
+    "another host gets an unknown PR state without error, and its token never reaches GitHub" {
         val f = fixture()
-        shouldThrow<IllegalArgumentException> {
-            f.provider.inspect(settings.copy(repositoryUrl = "https://attacker.example/whoz-oss/coday"), "local-review", headSha)
-        }
+
+        val observed = f.provider.inspect(settings.copy(repositoryUrl = "https://gitlab.example/whoz-oss/coday.git"), "local-review", headSha)
+
+        observed.prState shouldBe PrState.UNKNOWN
+        observed.error shouldBe null
         f.requests.size shouldBe 0
     }
 })
