@@ -56,13 +56,33 @@ describe('LaunchPageComponent create-run contract', () => {
 
   it('requires a namespace and exposes the canonical business fields', async () => {
     await setup(api({ getNamespaces: jest.fn().mockReturnValue(of([])) }))
-    expect(Object.keys(form().controls)).toEqual(['workflowType', 'namespaceId', 'title', 'ticket'])
-    form().patchValue({ workflowType: 'delivery', namespaceId: '', title: '', ticket: '' })
+    expect(Object.keys(form().controls)).toEqual(['workflowType', 'namespaceId', 'title', 'ticket', 'initialRequest'])
+    form().patchValue({ workflowType: 'delivery', namespaceId: '', title: '', ticket: '', initialRequest: '' })
     expect(form().valid).toBe(false)
     form().controls['namespaceId'].setValue('ns-1')
     expect(form().valid).toBe(true)
     form().controls['title'].setValue('x'.repeat(201))
     expect(form().controls['title'].hasError('maxlength')).toBe(true)
+  })
+
+  it('bounds the optional initial request and submits it only when non-blank', async () => {
+    const service = api()
+    await setup(service)
+    form().controls['initialRequest'].setValue('x'.repeat(4001))
+    expect(form().controls['initialRequest'].hasError('maxlength')).toBe(true)
+
+    form().patchValue({
+      workflowType: 'delivery',
+      namespaceId: 'ns-2',
+      title: '',
+      ticket: '',
+      initialRequest: '  Migrer le portail talent  ',
+    })
+    jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
+
+    const [payload] = service.createWorkflowRun.mock.calls[0]
+    expect(payload).toEqual({ workflowType: 'delivery', initialRequest: 'Migrer le portail talent' })
   })
 
   it('calls the canonical use case without workflow or execution identity and navigates with the returned id', async () => {
