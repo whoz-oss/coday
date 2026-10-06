@@ -2,6 +2,7 @@ package io.whozoss.agentos.git
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -91,5 +92,24 @@ class GitWorkspaceMonitorSpec : StringSpec({
         // That short last page reset the cursor: the skipped rows come back on the next cycle.
         monitor.poll()
         visited shouldBe (rows.take(2) + rows.drop(5) + rows.take(5)).map { it.rootCaseId }
+    }
+
+    "each sweep is timed and every observation that ends without a status is counted" {
+        val bindings = InMemoryCaseResourceBindingService()
+        val rows = rows(bindings, 3)
+        val statuses = mockk<GitWorkspaceStatusService> {
+            every { refresh(any(), any()) } answers { firstArg() }
+            every { refresh(rows[0], any()) } throws IllegalStateException("observation failure")
+            every { refresh(rows[1], any()) } returns
+                rows[1].copy(summary = GitWorkspaceSummary(error = GitWorkspaceStatusService.STATUS_UNAVAILABLE))
+        }
+        val meters = SimpleMeterRegistry()
+        val monitor = GitWorkspaceMonitor(bindings, resolver(), statuses, meterRegistry = meters)
+        meters.get(GitWorkspaceMonitor.ERROR_COUNTER).counter().count() shouldBe 0.0
+
+        monitor.poll()
+
+        meters.get(GitWorkspaceMonitor.SWEEP_TIMER).timer().count() shouldBe 1L
+        meters.get(GitWorkspaceMonitor.ERROR_COUNTER).counter().count() shouldBe 2.0
     }
 })

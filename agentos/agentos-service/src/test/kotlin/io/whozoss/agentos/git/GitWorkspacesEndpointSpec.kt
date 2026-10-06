@@ -2,6 +2,8 @@ package io.whozoss.agentos.git
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.row
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.every
@@ -69,14 +71,27 @@ class GitWorkspacesEndpointSpec : StringSpec({
         control.isProvisioningPaused() shouldBe false
     }
 
-    "the paused gauge follows the switch" {
-        val meters = SimpleMeterRegistry()
-        val control = GitWorkspacesControl(meters)
-        val gauge = { meters.get(GitWorkspacesControl.PROVISIONING_PAUSED_GAUGE).gauge().value() }
-        gauge() shouldBe 0.0
-        control.pauseProvisioning()
-        gauge() shouldBe 1.0
-        control.resumeProvisioning()
-        gauge() shouldBe 0.0
+    "each paused gauge follows its switch" {
+        forAll(
+            row(
+                GitWorkspacesControl.PROVISIONING_PAUSED_GAUGE,
+                GitWorkspacesControl::pauseProvisioning,
+                GitWorkspacesControl::resumeProvisioning,
+            ),
+            row(
+                GitWorkspacesControl.MONITOR_PAUSED_GAUGE,
+                GitWorkspacesControl::pauseMonitor,
+                GitWorkspacesControl::resumeMonitor,
+            ),
+        ) { name, pause, resume ->
+            val meters = SimpleMeterRegistry()
+            val control = GitWorkspacesControl(meters)
+            val gauge = { meters.get(name).gauge().value() }
+            gauge() shouldBe 0.0
+            pause(control)
+            gauge() shouldBe 1.0
+            resume(control)
+            gauge() shouldBe 0.0
+        }
     }
 })

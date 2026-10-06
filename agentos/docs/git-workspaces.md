@@ -116,7 +116,9 @@ the `gitworkspaces` Actuator endpoint, registered only with the worker, over HTT
 
 A pause takes effect after the item in progress: a clone, worktree or setup already running is not
 interrupted. It applies to this instance only and is lost on restart. The
-`agentos.git.worker.paused` and `agentos.git.monitor.paused` gauges report it.
+`agentos.git.worker.paused` and `agentos.git.monitor.paused` gauges report it. The status polling
+has its own metrics: `agentos.git.monitor.sweep` (timer) and `agentos.git.monitor.errors` (counter of
+observations that ended without a status, and of failed sweeps).
 
 Mount persistent storage for `/app/data` (Neo4j and Exchange), and keep the Exchange mount path stable. Git worktrees record absolute paths; moving the volume to another container path requires explicit repair. `AGENTOS_EXCHANGE_MOUNT_ROOT` selects the Exchange root. The default image uses `/app/data/exchange`.
 

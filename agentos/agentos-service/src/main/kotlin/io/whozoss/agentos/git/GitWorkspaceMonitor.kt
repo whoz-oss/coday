@@ -1,5 +1,8 @@
 package io.whozoss.agentos.git
 
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Timer
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
 import org.springframework.scheduling.annotation.Scheduled
@@ -19,9 +22,16 @@ class GitWorkspaceMonitor(
     private val roots: GitExchangeRootResolver,
     private val statuses: GitWorkspaceStatusService,
     private val executor: GitWorkRunner = GitWorkRunner { it.run() },
+    private val meterRegistry: MeterRegistry = SimpleMeterRegistry(),
     private val control: GitWorkspacesControl = GitWorkspacesControl(),
 ) {
     private val active = AtomicBoolean()
+
+    init {
+        // Registered up front so an instance without failures reports 0 rather than no data.
+        meterRegistry.timer(SWEEP_TIMER)
+        meterRegistry.counter(ERROR_COUNTER)
+    }
 
     /**
      * Where the next sweep starts. Sweeps never overlap, but consecutive ones may run on different
@@ -41,6 +51,7 @@ class GitWorkspaceMonitor(
     }
 
     private fun pollBatch() {
+        val sample = Timer.start(meterRegistry)
         try {
             val page = bindings.findByStatusIn(READY_ONLY, PAGE_SIZE, cursor)
             // An exhausted cursor means the last page is behind us: restart from the beginning.
@@ -49,7 +60,10 @@ class GitWorkspaceMonitor(
             // A pause or a shutdown stops this page: the cursor already points past it.
             batch.asSequence().takeWhile { !stopRequested() }.forEach(::observe)
         } catch (e: Exception) {
+            countError()
             logger.warn(e) { "Workspace status sweep failed" }
+        } finally {
+            sample.stop(meterRegistry.timer(SWEEP_TIMER))
         }
     }
 
@@ -59,13 +73,23 @@ class GitWorkspaceMonitor(
     private fun observe(binding: CaseResourceBinding) {
         try {
             val repository = roots.resolveGit(binding.rootCaseId).repositoryPath.toAbsolutePath().normalize()
-            statuses.refresh(binding, repository)
+            // The service records an unavailable status rather than throwing: count both.
+            if (statuses.refresh(binding, repository).summary?.error != null) countError()
         } catch (e: Exception) {
+            countError()
             logger.warn(e) { "Workspace status refresh failed for ${binding.rootCaseId}" }
         }
     }
 
+    private fun countError() = meterRegistry.counter(ERROR_COUNTER).increment()
+
     companion object : KLogging() {
+        /** Duration and count of status sweeps. */
+        const val SWEEP_TIMER = "agentos.git.monitor.sweep"
+
+        /** Observations that ended with an unavailable status or failed outright, and failed sweeps. */
+        const val ERROR_COUNTER = "agentos.git.monitor.errors"
+
         /** Small enough that a paused operator waits at most this many slow observations. */
         private const val PAGE_SIZE = 5
         private val READY_ONLY = listOf(CaseResourceStatus.READY)
