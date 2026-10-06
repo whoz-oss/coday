@@ -11,6 +11,7 @@ import io.mockk.verify
 import io.whozoss.agentos.git.GitWorktreeTestKit.Fixture
 import io.whozoss.agentos.git.GitWorktreeTestKit.advanceOrigin
 import io.whozoss.agentos.git.GitWorktreeTestKit.binding
+import io.whozoss.agentos.git.GitWorktreeTestKit.commitIdentity
 import io.whozoss.agentos.git.GitWorktreeTestKit.fixture
 import io.whozoss.agentos.git.GitWorktreeTestKit.gitProperties
 import io.whozoss.agentos.git.GitWorktreeTestKit.originRepository
@@ -75,6 +76,13 @@ class GitWorkspaceStatusServiceSpec :
             rawGit(path, "push", "origin", "workflow/my-branch")
             val pushed = status.refresh(local, path)
             pushed.summary!!.branchState shouldBe BranchState.PUSHED
+            commitIdentity(path)
+            rawGit(path, "commit", "--quiet", "--allow-empty", "-m", "Not pushed yet")
+            status.refresh(pushed, path).summary!!.let {
+                it.branchState shouldBe BranchState.UNPUSHED_COMMITS
+                it.unpushedCommits shouldBe 1
+                it.remoteSha shouldBe ready.baseSha
+            }
             every { hosting.inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.OPEN, prNumber = 42)
             status.refresh(pushed, path).summary!!.prState shouldBe PrState.OPEN
             rawGit(path, "switch", "--detach", "HEAD")
