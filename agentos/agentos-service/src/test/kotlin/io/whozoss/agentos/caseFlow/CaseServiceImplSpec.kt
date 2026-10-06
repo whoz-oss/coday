@@ -46,6 +46,7 @@ import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
@@ -82,6 +83,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import org.springframework.dao.OptimisticLockingFailureException
 import java.nio.file.Path
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -2366,14 +2368,14 @@ class CaseServiceImplSpec :
             verify(exactly = 1) { repository.countAncestorDepth(parent.id) }
         }
 
-        "create refuses the id of a soft-deleted case" {
-            val service = buildService()
-            val deleted = service.create(Case(namespaceId = namespaceId))
-            service.delete(deleted.id)
+        "create reports an id the storage refuses as a conflict" {
+            // Neo4j refuses a versioned node whose id exists, soft-deleted cases included
+            // (EmbeddedNeo4jCaseVersionSpec): the service only translates that refusal.
+            val repository = spyk(InMemoryCaseRepository())
+            every { repository.save(any()) } throws OptimisticLockingFailureException("id taken")
+            val service = buildService(caseRepository = repository)
 
-            shouldThrow<IllegalArgumentException> {
-                service.create(Case(metadata = EntityMetadata(id = deleted.id), namespaceId = namespaceId))
-            }
+            shouldThrow<ConflictException> { service.create(Case(namespaceId = namespaceId)) }
         }
 
         "create refuses a soft-deleted parent as if it did not exist" {
