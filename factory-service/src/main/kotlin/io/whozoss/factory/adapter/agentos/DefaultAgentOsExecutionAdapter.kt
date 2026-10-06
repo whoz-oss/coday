@@ -17,7 +17,7 @@ class AgentOsCaseBusyException(caseId: String, status: String) : RuntimeExceptio
  * REST calls (`/api/cases`, `/api/cases/{id}/messages`,
  * `/api/case-events/by-parentId/{id}`, `/api/cases/{id}/kill`) mirror the
  * proven shapes of `HttpAgentOsProxyClient` (same bodies, same trusted
- * `X-External-User-Id` and `X-Factory-*` headers); SSE streaming uses the
+ * `X-External-User-Id` and `X-External-Context-*` headers); SSE streaming uses the
  * JDK `HttpClient` through [AgentOsSseClient].
  *
  * Idempotency: a boundary record keyed by `attemptId` remembers the case it
@@ -97,13 +97,13 @@ class DefaultAgentOsExecutionAdapter(
             .contentType(MediaType.APPLICATION_JSON)
             .body(body)
         if (!binding.externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", binding.externalUserId)
-        spec.header("X-Factory-Attempt-Id", binding.attemptId)
+        spec.header("X-External-Context-Attempt-Id", binding.attemptId)
         if (!binding.capabilityToken.isNullOrBlank()) {
             val secret = bindingSecret?.takeIf { it.isNotBlank() }
                 ?: throw IllegalStateException("Factory worker binding secret is required before creating a capability-bound AgentOS case")
-            spec.header("X-Factory-Capability-Token", binding.capabilityToken)
-            spec.header("X-Factory-Agent-Name", binding.agentName ?: "*")
-            spec.header("X-Factory-Agentos-Secret", secret)
+            spec.header("X-External-Context-Capability-Token", binding.capabilityToken)
+            spec.header("X-External-Context-Agent-Name", binding.agentName ?: "*")
+            spec.header("X-External-Context-Secret", secret)
         }
         val response = spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
         val resolvedCaseId = (response?.get("id") as? String) ?: binding.caseId
@@ -147,8 +147,8 @@ class DefaultAgentOsExecutionAdapter(
             .contentType(MediaType.APPLICATION_JSON)
             .body(mapOf("content" to "@$persona $brief"))
         if (!binding.externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", binding.externalUserId)
-        spec.header("X-Factory-Attempt-Id", binding.attemptId)
-        if (!binding.capabilityToken.isNullOrBlank()) spec.header("X-Factory-Capability-Token", binding.capabilityToken)
+        spec.header("X-External-Context-Attempt-Id", binding.attemptId)
+        if (!binding.capabilityToken.isNullOrBlank()) spec.header("X-External-Context-Capability-Token", binding.capabilityToken)
         spec.retrieve().toBodilessEntity()
         registry.markState(caseId, ActiveCaseState.RUNNING)
         return TurnToken(caseId, binding.attemptId, baseline)
@@ -323,8 +323,8 @@ class DefaultAgentOsExecutionAdapter(
             .body(mapOf("content" to answer, "answerToEventId" to questionEventId))
         require(answeringUserId.isNotBlank()) { "answeringUserId must not be blank" }
         spec.header("X-External-User-Id", answeringUserId)
-        spec.header("X-Factory-Attempt-Id", attemptId)
-        record?.capabilityToken?.takeIf { it.isNotBlank() }?.let { spec.header("X-Factory-Capability-Token", it) }
+        spec.header("X-External-Context-Attempt-Id", attemptId)
+        record?.capabilityToken?.takeIf { it.isNotBlank() }?.let { spec.header("X-External-Context-Capability-Token", it) }
         spec.retrieve().toBodilessEntity()
     }
 

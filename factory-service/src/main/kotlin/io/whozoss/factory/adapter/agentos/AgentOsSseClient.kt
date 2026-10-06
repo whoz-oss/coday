@@ -14,7 +14,7 @@ import kotlin.concurrent.thread
  *
  * Implements the observation protocol frozen in `app_docs/agentos-sse-contract.md`:
  * - Opens `GET /api/cases/{caseId}/events?includePreviousEvents=true` with the
- *   trusted `X-External-User-Id` header (and the `X-Factory-*` capability
+ *   trusted `X-External-User-Id` header (and the `X-External-Context-*` capability
  *   headers when supplied), streaming over the JDK [HttpClient] (servlet
  *   stack — no WebFlux).
  * - Every (re)connection replays the full durable history (the server honours
@@ -240,8 +240,8 @@ class AgentOsSseClient(
             .header("Accept", "text/event-stream")
             .GET()
         if (!externalUserId.isNullOrBlank()) requestBuilder.header("X-External-User-Id", externalUserId)
-        if (!attemptId.isNullOrBlank()) requestBuilder.header("X-Factory-Attempt-Id", attemptId)
-        if (!capabilityToken.isNullOrBlank()) requestBuilder.header("X-Factory-Capability-Token", capabilityToken)
+        if (!attemptId.isNullOrBlank()) requestBuilder.header("X-External-Context-Attempt-Id", attemptId)
+        if (!capabilityToken.isNullOrBlank()) requestBuilder.header("X-External-Context-Capability-Token", capabilityToken)
         val response = try {
             httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream())
         } catch (_: Exception) {

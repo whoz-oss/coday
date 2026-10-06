@@ -259,8 +259,8 @@ class HttpAgentOsProxyClient(
             .contentType(MediaType.APPLICATION_JSON)
             .body(body)
         if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
-        if (!attemptId.isNullOrBlank()) spec.header("X-Factory-Attempt-Id", attemptId)
-        if (!capabilityToken.isNullOrBlank()) spec.header("X-Factory-Capability-Token", capabilityToken)
+        if (!attemptId.isNullOrBlank()) spec.header("X-External-Context-Attempt-Id", attemptId)
+        if (!capabilityToken.isNullOrBlank()) spec.header("X-External-Context-Capability-Token", capabilityToken)
         val response = spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
         return (response?.get("id") as? String) ?: caseId
     }
@@ -277,8 +277,8 @@ class HttpAgentOsProxyClient(
             .contentType(MediaType.APPLICATION_JSON)
             .body(mapOf("content" to content))
         if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
-        if (!attemptId.isNullOrBlank()) spec.header("X-Factory-Attempt-Id", attemptId)
-        if (!capabilityToken.isNullOrBlank()) spec.header("X-Factory-Capability-Token", capabilityToken)
+        if (!attemptId.isNullOrBlank()) spec.header("X-External-Context-Attempt-Id", attemptId)
+        if (!capabilityToken.isNullOrBlank()) spec.header("X-External-Context-Capability-Token", capabilityToken)
         spec.retrieve().toBodilessEntity()
     }
 
