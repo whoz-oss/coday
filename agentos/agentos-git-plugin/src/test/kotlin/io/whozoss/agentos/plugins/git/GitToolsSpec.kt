@@ -124,8 +124,11 @@ class GitToolsSpec :
 
         fun access(credential: Credential? = token()) = GitForgeAccess(credential?.let { { it } }, "dev@example.com", gitHub)
 
+        /** The tools by their name without the integration prefix. */
+        fun List<StandardTool<*>>.byName(): Map<String, StandardTool<*>> = associateBy { it.name.removePrefix("git__") }
+
         fun tools(fixture: Fixture, access: GitForgeAccess = access()): Map<String, StandardTool<*>> =
-            gitTools("git", fixture.workspace, access, gitHub).associateBy { it.name.removePrefix("git__") }
+            gitTools("git", fixture.workspace, access, gitHub).byName()
 
         @Suppress("UNCHECKED_CAST")
         suspend fun Map<String, StandardTool<*>>.call(tool: String, input: Any? = null): ToolExecutionResult =
@@ -152,7 +155,7 @@ class GitToolsSpec :
             val fixture = managed()
             val clone = cloneOf(fixture)
             val workspace = configured(clone, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
-            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+            val tools = gitTools("git", workspace, access(), gitHub).byName()
 
             tools.call("git_create_branch", GitCreateBranchTool.Input("feature/configured")).success shouldBe true
             clone.resolve("configured.txt").writeText("configured\n")
@@ -171,7 +174,7 @@ class GitToolsSpec :
             git(clone, "remote", "set-url", "origin", decoy.toUri().toString())
             git(clone, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/develop")
             val workspace = configured(clone, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
-            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+            val tools = gitTools("git", workspace, access(), gitHub).byName()
 
             workspace.repositoryUrl shouldBe fixture.origin.toUri().toString()
             workspace.mainBranch shouldBe "main"
@@ -187,7 +190,7 @@ class GitToolsSpec :
         "a configured linked worktree works through its common directory" {
             val fixture = managed()
             val workspace = configured(fixture.worktree, mapOf("repositoryUrl" to fixture.origin.toUri().toString()))
-            val tools = gitTools("git", workspace, access(), gitHub).associateBy { it.name.removePrefix("git__") }
+            val tools = gitTools("git", workspace, access(), gitHub).byName()
 
             tools.call("git_create_branch", GitCreateBranchTool.Input("feature/linked")).success shouldBe true
             fixture.worktree.resolve("linked.txt").writeText("linked\n")
@@ -205,8 +208,7 @@ class GitToolsSpec :
 
             listOf(Files.createTempDirectory("agentos-git-not-a-repository-"), subdirectory, subdirectory.resolve("."), fixture.origin)
                 .forEach { directory ->
-                    val status = gitTools("git", configured(directory, origin), access(), gitHub)
-                        .associateBy { it.name.removePrefix("git__") }
+                    val status = gitTools("git", configured(directory, origin), access(), gitHub).byName()
                         .call("git_status")
                     status.success shouldBe false
                     status.output shouldContain "is not the root of a Git working tree"
@@ -226,8 +228,7 @@ class GitToolsSpec :
 
             suspend fun fetchWith(provider: GitToolProvider): String =
                 provider
-                    .provideTools(config, "git", withCredentials)
-                    .associateBy { it.name.removePrefix("git__") }
+                    .provideTools(config, "git", withCredentials).byName()
                     .call("git_fetch")
                     .output
 
@@ -238,36 +239,11 @@ class GitToolsSpec :
 
         "outside a Git workspace a remote must be configured" {
             val fixture = managed()
-            val status = gitTools("git", configured(cloneOf(fixture)), access(), gitHub)
-                .associateBy { it.name.removePrefix("git__") }
+            val status = gitTools("git", configured(cloneOf(fixture)), access(), gitHub).byName()
                 .call("git_status")
 
             status.success shouldBe false
             status.output shouldContain "Configure repositoryUrl"
-        }
-
-        "the provider gives a Git workspace its tools, named after the integration" {
-            val fixture = managed()
-            val mapper = jacksonObjectMapper()
-            val config = mapper.valueToTree<com.fasterxml.jackson.databind.JsonNode>(
-                mapOf(
-                    "workingDirectory" to fixture.worktree.toString(),
-                    "gitDir" to fixture.context.gitDir.toString(),
-                    "commonGitDir" to fixture.common.toString(),
-                    "repositoryUrl" to fixture.context.repositoryUrl,
-                    "mainBranch" to "main",
-                ),
-            )
-
-            GitToolProvider().provideTools(config, "company-git", toolContext).map { it.name } shouldContainExactly listOf(
-                "company-git__git_status",
-                "company-git__git_create_branch",
-                "company-git__git_commit",
-                "company-git__git_fetch",
-                "company-git__git_push",
-                "company-git__git_create_pull_request",
-            )
-            GitToolProvider().provideTools(mapper.createObjectNode(), "company-git", toolContext) shouldBe emptyList()
         }
 
         "status reports the detached worktree and its changes" {

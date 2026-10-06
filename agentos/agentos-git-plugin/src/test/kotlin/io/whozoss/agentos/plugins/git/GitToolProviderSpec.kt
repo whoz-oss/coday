@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.git
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import java.nio.file.Files
@@ -36,5 +37,25 @@ class GitToolProviderSpec :
                     .put("repositoryUrl", "https://github.com/org/project.git")
 
             provider.provideTools(config, "GIT") shouldHaveSize 6
+        }
+
+        "a Git workspace context gets every tool, named after the integration" {
+            // The context a case Git workspace injects: the tools trust it and read nothing on creation.
+            val config =
+                mapper.createObjectNode()
+                    .put("workingDirectory", "/workspace/repo")
+                    .put("gitDir", "/namespace/repository.git/worktrees/root")
+                    .put("commonGitDir", "/namespace/repository.git")
+                    .put("repositoryUrl", "https://github.com/org/project.git")
+                    .put("mainBranch", "main")
+
+            provider.provideTools(config, "company-git").map { it.name } shouldContainExactly listOf(
+                "company-git__git_status",
+                "company-git__git_create_branch",
+                "company-git__git_commit",
+                "company-git__git_fetch",
+                "company-git__git_push",
+                "company-git__git_create_pull_request",
+            )
         }
     })
