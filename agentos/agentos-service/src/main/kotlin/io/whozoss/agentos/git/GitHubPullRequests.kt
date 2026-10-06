@@ -89,8 +89,8 @@ class GitHubPullRequests internal constructor(
         val response = api.get("repos/$repositoryPath", accounts.resolve(settings).secret)
         check(response.status == HttpURLConnection.HTTP_OK) { "PR status unavailable (HTTP ${response.status})" }
         val array = response.body
-        // A full page may be truncated: GitHub never says so, and a wrong answer here would be
-        // projected as a PR state. Refuse rather than guess.
+        // The response headers are not read, so a full page cannot be told apart from a truncated
+        // one: refuse rather than guess, since a wrong answer here would be projected as a PR state.
         check(array != null && array.isArray && array.size() < PAGE_SIZE) {
             "PR result is incomplete; cannot determine its status"
         }
