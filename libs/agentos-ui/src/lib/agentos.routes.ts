@@ -55,6 +55,13 @@ export const AGENTOS_ROUTES: Route[] = [
             loadComponent: () =>
               import('./components/admin-home/admin-home.component').then((m) => m.AdminHomeComponent),
           },
+          // --- Admin: Tool invoke (debug) ---
+          {
+            path: 'admin/tool-invoke',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/tool-invoke/tool-invoke.component').then((m) => m.ToolInvokeComponent),
+          },
           // --- Admin: Users ---
           {
             path: 'admin/users/new',
@@ -353,7 +360,8 @@ export const AGENTOS_ROUTES: Route[] = [
           {
             path: ':namespaceId/usage',
             canActivate: [agentosReadyGuard],
-            loadComponent: () => import('./components/namespace-usage/namespace-usage.component').then((m) => m.NamespaceUsageComponent),
+            loadComponent: () =>
+              import('./components/namespace-usage/namespace-usage.component').then((m) => m.NamespaceUsageComponent),
           },
           // --- Scheduled Prompts ---
           {
@@ -454,6 +462,13 @@ export const AGENTOS_ROUTES: Route[] = [
               import('./components/namespace-user-groups/namespace-user-groups.component').then(
                 (m) => m.NamespaceUserGroupsComponent
               ),
+          },
+          // --- Tool Invoke (namespace-scoped) ---
+          {
+            path: ':namespaceId/tool-invoke',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/tool-invoke/tool-invoke.component').then((m) => m.ToolInvokeComponent),
           },
           // --- Git repository ---
           {
