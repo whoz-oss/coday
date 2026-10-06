@@ -22,6 +22,9 @@ import io.whozoss.agentos.git.core.GitCredentials
 import io.whozoss.agentos.git.core.GitLayout
 import java.nio.file.Files
 import java.nio.file.attribute.FileTime
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -39,6 +42,7 @@ class GitWorkspaceStatusServiceSpec :
             settings: GitRepositorySettings,
             hosting: GitHostingProvider,
             statusRunner: GitCommandRunner = runner,
+            clock: Clock = Clock.systemUTC(),
         ) =
             GitWorkspaceStatusService(
                 bindings = f.bindings,
@@ -46,6 +50,7 @@ class GitWorkspaceStatusServiceSpec :
                 runner = statusRunner,
                 accounts = mockk { every { resolve(settings) } returns GitCredentials.UsernamePassword("test", "unused") },
                 hosting = hosting,
+                clock = clock,
             )
 
         "status follows the branch created by the agent and clears when detached again" {
@@ -157,6 +162,25 @@ class GitWorkspaceStatusServiceSpec :
             switched.branchName shouldBe "another-task"
             switched.summary!!.prState shouldBe PrState.NONE
             switched.summary!!.prNumber shouldBe null
+        }
+
+        "an observation that started before the stored one never replaces it" {
+            val f = fixture()
+            val configured = settings(f.namespaceId, originRepository())
+            val root = rootCase(f.namespaceId, "Late observer")
+            val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
+            val path = f.provisioner.worktreePath(root)
+            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.NONE) }
+            val recent = Instant.parse("2026-10-06T10:00:10Z")
+            val earlier = Instant.parse("2026-10-06T10:00:00Z")
+            val published = statusService(f, configured, hosting, clock = Clock.fixed(recent, ZoneOffset.UTC)).refresh(ready, path)
+            rawGit(path, "switch", "-c", "workflow/later-branch")
+
+            val late = statusService(f, configured, hosting, clock = Clock.fixed(earlier, ZoneOffset.UTC)).refresh(published, path)
+
+            late.summary!!.observedAt shouldBe recent
+            late.summary!!.branchState shouldBe BranchState.DETACHED
+            f.bindings.findByRootCaseId(root.id)!!.branchName shouldBe null
         }
 
         "a workspace without readable settings is reported unavailable, never observed with other settings" {

@@ -11,7 +11,7 @@ import mu.KLogging
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import java.nio.file.Path
-import java.time.Instant
+import java.time.Clock
 
 @Service
 @ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
@@ -21,6 +21,7 @@ class GitWorkspaceStatusService(
     private val runner: GitCommandRunner,
     private val accounts: GitServiceAccountResolver,
     private val hosting: GitHostingProvider,
+    private val clock: Clock,
 ) {
     /** The settings frozen when the family was equipped, never the namespace's current ones. */
     fun settings(binding: CaseResourceBinding): GitRepositorySettings =
@@ -52,7 +53,7 @@ class GitWorkspaceStatusService(
         } ?: return binding
         if (current.status != CaseResourceStatus.READY) return current
         var observedBranch = current.branchName
-        var state = GitWorkspaceSummary(observedAt = Instant.now())
+        var state = GitWorkspaceSummary(observedAt = clock.instant())
         try {
             // Everything below observes `current`, the state re-read under the lock: `binding` may
             // already be stale when the caller handed it over.
