@@ -20,6 +20,7 @@ import io.whozoss.agentos.git.GitWorktreeTestKit.settings
 import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitCredentials
 import io.whozoss.agentos.git.core.GitLayout
+import io.whozoss.agentos.git.core.GitRefs
 import java.nio.file.Files
 import java.nio.file.attribute.FileTime
 import java.time.Clock
@@ -104,6 +105,24 @@ class GitWorkspaceStatusServiceSpec :
             rawGit(path, "rev-parse", "refs/remotes/origin/feature").trim() shouldBe leased
             observed.summary!!.remoteSha shouldBe rawGit(origin, "rev-parse", "feature").trim()
             observed.summary!!.branchState shouldBe BranchState.PUSHED
+        }
+
+        "a branch already at its remote commit is reported pushed without fetching it" {
+            val f = fixture()
+            val configured = settings(f.namespaceId, originRepository())
+            val root = rootCase(f.namespaceId, "Up to date")
+            val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
+            val path = f.provisioner.worktreePath(root)
+            rawGit(path, "switch", "-c", "agent-branch")
+            rawGit(path, "push", "--quiet", "origin", "agent-branch")
+            val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.NONE) }
+
+            val observed = statusService(f, configured, hosting).refresh(ready, path).summary!!
+
+            observed.branchState shouldBe BranchState.PUSHED
+            observed.remoteSha shouldBe ready.baseSha
+            observed.unpushedCommits shouldBe 0
+            rawGit(path, "for-each-ref", GitRefs.AGENTOS_OBSERVED) shouldBe ""
         }
 
         "status observation never runs filters configured inside a submodule" {

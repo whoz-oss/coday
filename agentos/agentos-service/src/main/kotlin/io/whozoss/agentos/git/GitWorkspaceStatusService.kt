@@ -130,37 +130,55 @@ class GitWorkspaceStatusService(
     /** Whether the remote holds [branch], and how many of the worktree's commits it lacks. */
     private fun observeRemote(current: CaseResourceBinding, branch: String, progress: Observation): Observation {
         val settings = settings(current)
-        val common = commonGitDir(current)
+        val head = progress.summary.headSha
         val remote = runner.runOrThrow(
             GitInvocation(
                 listOf("ls-remote", settings.repositoryUrl, GitRefs.head(branch)),
-                gitDir = common,
+                gitDir = commonGitDir(current),
                 credentials = accounts.resolve(settings),
             ),
         ).lineSequence().firstOrNull { it.isNotBlank() }?.substringBefore('\t')
-        val summary = remote?.let {
-            // Only the objects are needed to count unpushed commits. Never update the agent's
-            // refs/remotes/origin/*: `push --force-with-lease` uses them as its expected value.
-            runner.runOrThrow(
-                GitInvocation(
-                    listOf(
-                        "fetch", "--quiet", settings.repositoryUrl,
-                        "+${GitRefs.head(branch)}:${GitRefs.AGENTOS_OBSERVED}${current.rootCaseId}",
-                    ),
-                    gitDir = common,
-                    credentials = accounts.resolve(settings),
-                ),
-            )
-            val ahead = runner.runOrThrow(
-                GitInvocation(listOf("rev-list", "--count", "$remote..${progress.summary.headSha}"), gitDir = common),
-            ).toInt()
-            progress.summary.copy(
-                branchState = if (ahead > 0) BranchState.UNPUSHED_COMMITS else BranchState.PUSHED,
-                remoteSha = remote,
-                unpushedCommits = ahead,
-            )
-        } ?: progress.summary.copy(branchState = BranchState.LOCAL_ONLY)
+        val summary = when (remote) {
+            null -> progress.summary.copy(branchState = BranchState.LOCAL_ONLY)
+            // Nothing to fetch: the remote is exactly at the worktree's commit.
+            head -> progress.summary.copy(branchState = BranchState.PUSHED, remoteSha = remote, unpushedCommits = 0)
+            else -> compareWithRemote(current, settings, branch, progress.summary)
+        }
         return progress.copy(summary = summary)
+    }
+
+    /**
+     * Fetch [branch] into the family's observed ref and count the worktree's commits it lacks. The count
+     * uses the fetched commit rather than the one listed before: the remote may move in between.
+     */
+    private fun compareWithRemote(
+        current: CaseResourceBinding,
+        settings: GitRepositorySettings,
+        branch: String,
+        summary: GitWorkspaceSummary,
+    ): GitWorkspaceSummary {
+        val common = commonGitDir(current)
+        val observed = GitRefs.AGENTOS_OBSERVED + current.rootCaseId
+        // Only the objects are needed to count unpushed commits. Never update the agent's
+        // refs/remotes/origin/*: `push --force-with-lease` uses them as its expected value.
+        runner.runOrThrow(
+            GitInvocation(
+                listOf("fetch", "--quiet", settings.repositoryUrl, "+${GitRefs.head(branch)}:$observed"),
+                gitDir = common,
+                credentials = accounts.resolve(settings),
+            ),
+        )
+        val remote = runner.runOrThrow(
+            GitInvocation(listOf("rev-parse", "--verify", "$observed^{commit}"), gitDir = common),
+        )
+        val ahead = runner.runOrThrow(
+            GitInvocation(listOf("rev-list", "--count", "$remote..${summary.headSha}"), gitDir = common),
+        ).toInt()
+        return summary.copy(
+            branchState = if (ahead > 0) BranchState.UNPUSHED_COMMITS else BranchState.PUSHED,
+            remoteSha = remote,
+            unpushedCommits = ahead,
+        )
     }
 
     /** The pull request of [branch], as the forge reports it. */
