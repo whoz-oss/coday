@@ -30,7 +30,8 @@ class GitWorkspaceStatusService(
         storage.namespaceGitDirectory(binding.namespaceId).toAbsolutePath().normalize()
 
     /** Git's administrative directory of the family's worktree, pinned rather than read from its `.git` file. */
-    private fun worktreeGitDir(binding: CaseResourceBinding): Path = commonGitDir(binding).worktreeRegistration(binding.rootCaseId)
+    private fun worktreeGitDir(binding: CaseResourceBinding): Path =
+        commonGitDir(binding).worktreeRegistration(binding.rootCaseId)
 
     fun view(root: GitExchangeRoot): CaseWorkspaceView {
         val binding = root.binding ?: return CaseWorkspaceView(equipped = false)
@@ -45,92 +46,149 @@ class GitWorkspaceStatusService(
         )
     }
 
-    fun refresh(binding: CaseResourceBinding, path: Path): CaseResourceBinding {
+    fun refresh(binding: CaseResourceBinding, path: Path): CaseResourceBinding =
         // Network observation must not block message admission or file mutations.
-        val current = WorkspaceLifecycleLocks.tryWithRoot(binding.rootCaseId, onBusy = { null }) {
-            bindings.findByRootCaseId(binding.rootCaseId)
-        } ?: return binding
-        if (current.status != CaseResourceStatus.READY) return current
-        var observedBranch = current.branchName
-        var state = GitWorkspaceSummary(observedAt = clock.instant())
-        try {
-            // Everything below observes `current`, the state re-read under the lock: `binding` may
-            // already be stale when the caller handed it over.
-            val settings = settings(current)
-            val common = commonGitDir(current)
-            runner.assertNoHostileLocalConfig(common)
-            val administrativeDir = worktreeGitDir(current)
-            val symbolic = runner.run(GitInvocation(listOf("symbolic-ref", "--quiet", "HEAD"), gitDir = administrativeDir))
-            check(symbolic is GitCommandResult.Completed) { "Cannot inspect the worktree branch" }
-            observedBranch = when (symbolic.exitCode) {
-                0 -> symbolic.stdout.trim()
-                    .also { check(it.startsWith(GitRefs.HEADS)) { "HEAD resolves outside ${GitRefs.HEADS}" } }
-                    .removePrefix(GitRefs.HEADS)
+        WorkspaceLifecycleLocks
+            .tryWithRoot(binding.rootCaseId, onBusy = { null }) { bindings.findByRootCaseId(binding.rootCaseId) }
+            ?.let { current ->
+                if (current.status == CaseResourceStatus.READY) publish(current, observe(current, path)) else current
+            }
+            ?: binding
 
-                1 -> null // detached HEAD, not an error and not a branch named HEAD
-                else -> error("Cannot inspect the worktree branch")
-            }
-            val head = runner.runOrThrow(
-                GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = administrativeDir),
-            )
-            val dirty = isDirty(current, path)
-            state = state.copy(headSha = head, dirty = dirty)
-            val branch = observedBranch
-            if (branch == null) {
-                state = state.copy(branchState = BranchState.DETACHED, prState = PrState.NONE)
-                return publish(current, null, state)
-            }
-            val remote = runner.runOrThrow(
-                GitInvocation(
-                    listOf("ls-remote", settings.repositoryUrl, GitRefs.head(branch)),
-                    gitDir = common,
-                    credentials = accounts.resolve(settings),
-                ),
-            ).lineSequence().firstOrNull { it.isNotBlank() }?.substringBefore('\t')
-            if (remote == null) {
-                state = state.copy(branchState = BranchState.LOCAL_ONLY)
-            } else {
-                // Only the objects are needed to count unpushed commits. Never update the agent's
-                // refs/remotes/origin/*: `push --force-with-lease` uses them as its expected value.
-                runner.runOrThrow(
-                    GitInvocation(
-                        listOf(
-                            "fetch", "--quiet", settings.repositoryUrl,
-                            "+${GitRefs.head(branch)}:${GitRefs.AGENTOS_OBSERVED}${current.rootCaseId}",
-                        ),
-                        gitDir = common,
-                        credentials = accounts.resolve(settings),
-                    ),
-                )
-                val ahead = runner.runOrThrow(
-                    GitInvocation(listOf("rev-list", "--count", "$remote..$head"), gitDir = common),
-                ).toInt()
-                state = state.copy(
-                    branchState = if (ahead > 0) BranchState.UNPUSHED_COMMITS else BranchState.PUSHED,
-                    remoteSha = remote,
-                    unpushedCommits = ahead,
-                )
-            }
-            // A PR checkout can use a local alias (e.g. pr-1301) instead of its remote branch name.
-            // Do not infer a PR from the untouched starting commit shared by every new workspace.
-            val pr = hosting.inspect(settings, branch, head.takeUnless { it == current.baseSha })
-            state = state.copy(prState = pr.prState, prNumber = pr.prNumber, prUrl = pr.prUrl, prHeadSha = pr.prHeadSha)
+    /** What one observation found: the branch HEAD is on, and the summary of everything it could read. */
+    private data class Observation(
+        val branch: String?,
+        val summary: GitWorkspaceSummary,
+    ) {
+        val failed: Boolean get() = summary.error != null
+    }
+
+    /**
+     * Observe [current], the binding re-read under the lock: the caller's copy may already be stale.
+     * Each step reads more, and a failure keeps what the earlier steps read. A detached HEAD has no
+     * remote branch and no pull request to look for.
+     */
+    private fun observe(current: CaseResourceBinding, path: Path): Observation =
+        listOf<(Observation) -> Observation>(
+            { observeBranch(current, it) },
+            { observeHead(current, path, it) },
+            { progress -> progress.branch?.let { observeRemote(current, it, progress) } ?: progress },
+            { progress -> progress.branch?.let { observePullRequest(current, it, progress) } ?: progress },
+        ).fold(Observation(current.branchName, GitWorkspaceSummary(observedAt = clock.instant()))) { progress, step ->
+            if (progress.failed) progress else attempt(current, progress, step)
+        }
+
+    private fun attempt(
+        current: CaseResourceBinding,
+        progress: Observation,
+        step: (Observation) -> Observation,
+    ): Observation =
+        try {
+            step(progress)
         } catch (e: Exception) {
             // Never translate unavailable/stale data into NONE or CLOSED.
             // Network libraries may include credentials in exception messages or causes.
             logger.warn(e) { "Git status unavailable for case ${current.rootCaseId}" }
-            state = state.copy(prState = PrState.UNKNOWN, error = STATUS_UNAVAILABLE)
+            progress.copy(summary = progress.summary.copy(prState = PrState.UNKNOWN, error = STATUS_UNAVAILABLE))
         }
-        return publish(current, observedBranch, state)
+
+    /** The branch HEAD is on. A family without readable settings is not observed. */
+    private fun observeBranch(current: CaseResourceBinding, progress: Observation): Observation {
+        settings(current)
+        runner.assertNoHostileLocalConfig(commonGitDir(current))
+        val symbolic = runner.run(
+            GitInvocation(listOf("symbolic-ref", "--quiet", "HEAD"), gitDir = worktreeGitDir(current)),
+        )
+        check(symbolic is GitCommandResult.Completed) { "Cannot inspect the worktree branch" }
+        val branch = when (symbolic.exitCode) {
+            SYMBOLIC_REF_FOUND ->
+                symbolic.stdout.trim()
+                    .also { check(it.startsWith(GitRefs.HEADS)) { "HEAD resolves outside ${GitRefs.HEADS}" } }
+                    .removePrefix(GitRefs.HEADS)
+            // A detached HEAD: not an error, and not a branch named HEAD.
+            SYMBOLIC_REF_DETACHED -> null
+            else -> error("Cannot inspect the worktree branch")
+        }
+        return progress.copy(branch = branch)
     }
 
-    private fun publish(binding: CaseResourceBinding, branch: String?, state: GitWorkspaceSummary): CaseResourceBinding =
+    /** The commit and the local changes of the worktree. */
+    private fun observeHead(current: CaseResourceBinding, path: Path, progress: Observation): Observation {
+        val head = runner.runOrThrow(
+            GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = worktreeGitDir(current)),
+        )
+        val summary = progress.summary.copy(headSha = head, dirty = isDirty(current, path))
+        return progress.copy(
+            summary = if (progress.branch == null) {
+                summary.copy(branchState = BranchState.DETACHED, prState = PrState.NONE)
+            } else {
+                summary
+            },
+        )
+    }
+
+    /** Whether the remote holds [branch], and how many of the worktree's commits it lacks. */
+    private fun observeRemote(current: CaseResourceBinding, branch: String, progress: Observation): Observation {
+        val settings = settings(current)
+        val common = commonGitDir(current)
+        val remote = runner.runOrThrow(
+            GitInvocation(
+                listOf("ls-remote", settings.repositoryUrl, GitRefs.head(branch)),
+                gitDir = common,
+                credentials = accounts.resolve(settings),
+            ),
+        ).lineSequence().firstOrNull { it.isNotBlank() }?.substringBefore('\t')
+        val summary = remote?.let {
+            // Only the objects are needed to count unpushed commits. Never update the agent's
+            // refs/remotes/origin/*: `push --force-with-lease` uses them as its expected value.
+            runner.runOrThrow(
+                GitInvocation(
+                    listOf(
+                        "fetch", "--quiet", settings.repositoryUrl,
+                        "+${GitRefs.head(branch)}:${GitRefs.AGENTOS_OBSERVED}${current.rootCaseId}",
+                    ),
+                    gitDir = common,
+                    credentials = accounts.resolve(settings),
+                ),
+            )
+            val ahead = runner.runOrThrow(
+                GitInvocation(listOf("rev-list", "--count", "$remote..${progress.summary.headSha}"), gitDir = common),
+            ).toInt()
+            progress.summary.copy(
+                branchState = if (ahead > 0) BranchState.UNPUSHED_COMMITS else BranchState.PUSHED,
+                remoteSha = remote,
+                unpushedCommits = ahead,
+            )
+        } ?: progress.summary.copy(branchState = BranchState.LOCAL_ONLY)
+        return progress.copy(summary = summary)
+    }
+
+    /** The pull request of [branch], as the forge reports it. */
+    private fun observePullRequest(current: CaseResourceBinding, branch: String, progress: Observation): Observation {
+        // A PR checkout can use a local alias (e.g. pr-1301) instead of its remote branch name.
+        // Do not infer a PR from the untouched starting commit shared by every new workspace.
+        val head = progress.summary.headSha.takeUnless { it == current.baseSha }
+        val pr = hosting.inspect(settings(current), branch, head)
+        return progress.copy(
+            summary = progress.summary.copy(
+                prState = pr.prState,
+                prNumber = pr.prNumber,
+                prUrl = pr.prUrl,
+                prHeadSha = pr.prHeadSha,
+            ),
+        )
+    }
+
+    private fun publish(binding: CaseResourceBinding, observation: Observation): CaseResourceBinding =
         WorkspaceLifecycleLocks.tryWithRoot(binding.rootCaseId, onBusy = { binding }) {
-            val fresh = bindings.findByRootCaseId(binding.rootCaseId) ?: return@tryWithRoot binding
-            // A deletion or a newer observer may have won while the network call was running.
-            if (fresh.status != CaseResourceStatus.READY ||
-                (fresh.summary?.observedAt?.isAfter(state.observedAt) == true)) return@tryWithRoot fresh
-            bindings.update(fresh.copy(branchName = branch, summary = state))
+            val fresh = bindings.findByRootCaseId(binding.rootCaseId)
+            // A deletion or a newer observer may have won while the network calls were running.
+            when {
+                fresh == null -> binding
+                fresh.status != CaseResourceStatus.READY -> fresh
+                fresh.summary?.observedAt?.isAfter(observation.summary.observedAt) == true -> fresh
+                else -> bindings.update(fresh.copy(branchName = observation.branch, summary = observation.summary))
+            }
         }
 
     private fun isDirty(binding: CaseResourceBinding, path: Path): Boolean {
@@ -152,7 +210,13 @@ class GitWorkspaceStatusService(
     }
 
     companion object : KLogging() {
-        /** Fixed public wording: an exception message may carry credentials. */
+        /** Exit code of `git symbolic-ref --quiet` when HEAD is on a branch. */
+        private const val SYMBOLIC_REF_FOUND = 0
+
+        /** Exit code of `git symbolic-ref --quiet` on a detached HEAD. */
+        private const val SYMBOLIC_REF_DETACHED = 1
+
+        /** Fixed public wording: the persisted error is returned by the API. */
         const val STATUS_UNAVAILABLE = "Git status unavailable. Check repository access and service account settings."
     }
 }

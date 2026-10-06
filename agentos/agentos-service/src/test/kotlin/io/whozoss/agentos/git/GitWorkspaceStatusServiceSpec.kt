@@ -198,6 +198,29 @@ class GitWorkspaceStatusServiceSpec :
             verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
         }
 
+        "an unreachable remote keeps what was read locally and never asks the forge" {
+            val f = fixture()
+            val origin = originRepository()
+            val configured = settings(f.namespaceId, origin)
+            val root = rootCase(f.namespaceId, "Unreachable remote")
+            val ready = f.provisioner.ensureReady(binding(f, root, configured), configured, root)
+            val path = f.provisioner.worktreePath(root)
+            rawGit(path, "switch", "-c", "agent-branch")
+            origin.toFile().deleteRecursively() shouldBe true
+            val hosting = mockk<GitHostingProvider>()
+
+            val saved = statusService(f, configured, hosting).refresh(ready, path)
+
+            saved.branchName shouldBe "agent-branch"
+            saved.summary!!.let {
+                it.error shouldBe GitWorkspaceStatusService.STATUS_UNAVAILABLE
+                it.headSha shouldBe ready.baseSha
+                it.branchState shouldBe BranchState.UNKNOWN
+                it.prState shouldBe PrState.UNKNOWN
+            }
+            verify(exactly = 0) { hosting.inspect(any(), any(), any()) }
+        }
+
         "a truncated list of untracked entries still proves dirty without refreshing the index" {
             val f = fixture()
             val configured = settings(f.namespaceId, originRepository())
