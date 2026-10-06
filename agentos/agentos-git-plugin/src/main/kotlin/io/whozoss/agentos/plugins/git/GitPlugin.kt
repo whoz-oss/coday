@@ -58,6 +58,9 @@ class GitToolProvider(
     /** Keeps its private support directory for the JVM lifetime. */
     private val runner: GitCommandRunner by lazy { GitCommandRunner(properties) }
 
+    /** One HTTP client for every run, as HTTP_API shares one per plugin. */
+    private val gitHub: GitHubApi by lazy { GitHubApi() }
+
     init {
         if (properties.allowPrivateRemoteHosts) {
             logger.info { "GIT tools may reach private network remotes (agentos.git.allow-private-remote-hosts)" }
@@ -71,7 +74,6 @@ class GitToolProvider(
         val workspace =
             if (injected != null) GitWorkspace(injected, runner, properties.cloneTimeout)
             else GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner, properties.cloneTimeout)
-        val gitHub = GitHubApi()
         val access = GitForgeAccess(context?.credentialProvider, context?.userExternalId, gitHub)
         return gitTools(configName ?: INTEGRATION_TYPE, workspace, access, gitHub)
     }
