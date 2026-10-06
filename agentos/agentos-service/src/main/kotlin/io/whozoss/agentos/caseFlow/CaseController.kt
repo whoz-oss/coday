@@ -23,6 +23,7 @@ import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -177,6 +178,8 @@ class CaseController(
     override fun create(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
+        val userId = userService.getCurrentUser().id.toString()
+        resource.parentCaseId?.let { checkParentCasePermission(userId, it) }
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
         val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
@@ -186,9 +189,9 @@ class CaseController(
                 status = resource.status,
                 title = resource.title ?: "Case ${metadata.id}",
                 runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
+                parentCaseId = resource.parentCaseId,
             )
         val saved = caseService.create(domain)
-        val userId = userService.getCurrentUser().id.toString()
         val granted =
             runCatching {
                 permissionService.grantPermission(
@@ -413,6 +416,16 @@ class CaseController(
     private fun List<Case>.withLastMessageAt(): List<CaseDto> {
         val lastMessageTimestamps = caseEventService.findLastMessageTimestamps(map { it.id })
         return map { toDto(it).copy(lastMessageAt = lastMessageTimestamps[it.id]) }
+    }
+
+    /**
+     * Namespace READ lets a member create a case; attaching it under another case also
+     * needs WRITE on that parent, as delegation from it would.
+     */
+    private fun checkParentCasePermission(userId: String, parentCaseId: UUID) {
+        if (!permissionService.hasPermission(userId, EntityType.CASE, parentCaseId.toString(), Action.WRITE)) {
+            throw AccessDeniedException("No write permission on the parent case")
+        }
     }
 
     companion object : KLogging()

@@ -19,9 +19,11 @@ import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
@@ -89,6 +91,7 @@ class AgentServiceImpl(
     private val agentConfigProperties: AgentConfigProperties,
     private val limitsConfig: LimitsConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val exchangeRootResolver: ExchangeRootResolver,
     private val loopWorkflowRunner: LoopWorkflowRunner,
 ) : AgentService {
     /**
@@ -816,6 +819,10 @@ class AgentServiceImpl(
             return null
         }
 
+        logger.info {
+            "Delegation timeout for ${config.name}: ${config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds}s " +
+                "(source=${if (config.delegationTimeoutSeconds == null) "server" else "agent"})"
+        }
         logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
         return DelegationTool(
             subCaseManager = subCaseManager,
@@ -823,6 +830,7 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            timeoutMs = (config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds).toLong() * 1_000L,
         )
     }
 
@@ -858,9 +866,10 @@ class AgentServiceImpl(
      * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
      *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
      *   root);
-     * - the case scope additionally requires a live [context.caseId]; it needs no permission gate of
-     *   its own because its root is the run's own case, which the invoking user already holds Case
-     *   WRITE on to have reached this point;
+     * - the case scope additionally requires a live [context.caseId]. The run's own directory needs no
+     *   extra gate: the invoking user already holds Case WRITE on that case to have reached this point.
+     *   A directory owned by another case (a family's shared workspace) also requires the user's
+     *   permission on that owner, and is read-only without WRITE on both;
      * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
      *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
      *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
@@ -886,14 +895,22 @@ class AgentServiceImpl(
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            tools +=
-                exchangeToolGrantService.grantTools(
-                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
-                    readOnly = false,
-                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                    allowedTools = caseGrant.allowedTools,
-                    toolContext = toolContext,
-                )
+            // A directory owned by another case (a family's shared workspace) also requires the
+            // invoking user's permission on that owner: delegation does not confer its rights.
+            val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
+            val userId = context.userId?.toString()
+            val canRead = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+            if (canRead) {
+                val canWrite = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                tools +=
+                    exchangeToolGrantService.grantTools(
+                        root = root.requireUsable(),
+                        readOnly = !canWrite,
+                        configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                        allowedTools = caseGrant.allowedTools,
+                        toolContext = toolContext,
+                    )
+            }
         }
 
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)

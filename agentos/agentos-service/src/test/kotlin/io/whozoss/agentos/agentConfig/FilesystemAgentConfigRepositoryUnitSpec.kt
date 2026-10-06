@@ -345,6 +345,19 @@ class FilesystemAgentConfigRepositoryUnitSpec :
             integrations["FILES"] shouldBe null
         }
 
+        "loads timeout overrides from YAML and keeps omitted values inherited" {
+            val root = tempDir()
+            writeYaml(agentsDir(root), "custom.yaml", "name: Custom\ndelegationTimeoutSeconds: 3600")
+            writeYaml(agentsDir(root), "inherited.yaml", "name: Inherited")
+            writeYaml(agentsDir(root), "invalid.yaml", "name: Invalid\ndelegationTimeoutSeconds: 0")
+            val delegate = mockk<AgentConfigRepository>()
+            every { delegate.findByParent(namespaceId, withDisabled = true) } returns emptyList()
+            val result = buildRepo(delegate, nsRepoWith(namespaceId, root.toString())).findByParent(namespaceId)
+            result.map { it.name } shouldContainExactlyInAnyOrder listOf("Custom", "Inherited")
+            result.single { it.name == "Custom" }.delegationTimeoutSeconds shouldBe 3600
+            result.single { it.name == "Inherited" }.delegationTimeoutSeconds shouldBe null
+        }
+
         // -------------------------------------------------------------------------
         // subAgents field
         // -------------------------------------------------------------------------

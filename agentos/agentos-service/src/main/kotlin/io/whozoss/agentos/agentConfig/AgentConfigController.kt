@@ -136,6 +136,7 @@ class AgentConfigController(
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: existing.enabled,
                     subAgents = resource.subAgents.nullOrNotBlankItems(),
+                    delegationTimeoutSeconds = resource.delegationTimeoutSeconds,
                     skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
                 ),
             ),
@@ -278,6 +279,7 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         externalMetadata = resource.externalMetadata,
         enabled = resource.enabled ?: false,
         subAgents = resource.subAgents.nullOrNotBlankItems(),
+        delegationTimeoutSeconds = resource.delegationTimeoutSeconds,
         skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
     )
 }
@@ -303,6 +305,7 @@ internal fun toDto(entity: AgentConfig) =
         updatedOn = entity.metadata.modified,
         enabled = entity.enabled,
         subAgents = entity.subAgents,
+        delegationTimeoutSeconds = entity.delegationTimeoutSeconds,
         skillSelectors = entity.skillSelectors,
     )
 
@@ -328,6 +331,7 @@ private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
         entity.modelName?.takeIf { it.isNotBlank() }?.let { put("modelName", it) }
         entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
         entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
+        entity.delegationTimeoutSeconds?.let { put("delegationTimeoutSeconds", it) }
         entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }
         entity.skillSelectors?.takeIf { it.isNotEmpty() }?.let { put("skillSelectors", it) }
     }

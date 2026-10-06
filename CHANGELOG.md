@@ -1,3 +1,59 @@
+## 3.23.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** configure global and per-agent delegation timeouts ([#1338](https://github.com/whoz-oss/coday/pull/1338))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.22.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** resolve case-family workspaces and gate their runs behind a flag ([#1367](https://github.com/whoz-oss/coday/pull/1367))
+
+### ❤️ Thank You
+
+- ctraon
+- selim-bensenouci-ep-whoz
+
+## 3.21.0 (2026-10-01)
+
+### 🚀 Features
+
+- **agentos-service:** improve thinking process for intention ([6858e570](https://github.com/whoz-oss/coday/commit/6858e570))
+- **agentos-service:** null safe ([9c47b185](https://github.com/whoz-oss/coday/commit/9c47b185))
+- **agentos-service:** and fix 's' in instructions ([910b00c6](https://github.com/whoz-oss/coday/commit/910b00c6))
+- **agentos-service:** null safe ([651a7965](https://github.com/whoz-oss/coday/commit/651a7965))
+- **agentos-service:** improve thinking process for intention ([#1404](https://github.com/whoz-oss/coday/pull/1404))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 3.20.0 (2026-10-01)
+
+### 🚀 Features
+
+- wz-35088 - structured output in tool invoke UI and endpoint ([#1403](https://github.com/whoz-oss/coday/pull/1403))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.19.0 (2026-09-30)
+
+### 🚀 Features
+
+- wz-35088 - add test endpoint and UI for tool calls ([#1395](https://github.com/whoz-oss/coday/pull/1395))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.18.0 (2026-09-30)
 
 ### 🚀 Features

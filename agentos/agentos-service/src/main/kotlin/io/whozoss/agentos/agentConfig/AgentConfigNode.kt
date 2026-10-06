@@ -45,6 +45,7 @@ data class AgentConfigNode(
     val executionMode: String? = null,
     val enabled: Boolean,
     val subAgentsJson: String? = null,
+    val delegationTimeoutSeconds: Int? = null,
     val skillSelectorsJson: String? = null,
     // EntityMetadata fields
     @Version val version: Long? = null,
@@ -79,6 +80,7 @@ data class AgentConfigNode(
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
             enabled = enabled,
             subAgents = subAgentsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
+            delegationTimeoutSeconds = delegationTimeoutSeconds,
             skillSelectors = skillSelectorsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
         )
 
@@ -101,6 +103,7 @@ data class AgentConfigNode(
                 executionMode = config.executionMode?.name,
                 advancedExecution = @Suppress("DEPRECATION") config.advancedExecution,
                 subAgentsJson = config.subAgents?.let { MAPPER.writeValueAsString(it) },
+                delegationTimeoutSeconds = config.delegationTimeoutSeconds,
                 skillSelectorsJson = config.skillSelectors?.let { MAPPER.writeValueAsString(it) },
                 version = config.metadata.version,
                 enabled = config.enabled,
