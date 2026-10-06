@@ -17,11 +17,10 @@ internal class GitForgeAccess(
     private val userExternalId: String?,
     private val gitHub: GitHubApi,
 ) {
-    data class Token(val git: GitCredentials.UsernamePassword, val api: String)
-
     data class Identity(val name: String, val email: String)
 
-    fun token(): Token {
+    /** The user's forge credential, used for Git over HTTPS and for the forge API. It masks its secret. */
+    fun token(): GitCredentials.UsernamePassword {
         val credential = credentialProvider?.invoke()
             ?: throw GitToolException(
                 "No Git credentials are available for you. Bind an auth setting to this GIT integration and " +
@@ -37,7 +36,7 @@ internal class GitForgeAccess(
         if (secret.isNullOrBlank() || (secret + username).any(Character::isISOControl)) {
             throw GitToolException("Your Git credentials cannot be used for Git over HTTPS")
         }
-        return Token(GitCredentials.UsernamePassword(username, secret), secret)
+        return GitCredentials.UsernamePassword(username, secret)
     }
 
     /**
@@ -46,7 +45,7 @@ internal class GitForgeAccess(
      */
     fun identity(repositoryUrl: String): Identity {
         if (GitHubRepository.fromRemoteUrl(repositoryUrl) != null) {
-            val response = gitHub.get("user", token().api)
+            val response = gitHub.get("user", token().secret)
             val user = response.body
             if (response.status != 200 || user == null) {
                 throw GitToolException("GitHub did not return your account (HTTP ${response.status})")

@@ -55,7 +55,7 @@ internal class GitCreatePullRequestTool(
         }
         val response = gitHub.post(
             "repos/${repository.fullName}/pulls",
-            access.token().api,
+            access.token().secret,
             mapOf("title" to title, "head" to branch, "base" to base, "body" to input.body, "draft" to (input.draft == true)),
         )
         val pull = response.body

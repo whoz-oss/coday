@@ -2,6 +2,7 @@ package io.whozoss.agentos.plugins.git
 
 import io.whozoss.agentos.git.core.GitCommandResult
 import io.whozoss.agentos.git.core.GitCommandRunner
+import io.whozoss.agentos.git.core.GitCredentials
 import io.whozoss.agentos.git.core.GitInvocation
 import io.whozoss.agentos.git.core.GitOutputFormat
 import io.whozoss.agentos.git.core.GitRefNames
@@ -88,7 +89,7 @@ internal class GitWorkspace(
         return head() ?: throw GitToolException("The commit did not produce a HEAD")
     }
 
-    fun fetch(branch: String, token: GitForgeAccess.Token): String {
+    fun fetch(branch: String, token: GitCredentials.UsernamePassword): String {
         requireBranchName(branch)
         successful(
             runner.run(
@@ -96,7 +97,7 @@ internal class GitWorkspace(
                     listOf("fetch", "--quiet", context.repositoryUrl, "+${GitRefs.head(branch)}:${GitRefs.remoteTracking(branch)}"),
                     gitDir = context.commonGitDir,
                     timeout = networkTimeout,
-                    credentials = token.git,
+                    credentials = token,
                 ),
             ),
             "fetch '$branch'",
@@ -108,7 +109,7 @@ internal class GitWorkspace(
      * Push [branch] to the branch of the same name. With [lease], the remote branch may be rewritten
      * only if it is still where the last fetch or push saw it.
      */
-    fun push(branch: String, token: GitForgeAccess.Token, lease: Boolean) {
+    fun push(branch: String, token: GitCredentials.UsernamePassword, lease: Boolean) {
         val leaseOption = if (lease) listOf("--force-with-lease=${GitRefs.head(branch)}:${trackedCommit(branch).orEmpty()}") else emptyList()
         successful(
             runner.run(
@@ -116,7 +117,7 @@ internal class GitWorkspace(
                     listOf("push") + leaseOption + listOf("--", context.repositoryUrl, "${GitRefs.head(branch)}:${GitRefs.head(branch)}"),
                     gitDir = context.commonGitDir,
                     timeout = networkTimeout,
-                    credentials = token.git,
+                    credentials = token,
                 ),
             ),
             "push '$branch'",
