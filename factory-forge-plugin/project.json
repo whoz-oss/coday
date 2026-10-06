@@ -1,0 +1,36 @@
+{
+  "name": "factory-forge-plugin",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "factory-forge-plugin/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "dependsOn": [{ "target": "build", "projects": ["factory-service"] }],
+      "options": {
+        "command": "./gradlew jar",
+        "cwd": "factory-forge-plugin"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [{ "target": "test", "projects": ["factory-service"] }],
+      "options": {
+        "command": "./gradlew test",
+        "cwd": "factory-forge-plugin"
+      }
+    },
+    "deploy-plugin": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew deployPlugin",
+        "cwd": "factory-forge-plugin"
+      }
+    }
+  },
+  "tags": ["type:lib", "platform:jvm", "scope:plugin"]
+}
