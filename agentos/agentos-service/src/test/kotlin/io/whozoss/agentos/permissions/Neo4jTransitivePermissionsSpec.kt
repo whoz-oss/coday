@@ -1,5 +1,6 @@
 package io.whozoss.agentos.permissions
 
+import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -13,6 +14,7 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
+import io.whozoss.agentos.persistence.neo4j.DockerAvailableCondition
 import io.whozoss.agentos.persistence.neo4j.Neo4jContainerSpec
 import io.whozoss.agentos.persistence.neo4j.Neo4jContainerSupport
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -34,6 +36,7 @@ import java.util.UUID
  */
 @SpringBootTest
 @ActiveProfiles("test", "neo4j")
+@EnabledIf(DockerAvailableCondition::class)
 class Neo4jTransitivePermissionsSpec : StringSpec() {
     override fun extensions() = listOf(SpringExtension)
 
