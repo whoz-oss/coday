@@ -86,8 +86,9 @@ class GitWorkspaceStatusService(
         try {
             step(progress)
         } catch (e: Exception) {
-            // Never translate unavailable/stale data into NONE or CLOSED.
-            // Network libraries may include credentials in exception messages or causes.
+            // Never translate unavailable/stale data into NONE or CLOSED. Fixed public wording: the
+            // persisted error is returned by the API. The log keeps the exception: the runner and
+            // GitHubApi never put credentials in it.
             logger.warn(e) { "Git status unavailable for case ${current.rootCaseId}" }
             progress.copy(summary = progress.summary.copy(prState = PrState.UNKNOWN, error = STATUS_UNAVAILABLE))
         }
