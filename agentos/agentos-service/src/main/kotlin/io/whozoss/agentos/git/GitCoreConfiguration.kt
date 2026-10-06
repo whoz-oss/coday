@@ -9,8 +9,8 @@ import org.springframework.context.annotation.Configuration
 /**
  * Service beans for the shared Git core.
  *
- * `agentos-git` holds no Spring components: code loaded outside the application context, such as a
- * PF4J plugin, builds the same runner itself. The service binds the settings from `agentos.git`.
+ * `agentos-git` holds no Spring components. The service binds the settings from `agentos.git`, and
+ * hands them to the GIT plugin's tool provider, which builds its own runner from them.
  */
 @Configuration
 class GitCoreConfiguration {

@@ -84,6 +84,8 @@ class CaseServiceImpl(
      * `agentos.git.workspaces.enabled`). Null: every run starts immediately, as it always did.
      */
     private val caseLaunchGate: CaseLaunchGate? = null,
+    /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
+    private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
 ) : CaseService,
     SubCaseManager,
     CaseLauncher {
@@ -128,7 +130,10 @@ class CaseServiceImpl(
     // ======================================================
 
     @Transactional
-    override fun create(entity: Case): Case {
+    override fun create(entity: Case): Case =
+        caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
+
+    private fun createCase(entity: Case): Case {
         checkCaseCreationPreconditions(entity)
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
@@ -146,6 +151,7 @@ class CaseServiceImpl(
         // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
         // transaction, so a failed link rolls the case back instead of leaving an orphan.
         saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
+        caseWorkspaceProvisioning?.onCaseCreated(saved)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }

@@ -4,7 +4,10 @@ package io.whozoss.agentos.integrationConfig
 interface IntegrationConfigPolicy {
     fun supports(integrationType: String): Boolean
 
-    /** Validate before persistence, without network access or side effects. */
+    /** Coordinate validation, persistence and preparation intent with other domain operations. */
+    fun <T> aroundSave(config: IntegrationConfig, action: () -> T): T = action()
+
+    /** Validate before persistence; provisioning belongs to the background worker. */
     fun validate(config: IntegrationConfig)
 
     /** Queue asynchronous preparation after a successful save, without performing remote work. */

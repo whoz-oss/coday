@@ -10,6 +10,7 @@ internal enum class ManagedNetworkCommand(
     CLONE("clone"),
     LS_REMOTE("ls-remote"),
     FETCH("fetch"),
+    PUSH("push"),
     ;
 
     companion object {

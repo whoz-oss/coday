@@ -1,5 +1,6 @@
 package io.whozoss.agentos.git
 
+import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -26,9 +27,21 @@ class GitRepositoryAssociationService(
      *   association.
      */
     fun findSettings(namespaceId: UUID): GitRepositorySettings? =
-        integrationConfigService
-            .findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE)
+        activeConfig(namespaceId)?.let { gitRepoSettingsFactory.fromConfig(it, validateRemote = false) }
+
+    /** Whether the namespace equips each new root case. Reads that switch alone, never the other fields. */
+    fun automationEnabled(namespaceId: UUID): Boolean =
+        activeConfig(namespaceId)?.let { GitRepositoryIntegration.autoWorktree(it.parameters) } ?: false
+
+    /**
+     * Disabled automation must never make ordinary conversation creation depend on Git. The saved
+     * shape is parsed here. DNS and transport checks belong to actual Git execution.
+     */
+    fun findAutomaticSettings(namespaceId: UUID): GitRepositorySettings? =
+        activeConfig(namespaceId)
+            ?.takeIf { GitRepositoryIntegration.autoWorktree(it.parameters) }
             ?.let { gitRepoSettingsFactory.fromConfig(it, validateRemote = false) }
 
-
+    private fun activeConfig(namespaceId: UUID): IntegrationConfig? =
+        integrationConfigService.findActiveNamespaceSingleton(namespaceId, GitRepositoryIntegration.TYPE)
 }

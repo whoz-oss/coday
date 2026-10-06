@@ -1413,6 +1413,68 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/workspace:
+    get:
+      operationId: getCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/refresh:
+    post:
+      operationId: refreshCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/retry:
+    post:
+      operationId: retryCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceRetryRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/cases/{entityId}/members:
     get:
       description: Returns all users holding a direct ADMIN or MEMBER relation on
@@ -1671,7 +1733,7 @@ paths:
         | null             | <currentUser.id>   | user-global   | authenticated only                   |
         | present          | <currentUser.id>   | user×namespace| READ on the namespace                |
 
-        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`) cannot be created in either user scope (403).
+        `body.userId` (when supplied) MUST equal the authenticated user's id. A `namespaceId` that does not exist returns 404. Integration types listed in `agentos.integrations.user-scope-denied-types` (default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created in either user scope (403).
       operationId: createIntegrationConfig
       requestBody:
         content:
@@ -2384,6 +2446,27 @@ paths:
           description: No Content
       tags:
       - namespace-controller
+  /api/namespaces/{namespaceId}/workspaces:
+    get:
+      operationId: listCaseWorkspace
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/oauth/callback:
     post:
       description: "Called by the frontend popup after the OAuth provider redirects\
@@ -4289,6 +4372,44 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseWorkspaceView:
+      type: object
+      properties:
+        branchName:
+          type: string
+          description: Last observed branch of the worktree. Null for a detached HEAD
+            or a family that is not equipped
+        cleanupReason:
+          type: string
+          description: Why the workspace of a deleted family is still kept. Never
+            a secret
+        equipped:
+          type: boolean
+          description: Whether the case's family owns a Git workspace
+        failureReason:
+          type: string
+          description: Why the last preparation failed. Never a secret
+        git:
+          $ref: "#/components/schemas/GitWorkspaceSummary"
+          description: Last observed Git and pull request state of the worktree. Null
+            until first observed
+        rootCaseId:
+          type: string
+          format: uuid
+          description: Root case that owns the family's workspace. Null when the family
+            is not equipped
+        status:
+          type: string
+          description: Lifecycle of the workspace. Null when the family is not equipped
+          enum:
+          - REQUESTED
+          - PREPARING
+          - READY
+          - FAILED
+          - DELETING
+          - REMOVED
+      required:
+      - equipped
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4607,6 +4728,67 @@ components:
       required:
       - ids
       - withRemoved
+    GitWorkspaceSummary:
+      type: object
+      properties:
+        branchState:
+          type: string
+          description: Where the workspace branch stands against the remote
+          enum:
+          - DETACHED
+          - LOCAL_ONLY
+          - PUSHED
+          - UNPUSHED_COMMITS
+          - UNKNOWN
+        dirty:
+          type: boolean
+          description: "Whether the worktree has local changes, untracked files included.\
+            \ Null when it could not be read"
+        error:
+          type: string
+          description: Why the observation failed. Null when it succeeded. Never a
+            secret
+        headSha:
+          type: string
+          description: Commit checked out in the workspace. Null when it could not
+            be read
+        observedAt:
+          type: string
+          format: date-time
+          description: When this observation started
+        prHeadSha:
+          type: string
+          description: Head commit of the pull request. Null without one
+        prNumber:
+          type: integer
+          format: int32
+          description: Number of the pull request. Null without one
+        prState:
+          type: string
+          description: The pull request of the workspace branch. UNKNOWN never means
+            that there is none
+          enum:
+          - DRAFT
+          - OPEN
+          - MERGED
+          - CLOSED_UNMERGED
+          - NONE
+          - UNKNOWN
+        prUrl:
+          type: string
+          description: Web address of the pull request. Null without one
+        remoteSha:
+          type: string
+          description: Commit of the remote branch. Null when the branch is not on
+            the remote
+        unpushedCommits:
+          type: integer
+          format: int32
+          description: Commits of the workspace branch missing from the remote. Null
+            unless the branch is on the remote
+      required:
+      - branchState
+      - prState
     GroupsByExternalIdsRequest:
       type: object
       properties:
@@ -4888,10 +5070,18 @@ components:
       properties:
         associated:
           type: boolean
+        autoWorktreeForRootCases:
+          type: boolean
         checkoutFailureReason:
           type: string
         checkoutStatus:
           type: string
+          description: Preparation state of the namespace repository. Null while no
+            clone has been attempted
+          enum:
+          - PREPARING
+          - READY
+          - FAILED
         lastFetchedAt:
           type: string
           format: date-time
@@ -4902,11 +5092,16 @@ components:
         serviceAuthSettingId:
           type: string
           format: uuid
+        setupCommand:
+          type: string
       required:
       - associated
+      - autoWorktreeForRootCases
     NamespaceGitRequest:
       type: object
       properties:
+        autoWorktreeForRootCases:
+          type: boolean
         mainBranch:
           type: string
         repositoryUrl:
@@ -4915,7 +5110,10 @@ components:
         serviceAuthSettingId:
           type: string
           format: uuid
+        setupCommand:
+          type: string
       required:
+      - autoWorktreeForRootCases
       - repositoryUrl
       - serviceAuthSettingId
     NamespaceListItem:
@@ -6187,3 +6385,10 @@ components:
       - namespaceId
       - timestamp
       - type
+    WorkspaceRetryRequest:
+      type: object
+      properties:
+        acknowledgeSetupReplay:
+          type: boolean
+      required:
+      - acknowledgeSetupReplay

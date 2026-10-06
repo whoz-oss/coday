@@ -23,10 +23,14 @@ class GitWorkspacesControl(
     meterRegistry: MeterRegistry = SimpleMeterRegistry(),
 ) {
     private val provisioningPaused = AtomicBoolean(false)
+    private val monitorPaused = AtomicBoolean(false)
 
     init {
         Gauge.builder(PROVISIONING_PAUSED_GAUGE, provisioningPaused) { if (it.get()) 1.0 else 0.0 }
             .description("1 while an operator has paused Git workspace provisioning")
+            .register(meterRegistry)
+        Gauge.builder(MONITOR_PAUSED_GAUGE, monitorPaused) { if (it.get()) 1.0 else 0.0 }
+            .description("1 while an operator has paused Git workspace status polling")
             .register(meterRegistry)
     }
 
@@ -40,7 +44,19 @@ class GitWorkspacesControl(
         if (provisioningPaused.compareAndSet(true, false)) logger.warn { "Git workspace provisioning resumed by an operator" }
     }
 
+    /** [GitWorkspaceMonitor] polls Git and the forge; like the worker, it runs only when the worker is enabled. */
+    fun isMonitorPaused(): Boolean = monitorPaused.get()
+
+    fun pauseMonitor() {
+        if (monitorPaused.compareAndSet(false, true)) logger.warn { "Git workspace status polling paused by an operator" }
+    }
+
+    fun resumeMonitor() {
+        if (monitorPaused.compareAndSet(true, false)) logger.warn { "Git workspace status polling resumed by an operator" }
+    }
+
     companion object : KLogging() {
         const val PROVISIONING_PAUSED_GAUGE = "agentos.git.worker.paused"
+        const val MONITOR_PAUSED_GAUGE = "agentos.git.monitor.paused"
     }
 }

@@ -1,3 +1,5 @@
+import { CaseGitBadgeComponent } from '../case-workspace/case-git-badge.component'
+import { WorkspaceView } from '../../services/case-workspace.service'
 import {
   afterRenderEffect,
   ChangeDetectionStrategy,
@@ -13,7 +15,7 @@ import {
 } from '@angular/core'
 import { NgTemplateOutlet } from '@angular/common'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
-import { Case, CaseStatusEventStatusEnum } from '@whoz-oss/agentos-api-client'
+import { Case, CaseRoleEnum, CaseStatusEventStatusEnum } from '@whoz-oss/agentos-api-client'
 import { CaseItemComponent, CaseListItem } from '../case-item/case-item.component'
 
 /**
@@ -24,6 +26,7 @@ import { CaseItemComponent, CaseListItem } from '../case-item/case-item.componen
  */
 export interface CaseTreeItem extends CaseListItem {
   children: CaseTreeItem[]
+  canCreateSubCase: boolean
   /** Raw case status — used for the compact-mode status glyph. */
   status: string
 }
@@ -45,12 +48,13 @@ export interface CaseTreeItem extends CaseListItem {
  */
 @Component({
   selector: 'agentos-case-drawer',
-  imports: [NgTemplateOutlet, CaseStatusGlyphComponent],
+  imports: [NgTemplateOutlet, CaseStatusGlyphComponent, CaseGitBadgeComponent],
   templateUrl: './case-drawer.component.html',
   styleUrl: './case-drawer.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class CaseDrawerComponent {
+  readonly workspaces = input<Record<string, WorkspaceView>>({})
   readonly cases = input<Case[]>([])
   readonly activeCaseId = input<string | null>(null)
   readonly compact = input<boolean>(false)
@@ -59,6 +63,7 @@ export class CaseDrawerComponent {
 
   readonly caseSelected = output<string>()
   readonly createRequested = output<void>()
+  readonly subCaseCreateRequested = output<string>()
   readonly deleteRequested = output<string>()
   readonly starToggled = output<{ id: string; starred: boolean }>()
   readonly renameRequested = output<{ id: string; title: string }>()
@@ -440,6 +445,7 @@ function buildTree(cases: Case[]): CaseTreeItem[] {
     ...CaseItemComponent.toListItem(c),
     description: c.id ?? '',
     status: c.status ?? 'IDLE',
+    canCreateSubCase: !c.parentCaseId && c.role === CaseRoleEnum.ADMIN,
     children: [],
   })
 
