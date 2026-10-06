@@ -320,6 +320,21 @@ class GitToolsSpec :
             tools.call("git_commit", GitCommitTool.Input("Again")).output shouldContain "Nothing to commit"
         }
 
+        "a commit of given paths leaves what someone else staged out of it, and staged" {
+            val fixture = managed()
+            val tools = tools(fixture)
+            tools.call("git_create_branch", GitCreateBranchTool.Input("feature/docs"))
+            fixture.worktree.resolve("secrets.local.yml").writeText("token: draft\n")
+            git(fixture.worktree, "add", "secrets.local.yml")
+            fixture.worktree.resolve("guide.md").writeText("guide\n")
+
+            val result = tools.call("git_commit", GitCommitTool.Input("docs: add the guide", listOf("guide.md")))
+
+            result.success shouldBe true
+            git(fixture.worktree, "show", "--name-only", "--format=", "HEAD") shouldBe "guide.md"
+            git(fixture.worktree, "diff", "--cached", "--name-only") shouldBe "secrets.local.yml"
+        }
+
         "commits refuse executable filters and never run repository hooks" {
             val fixture = managed()
             val tools = tools(fixture)

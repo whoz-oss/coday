@@ -76,11 +76,15 @@ internal class GitWorkspace(
         successful(runner.run(local("switch", "--quiet", "--create", name)), "create the branch")
     }
 
-    /** Stage [paths] (every change when empty) and commit them. Returns the new commit. */
+    /**
+     * Stage [paths] (every change when empty) and commit them. Returns the new commit. With paths,
+     * only they are committed: what someone else staged in a shared worktree stays staged for them.
+     */
     fun commit(message: String, paths: List<String>, author: GitForgeAccess.Identity): String {
         guard()
+        val only = if (paths.isEmpty()) emptyList() else listOf("--") + paths
         successful(runner.run(local("add", "--all", "--", *paths.ifEmpty { listOf(".") }.toTypedArray())), "stage the changes")
-        val staged = runner.run(local("diff", "--cached", "--quiet", "--ignore-submodules=dirty"))
+        val staged = runner.run(local("diff", "--cached", "--quiet", "--ignore-submodules=dirty", *only.toTypedArray()))
         if (staged is GitCommandResult.Completed && staged.exitCode == 0) throw GitToolException("Nothing to commit")
         if (staged !is GitCommandResult.Completed || staged.exitCode != 1) {
             throw GitToolException("Cannot inspect the staged changes: ${describe(staged)}")
@@ -92,7 +96,7 @@ internal class GitWorkspace(
                     "-c", "user.email=${author.email}",
                     // A repository setting could otherwise run its signing program.
                     "-c", "commit.gpgsign=false",
-                    "commit", "--quiet", "--no-verify", "-m", message,
+                    "commit", "--quiet", "--no-verify", "-m", message, *only.toTypedArray(),
                 ),
             ),
             "commit",
