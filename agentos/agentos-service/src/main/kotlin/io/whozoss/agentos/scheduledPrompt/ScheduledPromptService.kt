@@ -3,6 +3,7 @@ package io.whozoss.agentos.scheduledPrompt
 import io.whozoss.agentos.entity.EntityService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.security.declarative.OwnershipAware
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -46,10 +47,11 @@ interface ScheduledPromptService : EntityService<ScheduledPrompt, UUID>, Ownersh
     fun findEffective(namespaceId: UUID, callerId: UUID, agentConfigId: UUID? = null): List<ScheduledPrompt>
 
     /**
-     * Find all non-removed scheduled prompts at an exact scope level — no merge, no inheritance.
+     * Find scheduled prompts at an exact scope level — no merge, no inheritance.
      * [agentConfigIds] is an optional filter; null or empty means no filter.
+     * When [withRemoved] is true, soft-deleted entries are included.
      */
-    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt>
+    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean = false, modifiedSince: Instant? = null): List<ScheduledPrompt>
 
     /**
      * Enable a [ScheduledPrompt] (idempotent). Recalculates [ScheduledPrompt.nextRunAt] only

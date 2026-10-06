@@ -803,6 +803,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -842,6 +844,8 @@ paths:
                   - $ref: "#/components/schemas/MessageEvent"
                   - $ref: "#/components/schemas/PendingConfirmationEvent"
                   - $ref: "#/components/schemas/QuestionEvent"
+                  - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                  - $ref: "#/components/schemas/SubCaseStartedEvent"
                   - $ref: "#/components/schemas/TextChunkEvent"
                   - $ref: "#/components/schemas/ThinkingEvent"
                   - $ref: "#/components/schemas/ToolRequestEvent"
@@ -879,6 +883,8 @@ paths:
                 - $ref: "#/components/schemas/MessageEvent"
                 - $ref: "#/components/schemas/PendingConfirmationEvent"
                 - $ref: "#/components/schemas/QuestionEvent"
+                - $ref: "#/components/schemas/SubCaseFinishedEvent"
+                - $ref: "#/components/schemas/SubCaseStartedEvent"
                 - $ref: "#/components/schemas/TextChunkEvent"
                 - $ref: "#/components/schemas/ThinkingEvent"
                 - $ref: "#/components/schemas/ToolRequestEvent"
@@ -1071,9 +1077,9 @@ paths:
       - case-controller
   /api/cases/{caseId}/events:
     get:
-      description: "Server-Sent Events stream emitting all events generated during\
-        \ case execution. Use the browser EventSource API to consume this endpoint,\
-        \ not a regular HTTP client."
+      description: Every SSE frame uses the stable event name 'case-event'. Its JSON
+        CaseEvent payload carries the subtype in its 'type' discriminant. includePreviousEvents
+        defaults to true.
       operationId: streamEventsCaseEventSse
       parameters:
       - in: path
@@ -1087,13 +1093,13 @@ paths:
         required: false
         schema:
           type: boolean
+          default: true
       responses:
         "200":
           content:
             text/event-stream: {}
-          description: "SSE stream — each event is a JSON-serialized CaseEvent subtype\
-            \ (MessageEvent, ToolRequestEvent, etc.) with a \"type\" discriminant\
-            \ field."
+          description: SSE stream — every event is named 'case-event' and carries
+            a JSON-serialized CaseEvent subtype with a 'type' discriminant.
       summary: Stream case events via SSE
       tags:
       - sse
@@ -1178,6 +1184,45 @@ paths:
                 $ref: "#/components/schemas/ExchangeFileContent"
           description: OK
       summary: Read case exchange file content
+      tags:
+      - exchange-controller
+  /api/cases/{caseId}/files/directory:
+    get:
+      operationId: browseCaseFilesExchange
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
       tags:
       - exchange-controller
   /api/cases/{caseId}/files/download:
@@ -1309,6 +1354,65 @@ paths:
       summary: Mark case as read
       tags:
       - case-controller
+  /api/cases/{caseId}/run-cost:
+    get:
+      operationId: getRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/continue:
+    post:
+      operationId: continueCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContinueCostRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunCostDto"
+          description: OK
+      tags:
+      - run-cost-controller
+  /api/cases/{caseId}/run-cost/stop:
+    post:
+      operationId: stopCostRunRunCost
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - run-cost-controller
   /api/cases/{entityId}/members:
     get:
       description: Returns all users holding a direct ADMIN or MEMBER relation on
@@ -2071,6 +2175,45 @@ paths:
       summary: Read namespace exchange file content
       tags:
       - exchange-controller
+  /api/namespaces/{namespaceId}/files/directory:
+    get:
+      operationId: browseNamespaceFilesExchange
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: false
+        schema:
+          type: string
+          default: ""
+      - in: query
+        name: page
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 0
+      - in: query
+        name: size
+        required: false
+        schema:
+          type: integer
+          format: int32
+          default: 200
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeDirectoryListing"
+          description: OK
+      tags:
+      - exchange-controller
   /api/namespaces/{namespaceId}/files/download:
     get:
       operationId: downloadNamespaceFileExchange
@@ -2118,6 +2261,67 @@ paths:
       summary: List namespace exchange files
       tags:
       - exchange-controller
+  /api/namespaces/{namespaceId}/git:
+    delete:
+      operationId: removeAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
+    get:
+      operationId: getAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
+    put:
+      operationId: setAssociationNamespaceGit
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NamespaceGitRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NamespaceGit"
+          description: OK
+      tags:
+      - namespace-git-controller
   /api/namespaces/{namespaceId}/members/{targetUserId}:
     delete:
       operationId: revokeMember
@@ -2913,6 +3117,225 @@ paths:
       summary: Update a Skill
       tags:
       - skill-controller
+  /api/tools:
+    get:
+      operationId: listToolInvoke
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: userId
+        required: false
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ToolSummary"
+          description: OK
+      tags:
+      - tool-invoke-controller
+  /api/tools/invoke:
+    post:
+      operationId: invokeToolInvoke
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ToolInvokeRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolInvokeResponse"
+          description: OK
+      tags:
+      - tool-invoke-controller
+  /api/usage-configuration:
+    get:
+      operationId: getUsageConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageConfiguration"
+          description: OK
+      tags:
+      - usage-configuration-controller
+  /api/usage-records/aggregate/by-agent:
+    get:
+      operationId: aggregateByAgentUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case-tree/{rootCaseId}:
+    get:
+      operationId: aggregateByCaseTreeUsageRecord
+      parameters:
+      - in: path
+        name: rootCaseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-case/{caseId}:
+    get:
+      operationId: aggregateByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-model:
+    get:
+      operationId: aggregateByModelUsageRecord
+      parameters:
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageAggregateByKey"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/aggregate/by-user:
+    get:
+      operationId: aggregateByUserUsageRecord
+      parameters:
+      - in: query
+        name: userId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: from
+        required: true
+        schema:
+          type: string
+          format: date-time
+      - in: query
+        name: to
+        required: true
+        schema:
+          type: string
+          format: date-time
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UsageAggregate"
+          description: OK
+      tags:
+      - usage-record-controller
+  /api/usage-records/by-case/{caseId}:
+    get:
+      operationId: listByCaseIdUsageRecord
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/UsageRecord"
+          description: OK
+      tags:
+      - usage-record-controller
   /api/user-groups:
     get:
       operationId: findByNamespaceIdUserGroup
@@ -3438,6 +3861,8 @@ components:
             type: string
           llmProvider:
             type: string
+          llmUsage:
+            $ref: "#/components/schemas/LlmUsage"
       required:
       - agentId
       - agentName
@@ -3480,6 +3905,9 @@ components:
             format: uuid
           agentName:
             type: string
+          questionId:
+            type: string
+            format: uuid
       required:
       - agentId
       - agentName
@@ -3500,17 +3928,22 @@ components:
         apiModelName:
           type: string
           minLength: 1
+        contextWindow:
+          type: integer
+          format: int64
         description:
           type: string
         id:
           type: string
           format: uuid
-        maxTokens:
+        maxCompletionTokens:
           type: integer
           format: int32
         namespaceId:
           type: string
           format: uuid
+        pricing:
+          $ref: "#/components/schemas/ModelPricing"
         priority:
           type: integer
           format: int32
@@ -3723,6 +4156,14 @@ components:
           enum:
           - ADMIN
           - MEMBER
+        runCostThreshold:
+          type: number
+          format: double
+          description: "Per-case override of the run cost threshold, in the platform\
+            \ currency unit. Null means inherit from the namespace or platform default\
+            \ (never \"no limit\" or \"zero\"). Set upfront for costly runs, or written\
+            \ by the enforcement mechanism on continuation."
+          minimum: 0
         scheduledPromptId:
           type: string
           format: uuid
@@ -3781,6 +4222,8 @@ components:
           - PendingConfirmationEvent
           - ConfirmationResolvedEvent
           - CaseUpdatedEvent
+          - SubCaseStartedEvent
+          - SubCaseFinishedEvent
       required:
       - caseId
       - id
@@ -3845,6 +4288,14 @@ components:
       - resultText
       - timestamp
       - type
+    ContinueCostRequest:
+      type: object
+      properties:
+        expectedThreshold:
+          type: number
+          format: double
+      required:
+      - expectedThreshold
     EnrichmentPhaseTrace:
       type: object
       properties:
@@ -3915,6 +4366,79 @@ components:
       required:
       - message
       - success
+    ExchangeDirectoryEntry:
+      type: object
+      description: A file or sub-directory at one level of an exchange scope.
+      properties:
+        directory:
+          type: boolean
+          description: "True for a sub-directory, false for a file."
+        lastModified:
+          type: string
+          format: date-time
+          description: Last modification timestamp.
+        mimeType:
+          type: string
+          description: "Detected MIME type for a file, null otherwise."
+        name:
+          type: string
+          description: Entry name (last path segment).
+        path:
+          type: string
+          description: "Path relative to the exchange root, using forward slashes."
+        size:
+          type: integer
+          format: int64
+          description: "File size in bytes; null for a directory, whose size is not\
+            \ computed."
+      required:
+      - directory
+      - name
+      - path
+    ExchangeDirectoryListing:
+      type: object
+      description: "A page of one directory level, plus the caller's capability."
+      properties:
+        capability:
+          type: string
+          description: Capability the caller has over this scope.
+          enum:
+          - NONE
+          - READ
+          - READ_WRITE
+        entries:
+          type: array
+          description: "Entries in this page: sub-directories first, then files, each\
+            \ alphabetically."
+          items:
+            $ref: "#/components/schemas/ExchangeDirectoryEntry"
+        hasMore:
+          type: boolean
+          description: Whether further pages exist for this directory.
+        page:
+          type: integer
+          format: int32
+          description: Zero-based index of the page returned.
+        pageSize:
+          type: integer
+          format: int32
+          description: Maximum number of entries per page.
+        path:
+          type: string
+          description: "Directory being listed, relative to the exchange root. Empty\
+            \ string for the root itself."
+        totalEntries:
+          type: integer
+          format: int32
+          description: "Total number of entries in this directory, across all pages."
+      required:
+      - capability
+      - entries
+      - hasMore
+      - page
+      - pageSize
+      - path
+      - totalEntries
     ExchangeFileContent:
       type: object
       description: Text content and metadata of a single exchange file.
@@ -4184,6 +4708,33 @@ components:
       required:
       - namespaceExternalId
       - userExternalId
+    LlmUsage:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        estimatedCostUsd:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - inputTokens
+      - outputTokens
+      - totalTokens
     MemberItem:
       type: object
       properties:
@@ -4246,6 +4797,25 @@ components:
       - namespaceId
       - timestamp
       - type
+    ModelPricing:
+      type: object
+      properties:
+        cacheRead:
+          type: number
+          format: double
+        cacheWrite:
+          type: number
+          format: double
+        inputMTokens:
+          type: number
+          format: double
+        isEmpty:
+          type: boolean
+        outputMTokens:
+          type: number
+          format: double
+      required:
+      - isEmpty
     Namespace:
       type: object
       properties:
@@ -4270,6 +4840,14 @@ components:
         name:
           type: string
           minLength: 1
+        runCostThreshold:
+          type: number
+          format: double
+          description: "Namespace-level default for the run cost threshold, in the\
+            \ platform currency unit. Null means inherit from the platform default.\
+            \ Applies to all cases in this namespace that do not declare their own\
+            \ threshold."
+          minimum: 0
       required:
       - name
     NamespaceAgentDeployRequest:
@@ -4282,6 +4860,41 @@ components:
             format: uuid
       required:
       - agentIds
+    NamespaceGit:
+      type: object
+      properties:
+        associated:
+          type: boolean
+        checkoutFailureReason:
+          type: string
+        checkoutStatus:
+          type: string
+        lastFetchedAt:
+          type: string
+          format: date-time
+        mainBranch:
+          type: string
+        repositoryUrl:
+          type: string
+        serviceAuthSettingId:
+          type: string
+          format: uuid
+      required:
+      - associated
+    NamespaceGitRequest:
+      type: object
+      properties:
+        mainBranch:
+          type: string
+        repositoryUrl:
+          type: string
+          minLength: 1
+        serviceAuthSettingId:
+          type: string
+          format: uuid
+      required:
+      - repositoryUrl
+      - serviceAuthSettingId
     NamespaceListItem:
       type: object
       properties:
@@ -4451,6 +5064,28 @@ components:
       required:
       - authType
       - name
+    PausedCostDto:
+      type: object
+      properties:
+        ancestor:
+          type: boolean
+        canContinue:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        threshold:
+          type: number
+          format: double
+      required:
+      - ancestor
+      - canContinue
+      - caseId
+      - cost
+      - threshold
     PendingConfirmationEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4757,6 +5392,44 @@ components:
       - days
       - timeUtc
       - unit
+    RunCostDto:
+      type: object
+      properties:
+        active:
+          type: boolean
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type: number
+          format: double
+        liveTokens:
+          type: integer
+          format: int64
+        paused:
+          type: boolean
+        pausedCases:
+          type: array
+          items:
+            $ref: "#/components/schemas/PausedCostDto"
+        runCostThreshold:
+          type: number
+          format: double
+        since:
+          type: string
+          format: date-time
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - active
+      - caseId
+      - cost
+      - liveTokens
+      - paused
+      - pausedCases
+      - since
+      - unknownCostCount
     ScheduledPrompt:
       type: object
       properties:
@@ -4772,6 +5445,9 @@ components:
           type: string
         enabled:
           type: boolean
+        externalMetadata:
+          type: object
+          additionalProperties: {}
         id:
           type: string
           format: uuid
@@ -4796,6 +5472,8 @@ components:
           minLength: 1
         recurrence:
           $ref: "#/components/schemas/Recurrence"
+        removed:
+          type: boolean
         updatedBy:
           type: string
         updatedOn:
@@ -4813,6 +5491,7 @@ components:
       - planning
       - promptContent
       - recurrence
+      - removed
     ScheduledPromptEffectiveRequest:
       type: object
       properties:
@@ -4838,6 +5517,9 @@ components:
           items:
             type: string
             format: uuid
+        modifiedSince:
+          type: string
+          format: date-time
         namespaceExternalId:
           type:
           - string
@@ -4856,6 +5538,9 @@ components:
           - string
           - "null"
           format: uuid
+        withRemoved:
+          type: boolean
+          default: false
     Skill:
       type: object
       properties:
@@ -4894,6 +5579,75 @@ components:
       - body
       - description
       - name
+    SubCaseFinishedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          errorType:
+            type: string
+          outcome:
+            type: string
+            enum:
+            - SUCCESS
+            - WAITING_USER
+            - ERROR
+            - TIMEOUT
+            - KILLED
+          subCaseId:
+            type: string
+            format: uuid
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - outcome
+      - subCaseId
+      - timestamp
+      - toolRequestId
+      - type
+    SubCaseStartedEvent:
+      allOf:
+      - $ref: "#/components/schemas/CaseEvent"
+      - type: object
+        properties:
+          agentName:
+            type: string
+          delegationId:
+            type: string
+            format: uuid
+          resumed:
+            type: boolean
+          subCaseId:
+            type: string
+            format: uuid
+          task:
+            type: string
+          toolRequestId:
+            type: string
+      required:
+      - agentName
+      - caseId
+      - delegationId
+      - id
+      - metadata
+      - namespaceId
+      - resumed
+      - subCaseId
+      - task
+      - timestamp
+      - toolRequestId
+      - type
     SyncUserRolesRequest:
       type: object
       properties:
@@ -4941,6 +5695,45 @@ components:
       - namespaceId
       - timestamp
       - type
+    ToolInvokeRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+          format: uuid
+        payload:
+          type: string
+        toolName:
+          type: string
+        userId:
+          type: string
+          format: uuid
+      required:
+      - namespaceId
+      - toolName
+    ToolInvokeResponse:
+      type: object
+      properties:
+        errorMessage:
+          type: string
+        errorType:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: {}
+        output:
+          type: string
+        structuredOutput:
+          $ref: "#/components/schemas/JsonNode"
+        success:
+          type: boolean
+        toolName:
+          type: string
+      required:
+      - metadata
+      - output
+      - success
+      - toolName
     ToolRequestEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4981,6 +5774,8 @@ components:
             oneOf:
             - $ref: "#/components/schemas/Image"
             - $ref: "#/components/schemas/Text"
+          structuredOutput:
+            $ref: "#/components/schemas/JsonNode"
           success:
             type: boolean
           toolMetadata:
@@ -5022,6 +5817,19 @@ components:
       - timestamp
       - toolName
       - type
+    ToolSummary:
+      type: object
+      properties:
+        description:
+          type: string
+        inputSchema:
+          type: string
+        name:
+          type: string
+      required:
+      - description
+      - inputSchema
+      - name
     UnreadCountResponse:
       type: object
       properties:
@@ -5030,6 +5838,127 @@ components:
           format: int64
       required:
       - unreadCount
+    UsageAggregate:
+      type: object
+      properties:
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        cost:
+          type: number
+          format: double
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        recordCount:
+          type: integer
+          format: int64
+        totalTokens:
+          type: integer
+          format: int64
+        unknownCostCount:
+          type: integer
+          format: int64
+      required:
+      - cacheReadTokens
+      - cacheWriteTokens
+      - cost
+      - inputTokens
+      - outputTokens
+      - recordCount
+      - totalTokens
+      - unknownCostCount
+    UsageAggregateByKey:
+      type: object
+      properties:
+        aggregate:
+          $ref: "#/components/schemas/UsageAggregate"
+        key:
+          type: string
+      required:
+      - aggregate
+      - key
+    UsageConfiguration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
+    UsageRecord:
+      type: object
+      properties:
+        agentConfigId:
+          type: string
+          format: uuid
+        agentName:
+          type: string
+        apiModelName:
+          type: string
+        cacheReadTokens:
+          type: integer
+          format: int64
+        cacheWriteTokens:
+          type: integer
+          format: int64
+        caseId:
+          type: string
+          format: uuid
+        cost:
+          type:
+          - number
+          - "null"
+          format: double
+        createdOn:
+          type: string
+          format: date-time
+        id:
+          type: string
+          format: uuid
+        inputTokens:
+          type: integer
+          format: int64
+        namespaceId:
+          type: string
+          format: uuid
+        outcome:
+          type: string
+        outputTokens:
+          type: integer
+          format: int64
+        providerName:
+          type: string
+        source:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        totalTokens:
+          type: integer
+          format: int64
+        userId:
+          type: string
+          format: uuid
+      required:
+      - agentName
+      - cacheReadTokens
+      - cacheWriteTokens
+      - caseId
+      - createdOn
+      - id
+      - inputTokens
+      - namespaceId
+      - outcome
+      - outputTokens
+      - source
+      - timestamp
+      - totalTokens
     User:
       type: object
       properties:
@@ -5048,6 +5977,9 @@ components:
           type: boolean
         lastname:
           type: string
+        preferredLanguage:
+          type: string
+          pattern: "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
       required:
       - isAdmin
     UserGroupCreateRequest:

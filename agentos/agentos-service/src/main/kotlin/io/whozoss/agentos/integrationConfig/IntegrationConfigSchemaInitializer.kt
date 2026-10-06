@@ -49,6 +49,8 @@ class IntegrationConfigSchemaInitializer(
         assertTripleKeyComplete()
         assertNoTripleKeyDuplicates()
         ensureTripleKeyUniqueConstraint()
+        assertNoSingletonKeyDuplicates()
+        ensureSingletonKeyUniqueConstraint()
         ensureUserIdIndex()
         dropLegacyCompositeIndex()
     }
@@ -164,6 +166,42 @@ class IntegrationConfigSchemaInitializer(
             """.trimIndent()
         neo4jClient.query(cypher).run()
         logger.info { "[IntegrationConfigSchema] constraint 'integration_config_triple_key_unique' ensured" }
+    }
+
+    /** Pre-flight for the singleton constraint, as [assertNoTripleKeyDuplicates]. Older rows carry no key. */
+    private fun assertNoSingletonKeyDuplicates() {
+        val offendingKeys =
+            neo4jClient
+                .query(
+                    """
+                    MATCH (c:IntegrationConfig)
+                    WHERE c.singletonKey IS NOT NULL
+                    WITH c.singletonKey AS key, count(c) AS dups
+                    WHERE dups > 1
+                    RETURN key ORDER BY dups DESC LIMIT 3
+                    """.trimIndent(),
+                ).fetchAs(String::class.java)
+                .all()
+        if (offendingKeys.isNotEmpty()) {
+            error(
+                "[IntegrationConfigSchema] aborting: found duplicate singletonKey row(s) — a namespace " +
+                    "has more than one active configuration of a type that allows only one " +
+                    "(${IntegrationTypeConstraints.NAMESPACE_SINGLETON_TYPES.joinToString()}). " +
+                    "Soft-delete the extra rows before next start. " +
+                    "Sample keys: ${offendingKeys.joinToString(prefix = "[", postfix = "]")}",
+            )
+        }
+    }
+
+    /** One active row per (namespace, singleton type), enforced by the database against concurrent creates. */
+    private fun ensureSingletonKeyUniqueConstraint() {
+        val cypher =
+            """
+            CREATE CONSTRAINT integration_config_singleton_key_unique IF NOT EXISTS
+            FOR (c:IntegrationConfig) REQUIRE c.singletonKey IS UNIQUE
+            """.trimIndent()
+        neo4jClient.query(cypher).run()
+        logger.info { "[IntegrationConfigSchema] constraint 'integration_config_singleton_key_unique' ensured" }
     }
 
     private fun ensureUserIdIndex() {

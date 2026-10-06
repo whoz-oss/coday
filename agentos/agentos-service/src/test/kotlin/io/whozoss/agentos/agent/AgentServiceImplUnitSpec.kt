@@ -34,13 +34,19 @@ import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.auth.StaticCredentialFactory
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.exchange.ResolvedExchangeRoot
+import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
+import io.whozoss.agentos.git.GitMetadataEntries
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
 import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.queryUser.QueryUserToolPlugin
@@ -101,6 +107,18 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
 
+    // Default resolution, which a test can replace with a directory owned by another case.
+    private var sharedRoot: ResolvedExchangeRoot? = null
+    private val defaultRootResolver = DefaultExchangeRootResolver(exchangeStorageService)
+    private val exchangeRootResolver: ExchangeRootResolver =
+        object : ExchangeRootResolver by defaultRootResolver {
+            override fun resolve(
+                caseId: UUID,
+                namespaceId: UUID,
+                caseCreatedAt: java.time.Instant,
+            ): ResolvedExchangeRoot = sharedRoot ?: defaultRootResolver.resolve(caseId, namespaceId, caseCreatedAt)
+        }
+
     // Strict on purpose: a relaxed mock would return a non-null ExchangeGrant and silently grant the
     // exchange in every unrelated test. The defaults stubbed in init deny both scopes.
     private val exchangeToolGrantService: ExchangeToolGrantService = mockk()
@@ -134,7 +152,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
             skillToolGrantService = skillToolGrantService,
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(delegationTimeoutSeconds = 2),
+            limitsConfig = LimitsConfigProperties(),
             queryUserToolGrantService = queryUserToolGrantService,
+            exchangeRootResolver = exchangeRootResolver,
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
@@ -164,7 +184,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias: String? = "sonnet",
         priority: Int = 0,
         temperature: Double? = null,
-        maxTokens: Int? = null,
+        maxCompletionTokens: Int? = null,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -173,7 +193,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias = alias,
         priority = priority,
         temperature = temperature,
-        maxTokens = maxTokens,
+        maxCompletionTokens = maxCompletionTokens,
     )
 
     private fun agentConfig(
@@ -292,10 +312,16 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     val started = testScheduler.currentTime
                     val result = tool.execute(
                         DelegationTool.Args(listOf(DelegationTool.Delegation("child", "task"))),
-                        ToolContext(namespaceId = namespaceId, userId = UUID.randomUUID(), userExternalId = null, caseEvents = emptyList()),
+                        ToolContext(
+                            namespaceId = namespaceId,
+                            userId = UUID.randomUUID(),
+                            userExternalId = null,
+                            caseEvents = emptyList(),
+                            toolRequestId = "delegate-request",
+                        ),
                     )
                     result.success shouldBe false
-                    result.output shouldContain "Sub-case timed out after ${expectedSeconds}s."
+                    result.output shouldContain "Sub-case timed out after ${expectedSeconds}s of active execution."
                     (testScheduler.currentTime - started) shouldBe expectedSeconds * 1000L
                     verify(exactly = 1) { manager.killCase(childId) }
                 }
@@ -349,6 +375,31 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     allowedTools = null,
                     toolContext = any(),
                 )
+            }
+        }
+
+        listOf(false to false, true to false, true to true).forEach { (canRead, canWrite) ->
+            "shared case file tools follow the owner's permissions (read=$canRead, write=$canWrite)" {
+                val ownerId = UUID.randomUUID()
+                val root = ResolvedExchangeRoot(Path.of("/tmp/shared-case-test"), ownerId)
+                sharedRoot = root
+                try {
+                    every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(null)
+                    every { exchangeCapabilityService.canAccessCase(any(), caseId, root, Action.READ) } returns canRead
+                    every { exchangeCapabilityService.canAccessCase(any(), caseId, root, Action.WRITE) } returns canWrite
+                    every { agentConfigService.findByName(namespaceId, "shared-agent") } returns agentConfig(name = "shared-agent", modelName = "sonnet")
+                    every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+                    every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+                    every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+                    agentService.findAgentByName("shared-agent", context)
+
+                    verify(exactly = if (canRead) 1 else 0) {
+                        exchangeToolGrantService.grantTools(root.path, !canWrite, "case-exchange", null, any())
+                    }
+                } finally {
+                    sharedRoot = null
+                }
             }
         }
 
@@ -529,6 +580,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 ExchangeToolGrantService(
                     properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true),
                     storageProperties = ExchangeStorageConfigProperties(),
+                    reservedEntries = listOf(GitMetadataEntries()),
                     toolRegistryService = toolRegistryService,
                     toolResolverService = toolResolverService,
                     objectMapper = testObjectMapper,
@@ -560,7 +612,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    exchangeRootResolver = exchangeRootResolver,
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -893,7 +947,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     queryUserToolGrantService = queryUserToolGrantService,
+                    exchangeRootResolver = exchangeRootResolver,
                 )
             val configs =
                 listOf(

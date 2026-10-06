@@ -100,4 +100,9 @@ data class ScheduledPrompt(
     val nextRunAt: Instant,
     /** Last time this scheduled prompt was triggered. Null until first run. */
     val lastRunAt: Instant? = null,
+    /**
+     * Opaque metadata map for external consumers.
+     * AgentOS persists this field as-is without interpreting its content.
+     */
+    val externalMetadata: Map<String, Any?>? = null,
 ) : Entity

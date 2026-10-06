@@ -1,0 +1,103 @@
+<div class="namespace-git">
+  <header class="namespace-git__header">
+    <button class="namespace-git__back" type="button" (click)="cancel()" title="Back to namespaces">
+      <span class="namespace-git__back-icon">&#8592;</span>
+      Namespaces
+    </button>
+    <h1 class="namespace-git__title">Git repository</h1>
+  </header>
+
+  @if (isLoading()) {
+    <p class="namespace-git__loading">Loading&hellip;</p>
+  } @else {
+    <div class="namespace-git__body">
+      <p class="namespace-git__hint">
+        Associate a repository with this namespace and prepare an internal clone. Namespace files remain shared
+        documents outside Git.
+      </p>
+
+      @if (errorMessage()) {
+        <p class="namespace-git__error" role="alert">{{ errorMessage() }}</p>
+      }
+
+      @if (isAssociated() && checkoutStatus()) {
+        <p
+          class="namespace-git__status"
+          [class.namespace-git__status--failed]="checkoutStatus() === 'FAILED'"
+          [class.namespace-git__status--ready]="checkoutStatus() === 'READY'"
+        >
+          Repository: {{ checkoutStatus() }}
+          @if (association()?.checkoutFailureReason) {
+            <span class="namespace-git__status-reason">{{ association()?.checkoutFailureReason }}</span>
+          }
+        </p>
+      }
+
+      <fieldset class="namespace-git__section">
+        <legend class="namespace-git__label">Repository</legend>
+
+        <label class="namespace-git__field">
+          <span class="namespace-git__field-label">Repository URL</span>
+          <input
+            class="namespace-git__input"
+            type="url"
+            placeholder="https://forge.example/org/project.git"
+            [ngModel]="repositoryUrl()"
+            (ngModelChange)="repositoryUrl.set($event)"
+            name="repositoryUrl"
+          />
+          <span class="namespace-git__field-hint">HTTPS only, without credentials in the URL.</span>
+        </label>
+
+        <label class="namespace-git__field">
+          <span class="namespace-git__field-label">Main branch</span>
+          <input
+            class="namespace-git__input"
+            type="text"
+            placeholder="main"
+            [ngModel]="mainBranch()"
+            (ngModelChange)="mainBranch.set($event)"
+            name="mainBranch"
+          />
+          <span class="namespace-git__field-hint">The internal clone starts from this remote branch.</span>
+        </label>
+
+        <label class="namespace-git__field">
+          <span class="namespace-git__field-label">Service account</span>
+          <select
+            class="namespace-git__input"
+            [ngModel]="serviceAuthSettingId()"
+            (ngModelChange)="serviceAuthSettingId.set($event)"
+            name="serviceAuthSettingId"
+          >
+            <option value="">Select an auth setting&hellip;</option>
+            @for (setting of eligibleAuthSettings(); track setting.id) {
+              <option [value]="setting.id">{{ setting.name }} ({{ authTypeLabel(setting.authType) }})</option>
+            }
+          </select>
+          <span class="namespace-git__field-hint">
+            Shared by the namespace. Every Git operation uses this identity, never the identity of whoever opened the
+            case.
+          </span>
+          @if (eligibleAuthSettings().length === 0) {
+            <span class="namespace-git__field-hint namespace-git__field-hint--warn">
+              No usable auth setting in this namespace. Create a BEARER_TOKEN one first.
+            </span>
+          }
+        </label>
+      </fieldset>
+
+      <div class="namespace-git__actions">
+        <button class="namespace-git__save" type="button" [disabled]="!canSave()" (click)="save()">
+          {{ isSaving() ? 'Saving…' : isAssociated() ? 'Update' : 'Associate' }}
+        </button>
+        @if (isAssociated()) {
+          <button class="namespace-git__remove" type="button" [disabled]="isSaving()" (click)="remove()">
+            Remove association
+          </button>
+        }
+        <button class="namespace-git__cancel" type="button" (click)="cancel()">Cancel</button>
+      </div>
+    </div>
+  }
+</div>

@@ -47,11 +47,13 @@ class InMemoryScheduledPromptRepository : ScheduledPromptRepository {
                 (sp.namespaceId == namespaceId && sp.userId == userId)
         }
 
-    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt> =
+    override fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean, modifiedSince: Instant?): List<ScheduledPrompt> =
         delegate.findAll().filter { sp ->
-            sp.namespaceId == namespaceId &&
+            (withRemoved || !sp.metadata.removed) &&
+                sp.namespaceId == namespaceId &&
                 sp.userId == userId &&
-                (agentConfigIds.isNullOrEmpty() || sp.agentConfigId in agentConfigIds)
+                (agentConfigIds.isNullOrEmpty() || sp.agentConfigId in agentConfigIds) &&
+                (modifiedSince == null || sp.metadata.modified.isAfter(modifiedSince))
         }
 
     override fun delete(id: UUID): Boolean = delegate.delete(id)

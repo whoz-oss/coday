@@ -120,6 +120,7 @@ class Neo4jSchemaInitializer(
                 "user_group_id_unique" to "UserGroup",
                 "feedback_id_unique" to "Feedback",
                 "prompt_id_unique" to "Prompt",
+                "usage_record_id_unique" to "UsageRecord",
                 "skill_id_unique" to "Skill",
             )
 

@@ -14,13 +14,16 @@ import io.whozoss.agentos.authSetting.AuthType
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.CompressingChatClient
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
@@ -83,7 +86,9 @@ class AgentServiceImpl(
     private val skillService: SkillService,
     private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
+    private val limitsConfig: LimitsConfigProperties,
     private val queryUserToolGrantService: QueryUserToolGrantService,
+    private val exchangeRootResolver: ExchangeRootResolver,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -440,8 +445,12 @@ class AgentServiceImpl(
         effectiveIntegrationConfigs
             .filter { it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(it.name) == true }
             .sortedBy { it.name }
-            .mapNotNull { it.parameters?.get(RedirectToolPlugin.GUIDELINE_PARAM)?.asText()?.takeIf { g -> g.isNotBlank() } }
-            .joinToString("\n\n")
+            .mapNotNull {
+                it.parameters
+                    ?.get(RedirectToolPlugin.GUIDELINE_PARAM)
+                    ?.asText()
+                    ?.takeIf { g -> g.isNotBlank() }
+            }.joinToString("\n\n")
             .takeUnless { it.isBlank() }
 
     /**
@@ -544,7 +553,7 @@ class AgentServiceImpl(
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString())
+        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
 
         return if (advancedExecution) {
             val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
@@ -569,6 +578,7 @@ class AgentServiceImpl(
                 userId = resolvedUser?.metadata?.id,
                 userExternalId = resolvedUser?.externalId,
                 caseEventsProvider = context.caseEventsProvider,
+                maxIterations = limitsConfig.agentMaxIterations,
                 llmProvider = providerConfig.name,
                 llmModel = modelConfig.apiModelName,
                 toolMetricsService = toolMetricsService,
@@ -838,9 +848,10 @@ class AgentServiceImpl(
      * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
      *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
      *   root);
-     * - the case scope additionally requires a live [context.caseId]; it needs no permission gate of
-     *   its own because its root is the run's own case, which the invoking user already holds Case
-     *   WRITE on to have reached this point;
+     * - the case scope additionally requires a live [context.caseId]. The run's own directory needs no
+     *   extra gate: the invoking user already holds Case WRITE on that case to have reached this point.
+     *   A directory owned by another case (a family's shared workspace) also requires the user's
+     *   permission on that owner, and is read-only without WRITE on both;
      * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
      *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
      *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
@@ -866,14 +877,22 @@ class AgentServiceImpl(
             // The agent gets read/write on the case exchange by design (it produces files during a run).
             // User-facing write is separately gated: the exchange upload/delete endpoints require Case
             // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            tools +=
-                exchangeToolGrantService.grantTools(
-                    root = exchangeStorageService.caseRoot(context.namespaceId, caseId, caseCreatedAt),
-                    readOnly = false,
-                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                    allowedTools = caseGrant.allowedTools,
-                    toolContext = toolContext,
-                )
+            // A directory owned by another case (a family's shared workspace) also requires the
+            // invoking user's permission on that owner: delegation does not confer its rights.
+            val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
+            val userId = context.userId?.toString()
+            val canRead = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+            if (canRead) {
+                val canWrite = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                tools +=
+                    exchangeToolGrantService.grantTools(
+                        root = root.requireUsable(),
+                        readOnly = !canWrite,
+                        configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                        allowedTools = caseGrant.allowedTools,
+                        toolContext = toolContext,
+                    )
+            }
         }
 
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
@@ -921,8 +940,7 @@ class AgentServiceImpl(
     private fun staticCredentialFor(
         userId: UUID,
         setting: AuthSetting,
-    ): Credential? =
-        if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
+    ): Credential? = if (setting.authType in OAUTH_AUTH_TYPES) null else staticCredentialFactory.fromAuthSetting(userId, setting)
 
     companion object : KLogging() {
         private val OAUTH_AUTH_TYPES =

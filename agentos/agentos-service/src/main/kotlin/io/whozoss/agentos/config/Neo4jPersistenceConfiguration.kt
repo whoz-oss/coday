@@ -29,6 +29,12 @@ import io.whozoss.agentos.encryption.FieldEncryptor
 import io.whozoss.agentos.feedback.FeedbackNodeNeo4jRepository
 import io.whozoss.agentos.feedback.FeedbackRepository
 import io.whozoss.agentos.feedback.Neo4jFeedbackRepository
+import io.whozoss.agentos.git.CaseResourceBindingNodeNeo4jRepository
+import io.whozoss.agentos.git.CaseResourceBindingRepository
+import io.whozoss.agentos.git.Neo4jCaseResourceBindingRepository
+import io.whozoss.agentos.git.Neo4jRepositoryCheckoutRepository
+import io.whozoss.agentos.git.RepositoryCheckoutNodeNeo4jRepository
+import io.whozoss.agentos.git.RepositoryCheckoutRepository
 import io.whozoss.agentos.integrationConfig.FilesystemIntegrationConfigRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigNodeNeo4jRepository
 import io.whozoss.agentos.integrationConfig.IntegrationConfigRepository
@@ -59,6 +65,9 @@ import io.whozoss.agentos.skill.FilesystemSkillRepository
 import io.whozoss.agentos.skill.Neo4jSkillRepository
 import io.whozoss.agentos.skill.SkillNodeNeo4jRepository
 import io.whozoss.agentos.skill.SkillRepository
+import io.whozoss.agentos.usage.Neo4jUsageRecordRepository
+import io.whozoss.agentos.usage.UsageRecordNodeNeo4jRepository
+import io.whozoss.agentos.usage.UsageRecordRepository
 import io.whozoss.agentos.user.Neo4jUserRepository
 import io.whozoss.agentos.user.UserNodeNeo4jRepository
 import io.whozoss.agentos.user.UserRepository
@@ -69,6 +78,7 @@ import mu.KLogging
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -112,6 +122,7 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.caseFlow",
         "io.whozoss.agentos.caseEvent",
         "io.whozoss.agentos.feedback",
+        "io.whozoss.agentos.git",
         "io.whozoss.agentos.integrationConfig",
         "io.whozoss.agentos.permissions",
         "io.whozoss.agentos.prompt",
@@ -120,6 +131,7 @@ import java.time.ZoneOffset
         "io.whozoss.agentos.authSetting",
         "io.whozoss.agentos.credential",
         "io.whozoss.agentos.scheduledPrompt",
+        "io.whozoss.agentos.usage",
     ],
 )
 class Neo4jPersistenceConfiguration {
@@ -142,6 +154,25 @@ class Neo4jPersistenceConfiguration {
     fun neo4jNamespaceRepository(namespaceNodeNeo4jRepository: NamespaceNodeNeo4jRepository): NamespaceRepository {
         logger.info { "[Persistence] Neo4jNamespaceRepository active" }
         return Neo4jNamespaceRepository(namespaceNodeNeo4jRepository)
+    }
+
+    @Bean
+    fun neo4jRepositoryCheckoutRepository(
+        repositoryCheckoutNodeNeo4jRepository: RepositoryCheckoutNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): RepositoryCheckoutRepository {
+        logger.info { "[Persistence] Neo4jRepositoryCheckoutRepository active" }
+        return Neo4jRepositoryCheckoutRepository(repositoryCheckoutNodeNeo4jRepository, childLinkService)
+    }
+
+    /** Case-family workspace bindings: registered only with `agentos.git.workspaces.enabled`. */
+    @Bean
+    @ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
+    fun neo4jCaseResourceBindingRepository(
+        caseResourceBindingNodeNeo4jRepository: CaseResourceBindingNodeNeo4jRepository,
+    ): CaseResourceBindingRepository {
+        logger.info { "[Persistence] Neo4jCaseResourceBindingRepository active" }
+        return Neo4jCaseResourceBindingRepository(caseResourceBindingNodeNeo4jRepository)
     }
 
     @Bean
@@ -361,12 +392,56 @@ class Neo4jPersistenceConfiguration {
     }
 
     @Bean
+    fun neo4jUsageRecordRepository(
+        usageRecordNodeNeo4jRepository: UsageRecordNodeNeo4jRepository,
+        childLinkService: Neo4jChildLinkService,
+    ): UsageRecordRepository {
+        logger.info { "[Persistence] Neo4jUsageRecordRepository active" }
+        return Neo4jUsageRecordRepository(usageRecordNodeNeo4jRepository, childLinkService)
+    }
+
+    @Bean
     fun neo4jScheduledPromptUserRunRepository(
         scheduledPromptUserRunNodeNeo4jRepository: ScheduledPromptUserRunNodeNeo4jRepository,
     ): ScheduledPromptUserRunRepository {
         logger.info { "[Persistence] Neo4jScheduledPromptUserRunRepository active" }
         return Neo4jScheduledPromptUserRunRepository(scheduledPromptUserRunNodeNeo4jRepository)
     }
+
+    /**
+     * One-time migration: copies `maxTokens → maxCompletionTokens` on AiModel nodes that were
+     * populated before the rename.
+     *
+     * The legacy `maxTokens` property is left untouched on the node so that any tooling or
+     * rollback path that still reads it keeps working.
+     *
+     * A separate marker prevents a later restart from restoring the legacy value when
+     * the user intentionally clears maxCompletionTokens to use the provider default.
+     * Models with an explicit completion limit are marked too, preserving that limit.
+     * SDN retains both unmapped properties when saving an AiModelNode.
+     */
+    @Bean
+    fun migrateAiModelMaxTokens(neo4jClient: Neo4jClient): CommandLineRunner =
+        CommandLineRunner {
+            val result =
+                neo4jClient
+                    .query(
+                        """
+                        MATCH (m:AiModel)
+                        WHERE m.maxTokens IS NOT NULL AND coalesce(m.maxCompletionTokensMigrated, false) = false
+                        SET m.maxCompletionTokens = coalesce(m.maxCompletionTokens, m.maxTokens),
+                            m.maxCompletionTokensMigrated = true
+                        RETURN count(m) AS migrated
+                        """.trimIndent(),
+                    ).fetch()
+                    .one()
+            val count = result.map { it["migrated"] as Long }.orElse(0L) ?: 0L
+            if (count > 0L) {
+                logger.info { "[Migration] Migrated maxTokens → maxCompletionTokens on $count AiModel node(s)" }
+            } else {
+                logger.debug { "[Migration] No AiModel nodes needed maxTokens → maxCompletionTokens migration" }
+            }
+        }
 
     /**
      * One-time migration: converts legacy `[:STARRED]` plain edges to

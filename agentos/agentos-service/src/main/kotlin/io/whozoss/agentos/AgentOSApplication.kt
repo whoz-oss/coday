@@ -1,11 +1,14 @@
 package io.whozoss.agentos
 
 import io.whozoss.agentos.agent.AgentConfigProperties
-import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
+import io.whozoss.agentos.chat.AnthropicProperties
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
+import io.whozoss.agentos.git.core.GitExecutionProperties
 import io.whozoss.agentos.integrationConfig.IntegrationsProperties
 import io.whozoss.agentos.prompt.PromptTranslationCacheProperties
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
@@ -31,8 +34,11 @@ import org.springframework.scheduling.annotation.EnableScheduling
     CaseConfigProperties::class,
     AgentOsPluginsConfigProperties::class,
     PersistenceConfigProperties::class,
+    LimitsConfigProperties::class,
+    UsageConfigProperties::class,
     ExchangeStorageConfigProperties::class,
     ExchangeToolsConfigProperties::class,
+    GitExecutionProperties::class,
     IntegrationsProperties::class,
     PromptTranslationCacheProperties::class,
     QueryUserConfigProperties::class,

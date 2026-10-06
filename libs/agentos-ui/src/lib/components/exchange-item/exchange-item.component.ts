@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
-import { ExchangeFileEntry } from '@whoz-oss/agentos-api-client'
+import { ExchangeDirectoryEntry } from '@whoz-oss/agentos-api-client'
 import { EntityCardBadge, IconButtonComponent } from '@whoz-oss/design-system'
 import { formatDate, formatSize, getFileIcon } from '../../services/exchange-content.utils'
 
@@ -37,13 +37,22 @@ export class ExchangeItemComponent {
   readonly downloadRequested = output<void>()
   readonly deleteRequested = output<void>()
 
-  /** Build the row view-model from a manifest file entry. */
-  static toRow(file: ExchangeFileEntry): ExchangeFileRow {
+  /**
+   * Build the row view-model from a directory entry.
+   *
+   * Size and timestamp are optional on the wire (a directory reports no size), so a file missing
+   * either still renders rather than showing `NaN`.
+   */
+  static toRow(file: ExchangeDirectoryEntry): ExchangeFileRow {
+    const parts = [
+      file.size !== undefined ? formatSize(file.size) : null,
+      file.lastModified ? formatDate(file.lastModified) : null,
+    ]
     return {
       path: file.path,
-      filename: file.filename,
-      meta: `${formatSize(file.size)} · ${formatDate(file.lastModified)}`,
-      icon: getFileIcon(file.filename),
+      filename: file.name,
+      meta: parts.filter((p) => p !== null).join(' · '),
+      icon: getFileIcon(file.name),
     }
   }
 }

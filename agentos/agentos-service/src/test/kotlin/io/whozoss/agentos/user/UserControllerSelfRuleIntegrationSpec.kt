@@ -228,6 +228,50 @@ class UserControllerSelfRuleIntegrationSpec : StringSpec() {
         }
 
         // -----------------------------------------------------------------
+        // PUT — preferredLanguage validation
+        // -----------------------------------------------------------------
+
+        "PUT with valid BCP 47 preferredLanguage is accepted" {
+            val captured = slot<User>()
+            every { userService.getCurrentUser() } returns superAdmin
+            every { userService.findByIds(listOf(superAdminId), false) } returns listOf(superAdmin)
+            every { userService.update(capture(captured)) } answers { firstArg() }
+
+            mockMvc.perform(
+                put("/api/users/$superAdminId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "$superAdminId", "email": "root@example.com", "preferredLanguage": "fr" }""")
+            ).andExpect(status().isOk)
+
+            captured.captured.preferredLanguage shouldBe "fr"
+        }
+
+        "PUT with invalid preferredLanguage returns 400" {
+            every { userService.getCurrentUser() } returns superAdmin
+
+            mockMvc.perform(
+                put("/api/users/$superAdminId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "$superAdminId", "email": "root@example.com", "preferredLanguage": "not_a_language!" }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "PUT with null preferredLanguage is accepted (no preference)" {
+            val captured = slot<User>()
+            every { userService.getCurrentUser() } returns superAdmin
+            every { userService.findByIds(listOf(superAdminId), false) } returns listOf(superAdmin)
+            every { userService.update(capture(captured)) } answers { firstArg() }
+
+            mockMvc.perform(
+                put("/api/users/$superAdminId")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "$superAdminId", "email": "root@example.com" }""")
+            ).andExpect(status().isOk)
+
+            captured.captured.preferredLanguage shouldBe null
+        }
+
+        // -----------------------------------------------------------------
         // PUT — non-admin on OTHER user → 403
         // (regression cover for adversarial finding F7a / F19)
         // -----------------------------------------------------------------

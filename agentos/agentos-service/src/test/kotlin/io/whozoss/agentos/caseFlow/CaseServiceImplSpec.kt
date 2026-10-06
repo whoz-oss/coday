@@ -4,18 +4,27 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.mockk.Called
 import io.mockk.clearMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentConfigProperties
+import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.CaseEventServiceImpl
 import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
+import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
@@ -32,24 +41,52 @@ import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
+import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.git.CaseResourceBinding
+import io.whozoss.agentos.git.CaseResourceStatus
+import io.whozoss.agentos.git.GitCaseLaunchGate
+import io.whozoss.agentos.git.GitExchangeRoot
+import io.whozoss.agentos.git.GitExchangeRootResolver
+import io.whozoss.agentos.git.GitMetadataEntries
+import io.whozoss.agentos.git.InMemoryCaseResourceBindingService
+import io.whozoss.agentos.git.WorkspaceLifecycleLocks
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.usage.LlmUsage
+import io.whozoss.agentos.usage.InMemoryUsageRecordRepository
+import io.whozoss.agentos.usage.UsageOutcome
+import io.whozoss.agentos.usage.UsageRecordServiceImpl
+import io.whozoss.agentos.usage.UsageRecordService
+import io.whozoss.agentos.usage.RunCostService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Suspends until [runtime]'s SSE flow has at least [count] active subscribers.
@@ -197,6 +234,12 @@ class CaseServiceImplSpec :
             environmentAgentName: String? = null,
             agentConfigService: AgentConfigService = allowAllAgentConfigService,
             idleEvictionGraceMs: Long = 5_000L,
+            usageRecordRepository: InMemoryUsageRecordRepository = InMemoryUsageRecordRepository(),
+            usageConfig: UsageConfigProperties = UsageConfigProperties(),
+            caseRepository: CaseRepository = InMemoryCaseRepository(),
+            caseEventService: CaseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
+            caseLaunchGate: CaseLaunchGate? = null,
+            runCostService: RunCostService? = null,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -204,14 +247,16 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = defaultAgentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(any()) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
                     coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 }
-            val caseRepository = InMemoryCaseRepository()
-            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
             return CaseServiceImpl(
                 agentService = agentService,
                 agentConfigService = agentConfigService,
@@ -221,10 +266,754 @@ class CaseServiceImplSpec :
                 userService = userService,
                 namespaceService = namespaceService,
                 caseConfig = CaseConfigProperties(idleEvictionGraceMs = idleEvictionGraceMs),
+                limitsConfig = LimitsConfigProperties(),
                 permissionService = permissionService,
                 promptService = promptService,
                 caseNamingService = noOpCaseNamingService,
+                usageRecordService = UsageRecordServiceImpl(usageRecordRepository),
+                usageConfig = usageConfig,
+                caseLaunchGate = caseLaunchGate,
+                runCostService = runCostService,
             )
+        }
+
+        // -------------------------------------------------------------------------
+        // Launch gate: installed only with Git workspaces; without it runs start at once
+        // -------------------------------------------------------------------------
+
+        /** A gate that holds runs back until [open] is set, as a workspace being prepared does. */
+        class TestLaunchGate : CaseLaunchGate {
+            var open: Boolean = false
+
+            override fun launchDecision(caseId: UUID): LaunchDecision =
+                if (open) LaunchDecision.Admit else LaunchDecision.Wait("workspace not ready")
+        }
+
+        fun gitGate(repository: CaseRepository, bindings: InMemoryCaseResourceBindingService): GitCaseLaunchGate =
+            GitCaseLaunchGate(
+                GitExchangeRootResolver(repository, bindings,
+                    ExchangeStorageService(ExchangeStorageConfigProperties(mountRoot = "/tmp/runtime-exchange-tests"), listOf(GitMetadataEntries()))),
+                repository,
+            )
+
+        fun equip(bindings: InMemoryCaseResourceBindingService, caseId: UUID, status: CaseResourceStatus = CaseResourceStatus.READY) =
+            bindings.create(CaseResourceBinding(rootCaseId = caseId, namespaceId = namespaceId,
+                integrationConfigId = UUID.randomUUID(), status = status))
+
+        suspend fun resumeAfterDeferral(statusWhileWaiting: CaseStatus): Agent {
+            val agent = finishingAgent()
+            val caseRepository = InMemoryCaseRepository()
+            val gate = TestLaunchGate()
+            val service = buildService(agent = agent, caseRepository = caseRepository, caseLaunchGate = gate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+            caseRepository.save(case.copy(status = statusWhileWaiting))
+            gate.open = true
+            service.resumeIfPending(case.id)
+            // Give a launch, if one happens, the chance to reach the agent before asserting.
+            delay(200)
+            service.shutdown()
+            return agent
+        }
+
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { status ->
+            listOf(false, true).forEach { withWorkspace ->
+                "fresh messages to $status cases preserve the optional workspace policy (equipped=$withWorkspace)" {
+                    val repository = InMemoryCaseRepository()
+                    val case = repository.save(Case(namespaceId = namespaceId, status = status))
+                    val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                    val roots = mockk<GitExchangeRootResolver>()
+                    val binding = if (withWorkspace) CaseResourceBinding(
+                        rootCaseId = case.id,
+                        namespaceId = namespaceId,
+                        integrationConfigId = UUID.randomUUID(),
+                        status = CaseResourceStatus.READY,
+                    ) else null
+                    every { roots.resolveGit(case.id) } returns GitExchangeRoot(Path.of("/tmp/case"), binding, case.id)
+                    val agent = finishingAgent()
+                    val service = buildService(
+                        agent = agent,
+                        caseRepository = repository,
+                        caseEventService = events,
+                        caseLaunchGate = GitCaseLaunchGate(roots, repository),
+                    )
+                    try {
+                        if (withWorkspace) {
+                            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do more work")))
+                            }
+                            events.findByParent(case.id) shouldBe emptyList()
+                            service.findActiveRuntime(case.id) shouldBe null
+                            service.activeCoroutineCount shouldBe 0
+                            repository.findByIds(listOf(case.id)).single().status shouldBe status
+                        } else {
+                            service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do more work")))
+                            withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                            verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+                            events.findByParent(case.id).filterIsInstance<MessageEvent>()
+                                .single { it.actor.role == ActorRole.USER }.content shouldBe listOf(MessageContent.Text("Do more work"))
+                        }
+                    } finally { service.shutdown() }
+                }
+            }
+        }
+
+        "workspace input is emitted before preparation and survives cancellation in conversation history" {
+            val gate = TestLaunchGate()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val runtime = service.getCaseRuntime(case.id)
+                val receipt = async { runtime.events.filterIsInstance<MessageEvent>().first() }
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+                val displayed = withTimeout(2_000) { receipt.await() }
+                displayed.content shouldBe listOf(MessageContent.Text("Do the work"))
+                events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldBe listOf(displayed)
+                service.interruptCase(case.id)
+                events.findByParent(case.id).filterIsInstance<MessageEvent>() shouldBe listOf(displayed)
+                runtime.isRunning() shouldBe false
+            } finally { service.shutdown() }
+        }
+
+        "a new instruction after Stop while preparing executes when the workspace becomes ready" {
+            val agent = finishingAgent()
+            val gate = TestLaunchGate()
+            val service = buildService(agent = agent, caseLaunchGate = gate, idleEvictionGraceMs = 25L)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Cancelled instruction")))
+                service.interruptCase(case.id)
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("New instruction")))
+                service.getById(case.id).status shouldBe CaseStatus.PENDING
+                delay(100)
+                service.findActiveRuntime(case.id)!!.statusFlow.value shouldBe CaseStatus.PENDING
+                gate.open = true
+                service.resumeIfPending(case.id)
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { service.shutdown() }
+        }
+
+        "message admission does not wait on preparation and resumes after a short lock owner too" {
+            val rootId = UUID.randomUUID()
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val holder = Thread {
+                WorkspaceLifecycleLocks.withRoot(rootId) {
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                }
+            }
+            val repository = InMemoryCaseRepository()
+            val roots = mockk<GitExchangeRootResolver>()
+            every { roots.resolveGit(any<UUID>()) } returns GitExchangeRoot(
+                Path.of("/tmp/case"),
+                CaseResourceBinding(rootCaseId = rootId, namespaceId = namespaceId,
+                    integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.READY),
+                rootId,
+            )
+            val gate = GitCaseLaunchGate(roots, repository)
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gate)
+            try {
+                holder.start()
+                entered.await(5, TimeUnit.SECONDS) shouldBe true
+                val case = service.create(Case(namespaceId = namespaceId))
+                val started = System.nanoTime()
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Wait for workspace")))
+                (TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started) < 1_000) shouldBe true
+                release.count shouldBe 1L
+                service.getById(case.id).status shouldBe CaseStatus.PENDING
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                release.countDown()
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                release.countDown()
+                holder.join(5_000)
+                service.shutdown()
+            }
+        }
+
+        "a new service does not automatically replay persisted pending input but accepts a fresh message" {
+            val repository = InMemoryCaseRepository()
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val gate = TestLaunchGate()
+            val agent = finishingAgent()
+            val before = buildService(agent = agent, caseRepository = repository, caseEventService = events, caseLaunchGate = gate)
+            val after = buildService(agent = agent, caseRepository = repository, caseEventService = events)
+            try {
+                val case = before.create(Case(namespaceId = namespaceId))
+                before.addMessage(case.id, userActor, listOf(MessageContent.Text("Before restart")))
+                // Simulate another process with the same persisted case/events but no live queue.
+                // Opening the conversation may rehydrate a runtime; it must not imply admission.
+                after.getCaseRuntime(case.id)
+                after.resumeIfPending(case.id)
+                delay(100)
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                events.findByParent(case.id).filterIsInstance<MessageEvent>().single().content shouldBe
+                    listOf(MessageContent.Text("Before restart"))
+                after.addMessage(case.id, userActor, listOf(MessageContent.Text("Continue manually")))
+                withTimeout(3_000) {
+                    while (after.getById(case.id).status != CaseStatus.IDLE) delay(10)
+                }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { before.shutdown(); after.shutdown() }
+        }
+
+        "shutdown retains the historical non-Git status and fresh-message behavior" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            val before = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = before.create(Case(namespaceId = namespaceId))
+            before.shutdown()
+            before.getById(case.id).status shouldBe CaseStatus.KILLED
+            val agent = finishingAgent()
+            val after = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            try {
+                after.addMessage(case.id, userActor, listOf(MessageContent.Text("Fresh non-Git instruction")))
+                withTimeout(3_000) { while (after.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { after.shutdown() }
+        }
+
+        "a user Kill during shutdown remains terminal" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            val realGate = gitGate(repository, bindings)
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            val gate = object : CaseLaunchGate by realGate {
+                override fun keepOpenOnShutdown(caseId: UUID): Boolean {
+                    val keepOpen = realGate.keepOpenOnShutdown(caseId)
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                    return keepOpen
+                }
+            }
+            val service = buildService(caseRepository = repository, caseLaunchGate = gate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            val stopping = async(Dispatchers.IO) { service.shutdown() }
+            try {
+                entered.await(5, TimeUnit.SECONDS) shouldBe true
+                service.killCase(case.id)
+                release.countDown()
+                withTimeout(3_000) { stopping.await() }
+                service.getById(case.id).status shouldBe CaseStatus.KILLED
+                service.findActiveRuntime(case.id) shouldBe null
+            } finally { release.countDown(); stopping.await() }
+        }
+
+        "a Kill arriving while a launch is being admitted is not lost" {
+            val admitting = CountDownLatch(1)
+            val releaseAdmission = CountDownLatch(1)
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision {
+                    admitting.countDown()
+                    check(releaseAdmission.await(5, TimeUnit.SECONDS))
+                    return LaunchDecision.Admit
+                }
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseLaunchGate = gate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            try {
+                val sending = thread { service.addMessage(case.id, userActor, listOf(MessageContent.Text("Admitted instruction"))) }
+                admitting.await(5, TimeUnit.SECONDS) shouldBe true
+                // The decision runs outside the admission lock: the Kill takes the turn back without waiting for it.
+                val killing = thread { service.killCase(case.id) }
+                killing.join(5_000)
+                killing.isAlive shouldBe false
+                releaseAdmission.countDown()
+                sending.join(5_000)
+                withTimeout(3_000) { while (service.hasRunningExecutions(listOf(case.id))) delay(10) }
+                service.getById(case.id).status shouldBe CaseStatus.KILLED
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                releaseAdmission.countDown()
+                service.shutdown()
+            }
+        }
+
+        "Kill cancels an admitted Git launch before it can reset the runtime flags" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            val runtime = service.getCaseRuntime(case.id)
+            try {
+                // Holding the admission lock keeps the admitted job from entering run() and resetting the flags.
+                synchronized(runtime) {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("Admitted instruction")))
+                    service.hasRunningExecutions(listOf(case.id)) shouldBe true
+                    runtime.isRunning() shouldBe false
+                    service.killCase(case.id)
+                }
+                withTimeout(3_000) { while (service.hasRunningExecutions(listOf(case.id))) delay(10) }
+                service.getById(case.id).status shouldBe CaseStatus.KILLED
+                service.findActiveRuntime(case.id) shouldBe null
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally { service.shutdown() }
+        }
+
+        // Only a genuinely pending turn is resumed: a kill sets its flags on the runtime live at the
+        // time and run() clears them on entry, so the status read from the store is the guard.
+        listOf(CaseStatus.KILLED to 0, CaseStatus.IDLE to 0, CaseStatus.PENDING to 1).forEach { (status, runs) ->
+            "resumeIfPending runs a turn deferred while the case became $status $runs time(s)" {
+                val agent = resumeAfterDeferral(status)
+
+                coVerify(exactly = runs) { agent.run(any<List<CaseEvent>>(), any()) }
+            }
+        }
+
+        listOf("coordination", "launch check").forEach { failing ->
+            "a failing $failing warns the user once, returns the case to IDLE and never runs the message" {
+                val gate = object : CaseLaunchGate {
+                    override fun launchDecision(caseId: UUID): LaunchDecision =
+                        if (failing == "launch check") throw IllegalStateException("Neo4j unavailable") else LaunchDecision.Admit
+
+                    override fun withAdmission(caseId: UUID, onAvailable: () -> Unit, action: () -> Unit) {
+                        if (failing == "coordination") throw IllegalStateException("Neo4j session expired")
+                        action()
+                    }
+                }
+                val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val agent = finishingAgent()
+                val service = buildService(agent = agent, caseLaunchGate = gate, caseEventService = events)
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+
+                    // The message is stored: a gate error must not become an HTTP failure.
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+
+                    withTimeout(3_000) { while (events.findByParent(case.id).none { it is WarnEvent }) delay(10) }
+                    withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                    events.findByParent(case.id).filterIsInstance<WarnEvent>().size shouldBe 1
+                    service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                    service.resumeIfPending(case.id)
+                    delay(100)
+                    coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "completed execution jobs are released after idle eviction and a later message still runs" {
+            val agent = finishingAgent()
+            val gate = TestLaunchGate().also { it.open = true } // Admit immediately
+            val service = buildService(agent = agent, idleEvictionGraceMs = 25L, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                repeat(2) { index ->
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("message $index")))
+                    withTimeout(3_000) {
+                        while (service.findActiveRuntime(case.id) != null) delay(10)
+                    }
+                    service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                    service.trackedExecutionCount shouldBe 0
+                }
+                verify(exactly = 2) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "an admitted launch counts as running before its runtime starts" {
+            val agent = finishingAgent()
+            val gate = TestLaunchGate().also { it.open = true }
+            val service = buildService(agent = agent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                val runtime = service.getCaseRuntime(case.id)
+                // Holding the admission lock keeps the admitted job from entering run().
+                synchronized(runtime) {
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("admitted instruction")))
+                    // The launch is owned, so a cleanup checking running executions waits for it.
+                    runtime.isRunning() shouldBe false
+                    service.hasRunningExecutions(listOf(case.id)) shouldBe true
+                    service.trackedExecutionCount shouldBe 1
+                }
+                withTimeout(3_000) {
+                    while (service.getById(case.id).status != CaseStatus.IDLE || service.trackedExecutionCount != 0) delay(10)
+                }
+                service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "a resume landing while the gate decides to wait still starts the turn once" {
+            lateinit var service: CaseServiceImpl
+            val ready = AtomicBoolean()
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision {
+                    if (ready.get()) return LaunchDecision.Admit
+                    // The workspace becomes ready and its preparation resumes held turns before this Wait returns.
+                    ready.set(true)
+                    val resuming = thread { service.resumeIfPending(caseId) }
+                    resuming.join(5_000)
+                    check(!resuming.isAlive) { "the resume waited for this decision" }
+                    return LaunchDecision.Wait("workspace still preparing when read")
+                }
+            }
+            val agent = finishingAgent()
+            service = buildService(agent = agent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Wait for workspace")))
+                withTimeout(3_000) {
+                    while (service.getById(case.id).status != CaseStatus.IDLE || service.trackedExecutionCount != 0) delay(10)
+                }
+                verify(exactly = 1) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        listOf("refusal", "gate failure").forEach { outcome ->
+            "a $outcome is decided and reported outside the admission lock" {
+                lateinit var runtime: CaseRuntime
+                val decidedUnderLock = AtomicBoolean()
+                val warnedUnderLock = AtomicBoolean()
+                val gate = object : CaseLaunchGate {
+                    override fun launchDecision(caseId: UUID): LaunchDecision {
+                        decidedUnderLock.set(Thread.holdsLock(runtime))
+                        if (outcome == "gate failure") throw IllegalStateException("Neo4j unavailable")
+                        return LaunchDecision.Refuse("workspace preparation failed")
+                    }
+                }
+                val store = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val events = object : CaseEventService by store {
+                    override fun create(entity: CaseEvent): CaseEvent {
+                        if (entity is WarnEvent) warnedUnderLock.set(Thread.holdsLock(runtime))
+                        return store.create(entity)
+                    }
+                }
+                val service = buildService(caseLaunchGate = gate, caseEventService = events)
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+                    runtime = service.getCaseRuntime(case.id)
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+                    withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                    store.findByParent(case.id).filterIsInstance<WarnEvent>().size shouldBe 1
+                    decidedUnderLock.get() shouldBe false
+                    warnedUnderLock.get() shouldBe false
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "a refusal whose warning cannot be stored does not fail the message and still returns the case to IDLE" {
+            val store = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val events = object : CaseEventService by store {
+                override fun create(entity: CaseEvent): CaseEvent =
+                    if (entity is WarnEvent) throw IllegalStateException("Neo4j unavailable") else store.create(entity)
+            }
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Refuse("workspace preparation failed")
+            }
+            val agent = finishingAgent()
+            val service = buildService(agent = agent, caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "a Kill landing while a refusal is being reported keeps the case KILLED" {
+            lateinit var service: CaseServiceImpl
+            val store = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val events = object : CaseEventService by store {
+                override fun create(entity: CaseEvent): CaseEvent {
+                    val saved = store.create(entity)
+                    if (entity is WarnEvent) {
+                        val killing = thread { service.killCase(entity.caseId) }
+                        killing.join(5_000)
+                        check(!killing.isAlive) { "the Kill waited for the refusal report" }
+                    }
+                    return saved
+                }
+            }
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Refuse("workspace preparation failed")
+            }
+            val agent = finishingAgent()
+            service = buildService(agent = agent, caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+                service.getById(case.id).status shouldBe CaseStatus.KILLED
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "shutdown stops a running equipped turn without closing the case" {
+            val repository = InMemoryCaseRepository()
+            val bindings = InMemoryCaseResourceBindingService()
+            var caseId: UUID? = null
+            val started = CountDownLatch(1)
+            val agent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val shouldContinue = secondArg<() -> Boolean>()
+                    flow {
+                        started.countDown()
+                        // A step that never suspends notices the stop only through shouldContinue.
+                        while (shouldContinue() && currentCoroutineContext().isActive) Thread.sleep(5)
+                        // End only once shutdown released the case, so the run reaches no cancellation check first.
+                        while (repository.findByIds(listOfNotNull(caseId)).single().status != CaseStatus.IDLE) Thread.sleep(5)
+                    }
+                }
+            }
+            val service = buildService(agent = agent, caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = service.create(Case(namespaceId = namespaceId))
+            caseId = case.id
+            equip(bindings, case.id)
+            val runtime = service.getCaseRuntime(case.id)
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("Long instruction")))
+            started.await(5, TimeUnit.SECONDS) shouldBe true
+            service.shutdown()
+            withTimeout(5_000) { while (runtime.isRunning()) delay(10) }
+            repository.findByIds(listOf(case.id)).single().status shouldBe CaseStatus.IDLE
+        }
+
+        "shutdown releases a kept-open case outside the admission lock" {
+            val inner = InMemoryCaseRepository()
+            var runtime: CaseRuntime? = null
+            val ioUnderLock = AtomicBoolean()
+            val repository = object : CaseRepository by inner {
+                override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<Case> {
+                    if (runtime?.let { Thread.holdsLock(it) } == true) ioUnderLock.set(true)
+                    return inner.findByIds(ids, withRemoved)
+                }
+
+                override fun save(entity: Case): Case {
+                    if (runtime?.let { Thread.holdsLock(it) } == true) ioUnderLock.set(true)
+                    return inner.save(entity)
+                }
+            }
+            val bindings = InMemoryCaseResourceBindingService()
+            val service = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            runtime = service.getCaseRuntime(case.id)
+            service.shutdown()
+            inner.findByIds(listOf(case.id)).single().status shouldBe CaseStatus.IDLE
+            ioUnderLock.get() shouldBe false
+        }
+
+        "a Kill landing while shutdown releases a kept-open case keeps it KILLED" {
+            val inner = InMemoryCaseRepository()
+            lateinit var service: CaseServiceImpl
+            val pauseRelease = AtomicBoolean()
+            val repository = object : CaseRepository by inner {
+                override fun save(entity: Case): Case {
+                    if (entity.status == CaseStatus.IDLE && pauseRelease.compareAndSet(true, false)) {
+                        val killing = thread { service.killCase(entity.id) }
+                        killing.join(5_000)
+                        check(!killing.isAlive) { "the Kill waited for the shutdown release" }
+                    }
+                    return inner.save(entity)
+                }
+            }
+            val bindings = InMemoryCaseResourceBindingService()
+            service = buildService(caseRepository = repository, caseLaunchGate = gitGate(repository, bindings))
+            val case = service.create(Case(namespaceId = namespaceId))
+            equip(bindings, case.id)
+            pauseRelease.set(true)
+            service.shutdown()
+            inner.findByIds(listOf(case.id)).single().status shouldBe CaseStatus.KILLED
+        }
+
+        "a Stop halts cost tracking before it releases a held sub-case turn" {
+            val order = java.util.Collections.synchronizedList(mutableListOf<String>())
+            val inner = InMemoryCaseRepository()
+            var childId: UUID? = null
+            val repository = object : CaseRepository by inner {
+                override fun save(entity: Case): Case {
+                    if (entity.id == childId && entity.status == CaseStatus.IDLE) order += "child released"
+                    return inner.save(entity)
+                }
+            }
+            val runCost = mockk<RunCostService>(relaxed = true)
+            every { runCost.stop(any()) } answers { order += "cost stopped" }
+            val service =
+                buildService(
+                    caseRepository = repository,
+                    caseLaunchGate = TestLaunchGate(),
+                    usageConfig = UsageConfigProperties(enabled = true),
+                    runCostService = runCost,
+                )
+            try {
+                val parent = service.create(Case(namespaceId = namespaceId))
+                val child = service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
+                childId = child.id
+                service.addMessage(child.id, userActor, listOf(MessageContent.Text("held instruction")))
+                service.getById(child.id).status shouldBe CaseStatus.PENDING
+                service.interruptCase(parent.id)
+                order shouldBe listOf("cost stopped", "child released")
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "shutdown during the admission check starts nothing and tracks nothing" {
+            lateinit var service: CaseServiceImpl
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision {
+                    service.shutdown()
+                    return LaunchDecision.Admit
+                }
+            }
+            val agent = finishingAgent()
+            service = buildService(agent = agent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+                // The shutdown lands during the decision: it takes the turn back and cancels the scope,
+                // so the admitted decision finds nothing to start and nothing stays tracked.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("pending instruction")))
+                service.trackedExecutionCount shouldBe 0
+                service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                verify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // LaunchDecision.Refuse: FAILED workspace emits WarnEvent and returns to IDLE
+        // -------------------------------------------------------------------------
+
+        "a FAILED workspace is permanently refused: WarnEvent emitted and case returns to IDLE" {
+            // Before LaunchDecision, canLaunch returned false for both FAILED and PREPARING.
+            // A FAILED binding would keep the case PENDING indefinitely with no warning.
+            // After the fix, Refuse triggers failAdmission-like behaviour: WarnEvent + IDLE.
+            val events = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val agent = finishingAgent()
+            val gate = object : CaseLaunchGate {
+                override fun launchDecision(caseId: UUID): LaunchDecision =
+                    LaunchDecision.Refuse("workspace preparation failed: disk quota exceeded")
+            }
+            val service = buildService(agent = agent, caseLaunchGate = gate, caseEventService = events)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                // The message is stored: a gate Refuse must not become an HTTP failure.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do the work")))
+
+                withTimeout(3_000) { while (events.findByParent(case.id).none { it is WarnEvent }) delay(10) }
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                events.findByParent(case.id).filterIsInstance<WarnEvent>().size shouldBe 1
+                service.hasRunningExecutions(listOf(case.id)) shouldBe false
+                // A second resumeIfPending must not re-run the message: deferredRuns was cleared.
+                service.resumeIfPending(case.id)
+                delay(100)
+                coVerify(exactly = 0) { agent.run(any<List<CaseEvent>>(), any()) }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // Concurrent message during a running turn with gate installed
+        // -------------------------------------------------------------------------
+
+        "a second message sent while a gated turn is running is silently dropped (policy: no queue during run)" {
+            // ## Policy: no turn queue while a turn is running
+            //
+            // Sequence (gate permissive, always Admit):
+            //
+            // 1. Turn 1 starts: runInFlight = true, status RUNNING.
+            // 2. Message 2 arrives → launch() → claimPending() returns null because
+            //    isRunning() is true; deferredRuns += id but status stays RUNNING.
+            // 3. admitRun sees J1 still running, re-adds id to deferredRuns and registers
+            //    J1.invokeOnCompletion { resumeIfPending }.
+            // 4. J1 completes, status persisted to IDLE.
+            // 5. resumeIfPending: id is in deferredRuns but statusOf(id) != PENDING →
+            //    deferredRuns.remove(id); return. Turn 2 is silently dropped.
+            //
+            // This is the deliberate policy: the gate's deferredRuns set tracks process-local
+            // intent, not a persistent queue. A turn that cannot claim PENDING because
+            // another turn is already running is lost. The invariant is pinned here so a
+            // future refactor of resumeIfPending cannot change it unnoticed.
+
+            val runStarted = CountDownLatch(1)
+            val releaseRun = CountDownLatch(1)
+
+            val blockingAgent = mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    val caseId = firstArg<List<CaseEvent>>().first().caseId
+                    flow {
+                        runStarted.countDown()
+                        check(releaseRun.await(5, TimeUnit.SECONDS))
+                        emit(
+                            AgentFinishedEvent(
+                                namespaceId = namespaceId,
+                                caseId = caseId,
+                                agentId = agentId,
+                                agentName = agentName,
+                            ),
+                        )
+                    }
+                }
+            }
+
+            // Gate always admits: the test is about what happens when message 2 arrives
+            // while turn 1 is already running (not about gate deferral).
+            val gate = TestLaunchGate().also { it.open = true }
+            val service = buildService(agent = blockingAgent, caseLaunchGate = gate)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId))
+
+                // Send message 1 and wait until the agent is actually running.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("message 1")))
+                runStarted.await(5, TimeUnit.SECONDS) shouldBe true
+                service.findActiveRuntime(case.id)!!.isRunning() shouldBe true
+
+                // Send message 2 while turn 1 is blocking. claimPending() returns null
+                // (isRunning() is true), so deferredRuns gets the id but status stays RUNNING.
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("message 2")))
+
+                // Release turn 1.
+                releaseRun.countDown()
+
+                // Wait for the case to settle to IDLE.
+                withTimeout(3_000) { while (service.getById(case.id).status != CaseStatus.IDLE) delay(10) }
+                withTimeout(3_000) { while (service.hasRunningExecutions(listOf(case.id))) delay(10) }
+
+                // Policy: turn 2 is dropped. The agent ran exactly once (for message 1).
+                // deferredRuns is empty — resumeIfPending cleaned it up.
+                verify(exactly = 1) { blockingAgent.run(any<List<CaseEvent>>(), any()) }
+                service.trackedExecutionCount shouldBe 0
+            } finally {
+                releaseRun.countDown()
+                service.shutdown()
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -365,7 +1154,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -382,9 +1175,11 @@ class CaseServiceImplSpec :
                     userService = userService,
                     namespaceService = namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -603,7 +1398,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
@@ -620,9 +1419,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -703,7 +1504,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null, // no namespace-level default
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(agentName, namespaceId, any()) } returns agentName
@@ -720,9 +1525,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -761,7 +1568,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = namespaceDefaultName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val namespaceAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = namespaceAgentId)
@@ -799,9 +1610,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -839,7 +1652,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService = mockk<AgentService>(relaxed = true)
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
             val service =
@@ -852,9 +1669,11 @@ class CaseServiceImplSpec :
                     userService = userService,
                     namespaceService = namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -921,7 +1740,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = null,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             // resolveAgentName is never reached because selectDefaultAgent short-circuits on null
             val agentService = mockk<AgentService>(relaxed = true)
             val userService = mockk<UserService> { every { findById(userId) } returns activeUser }
@@ -935,9 +1758,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -978,7 +1803,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             // resolveAgentName call sequence:
             //   turn 1, @mention path: resolveAgentName(unavailableAgentName) -> unavailableAgentName (found)
             //   turn 2, sticky-agent availability check: resolveAgentName(unavailableAgentName) -> null (gone)
@@ -1010,9 +1839,11 @@ class CaseServiceImplSpec :
                     userServiceMock,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1108,7 +1939,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = defaultAgentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     // @selected-agent resolves to selectedAgentName
@@ -1129,9 +1964,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1195,7 +2032,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val inspectorAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
@@ -1234,9 +2075,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1473,6 +2316,76 @@ class CaseServiceImplSpec :
             subCase.parentCaseId shouldBe parentCase.id
         }
 
+        "create links a case to the parent it names" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            val parent = service.create(Case(namespaceId = namespaceId))
+
+            val child = service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
+
+            child.parentCaseId shouldBe parent.id
+            verify(exactly = 1) { repository.linkParentToChild(parent.id, child.id) }
+        }
+
+        "create rejects a parent from another namespace" {
+            val service = buildService()
+            val parent = service.create(Case(namespaceId = namespaceId))
+
+            shouldThrow<BadRequestException> {
+                service.create(Case(namespaceId = UUID.randomUUID(), parentCaseId = parent.id))
+            }
+        }
+
+        "create rejects a parent that does not exist" {
+            val service = buildService()
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(Case(namespaceId = namespaceId, parentCaseId = UUID.randomUUID()))
+            }
+        }
+
+        "a sub-case is checked against its parent before the launch gate is consulted" {
+            val gate = mockk<CaseLaunchGate>(relaxed = true)
+            val service = buildService(caseLaunchGate = gate)
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(Case(namespaceId = namespaceId, parentCaseId = UUID.randomUUID()))
+            }
+            verify(exactly = 0) { gate.requireAccepting(any()) }
+        }
+
+        "create rejects a parent at the depth limit" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            val parent = service.create(Case(namespaceId = namespaceId))
+            every { repository.countAncestorDepth(parent.id) } returns 5
+
+            shouldThrow<UnprocessableEntityException> {
+                service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
+            }
+            verify(exactly = 1) { repository.countAncestorDepth(parent.id) }
+        }
+
+        "create refuses the id of a soft-deleted case" {
+            val service = buildService()
+            val deleted = service.create(Case(namespaceId = namespaceId))
+            service.delete(deleted.id)
+
+            shouldThrow<IllegalArgumentException> {
+                service.create(Case(metadata = EntityMetadata(id = deleted.id), namespaceId = namespaceId))
+            }
+        }
+
+        "create refuses a soft-deleted parent as if it did not exist" {
+            val service = buildService()
+            val deletedParent = service.create(Case(namespaceId = namespaceId))
+            service.delete(deletedParent.id)
+
+            shouldThrow<ResourceNotFoundException> {
+                service.create(Case(namespaceId = namespaceId, parentCaseId = deletedParent.id))
+            }
+        }
+
         "startSubCase propagates exception when linkParentToChild fails" {
             // Uses a mockk CaseRepository that delegates all operations to InMemoryCaseRepository
             // but throws on linkParentToChild.
@@ -1508,6 +2421,7 @@ class CaseServiceImplSpec :
             val namespaceService =
                 mockk<NamespaceService> {
                     every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
                 }
             val agentService =
                 mockk<AgentService> {
@@ -1529,9 +2443,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
@@ -1626,7 +2542,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val inspectorAgent =
                 mockk<Agent> {
                     every { metadata } returns EntityMetadata(id = inspectorId)
@@ -1664,9 +2584,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1765,6 +2687,69 @@ class CaseServiceImplSpec :
         }
 
         // -------------------------------------------------------------------------
+        // Parent delegation observations are durable/live, but never re-enter runtime state
+        // -------------------------------------------------------------------------
+
+        "emitParentEvent persists and broadcasts an observation without restarting the parent automaton" {
+            var runCallCount = 0
+            val countingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        runCallCount++
+                        val caseId = firstArg<List<CaseEvent>>().first().caseId
+                        flow { emit(AgentFinishedEvent(namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName)) }
+                    }
+                }
+            val eventStore = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val namespace = Namespace(metadata = EntityMetadata(id = namespaceId), name = "test-namespace", defaultAgentName = agentName)
+            val namespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns countingAgent
+            }
+            val service = CaseServiceImpl(agentService, allowAllAgentConfigService, AgentConfigProperties(), InMemoryCaseRepository(), eventStore,
+                mockk<UserService> { every { findById(userId) } returns activeUser }, namespaceService,
+                CaseConfigProperties(idleEvictionGraceMs = 10_000), permissionService, promptService, noOpCaseNamingService,
+                LimitsConfigProperties(), UsageRecordServiceImpl(InMemoryUsageRecordRepository()))
+            val parent = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(parent.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+            val idle = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(parent.id, userActor, listOf(MessageContent.Text("hello")))
+            idle.join()
+            awaitNotRunning(runtime)
+
+            val observed = java.util.concurrent.atomic.AtomicBoolean(false)
+            val collector = scope.launch {
+                withTimeout(5_000) {
+                    runtime.events.filterIsInstance<SubCaseStartedEvent>().first()
+                    observed.set(true)
+                }
+            }
+            awaitSubscribers(runtime)
+            service.emitParentEvent(
+                SubCaseStartedEvent(namespaceId = namespaceId, caseId = parent.id, delegationId = UUID.randomUUID(),
+                    toolRequestId = "request-1", subCaseId = UUID.randomUUID(), agentName = "child", task = "work", resumed = false),
+            )
+            collector.join()
+
+            observed.get() shouldBe true
+            runCallCount shouldBe 1
+            eventStore.findByParent(parent.id).filterIsInstance<SubCaseStartedEvent>().size shouldBe 1
+            eventStore.findByParent(parent.id).filterIsInstance<AgentFinishedEvent>().size shouldBe 1
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
         // Rehydration: crash recovery from persisted AgentRunningEvent
         // -------------------------------------------------------------------------
 
@@ -1816,7 +2801,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -1837,9 +2826,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = multiPromptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
 
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1905,7 +2896,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -1927,9 +2922,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = throwingPromptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
 
             val case = service.create(Case(namespaceId = namespaceId))
@@ -1953,6 +2950,544 @@ class CaseServiceImplSpec :
             persistedEvents
                 .filterIsInstance<WarnEvent>()
                 .any { it.message.contains("Prompt resolution failed") } shouldBe true
+        }
+
+        // -------------------------------------------------------------------------
+        // UsageRecord emission
+        // -------------------------------------------------------------------------
+
+        "usage disabled runs with explicit cost thresholds without accessing accounting services" {
+            val usageRecordService = mockk<UsageRecordService> {
+                every { create(any()) } throws IllegalStateException("analytics unavailable")
+            }
+            val runCostService = mockk<RunCostService> {
+                every { register(any(), any()) } throws IllegalStateException("cost analytics unavailable")
+            }
+            val nsService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                    runCostThreshold = 0.002,
+                )
+            }
+            var resolvedContext: AgentExecutionContext? = null
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } answers {
+                    resolvedContext = secondArg<AgentExecutionContext>()
+                    finishingAgent()
+                }
+            }
+            val eventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = CaseServiceImpl(
+                agentService = agentService,
+                agentConfigService = allowAllAgentConfigService,
+                agentConfigProperties = AgentConfigProperties(),
+                caseRepository = InMemoryCaseRepository(),
+                caseEventService = eventService,
+                userService = mockk {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                },
+                namespaceService = nsService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = promptService,
+                caseNamingService = noOpCaseNamingService,
+                limitsConfig = LimitsConfigProperties(runCostThreshold = 0.001),
+                usageRecordService = usageRecordService,
+                runCostService = runCostService,
+            )
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, runCostThreshold = 0.003))
+                val runtime = service.getCaseRuntime(case.id)
+                val awaiter = CoroutineScope(Dispatchers.IO).expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+                awaitSubscribers(runtime)
+                service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+                awaiter.join()
+
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                resolvedContext.shouldNotBeNull().usageAccumulator.shouldBeNull()
+                val finished = eventService.findByParent(case.id).filterIsInstance<AgentFinishedEvent>().single()
+                finished.llmUsage.shouldBeNull()
+                service.isCostPaused(case.id) shouldBe false
+                service.interruptCase(case.id)
+            } finally {
+                service.shutdown()
+            }
+            verify { usageRecordService wasNot Called }
+            verify { runCostService wasNot Called }
+        }
+
+        "nominal run with LLM usage produces a UsageRecord with outcome COMPLETED" {
+            // Verifies the full happy-path: the agentService injects LLM usage into the
+            // accumulator via the context, and the finally block writes a COMPLETED record.
+            val usageRepo = InMemoryUsageRecordRepository()
+            val llmUsage =
+                LlmUsage(
+                    inputTokens = 100L,
+                    outputTokens = 200L,
+                    totalTokens = 300L,
+                    estimatedCostUsd = 0.042,
+                )
+            // Capture the AgentExecutionContext to inject usage into the accumulator.
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
+            val nsService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every {
+                        resolveRunCostThreshold(namespaceId)
+                    } returns null
+                }
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } answers {
+                        val ctx = secondArg<AgentExecutionContext>()
+                        ctx.usageAccumulator.shouldNotBeNull().record(llmUsage)
+                        finishingAgent()
+                    }
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                }
+            val service =
+                CaseServiceImpl(
+                    agentService = agentService,
+                    agentConfigService = allowAllAgentConfigService,
+                    agentConfigProperties = AgentConfigProperties(),
+                    caseRepository = InMemoryCaseRepository(),
+                    caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                    userService = userService,
+                    namespaceService = nsService,
+                    caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
+                    permissionService = permissionService,
+                    promptService = promptService,
+                    caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(usageRepo),
+                    usageConfig = UsageConfigProperties(enabled = true),
+                )
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            val records = usageRepo.findAll()
+            records.size shouldBe 1
+            records[0].outcome shouldBe UsageOutcome.COMPLETED
+            records[0].caseId shouldBe case.id
+            records[0].namespaceId shouldBe namespaceId
+            records[0].agentName shouldBe agentName
+            records[0].inputTokens shouldBe 100L
+            records[0].totalTokens shouldBe 300L
+            records[0].cost shouldBe 0.042
+        }
+
+        "run without any LLM calls produces no UsageRecord" {
+            // Critical invariant: a run that makes no LLM calls must not produce a
+            // zero-cost record that would pollute aggregations.
+            val usageRepo = InMemoryUsageRecordRepository()
+            val service = buildService(usageRecordRepository = usageRepo, usageConfig = UsageConfigProperties(enabled = true))
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // The mock agent does not call the LLM — hasData is false, no record written.
+            usageRepo.findAll() shouldBe emptyList()
+        }
+
+        "agent recording LlmUsage.ZERO produces no UsageRecord" {
+            // Regression for the CostCalculator.extract() returning LlmUsage.ZERO path.
+            // Before the UsageAccumulator guard, record(ZERO) would transition costRef
+            // from UNSET to null, making hasData=true and causing a zero-token record
+            // to be written — polluting aggregations.
+            val usageRepo = InMemoryUsageRecordRepository()
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
+            val nsService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every {
+                        resolveRunCostThreshold(namespaceId)
+                    } returns null
+                }
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } answers {
+                        val ctx = secondArg<AgentExecutionContext>()
+                        // Simulate CostCalculator returning ZERO (provider returned no usage metadata)
+                        ctx.usageAccumulator.shouldNotBeNull().record(LlmUsage.ZERO)
+                        finishingAgent()
+                    }
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                }
+            val service =
+                CaseServiceImpl(
+                    agentService = agentService,
+                    agentConfigService = allowAllAgentConfigService,
+                    agentConfigProperties = AgentConfigProperties(),
+                    caseRepository = InMemoryCaseRepository(),
+                    caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                    userService = userService,
+                    namespaceService = nsService,
+                    caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
+                    permissionService = permissionService,
+                    promptService = promptService,
+                    caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(usageRepo),
+                    usageConfig = UsageConfigProperties(enabled = true),
+                )
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // record(ZERO) must not set hasData — no record should be written.
+            usageRepo.findAll() shouldBe emptyList()
+        }
+
+        "UsageRecord write failure does not affect the run outcome" {
+            // Critical invariant: observability must never bring down the domain.
+            // If usageRecordService.create throws, the case must still reach IDLE.
+            // We inject LLM usage so hasData=true, then make the service throw.
+            val llmUsage = LlmUsage(totalTokens = 50L, estimatedCostUsd = 0.001)
+            val failingUsageRecordService =
+                mockk<io.whozoss.agentos.usage.UsageRecordService> {
+                    every { create(any()) } throws RuntimeException("Neo4j unavailable")
+                }
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
+            val nsService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every {
+                        resolveRunCostThreshold(namespaceId)
+                    } returns null
+                }
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } answers {
+                        val ctx = secondArg<AgentExecutionContext>()
+                        ctx.usageAccumulator.shouldNotBeNull().record(llmUsage)
+                        finishingAgent()
+                    }
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                }
+            val throwingService =
+                CaseServiceImpl(
+                    agentService = agentService,
+                    agentConfigService = allowAllAgentConfigService,
+                    agentConfigProperties = AgentConfigProperties(),
+                    caseRepository = InMemoryCaseRepository(),
+                    caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                    userService = userService,
+                    namespaceService = nsService,
+                    caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
+                    permissionService = permissionService,
+                    promptService = promptService,
+                    caseNamingService = noOpCaseNamingService,
+                    usageRecordService = failingUsageRecordService,
+                    usageConfig = UsageConfigProperties(enabled = true),
+                )
+            val case = throwingService.create(Case(namespaceId = namespaceId))
+            val runtime = throwingService.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            throwingService.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            // The case must reach IDLE despite the usage record write failing.
+            throwingService.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        "agent flow error still produces a UsageRecord with outcome FAILED" {
+            // When the agent flow throws, the .catch block sets outcome=FAILED.
+            // If the accumulator has data (LLM was called before the error),
+            // the finally block must write a FAILED record.
+            val usageRepo = InMemoryUsageRecordRepository()
+            val llmUsage = LlmUsage(totalTokens = 80L, estimatedCostUsd = 0.002)
+            val namespace =
+                Namespace(
+                    metadata = EntityMetadata(id = namespaceId),
+                    name = "test-namespace",
+                    defaultAgentName = agentName,
+                )
+            val nsService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every {
+                        resolveRunCostThreshold(namespaceId)
+                    } returns null
+                }
+            val throwingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "anthropic"
+                    every { llmModel } returns "claude-sonnet"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        flow<CaseEvent> { throw RuntimeException("simulated LLM error") }
+                    }
+                }
+            val agentService =
+                mockk<AgentService> {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } answers {
+                        val ctx = secondArg<AgentExecutionContext>()
+                        // Simulate: LLM was called before the error, accumulator has data.
+                        ctx.usageAccumulator.shouldNotBeNull().record(llmUsage)
+                        throwingAgent
+                    }
+                }
+            val userService =
+                mockk<UserService> {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                }
+            val service =
+                CaseServiceImpl(
+                    agentService = agentService,
+                    agentConfigService = allowAllAgentConfigService,
+                    agentConfigProperties = AgentConfigProperties(),
+                    caseRepository = InMemoryCaseRepository(),
+                    caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
+                    userService = userService,
+                    namespaceService = nsService,
+                    caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
+                    permissionService = permissionService,
+                    promptService = promptService,
+                    caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(usageRepo),
+                    usageConfig = UsageConfigProperties(enabled = true),
+                )
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("hello")),
+            )
+            awaiter.join()
+
+            // Case reaches IDLE — the .catch in the flow swallowed the error.
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+            // A record must have been written with outcome=FAILED.
+            val records = usageRepo.findAll()
+            records.size shouldBe 1
+            records[0].outcome shouldBe UsageOutcome.FAILED
+            records[0].totalTokens shouldBe 80L
+        }
+
+        // -------------------------------------------------------------------------
+        // resumeSubCase: security — ownership and namespace checks
+        // -------------------------------------------------------------------------
+
+        "resumeSubCase rejects a sub-case that belongs to a different parent" {
+            // Confused-deputy scenario: an agent obtains a subCaseId that belongs to
+            // another parent and tries to inject a message into it.
+            val service = buildService()
+
+            val legitimateParent = service.create(Case(namespaceId = namespaceId))
+            val attackingParent = service.create(Case(namespaceId = namespaceId))
+
+            // Sub-case is a child of legitimateParent, not attackingParent
+            val subCase = service.create(
+                Case(namespaceId = namespaceId, parentCaseId = legitimateParent.id, status = CaseStatus.IDLE),
+            )
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = subCase.id,
+                    parentCaseId = attackingParent.id, // wrong parent
+                    agentName = agentName,
+                    task = "injected task",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase rejects a sub-case from a different namespace" {
+            // Cross-tenant scenario: a sub-case exists in namespaceId but the parent
+            // case lives in a different namespace. The check must reject this even
+            // though the parentCaseId relationship is correctly set.
+            val otherNamespaceId = UUID.randomUUID()
+
+            // Build a service that also knows about the second namespace
+            val otherNamespace = Namespace(
+                metadata = EntityMetadata(id = otherNamespaceId),
+                name = "other-namespace",
+                defaultAgentName = agentName,
+            )
+            val namespace = Namespace(
+                metadata = EntityMetadata(id = namespaceId),
+                name = "test-namespace",
+                defaultAgentName = agentName,
+            )
+            val dualNamespaceService = mockk<NamespaceService> {
+                every { findById(namespaceId) } returns namespace
+                every { findById(otherNamespaceId) } returns otherNamespace
+                every { resolveRunCostThreshold(namespaceId) } returns null
+                every { resolveRunCostThreshold(otherNamespaceId) } returns null
+            }
+            val agentService = mockk<AgentService> {
+                every { resolveAgentName(any(), any(), any()) } returns agentName
+                coEvery { findAgentByName(agentName, any(), any()) } returns finishingAgent()
+            }
+            val caseRepository = InMemoryCaseRepository()
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = CaseServiceImpl(
+                agentService = agentService,
+                agentConfigService = allowAllAgentConfigService,
+                agentConfigProperties = AgentConfigProperties(agentName = agentName),
+                caseRepository = caseRepository,
+                caseEventService = caseEventService,
+                userService = mockk {
+                    every { findById(userId) } returns activeUser
+                    every { getById(userId) } returns activeUser
+                },
+                namespaceService = dualNamespaceService,
+                caseConfig = CaseConfigProperties(),
+                permissionService = permissionService,
+                promptService = promptService,
+                caseNamingService = noOpCaseNamingService,
+                limitsConfig = LimitsConfigProperties(),
+                usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+            )
+
+            // Parent lives in namespaceId
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Sub-case lives in otherNamespaceId but has parentCaseId pointing to parentCase
+            // (simulates a namespace field that was tampered with). create() rejects a
+            // cross-namespace parent, so the row is written straight to the repository.
+            val foreignSubCase = caseRepository.save(
+                Case(namespaceId = otherNamespaceId, parentCaseId = parentCase.id, status = CaseStatus.IDLE),
+            )
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = foreignSubCase.id,
+                    parentCaseId = parentCase.id,
+                    agentName = agentName,
+                    task = "cross-tenant injection",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase rejects a top-level case (parentCaseId is null)" {
+            // A top-level case has no parent. Passing any parentCaseId must be rejected
+            // because the ownership check (subCase.parentCaseId == parentCaseId) will
+            // never hold when subCase.parentCaseId is null.
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            val topLevelCase = service.create(Case(namespaceId = namespaceId, status = CaseStatus.IDLE))
+            // topLevelCase.parentCaseId is null — it is not a sub-case of anything
+
+            shouldThrow<IllegalStateException> {
+                service.resumeSubCase(
+                    subCaseId = topLevelCase.id,
+                    parentCaseId = parentCase.id, // parentCase is unrelated
+                    agentName = agentName,
+                    task = "trying to resume a top-level case",
+                    userId = userId,
+                    allowedAgents = listOf(agentName),
+                )
+            }
+        }
+
+        "resumeSubCase succeeds for a legitimate parent resuming its own IDLE sub-case" {
+            // Non-regression: the happy path must still work after adding the new checks.
+            val service = buildService()
+
+            val parentCase = service.create(Case(namespaceId = namespaceId))
+            // Create the sub-case directly in IDLE status to skip a full agent run
+            val subCase = service.create(
+                Case(namespaceId = namespaceId, parentCaseId = parentCase.id, status = CaseStatus.IDLE),
+            )
+
+            // resumeSubCase must not throw and must return a live runtime
+            val runtime = service.resumeSubCase(
+                subCaseId = subCase.id,
+                parentCaseId = parentCase.id,
+                agentName = agentName,
+                task = "legitimate follow-up",
+                userId = userId,
+                allowedAgents = listOf(agentName),
+            )
+
+            runtime.id shouldBe subCase.id
         }
 
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
@@ -2000,7 +3535,11 @@ class CaseServiceImplSpec :
                     name = "test-namespace",
                     defaultAgentName = agentName,
                 )
-            val namespaceService = mockk<NamespaceService> { every { findById(namespaceId) } returns namespace }
+            val namespaceService =
+                mockk<NamespaceService> {
+                    every { findById(namespaceId) } returns namespace
+                    every { resolveRunCostThreshold(namespaceId) } returns null
+                }
             val agentService =
                 mockk<AgentService> {
                     every { resolveAgentName(any(), any(), any()) } returns agentName
@@ -2017,9 +3556,11 @@ class CaseServiceImplSpec :
                     userService,
                     namespaceService,
                     caseConfig = CaseConfigProperties(),
+                    limitsConfig = LimitsConfigProperties(),
                     permissionService = permissionService,
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
+                    usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
                 )
 
             // Insert the case directly into the repository so no runtime is created in

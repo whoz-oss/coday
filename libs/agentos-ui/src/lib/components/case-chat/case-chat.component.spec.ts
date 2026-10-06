@@ -2,7 +2,12 @@ import { HttpClient } from '@angular/common/http'
 import { ComponentRef, createComponent, EnvironmentInjector, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
-import { Configuration, ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
+import {
+  Configuration,
+  ExchangeFileEntryScopeEnum,
+  ToolRequestEvent,
+  ToolResponseEvent,
+} from '@whoz-oss/agentos-api-client'
 import { of, throwError } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 import { ExchangeStateService } from '../../services/exchange-state.service'
@@ -69,7 +74,10 @@ describe('CaseChatComponent — submit with attachments', () => {
           useValue: { snapshot: { queryParams: { case: 'c-1', ns: 'ns-1' } }, queryParams: of({}) },
         },
         { provide: ExchangeStateService, useValue: exchangeState },
-        { provide: CaseStateService, useValue: { addCase: jest.fn(), updateCaseTitle: jest.fn() } },
+        {
+          provide: CaseStateService,
+          useValue: { addCase: jest.fn(), updateCaseTitle: jest.fn(), updateCaseStatus: jest.fn() },
+        },
         { provide: PromptStateService, useValue: { listEffective: jest.fn().mockReturnValue(of([])) } },
         {
           provide: USER_PREFERENCES_PORT,
@@ -80,6 +88,85 @@ describe('CaseChatComponent — submit with attachments', () => {
   })
 
   afterEach(() => TestBed.resetTestingModule())
+
+  it('does not refresh Files again when a reconnection replays tool and completion events', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), { close: jest.fn() })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-1')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      for (let reconnect = 0; reconnect < 3; reconnect++) {
+        emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+        emit('AgentFinishedEvent', 'finished-1')
+      }
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+
+      // Fresh activity still updates Files after the replay.
+      emit('ToolResponseEvent', 'tool-2', { toolName: 'case-exchange__editFiles' })
+      emit('AgentFinishedEvent', 'finished-2')
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(2)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(2)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+    }
+  })
+
+  it('restores RUNNING after a transport error without replaying chunks, files or older statuses', () => {
+    const original = globalThis.EventSource
+    const source = Object.assign(new EventTarget(), {
+      close: jest.fn(),
+      onerror: null as ((event: Event) => void) | null,
+    })
+    globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+    const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const ref = makeComponent()
+    try {
+      ref.instance['connectSse']()
+      const emit = (type: string, id: string, fields: object = {}) =>
+        source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      expect(ref.instance['isRunning']()).toBe(true)
+
+      source.onerror!(new Event('error'))
+      expect(ref.instance['isRunning']()).toBe(false)
+      emit('CaseStatusEvent', 'idle-1', { status: 'IDLE' })
+      expect(ref.instance['streamingText']()).toBe('Hello')
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
+      emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      expect(ref.instance['isRunning']()).toBe(true)
+      expect(ref.instance['streamingText']()).toBe('Hello')
+      expect(ref.instance['events']()).toHaveLength(4)
+      expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
+
+      emit('AgentFinishedEvent', 'finished-1')
+      emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
+      expect(ref.instance['isRunning']()).toBe(false)
+      expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
+    } finally {
+      ref.destroy()
+      globalThis.EventSource = original
+      log.mockRestore()
+      warn.mockRestore()
+    }
+  })
 
   it('uploads the attachments before sending, and appends the mention to the message', async () => {
     const ref = makeComponent()
@@ -223,5 +310,72 @@ describe('CaseChatComponent — submit with attachments', () => {
     attachments(ref).isUploading.set(false)
     ref.instance['isTerminal'].set(true)
     expect(ref.instance['canSend']).toBe(false)
+  })
+
+  it('replaces the generic delegate tool card when its real content-wrapped output contains delegation JSON', () => {
+    const ref = makeComponent()
+    const toolRequestId = 'tool-request-1'
+    const output = JSON.stringify([
+      {
+        delegationId: 'delegation-1',
+        toolRequestId,
+        subCaseId: 'sub-case-1',
+        agentName: 'Research',
+        success: true,
+        result: '**Done**',
+      },
+    ])
+    const request: ToolRequestEvent = {
+      id: 'request-event-id',
+      type: 'ToolRequestEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:00Z',
+      metadata: { id: 'request-event-id', created: '', modified: '', removed: false },
+      toolName: 'DELEGATE__delegate',
+      toolRequestId,
+      args: '{"delegations":[]}',
+    }
+    const response: ToolResponseEvent = {
+      id: 'response-event-id',
+      type: 'ToolResponseEvent',
+      caseId: 'c-1',
+      namespaceId: 'ns-1',
+      timestamp: '2026-01-01T00:00:01Z',
+      metadata: { id: 'response-event-id', created: '', modified: '', removed: false },
+      toolName: 'DELEGATE__delegate',
+      toolRequestId,
+      output: { content: output },
+      success: true,
+      images: [],
+      toolMetadata: {},
+    }
+
+    // This is the exact source used by the generic tool-card OUTPUT block. Compare
+    // semantically because structured tool output is pretty-printed for display.
+    const extractedOutput = ref.instance['extractToolOutput']({
+      requestId: toolRequestId,
+      toolName: request.toolName,
+      args: request.args,
+      response,
+    })
+    expect(extractedOutput).not.toBeNull()
+    expect(JSON.parse(extractedOutput!)).toEqual(JSON.parse(output))
+
+    ref.instance['events'].set([request, response])
+
+    const timeline = ref.instance['timeline']()
+    expect(timeline).toHaveLength(1)
+    expect(timeline[0]).toEqual(
+      expect.objectContaining({
+        kind: 'delegation',
+        delegation: expect.objectContaining({
+          delegationId: 'delegation-1',
+          toolRequestId,
+          subCaseId: 'sub-case-1',
+        }),
+      })
+    )
+    expect(timeline.some((item) => item.kind === 'tool')).toBe(false)
   })
 })

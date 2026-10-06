@@ -88,15 +88,18 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
     fun findEffective(namespaceId: String, userId: String): List<ScheduledPromptNode>
 
     /**
-     * Find all non-removed scheduled prompts at an exact scope level, optionally filtered by agentConfigIds.
+     * Find scheduled prompts at an exact scope level, optionally filtered by agentConfigIds.
+     * When [withRemoved] is true, soft-deleted entries are included.
+     * When [modifiedSince] is provided, only entries modified after that instant are returned.
      */
     @Query(
         $$"""
             MATCH (sp:ScheduledPrompt)
-            WHERE NOT COALESCE(sp.removed, false)
+            WHERE ($withRemoved OR NOT COALESCE(sp.removed, false))
               AND (sp.namespaceId = $namespaceId OR ($namespaceId IS NULL AND sp.namespaceId IS NULL))
               AND (sp.userId = $userId OR ($userId IS NULL AND sp.userId IS NULL))
               AND ($agentConfigIds IS NULL OR sp.agentConfigId IN $agentConfigIds)
+              AND ($modifiedSince IS NULL OR sp.modified > $modifiedSince)
             RETURN sp ORDER BY sp.name ASC
             """,
     )
@@ -104,6 +107,8 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
         namespaceId: String?,
         userId: String?,
         agentConfigIds: List<String>?,
+        withRemoved: Boolean = false,
+        modifiedSince: Instant? = null,
     ): List<ScheduledPromptNode>
 
     /**
@@ -140,18 +145,21 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
      * Targeted update of the enabled flag — does NOT touch any other field.
      * Safe to call concurrently: only touches `enabled`, leaves `nextRunAt` and all
      * other properties untouched, so it cannot overwrite a concurrent advance of nextRunAt.
+     * Also bumps `modified` so delta-sync clients observe the change via [findByScope] with `modifiedSince`.
      */
     @Query(
         $$"""
             MATCH (sp:ScheduledPrompt)
             WHERE sp.id = $id AND NOT COALESCE(sp.removed, false)
-            SET sp.enabled = $enabled
+            SET sp.enabled = $enabled, sp.modified = datetime()
             """,
     )
     fun updateEnabled(id: String, enabled: Boolean)
 
     /**
      * Disable all non-removed scheduled prompts referencing the given agentConfigId.
+     * Also bumps `modified` on each affected node so delta-sync clients observe the change
+     * via [findByScope] with `modifiedSince`.
      * Returns the number of nodes updated.
      */
     @Query(
@@ -160,7 +168,7 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             WHERE sp.agentConfigId = $agentConfigId
               AND NOT COALESCE(sp.removed, false)
               AND sp.enabled = true
-            SET sp.enabled = false
+            SET sp.enabled = false, sp.modified = datetime()
             RETURN count(sp)
             """,
     )
@@ -185,6 +193,9 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
      * Soft-delete all non-removed ScheduledPrompts referencing the given agentConfigId,
      * and soft-delete their linked Prompts in the same query.
      *
+     * Also bumps `modified` on each affected ScheduledPrompt and Prompt so that delta-sync
+     * clients observe tombstoned entries via [findByScope] with `modifiedSince`.
+     *
      * Uses OPTIONAL MATCH for the Prompt so that the ScheduledPrompt is always soft-deleted even when
      * its linked Prompt is already removed or missing (orphaned ScheduledPrompt). The Prompt SET clause
      * only executes when p IS NOT NULL.
@@ -196,14 +207,14 @@ interface ScheduledPromptNodeNeo4jRepository : Neo4jRepository<ScheduledPromptNo
             MATCH (sp:ScheduledPrompt)
             WHERE sp.agentConfigId = $agentConfigId
               AND NOT COALESCE(sp.removed, false)
-            SET sp.removed = true, sp.tripleKey = 'tombstone:' + sp.id
+            SET sp.removed = true, sp.tripleKey = 'tombstone:' + sp.id, sp.modified = datetime()
             WITH sp
             OPTIONAL MATCH (p:Prompt)
             WHERE p.id = sp.promptTemplateId
               AND NOT COALESCE(p.removed, false)
             WITH sp, p
             WHERE p IS NOT NULL
-            SET p.removed = true, p.tripleKey = 'tombstone:' + p.id
+            SET p.removed = true, p.tripleKey = 'tombstone:' + p.id, p.modified = datetime()
             RETURN count(sp)
             """,
     )

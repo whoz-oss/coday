@@ -273,10 +273,7 @@ export async function startAgentos(
 
   const child: ChildProcess = spawn(javaBin, ['-jar', jarPath, `--server.port=${agentosPort}`], {
     cwd: agentosDir,
-    // Inherit env from parent process, then add our overrides.
-    // AGENTOS_ENCRYPTION_KEY/SALT=NONE: explicitly disables field encryption
-    // (temporary — credentials stored in plaintext on disk; AgentOS logs a WARN).
-    // Replace with real cryptographic values when secret management is in place.
+    // Inherit the environment, then apply explicit fallbacks for managed settings.
     env: {
       ...process.env,
       // Fallback to NONE only if not already set — real values from the environment

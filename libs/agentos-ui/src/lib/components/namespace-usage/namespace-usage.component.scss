@@ -1,0 +1,55 @@
+:host {
+  display: block;
+}
+.report {
+  max-width: 1100px;
+  margin: auto;
+  padding: 1.5rem;
+  color: var(--color-text, inherit);
+}
+a {
+  color: inherit;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: end;
+  margin: 1.5rem 0;
+}
+label {
+  display: grid;
+  gap: 0.4rem;
+}
+input,
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--color-border, #8888);
+  border-radius: 0.4rem;
+  padding: 0.5rem 0.75rem;
+}
+button {
+  cursor: pointer;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--color-border, #8885);
+}
+small {
+  display: block;
+  margin-top: 0.3rem;
+}
+h2 {
+  margin-top: 2rem;
+}

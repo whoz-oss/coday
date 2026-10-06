@@ -6,11 +6,13 @@ import com.fasterxml.jackson.annotation.JsonPropertyOrder
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonValue
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.EnrichmentPhaseTrace
+import io.whozoss.agentos.sdk.usage.LlmUsage
 import java.time.Instant
 import java.util.UUID
 
@@ -40,6 +42,8 @@ enum class CaseEventType(
     PENDING_CONFIRMATION("PendingConfirmationEvent"),
     CONFIRMATION_RESOLVED("ConfirmationResolvedEvent"),
     CASE_UPDATED("CaseUpdatedEvent"),
+    SUB_CASE_STARTED("SubCaseStartedEvent"),
+    SUB_CASE_FINISHED("SubCaseFinishedEvent"),
     ;
 
     fun isFirstLevel(): Boolean = this in listOf(MESSAGE, QUESTION, ANSWER)
@@ -83,6 +87,8 @@ enum class CaseEventType(
     JsonSubTypes.Type(value = PendingConfirmationEvent::class, name = "PendingConfirmationEvent"),
     JsonSubTypes.Type(value = ConfirmationResolvedEvent::class, name = "ConfirmationResolvedEvent"),
     JsonSubTypes.Type(value = CaseUpdatedEvent::class, name = "CaseUpdatedEvent"),
+    JsonSubTypes.Type(value = SubCaseStartedEvent::class, name = "SubCaseStartedEvent"),
+    JsonSubTypes.Type(value = SubCaseFinishedEvent::class, name = "SubCaseFinishedEvent"),
 )
 sealed interface CaseEvent : Entity {
     val namespaceId: UUID
@@ -151,6 +157,8 @@ data class AgentSelectedEvent(
     override val timestamp: Instant = Instant.now(),
     val agentId: UUID,
     val agentName: String,
+    /** Non-null only when this selection resumes a specific answered question. */
+    val questionId: UUID? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_SELECTED
 }
@@ -164,6 +172,9 @@ data class AgentFinishedEvent(
     val agentName: String,
     val llmProvider: String? = null,
     val llmModel: String? = null,
+    /** Aggregated token usage for this agent run. Null when tracking is not configured. */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    val llmUsage: LlmUsage? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.AGENT_FINISHED
 }
@@ -224,7 +235,7 @@ data class ToolRequestEvent(
     val toolRequestId: String,
     val toolName: String,
     val args: String?,
-    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
     val enrichmentPhases: List<EnrichmentPhaseTrace>? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_REQUEST
@@ -243,6 +254,9 @@ data class ToolRequestEvent(
  * [io.whozoss.agentos.sdk.tool.ToolExecutionResult.images]). [output] stays the textual
  * summary of the execution; provider tool responses are text-only, so images are delivered
  * to the LLM separately at prompt-build time.
+ *
+ * [structuredOutput] carries the machine-readable result when the tool declares an
+ * [io.whozoss.agentos.sdk.tool.StandardTool.outputSchema]. Null for text-only tools.
  */
 data class ToolResponseEvent(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -259,6 +273,9 @@ data class ToolResponseEvent(
     val toolMetadata: Map<String, Any?> = emptyMap(),
     /** Images produced by the tool. Empty list when the tool produced no image. */
     val images: List<MessageContent.Image> = emptyList(),
+    /** Structured output conforming to [io.whozoss.agentos.sdk.tool.StandardTool.outputSchema], null for text-only tools. */
+    @field:JsonInclude(JsonInclude.Include.NON_NULL)
+    val structuredOutput: JsonNode? = null,
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.TOOL_RESPONSE
 }
@@ -453,6 +470,47 @@ data class ConfirmationResolvedEvent(
     val resultText: String = "",
 ) : CaseEvent {
     override val type: CaseEventType = CaseEventType.CONFIRMATION_RESOLVED
+}
+
+/** Outcome of a completed sub-case delegation. */
+enum class SubCaseOutcome {
+    SUCCESS,
+    WAITING_USER,
+    ERROR,
+    TIMEOUT,
+    KILLED,
+}
+
+/** Durable parent-case observation emitted after a delegated sub-case starts or resumes. */
+data class SubCaseStartedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val delegationId: UUID,
+    val toolRequestId: String,
+    val subCaseId: UUID,
+    val agentName: String,
+    val task: String,
+    val resumed: Boolean,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.SUB_CASE_STARTED
+}
+
+/** Durable parent-case observation emitted exactly once for each started delegation. */
+data class SubCaseFinishedEvent(
+    override val metadata: EntityMetadata = EntityMetadata(),
+    override val namespaceId: UUID,
+    override val caseId: UUID,
+    override val timestamp: Instant = Instant.now(),
+    val delegationId: UUID,
+    val toolRequestId: String,
+    val subCaseId: UUID,
+    val agentName: String,
+    val outcome: SubCaseOutcome,
+    val errorType: String? = null,
+) : CaseEvent {
+    override val type: CaseEventType = CaseEventType.SUB_CASE_FINISHED
 }
 
 /**

@@ -24,6 +24,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import org.springframework.http.HttpStatus
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
@@ -100,6 +101,8 @@ class CaseControllerSpec :
             every { favoriteService.listDirectRelations(any(), EntityType.CASE) } returns emptyMap()
             // Default: no messages in any case. Tests that assert lastMessageAt override this.
             every { caseEventService.findLastMessageTimestamps(any()) } returns emptyMap()
+            // Default: namespace defines no runCostThreshold. Tests that need a specific value override this.
+            every { namespaceService.resolveRunCostThreshold(any()) } returns null
         }
 
         // -------------------------------------------------------------------------
@@ -179,6 +182,59 @@ class CaseControllerSpec :
             }
         }
 
+        "create preserves runCostThreshold from the request" {
+            val threshold = 42.5
+            val r = caseResource(id = null).copy(runCostThreshold = threshold)
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { caseService.create(any()) } answers {
+                val arg = firstArg<Case>()
+                arg.runCostThreshold shouldBe threshold
+                saved
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(r)
+
+            verify(exactly = 1) { caseService.create(any()) }
+        }
+
+        "create uses namespace runCostThreshold when none is provided in the request" {
+            val namespaceThreshold = 10.0
+            val r = caseResource(id = null) // runCostThreshold is null
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { namespaceService.resolveRunCostThreshold(namespaceId) } returns namespaceThreshold
+            every { caseService.create(any()) } answers {
+                val arg = firstArg<Case>()
+                arg.runCostThreshold shouldBe namespaceThreshold
+                saved
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(r)
+
+            verify(exactly = 1) { caseService.create(any()) }
+            verify(exactly = 1) { namespaceService.resolveRunCostThreshold(namespaceId) }
+        }
+
+        "create passes null runCostThreshold to the service when neither request nor namespace defines one" {
+            val r = caseResource(id = null) // runCostThreshold is null
+            val saved = caseEntity()
+            every { userService.getCurrentUser() } returns caller
+            every { namespaceService.resolveRunCostThreshold(namespaceId) } returns null
+            every { caseService.create(any()) } answers {
+                val arg = firstArg<Case>()
+                arg.runCostThreshold shouldBe null
+                saved
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(r)
+
+            verify(exactly = 1) { caseService.create(any()) }
+        }
+
         "create still succeeds when the auto-ADMIN grant fails (logs warning, no rollback)" {
             val r = caseResource(id = null)
             val saved = caseEntity()
@@ -201,6 +257,31 @@ class CaseControllerSpec :
             result.lastMessageAt shouldBe null
             verify(exactly = 1) { caseService.create(any()) }
             verify(exactly = 0) { caseEventService.findLastMessageTimestamps(any()) }
+        }
+
+        "create under a parent case requires WRITE on that parent" {
+            val parentId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.hasPermission(callerId.toString(), EntityType.CASE, parentId.toString(), Action.WRITE) } returns false
+
+            shouldThrow<AccessDeniedException> { controller.create(caseResource(id = null).copy(parentCaseId = parentId)) }
+
+            verify(exactly = 0) { caseService.create(any()) }
+        }
+
+        "create under a writable parent case passes the parent to the service" {
+            val parentId = UUID.randomUUID()
+            every { userService.getCurrentUser() } returns caller
+            every { permissionService.hasPermission(callerId.toString(), EntityType.CASE, parentId.toString(), Action.WRITE) } returns true
+            every { caseService.create(any()) } answers {
+                firstArg<Case>().parentCaseId shouldBe parentId
+                caseEntity()
+            }
+            every { permissionService.grantPermission(any(), any(), any(), any()) } just Runs
+
+            controller.create(caseResource(id = null).copy(parentCaseId = parentId))
+
+            verify(exactly = 1) { caseService.create(any()) }
         }
 
         "create auto-grants ADMIN on the new case to the creator" {

@@ -1,0 +1,50 @@
+<article
+  class="delegation-card"
+  [class.delegation-card--working]="delegation().status === 'WORKING'"
+  [class.delegation-card--error]="
+    delegation().status === 'ERROR' || delegation().status === 'TIMEOUT' || delegation().status === 'KILLED'
+  "
+>
+  <header class="delegation-card__header">
+    <button
+      type="button"
+      class="delegation-card__toggle"
+      (click)="toggle()"
+      [attr.aria-expanded]="open()"
+      [attr.aria-label]="(open() ? 'Collapse' : 'Expand') + ' delegation for ' + delegation().agentName"
+    >
+      <span>{{ open() ? '▾' : '▸' }}</span
+      ><strong>{{ delegation().agentName }}</strong
+      ><span class="delegation-card__status">{{ statusLabel() }}</span>
+      @if (delegation().resumed) {
+        <span class="delegation-card__resumed">Resumed</span>
+      }</button
+    ><button
+      type="button"
+      class="delegation-card__open"
+      (click)="openSubCase()"
+      [attr.aria-label]="'Open sub-case for ' + delegation().agentName"
+    >
+      Open sub-case
+    </button>
+  </header>
+  @if (open()) {
+    @if (delegation().result) {
+      <agentos-delegation-result [result]="delegation().result!" />
+    } @else {
+      <ol class="delegation-card__activity" aria-label="Live sub-case activity">
+        @if (activity().length) {
+          @for (entry of activity(); track entry) {
+            <li>{{ entry }}</li>
+          }
+        } @else {
+          <li>Working…</li>
+        }
+      </ol>
+      <section class="delegation-card__task">
+        <strong>Task</strong>
+        <p>{{ delegation().task }}</p>
+      </section>
+    }
+  }
+</article>

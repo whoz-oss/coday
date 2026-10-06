@@ -9,6 +9,8 @@ import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
+import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
@@ -61,7 +63,9 @@ data class AgentAdvancedContext(
         prompt: String? = null,
     ): List<Message> {
         val history = convertEventsToMessages(events)
-        val operationalMessage = listOfNotNull(instructions, prompt).joinToString("\n\n").takeUnless { it.isBlank() }
+        val operationalMessage = listOfNotNull(instructions?.let { "<instructions>$it</instructions>" }, prompt)
+            .joinToString("\n\n")
+            .takeUnless { it.isBlank() }
         val messages = if (operationalMessage != null) history + UserMessage(operationalMessage) else history
         return listOfNotNull(systemPrompt?.let { SystemMessage(it) }) + messages
     }
@@ -131,6 +135,8 @@ data class AgentAdvancedContext(
                 is AnswerEvent -> {
                     listOf(UserMessage(event.answer))
                 }
+
+                is SubCaseStartedEvent, is SubCaseFinishedEvent -> emptyList()
 
                 else -> {
                     emptyList()

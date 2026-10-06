@@ -24,7 +24,7 @@ export class UserStateService {
     return this.userController.getMeUser().pipe(tap((user) => this.currentUser.set(user)))
   }
 
-  updateMe(patch: Pick<User, 'firstname' | 'lastname' | 'bio'>): Observable<User> {
+  updateMe(patch: Pick<User, 'firstname' | 'lastname' | 'bio' | 'preferredLanguage'>): Observable<User> {
     const existing = this.currentUser()
     if (!existing) throw new Error('Cannot update: current user not loaded')
 

@@ -92,6 +92,8 @@ class AgentSelectedEventNode(
     timestamp: Instant,
     val agentId: String,
     val agentName: String,
+    /** UUID of the answered question that this selection resumes, when applicable. */
+    val questionId: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -109,6 +111,13 @@ class AgentFinishedEventNode(
     val agentName: String,
     val llmProvider: String? = null,
     val llmModel: String? = null,
+    // LlmUsage fields stored flat — null when tracking is not configured.
+    val usageInputTokens: Long? = null,
+    val usageOutputTokens: Long? = null,
+    val usageCacheReadTokens: Long? = null,
+    val usageCacheWriteTokens: Long? = null,
+    val usageTotalTokens: Long? = null,
+    val usageEstimatedCostUsd: Double? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -204,6 +213,12 @@ class ToolResponseEventNode(
      * string for backward compatibility with existing nodes that pre-date this field.
      */
     val imagesJson: String? = null,
+    /**
+     * Raw JSON string of the structured output produced by the tool, or null when the tool
+     * is text-only. Stored as a nullable string for backward compatibility with existing
+     * nodes that pre-date this field.
+     */
+    val structuredOutputJson: String? = null,
     created: Instant = Instant.now(),
     createdBy: String? = null,
     modified: Instant = Instant.now(),
@@ -314,6 +329,22 @@ class TextChunkEventNode(
     modified: Instant = Instant.now(),
     modifiedBy: String? = null,
     removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
+@Node("SubCaseStartedEvent")
+class SubCaseStartedEventNode(
+    id: String, caseId: String, namespaceId: String, timestamp: Instant,
+    val delegationId: String, val toolRequestId: String, val subCaseId: String,
+    val agentName: String, val task: String, val resumed: Boolean,
+    created: Instant = Instant.now(), createdBy: String? = null, modified: Instant = Instant.now(), modifiedBy: String? = null, removed: Boolean? = null,
+) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
+
+@Node("SubCaseFinishedEvent")
+class SubCaseFinishedEventNode(
+    id: String, caseId: String, namespaceId: String, timestamp: Instant,
+    val delegationId: String, val toolRequestId: String, val subCaseId: String,
+    val agentName: String, val outcome: String, val errorType: String? = null,
+    created: Instant = Instant.now(), createdBy: String? = null, modified: Instant = Instant.now(), modifiedBy: String? = null, removed: Boolean? = null,
 ) : CaseEventNode(id, caseId, namespaceId, timestamp, created, createdBy, modified, modifiedBy, removed)
 
 @Node("PendingConfirmationEvent")

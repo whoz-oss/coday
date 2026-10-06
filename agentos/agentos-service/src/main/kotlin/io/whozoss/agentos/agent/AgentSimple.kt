@@ -18,6 +18,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import io.whozoss.agentos.usage.CostRunStopped
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
@@ -261,6 +262,13 @@ class AgentSimple(
             } catch (e: NonTransientAiException) {
                 emitProviderErrorAndFinishEvents(this@AgentSimple, e, namespaceId, caseId, logger)
             } catch (e: Exception) {
+                if (generateSequence<Throwable>(e) { it.cause }.any { it is CostRunStopped }) {
+                    // Tool-only rounds may still have events buffered when a cost stop arrives.
+                    toolEventChannel.close()
+                    for (toolEvent in toolEventChannel) {
+                        emit(toolEvent)
+                    }
+                }
                 handleGenericAgentException(this@AgentSimple, e, namespaceId, caseId, logger)
             }
         }
@@ -507,6 +515,7 @@ class AgentSimple(
                         userId = userId,
                         userExternalId = userExternalId,
                         caseEvents = filteredEvents,
+                        toolRequestId = toolRequestId,
                     )
 
                 val executionResult: ToolExecutionResult
@@ -591,6 +600,7 @@ class AgentSimple(
                         // They will be delivered to the LLM via the conversation history
                         // on subsequent turns (convertEventsToMessages injects UserMessage+Media).
                         images = executionResult.images,
+                        structuredOutput = executionResult.structuredOutput,
                     ),
                 )
 
