@@ -284,6 +284,16 @@ class GitToolsSpec :
             status.output shouldNotContain "package-0.js"
         }
 
+        "the branch keeps its own name when a tag has the same one" {
+            val fixture = managed()
+            git(fixture.worktree, "switch", "--quiet", "-c", "release-3.12")
+            git(fixture.worktree, "tag", "release-3.12")
+
+            val status = tools(fixture).call("git_status")
+
+            status.output shouldContain "On branch release-3.12 at"
+        }
+
         "a branch is created at the current commit and checked out" {
             val fixture = managed()
             val tools = tools(fixture)

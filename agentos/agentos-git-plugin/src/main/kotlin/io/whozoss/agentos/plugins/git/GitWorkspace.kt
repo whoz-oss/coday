@@ -34,15 +34,22 @@ internal class GitWorkspace(
 
     val repositoryUrl: String get() = context.repositoryUrl
 
-    /** The checked-out branch, or null on a detached HEAD. */
+    /**
+     * The checked-out branch, or null on a detached HEAD. Read as a full ref: `--short` answers
+     * `heads/<name>` when a tag has the same name.
+     */
     fun branch(): String? {
-        val result = runner.run(local("symbolic-ref", "--quiet", "--short", "HEAD"))
+        val result = runner.run(local("symbolic-ref", "--quiet", "HEAD"))
         return when {
-            result is GitCommandResult.Completed && result.successful && !result.truncated -> result.stdout.trim()
+            result is GitCommandResult.Completed && result.successful && !result.truncated -> branchOf(result.stdout.trim())
             result is GitCommandResult.Completed && result.exitCode == 1 -> null
             else -> throw GitToolException("Cannot read the current branch: ${describe(result)}")
         }
     }
+
+    private fun branchOf(ref: String): String =
+        ref.takeIf { it.startsWith(GitRefs.HEADS) }?.removePrefix(GitRefs.HEADS)
+            ?: throw GitToolException("HEAD points outside the branches: $ref")
 
     fun head(): String? = commitOf("HEAD")
 
