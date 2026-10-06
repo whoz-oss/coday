@@ -182,6 +182,7 @@ class FilesystemAgentConfigRepository(
             integrations = model.integrations,
             advancedExecution = model.advancedExecution,
             subAgents = model.subAgents.nullOrNotBlankItems(),
+            delegationTimeoutSeconds = model.delegationTimeoutSeconds,
             docs =
                 model.docs
                     ?.filter { it.isNotBlank() }
@@ -237,6 +238,7 @@ private data class AgentConfigYamlModel(
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     val subAgents: List<String>? = null,
+    val delegationTimeoutSeconds: Int? = null,
     val docs: List<String>? = null,
     val skillSelectors: List<String>? = null,
     // mandatoryDocs kept for backward compat with existing YAML files

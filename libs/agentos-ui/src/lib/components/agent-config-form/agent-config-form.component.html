@@ -196,6 +196,40 @@
         </div>
       </div>
 
+      <div class="agent-config-form__field">
+        <label class="agent-config-form__label" for="delegation-timeout">Delegation timeout (seconds)</label>
+        <p class="agent-config-form__field-hint" id="delegation-timeout-hint">
+          Maximum time for each delegation launched by this agent, including nested delegations. On timeout, the
+          sub-agent and its active descendants are stopped. Leave empty to use the server default
+          @if (defaultDelegationTimeoutSeconds() !== null) {
+            : {{ defaultDelegationTimeoutSeconds() }} s ({{ defaultDelegationTimeoutSeconds()! / 60 }} min)
+          }
+          .
+        </p>
+        <input
+          id="delegation-timeout"
+          class="agent-config-form__input"
+          type="number"
+          min="1"
+          max="2147483647"
+          step="1"
+          placeholder="Server default"
+          aria-describedby="delegation-timeout-hint delegation-timeout-error"
+          [attr.aria-invalid]="delegationTimeoutControl.invalid"
+          [formControl]="delegationTimeoutControl"
+        />
+        @if (delegationTimeoutControl.invalid) {
+          <p id="delegation-timeout-error" class="agent-config-form__field-hint" role="alert">
+            Enter a valid positive whole number of seconds, or leave empty to inherit the server default.
+          </p>
+        }
+        @if (delegationTimeoutControl.value !== null) {
+          <button class="agent-config-form__sub-agent-btn" type="button" (click)="useDefaultDelegationTimeout()">
+            Use server default
+          </button>
+        }
+      </div>
+
       <div class="agent-config-form__actions">
         <button
           class="agent-config-form__btn agent-config-form__btn--primary"
