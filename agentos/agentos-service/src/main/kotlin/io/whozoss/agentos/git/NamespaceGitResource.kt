@@ -13,14 +13,20 @@ import java.util.UUID
  */
 @Schema(name = "NamespaceGit")
 data class NamespaceGitResource(
-    /** False when the namespace has no repository associated; every other field is then null. */
+    /**
+     * False when the namespace has no repository associated. Every other field is then empty: null,
+     * or false for [autoWorktreeForRootCases].
+     */
     val associated: Boolean,
     val repositoryUrl: String? = null,
     val mainBranch: String? = null,
     /** UUID of the namespace-shared auth setting used for every Git operation. Never the secret. */
     val serviceAuthSettingId: UUID? = null,
-    /** `PREPARING`, `READY` or `FAILED`; null while no clone has been attempted. */
-    val checkoutStatus: String? = null,
+    /** Whether a new root case gets a detached worktree. */
+    val autoWorktreeForRootCases: Boolean = false,
+    val setupCommand: String? = null,
+    @Schema(description = "Preparation state of the namespace repository. Null while no clone has been attempted")
+    val checkoutStatus: RepositoryCheckoutStatus? = null,
     /** Operator-facing reason when the checkout failed. Never a secret. */
     val checkoutFailureReason: String? = null,
     val lastFetchedAt: Instant? = null,

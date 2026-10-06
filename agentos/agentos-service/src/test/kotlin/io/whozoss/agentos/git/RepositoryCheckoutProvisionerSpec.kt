@@ -3,6 +3,10 @@ package io.whozoss.agentos.git
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.data.forAll
+import io.kotest.data.headers
+import io.kotest.data.row
+import io.kotest.data.table
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -20,6 +24,7 @@ import io.whozoss.agentos.git.core.GitInvocation
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.exists
@@ -70,6 +75,7 @@ class RepositoryCheckoutProvisionerSpec :
 
         fun fixture(
             checkoutStore: InMemoryRepositoryCheckoutService = InMemoryRepositoryCheckoutService(),
+            bindings: CaseResourceBindingService? = mockk { every { findByParent(any()) } returns emptyList() },
             properties: GitExecutionProperties = gitProperties,
         ): Triple<ExchangeStorageService, RepositoryCheckoutProvisioner, UUID> {
             val mount = Files.createTempDirectory("agentos-mount-")
@@ -97,6 +103,7 @@ class RepositoryCheckoutProvisionerSpec :
                     exchangeStorageService = storage,
                     checkoutService = checkoutStore,
                     serviceAccountResolver = GitServiceAccountResolver(authSettings),
+                    bindingService = bindings,
                 )
             return Triple(storage, provisioner, namespaceId)
         }
@@ -111,6 +118,8 @@ class RepositoryCheckoutProvisionerSpec :
                 repositoryUrl = origin.toUri().toString(),
                 mainBranch = "main",
                 serviceAuthSettingId = UUID.randomUUID(),
+                autoWorktreeForRootCases = false,
+                setupCommand = null,
             )
 
         "the bare repository lives outside both browsable Exchange roots" {
@@ -206,8 +215,6 @@ class RepositoryCheckoutProvisionerSpec :
             rawGit(common, "rev-parse", "refs/heads/feature-existing") shouldBe agentBranch
         }
 
-
-
         "initial branch import works when the complete ref listing exceeds the output cap" {
             val origin = originRepository()
             val head = rawGit(origin, "rev-parse", "HEAD")
@@ -228,6 +235,81 @@ class RepositoryCheckoutProvisionerSpec :
             rawGit(git, "for-each-ref", "--format=%(refname)", "refs/heads/") shouldBe ""
             rawGit(git, "for-each-ref", "--format=%(refname)", "refs/remotes/origin/")
                 .lineSequence().count() shouldBe branches.size + 1
+        }
+
+        "a failed unused first checkout can be corrected to another URL and branch" {
+            val store = InMemoryRepositoryCheckoutService()
+            val (_, provisioner, namespaceId) = fixture(store)
+            val original = settings(namespaceId, originRepository()).copy(mainBranch = "missing")
+            shouldThrow<GitCommandException> { provisioner.ensureReady(original) }
+            val failed = store.findByNamespaceId(namespaceId)!!
+            val corrected = settings(namespaceId, originRepository()).copy(configId = original.configId)
+            val queued = provisioner.requestPreparation(corrected)
+            queued.id shouldBe failed.id
+            queued.repositoryUrl shouldBe corrected.repositoryUrl
+            queued.mainBranch shouldBe "main"
+            queued.status shouldBe RepositoryCheckoutStatus.PREPARING
+            provisioner.ensureReady(corrected).status shouldBe RepositoryCheckoutStatus.READY
+        }
+
+        "a failed checkout is not re-pointed while a family is recorded on it" {
+            val store = InMemoryRepositoryCheckoutService()
+            val bindings = mockk<CaseResourceBindingService>()
+            every { bindings.findByParent(any()) } returns emptyList()
+            val (_, provisioner, namespaceId) = fixture(store, bindings)
+            val original = settings(namespaceId, originRepository()).copy(mainBranch = "missing")
+            shouldThrow<GitCommandException> { provisioner.ensureReady(original) }
+            every { bindings.findByParent(namespaceId) } returns listOf(
+                CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId, integrationConfigId = original.configId),
+            )
+            shouldThrow<IllegalStateException> { provisioner.requestPreparation(original.copy(mainBranch = "main")) }
+            store.findByNamespaceId(namespaceId)!!.mainBranch shouldBe "missing"
+        }
+
+        "a failed checkout is replaceable only while no repository, fetch or family depends on it" {
+            val storage = mockk<ExchangeStorageService>()
+            val namespaceId = UUID.randomUUID()
+            val removedUnprepared = CaseResourceBinding(rootCaseId = UUID.randomUUID(), namespaceId = namespaceId,
+                integrationConfigId = UUID.randomUUID(), status = CaseResourceStatus.REMOVED)
+            table(
+                headers("situation", "status", "fetched", "published", "families", "replaceable"),
+                row("failed and unused", RepositoryCheckoutStatus.FAILED, false, false, emptyList(), true),
+                row("not failed", RepositoryCheckoutStatus.READY, false, false, emptyList(), false),
+                row("fetched once", RepositoryCheckoutStatus.FAILED, true, false, emptyList(), false),
+                row("directory published", RepositoryCheckoutStatus.FAILED, false, true, emptyList(), false),
+                row("family requested", RepositoryCheckoutStatus.FAILED, false, false,
+                    listOf(removedUnprepared.copy(status = CaseResourceStatus.REQUESTED)), false),
+                row("family failed", RepositoryCheckoutStatus.FAILED, false, false,
+                    listOf(removedUnprepared.copy(status = CaseResourceStatus.FAILED)), false),
+                row("family deleted before preparation", RepositoryCheckoutStatus.FAILED, false, false, listOf(removedUnprepared), true),
+                row("family deleted after its base was frozen", RepositoryCheckoutStatus.FAILED, false, false,
+                    listOf(removedUnprepared.copy(baseSha = "a".repeat(40))), false),
+                row("family deleted after its setup started", RepositoryCheckoutStatus.FAILED, false, false,
+                    listOf(removedUnprepared.copy(setup = SetupState.STARTED)), false),
+                row("without workspaces, failed and unused", RepositoryCheckoutStatus.FAILED, false, false, null, true),
+                row("without workspaces, directory published", RepositoryCheckoutStatus.FAILED, false, true, null, false),
+            ).forAll { _, status, fetched, published, families, replaceable ->
+                val directory = Files.createTempDirectory("replaceable-checkout-").resolve("repository.git")
+                if (published) Files.createDirectory(directory)
+                every { storage.namespaceGitDirectory(namespaceId) } returns directory
+                val bindings = families?.let { rows -> mockk<CaseResourceBindingService> { every { findByParent(namespaceId) } returns rows } }
+                val provisioner = RepositoryCheckoutProvisioner(mockk(), gitProperties, storage, InMemoryRepositoryCheckoutService(), mockk(), bindings)
+                val checkout = RepositoryCheckout(namespaceId = namespaceId, integrationConfigId = UUID.randomUUID(),
+                    repositoryUrl = "https://forge.example/org/project.git", mainBranch = "main", status = status,
+                    lastFetchedAt = if (fetched) Instant.now() else null)
+
+                provisioner.canReplaceFailedCheckout(checkout) shouldBe replaceable
+            }
+        }
+
+        "without workspaces a failed unused first checkout can be corrected" {
+            val store = InMemoryRepositoryCheckoutService()
+            val (_, provisioner, namespaceId) = fixture(store, bindings = null)
+            val original = settings(namespaceId, originRepository()).copy(mainBranch = "missing")
+            shouldThrow<GitCommandException> { provisioner.ensureReady(original) }
+            val corrected = settings(namespaceId, originRepository()).copy(configId = original.configId)
+            provisioner.requestPreparation(corrected).repositoryUrl shouldBe corrected.repositoryUrl
+            provisioner.ensureReady(corrected).status shouldBe RepositoryCheckoutStatus.READY
         }
 
         "preparation is idempotent once ready" {
@@ -278,6 +360,8 @@ class RepositoryCheckoutProvisionerSpec :
                             repositoryUrl = originRepository().toUri().toString(),
                             mainBranch = "main",
                             serviceAuthSettingId = UUID.randomUUID(),
+                            autoWorktreeForRootCases = false,
+                            setupCommand = null,
                         ),
                     )
 
@@ -343,6 +427,7 @@ class RepositoryCheckoutProvisionerSpec :
         "a requested checkout is cloned even though no case ever asks for a worktree" {
             val (storage, provisioner, namespaceId) = fixture()
             val configured = settings(namespaceId, originRepository())
+            configured.autoWorktreeForRootCases shouldBe false
             provisioner.requestPreparation(configured)
 
             val ready = provisioner.ensureReady(configured)
@@ -386,41 +471,3 @@ class RepositoryCheckoutProvisionerSpec :
             rawGit(storage.namespaceGitDirectory(namespaceId), "rev-parse", "--is-bare-repository") shouldBe "true"
         }
     })
-
-/** Minimal in-memory [RepositoryCheckoutService] for the provisioning tests. */
-internal class InMemoryRepositoryCheckoutService : RepositoryCheckoutService {
-    private val rows = mutableMapOf<UUID, RepositoryCheckout>()
-
-    override fun create(entity: RepositoryCheckout): RepositoryCheckout = entity.also { rows[it.id] = it }
-
-    override fun update(entity: RepositoryCheckout): RepositoryCheckout = entity.also { rows[it.id] = it }
-
-    override fun findByIds(
-        ids: Collection<UUID>,
-        withRemoved: Boolean,
-    ): List<RepositoryCheckout> = ids.mapNotNull { rows[it] }.filter { withRemoved || !it.metadata.removed }
-
-    override fun findByParent(parentId: UUID): List<RepositoryCheckout> = rows.values.filter { it.namespaceId == parentId }
-
-    override fun findByStatusIn(
-        statuses: Collection<RepositoryCheckoutStatus>,
-        limit: Int,
-    ): List<RepositoryCheckout> = rows.values.filter { it.status in statuses }.take(limit)
-
-    override fun findByNamespaceId(namespaceId: UUID): RepositoryCheckout? =
-        rows.values.firstOrNull { it.namespaceId == namespaceId && !it.metadata.removed }
-
-    override fun delete(id: UUID): Boolean =
-        rows[id]?.let { rows[id] = it.copy(metadata = it.metadata.copy(removed = true)); true } ?: false
-
-    override fun deleteByParent(parentId: UUID): Int = findByParent(parentId).count { delete(it.id) }
-
-    override fun markStatus(
-        id: UUID,
-        status: RepositoryCheckoutStatus,
-        failureReason: String?,
-    ): RepositoryCheckout {
-        val current = requireNotNull(rows[id]) { "checkout $id not found" }
-        return current.copy(status = status, failureReason = failureReason).also { rows[id] = it }
-    }
-}

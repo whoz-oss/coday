@@ -1413,6 +1413,49 @@ paths:
           description: No Content
       tags:
       - run-cost-controller
+  /api/cases/{caseId}/workspace:
+    get:
+      operationId: getCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/retry:
+    post:
+      operationId: retryCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceRetryRequest"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/cases/{entityId}/members:
     get:
       description: Returns all users holding a direct ADMIN or MEMBER relation on
@@ -2384,6 +2427,27 @@ paths:
           description: No Content
       tags:
       - namespace-controller
+  /api/namespaces/{namespaceId}/workspaces:
+    get:
+      operationId: listCaseWorkspace
+      parameters:
+      - in: path
+        name: namespaceId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CaseWorkspaceView"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/oauth/callback:
     post:
       description: "Called by the frontend popup after the OAuth provider redirects\
@@ -4266,6 +4330,36 @@ components:
       - namespaceId
       - timestamp
       - type
+    CaseWorkspaceView:
+      type: object
+      properties:
+        cleanupReason:
+          type: string
+          description: Why the workspace of a deleted family is still kept. Never
+            a secret
+        equipped:
+          type: boolean
+          description: Whether the case's family owns a Git workspace
+        failureReason:
+          type: string
+          description: Why the last preparation failed. Never a secret
+        rootCaseId:
+          type: string
+          format: uuid
+          description: Root case that owns the family's workspace. Null when the family
+            is not equipped
+        status:
+          type: string
+          description: Lifecycle of the workspace. Null when the family is not equipped
+          enum:
+          - REQUESTED
+          - PREPARING
+          - READY
+          - FAILED
+          - DELETING
+          - REMOVED
+      required:
+      - equipped
     ConfirmationResolvedEvent:
       allOf:
       - $ref: "#/components/schemas/CaseEvent"
@@ -4865,10 +4959,18 @@ components:
       properties:
         associated:
           type: boolean
+        autoWorktreeForRootCases:
+          type: boolean
         checkoutFailureReason:
           type: string
         checkoutStatus:
           type: string
+          description: Preparation state of the namespace repository. Null while no
+            clone has been attempted
+          enum:
+          - PREPARING
+          - READY
+          - FAILED
         lastFetchedAt:
           type: string
           format: date-time
@@ -4879,11 +4981,16 @@ components:
         serviceAuthSettingId:
           type: string
           format: uuid
+        setupCommand:
+          type: string
       required:
       - associated
+      - autoWorktreeForRootCases
     NamespaceGitRequest:
       type: object
       properties:
+        autoWorktreeForRootCases:
+          type: boolean
         mainBranch:
           type: string
         repositoryUrl:
@@ -4892,7 +4999,10 @@ components:
         serviceAuthSettingId:
           type: string
           format: uuid
+        setupCommand:
+          type: string
       required:
+      - autoWorktreeForRootCases
       - repositoryUrl
       - serviceAuthSettingId
     NamespaceListItem:
@@ -6164,3 +6274,10 @@ components:
       - namespaceId
       - timestamp
       - type
+    WorkspaceRetryRequest:
+      type: object
+      properties:
+        acknowledgeSetupReplay:
+          type: boolean
+      required:
+      - acknowledgeSetupReplay

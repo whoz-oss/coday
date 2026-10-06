@@ -3,6 +3,23 @@ import { ExchangeFileEntryScopeEnum } from '@whoz-oss/agentos-api-client'
 import { ExchangeDrawerComponent } from './exchange-drawer.component'
 
 describe('ExchangeDrawerComponent directory controls', () => {
+  it('distinguishes workspace preparation from file loading errors', () => {
+    TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] })
+    const fixture = TestBed.createComponent(ExchangeDrawerComponent)
+    fixture.componentRef.setInput('caseSectionVisible', true)
+    fixture.componentRef.setInput('caseStatus', 'preparing')
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).toContain('Preparing workspace')
+    expect(fixture.nativeElement.querySelector('ds-spinner')).not.toBeNull()
+    expect(fixture.nativeElement.querySelector('.exchange-drawer__retry')).toBeNull()
+
+    fixture.componentRef.setInput('caseStatus', 'error')
+    fixture.detectChanges()
+    expect(fixture.nativeElement.textContent).not.toContain('Preparing workspace')
+    expect(fixture.nativeElement.querySelector('ds-spinner')).toBeNull()
+    expect(fixture.nativeElement.querySelector('.exchange-drawer__retry')).not.toBeNull()
+  })
+
   it('renders reachable load-more controls for both scopes and keeps folder-only downloads available', async () => {
     await TestBed.configureTestingModule({ imports: [ExchangeDrawerComponent] }).compileComponents()
     const fixture = TestBed.createComponent(ExchangeDrawerComponent)
