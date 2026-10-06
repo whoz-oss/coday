@@ -40,6 +40,7 @@ class GitToolsSpec :
         val runner = GitCommandRunner(
             GitExecutionProperties(allowedRemoteProtocols = setOf("file"), defaultTimeout = Duration.ofSeconds(20)),
         )
+        val networkTimeout = Duration.ofSeconds(60)
         val toolContext = ToolContext(namespaceId = UUID.randomUUID(), userId = UUID.randomUUID(), userExternalId = "dev@example.com", caseEvents = emptyList())
 
         fun git(directory: Path, vararg args: String): String {
@@ -89,7 +90,7 @@ class GitToolsSpec :
         // --- Managed layout ----------------------------------------------------------------------
 
         class Fixture(val origin: Path, val worktree: Path, val common: Path, val context: GitWorkspaceContext) {
-            val workspace get() = GitWorkspace(context, runner)
+            val workspace get() = GitWorkspace(context, runner, networkTimeout)
         }
 
         fun managed(repositoryUrl: String? = null): Fixture {
@@ -141,7 +142,7 @@ class GitToolsSpec :
             settings: Map<String, String> = emptyMap(),
         ): GitWorkspace {
             val config = jacksonObjectMapper().valueToTree<JsonNode>(settings + ("workingDirectory" to directory.toString()))
-            return GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner)
+            return GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner, networkTimeout)
         }
 
         fun cloneOf(fixture: Fixture): Path =
@@ -235,6 +236,20 @@ class GitToolsSpec :
             fetchWith(GitToolProvider()) shouldContain "agentos.git.allow-private-remote-hosts"
             fetchWith(GitToolProvider(GitExecutionProperties(allowPrivateRemoteHosts = true))) shouldNotContain
                 "agentos.git.allow-private-remote-hosts"
+        }
+
+        "the tools run with the service's Git settings, such as its pinned binary" {
+            val config =
+                jacksonObjectMapper()
+                    .createObjectNode()
+                    .put("workingDirectory", cloneOf(managed()).toString())
+                    .put("repositoryUrl", "https://github.com/org/project.git")
+
+            suspend fun statusWith(provider: GitToolProvider): ToolExecutionResult =
+                provider.provideTools(config, "git", toolContext).byName().call("git_status")
+
+            statusWith(GitToolProvider(GitExecutionProperties())).success shouldBe true
+            statusWith(GitToolProvider(GitExecutionProperties(binary = "/nonexistent/agentos-git"))).success shouldBe false
         }
 
         "outside a Git workspace a remote must be configured" {

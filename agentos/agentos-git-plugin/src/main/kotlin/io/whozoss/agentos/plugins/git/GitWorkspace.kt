@@ -22,9 +22,11 @@ import java.time.Duration
 internal class GitWorkspace(
     resolveContext: () -> GitWorkspaceContext,
     private val runner: GitCommandRunner,
-    private val networkTimeout: Duration = Duration.ofMinutes(10),
+    /** Fetch and push, like the service's clone and fetch: `agentos.git.clone-timeout`. */
+    private val networkTimeout: Duration,
 ) {
-    constructor(context: GitWorkspaceContext, runner: GitCommandRunner) : this({ context }, runner)
+    constructor(context: GitWorkspaceContext, runner: GitCommandRunner, networkTimeout: Duration) :
+        this({ context }, runner, networkTimeout)
 
     private val context by lazy(resolveContext)
 

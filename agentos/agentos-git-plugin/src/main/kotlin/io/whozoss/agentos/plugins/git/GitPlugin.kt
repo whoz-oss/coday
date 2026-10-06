@@ -36,8 +36,10 @@ class GitPlugin : Plugin() {
  * Either way they act with the credentials of the user running the case, from the auth setting
  * bound to the integration.
  *
- * Remotes on a private network follow the service's `agentos.git.allow-private-remote-hosts`, as
- * HTTP_API and MCP_HTTP refuse them: an integration cannot allow them on its own.
+ * The tools run with the service's `agentos.git` settings: the pinned binary, the output cap, the
+ * timeouts, and the protocols and private network remotes allowed. Remotes on a private network are
+ * refused unless `agentos.git.allow-private-remote-hosts` allows them, as HTTP_API and MCP_HTTP
+ * refuse them: an integration cannot allow them on its own.
  */
 @Extension
 class GitToolProvider(
@@ -50,15 +52,16 @@ class GitToolProvider(
 
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
-    private val allowPrivateRemoteHosts: Boolean = serviceProperties?.allowPrivateRemoteHosts ?: false
+    /** The service's settings, or the defaults when this provider is built outside the service. */
+    private val properties: GitExecutionProperties = serviceProperties ?: GitExecutionProperties()
 
     /** Keeps its private support directory for the JVM lifetime. */
-    private val runner: GitCommandRunner by lazy {
-        GitCommandRunner(GitExecutionProperties(allowPrivateRemoteHosts = allowPrivateRemoteHosts))
-    }
+    private val runner: GitCommandRunner by lazy { GitCommandRunner(properties) }
 
     init {
-        if (allowPrivateRemoteHosts) logger.info { "GIT tools may reach private network remotes (agentos.git.allow-private-remote-hosts)" }
+        if (properties.allowPrivateRemoteHosts) {
+            logger.info { "GIT tools may reach private network remotes (agentos.git.allow-private-remote-hosts)" }
+        }
     }
 
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
@@ -66,8 +69,8 @@ class GitToolProvider(
         val injected = GitWorkspaceContext.from(config)
         val directory = injected?.workingDirectory ?: configuredDirectory(config, configName) ?: return emptyList()
         val workspace =
-            if (injected != null) GitWorkspace(injected, runner)
-            else GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner)
+            if (injected != null) GitWorkspace(injected, runner, properties.cloneTimeout)
+            else GitWorkspace({ GitWorkspaceContext.discover(directory, config, runner) }, runner, properties.cloneTimeout)
         val gitHub = GitHubApi()
         val access = GitForgeAccess(context?.credentialProvider, context?.userExternalId, gitHub)
         return gitTools(configName ?: INTEGRATION_TYPE, workspace, access, gitHub)
