@@ -382,7 +382,10 @@ class GitNetworkCommandsSpec :
             git(local, "commit", "--quiet", "--amend", "-m", "rewritten")
 
             push(local, origin.url()).shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe false
-            push(local, origin.url(), "--force-with-lease=refs/heads/feature:$seen")
+            push(local, origin.url(), GitPushLease.of("feature", seen))
+                .shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe false
+            // An empty lease means "the branch must not exist yet": it cannot replace one.
+            push(local, origin.url(), GitPushLease.of("feature", ""))
                 .shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe false
             git(origin, "rev-parse", "refs/heads/feature") shouldBe theirs
 
@@ -391,19 +394,30 @@ class GitNetworkCommandsSpec :
             git(origin, "rev-parse", "refs/heads/feature") shouldBe git(local, "rev-parse", "HEAD")
         }
 
-        "only one branch can be pushed to the branch of the same name" {
+        "only one branch can be pushed to the branch of the same name, with a lease on that branch only" {
             val origin = remote()
+            val url = origin.url()
             val local = workspace()
+            val head = git(local, "rev-parse", "HEAD")
+            val feature = "refs/heads/feature:refs/heads/feature"
+            val marker = Files.createTempDirectory("agentos-receive-pack-").resolve("ran")
+            // Control: ordinary Git runs the receive-pack program it is given.
+            shouldThrow<IllegalStateException> { git(local, "push", "--receive-pack=touch $marker", url, feature) }
+            marker.exists() shouldBe true
+            Files.delete(marker)
             val refused = listOf(
-                listOf("push", "--", origin.url(), "refs/heads/feature:refs/heads/main"),
-                listOf("push", "--", origin.url(), ":refs/heads/feature"),
-                listOf("push", "--", origin.url(), "+refs/heads/feature:refs/heads/feature"),
-                listOf("push", "--", origin.url(), "refs/heads/*:refs/heads/*"),
-                listOf("push", "--", origin.url(), "refs/tags/v1:refs/tags/v1"),
-                listOf("push", "--mirror", "--", origin.url(), "refs/heads/feature:refs/heads/feature"),
-                listOf("push", "--receive-pack=touch /tmp/pwned", "--", origin.url(), "refs/heads/feature:refs/heads/feature"),
-                listOf("push", "--force-with-lease", "--", origin.url(), "refs/heads/feature:refs/heads/feature"),
-                listOf("push", origin.url(), "refs/heads/feature:refs/heads/feature"),
+                listOf("push", "--", url, "refs/heads/feature:refs/heads/main"),
+                listOf("push", "--", url, ":refs/heads/feature"),
+                listOf("push", "--", url, "+$feature"),
+                listOf("push", "--", url, "refs/heads/*:refs/heads/*"),
+                listOf("push", "--", url, "refs/tags/v1:refs/tags/v1"),
+                listOf("push", "--mirror", "--", url, feature),
+                listOf("push", "--receive-pack=touch $marker", "--", url, feature),
+                listOf("push", "--force-with-lease", "--", url, feature),
+                listOf("push", GitPushLease.of("main", head), "--", url, feature),
+                listOf("push", GitPushLease.of("feature", "main"), "--", url, feature),
+                listOf("push", GitPushLease.of("feature", head.take(7)), "--", url, feature),
+                listOf("push", url, feature),
             )
 
             refused.forEach { args ->
@@ -411,6 +425,22 @@ class GitNetworkCommandsSpec :
                     .shouldBeInstanceOf<GitCommandResult.Failed>()
             }
             git(origin, "for-each-ref", "--format=%(refname)") shouldBe ""
+            marker.exists() shouldBe false
+        }
+
+        "a push replaces a symbolic tracking ref without changing its local branch target" {
+            val origin = remote()
+            val local = workspace()
+            val head = git(local, "rev-parse", "HEAD")
+            val other = git(local, "rev-parse", "main")
+            git(local, "branch", "agent-work", other)
+            git(local, "symbolic-ref", "refs/remotes/origin/feature", "refs/heads/agent-work")
+
+            push(local, origin.url()).shouldBeInstanceOf<GitCommandResult.Completed>().successful shouldBe true
+
+            git(local, "rev-parse", "refs/remotes/origin/feature") shouldBe head
+            git(local, "for-each-ref", "--format=%(symref)", "refs/remotes/origin/feature") shouldBe ""
+            git(local, "rev-parse", "refs/heads/agent-work") shouldBe other
         }
     })
 
