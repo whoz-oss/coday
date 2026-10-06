@@ -6,7 +6,7 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.scheduledPrompt.UserSessionContextResolver
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.sdk.tool.StandardTool

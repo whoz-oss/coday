@@ -1688,6 +1688,53 @@ class CaseServiceImplSpec :
             (userMessage.content.single() as MessageContent.Text).content shouldBe "@$agentName do something"
         }
 
+        "sessionContext passed to addMessage is present on the first MessageEvent" {
+            // Verifies that the sessionContext provided at addMessage time is persisted on
+            // the MessageEvent, so downstream consumers (e.g. LLM prompt builders) can read it.
+            val receivedEvents = CompletableDeferred<List<CaseEvent>>()
+            val capturingAgent =
+                mockk<Agent> {
+                    every { metadata } returns EntityMetadata(id = agentId)
+                    every { name } returns agentName
+                    every { id } returns agentId
+                    every { llmProvider } returns "test-provider"
+                    every { llmModel } returns "test-model"
+                    every { run(any<List<CaseEvent>>(), any()) } answers {
+                        val events = firstArg<List<CaseEvent>>()
+                        receivedEvents.complete(events)
+                        flow {
+                            emit(
+                                AgentFinishedEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = events.first().caseId,
+                                    agentId = agentId,
+                                    agentName = agentName,
+                                ),
+                            )
+                        }
+                    }
+                }
+            val service = buildService(agent = capturingAgent)
+            val case = service.create(Case(namespaceId = namespaceId))
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+
+            val sessionCtx = mapOf("preferredLanguage" to "it", "talentId" to "t99")
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE, CaseStatus.ERROR)
+            awaitSubscribers(runtime)
+            service.addMessage(
+                caseId = case.id,
+                actor = userActor,
+                content = listOf(MessageContent.Text("@$agentName hello")),
+                sessionContext = sessionCtx,
+            )
+            awaiter.join()
+
+            val allEvents = withTimeout(8_000) { receivedEvents.await() }
+            val messageEvent = allEvents.filterIsInstance<MessageEvent>().first { it.actor.role == ActorRole.USER }
+            messageEvent.sessionContext shouldBe sessionCtx
+        }
+
         "killing the launcher case does not kill the cases it launched" {
             val service = buildService()
             val loopCase = service.create(Case(namespaceId = namespaceId))

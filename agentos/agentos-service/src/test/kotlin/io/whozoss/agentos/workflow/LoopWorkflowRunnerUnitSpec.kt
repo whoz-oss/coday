@@ -14,11 +14,15 @@ import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.caseFlow.SessionContextKeys
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -59,6 +63,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         val agentName: String,
         val task: String,
         val userId: UUID,
+        val sessionContext: Map<String, Any?>? = null,
     )
 
     // -------------------------------------------------------------------------
@@ -68,6 +73,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
     class Fixture(
         objectMapper: ObjectMapper,
         maxItems: Int = 50,
+        userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
     ) {
         val userService = mockk<UserService>()
         val agentConfigService = mockk<AgentConfigService>()
@@ -76,9 +82,9 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         val launchedIds = mutableListOf<UUID>()
         var failLaunchFor: String? = null
         val launcher =
-            CaseLauncher { namespaceId, agentName, task, userId, _ ->
+            CaseLauncher { namespaceId, agentName, task, userId, sessionContext ->
                 if (failLaunchFor != null && task.contains(failLaunchFor!!)) error("boom")
-                launches += Launch(namespaceId, agentName, task, userId)
+                launches += Launch(namespaceId, agentName, task, userId, sessionContext)
                 UUID.randomUUID().also { launchedIds += it }
             }
         val runner =
@@ -88,6 +94,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
                 agentConfigService = agentConfigService,
                 permissionService = permissionService,
                 limitsConfig = LimitsConfigProperties(agentLoopMaxItems = maxItems),
+                userSessionContextResolver = userSessionContextResolver,
             )
 
         init {
@@ -373,4 +380,75 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         verify(exactly = 0) { f.userService.findByExternalId("task-alice") }
         verify(exactly = 1) { f.userService.findByExternalId("alice") }
     }
+
+    // -------------------------------------------------------------------------
+    // sessionContext transmission
+    // -------------------------------------------------------------------------
+
+    "sessionContext from provider is forwarded to the launcher" {
+        val providerContext = mapOf("talentId" to "t42", "score" to 9.5)
+        val provider = mockk<UserContextProvider>().also {
+            every { it.provideUserContext(any(), any()) } returns UserContextResult.Success(providerContext)
+        }
+        val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
+        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+
+        val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.launched shouldBe 1
+        f.launches.single().sessionContext shouldBe providerContext
+    }
+
+    "preferredLanguage from user is forwarded to the launcher in sessionContext" {
+        val f = Fixture(objectMapper)
+        // User with preferredLanguage set, no provider
+        val alice = User(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            externalId = "alice",
+            email = "alice@example.com",
+            preferredLanguage = "fr",
+        ).also {
+            every { f.userService.findByExternalId("alice") } returns it
+            f.grantAgent(it, "talent-analyzer")
+        }
+
+        val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.launched shouldBe 1
+        f.launches.single().sessionContext!![SessionContextKeys.PREFERRED_LANGUAGE] shouldBe "fr"
+    }
+
+    "PermanentFailure from provider counts entity as failed and loop continues" {
+        val provider = mockk<UserContextProvider>().also {
+            every { it.provideUserContext(eq("alice"), any()) } returns
+                UserContextResult.PermanentFailure("user not in external system")
+            every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
+        }
+        val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
+        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        f.knownUser("bob").also { f.grantAgent(it, "talent-analyzer") }
+
+        val outcome = f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.failed shouldBe 1
+        outcome.launched shouldBe 1
+        f.launches.single().task shouldBe "Analyse this entity: task-bob"
+    }
+
+    "TransientFailure from provider counts entity as failed and loop continues" {
+        val provider = mockk<UserContextProvider>().also {
+            every { it.provideUserContext(eq("alice"), any()) } returns
+                UserContextResult.TransientFailure("upstream timeout")
+            every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
+        }
+        val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
+        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        f.knownUser("bob").also { f.grantAgent(it, "talent-analyzer") }
+
+        val outcome = f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+        outcome.failed shouldBe 1
+        outcome.launched shouldBe 1
+    }
+
 })

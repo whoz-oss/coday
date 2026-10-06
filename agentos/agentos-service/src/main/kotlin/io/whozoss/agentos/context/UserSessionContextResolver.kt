@@ -1,4 +1,4 @@
-package io.whozoss.agentos.scheduledPrompt
+package io.whozoss.agentos.context
 
 import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
@@ -8,11 +8,12 @@ import org.springframework.stereotype.Service
 import java.util.UUID
 
 /**
- * Resolves the effective [sessionContext] to inject into [io.whozoss.agentos.caseFlow.CaseService.addMessage]
+ * Resolves the effective [sessionContext] to inject into [CaseService.addMessage]
  * for a given end-user.
  *
- * Shared by [ScheduledPromptExecutor] and [io.whozoss.agentos.agent.LoopWorkflowRunner] so that
- * both code paths produce identical context enrichment:
+ * Shared by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] and
+ * [io.whozoss.agentos.workflow.LoopWorkflowRunner] so that both code paths produce
+ * identical context enrichment:
  * 1. Call the optional [UserContextProvider] plugin — returns business context (e.g. talent profile).
  * 2. Overlay [preferredLanguage] on top: the user's stored language preference is the authoritative
  *    source and always wins over anything the provider may put under the same key.
