@@ -14,9 +14,9 @@ import io.whozoss.agentos.git.core.GitObjectIds
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.net.HttpURLConnection
 import java.net.URLEncoder
 import java.net.http.HttpClient
-import java.time.Duration
 
 /** GitHub.com adapter. Other Git hosts remain usable without a PR status projection. */
 @Component
@@ -28,7 +28,7 @@ class GitHubPullRequests internal constructor(
 ) : GitHostingProvider {
     @Autowired
     constructor(accounts: GitServiceAccountResolver, mapper: ObjectMapper) : this(
-        accounts, mapper, HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build(),
+        accounts, mapper, GitHubApi.newClient(),
     )
 
     private val api = GitHubApi(client, mapper)
@@ -73,7 +73,7 @@ class GitHubPullRequests internal constructor(
     private fun request(settings: GitRepositorySettings, repositoryPath: String): JsonNode {
         // The API host is fixed; repository configuration cannot redirect service credentials.
         val response = api.get("repos/$repositoryPath", accounts.resolve(settings).secret)
-        check(response.status == 200) { "PR status unavailable (HTTP ${response.status})" }
+        check(response.status == HttpURLConnection.HTTP_OK) { "PR status unavailable (HTTP ${response.status})" }
         val array = response.body
         // A full page may be truncated: GitHub never says so, and a wrong answer here would be
         // projected as a PR state. Refuse rather than guess.

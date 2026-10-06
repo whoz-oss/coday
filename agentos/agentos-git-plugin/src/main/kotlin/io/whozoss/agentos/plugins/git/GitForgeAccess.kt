@@ -5,6 +5,7 @@ import io.whozoss.agentos.git.core.GitHubApi
 import io.whozoss.agentos.git.core.GitHubRepository
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.CredentialType
+import java.net.HttpURLConnection
 
 /**
  * The identity of the user running the case, as the GIT integration's auth setting provides it.
@@ -47,7 +48,7 @@ internal class GitForgeAccess(
         if (GitHubRepository.fromRemoteUrl(repositoryUrl) != null) {
             val response = gitHub.get("user", token().secret)
             val user = response.body
-            if (response.status != 200 || user == null) {
+            if (response.status != HttpURLConnection.HTTP_OK || user == null) {
                 throw GitToolException("GitHub did not return your account (HTTP ${response.status})")
             }
             val login = user.path("login").asText()

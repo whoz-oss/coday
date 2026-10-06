@@ -3,6 +3,7 @@ package io.whozoss.agentos.plugins.git
 import io.whozoss.agentos.git.core.GitHubApi
 import io.whozoss.agentos.git.core.GitHubRepository
 import io.whozoss.agentos.git.core.GitRefNames
+import java.net.HttpURLConnection
 
 /** Open a GitHub pull request for the pushed current branch, as the user running the case. */
 internal class GitCreatePullRequestTool(
@@ -59,12 +60,17 @@ internal class GitCreatePullRequestTool(
             mapOf("title" to title, "head" to branch, "base" to base, "body" to input.body, "draft" to (input.draft == true)),
         )
         val pull = response.body
-        if (response.status != 201 || pull == null) {
+        if (response.status != HttpURLConnection.HTTP_CREATED || pull == null) {
             val reason = pull?.path("errors")?.firstOrNull()?.path("message")?.asText()?.takeIf { it.isNotBlank() }
                 ?: pull?.path("message")?.asText()?.takeIf { it.isNotBlank() }
                 ?: "no details"
-            throw GitToolException("GitHub refused the pull request (HTTP ${response.status}): ${reason.take(500)}")
+            throw GitToolException("GitHub refused the pull request (HTTP ${response.status}): ${reason.take(MAX_REASON)}")
         }
         return "Opened pull request #${pull.path("number").asInt()}: ${pull.path("html_url").asText()}"
+    }
+
+    private companion object {
+        /** Longest GitHub refusal reason returned to the agent. */
+        const val MAX_REASON = 500
     }
 }

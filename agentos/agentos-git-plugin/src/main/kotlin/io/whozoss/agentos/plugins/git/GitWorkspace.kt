@@ -5,6 +5,7 @@ import io.whozoss.agentos.git.core.GitCommandRunner
 import io.whozoss.agentos.git.core.GitCredentials
 import io.whozoss.agentos.git.core.GitInvocation
 import io.whozoss.agentos.git.core.GitOutputFormat
+import io.whozoss.agentos.git.core.GitPushLease
 import io.whozoss.agentos.git.core.GitRefNames
 import io.whozoss.agentos.git.core.GitRefs
 import java.time.Duration
@@ -125,7 +126,7 @@ internal class GitWorkspace(
      * only if it is still where the last fetch or push saw it.
      */
     fun push(branch: String, token: GitCredentials.UsernamePassword, lease: Boolean) {
-        val leaseOption = if (lease) listOf("--force-with-lease=${GitRefs.head(branch)}:${trackedCommit(branch).orEmpty()}") else emptyList()
+        val leaseOption = if (lease) listOf(GitPushLease.of(branch, trackedCommit(branch).orEmpty())) else emptyList()
         successful(
             runner.run(
                 GitInvocation(
@@ -176,7 +177,8 @@ internal class GitWorkspace(
             is GitCommandResult.Failed -> result.message.take(MAX_MESSAGE)
         }
 
-    private companion object {
+    internal companion object {
+        /** Longest Git explanation returned to the agent. */
         const val MAX_MESSAGE = 1_000
     }
 }

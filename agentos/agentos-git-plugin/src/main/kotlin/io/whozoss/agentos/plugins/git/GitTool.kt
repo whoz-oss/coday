@@ -20,7 +20,7 @@ internal abstract class GitTool<T>(
         } catch (e: GitToolException) {
             ToolExecutionResult.error(output = e.message.orEmpty(), errorType = "GIT_REFUSED", errorMessage = e.message)
         } catch (e: GitCommandException) {
-            val message = "Git refused the operation: ${e.message.orEmpty().take(1_000)}"
+            val message = "Git refused the operation: ${e.message.orEmpty().take(GitWorkspace.MAX_MESSAGE)}"
             ToolExecutionResult.error(output = message, errorType = "GIT_FAILED", errorMessage = message)
         }
 

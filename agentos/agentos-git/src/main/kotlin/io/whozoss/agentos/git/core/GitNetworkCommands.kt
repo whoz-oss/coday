@@ -121,7 +121,7 @@ internal class GitNetworkCommands(
             "Managed push requires an explicit URL and one branch refspec after --"
         }
         val options = invocation.args.subList(1, separator)
-        require(options.size <= 1 && options.all { it.startsWith(LEASE_OPTION) }) {
+        require(options.size <= 1 && options.all { it.startsWith(GitPushLease.OPTION) }) {
             "Managed push accepts only an explicit lease option"
         }
         val url = invocation.args[separator + 1]
@@ -137,11 +137,11 @@ internal class GitNetworkCommands(
         val format = output(execute(GitInvocation(listOf("rev-parse", "--show-object-format"), gitDir = common), emptyMap())).trim()
         require(format in setOf(GitObjectIds.SHA1_FORMAT, GitObjectIds.SHA256_FORMAT)) { "Unsupported repository object format" }
         val expected = GitObjectIds.pattern(format)
-        val lease = options.singleOrNull()?.removePrefix(LEASE_OPTION)?.split(':', limit = 2)?.let { parts ->
+        val lease = options.singleOrNull()?.removePrefix(GitPushLease.OPTION)?.split(':', limit = 2)?.let { parts ->
             require(parts.size == 2 && parts[0] == branch && (parts[1].isEmpty() || parts[1].matches(expected))) {
                 "The lease must name the pushed branch and an explicit object ID"
             }
-            "$LEASE_OPTION$branch:${parts[1]}"
+            "${GitPushLease.OPTION}$branch:${parts[1]}"
         }
         val context = createContext(temporary, format)
         val environment = mapOf("GIT_OBJECT_DIRECTORY" to common.resolve("objects").toString())
@@ -246,7 +246,5 @@ internal class GitNetworkCommands(
          * `push --force-with-lease` relies on.
          */
         val MANAGED_FETCH_DESTINATIONS = listOf(GitRefs.REMOTE_ORIGIN, GitRefs.AGENTOS_BASE, GitRefs.AGENTOS_OBSERVED)
-
-        const val LEASE_OPTION = "--force-with-lease="
     }
 }
