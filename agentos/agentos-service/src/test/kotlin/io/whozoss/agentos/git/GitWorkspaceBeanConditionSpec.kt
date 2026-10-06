@@ -8,6 +8,7 @@ import io.mockk.mockk
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.git.core.GitCommandRunner
 import org.springframework.boot.test.context.runner.ApplicationContextRunner
+import java.time.Clock
 
 /**
  * `agentos.git.workspaces.enabled` is the single switch of the Git workspace feature: with it off,
@@ -24,6 +25,7 @@ class GitWorkspaceBeanConditionSpec :
                 .withBean(GitCommandRunner::class.java, { mockk<GitCommandRunner>() })
                 .withBean(GitServiceAccountResolver::class.java, { mockk<GitServiceAccountResolver>() })
                 .withBean(ObjectMapper::class.java, { jacksonObjectMapper().findAndRegisterModules() })
+                .withBean(Clock::class.java, { Clock.systemUTC() })
                 .withUserConfiguration(GitWorkspaceStatusService::class.java, GitHubPullRequests::class.java)
 
         listOf("true" to true, "false" to false).forEach { (enabled, expected) ->
