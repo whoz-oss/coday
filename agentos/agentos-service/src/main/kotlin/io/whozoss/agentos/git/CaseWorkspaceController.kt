@@ -20,6 +20,7 @@ class CaseWorkspaceController(
     private val roots: GitExchangeRootResolver,
     private val status: GitWorkspaceStatusService,
     private val lifecycle: GitWorkspaceLifecycleService,
+    private val workspaceChanges: GitWorkspaceChangesService,
     private val bindings: CaseResourceBindingService,
     private val users: UserService,
     private val permissions: PermissionService,
@@ -34,6 +35,15 @@ class CaseWorkspaceController(
     @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
     fun list(@PathVariable namespaceId: UUID): List<CaseWorkspaceView> = bindings.findByParent(namespaceId)
         .filter { canRead(it.rootCaseId) }.mapNotNull { viewUnlessVanished(it.rootCaseId) }
+
+    @GetMapping("/api/cases/{caseId}/workspace/changes")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    fun changes(@PathVariable caseId: UUID): ExchangeEnvironment = workspaceChanges.environment(authorizedRoot(caseId, Action.READ))
+
+    @GetMapping("/api/cases/{caseId}/workspace/diff")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    fun diff(@PathVariable caseId: UUID, @RequestParam path: String): ExchangeFileDiff =
+        workspaceChanges.diff(authorizedRoot(caseId, Action.READ), path)
 
     @PostMapping("/api/cases/{caseId}/workspace/refresh")
     @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")

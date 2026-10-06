@@ -49,6 +49,11 @@ export class CaseWorkspaceService {
   /** Set when the namespace list answers 404: no Git workspaces here, so nothing asks again until reload. */
   private noWorkspaces = false
 
+  /** Whether this instance already answered that it has no Git workspaces. */
+  get unavailable(): boolean {
+    return this.noWorkspaces
+  }
+
   /** The shell owns the namespace subscription; case consumers reuse its authorized root views. */
   watchNamespace(namespaceId: string): Observable<WorkspaceView[]> {
     const source = timer(0, POLL_INTERVAL).pipe(

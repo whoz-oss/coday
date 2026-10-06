@@ -1,0 +1,130 @@
+@import 'diff2html/bundles/css/diff2html.min.css';
+
+.exchange-diff {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--color-bg, #fff);
+  color: var(--color-text, #202124);
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--color-border, #ddd);
+  }
+  header small {
+    display: block;
+    margin-top: 0.4rem;
+    color: var(--color-text-secondary, #777);
+  }
+  button,
+  input {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 1px solid var(--color-border, #ddd);
+    border-radius: 6px;
+    padding: 0.4rem;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:hover {
+    background: var(--color-bg-hover, #8882);
+  }
+  .diff-layout {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+  }
+  nav {
+    flex: 0 0 260px;
+    overflow: auto;
+    padding: 0.6rem;
+    border-right: 1px solid var(--color-border, #ddd);
+  }
+  nav input {
+    width: 100%;
+    box-sizing: border-box;
+    margin-bottom: 0.5rem;
+  }
+  nav button {
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    gap: 0.2rem;
+    width: 100%;
+    margin: 0.15rem 0;
+    border-color: transparent;
+    font-size: 0.8rem;
+  }
+  nav .selected {
+    background: var(--color-bg-hover, #8882);
+    border-color: var(--color-border, #ddd);
+  }
+  .file-path {
+    overflow-wrap: anywhere;
+  }
+  main {
+    min-width: 0;
+    flex: 1;
+    overflow: auto;
+    padding: 0.75rem;
+  }
+  main h3 {
+    font-size: 0.85rem;
+    overflow-wrap: anywhere;
+  }
+  .added {
+    color: var(--color-success, #249349);
+  }
+  .removed {
+    color: var(--color-error, #d95050);
+  }
+  .d2h-wrapper {
+    // Follow the application theme, including manual overrides of the OS color scheme.
+    --d2h-bg-color: var(--color-bg, #fff);
+    --d2h-border-color: var(--color-border, #ddd);
+    --d2h-dim-color: var(--color-text-secondary, #666);
+    --d2h-line-border-color: var(--d2h-border-color);
+    --d2h-file-header-bg-color: var(--color-bg-secondary, #f7f7f7);
+    --d2h-file-header-border-color: var(--d2h-border-color);
+    --d2h-empty-placeholder-bg-color: var(--color-bg-secondary, #f7f7f7);
+    --d2h-empty-placeholder-border-color: var(--d2h-border-color);
+    --d2h-selected-color: var(--color-bg-hover, #8882);
+    --d2h-ins-bg-color: color-mix(in srgb, var(--color-success, #249349) 12%, var(--d2h-bg-color));
+    --d2h-ins-border-color: color-mix(in srgb, var(--color-success, #249349) 35%, var(--d2h-bg-color));
+    --d2h-ins-highlight-bg-color: color-mix(in srgb, var(--color-success, #249349) 28%, var(--d2h-bg-color));
+    --d2h-ins-label-color: var(--color-success, #249349);
+    --d2h-del-bg-color: color-mix(in srgb, var(--color-error, #d95050) 12%, var(--d2h-bg-color));
+    --d2h-del-border-color: color-mix(in srgb, var(--color-error, #d95050) 35%, var(--d2h-bg-color));
+    --d2h-del-highlight-bg-color: color-mix(in srgb, var(--color-error, #d95050) 28%, var(--d2h-bg-color));
+    --d2h-del-label-color: var(--color-error, #d95050);
+    --d2h-change-del-color: var(--d2h-del-bg-color);
+    --d2h-change-ins-color: var(--d2h-ins-bg-color);
+    --d2h-info-bg-color: var(--color-bg-secondary, #f7f7f7);
+    --d2h-info-border-color: var(--d2h-border-color);
+    --d2h-change-label-color: var(--color-warning, #b87900);
+    --d2h-moved-label-color: var(--color-info, #3572b0);
+    background: var(--d2h-bg-color);
+    color: var(--color-text, #202124);
+  }
+  .d2h-file-header {
+    display: none;
+  }
+  .d2h-code-line-ctn {
+    white-space: pre;
+  }
+  @media (max-width: 650px) {
+    .diff-layout {
+      flex-direction: column;
+    }
+    nav {
+      flex-basis: 160px;
+      border-right: 0;
+      border-bottom: 1px solid var(--color-border, #ddd);
+    }
+  }
+}
