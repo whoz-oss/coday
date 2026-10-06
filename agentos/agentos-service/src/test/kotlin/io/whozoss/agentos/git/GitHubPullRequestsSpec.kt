@@ -33,11 +33,12 @@ class GitHubPullRequestsSpec : StringSpec({
         merged: Boolean = false,
         headRepo: String = "whoz-oss/coday",
         baseRepo: String = "whoz-oss/coday",
+        base: String = "master",
     ): Map<String, Any?> = mapOf(
         "number" to number, "html_url" to "https://github.com/whoz-oss/coday/pull/$number",
         "state" to state, "draft" to draft, "merged_at" to if (merged) "2026-09-22T10:00:00Z" else null,
         "head" to mapOf("ref" to branch, "sha" to sha, "repo" to mapOf("full_name" to headRepo)),
-        "base" to mapOf("repo" to mapOf("full_name" to baseRepo)),
+        "base" to mapOf("ref" to base, "repo" to mapOf("full_name" to baseRepo)),
     )
 
     data class Fixture(val provider: GitHubPullRequests, val requests: MutableList<HttpRequest>)
@@ -152,6 +153,16 @@ class GitHubPullRequestsSpec : StringSpec({
     "the open named PR takes precedence over an older closed PR" {
         val f = fixture(response(pr(number = 1000, state = "closed"), pr()))
         f.provider.inspect(settings, "feature/original-name", headSha).prNumber shouldBe 1301
+    }
+
+    "of open PRs from one branch to several bases, the one targeting the main branch is the branch's PR" {
+        val f = fixture(response(pr(number = 1000, base = "release/3.12"), pr()))
+        f.provider.inspect(settings, "feature/original-name", headSha).prNumber shouldBe 1301
+    }
+
+    "open PRs from one branch to several bases, none the main branch, remain ambiguous" {
+        val f = fixture(response(pr(number = 1000, base = "release/3.11"), pr(base = "release/3.12")))
+        shouldThrow<IllegalStateException> { f.provider.inspect(settings, "feature/original-name", headSha) }
     }
 
     "multiple open named PRs remain ambiguous" {

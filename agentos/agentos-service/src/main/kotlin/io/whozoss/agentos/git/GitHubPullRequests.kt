@@ -57,11 +57,23 @@ class GitHubPullRequests internal constructor(
                 it.path("base").path("repo").path("full_name").asText().equals(fullName, true)
         }
         val open = matching.filter { it.path("state").asText() == STATE_OPEN }
-        check(open.size <= 1) { "Several open PRs reference this branch" }
-        val pr = open.firstOrNull() ?: matching.firstOrNull()
+        val pr = openPullRequest(open, settings.mainBranch) ?: matching.firstOrNull()
             ?: findByHead(settings, fullName, branch, headSha)
             ?: return GitWorkspaceSummary(prState = PR_NONE)
         return summary(pr)
+    }
+
+    /**
+     * The open pull request of a branch. GitHub allows one per base branch: the one targeting the
+     * main branch wins, and several left after that are ambiguous.
+     */
+    private fun openPullRequest(open: List<JsonNode>, mainBranch: String): JsonNode? {
+        val towardsMain = open.filter { it.path("base").path("ref").asText() == mainBranch }
+        return when {
+            open.size <= 1 -> open.singleOrNull()
+            towardsMain.size == 1 -> towardsMain.single()
+            else -> error("Several open PRs reference this branch")
+        }
     }
 
     private fun findByHead(settings: GitRepositorySettings, fullName: String, branch: String, headSha: String?): JsonNode? {
