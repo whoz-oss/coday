@@ -272,6 +272,18 @@ class GitToolsSpec :
             status.output shouldContain "?? notes.md"
         }
 
+        "an untracked directory is reported once, however many files it holds" {
+            val fixture = managed()
+            val dependencies = Files.createDirectories(fixture.worktree.resolve("node_modules"))
+            repeat(50) { dependencies.resolve("package-$it.js").writeText("module.exports = $it\n") }
+
+            val status = tools(fixture).call("git_status")
+
+            status.success shouldBe true
+            status.output shouldContain "?? node_modules/"
+            status.output shouldNotContain "package-0.js"
+        }
+
         "a branch is created at the current commit and checked out" {
             val fixture = managed()
             val tools = tools(fixture)

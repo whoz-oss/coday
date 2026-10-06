@@ -53,7 +53,9 @@ internal class GitWorkspace(
         guard()
         val output = successful(
             runner.run(
-                local("status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=dirty", "--no-renames"),
+                // An untracked directory is one entry, as in plain `git status`: a dependency or build
+                // directory left out of .gitignore must not overflow the output.
+                local("status", "--porcelain=v1", "-z", "--untracked-files=normal", "--ignore-submodules=dirty", "--no-renames"),
             ),
             "read the status",
         )
