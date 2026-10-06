@@ -1,4 +1,4 @@
-package io.whozoss.agentos.agent
+package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -24,9 +24,6 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
-import io.whozoss.agentos.workflow.LoopRunContext
-import io.whozoss.agentos.workflow.LoopRunOutcome
-import io.whozoss.agentos.workflow.LoopWorkflowRunner
 import java.util.UUID
 
 /**

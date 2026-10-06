@@ -1,4 +1,4 @@
-package io.whozoss.agentos.agent
+package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.JsonNode
 
