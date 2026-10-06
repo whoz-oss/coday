@@ -924,7 +924,9 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
         val adapter = FakeAdapter(caseSteps(workflowId, "A")) { AgentOsExecutionVerdict.Succeeded(outputs) }
 
         // Phase 3 (evidence append) blows up: a simulated DB commit error.
+        // list() must be stubbed (used by buildBrief) so the test reaches Phase 3.
         val failingEvidence = mockk<WorkflowEvidenceRepository>()
+        every { failingEvidence.list(any(), any(), any(), any()) } returns emptyList()
         every { failingEvidence.append(any(), any(), any(), any()) } throws RuntimeException("simulated DB commit failure")
         val service = CapabilityExecutionService(
             CapabilityResolver(),

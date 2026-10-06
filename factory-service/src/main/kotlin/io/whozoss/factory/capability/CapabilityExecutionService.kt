@@ -226,6 +226,27 @@ class CapabilityExecutionService(
      * evidence facts persisted when a step succeeded) — never from the last free
      * message of an upstream agent. An optional ticket prefixes the brief.
      */
+    /**
+     * Computes the set of ancestor step ids reachable from [startIds] by
+     * following `dependsOn` edges in [stepIndex]. The result excludes [startIds]
+     * themselves and is used to propagate run-brief handoffs transitively.
+     */
+    private fun transitiveAncestors(
+        startIds: List<String>,
+        stepIndex: Map<String, WorkflowStepDefinition>,
+    ): Set<String> {
+        val visited = LinkedHashSet<String>()
+        val queue = ArrayDeque(startIds)
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            val step = stepIndex[id] ?: continue
+            for (dep in step.dependsOn) {
+                if (visited.add(dep)) queue.add(dep)
+            }
+        }
+        return visited
+    }
+
     private fun buildBrief(
         scope: TenantScope,
         namespaceId: String,
@@ -245,12 +266,47 @@ class CapabilityExecutionService(
                 inputs[dependency] = item.facts["outputs"] ?: item.facts
             }
         }
-        // Only direct dependency outputs are trusted here. Intermediate agent
-        // steps are instructed to relay the original run-brief unchanged, which
-        // provides transitive handoff without selecting an artifact from an
-        // unrelated parallel branch.
-        val runBrief = inputs.values.firstNotNullOfOrNull(::findRunBrief)
-        val controllerRequest = workflowRepository.findInstance(scope, namespaceId, workflowId)
+        // Search for a run-brief first in the direct dependency outputs, then
+        // transitively in the evidence of every ancestor reachable via dependsOn.
+        // This ensures a run-brief produced by an entry step (e.g. A) is still
+        // visible to a downstream step (e.g. C) even when the intermediate step
+        // (B) succeeded without re-emitting the artifact.
+        // Only ancestors reachable from this step's own dependsOn chain are
+        // considered: run-briefs from independent parallel branches are never
+        // injected.
+        // Fetch the instance once: used both for the transitive run-brief search
+        // and for the controller-request text.
+        val workflowInstance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+
+        val runBrief: Map<String, Any?>? = inputs.values.firstNotNullOfOrNull(::findRunBrief)
+            ?: run {
+                if (entryStep) return@run null
+                // Resolve the workflow definition to compute transitive ancestors.
+                val projSteps = (workflowInstance?.projection?.get("steps") as? List<*>)
+                    ?.filterIsInstance<Map<*, *>>()
+                val definitionSteps: Map<String, WorkflowStepDefinition>? = projSteps?.mapNotNull { s ->
+                    val id = s["id"] as? String ?: return@mapNotNull null
+                    val deps = (s["dependsOn"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+                    val respMap = s["responsibility"] as? Map<*, *>
+                    val kindWire = respMap?.get("kind") as? String
+                    val kind = ResponsibilityKind.fromWire(kindWire) ?: ResponsibilityKind.AGENT
+                    val name = s["name"] as? String ?: id
+                    val respName = respMap?.get("name") as? String
+                    id to WorkflowStepDefinition(id, name, WorkflowStepResponsibility(kind, respName), deps)
+                }?.toMap()
+                if (definitionSteps == null) return@run null
+                val ancestors = transitiveAncestors(step.dependsOn, definitionSteps)
+                // Search ancestor evidence in reverse-insertion order so the most
+                // recent entry step's run-brief wins when multiple exist.
+                evidence.lastOrNull {
+                    it.stepId != null &&
+                        it.stepId in ancestors &&
+                        it.kind == AGENT_RESULT_EVIDENCE_KIND &&
+                        it.outcome == "pass" &&
+                        findRunBrief(it.facts["outputs"] ?: it.facts) != null
+                }?.let { item -> findRunBrief(item.facts["outputs"] ?: item.facts) }
+            }
+        val controllerRequest = workflowInstance
             ?.instance
             ?.get("controllerRequest")
             .let { it as? Map<*, *> }
