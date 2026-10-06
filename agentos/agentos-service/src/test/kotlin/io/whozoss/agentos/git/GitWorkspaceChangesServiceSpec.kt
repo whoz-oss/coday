@@ -73,41 +73,28 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
     // (b) A non-READY binding signals that the workspace is known but not yet operational.
     // environment() must return the status and path so the UI can show a progress indicator,
     // but must never attempt any Git inspection: the worktree directory may not even exist yet.
-    "a PREPARING binding returns equipped=true with status and path but no Git inspection" {
-        val binding = makeBinding(CaseResourceStatus.PREPARING)
-        val root = makeRoot(binding = binding)
-        val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
+    // Every value of CaseResourceStatus except READY takes this branch.
+    CaseResourceStatus.entries.filterNot { it.isUsable }.forEach { pending ->
+        "a $pending binding is reported without any Git inspection" {
+            val binding = makeBinding(pending)
+            val root = makeRoot(binding = binding)
+            val status = mockk<GitWorkspaceStatusService> {
+                every { summary(binding) } returns summary
+            }
+            val diffs = mockk<ExchangeGitDiff>()
+            val service = GitWorkspaceChangesService(status, diffs)
+
+            val result = service.environment(root)
+
+            result.equipped shouldBe true
+            result.status shouldBe pending.name
+            result.path shouldBe root.repositoryPath.toAbsolutePath().normalize().toString()
+            result.git shouldBe summary
+            result.branch shouldBe null
+            result.changes shouldBe null
+            verify(exactly = 0) { diffs.branch(any()) }
+            verify(exactly = 0) { diffs.changes(any()) }
         }
-        val diffs = mockk<ExchangeGitDiff>()
-        val service = GitWorkspaceChangesService(status, diffs)
-
-        val result = service.environment(root)
-
-        result.equipped shouldBe true
-        result.status shouldBe "PREPARING"
-        result.path shouldBe root.repositoryPath.toAbsolutePath().normalize().toString()
-        result.git shouldBe summary
-        result.branch shouldBe null
-        result.changes shouldBe null
-        verify(exactly = 0) { diffs.branch(any()) }
-    }
-
-    "a FAILED binding returns equipped=true with status and path but no Git inspection" {
-        val binding = makeBinding(CaseResourceStatus.FAILED)
-        val root = makeRoot(binding = binding)
-        val status = mockk<GitWorkspaceStatusService> {
-            every { summary(binding) } returns summary
-        }
-        val diffs = mockk<ExchangeGitDiff>()
-        val service = GitWorkspaceChangesService(status, diffs)
-
-        val result = service.environment(root)
-
-        result.equipped shouldBe true
-        result.status shouldBe "FAILED"
-        result.git shouldBe summary
-        verify(exactly = 0) { diffs.branch(any()) }
     }
 
     // (c) When the binding is READY and the observed branch matches binding.branchName,
@@ -227,6 +214,7 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         result.error shouldContain "Cannot inspect Git changes"
         result.branch shouldBe null
         result.changes shouldBe null
+        result.git shouldBe null
     }
 
     // (g) diffs.changes() may also fail. Same graceful-degradation contract as (f).
@@ -252,6 +240,7 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         result.error shouldContain "Cannot inspect Git changes"
         result.branch shouldBe null
         result.changes shouldBe null
+        result.git shouldBe null
     }
 
     // (h) diff() on a root with no binding must throw ResourceNotFoundException immediately.
@@ -310,5 +299,44 @@ class GitWorkspaceChangesServiceSpec : StringSpec({
         capturedTarget.captured.fallbackBase shouldBe baseSha
         capturedTarget.captured.gitDir shouldBe worktreeGitDir
         capturedTarget.captured.commonDir shouldBe commonGitDir
+    }
+
+    "a detached HEAD keeps its git summary even when the inspection fails" {
+        val binding = makeBinding(CaseResourceStatus.READY, branchName = null)
+        val settings = makeSettings()
+        val root = makeRoot(binding = binding)
+        val status = mockk<GitWorkspaceStatusService> {
+            every { summary(binding) } returns summary
+            every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
+            every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
+            every { settings(binding) } returns settings
+        }
+        val diffs = mockk<ExchangeGitDiff> {
+            every { branch(any()) } throws RuntimeException("git process failed")
+        }
+        val service = GitWorkspaceChangesService(status, diffs)
+
+        val result = service.environment(root)
+
+        result.error shouldContain "Cannot inspect Git changes"
+        result.branch shouldBe null
+        result.git shouldBe summary
+    }
+
+    "a READY binding whose settings cannot be resolved propagates instead of degrading" {
+        val binding = makeBinding(CaseResourceStatus.READY)
+        val root = makeRoot(binding = binding)
+        val status = mockk<GitWorkspaceStatusService> {
+            every { summary(binding) } returns summary
+            every { worktreeGitDir(binding) } returns Path.of("/tmp/worktrees/${binding.rootCaseId}")
+            every { commonGitDir(binding) } returns Path.of("/tmp/common.git")
+            every { settings(binding) } throws ConflictException("The namespace no longer has a Git repository association")
+        }
+        val diffs = mockk<ExchangeGitDiff>()
+        val service = GitWorkspaceChangesService(status, diffs)
+
+        shouldThrow<ConflictException> { service.environment(root) }
+        verify(exactly = 0) { diffs.branch(any()) }
+        verify(exactly = 0) { diffs.changes(any()) }
     }
 })
