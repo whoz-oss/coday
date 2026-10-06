@@ -3,6 +3,7 @@ package io.whozoss.agentos.git
 import io.kotest.core.annotation.EnabledIf
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
@@ -140,10 +141,16 @@ class GitWorkspaceStatusServiceSpec :
             rawGit(path.resolve("lib"), "config", "filter.evil.clean", "sh -c 'touch $marker; cat'")
             path.resolve("lib/.gitattributes").writeText("* filter=evil\n")
             path.resolve("lib/README.md").toFile().setLastModified(System.currentTimeMillis() + 5_000) shouldBe true
+            // Control: an ordinary status enters the submodule and runs its filter.
+            rawGit(path, "status", "--porcelain")
+            marker.exists() shouldBe true
+            Files.delete(marker)
+            path.resolve("lib/README.md").toFile().setLastModified(System.currentTimeMillis() + 10_000) shouldBe true
             val hosting = mockk<GitHostingProvider> { every { inspect(any(), any(), any()) } returns GitWorkspaceSummary(prState = PrState.NONE) }
 
-            statusService(f, configured, hosting).refresh(ready, path)
+            val observed = statusService(f, configured, hosting).refresh(ready, path).summary!!
 
+            observed.error shouldBe null
             marker.exists() shouldBe false
         }
 
@@ -257,6 +264,9 @@ class GitWorkspaceStatusServiceSpec :
             observed.dirty shouldBe true
             observed.error shouldBe null
             Files.readAllBytes(administrative.resolve(GitLayout.INDEX_FILE)).toList() shouldBe indexBefore.toList()
+            // Control: an ordinary status does refresh this index.
+            rawGit(path, "status", "--porcelain")
+            Files.readAllBytes(administrative.resolve(GitLayout.INDEX_FILE)).toList() shouldNotBe indexBefore.toList()
         }
 
         "provider exception messages and causes never enter the persisted status" {
