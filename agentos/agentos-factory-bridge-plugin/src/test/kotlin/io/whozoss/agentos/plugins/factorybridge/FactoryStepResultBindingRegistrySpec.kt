@@ -57,8 +57,38 @@ class FactoryStepResultBindingRegistrySpec : StringSpec({
 
         registry.contains(caseId) shouldBe true
         registry.context(caseId, namespaceId, "Worker").isEmpty() shouldBe false
-        registry.contextForCase(caseId, namespaceId).isEmpty() shouldBe false
-        registry.contextForCase(caseId, UUID.randomUUID()).isEmpty() shouldBe true
+        registry.context(caseId, UUID.randomUUID(), "Worker").isEmpty() shouldBe true
+    }
+
+    // An expired binding stays in the registry on purpose: it is the input of a capability
+    // renewal. Purging it would turn a recoverable lapse into a lost result.
+    "an expired binding is retained so the capability can be renewed" {
+        val clock = object : Clock() {
+            var now: Instant = Instant.parse("2030-01-01T00:00:00Z")
+            override fun getZone() = ZoneOffset.UTC
+            override fun withZone(zone: java.time.ZoneId) = this
+            override fun instant() = now
+        }
+        val registry = FactoryStepResultBindingRegistry(clock)
+        val caseId = UUID.randomUUID()
+        val namespaceId = UUID.randomUUID()
+        registry.bind(
+            FactoryStepResultBinding(
+                caseId,
+                namespaceId,
+                "Worker",
+                "attempt",
+                "runtime",
+                "secret-token-value-with-sufficient-length",
+                clock.now.plusSeconds(60),
+            ),
+        )
+
+        clock.now = clock.now.plusSeconds(120)
+
+        registry.context(caseId, namespaceId, "Worker") shouldBe emptyMap()
+        registry.contains(caseId) shouldBe true
+        registry.acquire(caseId, namespaceId, "Worker", allowExpired = true)?.attemptId shouldBe "attempt"
     }
 
     "lease validates identity, excludes concurrent acquisition, and acknowledges exactly once" {

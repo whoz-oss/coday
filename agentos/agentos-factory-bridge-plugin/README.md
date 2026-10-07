@@ -16,7 +16,6 @@ marks **restart-safe**.
 | `ToolPlugin` | `FactoryWorkerToolPlugin` (`FACTORY_WORKER` integration: terminal `FACTORY_WORKER__submit_step_result` only; human questions use AgentOS standard `queryUser`) |
 | `AnswerInterceptor` | `FactoryAnswerInterceptor` (handles only independent Factory business checkpoints; standard `queryUser` answers remain owned and persisted by AgentOS) |
 | `CaseLifecycleObserver` | `FactoryCaseLifecycleObserver` (invalidates a binding + checkpoint on a terminal case) |
-| `ExternalExecutionContextProvider` | `FactoryExternalExecutionContextProvider` (injects `capabilityToken` / `attemptId` / `runtimeId`) |
 | `ToolGrantPolicy` | `FactoryToolGrantPolicy` (gates the `FACTORY_WORKER__*` tools on an active binding, fail-closed) |
 | `ExternalContextBindingRegistrar` | `FactoryBindingRegistrar` (host transport → durable step-result binding) |
 
@@ -107,18 +106,27 @@ The AgentOS host owns the HTTP transport, the plugin owns the trust decision:
 3. Alternatively, bind explicitly with
    `PUT /internal/external-context/cases/{caseId}/bindings` and the same headers.
 4. `FactoryBindingRegistrar` validates the shared secret (constant-time), resolves the
-   binding facts and records a durable binding. `FactoryExternalExecutionContextProvider`
-   then exposes `capabilityToken` / `attemptId` / `runtimeId` to the case run instead of an
-   empty `{}`.
+   binding facts and records a durable binding. `FACTORY_WORKER__submit_step_result` then
+   redeems it through `FactoryStepResultBindingRegistry.acquire`, which hands out a
+   single-flight lease — the token never passes through the model.
+
+   > The capability deliberately travels through the registry rather than through any
+   > per-turn context value: an inert value resolved once at the start of a turn cannot
+   > express a lease, a renewal or an acknowledgement. See
+   > [docs/factory-trust-boundary-migration.md](docs/factory-trust-boundary-migration.md).
 
 If the Factory does not send an agent name, the binding is stored with the wildcard agent
 `*`, so the case agent can still redeem the capability (`FACTORY_WORKER__submit_step_result`).
 
 ## Tests
 
+The plugin is an included (composite) build with no Gradle wrapper of its own, so it is
+neither `:agentos-factory-bridge-plugin:test` from the root build nor `./gradlew test`
+from this directory. Its `test` target is inferred from `project.json` +
+`build.gradle.kts` by the local Nx plugin (`tools/plugins/agentos-gradle/`):
+
 ```bash
-cd agentos
-./gradlew :agentos-factory-bridge-plugin:test
+pnpm nx test agentos-factory-bridge-plugin
 ```
 
 Covers: durable binding + lease across a simulated restart, single-flight CAS after

@@ -37,9 +37,15 @@ const val FACTORY_AGENT_WILDCARD = "*"
  *
  * The registry keeps an in-memory working set for cheap lookups and single-flight CAS,
  * but mirrors every mutation (bind, lease acquire/release, acknowledge, invalidate,
- * expiry, removal) into a restart-safe [FactoryBridgeStateStore]. After an AgentOS
- * restart the registry is reconstructed from the store, so an unfinished binding and its
- * lease survive.
+ * removal) into a restart-safe [FactoryBridgeStateStore]. After an AgentOS restart the
+ * registry is reconstructed from the store, so an unfinished binding and its lease
+ * survive.
+ *
+ * An expired binding is deliberately **kept**: [acquire] with `allowExpired` is how
+ * [io.whozoss.agentos.plugins.factorybridge.FactoryStepResultCapabilityRefresher] renews a
+ * capability that lapsed mid-attempt. Purging on expiry would make renewal impossible and
+ * turn a recoverable lapse into a lost result. Removal happens on acknowledge, invalidate,
+ * or when the case reaches a terminal status.
  *
  * By design the registry keeps no durable state when constructed without a store (unit
  * tests): a restart then loses every capability and therefore fails closed.
@@ -83,27 +89,6 @@ class FactoryStepResultBindingRegistry(
             logger.warn { "Factory result binding lookup: leased caseId=$caseId attemptId=${binding.attemptId}" }
             return emptyMap()
         }
-        return mapOf("capabilityToken" to binding.capabilityToken, "attemptId" to binding.attemptId, "runtimeId" to binding.runtimeId)
-    }
-
-    /**
-     * Resolve the binding context for a case without requiring the agent name.
-     *
-     * Used by [io.whozoss.agentos.sdk.spi.ExternalExecutionContextProvider], which is not
-     * given the agent identity. Returns the same payload as
-     * [context] but skips the per-agent match; returns an empty map when the binding is
-     * missing, expired or already leased.
-     */
-    fun contextForCase(
-        caseId: UUID,
-        namespaceId: UUID,
-    ): Map<String, Any?> {
-        val binding = bindings[caseId] ?: return emptyMap()
-        if (!binding.expiresAt.isAfter(clock.instant())) {
-            expire(caseId, binding)
-            return emptyMap()
-        }
-        if (binding.namespaceId != namespaceId || binding.leased.get()) return emptyMap()
         return mapOf("capabilityToken" to binding.capabilityToken, "attemptId" to binding.attemptId, "runtimeId" to binding.runtimeId)
     }
 
@@ -201,14 +186,6 @@ class FactoryStepResultBindingRegistry(
             return null
         }
         return binding
-    }
-
-    /** Removes an expired binding from memory and from the durable store (fail-closed). */
-    private fun expire(
-        caseId: UUID,
-        binding: FactoryStepResultBinding,
-    ) {
-        if (bindings.remove(caseId, binding)) store?.removeBinding(caseId)
     }
 
     private fun toBinding(state: FactoryStepResultBindingState) =

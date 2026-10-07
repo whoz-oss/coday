@@ -135,31 +135,6 @@ class FactoryBridgeExtensionsSpec : StringSpec({
         }
     }
 
-    "external execution context provider exposes the active binding and nothing otherwise" {
-        val services = FactoryTestFixtures.services()
-        val provider = FactoryExternalExecutionContextProvider { services }
-        val namespaceId = UUID.randomUUID()
-        val caseId = UUID.randomUUID()
-
-        provider.provideExecutionContext(caseId, namespaceId, null) shouldBe emptyMap()
-
-        services.stepResultBindings.bind(
-            FactoryStepResultBinding(
-                caseId,
-                namespaceId,
-                "Worker",
-                "attempt",
-                "runtime",
-                "secret-token-value-with-sufficient-length",
-                Instant.now().plusSeconds(60),
-            ),
-        )
-        val context = provider.provideExecutionContext(caseId, namespaceId, null)
-        context.containsKey("capabilityToken") shouldBe true
-        context.containsKey("attemptId") shouldBe true
-        context["runtimeId"] shouldBe "runtime"
-    }
-
     "lifecycle observer invalidates the binding when the case reaches a terminal status" {
         val services = FactoryTestFixtures.services()
         val observer = FactoryCaseLifecycleObserver { services }

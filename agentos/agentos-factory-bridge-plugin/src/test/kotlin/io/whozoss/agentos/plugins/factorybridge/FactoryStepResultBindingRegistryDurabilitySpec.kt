@@ -48,8 +48,6 @@ class FactoryStepResultBindingRegistryDurabilitySpec : StringSpec({
             restarted.contains(caseId) shouldBe true
             // Single-flight: the lease acquired before the restart is still held.
             restarted.acquire(caseId, namespaceId, "Worker") shouldBe null
-            // A leased binding contributes no execution context.
-            restarted.contextForCase(caseId, namespaceId) shouldBe emptyMap()
             restarted.find(caseId)!!.leased.get() shouldBe true
         }
     }
@@ -87,7 +85,9 @@ class FactoryStepResultBindingRegistryDurabilitySpec : StringSpec({
         }
     }
 
-    "an expired binding is evicted from the durable store" {
+    // An attempt whose capability lapsed while AgentOS was down must still be renewable:
+    // the binding is the input of the renewal, so expiry alone never evicts it.
+    "an expired binding survives a restart and stays renewable" {
         withStore { dir ->
             val caseId = UUID.randomUUID()
             val namespaceId = UUID.randomUUID()
@@ -99,10 +99,10 @@ class FactoryStepResultBindingRegistryDurabilitySpec : StringSpec({
                 Clock.fixed(now.plusSeconds(120), ZoneOffset.UTC),
                 FactoryBridgeStateStore.open(dir.toAbsolutePath().toString(), jacksonObjectMapper()),
             )
-            later.contextForCase(caseId, namespaceId) shouldBe emptyMap()
-            later.contains(caseId) shouldBe false
-
-            registry(dir).contains(caseId) shouldBe false
+            later.contains(caseId) shouldBe true
+            // Ordinary redemption still refuses it — only an authorized renewal may take it.
+            later.acquire(caseId, namespaceId, "Worker") shouldBe null
+            later.acquire(caseId, namespaceId, "Worker", allowExpired = true).shouldNotBeNull()
         }
     }
 })
