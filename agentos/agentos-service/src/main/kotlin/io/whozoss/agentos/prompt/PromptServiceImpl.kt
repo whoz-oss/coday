@@ -6,7 +6,14 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -32,6 +39,7 @@ class PromptServiceImpl(
     private val agentConfigService: AgentConfigService,
     private val translationService: PromptTranslationService,
     private val scheduledPromptRepository: ScheduledPromptRepository,
+    private val permissionService: PermissionService,
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
@@ -215,6 +223,52 @@ class PromptServiceImpl(
         )
 
         return PromptTranslation(title = resolvedTitle, content = resolvedContent)
+    }
+
+    override fun translateBatch(
+        ids: List<UUID>,
+        targetLanguage: String,
+        callerNamespaceId: UUID?,
+        currentUserId: String,
+    ): List<PromptBatchTranslation> {
+        val prompts = repository.findByIds(ids)
+
+        // Fan-out: permission check + translation run concurrently per prompt on Dispatchers.IO.
+        // runBlocking bridges the synchronous call-site to structured concurrency.
+        val translationById: Map<UUID, PromptBatchTranslation> =
+            runBlocking(Dispatchers.IO) {
+                prompts
+                    .map { prompt ->
+                        async {
+                            val canRead = permissionService.hasPermission(
+                                currentUserId,
+                                EntityType.PROMPT,
+                                prompt.id.toString(),
+                                Action.READ,
+                            )
+                            when {
+                                canRead -> {
+                                    val translation = translate(
+                                        id = prompt.id,
+                                        targetLanguage = targetLanguage,
+                                        callerNamespaceId = callerNamespaceId,
+                                    )
+                                    prompt.id to PromptBatchTranslation(
+                                        id = prompt.id,
+                                        title = translation.title,
+                                        content = translation.content,
+                                    )
+                                }
+                                else -> null
+                            }
+                        }
+                    }.awaitAll()
+                    .filterNotNull()
+                    .toMap()
+            }
+
+        // Reassemble in input order, omitting prompts that were not readable or not found.
+        return ids.mapNotNull { translationById[it] }
     }
 
     private fun layerPriority(p: Prompt): Int =

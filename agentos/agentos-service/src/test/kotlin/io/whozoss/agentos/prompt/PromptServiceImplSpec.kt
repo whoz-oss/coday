@@ -17,6 +17,9 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.scheduledPrompt.InMemoryScheduledPromptRepository
 import io.whozoss.agentos.scheduledPrompt.Planning
 import io.whozoss.agentos.scheduledPrompt.Recurrence
@@ -42,11 +45,12 @@ import java.util.UUID
 class PromptServiceImplSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private val translationService = mockk<PromptTranslationService>(relaxed = true)
+    private val permissionService = mockk<PermissionService>(relaxed = true)
 
     private fun newService(
         spRepo: InMemoryScheduledPromptRepository = InMemoryScheduledPromptRepository(),
     ): PromptServiceImpl =
-        PromptServiceImpl(InMemoryPromptRepository(), agentConfigService, translationService, spRepo)
+        PromptServiceImpl(InMemoryPromptRepository(), agentConfigService, translationService, spRepo, permissionService)
 
     /** Returns both the service and its backing repository, for tests that need to seed a
      *  filesystem-backed prompt (version == null) directly via [InMemoryPromptRepository.seedRaw]. */
@@ -75,7 +79,7 @@ class PromptServiceImplSpec : StringSpec() {
 
     private fun newServiceWithRepo(): Pair<PromptServiceImpl, InMemoryPromptRepository> {
         val repo = InMemoryPromptRepository()
-        return PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository()) to repo
+        return PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository(), permissionService) to repo
     }
 
     private fun scheduledPrompt(
@@ -972,6 +976,98 @@ class PromptServiceImplSpec : StringSpec() {
 
             val persisted = service.findById(saved.id)!!
             persisted.translatedContent shouldBe mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
+        }
+
+        // -------------------------------------------------------------------------
+        // translateBatch
+        // -------------------------------------------------------------------------
+
+        "translateBatch returns translations for prompts the caller can READ" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val p1 = service.create(prompt(namespaceId = nsId, name = "P1", content = listOf("Hello"), sourceLanguage = "en"))
+            val p2 = service.create(prompt(namespaceId = nsId, name = "P2", content = listOf("World"), sourceLanguage = "en"))
+
+            every { permissionService.hasPermission(callerId, EntityType.PROMPT, p1.id.toString(), Action.READ) } returns true
+            every { permissionService.hasPermission(callerId, EntityType.PROMPT, p2.id.toString(), Action.READ) } returns true
+
+            // Requesting source language — no LLM call needed
+            val results = service.translateBatch(
+                ids = listOf(p1.id, p2.id),
+                targetLanguage = "en",
+                callerNamespaceId = null,
+                currentUserId = callerId,
+            )
+
+            results shouldHaveSize 2
+            results[0].id shouldBe p1.id
+            results[0].content shouldBe listOf("Hello")
+            results[1].id shouldBe p2.id
+            results[1].content shouldBe listOf("World")
+        }
+
+        "translateBatch silently omits prompts the caller cannot READ" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val readable = service.create(prompt(namespaceId = nsId, name = "Readable", content = listOf("Hello"), sourceLanguage = "en"))
+            val hidden = service.create(prompt(namespaceId = nsId, name = "Hidden", content = listOf("Secret"), sourceLanguage = "en"))
+
+            every { permissionService.hasPermission(callerId, EntityType.PROMPT, readable.id.toString(), Action.READ) } returns true
+            every { permissionService.hasPermission(callerId, EntityType.PROMPT, hidden.id.toString(), Action.READ) } returns false
+
+            val results = service.translateBatch(
+                ids = listOf(readable.id, hidden.id),
+                targetLanguage = "en",
+                callerNamespaceId = null,
+                currentUserId = callerId,
+            )
+
+            results shouldHaveSize 1
+            results[0].id shouldBe readable.id
+        }
+
+        "translateBatch preserves input order in the response" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val first = service.create(prompt(namespaceId = nsId, name = "First", content = listOf("First"), sourceLanguage = "en"))
+            val second = service.create(prompt(namespaceId = nsId, name = "Second", content = listOf("Second"), sourceLanguage = "en"))
+
+            every { permissionService.hasPermission(callerId, EntityType.PROMPT, any(), Action.READ) } returns true
+
+            // Request in reverse order — response must preserve that order
+            val results = service.translateBatch(
+                ids = listOf(second.id, first.id),
+                targetLanguage = "en",
+                callerNamespaceId = null,
+                currentUserId = callerId,
+            )
+
+            results shouldHaveSize 2
+            results[0].id shouldBe second.id
+            results[1].id shouldBe first.id
+        }
+
+        "translateBatch omits unknown IDs without failing" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val known = service.create(prompt(namespaceId = nsId, name = "Known", content = listOf("Hello"), sourceLanguage = "en"))
+            val unknownId = UUID.randomUUID()
+
+            every { permissionService.hasPermission(callerId, EntityType.PROMPT, known.id.toString(), Action.READ) } returns true
+
+            val results = service.translateBatch(
+                ids = listOf(known.id, unknownId),
+                targetLanguage = "en",
+                callerNamespaceId = null,
+                currentUserId = callerId,
+            )
+
+            results shouldHaveSize 1
+            results[0].id shouldBe known.id
         }
 
         "findEffective agentConfigId filter is applied after the layer merge, not before" {
