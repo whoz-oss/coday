@@ -104,9 +104,9 @@ class CreateWorkflowRunService(
     }
 
     private fun readableFallback(workflowType: String): String =
-        workflowType.replace('-', ' ').replace('_', ' ').trim().split(Regex("\\s+")).joinToString(" ") {
-            it.replaceFirstChar { character -> character.uppercase() }
-        }.ifBlank { "Workflow run" }
+        workflowType.replace('-', ' ').replace('_', ' ').trim()
+            .ifBlank { "workflow run" }
+            .replaceFirstChar { it.uppercase() }
 
     private companion object {
         const val TITLE_MAX = 200

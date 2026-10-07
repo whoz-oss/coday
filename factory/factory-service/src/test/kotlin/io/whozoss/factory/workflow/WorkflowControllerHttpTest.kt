@@ -265,7 +265,10 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             "workflowType" to "wf-http",
             "initialRequest" to "Analyse the incident and identify the unresolved questions.",
         )
-        val requestHeaders = headers().apply { set("Idempotency-Key", "create-run-initial-request") }
+        val requestHeaders = headers().apply {
+            set("Idempotency-Key", "create-run-initial-request")
+            set("x-factory-namespace-id", namespace)
+        }
 
         val created = restTemplate.exchange(
             "/api/factory/workflows",
@@ -284,7 +287,10 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `create run keeps title ticket and initial request optional`() {
         registerDefinition()
-        val requestHeaders = headers().apply { set("Idempotency-Key", "create-run-minimal") }
+        val requestHeaders = headers().apply {
+            set("Idempotency-Key", "create-run-minimal")
+            set("x-factory-namespace-id", namespace)
+        }
 
         val created = restTemplate.exchange(
             "/api/factory/workflows",
