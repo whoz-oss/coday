@@ -184,12 +184,12 @@ agentos:
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
     # document-max-cell-chars: 5000
   integrations:
-    # Comma-separated integration types that cannot be created or updated in a user scope
-    # (user-global or user x namespace), because a user overlay of a network-reaching type could
-    # redirect a shared credential to a host the user controls. Platform and namespace-shared
-    # configs are unaffected. Setting the list replaces the default entirely.
-    # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
-    # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
+  # Comma-separated integration types that cannot be created or updated in a user scope
+  # (user-global or user x namespace), because a user overlay of a network-reaching type could
+  # redirect a shared credential to a host the user controls. Platform and namespace-shared
+  # configs are unaffected. Setting the list replaces the default entirely.
+  # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
+  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
   query-user:
     # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
     # integrations map. On by default: asking a question is a primitive of conversation, not an
@@ -199,25 +199,25 @@ agentos:
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     enabled-by-default: true
   limits:
-    # Maximum number of internal steps per user message in the CaseRuntime before the case
-    # transitions to ERROR status. A "step" is one processNextStep() call covering agent
-    # selection, agent run, and redirect events. The counter resets to 0 on each
-    # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
-    # threshold across the full session without triggering it within a single turn.
-    # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
-    # case-max-iterations: 100
-    # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
-    # Each iteration consists of one intention-generation call followed by zero or one tool
-    # executions. When this limit is reached the agent emits a WarnEvent and breaks out
-    # of the loop, producing its final response based on what it has gathered so far.
-    # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
-    # agent-max-iterations: 20
-    # Maximum amount the platform accepts spending without a human check-in, in the platform's
-    # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
-    # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
-    # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
-    # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
-    # run-cost-threshold: 10.0
+  # Maximum number of internal steps per user message in the CaseRuntime before the case
+  # transitions to ERROR status. A "step" is one processNextStep() call covering agent
+  # selection, agent run, and redirect events. The counter resets to 0 on each
+  # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
+  # threshold across the full session without triggering it within a single turn.
+  # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
+  # case-max-iterations: 100
+  # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
+  # Each iteration consists of one intention-generation call followed by zero or one tool
+  # executions. When this limit is reached the agent emits a WarnEvent and breaks out
+  # of the loop, producing its final response based on what it has gathered so far.
+  # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
+  # agent-max-iterations: 20
+  # Maximum amount the platform accepts spending without a human check-in, in the platform's
+  # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
+  # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
+  # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
+  # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
+  # run-cost-threshold: 10.0
   defaults:
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
     delegation-timeout-seconds: ${AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS:300}
@@ -232,12 +232,12 @@ agentos:
   # Override with env var: AGENTOS_DEFAULTS_MAX_ATTACHED_IMAGES
   # max-attached-images: 20
   anthropic:
-    # Activate Anthropic prompt caching (CONVERSATION_HISTORY strategy) on every Anthropic chat model
-    # instance. Caches the system prompt, tool definitions, and the conversation history across API
-    # calls — the full prefix grows incrementally each turn, yielding significant cost and latency
-    # savings on multi-turn agent runs. Disable if prompt caching is not available on your plan.
-    # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
-    # prompt-caching-enabled: true
+  # Activate Anthropic prompt caching (CONVERSATION_HISTORY strategy) on every Anthropic chat model
+  # instance. Caches the system prompt, tool definitions, and the conversation history across API
+  # calls — the full prefix grows incrementally each turn, yielding significant cost and latency
+  # savings on multi-turn agent runs. Disable if prompt caching is not available on your plan.
+  # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
+  # prompt-caching-enabled: true
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
   security:
@@ -280,6 +280,11 @@ agentos:
     # Override with env var: AGENTOS_PERSISTENCE_MODE
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
   prompt:
+    batch-translation:
+      # Maximum number of prompts translated concurrently in a single batch-translate request.
+      # Each concurrent slot may issue a Neo4j permission check and an LLM HTTP call.
+      # Override with env var: AGENTOS_PROMPT_BATCH_TRANSLATION_PARALLELISM_LIMIT
+      parallelism-limit: 30
     scheduler:
       # Enable/disable the scheduler. Enabled by default for production.
       # Dev profiles (embedded-neo4j, docker) disable it to prevent accidental Case creation.

@@ -17,10 +17,19 @@
       @if (namespaceId) {
         <div class="case-home__ns-label">Namespace · {{ namespaceName() ?? namespaceId }}</div>
       }
-      <h1 class="case-home__headline">What can I help you with?</h1>
+      @if (parentCaseId()) {
+        <button type="button" class="case-home__parent" title="Back to parent case" (click)="returnToParent()">
+          <span class="material-icons" aria-hidden="true">subdirectory_arrow_right</span>
+          Parent case: {{ parentCaseTitle() }}
+        </button>
+      }
+      <h1 class="case-home__headline">{{ parentCaseId() ? 'New sub-case' : 'What can I help you with?' }}</h1>
     </div>
 
     <div class="case-home__composer" dsBlueprint>
+      @if (submitError()) {
+        <p role="alert">{{ submitError() }}</p>
+      }
       @if (autocomplete.atSuggestions().length > 0) {
         <div class="case-home__autocomplete">
           <agentos-agent-autocomplete
@@ -70,7 +79,13 @@
           />
           <span class="case-home__hint">{{ preferences.composerHint() }}</span>
         </div>
-        <ds-icon-button icon="send" variant="primary" title="Start case" [disabled]="!canSend" (action)="submit()" />
+        <ds-icon-button
+          icon="send"
+          variant="primary"
+          [title]="parentCaseId() ? 'Start sub-case' : 'Start case'"
+          [disabled]="!canSend"
+          (action)="submit()"
+        />
       </div>
     </div>
   </div>

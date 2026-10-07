@@ -281,18 +281,23 @@
     font-weight: 400;
   }
 
-  // Status tag — bordered, visible by default, hidden on hover to give room to actions
-  &__status-label {
-    @include ds.status-tag;
-
+  // Case and PR statuses — visible by default, hidden on hover to give room to actions
+  &__statuses {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     flex: none;
     transition: opacity 0.12s;
   }
 
-  // Hide label on hover / focus / active — actions take over
-  &__row:hover &__status-label,
-  &__row:focus-within &__status-label,
-  &__row--active &__status-label {
+  &__status-label {
+    @include ds.status-tag;
+  }
+
+  // Hide statuses on hover / focus / active — actions take over
+  &__row:hover &__statuses,
+  &__row:focus-within &__statuses,
+  &__row--active &__statuses {
     opacity: 0;
     pointer-events: none;
   }
@@ -332,8 +337,8 @@
   // focused input trips :focus-within for the whole duration of the edit.
   &__row--editing:hover &__actions,
   &__row--editing:focus-within &__actions,
-  &__row--editing:hover &__status-label,
-  &__row--editing:focus-within &__status-label {
+  &__row--editing:hover &__statuses,
+  &__row--editing:focus-within &__statuses {
     opacity: 0;
     pointer-events: none;
   }

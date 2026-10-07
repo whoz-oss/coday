@@ -1,0 +1,273 @@
+package io.whozoss.agentos.git
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.exchange.ExchangeStorageService
+import io.whozoss.agentos.git.core.GitCommandException
+import io.whozoss.agentos.git.core.GitCommandResult
+import io.whozoss.agentos.git.core.GitCommandRunner
+import io.whozoss.agentos.git.core.GitExecutionProperties
+import io.whozoss.agentos.git.core.GitInvocation
+import io.whozoss.agentos.git.core.GitLayout
+import io.whozoss.agentos.git.core.GitRefs
+import mu.KLogging
+import org.springframework.stereotype.Service
+import java.nio.file.Files
+import java.nio.file.Path
+import java.time.Clock
+import java.util.UUID
+import kotlin.io.path.exists
+import kotlin.io.path.isDirectory
+import kotlin.io.path.listDirectoryEntries
+
+/** Creates a detached worktree at a frozen base. Branches and PRs belong to agent workflows. */
+@Service
+@ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
+class CaseWorktreeProvisioner(
+    private val runner: GitCommandRunner,
+    private val gitProperties: GitExecutionProperties,
+    private val exchangeStorageService: ExchangeStorageService,
+    private val bindingService: CaseResourceBindingService,
+    private val checkoutProvisioner: RepositoryCheckoutProvisioner,
+    private val serviceAccountResolver: GitServiceAccountResolver,
+    private val setupRunner: WorktreeSetupRunner,
+    private val clock: Clock,
+) {
+    /**
+     * Bring [binding] to [CaseResourceStatus.READY], creating whatever is still missing.
+     *
+     * @throws GitCommandException when git refuses a step
+     * @throws IllegalStateException when the target directory is occupied by something else
+     */
+    fun ensureReady(
+        binding: CaseResourceBinding,
+        settings: GitRepositorySettings,
+        rootCase: Case,
+    ): CaseResourceBinding {
+        // Persist the failing operation, never subprocess output or exception messages.
+        var failureReason = "Cannot validate the existing worktree. Inspect its location and Git metadata before retrying."
+        return try {
+            val worktreePath = worktreePath(rootCase)
+            val gitDir = exchangeStorageService.namespaceGitDirectory(settings.namespaceId).toAbsolutePath().normalize()
+            if (binding.status == CaseResourceStatus.READY &&
+                verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)
+            ) {
+                return binding
+            }
+            // Later writes start from this row: the copy received is older than the PREPARING mark.
+            val preparing = bindingService.markStatus(binding.id, CaseResourceStatus.PREPARING)
+            failureReason = "Cannot prepare the namespace repository. Check its Git settings and service account."
+            val checkout = checkoutProvisioner.ensureReady(settings)
+            check(checkout.status == RepositoryCheckoutStatus.READY) {
+                "The namespace checkout is ${checkout.status}; a case workspace cannot be derived from it yet"
+            }
+
+            failureReason = "Cannot fetch the case base. Check repository access, the main branch and local Git configuration."
+            val withBase = freezeBaseSha(preparing, settings, gitDir)
+            failureReason = "Cannot create or recover the worktree. Inspect its directory and Git registration before retrying."
+            setAsideInterruptedCheckout(withBase, gitDir, worktreePath)
+            addWorktree(withBase, gitDir, worktreePath)
+            val current = bindingService.findByRootCaseId(binding.rootCaseId) ?: withBase
+            if (current.setup != SetupState.COMPLETED) {
+                failureReason = "Setup was interrupted; inspect its effects and acknowledge its replay before retrying."
+                check(current.setup == SetupState.NOT_STARTED) {
+                    "Setup was interrupted; acknowledge its replay before retrying"
+                }
+                bindingService.update(current.copy(setup = SetupState.STARTED))
+                failureReason = "Setup failed or was interrupted. Inspect the setup command and its effects before retrying."
+                setupRunner.run(settings, worktreePath,
+                    exchangeStorageService.workspaceSupportDirectory(binding.namespaceId, binding.rootCaseId))
+                val afterSetup = bindingService.findByRootCaseId(binding.rootCaseId) ?: current
+                bindingService.update(afterSetup.copy(setup = SetupState.COMPLETED))
+            }
+
+            bindingService.markStatus(withBase.id, CaseResourceStatus.READY)
+        } catch (e: Exception) {
+            logger.error(e) { "Workspace ${binding.rootCaseId}: $failureReason" }
+            bindingService.markStatus(
+                binding.id,
+                CaseResourceStatus.FAILED,
+                failureReason = failureReason,
+            )
+            throw e
+        }
+    }
+
+    /**
+     * Where the family's worktree lives: repo/ in the root case's Exchange directory.
+     *
+     * Absolute, because git records the worktree location in its own metadata and resolves it
+     * from processes whose working directory is not the JVM's.
+     */
+    fun worktreePath(rootCase: Case): Path =
+        exchangeStorageService
+            .caseRoot(rootCase.namespaceId, rootCase.id, rootCase.metadata.created)
+            .resolve(GitExchangeRoot.REPOSITORY_DIRECTORY)
+            .toAbsolutePath()
+            .normalize()
+
+    /**
+     * Resolve the main branch once and persist it, so every later step and every retry agree on
+     * the commit this case started from.
+     */
+    private fun freezeBaseSha(
+        binding: CaseResourceBinding,
+        settings: GitRepositorySettings,
+        gitDir: Path,
+    ): CaseResourceBinding {
+        binding.baseSha?.let { return binding }
+
+        runner.assertNoHostileLocalConfig(gitDir)
+        val baseRef = GitRefs.AGENTOS_BASE + binding.rootCaseId
+        val existing = runner.run(GitInvocation(listOf("rev-parse", "--verify", "$baseRef^{commit}"), gitDir = gitDir))
+        if (existing is GitCommandResult.Completed && existing.successful) {
+            return bindingService.update(binding.copy(baseSha = existing.stdout.trim()))
+        }
+        runner.runOrThrow(
+            GitInvocation(
+                args = listOf("fetch", "--quiet", settings.repositoryUrl, "${GitRefs.head(settings.mainBranch)}:$baseRef"),
+                gitDir = gitDir,
+                timeout = gitProperties.cloneTimeout,
+                credentials = serviceAccountResolver.resolve(settings),
+            ),
+        )
+        val sha =
+            runner.runOrThrow(
+                GitInvocation(args = listOf("rev-parse", "--verify", "$baseRef^{commit}"), gitDir = gitDir),
+            )
+
+        return bindingService.update(binding.copy(baseSha = sha))
+    }
+
+    /**
+     * A checkout interrupted before the workspace was ever ready (typically a redeploy during
+     * `worktree add`) is refused by [verifyAndAdoptWorktree] on every retry. Nothing but Git wrote
+     * into it: agents and setup only start once the checkout has completed. Keep its files for
+     * inspection in workspace support storage, drop its registration, and let the checkout start over.
+     */
+    private fun setAsideInterruptedCheckout(
+        binding: CaseResourceBinding,
+        gitDir: Path,
+        worktreePath: Path,
+    ) {
+        if (binding.setup != SetupState.NOT_STARTED) return
+        val registration =
+            try {
+                verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)
+                return
+            } catch (e: IncompleteWorktreeException) {
+                e.registration
+            }
+        val support = Files.createDirectories(
+            exchangeStorageService.workspaceSupportDirectory(binding.namespaceId, binding.rootCaseId),
+        )
+        val setAside = support.resolve("interrupted-checkout-${clock.millis()}")
+        Files.move(worktreePath, setAside)
+        // Its HEAD is the frozen base, still referenced by refs/agentos/base/<root case id>.
+        deleteTreeWithoutFollowingLinks(registration)
+        logger.warn { "Interrupted checkout of root case ${binding.rootCaseId} set aside in $setAside" }
+    }
+
+    private fun addWorktree(
+        binding: CaseResourceBinding,
+        gitDir: Path,
+        worktreePath: Path,
+    ) {
+        if (verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)) return
+
+        // `git worktree add` refuses a target that exists and is not empty. An empty directory is
+        // fine, and one is routinely pre-created by the exchange tool grant, so only a populated
+        // one is a real problem — and it is one we must not resolve by deleting whatever is there.
+        if (worktreePath.exists()) {
+            check(worktreePath.isDirectory()) { "Cannot create a worktree at $worktreePath: a file is in the way" }
+            val entries = worktreePath.listDirectoryEntries()
+            check(entries.isEmpty()) {
+                "Cannot create a worktree at $worktreePath: the directory already holds ${entries.size} entr(ies). " +
+                    "Files must not be written there before the workspace is ready."
+            }
+        } else {
+            Files.createDirectories(worktreePath.parent)
+        }
+
+        // Do not prune registrations here: another family's checkout may only be temporarily
+        // unavailable. Git can allocate a new worktree without discarding its index or metadata.
+        runner.runOrThrow(
+            GitInvocation(
+                args = listOf("worktree", "add", "--detach", worktreePath.toString(), requireNotNull(binding.baseSha)),
+                gitDir = gitDir,
+                timeout = gitProperties.cloneTimeout,
+            ),
+        )
+        // Git chooses an administrative name from the leaf directory (now always "repo").
+        // Pin it to the root case id so status/lifecycle never trust the writable pointer file.
+        check(verifyAndAdoptWorktree(worktreePath, gitDir, binding.rootCaseId)) { "Git did not register the new worktree" }
+        logger.info { "Worktree for root case ${binding.rootCaseId} created at $worktreePath at ${binding.baseSha} (detached)" }
+    }
+
+    /**
+     * Whether [path] is the registered worktree of [rootCaseId]: a linked worktree carries a `.git`
+     * pointer file, the managed clone a directory. False when there is no pointer at all.
+     *
+     * Not a pure check: a crash during `worktree add` can leave the registration under Git's own
+     * name, or renamed before the pointer was rewritten. A registration that points back to this
+     * exact Exchange is adopted, by renaming it to the root case id and rewriting the pointer.
+     *
+     * @throws IncompleteWorktreeException when Git registered the worktree but never completed its checkout
+     * @throws IllegalStateException when the directory or its registration belongs to something else
+     */
+    private fun verifyAndAdoptWorktree(path: Path, commonGitDir: Path, rootCaseId: UUID): Boolean {
+        val pointer = path.resolve(GitLayout.DOT_GIT)
+        if (!Files.exists(pointer, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return false
+        val admin = commonGitDir.toRealPath().worktreeRegistration(rootCaseId)
+        val registrations = admin.parent
+        check(Files.isRegularFile(pointer, java.nio.file.LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(admin)) {
+            "The case Exchange is not the registered workspace"
+        }
+        val contents = Files.readString(pointer).trim()
+        check(contents.startsWith(GitLayout.GITDIR_POINTER_PREFIX)) { "The worktree has an invalid Git pointer" }
+        val target = path.resolve(contents.removePrefix(GitLayout.GITDIR_POINTER_PREFIX)).normalize()
+        check(target.parent.toRealPath() == registrations && !Files.isSymbolicLink(target)) {
+            "The worktree points to another repository"
+        }
+        // A crash can leave Git's allocated name, or move it to the pinned name before updating
+        // the pointer. Adopt only a registration that points back to this exact Exchange.
+        val registration = when {
+            Files.exists(target) -> target
+            Files.isDirectory(admin) -> admin
+            else -> error("The worktree registration is missing")
+        }
+        check(registration.resolve(Files.readString(registration.resolve(GitLayout.COMMON_DIR_FILE)).trim()).normalize().toRealPath() == commonGitDir.toRealPath()) {
+            "The worktree no longer belongs to the namespace repository"
+        }
+        check(registration.resolve(Files.readString(registration.resolve(GitLayout.GITDIR_FILE)).trim()).normalize().toRealPath() == pointer.toRealPath()) {
+            "The worktree registration points to another Exchange"
+        }
+        // HEAD and both pointers are written before checkout starts. They cannot prove that
+        // worktree add finished: a crash may leave an initializing lock and no index at all.
+        val lock = registration.resolve(GitLayout.LOCKED_FILE)
+        if (Files.exists(lock) && Files.readString(lock).trim() == GitLayout.INITIALIZING_LOCK_REASON) {
+            throw IncompleteWorktreeException(
+                registration,
+                "Worktree checkout was interrupted during initialization; inspect and complete its recovery before retrying",
+            )
+        }
+        if (!Files.isRegularFile(registration.resolve(GitLayout.INDEX_FILE), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            throw IncompleteWorktreeException(
+                registration,
+                "Worktree checkout has no index; inspect and complete its recovery before retrying",
+            )
+        }
+        if (registration != admin) Files.move(registration, admin)
+        if (target != admin) Files.writeString(pointer, "${GitLayout.GITDIR_POINTER_PREFIX}$admin\n")
+        runner.runOrThrow(GitInvocation(listOf("rev-parse", "--verify", "HEAD^{commit}"), gitDir = admin))
+        return true
+    }
+
+    /** Git registered the worktree but never completed its checkout. */
+    private class IncompleteWorktreeException(
+        val registration: Path,
+        message: String,
+    ) : IllegalStateException(message)
+
+    companion object : KLogging()
+}

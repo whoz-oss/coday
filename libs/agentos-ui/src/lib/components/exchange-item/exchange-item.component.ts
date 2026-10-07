@@ -1,6 +1,8 @@
 import { ChangeDetectionStrategy, Component, input, output } from '@angular/core'
 import { ExchangeDirectoryEntry } from '@whoz-oss/agentos-api-client'
 import { EntityCardBadge, IconButtonComponent } from '@whoz-oss/design-system'
+import { GitFileStatus } from '../../services/exchange-environment.service'
+import { GIT_FILE_LABELS } from '../../services/exchange-git-tree.utils'
 import { formatDate, formatSize, getFileIcon } from '../../services/exchange-content.utils'
 
 /** View-model for one dense file row. */
@@ -10,6 +12,8 @@ export interface ExchangeFileRow {
   meta: string
   icon: string
   badges?: EntityCardBadge[]
+  gitStatus?: GitFileStatus
+  missing?: boolean
 }
 
 /**
@@ -36,6 +40,8 @@ export class ExchangeItemComponent {
   readonly viewRequested = output<void>()
   readonly downloadRequested = output<void>()
   readonly deleteRequested = output<void>()
+  readonly diffRequested = output<void>()
+  protected readonly gitLabels = GIT_FILE_LABELS
 
   /**
    * Build the row view-model from a directory entry.
