@@ -68,13 +68,31 @@ inside the host process and does not use Spring `@Value`):
 | Durable data dir | `agentos.factory-bridge.data-dir` | `AGENTOS_FACTORY_BRIDGE_DATA_DIR` | `data/factory-bridge` |
 | Shared secret | `agentos.factory-bridge.secret` | `AGENTOS_FACTORY_BRIDGE_SECRET` | *(empty → binding disabled)* |
 | Binding TTL (s) | `agentos.factory-bridge.binding-ttl` | `AGENTOS_FACTORY_BRIDGE_BINDING_TTL` | `3600` |
+| Encryption key | `agentos.encryption.key` | `AGENTOS_ENCRYPTION_KEY` | *(required — see below)* |
+| Encryption salt | `agentos.encryption.salt` | `AGENTOS_ENCRYPTION_SALT` | *(required — see below)* |
 
 An empty shared secret **disables** the binding endpoint (fail-closed).
+
+The last two are **the host's own encryption settings**, not plugin-specific ones: the
+bridge reads the same `AGENTOS_ENCRYPTION_*` pair that `FieldEncryptor` uses service-side,
+so a deployment configures encryption once. The resolution is identical to the host's
+`FieldEncryptorConfiguration`:
+
+- both set to real values → AES-256-GCM on the capability token at rest;
+- both set to `NONE` (case-insensitive) → plaintext, explicitly opted out, WARN logged;
+- anything else → the plugin **fails to start**.
+
+There is no silent fallback to plaintext. A half-configured pair is a startup failure
+rather than a quiet downgrade — the dangerous outcome would be storing secrets in the
+clear while believing they are encrypted. A service already configured for encryption
+needs no extra setting for the bridge; one running with `NONE` keeps working unchanged.
 
 ## Durable state (restart-safe)
 
 `FactoryBridgeStateStore` mirrors, in `<data-dir>/bridge-state.json`, using an atomic
-*write-temp-then-rename*:
+*write-temp-then-rename* with owner-only permissions (`600` in a `700` directory — the
+temp file is created restricted **before** being written, since `ATOMIC_MOVE` replaces the
+destination inode and only the temp file's permissions survive):
 
 - **step-result bindings** — `FactoryStepResultBindingRegistry` writes through on every
   `bind` / `acquire` (single-flight CAS lease) / `release` / `acknowledge` / `invalidate`
@@ -83,6 +101,27 @@ An empty shared secret **disables** the binding endpoint (fail-closed).
   submission).
 - **pending human checkpoints** — `FactoryBridgeServices.pendingCheckpoints` is backed by
   the same file, so an approval opened before a restart is still answerable after it.
+
+### The capability token at rest
+
+The token is a bearer credential: whoever reads it can submit a step result for that
+attempt until it expires. Three measures apply, in depth:
+
+1. **Encrypted** with AES-256-GCM (random IV per write, so the same token yields a
+   different ciphertext each time) under the host's encryption key.
+2. **Owner-only** on disk, as described above.
+3. **Purged** once expired for more than 24h (`EXPIRED_RETENTION`). Expiry alone does not
+   evict — a lapsed capability must stay renewable through
+   `FactoryStepResultCapabilityRefresher`, which takes the stored binding as its input —
+   but keeping it *forever* would leave a secret on disk long after any legitimate use.
+   An abandoned case would otherwise retain one indefinitely.
+
+A token that fails to decrypt (rotated key, file written while encryption was disabled) is
+**dropped, never resurrected**: no capability means no submission, and the Factory can
+reissue one. The reverse — half-reading a binding — is the hazardous direction.
+
+`FactorySseHighWaterMarkStore` holds no secret but still exposes case and attempt ids, so
+it is written with the same owner-only guarantees.
 
 `FactorySseHighWaterMarkStore` persists the bridge-side observation cursor in
 `<data-dir>/sse-high-water-marks.json`: one `(timestamp, lastEventId)` high-water mark per
@@ -131,4 +170,7 @@ pnpm nx test agentos-factory-bridge-plugin
 
 Covers: durable binding + lease across a simulated restart, single-flight CAS after
 restart, terminal invalidation durability, pending-checkpoint durability, SSE high-water
-mark persistence/deduplication, and the host-transport registrar wiring.
+mark persistence/deduplication, the host-transport registrar wiring, and the at-rest
+security properties (no plaintext token on disk, owner-only permissions surviving a
+rewrite, undecryptable tokens dropped, expired-binding purge, fail-fast on a
+half-configured encryption pair).

@@ -81,10 +81,19 @@ dependencies {
     // OkHttp - provided by the service classpath at runtime, never bundled in the plugin JAR
     compileOnly(libs.okhttp)
 
+    // Spring Security Crypto - AES-256-GCM (Encryptors.text) for the capability token at
+    // rest, mirroring the service's FieldEncryptor. Reaches the service classpath
+    // transitively through spring-boot-starter-security, so like Jackson and OkHttp it is
+    // compileOnly and never bundled in the plugin JAR - the class loaded at runtime is the
+    // service's. The catalog pins an explicit version (this build applies no Spring BOM);
+    // see libs.versions.toml for how to re-verify it against the service.
+    compileOnly(libs.spring.security.crypto)
+
     // Testing
     testImplementation("whoz-oss.agentos:agentos-sdk:${libs.versions.agentosSdk.get()}")
     testImplementation(libs.bundles.jackson)
     testImplementation(libs.okhttp)
+    testImplementation(libs.spring.security.crypto)
     testImplementation(libs.bundles.testing.common)
     testImplementation(libs.pf4j)
     testRuntimeOnly(libs.junit.platform.launcher)
