@@ -50,8 +50,10 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         objectMapper.readValue(
             """
             {
-                "tool": "SearchTalents",
-                "searchInput": {"endDatePeriod": ["THIS_WEEK"]},
+                "search": {
+                    "tool": "SearchTalents",
+                    "params": {"endDatePeriod": ["THIS_WEEK"]}
+                },
                 "act": {"agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}"}
             }
             """.trimIndent(),
@@ -239,7 +241,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         f.run(listOf(tool))
 
         coVerify { tool.executeWithJson(capture(json), capture(toolContext)) }
-        objectMapper.readTree(json.captured) shouldBe payload.searchInput
+        objectMapper.readTree(json.captured) shouldBe payload.search.params
         toolContext.captured.userId shouldBe triggerUser.metadata.id
         toolContext.captured.userExternalId shouldBe "ext-trigger"
         toolContext.captured.namespaceId shouldBe namespaceId

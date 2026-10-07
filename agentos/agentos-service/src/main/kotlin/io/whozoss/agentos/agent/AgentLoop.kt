@@ -2,7 +2,6 @@ package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.caseFlow.AgentMention
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
@@ -32,32 +31,34 @@ import java.util.UUID
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunner]:
  *
- * 1. Parse the [AgentLoopPayload] JSON from the first user [MessageEvent], ignoring the
- *    leading `@agentName` mention used to route the message to this agent.
+ * 1. Resolve the [AgentLoopPayload] from [loopConfig] stored on the [AgentConfig].
  * 2. Delegate the workflow to [LoopWorkflowRunner].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
  *    when the run could not proceed. Always ends with [AgentFinishedEvent].
  *
- * ## Expected message format
+ * The triggering message content is not read — configuration lives entirely in [loopConfig].
  *
- * ```
- * @loop-agent {
- *   "tool": "SearchTalents",
- *   "searchInput": { "endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"] },
+ * ## Expected loopConfig format
+ *
+ * ```json
+ * {
+ *   "search": {
+ *     "tool": "SearchTalents",
+ *     "params": { "endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"] }
+ *   },
  *   "act": { "agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}" }
  * }
  * ```
  *
  * @param metadata      Agent identity, inherited from [Entity].
  * @param name          Display name of this agent instance.
- * @param objectMapper  Used to parse the JSON payload.
+ * @param objectMapper  Used to parse [loopConfig].
  * @param runner        Executes the workflow.
  * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
  * @param triggerUser   The user who triggered the run.
  * @param caseLauncher  Starts the child cases; null outside a live case.
- * @param loopConfig    Default [AgentLoopPayload] from [AgentConfig.loopConfig], used when the
- *                      triggering message carries no parseable payload. A valid payload in the
- *                      first user message always takes precedence (override).
+ * @param loopConfig    The [AgentLoopPayload] persisted on [AgentConfig]. Must be non-null
+ *                      and parseable for the run to proceed.
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -99,8 +100,8 @@ class AgentLoop(
 
             val outcome =
                 try {
-                    val payload = parsePayload(events)
-                    logger.info { "[AgentLoop] '$name' starting — tool=${payload.tool}, actAgent=${payload.act.agentName} (caseId=$caseId)" }
+                    val payload = resolvePayload()
+                    logger.info { "[AgentLoop] '$name' starting — tool=${payload.search.tool}, actAgent=${payload.act.agentName} (caseId=$caseId)" }
                     runner.run(
                         payload = payload,
                         context =
@@ -164,21 +165,18 @@ class AgentLoop(
     )
 
     /**
-     * Resolves the [AgentLoopPayload] from [loopConfig] stored in the [AgentConfig].
-     *
-     * Message content is intentionally ignored — overriding the config via the triggering
-     * message is not supported in this version.
+     * Resolves the [AgentLoopPayload] from [loopConfig].
      *
      * @throws InvalidLoopPayloadException when [loopConfig] is null or cannot be parsed.
      */
-    private fun parsePayload(events: List<CaseEvent>): AgentLoopPayload {
+    private fun resolvePayload(): AgentLoopPayload {
         if (loopConfig == null) {
             throw InvalidLoopPayloadException("No loopConfig is configured on this agent.")
         }
         return try {
             val payload = objectMapper.treeToValue(loopConfig, AgentLoopPayload::class.java)
-            if (payload.tool.isBlank()) throw InvalidLoopPayloadException("loopConfig has a blank 'tool' field.")
-            logger.info { "[AgentLoop] '$name': payload resolved from loopConfig (tool=${payload.tool})" }
+            if (payload.search.tool.isBlank()) throw InvalidLoopPayloadException("loopConfig has a blank 'search.tool' field.")
+            logger.info { "[AgentLoop] '$name': payload resolved from loopConfig (tool=${payload.search.tool})" }
             payload
         } catch (e: InvalidLoopPayloadException) {
             throw e

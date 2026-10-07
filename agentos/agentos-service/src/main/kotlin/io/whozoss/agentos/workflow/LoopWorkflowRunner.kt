@@ -28,7 +28,7 @@ import java.util.UUID
  *
  * 1. Guard: the triggering user must be identified and hold WRITE (admin) on the namespace,
  *    since the run creates cases on behalf of other users.
- * 2. SEARCH: call the Search tool with [AgentLoopPayload.searchInput] (first page only) and
+ * 2. SEARCH: call the Search tool with [AgentLoopSearch.params] (first page only) and
  *    parse its structured output as [SearchResult].
  * 3. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
  *    a. resolve the end-user via [UserService.findByExternalId] — skip if unknown;
@@ -85,7 +85,7 @@ class LoopWorkflowRunner(
         }
 
         return LoopRunOutcome.Completed(
-            searchTool = payload.tool,
+            searchTool = payload.search.tool,
             returned = search.data.size,
             totalCount = search.metadata?.totalCount,
             hasMorePages = search.metadata?.next != null,
@@ -116,10 +116,11 @@ class LoopWorkflowRunner(
         context: LoopRunContext,
         triggerUser: User,
     ): SearchOutcome {
+        val toolName = payload.search.tool
         val searchTool =
-            context.tools.find { it.name == payload.tool }
+            context.tools.find { it.name == toolName }
                 ?: return SearchOutcome.Failure(
-                    "Search tool '${payload.tool}' is not available to agent '${context.agentName}' " +
+                    "Search tool '$toolName' is not available to agent '${context.agentName}' " +
                         "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
                 )
         val toolContext =
@@ -132,26 +133,26 @@ class LoopWorkflowRunner(
             )
         val result =
             try {
-                searchTool.executeWithJson(objectMapper.writeValueAsString(payload.searchInput), toolContext)
+                searchTool.executeWithJson(objectMapper.writeValueAsString(payload.search.params), toolContext)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.error(e) { "[LoopWorkflowRunner] Search tool '${payload.tool}' threw (caseId=${context.caseId})" }
-                return SearchOutcome.Failure("Search tool '${payload.tool}' failed: ${e.message}")
+                logger.error(e) { "[LoopWorkflowRunner] Search tool '$toolName' threw (caseId=${context.caseId})" }
+                return SearchOutcome.Failure("Search tool '$toolName' failed: ${e.message}")
             }
         if (!result.success) {
-            return SearchOutcome.Failure("Search tool '${payload.tool}' returned a failure: ${result.output}")
+            return SearchOutcome.Failure("Search tool '$toolName' returned a failure: ${result.output}")
         }
         val structured =
             result.structuredOutput
                 ?: return SearchOutcome.Failure(
-                    "Search tool '${payload.tool}' returned no structured output. Check the tool's outputSchema().",
+                    "Search tool '$toolName' returned no structured output. Check the tool's outputSchema().",
                 )
         return try {
             SearchOutcome.Success(objectMapper.treeToValue(structured, SearchResult::class.java))
         } catch (e: Exception) {
-            logger.error(e) { "[LoopWorkflowRunner] Unparseable SearchResult from '${payload.tool}' (caseId=${context.caseId})" }
-            SearchOutcome.Failure("Search tool '${payload.tool}' output does not match the expected format: ${e.message}")
+            logger.error(e) { "[LoopWorkflowRunner] Unparseable SearchResult from '$toolName' (caseId=${context.caseId})" }
+            SearchOutcome.Failure("Search tool '$toolName' output does not match the expected format: ${e.message}")
         }
     }
 

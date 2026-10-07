@@ -50,8 +50,10 @@ class AgentLoopUnitSpec : StringSpec({
     val validPayloadJson =
         """
         {
-            "tool": "SearchTalents",
-            "searchInput": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]},
+            "search": {
+                "tool": "SearchTalents",
+                "params": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]}
+            },
             "act": {"agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}"}
         }
         """.trimIndent()
@@ -144,7 +146,7 @@ class AgentLoopUnitSpec : StringSpec({
             .toList()
 
         coVerify { runner.run(capture(payloadSlot), capture(contextSlot), any()) }
-        payloadSlot.captured.tool shouldBe "SearchTalents"
+        payloadSlot.captured.search.tool shouldBe "SearchTalents"
         payloadSlot.captured.act shouldBe AgentLoopAct("talent-analyzer", "Analyse this entity: {entityId}")
         contextSlot.captured.namespaceId shouldBe namespaceId
         contextSlot.captured.caseId shouldBe caseId
@@ -158,14 +160,14 @@ class AgentLoopUnitSpec : StringSpec({
         val withExtraFields =
             objectMapper.readTree(
                 """
-                {"tool": "SearchTalents", "searchInput": {}, "version": 0,
+                {"search": {"tool": "SearchTalents", "params": {}, "version": 0},
                  "act": {"agentName": "talent-analyzer", "promptTemplate": "t", "note": "x"}}
                 """.trimIndent(),
             )
 
         agent(runner = runner, loopConfig = withExtraFields).run(listOf(userMessage())).toList()
 
-        coVerify(exactly = 1) { runner.run(match { it.tool == "SearchTalents" && it.act.agentName == "talent-analyzer" }, any(), any()) }
+        coVerify(exactly = 1) { runner.run(match { it.search.tool == "SearchTalents" && it.act.agentName == "talent-analyzer" }, any(), any()) }
     }
 
     // -------------------------------------------------------------------------

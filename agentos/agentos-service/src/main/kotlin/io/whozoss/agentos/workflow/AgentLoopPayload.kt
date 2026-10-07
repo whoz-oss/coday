@@ -4,16 +4,40 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.JsonNode
 
 /**
- * Parsed representation of the JSON payload expected in the first user message of an AgentLoop case.
+ * SEARCH configuration: which tool to call and what parameters to pass.
  *
- * @param tool        Name of the Search tool to invoke (e.g. "SearchTalents").
- * @param searchInput Opaque JSON block passed verbatim to the Search tool.
- * @param act         Configuration for the action to execute per entity.
+ * @param tool   Name of the Search tool to invoke (e.g. "SearchTalents").
+ * @param params Opaque JSON block passed verbatim to the Search tool.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class AgentLoopSearch(
+    val tool: String,
+    val params: JsonNode?,
+)
+
+/**
+ * Parsed representation of the JSON payload expected in the `loopConfig` field of an AgentLoop.
+ *
+ * Expected JSON format:
+ * ```json
+ * {
+ *   "search": {
+ *     "tool": "SearchTalents",
+ *     "params": { "endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"] }
+ *   },
+ *   "act": {
+ *     "agentName": "talent-analyzer",
+ *     "promptTemplate": "Analyse this entity: {entityId}"
+ *   }
+ * }
+ * ```
+ *
+ * @param search Configuration for the SEARCH phase (tool name and parameters).
+ * @param act    Configuration for the action to execute per entity.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class AgentLoopPayload(
-    val tool: String,
-    val searchInput: JsonNode,
+    val search: AgentLoopSearch,
     val act: AgentLoopAct,
 )
 
