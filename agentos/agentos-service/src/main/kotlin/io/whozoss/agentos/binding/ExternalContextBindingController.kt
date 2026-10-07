@@ -40,12 +40,12 @@ class ExternalContextBindingController(
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun bind(
         @PathVariable caseId: UUID,
-        @RequestHeader(name = "X-External-Context-Secret", required = false) externalContextSecret: String?,
-        @RequestHeader(name = "X-External-Context-Attempt-Id", required = false) attemptId: String?,
-        @RequestHeader(name = "X-External-Context-Capability-Token", required = false) capabilityToken: String?,
-        @RequestHeader(name = "X-External-Context-Runtime-Id", required = false) runtimeId: String?,
-        @RequestHeader(name = "X-External-Context-Agent-Name", required = false) agentName: String?,
-        @RequestHeader(name = "X-External-Context-Expires-At", required = false) expiresAt: String?,
+        @RequestHeader(name = SECRET_HEADER, required = false) externalContextSecret: String?,
+        @RequestHeader(name = ATTEMPT_ID_HEADER, required = false) attemptId: String?,
+        @RequestHeader(name = CAPABILITY_TOKEN_HEADER, required = false) capabilityToken: String?,
+        @RequestHeader(name = RUNTIME_ID_HEADER, required = false) runtimeId: String?,
+        @RequestHeader(name = AGENT_NAME_HEADER, required = false) agentName: String?,
+        @RequestHeader(name = EXPIRES_AT_HEADER, required = false) expiresAt: String?,
     ) {
         val namespaceId =
             caseService.findById(caseId, false)?.namespaceId
@@ -112,6 +112,23 @@ class ExternalContextBindingController(
                 runtimeId?.takeIf { it.isNotBlank() }?.let { put(ATTRIBUTE_RUNTIME_ID, it) }
                 agentName?.takeIf { it.isNotBlank() }?.let { put(ATTRIBUTE_AGENT_NAME, it) }
             }
+
+        // ---------------------------------------------------------------------
+        // Wire contract
+        //
+        // Declared once here and consumed by both admission paths (this endpoint and
+        // [ExternalContextBindingFilter]), so the two cannot drift apart. The specs
+        // deliberately spell the header names out as literals: they assert the wire
+        // format itself, and would be worthless if they read it from the same constant
+        // as the code under test.
+        // ---------------------------------------------------------------------
+
+        const val SECRET_HEADER = "X-External-Context-Secret"
+        const val ATTEMPT_ID_HEADER = "X-External-Context-Attempt-Id"
+        const val CAPABILITY_TOKEN_HEADER = "X-External-Context-Capability-Token"
+        const val RUNTIME_ID_HEADER = "X-External-Context-Runtime-Id"
+        const val AGENT_NAME_HEADER = "X-External-Context-Agent-Name"
+        const val EXPIRES_AT_HEADER = "X-External-Context-Expires-At"
 
         const val ATTRIBUTE_ATTEMPT_ID = "attemptId"
         const val ATTRIBUTE_CAPABILITY_TOKEN = "capabilityToken"

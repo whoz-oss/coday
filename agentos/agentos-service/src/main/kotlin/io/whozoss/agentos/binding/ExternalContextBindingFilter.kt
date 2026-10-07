@@ -43,18 +43,21 @@ class ExternalContextBindingFilter(
         val registrars = pluginManager.getExtensions(ExternalContextBindingRegistrar::class.java)
         val attributes =
             ExternalContextBindingController.attributes(
-                attemptId = request.getHeader(ATTEMPT_ID_HEADER),
-                capabilityToken = request.getHeader(CAPABILITY_TOKEN_HEADER),
-                runtimeId = request.getHeader(RUNTIME_ID_HEADER),
-                agentName = request.getHeader(AGENT_NAME_HEADER),
+                attemptId = request.getHeader(ExternalContextBindingController.ATTEMPT_ID_HEADER),
+                capabilityToken = request.getHeader(ExternalContextBindingController.CAPABILITY_TOKEN_HEADER),
+                runtimeId = request.getHeader(ExternalContextBindingController.RUNTIME_ID_HEADER),
+                agentName = request.getHeader(ExternalContextBindingController.AGENT_NAME_HEADER),
             )
         if (registrars.isEmpty() || attributes.isEmpty()) {
             filterChain.doFilter(request, response)
             return
         }
 
-        val credential = request.getHeader(SECRET_HEADER)
-        val expiresAt = request.getHeader(EXPIRES_AT_HEADER)?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        val credential = request.getHeader(ExternalContextBindingController.SECRET_HEADER)
+        val expiresAt =
+            request
+                .getHeader(ExternalContextBindingController.EXPIRES_AT_HEADER)
+                ?.let { runCatching { Instant.parse(it) }.getOrNull() }
 
         val wrapped = ContentCachingResponseWrapper(response)
         filterChain.doFilter(request, wrapped)
@@ -85,12 +88,8 @@ class ExternalContextBindingFilter(
     private fun parseUuid(value: String): UUID? = runCatching { UUID.fromString(value) }.getOrNull()
 
     companion object : KLogging() {
+        // Header names live on [ExternalContextBindingController], which owns the wire
+        // contract shared by both admission paths.
         const val CASES_PATH = "/api/cases"
-        const val ATTEMPT_ID_HEADER = "X-External-Context-Attempt-Id"
-        const val CAPABILITY_TOKEN_HEADER = "X-External-Context-Capability-Token"
-        const val RUNTIME_ID_HEADER = "X-External-Context-Runtime-Id"
-        const val AGENT_NAME_HEADER = "X-External-Context-Agent-Name"
-        const val EXPIRES_AT_HEADER = "X-External-Context-Expires-At"
-        const val SECRET_HEADER = "X-External-Context-Secret"
     }
 }
