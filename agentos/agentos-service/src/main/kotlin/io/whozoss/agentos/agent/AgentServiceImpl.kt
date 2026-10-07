@@ -37,6 +37,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.skill.Skill
@@ -385,20 +386,25 @@ class AgentServiceImpl(
                 emptyList()
             }
         val tools =
-            toolResolverService.dedupToolsByName(
-                baseTools +
-                    listOfNotNull(
-                        subCaseManager?.let {
-                            buildDelegationTools(
-                                config = agentConfig,
-                                context = context,
-                                subCaseManager = it,
-                            )
-                        },
-                    ) +
-                    buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools +
-                    skillTools,
+            applyToolGrantPolicies(
+                tools =
+                    toolResolverService.dedupToolsByName(
+                        baseTools +
+                            listOfNotNull(
+                                subCaseManager?.let {
+                                    buildDelegationTools(
+                                        config = agentConfig,
+                                        context = context,
+                                        subCaseManager = it,
+                                    )
+                                },
+                            ) +
+                            buildExchangeTools(agentConfig, context, toolContext) +
+                            queryUserTools +
+                            skillTools,
+                    ),
+                context = toolContext,
+                policies = context.toolGrantPolicies,
             )
 
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
@@ -457,6 +463,37 @@ class AgentServiceImpl(
                     ?.takeIf { g -> g.isNotBlank() }
             }.joinToString("\n\n")
             .takeUnless { it.isBlank() }
+
+    /**
+     * Filters [tools] through the optional SPI [policies] carried by the execution context.
+     *
+     * Neutral pass-through: when [policies] is empty the list is returned unchanged, so a
+     * deployment with no policy registered behaves exactly as before.
+     *
+     * The decision itself belongs to [ToolGrantPolicy.isGranted]: a tool is granted only when
+     * no policy denies it, and a policy that throws denies it. That rule lives in the SDK
+     * rather than here precisely so this call site cannot soften it — a local
+     * `runCatching { … }.getOrElse { Neutral }` would hand the agent the very tools a broken
+     * policy was installed to withhold.
+     */
+    private fun applyToolGrantPolicies(
+        tools: List<StandardTool<*>>,
+        context: ToolContext,
+        policies: List<ToolGrantPolicy>,
+    ): List<StandardTool<*>> {
+        if (policies.isEmpty()) return tools
+        return tools.filter { tool ->
+            ToolGrantPolicy.isGranted(
+                policies = policies,
+                toolName = tool.name,
+                context = context,
+            ) { reason, policy, cause ->
+                // Logged at warn even for an ordinary denial: a tool silently vanishing from a
+                // run is the kind of thing one needs to find in a log six months later.
+                logger.warn(cause) { "[ToolGrantPolicy] ${policy::class.simpleName} denied '${tool.name}': $reason" }
+            }
+        }
+    }
 
     /**
      * Phase 2: instantiate a live [Agent] from a [ResolvedAgentDefinition].
@@ -817,7 +854,7 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
-            timeoutMs = (config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds).toLong() * 1_000L,
+            timeoutMs = agentConfigProperties.delegationTimeoutMinutes.toLong() * 60 * 1_000L,
         )
     }
 

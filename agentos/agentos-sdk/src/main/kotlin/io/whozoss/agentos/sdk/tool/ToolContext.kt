@@ -28,6 +28,11 @@ import java.util.UUID
  * @param credentialProvider Pre-scoped credential supplier for the integration this tool
  *   belongs to. Returns the user's stored credential (OAuth tokens, API keys, etc.) or
  *   null if not yet authenticated. Null when no AuthSetting is bound to the integration.
+ * @param toolRequestId Identifier of the ToolRequestEvent that caused this invocation,
+ *   when available.
+ * @param emitEvent Publishes an additional durable case event into the current agent
+ *   event flow. Available only during a live agent run; preview contexts leave it null,
+ *   so callers must null-check rather than assume an emitter is present.
  */
 data class ToolContext(
     val namespaceId: UUID,
@@ -36,6 +41,6 @@ data class ToolContext(
     val caseEvents: List<CaseEvent>,
     val agentName: String? = null,
     val credentialProvider: CredentialProvider? = null,
-    /** Identifier of the ToolRequestEvent that caused this invocation, when available. */
     val toolRequestId: String? = null,
+    val emitEvent: ((CaseEvent) -> Unit)? = null,
 )
