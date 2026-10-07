@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import mu.KLogging
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
@@ -57,6 +56,9 @@ data class SseHighWaterMark(
  * A missing file starts empty and a corrupt file is logged and starts empty: the
  * high-water mark is an optimisation/deduplication cursor, so losing it is safe (events
  * are simply re-observed and re-deduplicated downstream), never a correctness hazard.
+ *
+ * No secret is stored here, but the file still exposes case and attempt identifiers, so
+ * it is written owner-only through [RestrictedFiles] like the rest of the bridge state.
  *
  * @param file destination file, or `null` for an in-memory store.
  * @param objectMapper the plugin's Jackson mapper.
@@ -175,15 +177,7 @@ class FactorySseHighWaterMarkStore(
                     },
             )
         runCatching {
-            target.parent?.let { Files.createDirectories(it) }
-            val payload = objectMapper.writeValueAsString(snapshot)
-            val temp = target.resolveSibling("${target.fileName}.tmp")
-            Files.writeString(temp, payload)
-            runCatching {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            }.getOrElse {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
-            }
+            RestrictedFiles.writeAtomically(target, objectMapper.writeValueAsString(snapshot))
         }.onFailure { error ->
             logger.error(error) { "SSE high-water marks could not be persisted to $target" }
         }

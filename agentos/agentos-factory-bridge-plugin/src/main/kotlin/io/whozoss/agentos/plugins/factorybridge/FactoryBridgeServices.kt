@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.plugins.factorybridge.persistence.FactoryBridgeStateStore
 import io.whozoss.agentos.plugins.factorybridge.persistence.FactorySseHighWaterMarkStore
+import io.whozoss.agentos.plugins.factorybridge.persistence.FactoryStateEncryptor
 import okhttp3.OkHttpClient
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -41,7 +42,11 @@ data class FactoryBridgeServices(
     companion object {
         fun create(config: FactoryBridgeConfig = FactoryBridgeConfig.fromEnvironment()): FactoryBridgeServices {
             val mapper = jacksonObjectMapper()
-            val store = FactoryBridgeStateStore.open(config.dataDir, mapper)
+            // Resolved from the host's AGENTOS_ENCRYPTION_* configuration so the bridge
+            // state is protected by the same key as the service's own secrets at rest.
+            // Throws on an inconsistent key/salt pair, exactly like the host does.
+            val encryptor = FactoryStateEncryptor.fromEnvironment()
+            val store = FactoryBridgeStateStore.open(config.dataDir, mapper, encryptor = encryptor)
             return FactoryBridgeServices(
                 config = config,
                 objectMapper = mapper,

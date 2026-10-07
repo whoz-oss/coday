@@ -103,6 +103,22 @@ pf4j-spring = { module = "org.pf4j:pf4j-spring", version.ref = "pf4jSpring" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
+# Spring Security Crypto — AES-256-GCM text encryptor (Encryptors.text), used by the
+# service's FieldEncryptor and, compileOnly, by agentos-factory-bridge-plugin.
+#
+# agentos-service does NOT declare it: it arrives transitively through
+# spring-boot-starter-security (-> spring-security-config / -web) with its version imposed
+# by the Spring Boot BOM. Plugins apply no Spring BOM, so they need an explicit version to
+# compile against — hence this entry. It is compileOnly on the plugin side and never
+# bundled: the class actually loaded at runtime is the service's.
+#
+# MUST stay aligned with what Spring Boot (springBoot above) really resolves, because a
+# divergence is SILENT: the plugin compiles against one version and runs against another.
+# Verified for Spring Boot 3.5.9 -> 6.5.7 via:
+#   ./gradlew :agentos-service:dependencyInsight \
+#     --dependency spring-security-crypto --configuration runtimeClasspath
+# Re-run that command and update this value whenever springBoot changes.
+spring-security-crypto = { module = "org.springframework.security:spring-security-crypto", version = "6.5.7" }
 spring-boot-starter-test = { module = "org.springframework.boot:spring-boot-starter-test" }
 spring-security-test = { module = "org.springframework.security:spring-security-test" }
 

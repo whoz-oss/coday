@@ -5,7 +5,8 @@ import io.whozoss.agentos.plugins.factorybridge.FactoryCheckpointRef
 import mu.KLogging
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
+import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.locks.ReentrantLock
@@ -40,6 +41,29 @@ data class FactoryStepResultBindingState(
  * *write-temp-then-rename* sequence, so a crash mid-write can never leave a truncated
  * file behind.
  *
+ * ### Secrets at rest
+ *
+ * [PersistedBinding.capabilityToken] is a bearer token: anyone who can read it can submit
+ * a step result for that attempt until it expires. It is therefore:
+ *
+ * - **encrypted** with [FactoryStateEncryptor] (AES-256-GCM, driven by the host's
+ *   `AGENTOS_ENCRYPTION_*` configuration — the same one `FieldEncryptor` uses service-side);
+ * - written **owner-only** (`600`, in a `700` directory) by [RestrictedFiles];
+ * - **purged** once expired beyond [EXPIRED_RETENTION] — see below.
+ *
+ * A token that fails to decrypt (rotated key, file written while encryption was off) is
+ * dropped rather than resurrected: no capability means no submission, the safe direction.
+ *
+ * ### Expired-binding retention
+ *
+ * The registry deliberately keeps expired bindings so
+ * [io.whozoss.agentos.plugins.factorybridge.FactoryStepResultCapabilityRefresher] can renew
+ * a capability that lapsed mid-attempt. Keeping them *forever* would leave a secret on disk
+ * long after any legitimate use — an abandoned case would retain one indefinitely.
+ * [EXPIRED_RETENTION] bounds that window: a binding expired for longer is dropped at load
+ * and skipped at write. The grace period is generous relative to a renewal, which happens
+ * within an attempt.
+ *
  * ### Fail-closed semantics
  *
  * A missing file (first run) starts empty. A corrupt or unreadable file is logged and
@@ -60,15 +84,26 @@ data class FactoryStepResultBindingState(
  *   any deployment without `AGENTOS_FACTORY_BRIDGE_DATA_DIR`).
  * @param objectMapper the plugin's Jackson mapper, reused so serialization stays
  *   consistent with the rest of the bridge.
+ * @param encryptor protects the capability token at rest; defaults to passthrough so
+ *   in-memory stores and unit tests need no crypto configuration.
+ * @param clock drives the expired-binding purge; injectable for tests.
  */
 class FactoryBridgeStateStore(
     private val file: Path?,
     private val objectMapper: ObjectMapper,
+    private val encryptor: FactoryStateEncryptor = FactoryStateEncryptor.disabled(),
+    private val clock: Clock = Clock.systemUTC(),
 ) {
     companion object : KLogging() {
         const val DEFAULT_DATA_DIR = "data/factory-bridge"
         const val STATE_FILE = "bridge-state.json"
         const val HIGH_WATER_MARK_FILE = "sse-high-water-marks.json"
+
+        /**
+         * How long an expired binding is still persisted so a lapsed capability can be
+         * renewed. Past this, the secret is dropped from disk.
+         */
+        val EXPIRED_RETENTION: Duration = Duration.ofHours(24)
 
         /**
          * Opens a store rooted at [dataDir]. A blank/null directory yields an in-memory
@@ -78,10 +113,14 @@ class FactoryBridgeStateStore(
             dataDir: String?,
             objectMapper: ObjectMapper,
             fileName: String = STATE_FILE,
+            encryptor: FactoryStateEncryptor = FactoryStateEncryptor.disabled(),
+            clock: Clock = Clock.systemUTC(),
         ): FactoryBridgeStateStore =
             FactoryBridgeStateStore(
                 file = dataDir?.takeIf { it.isNotBlank() }?.let { Path.of(it).resolve(fileName) },
                 objectMapper = objectMapper,
+                encryptor = encryptor,
+                clock = clock,
             )
     }
 
@@ -173,7 +212,7 @@ class FactoryBridgeStateStore(
                 checkpoints.clear()
                 stepQuestions.clear()
                 persisted.bindings.forEach { binding ->
-                    toState(binding)?.let { bindings[it.caseId] = it }
+                    toState(binding)?.takeUnless { purgeable(it) }?.let { bindings[it.caseId] = it }
                 }
                 persisted.checkpoints.forEach { checkpoint ->
                     toCheckpoint(checkpoint)?.let { checkpoints[it.first] = it.second }
@@ -192,24 +231,23 @@ class FactoryBridgeStateStore(
         }
     }
 
+    /**
+     * `true` when the binding has been expired longer than [EXPIRED_RETENTION] and its
+     * secret no longer needs to be on disk.
+     */
+    private fun purgeable(state: FactoryStepResultBindingState): Boolean =
+        state.expiresAt.plus(EXPIRED_RETENTION).isBefore(clock.instant())
+
     private fun persist() {
         val target = file ?: return
         val snapshot =
             PersistedBridgeState(
-                bindings = bindings.values.map { toPersisted(it) },
+                bindings = bindings.values.filterNot { purgeable(it) }.map { toPersisted(it) },
                 checkpoints = checkpoints.map { (caseId, ref) -> toPersisted(caseId, ref) },
                 stepQuestions = stepQuestions.map { (questionId, ref) -> toPersisted(questionId, ref) },
             )
         runCatching {
-            target.parent?.let { Files.createDirectories(it) }
-            val payload = objectMapper.writeValueAsString(snapshot)
-            val temp = target.resolveSibling("${target.fileName}.tmp")
-            Files.writeString(temp, payload)
-            runCatching {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-            }.getOrElse {
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
-            }
+            RestrictedFiles.writeAtomically(target, objectMapper.writeValueAsString(snapshot))
         }.onFailure { error ->
             logger.error(error) { "Factory bridge state could not be persisted to $target" }
         }
@@ -222,20 +260,27 @@ class FactoryBridgeStateStore(
             agentName = state.agentName,
             attemptId = state.attemptId,
             runtimeId = state.runtimeId,
-            capabilityToken = state.capabilityToken,
+            capabilityToken = encryptor.encrypt(state.capabilityToken),
             expiresAtEpochMilli = state.expiresAt.toEpochMilli(),
             leased = state.leased,
         )
 
     private fun toState(binding: PersistedBinding): FactoryStepResultBindingState? =
         runCatching {
+            // A token that cannot be decrypted is dropped, not resurrected: no capability
+            // means no submission, and the Factory can reissue one.
+            val token =
+                encryptor.decrypt(binding.capabilityToken) ?: run {
+                    logger.warn { "Dropping Factory binding '${binding.caseId}': capability token unreadable" }
+                    return@runCatching null
+                }
             FactoryStepResultBindingState(
                 caseId = UUID.fromString(binding.caseId),
                 namespaceId = UUID.fromString(binding.namespaceId),
                 agentName = binding.agentName,
                 attemptId = binding.attemptId,
                 runtimeId = binding.runtimeId,
-                capabilityToken = binding.capabilityToken,
+                capabilityToken = token,
                 expiresAt = Instant.ofEpochMilli(binding.expiresAtEpochMilli),
                 leased = binding.leased,
             )
