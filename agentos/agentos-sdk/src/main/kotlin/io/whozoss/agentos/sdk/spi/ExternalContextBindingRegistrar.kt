@@ -29,8 +29,8 @@ import java.util.UUID
  *
  * ### Exception handling
  *
- * Unexpected exceptions thrown by a registrar are caught and logged by the caller and
- * treated as a rejection, so a faulty hook can never open a binding unintentionally.
+ * Use [registerFirst] to consult registrars: one that throws is treated as a rejection,
+ * so a faulty hook can never open a binding unintentionally.
  */
 interface ExternalContextBindingRegistrar : ExtensionPoint {
     /**
@@ -41,8 +41,8 @@ interface ExternalContextBindingRegistrar : ExtensionPoint {
      * @param credential the caller-supplied shared credential (for example a shared
      *   secret header); `null` when the transport carried none. The registrar is
      *   responsible for validating it.
-     * @param attributes opaque binding attributes extracted from the transport (for
-     *   example the `X-Factory-*` headers), keyed by a registrar-understood name.
+     * @param attributes opaque binding attributes extracted from the transport, keyed by
+     *   a registrar-understood name. The host neither defines nor interprets these keys.
      * @param expiresAt the binding expiry declared by the caller, or `null` when the
      *   transport carried none. The registrar may apply its own default.
      * @return `true` when the binding was accepted and durably recorded, `false`
@@ -55,4 +55,43 @@ interface ExternalContextBindingRegistrar : ExtensionPoint {
         attributes: Map<String, String>,
         expiresAt: Instant?,
     ): Boolean = false
+
+    companion object {
+        /**
+         * Offer a binding to each registrar in turn and return whether one accepted it.
+         *
+         * Lives in the SDK so the fail-closed rule is applied once, here, rather than
+         * re-implemented at each call site.
+         *
+         * The first registrar to return `true` wins and the rest are not consulted — a
+         * binding belongs to exactly one owner, and offering it twice would risk two
+         * plugins recording state for the same case. A registrar that throws is treated
+         * as a rejection and evaluation continues with the next one: one faulty plugin
+         * must not prevent a legitimate owner from claiming its binding.
+         *
+         * Order is therefore significant. When several registrars are installed, it is
+         * the discovery order (PF4J extension order) that decides who is offered the
+         * binding first.
+         *
+         * @param onError notified when a registrar throws; must never throw. Diagnostics
+         *   must never include [credential] or attribute values.
+         */
+        fun registerFirst(
+            registrars: Iterable<ExternalContextBindingRegistrar>,
+            caseId: UUID,
+            namespaceId: UUID,
+            credential: String?,
+            attributes: Map<String, String>,
+            expiresAt: Instant?,
+            onError: (registrar: ExternalContextBindingRegistrar, cause: Throwable) -> Unit = { _, _ -> },
+        ): Boolean =
+            registrars.any { registrar ->
+                try {
+                    registrar.register(caseId, namespaceId, credential, attributes, expiresAt)
+                } catch (e: Exception) {
+                    onError(registrar, e)
+                    false
+                }
+            }
+    }
 }
