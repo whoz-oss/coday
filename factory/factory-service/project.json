@@ -1,8 +1,8 @@
 {
   "name": "factory-service",
-  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "factory-service/src",
+  "sourceRoot": "factory/factory-service/src",
   "targets": {
     "build": {
       "executor": "nx:run-commands",
@@ -11,7 +11,7 @@
       "dependsOn": [{ "target": "build", "projects": ["factory-sdk", "factory-verification-core"] }],
       "options": {
         "command": "./gradlew build",
-        "cwd": "factory-service"
+        "cwd": "factory/factory-service"
       }
     },
     "test": {
@@ -20,7 +20,7 @@
       "dependsOn": [{ "target": "test", "projects": ["factory-sdk", "factory-verification-core"] }],
       "options": {
         "command": "./gradlew test",
-        "cwd": "factory-service"
+        "cwd": "factory/factory-service"
       }
     },
     "bootRun": {
@@ -28,7 +28,7 @@
       "cache": false,
       "options": {
         "command": "./gradlew bootRun",
-        "cwd": "factory-service"
+        "cwd": "factory/factory-service"
       }
     },
     "bootJar": {
@@ -37,16 +37,16 @@
       "outputs": ["{projectRoot}/build/libs"],
       "options": {
         "command": "./gradlew bootJar",
-        "cwd": "factory-service"
+        "cwd": "factory/factory-service"
       }
     },
     "generate-openapi-spec": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": ["{workspaceRoot}/factory-service/openapi/factory-openapi.yaml"],
+      "outputs": ["{workspaceRoot}/factory/factory-service/openapi/factory-openapi.yaml"],
       "options": {
         "command": "./gradlew generateOpenApiDocs --no-configuration-cache",
-        "cwd": "factory-service"
+        "cwd": "factory/factory-service"
       }
     },
     "check-openapi-spec": {
@@ -54,11 +54,11 @@
       "cache": false,
       "inputs": [
         "{projectRoot}/src/main/kotlin/**/*.kt",
-        "{workspaceRoot}/factory-service/openapi/factory-openapi.yaml"
+        "{workspaceRoot}/factory/factory-service/openapi/factory-openapi.yaml"
       ],
       "options": {
         "command": "./check-openapi-spec.sh",
-        "cwd": "factory-service"
+        "cwd": "factory/factory-service"
       }
     }
   },
