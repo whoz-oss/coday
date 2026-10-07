@@ -63,6 +63,7 @@ class WorkspaceControllersMvcSpec : StringSpec() {
     @MockkBean(relaxed = true) lateinit var bindings: CaseResourceBindingService
     @MockkBean(relaxed = true) lateinit var storage: ExchangeStorageService
     @MockkBean(relaxed = true) lateinit var lifecycle: GitWorkspaceLifecycleService
+    @MockkBean(relaxed = true) lateinit var diffs: ExchangeGitDiff
     @MockkBean(relaxed = true) lateinit var associations: GitRepositoryAssociationService
     @MockkBean(relaxed = true) lateinit var integrationConfigs: IntegrationConfigService
     @MockkBean(relaxed = true) lateinit var checkoutProvisioner: RepositoryCheckoutProvisioner
@@ -127,6 +128,15 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
         }
 
+        "a caller without case READ cannot inspect workspace changes or diff" {
+            val caseId = UUID.randomUUID()
+            listOf("workspace/changes", "workspace/diff?path=secret.txt").forEach { suffix ->
+                mockMvc.perform(get("/api/cases/$caseId/$suffix"))
+                    .andExpect(status().isForbidden)
+            }
+            verify(exactly = 0) { cases.findByIds(listOf(caseId), any()) }
+        }
+
         "a caller without namespace READ cannot inspect Git settings or workspace inventory" {
             val namespaceId = UUID.randomUUID()
             listOf("git", "workspaces").forEach { suffix ->
@@ -180,6 +190,24 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             verify(exactly = 0) { cases.findByIds(listOf(hidden.id), any()) }
         }
 
+        "the changes of a non-Git case report an unequipped workspace" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.READ)
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/changes"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(false))
+        }
+
+        "requesting a diff for a non-Git case returns not found" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.READ)
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/diff").param("path", "README.md"))
+                .andExpect(status().isNotFound)
+        }
+
         "a root case missing from the store leaves the other workspaces of the namespace listed" {
             val namespaceId = UUID.randomUUID()
             val listed = Case(namespaceId = namespaceId)
@@ -212,6 +240,9 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 mockMvc.perform(get("/api/cases/${child.id}/files/$suffix")).andExpect(status().isNotFound)
             }
             mockMvc.perform(get("/api/cases/${child.id}/workspace")).andExpect(status().isNotFound)
+            listOf("workspace/changes", "workspace/diff?path=private.txt").forEach { suffix ->
+                mockMvc.perform(get("/api/cases/${child.id}/$suffix")).andExpect(status().isForbidden)
+            }
             mockMvc.perform(delete("/api/cases/${child.id}/files").param("path", "private.txt"))
                 .andExpect(status().isForbidden)
             mockMvc.perform(multipart("/api/cases/${child.id}/files")
@@ -322,6 +353,54 @@ class WorkspaceControllersMvcSpec : StringSpec() {
                 .andExpect(status().isOk)
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.associated").value(false))
+        }
+
+        "a PREPARING worktree returns 409 on workspace/diff" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            val binding = CaseResourceBinding(
+                rootCaseId = case.id,
+                namespaceId = case.namespaceId,
+                integrationConfigId = UUID.randomUUID(),
+                status = CaseResourceStatus.PREPARING,
+            )
+            stubCase(case, binding)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/diff").param("path", "README.md"))
+                .andExpect(status().isConflict)
+        }
+
+        "a PREPARING worktree returns 200 on workspace/changes with equipped=true and status" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            val binding = CaseResourceBinding(
+                rootCaseId = case.id,
+                namespaceId = case.namespaceId,
+                integrationConfigId = UUID.randomUUID(),
+                status = CaseResourceStatus.PREPARING,
+            )
+            stubCase(case, binding)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(get("/api/cases/${case.id}/workspace/changes"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(true))
+                .andExpect(jsonPath("$.status").value("PREPARING"))
+            verify(exactly = 0) { diffs.branch(any()) }
+            verify(exactly = 0) { diffs.changes(any()) }
+        }
+
+        "refreshing a workspace-less case is a no-op that still returns the unequipped projection" {
+            val case = Case(namespaceId = UUID.randomUUID())
+            stubCase(case)
+            allow(EntityType.CASE, case.id, Action.WRITE)
+            allow(EntityType.CASE, case.id, Action.READ)
+
+            mockMvc.perform(post("/api/cases/${case.id}/workspace/refresh"))
+                .andExpect(status().isOk)
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.equipped").value(false))
+                .andExpect(jsonPath("$.branchName").doesNotExist())
         }
     }
 }

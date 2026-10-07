@@ -1,3 +1,25 @@
+## 3.27.0 (2026-10-07)
+
+### 🚀 Features
+
+- wz-35270 - batch translate API ([#1422](https://github.com/whoz-oss/coday/pull/1422))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.26.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** inspect workspace changes and participating agents ([#1370](https://github.com/whoz-oss/coday/pull/1370))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
 ## 3.25.0 (2026-10-06)
 
 ### 🚀 Features

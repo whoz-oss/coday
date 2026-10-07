@@ -1432,6 +1432,49 @@ paths:
           description: OK
       tags:
       - case-workspace-controller
+  /api/cases/{caseId}/workspace/changes:
+    get:
+      operationId: changesCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeEnvironment"
+          description: OK
+      tags:
+      - case-workspace-controller
+  /api/cases/{caseId}/workspace/diff:
+    get:
+      operationId: diffCaseWorkspace
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: query
+        name: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExchangeFileDiff"
+          description: OK
+      tags:
+      - case-workspace-controller
   /api/cases/{caseId}/workspace/refresh:
     post:
       operationId: refreshCaseWorkspace
@@ -2758,6 +2801,41 @@ paths:
                   $ref: "#/components/schemas/Prompt"
           description: OK
       summary: List Prompts at an exact scope level
+      tags:
+      - prompt-controller
+  /api/prompts/translations/{languageCode}:
+    post:
+      description: "Translates each prompt in `ids` into `languageCode` using the\
+        \ same caching and LLM-fallback semantics as `POST /{id}/translations/{languageCode}`.\
+        \ The response list preserves the order of the input `ids`. Prompts for which\
+        \ the caller lacks READ permission are silently omitted from the result. For\
+        \ namespace-scoped prompts the namespace is inferred from each prompt itself.\
+        \ For platform-scoped prompts (namespaceId IS NULL on the prompt), at least\
+        \ one of `namespaceId` / `namespaceExternalId` is required in the request\
+        \ body."
+      operationId: translateBatchPrompt
+      parameters:
+      - in: path
+        name: languageCode
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromptBatchTranslateRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PromptBatchTranslation"
+          description: OK
+      summary: Batch-translate a list of prompts into a target language
       tags:
       - prompt-controller
   /api/prompts/{id}:
@@ -4516,6 +4594,32 @@ components:
       required:
       - message
       - success
+    ExchangeDiffFile:
+      type: object
+      properties:
+        additions:
+          type: integer
+          format: int32
+        deletions:
+          type: integer
+          format: int32
+        path:
+          type: string
+        status:
+          type: string
+          enum:
+          - ADDED
+          - MODIFIED
+          - DELETED
+          - TYPE_CHANGED
+          - CONFLICTED
+          - UNTRACKED
+        untracked:
+          type: boolean
+      required:
+      - path
+      - status
+      - untracked
     ExchangeDirectoryEntry:
       type: object
       description: A file or sub-directory at one level of an exchange scope.
@@ -4589,6 +4693,25 @@ components:
       - pageSize
       - path
       - totalEntries
+    ExchangeEnvironment:
+      type: object
+      properties:
+        branch:
+          type: string
+        changes:
+          $ref: "#/components/schemas/ExchangeGitChanges"
+        equipped:
+          type: boolean
+        error:
+          type: string
+        git:
+          $ref: "#/components/schemas/GitWorkspaceSummary"
+        path:
+          type: string
+        status:
+          type: string
+      required:
+      - equipped
     ExchangeFileContent:
       type: object
       description: Text content and metadata of a single exchange file.
@@ -4609,6 +4732,15 @@ components:
       required:
       - content
       - size
+    ExchangeFileDiff:
+      type: object
+      properties:
+        message:
+          type: string
+        patch:
+          type: string
+      required:
+      - patch
     ExchangeFileEntry:
       type: object
       description: Metadata for a single file in an exchange scope.
@@ -4646,6 +4778,26 @@ components:
       - path
       - scope
       - size
+    ExchangeGitChanges:
+      type: object
+      properties:
+        additions:
+          type: integer
+          format: int32
+        base:
+          type: string
+        deletions:
+          type: integer
+          format: int32
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExchangeDiffFile"
+      required:
+      - additions
+      - base
+      - deletions
+      - files
     ExchangeManifest:
       type: object
       description: Files in an exchange scope plus the caller's capability.
@@ -5474,6 +5626,48 @@ components:
       - name
       - parameters
       - sourceLanguage
+    PromptBatchTranslateRequest:
+      type: object
+      properties:
+        ids:
+          type: array
+          description: IDs of the prompts to translate. Order is preserved in the
+            response.
+          items:
+            type: string
+            format: uuid
+          minItems: 1
+          minLength: 1
+        namespaceExternalId:
+          type: string
+          description: Namespace external ID for AI model resolution (resolved server-side).
+            Required only when the batch contains platform-scoped prompts. Mutually
+            exclusive with namespaceId.
+        namespaceId:
+          type: string
+          format: uuid
+          description: Namespace UUID for AI model resolution. Required only when
+            the batch contains platform-scoped prompts. Mutually exclusive with namespaceExternalId.
+      required:
+      - ids
+    PromptBatchTranslation:
+      type: object
+      properties:
+        content:
+          type: array
+          description: Translated content list. Same indices as the source content.
+          items:
+            type: string
+        id:
+          type: string
+          format: uuid
+          description: ID of the prompt.
+        title:
+          type: string
+          description: Translated display label. Null when the prompt has no title.
+      required:
+      - content
+      - id
     PromptEffectiveRequest:
       type: object
       properties:
