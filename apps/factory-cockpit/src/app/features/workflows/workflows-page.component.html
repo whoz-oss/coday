@@ -1,0 +1,115 @@
+<div class="page">
+  <header class="page-head">
+    <div class="titles">
+      <h1>Workflows</h1>
+      <p class="sf-muted">Définitions de workflow enregistrées et leurs étapes gouvernées.</p>
+    </div>
+    <button mat-stroked-button class="sf-secondary" (click)="load()" [disabled]="loading()">
+      <mat-icon>refresh</mat-icon>
+      Rafraîchir
+    </button>
+  </header>
+
+  @if (error(); as message) {
+    <div class="banner banner--warn" role="alert" data-workflow-error="true">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="state" data-workflow-loading="true">
+      <mat-progress-spinner diameter="32" mode="indeterminate" />
+      <span class="sf-muted">Chargement des définitions…</span>
+    </div>
+  } @else if (definitions().length === 0) {
+    <div class="state sf-panel" data-workflow-empty="true">
+      <mat-icon aria-hidden="true">inventory_2</mat-icon>
+      <p class="sf-muted">Aucune définition de workflow enregistrée.</p>
+    </div>
+  } @else {
+    <div class="grid" data-workflow-list="true">
+      @for (definition of definitions(); track definitionKey(definition)) {
+        <mat-card
+          class="wf-card"
+          [class.wf-card--selected]="isSelected(definition)"
+          [attr.data-workflow-card]="definitionKey(definition)"
+        >
+          <button
+            type="button"
+            class="wf-card__head"
+            (click)="selectDefinition(definition)"
+            [attr.aria-expanded]="isSelected(definition)"
+            [attr.data-workflow-card-toggle]="definitionKey(definition)"
+          >
+            <div class="wf-card__titles">
+              <h2 class="wf-card__title" data-workflow-title>{{ definitionTitle(definition) }}</h2>
+              <p class="wf-card__subtitle sf-mono" data-workflow-subtitle>
+                {{ definition.workflowType }}&#64;{{ definition.version }}
+              </p>
+            </div>
+            <span class="wf-card__hash sf-mono" data-workflow-hash [title]="definition.definitionHash ?? ''">
+              {{ shortHash(definition) }}
+            </span>
+            <mat-icon class="wf-card__chevron" aria-hidden="true">
+              {{ isSelected(definition) ? 'expand_less' : 'expand_more' }}
+            </mat-icon>
+          </button>
+
+          @if (isSelected(definition)) {
+            <div class="wf-card__detail" data-workflow-detail>
+              @if (detailLoadingMap()[definitionKey(definition)]) {
+                <div class="state state--inline" data-workflow-detail-loading="true">
+                  <mat-progress-spinner diameter="22" mode="indeterminate" />
+                  <span class="sf-muted">Chargement de la définition…</span>
+                </div>
+              } @else if (detailErrorMap()[definitionKey(definition)]; as detailError) {
+                <div class="banner banner--warn" role="alert" data-workflow-detail-error="true">
+                  <mat-icon aria-hidden="true">error_outline</mat-icon>
+                  <span>{{ detailError }}</span>
+                </div>
+              } @else if (detailsMap()[definitionKey(definition)]; as full) {
+                @if (stepsOf(full).length === 0) {
+                  <p class="sf-muted empty-steps" data-workflow-no-steps="true">Aucune étape déclarée.</p>
+                } @else {
+                  <ul class="step-list" data-workflow-steps>
+                    @for (step of stepsOf(full); track step.id) {
+                      <li class="step" data-workflow-step [attr.data-step-id]="step.id">
+                        <div class="step__head">
+                          <span class="step__id sf-mono" data-step-id>{{ step.id }}</span>
+                          <span class="step__name" data-step-name>{{ step.name }}</span>
+                        </div>
+                        @if (step.responsibility?.kind || step.responsibility?.name) {
+                          <span class="step__resp" data-step-responsibility>
+                            @if (step.responsibility?.kind) {
+                              <span class="step__kind" data-step-responsibility-kind>{{
+                                step.responsibility?.kind
+                              }}</span>
+                            }
+                            @if (step.responsibility?.name) {
+                              <span class="step__resp-name" data-step-responsibility-name>{{
+                                step.responsibility?.name
+                              }}</span>
+                            }
+                          </span>
+                        }
+                        @if (step.dependsOn?.length) {
+                          <span class="step__deps" data-step-depends>
+                            <span class="sf-overline">dépend de</span>
+                            @for (dep of step.dependsOn; track dep) {
+                              <span class="dep sf-mono" data-step-depend>{{ dep }}</span>
+                            }
+                          </span>
+                        }
+                      </li>
+                    }
+                  </ul>
+                }
+              }
+            </div>
+          }
+        </mat-card>
+      }
+    </div>
+  }
+</div>

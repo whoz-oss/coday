@@ -1,0 +1,197 @@
+@if (hasBlockers()) {
+  <section class="blockers" aria-label="Blocages du workflow">
+    @for (blocker of blockers(); track $index) {
+      <div class="blocker" [class]="'blocker--' + blockerKind(blocker)">
+        <mat-icon aria-hidden="true">{{ blockerIcon(blocker) }}</mat-icon>
+        <div class="blocker-body">
+          <span class="blocker-label">{{ blocker.label }}</span>
+          @if (blocker.stepId) {
+            <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+          }
+        </div>
+        <span class="blocker-code sf-mono">{{ blocker.code }}</span>
+      </div>
+    }
+  </section>
+}
+
+@if (hasActions()) {
+  <section class="actions sf-panel" aria-label="Actions autorisées">
+    <header class="actions-head">
+      <mat-icon aria-hidden="true">bolt</mat-icon>
+      <h2>Actions autorisées</h2>
+    </header>
+
+    <div class="actions-body">
+      @if (agentQuestionsError(); as error) {
+        <div class="action-card agent-question">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">warning</mat-icon>
+            <span>Question disponible dans AgentOS</span>
+          </div>
+          <p class="action-feedback" role="alert">{{ error.message }}</p>
+          @if (error.caseId) {
+            <div class="action-row">
+              <a mat-stroked-button [href]="caseLink(error.caseId, error.namespaceId)">Ouvrir la Case</a>
+            </div>
+          }
+        </div>
+      }
+
+      @for (question of agentQuestions(); track question.questionEventId) {
+        <div class="action-card agent-question">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">question_answer</mat-icon>
+            <span>Question de l'agent</span>
+          </div>
+          @if (question.question) {
+            <p class="action-prompt">{{ question.question }}</p>
+          }
+          <div class="action-row">
+            <a mat-stroked-button [href]="caseLink(question.caseId, question.case?.namespaceId)">Ouvrir la Case</a>
+          </div>
+          @if (!supportedQuestion(question)) {
+            <p class="action-feedback" role="alert">Type de question non pris en charge.</p>
+          } @else {
+            @if (question.questionType === 'SINGLE_CHOICE') {
+              <div class="action-row">
+                @for (option of question.options ?? []; track option) {
+                  <button
+                    mat-stroked-button
+                    [disabled]="answeringQuestionId() !== null"
+                    (click)="submitAgentQuestion(question, option)"
+                  >
+                    {{ option }}
+                  </button>
+                }
+              </div>
+            } @else {
+              <input
+                class="reply-text"
+                type="text"
+                [attr.list]="question.questionType === 'OPEN_CHOICE' ? 'options-' + question.questionEventId : null"
+                placeholder="Votre réponse"
+                [disabled]="answeringQuestionId() !== null"
+                [value]="draftFor(question.questionEventId)"
+                (input)="setDraft(question.questionEventId, $any($event.target).value)"
+              />
+              @if (question.questionType === 'OPEN_CHOICE' && question.options?.length) {
+                <datalist [id]="'options-' + question.questionEventId">
+                  @for (option of question.options ?? []; track option) {
+                    <option [value]="option"></option>
+                  }
+                </datalist>
+              }
+              <div class="action-row">
+                <button
+                  mat-flat-button
+                  class="sf-primary"
+                  [disabled]="answeringQuestionId() !== null || !draftFor(question.questionEventId).trim()"
+                  (click)="submitAgentQuestion(question)"
+                >
+                  Répondre
+                </button>
+              </div>
+            }
+          }
+          @if (questionFeedback(); as feedback) {
+            @if (feedback.interactionId === question.questionEventId) {
+              <p class="action-feedback" [class.action-feedback--conflict]="feedback.kind === 'conflict'" role="alert">
+                {{ feedback.message }}
+              </p>
+            }
+          }
+        </div>
+      }
+
+      @for (action of replyActions(); track $index) {
+        <div class="action-card">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">question_answer</mat-icon>
+            <span>{{ action.label ?? 'Répondre à une interaction' }}</span>
+          </div>
+          @if (interactionFor(action); as interaction) {
+            @if (interaction.prompt) {
+              <p class="action-prompt sf-muted">{{ interaction.prompt }}</p>
+            }
+          }
+          <div class="action-row">
+            @for (choice of interactionFor(action)?.actions ?? []; track choice.id) {
+              <button
+                mat-stroked-button
+                [class.sf-primary]="choice.id === 'approve'"
+                [class.sf-danger]="choice.id !== 'approve'"
+                (click)="submitReply(action, choice.id)"
+              >
+                {{ choice.label }}
+              </button>
+            }
+          </div>
+          @if ((interactionFor(action)?.actions?.length ?? 0) > 0) {
+            <input
+              class="reply-text"
+              type="text"
+              placeholder="Commentaire (optionnel)"
+              [value]="draftFor(action.interactionId ?? '')"
+              (input)="setDraft(action.interactionId ?? '', $any($event.target).value)"
+            />
+          }
+        </div>
+      }
+
+      @for (action of retryActions(); track $index) {
+        <div class="action-card">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">refresh</mat-icon>
+            <span>{{ action.label ?? 'Relancer une étape bloquée' }}</span>
+          </div>
+          @if (action.stepId) {
+            <span class="action-meta sf-mono">étape {{ action.stepId }}</span>
+          }
+          <div class="action-row">
+            <button mat-flat-button class="sf-primary" (click)="requestRetry(action)">Relancer l'étape</button>
+          </div>
+        </div>
+      }
+
+      @for (action of cancelActions(); track $index) {
+        <div class="action-card">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">cancel</mat-icon>
+            <span>{{ action.label ?? 'Annuler la tentative' }}</span>
+          </div>
+          @if (action.attemptId) {
+            <span class="action-meta sf-mono">attempt {{ action.attemptId }}</span>
+          }
+          <div class="action-row">
+            <button mat-stroked-button class="sf-danger" (click)="requestCancel(action)">Annuler la tentative</button>
+          </div>
+        </div>
+      }
+
+      @for (action of continueCostActions(); track $index) {
+        <div class="action-card">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">play_circle</mat-icon>
+            <span>{{ action.label ?? 'Reprendre le run' }}</span>
+          </div>
+          <div class="action-row">
+            <button mat-flat-button class="sf-primary" (click)="triggerContinueCost()">Reprendre</button>
+          </div>
+        </div>
+      }
+
+      @for (action of stopCostActions(); track $index) {
+        <div class="action-card">
+          <div class="action-title">
+            <mat-icon aria-hidden="true">stop_circle</mat-icon>
+            <span>{{ action.label ?? 'Arrêter le run' }}</span>
+          </div>
+          <div class="action-row">
+            <button mat-stroked-button class="sf-danger" (click)="triggerStopCost()">Arrêter</button>
+          </div>
+        </div>
+      }
+    </div>
+  </section>
+}

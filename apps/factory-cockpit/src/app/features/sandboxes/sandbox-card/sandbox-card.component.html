@@ -1,0 +1,101 @@
+@let s = sandbox();
+<mat-card
+  appearance="outlined"
+  class="card"
+  [class.card--working]="s.status === 'working'"
+  [class.card--destroyed]="s.status === 'destroyed'"
+>
+  <!-- En-tête : nom, statut, type de workflow -->
+  <header class="head">
+    <h3 class="name">
+      @if (s.run) {
+        <a [routerLink]="['/sessions', s.run.id]">{{ s.name }}</a>
+      } @else {
+        {{ s.name }}
+      }
+    </h3>
+
+    @switch (s.status) {
+      @case ('working') {
+        <sf-status-chip tone="blue" icon="progress_activity" spin>au travail</sf-status-chip>
+      }
+      @case ('idle') {
+        <sf-status-chip tone="neutral" icon="pause">en attente</sf-status-chip>
+      }
+      @case ('destroyed') {
+        <sf-status-chip tone="neutral" dot>détruite</sf-status-chip>
+      }
+    }
+
+    <span class="sf-spacer"></span>
+    @if (s.workflowType) {
+      <sf-status-chip tone="cyan" icon="polyline">{{ s.workflowType }}</sf-status-chip>
+    }
+  </header>
+
+  <!-- Méta : projet › branche · ticket + liens services -->
+  <div class="meta">
+    <mat-icon class="branch-icon" aria-hidden="true">account_tree</mat-icon>
+    <span class="sf-workflow">{{ s.project }}</span>
+    @if (s.branch) {
+      <span>›</span><span class="sf-workflow">{{ s.branch }}</span>
+    }
+    @if (s.ticket) {
+      <span>·</span>
+      <span
+        >ticket <span class="sf-workflow">{{ s.ticket }}</span></span
+      >
+    }
+    <span class="sf-spacer"></span>
+    <a class="service-link" href="#" (click)="$event.preventDefault()"><span class="dot"></span>Coday · Archay</a>
+    @if (s.run) {
+      <a class="service-link" [routerLink]="['/sessions', s.run.id]"><span class="dot"></span>Trace factory</a>
+    }
+  </div>
+
+  <!-- Run en cours -->
+  @if (s.run; as run) {
+    <section class="run" aria-label="Run en cours">
+      <div class="run-head">
+        <a class="sf-workflow" [routerLink]="['/sessions', run.id]">{{ run.workflow || run.id }}</a>
+        <code class="sf-id" [title]="'Workflow ID: ' + run.id">{{ run.id }}</code>
+        @if (run.status === 'running') {
+          <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>
+            en cours{{ run.currentPhase ? ' · ' + run.currentPhase : '' }}
+          </sf-status-chip>
+        }
+        <span class="sf-spacer"></span>
+        <sf-metric icon="paid" label="Coût du run" [unknownCostCount]="run.unknownCostCount ?? 0">{{
+          run.costUsd | usd: 4 : run.unknownCostCount
+        }}</sf-metric>
+        <sf-metric icon="timer" label="Durée">{{ run.durationSec | duration }}</sf-metric>
+        <sf-metric icon="link" label="Tokens">{{ run.tokens | tokens }}</sf-metric>
+      </div>
+      <p class="goal">{{ run.goal }}</p>
+      <sf-phase-bar [phases]="run.phases" />
+    </section>
+  } @else if (s.status === 'destroyed') {
+    <p class="final-cost">
+      Coût final · workflows <b>{{ s.finalCostUsd | usd }}</b>
+    </p>
+  }
+
+  <!-- Actions -->
+  @if (s.status !== 'destroyed') {
+    <footer class="actions">
+      <button mat-flat-button class="sf-primary" (click)="action.emit('ask')">Demander à Archay…</button>
+      <button mat-stroked-button class="sf-secondary" (click)="action.emit('workflow')">Lancer un workflow…</button>
+      @if (canStop) {
+        <button mat-stroked-button class="sf-secondary" (click)="action.emit('stop')">Arrêter</button>
+      }
+      <button mat-button class="sf-ghost" (click)="action.emit('conversation')">Conversation</button>
+      <button mat-button class="sf-ghost" (click)="action.emit('log')">Log</button>
+      <button mat-button class="sf-ghost" (click)="action.emit('commits')">Récupérer les commits</button>
+      <button mat-stroked-button class="sf-danger" (click)="action.emit('remove')">Supprimer</button>
+    </footer>
+  } @else {
+    <footer class="actions">
+      <button mat-stroked-button class="sf-secondary" (click)="action.emit('restore')">Restaurer</button>
+    </footer>
+  }
+</mat-card>
