@@ -108,6 +108,18 @@ class BridgeRecoveryWorker(
 
     private fun recoverAttempt(candidate: ScopedDurableAgentAttempt): Outcome {
         val attempt = candidate.attempt
+        // Guard: caseIds created by legacy versions of the service (e.g. Node.js)
+        // may not be valid UUIDs (e.g. "case:wf-179"). AgentOS endpoints use
+        // @PathVariable caseId: UUID and will reject non-UUID values with a
+        // MethodArgumentTypeMismatchException. Skip these attempts gracefully
+        // instead of crashing the whole recovery sweep.
+        if (!isValidUuid(attempt.caseId)) {
+            logger.warn {
+                "Skipping recovery of attempt '${attempt.attemptId}': " +
+                    "caseId '${attempt.caseId}' is not a valid UUID (legacy record)"
+            }
+            return Outcome.SKIPPED
+        }
         val snapshot = runCatching { adapter.reconcile(attempt.caseId) }.getOrNull() ?: return Outcome.SKIPPED
         return when (snapshot) {
             is AgentOsExecutionVerdict.Succeeded,
@@ -364,5 +376,17 @@ class BridgeRecoveryWorker(
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
         const val DEFAULT_OBSERVATION_TIMEOUT_MS = 600_000L
         const val DEFAULT_LEASE_TTL_MS = 3_600_000L
+
+        /**
+         * Returns true when [value] is a syntactically valid UUID. Used to
+         * guard against legacy caseIds (e.g. "case:wf-179") that cannot be
+         * sent to AgentOS endpoints which expect `@PathVariable id: UUID`.
+         */
+        fun isValidUuid(value: String): Boolean = try {
+            UUID.fromString(value)
+            true
+        } catch (_: IllegalArgumentException) {
+            false
+        }
     }
 }

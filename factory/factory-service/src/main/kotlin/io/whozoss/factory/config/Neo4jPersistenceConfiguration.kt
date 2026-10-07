@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Primary
 import org.springframework.data.neo4j.core.DatabaseSelectionProvider
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.neo4j.core.Neo4jTemplate
+import org.springframework.data.neo4j.core.convert.Neo4jConversions
 import org.springframework.data.neo4j.core.mapping.Neo4jMappingContext
 import org.springframework.data.neo4j.core.transaction.Neo4jTransactionManager
 import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
@@ -47,6 +48,16 @@ import org.springframework.data.neo4j.repository.config.EnableNeo4jRepositories
     ],
 )
 class Neo4jPersistenceConfiguration {
+
+    /**
+     * Registers the [Neo4jStringToInstantConverter] so SDN can read date
+     * properties stored as ISO-8601 String values by legacy versions of the
+     * service, alongside the native ZonedDateTime values written by current
+     * versions. No writing converter is added: new writes always use the
+     * native type.
+     */
+    @Bean
+    fun neo4jConversions(): Neo4jConversions = Neo4jConversions(setOf(Neo4jStringToInstantConverter()))
 
     @Bean
     fun neo4jClient(driver: Driver): Neo4jClient = Neo4jClient.create(driver)

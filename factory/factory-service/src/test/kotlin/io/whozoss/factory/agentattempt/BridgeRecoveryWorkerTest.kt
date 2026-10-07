@@ -10,6 +10,7 @@ import io.whozoss.factory.agentattempt.domain.AttemptLeaseFencingException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.service.BridgeRecoveryWorker
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import org.assertj.core.api.Assertions.assertThat
@@ -84,9 +85,12 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         override fun kill(caseId: String) = Unit
     }
 
+    private fun caseIdFor(attemptId: String): String =
+        UUID.nameUUIDFromBytes("case:$attemptId".toByteArray()).toString()
+
     private fun attempt(attemptId: String, brief: String? = "do the thing"): DurableAgentAttempt = DurableAgentAttempt(
         attemptId = attemptId,
-        caseId = "case:$attemptId",
+        caseId = caseIdFor(attemptId),
         namespaceId = namespace,
         workflowId = "wf-recovery",
         stepId = "step-1",
@@ -181,7 +185,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         // claimToRunning already created an immediately expired lease. The
         // attempt remains WAITING_HUMAN and is therefore safely preemptible by
         // the recovery owner without any second transition in the fixture.
-        val caseId = "case:attempt-answered"
+        val caseId = caseIdFor("attempt-answered")
         val adapter = FakeAdapter(
             reconcileVerdict = { AgentOsExecutionVerdict.WaitingHuman("question-1") },
             observeVerdict = { error("observation must not run") },
@@ -204,7 +208,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         attempts.register(scope, attempt("attempt-unanswered"))
         claimToRunning("attempt-unanswered", "crashed-worker", leaseTtlMs = 0)
         attempts.transition(scope, namespace, "wf-recovery", "step-1", "attempt-unanswered", "crashed-worker", AgentAttemptStatus.WAITING_HUMAN)
-        val caseId = "case:attempt-unanswered"
+        val caseId = caseIdFor("attempt-unanswered")
         val adapter = FakeAdapter(
             reconcileVerdict = { AgentOsExecutionVerdict.WaitingHuman("question-1") },
             observeVerdict = { error("observation must not run") },
