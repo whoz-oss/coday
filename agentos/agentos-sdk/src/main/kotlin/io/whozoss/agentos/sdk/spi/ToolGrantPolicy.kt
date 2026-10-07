@@ -62,14 +62,15 @@ interface ToolGrantPolicy : ExtensionPoint {
     /**
      * Evaluate the grant for a single tool.
      *
-     * @param agentName the agent the tool is being resolved for, or null when unknown.
+     * The agent identity is available via [ToolContext.agentName], which is the single
+     * authoritative source for the agent the tool is being resolved for.
+     *
      * @param toolName the fully-qualified tool name being evaluated.
-     * @param context the runtime tool context (namespace, user, case events, …).
+     * @param context the runtime tool context (namespace, user, agent name, case events, …).
      * @return the policy's decision for this tool; [ToolGrantDecision.Neutral] when the
      *   policy has no opinion.
      */
     fun evaluateToolGrant(
-        agentName: String?,
         toolName: String,
         context: ToolContext,
     ): ToolGrantDecision = ToolGrantDecision.Neutral
@@ -97,7 +98,6 @@ interface ToolGrantPolicy : ExtensionPoint {
          */
         fun isGranted(
             policies: Iterable<ToolGrantPolicy>,
-            agentName: String?,
             toolName: String,
             context: ToolContext,
             onDenied: (reason: String, policy: ToolGrantPolicy, cause: Throwable?) -> Unit = { _, _, _ -> },
@@ -105,7 +105,7 @@ interface ToolGrantPolicy : ExtensionPoint {
             policies.forEach { policy ->
                 val decision =
                     try {
-                        policy.evaluateToolGrant(agentName, toolName, context)
+                        policy.evaluateToolGrant(toolName, context)
                     } catch (e: Exception) {
                         onDenied("policy threw while evaluating '$toolName'; denying (fail-closed)", policy, e)
                         return false
