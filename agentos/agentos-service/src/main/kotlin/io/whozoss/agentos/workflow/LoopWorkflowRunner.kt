@@ -3,9 +3,6 @@ package io.whozoss.agentos.workflow
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.config.LimitsConfigProperties
-import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
@@ -26,8 +23,8 @@ import java.util.UUID
  *
  * ## Flow
  *
- * 1. Guard: the triggering user must be identified and hold WRITE (admin) on the namespace,
- *    since the run creates cases on behalf of other users.
+ * 1. Guard: the triggering user must be identified.
+ *    Authorization (who can trigger a loop) is enforced at the trigger point, not here.
  * 2. SEARCH: call the Search tool with [AgentLoopSearch.params] (first page only) and
  *    parse its structured output as [SearchResult].
  * 3. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
@@ -43,7 +40,6 @@ class LoopWorkflowRunner(
     private val objectMapper: ObjectMapper,
     private val userService: UserService,
     private val agentConfigService: AgentConfigService,
-    private val permissionService: PermissionService,
     private val limitsConfig: LimitsConfigProperties,
     private val userSessionContextResolver: UserSessionContextResolver,
 ) {
@@ -58,9 +54,6 @@ class LoopWorkflowRunner(
         val caseLauncher =
             context.caseLauncher
                 ?: return LoopRunOutcome.Aborted("Case launching is not available in this execution context.")
-        if (!canLaunchOnBehalfOfOthers(triggerUser, context.namespaceId)) {
-            return LoopRunOutcome.Aborted("Only namespace administrators can launch an AgentLoop.")
-        }
 
         val search =
             when (val searchOutcome = search(payload, context, triggerUser)) {
@@ -99,17 +92,6 @@ class LoopWorkflowRunner(
             interrupted = interrupted,
         )
     }
-
-    private fun canLaunchOnBehalfOfOthers(
-        user: User,
-        namespaceId: UUID,
-    ): Boolean =
-        permissionService.hasPermission(
-            user.metadata.id.toString(),
-            EntityType.NAMESPACE,
-            namespaceId.toString(),
-            Action.WRITE,
-        )
 
     private suspend fun search(
         payload: AgentLoopPayload,

@@ -17,9 +17,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.config.LimitsConfigProperties
-import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
@@ -79,7 +76,6 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
     ) {
         val userService = mockk<UserService>()
         val agentConfigService = mockk<AgentConfigService>()
-        val permissionService = mockk<PermissionService>()
         val launches = mutableListOf<Launch>()
         val launchedIds = mutableListOf<UUID>()
         var failLaunchFor: String? = null
@@ -94,14 +90,9 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
                 objectMapper = objectMapper,
                 userService = userService,
                 agentConfigService = agentConfigService,
-                permissionService = permissionService,
                 limitsConfig = LimitsConfigProperties(agentLoopMaxItems = maxItems),
                 userSessionContextResolver = userSessionContextResolver,
             )
-
-        init {
-            every { permissionService.hasPermission(any(), EntityType.NAMESPACE, any(), Action.WRITE) } returns true
-        }
 
         fun knownUser(externalId: String): User =
             User(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = externalId, email = "$externalId@example.com")
@@ -188,15 +179,6 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         f.runner.run(payload, context(f, listOf(searchTool(listOf("a"))), withLauncher = false)) { true }
             .reason() shouldContain "not available"
-    }
-
-    "aborts when the triggering user is not a namespace admin, without calling the search tool" {
-        val f = Fixture(objectMapper)
-        every { f.permissionService.hasPermission(triggerUser.metadata.id.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE) } returns false
-        val tool = searchTool(listOf("a"))
-
-        f.run(listOf(tool)).reason() shouldContain "namespace administrators"
-        coVerify(exactly = 0) { tool.executeWithJson(any(), any()) }
     }
 
     // -------------------------------------------------------------------------
