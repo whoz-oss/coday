@@ -10,7 +10,7 @@
       "outputs": ["{projectRoot}/build/libs"],
       "dependsOn": [{ "target": "build", "projects": ["factory-sdk", "factory-verification-core"] }],
       "options": {
-        "command": "./gradlew build",
+        "command": "../gradlew build",
         "cwd": "factory/factory-service"
       }
     },
@@ -19,7 +19,7 @@
       "cache": false,
       "dependsOn": [{ "target": "test", "projects": ["factory-sdk", "factory-verification-core"] }],
       "options": {
-        "command": "./gradlew test",
+        "command": "../gradlew test",
         "cwd": "factory/factory-service"
       }
     },
@@ -27,7 +27,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "./gradlew bootRun",
+        "command": "../gradlew bootRun",
         "cwd": "factory/factory-service"
       }
     },
@@ -36,7 +36,7 @@
       "cache": true,
       "outputs": ["{projectRoot}/build/libs"],
       "options": {
-        "command": "./gradlew bootJar",
+        "command": "../gradlew bootJar",
         "cwd": "factory/factory-service"
       }
     },
@@ -45,7 +45,7 @@
       "cache": false,
       "outputs": ["{workspaceRoot}/factory/factory-service/openapi/factory-openapi.yaml"],
       "options": {
-        "command": "./gradlew generateOpenApiDocs --no-configuration-cache",
+        "command": "../gradlew generateOpenApiDocs --no-configuration-cache",
         "cwd": "factory/factory-service"
       }
     },

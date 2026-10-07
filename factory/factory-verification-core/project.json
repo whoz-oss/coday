@@ -9,7 +9,7 @@
       "cache": true,
       "outputs": ["{projectRoot}/build/libs"],
       "options": {
-        "command": "./gradlew build",
+        "command": "../gradlew build",
         "cwd": "factory/factory-verification-core"
       }
     },
@@ -17,7 +17,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "./gradlew test",
+        "command": "../gradlew test",
         "cwd": "factory/factory-verification-core"
       }
     }

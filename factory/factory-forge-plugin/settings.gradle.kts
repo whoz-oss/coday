@@ -17,7 +17,7 @@ includeBuild("../factory-service") {
 dependencyResolutionManagement {
     versionCatalogs {
         create("libs") {
-            from(files("../factory-service/gradle/libs.versions.toml"))
+            from(files("../gradle/libs.versions.toml"))
         }
     }
     repositories {

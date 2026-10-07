@@ -10,7 +10,7 @@
       "outputs": ["{projectRoot}/build/libs"],
       "dependsOn": [{ "target": "build", "projects": ["factory-service"] }],
       "options": {
-        "command": "./gradlew jar",
+        "command": "../gradlew jar",
         "cwd": "factory/factory-forge-plugin"
       }
     },
@@ -19,7 +19,7 @@
       "cache": false,
       "dependsOn": [{ "target": "test", "projects": ["factory-service"] }],
       "options": {
-        "command": "./gradlew test",
+        "command": "../gradlew test",
         "cwd": "factory/factory-forge-plugin"
       }
     },
@@ -27,7 +27,7 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "./gradlew deployPlugin",
+        "command": "../gradlew deployPlugin",
         "cwd": "factory/factory-forge-plugin"
       }
     }

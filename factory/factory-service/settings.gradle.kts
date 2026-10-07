@@ -3,9 +3,11 @@ rootProject.name = "factory-service"
 // Enable version catalog (libs.versions.toml)
 enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 
-// Independent from agentos: its version catalog lives locally in
-// factory-service/gradle/libs.versions.toml. The Factory SDK is consumed as a
-// composite build so both modules are always compiled from source together.
+// The shared factory version catalog lives at factory/gradle/libs.versions.toml.
+// All factory modules (sdk, service, verification-core, forge-plugin) reference it
+// from their respective settings.gradle.kts using a relative path.
+// The Factory SDK is consumed as a composite build so both modules are always
+// compiled from source together.
 includeBuild("../factory-sdk") {
     dependencySubstitution {
         substitute(module("io.whozoss.factory:factory-sdk")).using(project(":"))
@@ -22,6 +24,11 @@ includeBuild("../factory-verification-core") {
 }
 
 dependencyResolutionManagement {
+    versionCatalogs {
+        create("libs") {
+            from(files("../gradle/libs.versions.toml"))
+        }
+    }
     repositories {
         mavenCentral()
         mavenLocal()

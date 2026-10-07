@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 echo "Regenerating Factory Service OpenAPI spec..."
-./gradlew generateOpenApiDocs --no-configuration-cache -q
+../gradlew generateOpenApiDocs --no-configuration-cache -q
 
 echo "Checking for diff..."
 if ! git diff --exit-code openapi/factory-openapi.yaml; then
