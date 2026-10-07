@@ -37,7 +37,6 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.spi.ToolGrantDecision
 import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -463,11 +462,14 @@ class AgentServiceImpl(
     /**
      * Filters [tools] through the optional SPI [policies] carried by the execution context.
      *
-     * Neutral pass-through: when [policies] is empty the list is returned unchanged, so
-     * existing behavior is fully preserved. A tool is granted only when no policy denies it;
-     * an [ToolGrantDecision.AllowOnly] decision also denies every tool it does not list.
-     * A faulty policy is logged and treated as [ToolGrantDecision.Neutral] — it can never
-     * silently strip tools from an agent run.
+     * Neutral pass-through: when [policies] is empty the list is returned unchanged, so a
+     * deployment with no policy registered behaves exactly as before.
+     *
+     * The decision itself belongs to [ToolGrantPolicy.isGranted]: a tool is granted only when
+     * no policy denies it, and a policy that throws denies it. That rule lives in the SDK
+     * rather than here precisely so this call site cannot soften it — a local
+     * `runCatching { … }.getOrElse { Neutral }` would hand the agent the very tools a broken
+     * policy was installed to withhold.
      */
     private fun applyToolGrantPolicies(
         tools: List<StandardTool<*>>,
@@ -476,22 +478,15 @@ class AgentServiceImpl(
     ): List<StandardTool<*>> {
         if (policies.isEmpty()) return tools
         return tools.filter { tool ->
-            var granted = true
-            for (policy in policies) {
-                val decision =
-                    runCatching { policy.evaluateToolGrant(context.agentName, tool.name, context) }
-                        .onFailure { error ->
-                            logger.warn(error) {
-                                "[ToolGrantPolicy] ${policy::class.simpleName} failed for tool '${tool.name}', ignoring"
-                            }
-                        }.getOrElse { ToolGrantDecision.Neutral }
-                when (decision) {
-                    is ToolGrantDecision.Neutral -> Unit
-                    is ToolGrantDecision.AllowOnly -> if (tool.name !in decision.toolNames) granted = false
-                    is ToolGrantDecision.Deny -> if (tool.name in decision.toolNames) granted = false
-                }
+            ToolGrantPolicy.isGranted(
+                policies = policies,
+                toolName = tool.name,
+                context = context,
+            ) { reason, policy, cause ->
+                // Logged at warn even for an ordinary denial: a tool silently vanishing from a
+                // run is the kind of thing one needs to find in a log six months later.
+                logger.warn(cause) { "[ToolGrantPolicy] ${policy::class.simpleName} denied '${tool.name}': $reason" }
             }
-            granted
         }
     }
 

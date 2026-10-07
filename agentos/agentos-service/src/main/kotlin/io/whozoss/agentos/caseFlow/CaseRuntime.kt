@@ -357,38 +357,47 @@ class CaseRuntime(
                         logger.warn { "[CaseRuntime $id] Answer text is blank for question $answerToEventId" }
                     } else {
                         // SPI gate: let registered interceptors validate the answer before it is
-                        // persisted. Empty by default, so existing behavior is unchanged. A rejection
-                        // surfaces a WarnEvent and skips the AnswerEvent.
-                        for (interceptor in answerInterceptors) {
-                            val result =
-                                runCatching { interceptor.interceptAnswer(id, questionEvent, answerText, actor) }
-                                    .onFailure { error ->
-                                        logger.warn(error) {
-                                            "[CaseRuntime $id] AnswerInterceptor ${interceptor::class.simpleName} " +
-                                                "threw for question $answerToEventId, ignoring"
-                                        }
-                                    }.getOrElse { AnswerInterceptResult.Accept }
-                            when (result) {
-                                AnswerInterceptResult.Accept -> Unit
-                                AnswerInterceptResult.ExternallyHandled -> {
-                                    logger.info {
-                                        "[CaseRuntime $id] Answer for question $answerToEventId was handled externally"
-                                    }
-                                    return // acknowledged; external owner schedules any successor work
+                        // persisted. Empty by default, so existing behavior is unchanged.
+                        //
+                        // The resolution rule lives in AnswerInterceptor.evaluate: an interceptor
+                        // that throws REJECTS. An interceptor is a gate, and one that cannot answer
+                        // has not granted passage — accepting on failure would let an answer through
+                        // precisely when the check meant to validate it is broken. A rejection is
+                        // recoverable: the question stands and the user may retry.
+                        val verdict =
+                            AnswerInterceptor.evaluate(
+                                interceptors = answerInterceptors,
+                                caseId = id,
+                                questionEvent = questionEvent,
+                                answerText = answerText,
+                                actor = actor,
+                            ) { interceptor, cause ->
+                                // The user-facing reason deliberately omits the cause; log it here.
+                                logger.warn(cause) {
+                                    "[CaseRuntime $id] AnswerInterceptor ${interceptor::class.simpleName} " +
+                                        "threw for question $answerToEventId — answer rejected (fail-closed)"
                                 }
-                                is AnswerInterceptResult.Reject -> {
-                                    logger.warn {
-                                        "[CaseRuntime $id] Answer rejected by interceptor for question $answerToEventId: ${result.reason}"
-                                    }
-                                    storeAndEmitEvent(
-                                        WarnEvent(
-                                            namespaceId = namespaceId,
-                                            caseId = id,
-                                            message = "Answer rejected: ${result.reason}. Please try again.",
-                                        ),
-                                    )
-                                    return // do NOT create AnswerEvent; agent stays suspended
+                            }
+                        when (verdict) {
+                            AnswerInterceptResult.Accept -> Unit
+                            AnswerInterceptResult.ExternallyHandled -> {
+                                logger.info {
+                                    "[CaseRuntime $id] Answer for question $answerToEventId was handled externally"
                                 }
+                                return // acknowledged; external owner schedules any successor work
+                            }
+                            is AnswerInterceptResult.Reject -> {
+                                logger.warn {
+                                    "[CaseRuntime $id] Answer rejected by interceptor for question $answerToEventId: ${verdict.reason}"
+                                }
+                                storeAndEmitEvent(
+                                    WarnEvent(
+                                        namespaceId = namespaceId,
+                                        caseId = id,
+                                        message = "Answer rejected: ${verdict.reason}. Please try again.",
+                                    ),
+                                )
+                                return // do NOT create AnswerEvent; agent stays suspended
                             }
                         }
                         storeAndEmitEvent(questionEvent.createAnswer(actor, answerText))

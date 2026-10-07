@@ -5,6 +5,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.sdk.actor.Actor
@@ -120,10 +121,11 @@ class SpiHooksIntegrationSpec : StringSpec({
                 namespaceId = namespaceId,
                 userId = null,
                 userExternalId = null,
+                agentName = "test-agent",
                 caseEvents = emptyList(),
             )
         val policy = object : ToolGrantPolicy {}
-        policy.evaluateToolGrant("test-agent", "SOME__tool", toolContext) shouldBe ToolGrantDecision.Neutral
+        policy.evaluateToolGrant("SOME__tool", toolContext) shouldBe ToolGrantDecision.Neutral
     }
 
     // -------------------------------------------------------------------------
@@ -229,7 +231,9 @@ class SpiHooksIntegrationSpec : StringSpec({
         warns[0].message shouldBe "Answer rejected: not allowed yet. Please try again."
     }
 
-    "throwing AnswerInterceptor fails open: AnswerEvent is still created" {
+    // An interceptor is a gate: one that cannot answer has not granted passage. Accepting here
+    // would let an answer through precisely when the check meant to validate it is broken.
+    "throwing AnswerInterceptor fails closed: no AnswerEvent, WarnEvent surfaced" {
         val caseId = UUID.randomUUID()
         val savedEvents = mutableListOf<CaseEvent>()
         val interceptor =
@@ -246,7 +250,13 @@ class SpiHooksIntegrationSpec : StringSpec({
 
         runtime.addUserMessage(userActor, listOf(MessageContent.Text("Approve")), answerToEventId = question.id)
 
-        savedEvents.filterIsInstance<AnswerEvent>() shouldHaveSize 1
+        savedEvents.filterIsInstance<AnswerEvent>().shouldBeEmpty()
+        val warns = savedEvents.filterIsInstance<WarnEvent>()
+        warns shouldHaveSize 1
+        // The reason says validation could not be completed — not that the answer was invalid.
+        // Those are different facts and the user is owed the right one.
+        warns[0].message shouldContain "could not be validated"
+        warns[0].message shouldContain "still open"
     }
 
     // -------------------------------------------------------------------------

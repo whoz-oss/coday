@@ -71,9 +71,14 @@ class ExternalContextBindingController(
 
     companion object : KLogging() {
         /**
-         * Forwards a binding to every registrar, fail-closed: the first acceptance wins,
-         * null `false`, and any exception is treated as a rejection so a faulty hook can
-         * never open a binding.
+         * Forwards a binding to the registrars, fail-closed.
+         *
+         * The resolution rule — first acceptance wins, a throwing registrar is a rejection
+         * — belongs to [ExternalContextBindingRegistrar.registerFirst]. Kept in the SDK so
+         * the host and any other caller share one semantic, and so this call site cannot
+         * soften it.
+         *
+         * Shared with [ExternalContextBindingFilter], which binds at case creation.
          */
         fun bind(
             registrars: List<ExternalContextBindingRegistrar>,
@@ -83,10 +88,16 @@ class ExternalContextBindingController(
             attributes: Map<String, String>,
             expiresAt: Instant?,
         ): Boolean =
-            registrars.any { registrar ->
-                runCatching { registrar.register(caseId, namespaceId, credential, attributes, expiresAt) }
-                    .onFailure { error -> logger.warn(error) { "External context binding registrar failed for case $caseId" } }
-                    .getOrDefault(false)
+            ExternalContextBindingRegistrar.registerFirst(
+                registrars = registrars,
+                caseId = caseId,
+                namespaceId = namespaceId,
+                credential = credential,
+                attributes = attributes,
+                expiresAt = expiresAt,
+            ) { registrar, cause ->
+                // Never log the credential or the attribute values — only who failed, and where.
+                logger.warn(cause) { "External context binding registrar ${registrar::class.simpleName} failed for case $caseId" }
             }
 
         fun attributes(
