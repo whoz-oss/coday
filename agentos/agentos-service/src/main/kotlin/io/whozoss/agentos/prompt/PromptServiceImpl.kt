@@ -40,6 +40,7 @@ class PromptServiceImpl(
     private val translationService: PromptTranslationService,
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val permissionService: PermissionService,
+    private val batchTranslationProperties: PromptBatchTranslationProperties,
 ) : PromptService {
     override fun create(entity: Prompt): Prompt {
         validate(entity)
@@ -234,9 +235,11 @@ class PromptServiceImpl(
         val prompts = repository.findByIds(ids)
 
         // Fan-out: permission check + translation run concurrently per prompt on Dispatchers.IO.
+        // Parallelism is capped by batchTranslationProperties.parallelismLimit so that a large
+        // batch cannot saturate the IO pool or overwhelm downstream Neo4j / LLM connections.
         // runBlocking bridges the synchronous call-site to structured concurrency.
         val translationById: Map<UUID, PromptBatchTranslation> =
-            runBlocking(Dispatchers.IO) {
+            runBlocking(Dispatchers.IO.limitedParallelism(batchTranslationProperties.parallelismLimit)) {
                 prompts
                     .map { prompt ->
                         async {
