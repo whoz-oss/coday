@@ -161,7 +161,7 @@ class AgentLoopUnitSpec : StringSpec({
             objectMapper.readTree(
                 """
                 {"search": {"tool": "SearchTalents", "params": {}, "version": 0},
-                 "act": {"agentName": "talent-analyzer", "promptTemplate": "t", "note": "x"}}
+                 "act": {"agentName": "ProfileCaretaker", "promptTemplate": "Review and improve this talent profile: {entityId}", "note": "x"}}
                 """.trimIndent(),
             )
 
