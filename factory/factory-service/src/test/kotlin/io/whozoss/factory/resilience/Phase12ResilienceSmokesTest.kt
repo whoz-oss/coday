@@ -58,6 +58,7 @@ import io.whozoss.factory.workstream.web.CompactControllerCaseRequest
 import io.whozoss.factory.workstream.web.CreateWorkstreamRequest
 import io.whozoss.factory.workstream.web.StartControllerCaseRequest
 import java.nio.charset.StandardCharsets
+import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
 import org.assertj.core.api.Assertions.assertThat
@@ -213,7 +214,7 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
             scope,
             DurableAgentAttempt(
                 attemptId = attemptId,
-                caseId = "case:$attemptId",
+                caseId = UUID.nameUUIDFromBytes("case:$attemptId".toByteArray()).toString(),
                 namespaceId = namespaceId,
                 workflowId = workflowId,
                 stepId = "step-1",
@@ -253,10 +254,11 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
         registerDurableAttempt(namespaceId, workflowId, "attempt-p12-restart-wait", attemptNumber = 2)
         claimToRunning(namespaceId, workflowId, "attempt-p12-restart-wait", "crashed-worker", leaseTtlMs = 0)
 
+        val caseIdInd = UUID.nameUUIDFromBytes("case:attempt-p12-restart-ind".toByteArray()).toString()
         val adapter = FakeAdapter(
             reconcileVerdict = { caseId ->
                 when (caseId) {
-                    "case:attempt-p12-restart-ind" -> AgentOsExecutionVerdict.Indeterminate("still running")
+                    caseIdInd -> AgentOsExecutionVerdict.Indeterminate("still running")
                     else -> AgentOsExecutionVerdict.WaitingHuman("question-1")
                 }
             },
