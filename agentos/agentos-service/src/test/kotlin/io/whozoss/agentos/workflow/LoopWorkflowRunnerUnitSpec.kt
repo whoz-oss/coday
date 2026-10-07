@@ -52,9 +52,9 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
             {
                 "search": {
                     "tool": "SearchTalents",
-                    "params": {"endDatePeriod": ["THIS_WEEK"]}
+                    "params": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]}
                 },
-                "act": {"agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}"}
+                "act": {"agentName": "ProfileCaretaker", "promptTemplate": "Review and improve this talent profile: {entityId}"}
             }
             """.trimIndent(),
             AgentLoopPayload::class.java,
@@ -253,7 +253,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
     "launches one case per entity on behalf of the resolved end user and reports its id" {
         val f = Fixture(objectMapper)
-        val alice = f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
 
         val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -261,12 +261,12 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         outcome.summary() shouldContain f.launchedIds.single().toString()
         // task uses entityId (root) = "task-alice", not the user external id
         f.launches shouldBe
-            listOf(Launch(namespaceId, "talent-analyzer", "Analyse this entity: task-alice", alice.metadata.id))
+            listOf(Launch(namespaceId, "ProfileCaretaker", "Review and improve this talent profile: task-alice", alice.metadata.id))
     }
 
     "rows without entityType and with unknown fields are still processed" {
         val f = Fixture(objectMapper)
-        val alice = f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
         // The spec's plain ObjectMapper fails on unknown properties by default: this also checks
         // that SearchResult types ignore them explicitly, independently of the mapper configuration.
         val node =
@@ -287,7 +287,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         outcome.launched shouldBe 1
         f.launches.single().userId shouldBe alice.metadata.id
-        f.launches.single().task shouldBe "Analyse this entity: task-alice"
+        f.launches.single().task shouldBe "Review and improve this talent profile: task-alice"
     }
 
     "skips entities whose targets list is null" {
@@ -341,7 +341,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
     "refuses users who cannot access the target agent, including prefix-only matches" {
         val f = Fixture(objectMapper)
-        f.knownUser("bob").also { f.grantAgent(it, "talent-analyzer-v2") }
+        f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker-v2") }
 
         val outcome = f.run(listOf(searchTool(listOf("bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -352,19 +352,19 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
     "a failed launch is counted and does not stop the loop" {
         val f = Fixture(objectMapper)
         f.failLaunchFor = "task-alice"
-        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
-        f.knownUser("bob").also { f.grantAgent(it, "talent-analyzer") }
+        f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+        f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
 
         val outcome = f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
         outcome.failed shouldBe 1
         outcome.launched shouldBe 1
-        f.launches.map { it.task } shouldBe listOf("Analyse this entity: task-bob")
+        f.launches.map { it.task } shouldBe listOf("Review and improve this talent profile: task-bob")
     }
 
     "processes at most agentLoopMaxItems entities" {
         val f = Fixture(objectMapper, maxItems = 2)
-        listOf("a", "b", "c").forEach { f.knownUser(it).also { u -> f.grantAgent(u, "talent-analyzer") } }
+        listOf("a", "b", "c").forEach { f.knownUser(it).also { u -> f.grantAgent(u, "ProfileCaretaker") } }
 
         val outcome = f.run(listOf(searchTool(listOf("a", "b", "c")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -385,7 +385,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
     "stops launching when interrupted" {
         val f = Fixture(objectMapper)
-        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
 
         val outcome = f.run(listOf(searchTool(listOf("alice")))) { false }.shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -398,7 +398,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         val f = Fixture(objectMapper)
         // entityId root = "task-alice", targets[0].entityId = "alice"
         // The runner must call findByExternalId("alice"), NOT findByExternalId("task-alice")
-        val alice = f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
         every { f.userService.findByExternalId("task-alice") } returns null // must NOT be called
 
         val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
@@ -419,7 +419,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
             every { it.provideUserContext(any(), any()) } returns UserContextResult.Success(providerContext)
         }
         val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
+        f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
 
         val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -437,7 +437,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
             preferredLanguage = "fr",
         ).also {
             every { f.userService.findByExternalId("alice") } returns it
-            f.grantAgent(it, "talent-analyzer")
+            f.grantAgent(it, "ProfileCaretaker")
         }
 
         val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
@@ -453,14 +453,14 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
             every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
         }
         val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
-        f.knownUser("bob").also { f.grantAgent(it, "talent-analyzer") }
+        f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+        f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
 
         val outcome = f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
         outcome.failed shouldBe 1
         outcome.launched shouldBe 1
-        f.launches.single().task shouldBe "Analyse this entity: task-bob"
+        f.launches.single().task shouldBe "Review and improve this talent profile: task-bob"
     }
 
     "TransientFailure from provider counts entity as failed and loop continues" {
@@ -470,8 +470,8 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
             every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
         }
         val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-        f.knownUser("alice").also { f.grantAgent(it, "talent-analyzer") }
-        f.knownUser("bob").also { f.grantAgent(it, "talent-analyzer") }
+        f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+        f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
 
         val outcome = f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 

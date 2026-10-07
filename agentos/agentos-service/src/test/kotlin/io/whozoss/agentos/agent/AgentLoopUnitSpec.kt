@@ -54,7 +54,7 @@ class AgentLoopUnitSpec : StringSpec({
                 "tool": "SearchTalents",
                 "params": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]}
             },
-            "act": {"agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}"}
+            "act": {"agentName": "ProfileCaretaker", "promptTemplate": "Review and improve this talent profile: {entityId}"}
         }
         """.trimIndent()
 
@@ -72,7 +72,7 @@ class AgentLoopUnitSpec : StringSpec({
             failed = 0,
             overLimit = 0,
             maxItems = 50,
-            targetAgent = "talent-analyzer",
+            targetAgent = "ProfileCaretaker",
             interrupted = false,
         )
 
@@ -147,7 +147,7 @@ class AgentLoopUnitSpec : StringSpec({
 
         coVerify { runner.run(capture(payloadSlot), capture(contextSlot), any()) }
         payloadSlot.captured.search.tool shouldBe "SearchTalents"
-        payloadSlot.captured.act shouldBe AgentLoopAct("talent-analyzer", "Analyse this entity: {entityId}")
+        payloadSlot.captured.act shouldBe AgentLoopAct("ProfileCaretaker", "Review and improve this talent profile: {entityId}")
         contextSlot.captured.namespaceId shouldBe namespaceId
         contextSlot.captured.caseId shouldBe caseId
         contextSlot.captured.agentName shouldBe "my-loop"
@@ -167,7 +167,7 @@ class AgentLoopUnitSpec : StringSpec({
 
         agent(runner = runner, loopConfig = withExtraFields).run(listOf(userMessage())).toList()
 
-        coVerify(exactly = 1) { runner.run(match { it.search.tool == "SearchTalents" && it.act.agentName == "talent-analyzer" }, any(), any()) }
+        coVerify(exactly = 1) { runner.run(match { it.search.tool == "SearchTalents" && it.act.agentName == "ProfileCaretaker" }, any(), any()) }
     }
 
     // -------------------------------------------------------------------------

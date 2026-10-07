@@ -230,11 +230,13 @@ export class AgentConfigFormComponent implements OnInit {
   /** Placeholder illustrating the AgentLoopPayload shape expected by loopConfig. */
   protected readonly loopConfigPlaceholder = JSON.stringify(
     {
-      tool: 'SearchTalents',
-      searchInput: { endDatePeriod: ['THIS_WEEK'] },
+      search: {
+        tool: 'SearchTalents',
+        params: { endDatePeriod: ['THIS_WEEK'], resolveTargets: ['OWNER'] },
+      },
       act: {
-        agentName: 'talent-analyzer',
-        promptTemplate: 'Analyse this entity: {entityId}',
+        agentName: 'ProfileCaretaker',
+        promptTemplate: 'Review and improve this talent profile: {entityId}',
       },
     },
     null,
