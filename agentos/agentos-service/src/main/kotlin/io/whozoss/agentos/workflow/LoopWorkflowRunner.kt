@@ -113,9 +113,11 @@ class LoopWorkflowRunner(
                 caseEvents = context.caseEvents,
                 agentName = context.agentName,
             )
+        val paramsJson = objectMapper.writeValueAsString(payload.search.params)
+        logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
         val result =
             try {
-                searchTool.executeWithJson(objectMapper.writeValueAsString(payload.search.params), toolContext)
+                searchTool.executeWithJson(paramsJson, toolContext)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -127,9 +129,12 @@ class LoopWorkflowRunner(
         }
         val structured =
             result.structuredOutput
-                ?: return SearchOutcome.Failure(
-                    "Search tool '$toolName' returned no structured output. Check the tool's outputSchema().",
-                )
+                ?: run {
+                    logger.warn { "[LoopWorkflowRunner] Search tool '$toolName' returned no structured output. Raw output: ${result.output}" }
+                    return SearchOutcome.Failure(
+                        "Search tool '$toolName' returned no structured output. Check the tool's outputSchema(). Raw output: ${result.output}",
+                    )
+                }
         return try {
             SearchOutcome.Success(objectMapper.treeToValue(structured, SearchResult::class.java))
         } catch (e: Exception) {
