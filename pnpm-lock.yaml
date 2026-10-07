@@ -546,7 +546,31 @@ importers:
         specifier: catalog:dev
         version: 6.0.3
 
-  apps/cockpit-v2:
+  apps/desktop:
+    devDependencies:
+      electron:
+        specifier: catalog:dev
+        version: 38.3.0
+      electron-builder:
+        specifier: catalog:dev
+        version: 26.0.12(electron-builder-squirrel-windows@26.0.12)
+      typescript:
+        specifier: catalog:dev
+        version: 6.0.3
+
+  apps/desktop-twin:
+    devDependencies:
+      electron:
+        specifier: catalog:dev
+        version: 38.3.0
+      electron-builder:
+        specifier: catalog:dev
+        version: 26.0.12(electron-builder-squirrel-windows@26.0.12)
+      typescript:
+        specifier: catalog:dev
+        version: 6.0.3
+
+  apps/factory-cockpit:
     dependencies:
       '@angular/cdk':
         specifier: 'catalog:'
@@ -591,30 +615,6 @@ importers:
       jest-preset-angular:
         specifier: catalog:dev
         version: 17.0.0(@angular/compiler-cli@22.0.8(@angular/compiler@22.0.8)(typescript@6.0.3))(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.1))(@angular/platform-browser@22.0.8(@angular/animations@22.0.8(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.1)))(@angular/common@22.0.8(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.1))(rxjs@7.8.2))(@angular/core@22.0.8(@angular/compiler@22.0.8)(rxjs@7.8.2)(zone.js@0.16.1)))(@babel/core@7.29.7)(@jest/transform@30.4.1)(@jest/types@30.4.1)(babel-jest@30.4.1(@babel/core@7.29.7))(jest@30.3.0(@types/node@26.3.0)(babel-plugin-macros@3.1.0)(ts-node@10.9.2(@swc/core@1.15.8(@swc/helpers@0.5.20))(@types/node@24.7.2)(typescript@6.0.3)))(jsdom@27.0.0)(typescript@6.0.3)
-      typescript:
-        specifier: catalog:dev
-        version: 6.0.3
-
-  apps/desktop:
-    devDependencies:
-      electron:
-        specifier: catalog:dev
-        version: 38.3.0
-      electron-builder:
-        specifier: catalog:dev
-        version: 26.0.12(electron-builder-squirrel-windows@26.0.12)
-      typescript:
-        specifier: catalog:dev
-        version: 6.0.3
-
-  apps/desktop-twin:
-    devDependencies:
-      electron:
-        specifier: catalog:dev
-        version: 38.3.0
-      electron-builder:
-        specifier: catalog:dev
-        version: 26.0.12(electron-builder-squirrel-windows@26.0.12)
       typescript:
         specifier: catalog:dev
         version: 6.0.3
@@ -2428,7 +2428,7 @@ packages:
     engines: {node: '>=12'}
 
   '@electron/node-gyp@https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2':
-    resolution: {gitHosted: true, integrity: sha512-MXgzlTDEEndJB3TBbvd5uFQO/8gaINo1Hfen8vef5rq/VHVPeB63uuv/uO5+8GFsAJ/rauu6XB79S6K4+aXc+w==, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
+    resolution: {gitHosted: true, tarball: https://codeload.github.com/electron/node-gyp/tar.gz/06b29aafb7708acef8b3669835c8a7857ebc92d2}
     version: 10.2.0-electron.1
     engines: {node: '>=12.13.0'}
     hasBin: true

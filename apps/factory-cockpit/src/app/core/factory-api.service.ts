@@ -589,7 +589,7 @@ export class FactoryApiService {
 export function generateCorrelationId(): string {
   const cryptoRef = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
   if (typeof cryptoRef?.randomUUID === 'function') return cryptoRef.randomUUID()
-  return `cockpit-v2-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  return `factory-cockpit-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function isEnvelope(value: unknown): value is { data: unknown } {

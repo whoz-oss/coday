@@ -1,8 +1,8 @@
 export default {
-  displayName: 'cockpit-v2',
+  displayName: 'factory-cockpit',
   preset: '../../jest.preset.cjs',
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
-  coverageDirectory: '../../coverage/apps/cockpit-v2',
+  coverageDirectory: '../../coverage/apps/factory-cockpit',
   transform: {
     '^.+\\.(ts|mjs|js|html)$': [
       'jest-preset-angular',
