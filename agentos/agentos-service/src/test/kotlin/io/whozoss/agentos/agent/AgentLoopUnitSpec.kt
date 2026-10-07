@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.assertions.throwables.shouldThrow
@@ -35,8 +36,10 @@ import java.util.UUID
 /**
  * Unit tests for [AgentLoop].
  *
- * AgentLoop is a thin adapter: these tests cover payload parsing and the mapping of
- * [LoopRunOutcome] to case events. The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
+ * AgentLoop reads its payload exclusively from [AgentLoop.loopConfig] (set at construction
+ * from [AgentConfig.loopConfig]). Message content is ignored for payload resolution.
+ * These tests cover loopConfig parsing and the mapping of [LoopRunOutcome] to case events.
+ * The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
  */
 class AgentLoopUnitSpec : StringSpec({
 
@@ -44,7 +47,7 @@ class AgentLoopUnitSpec : StringSpec({
     val namespaceId: UUID = UUID.randomUUID()
     val caseId: UUID = UUID.randomUUID()
 
-    val validPayload =
+    val validPayloadJson =
         """
         {
             "tool": "SearchTalents",
@@ -52,6 +55,8 @@ class AgentLoopUnitSpec : StringSpec({
             "act": {"agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}"}
         }
         """.trimIndent()
+
+    val validLoopConfig: JsonNode = objectMapper.readTree(validPayloadJson)
 
     val completed =
         LoopRunOutcome.Completed(
@@ -82,6 +87,7 @@ class AgentLoopUnitSpec : StringSpec({
         resolvedTools: Collection<StandardTool<*>> = emptyList(),
         triggerUser: User? = null,
         caseLauncher: CaseLauncher? = null,
+        loopConfig: JsonNode? = validLoopConfig,
     ) = AgentLoop(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         name = name,
@@ -90,9 +96,10 @@ class AgentLoopUnitSpec : StringSpec({
         resolvedTools = resolvedTools,
         triggerUser = triggerUser,
         caseLauncher = caseLauncher,
+        loopConfig = loopConfig,
     )
 
-    fun userMessage(text: String) =
+    fun userMessage(text: String = "start") =
         MessageEvent(
             namespaceId = namespaceId,
             caseId = caseId,
@@ -115,7 +122,7 @@ class AgentLoopUnitSpec : StringSpec({
     // -------------------------------------------------------------------------
 
     "completed run emits ThinkingEvent, summary MessageEvent then AgentFinishedEvent" {
-        val emitted = agent().run(listOf(userMessage(validPayload))).toList()
+        val emitted = agent().run(listOf(userMessage())).toList()
 
         emitted shouldHaveSize 3
         emitted[0].shouldBeInstanceOf<ThinkingEvent>()
@@ -125,7 +132,7 @@ class AgentLoopUnitSpec : StringSpec({
         emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
     }
 
-    "payload is passed to the runner with the case context" {
+    "payload from loopConfig is passed to the runner with the case context" {
         val runner = runnerReturning(completed)
         val user = User(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "ext-trigger", email = "t@example.com")
         val launcher = CaseLauncher { _, _, _, _, _ -> UUID.randomUUID() }
@@ -133,7 +140,7 @@ class AgentLoopUnitSpec : StringSpec({
         val contextSlot = slot<LoopRunContext>()
 
         agent(runner = runner, name = "my-loop", triggerUser = user, caseLauncher = launcher)
-            .run(listOf(userMessage(validPayload)))
+            .run(listOf(userMessage()))
             .toList()
 
         coVerify { runner.run(capture(payloadSlot), capture(contextSlot), any()) }
@@ -146,25 +153,19 @@ class AgentLoopUnitSpec : StringSpec({
         contextSlot.captured.caseLauncher shouldBe launcher
     }
 
-    "unknown fields in the payload are ignored" {
+    "unknown fields in loopConfig are ignored" {
         val runner = runnerReturning(completed)
         val withExtraFields =
-            """
-            {"tool": "SearchTalents", "searchInput": {}, "version": 0,
-             "act": {"agentName": "talent-analyzer", "promptTemplate": "t", "note": "x"}}
-            """.trimIndent()
+            objectMapper.readTree(
+                """
+                {"tool": "SearchTalents", "searchInput": {}, "version": 0,
+                 "act": {"agentName": "talent-analyzer", "promptTemplate": "t", "note": "x"}}
+                """.trimIndent(),
+            )
 
-        agent(runner = runner).run(listOf(userMessage(withExtraFields))).toList()
+        agent(runner = runner, loopConfig = withExtraFields).run(listOf(userMessage())).toList()
 
         coVerify(exactly = 1) { runner.run(match { it.tool == "SearchTalents" && it.act.agentName == "talent-analyzer" }, any(), any()) }
-    }
-
-    "leading @mention used to route the message is ignored when parsing" {
-        val runner = runnerReturning(completed)
-
-        agent(runner = runner).run(listOf(userMessage("@loop-agent $validPayload"))).toList()
-
-        coVerify(exactly = 1) { runner.run(match { it.tool == "SearchTalents" }, any(), any()) }
     }
 
     // -------------------------------------------------------------------------
@@ -174,7 +175,7 @@ class AgentLoopUnitSpec : StringSpec({
     "aborted run emits a WarnEvent carrying the reason" {
         val emitted =
             agent(runner = runnerReturning(LoopRunOutcome.Aborted("Search tool 'X' is not available")))
-                .run(listOf(userMessage(validPayload)))
+                .run(listOf(userMessage()))
                 .toList()
 
         emitted shouldHaveSize 3
@@ -184,33 +185,33 @@ class AgentLoopUnitSpec : StringSpec({
     }
 
     // -------------------------------------------------------------------------
-    // Malformed / missing payload — visible warning, runner never called
+    // Missing / invalid loopConfig
     // -------------------------------------------------------------------------
 
-    listOf(
-        "invalid JSON" to "not json at all",
-        "missing tool field" to """{"searchInput": {}, "act": {"agentName": "a", "promptTemplate": "t"}}""",
-        "blank tool field" to """{"tool": " ", "searchInput": {}, "act": {"agentName": "a", "promptTemplate": "t"}}""",
-        "blank message" to "   ",
-        "mention only" to "@loop-agent",
-    ).forEach { (label, text) ->
-        "payload with $label emits a WarnEvent and does not call the runner" {
-            val runner = runnerReturning(completed)
+    "no loopConfig emits a WarnEvent and does not call the runner" {
+        val runner = runnerReturning(completed)
 
-            val emitted = agent(runner = runner).run(listOf(userMessage(text))).toList()
+        val emitted = agent(runner = runner, loopConfig = null).run(listOf(userMessage())).toList()
 
-            emitted shouldHaveSize 3
-            emitted[0].shouldBeInstanceOf<ThinkingEvent>()
-            emitted[1].shouldBeInstanceOf<WarnEvent>()
-            emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
-            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
-        }
+        emitted shouldHaveSize 3
+        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
+        emitted[1].shouldBeInstanceOf<WarnEvent>()
+        emitted.warnMessage() shouldContain "No loopConfig"
+        emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+        coVerify(exactly = 0) { runner.run(any(), any(), any()) }
     }
 
-    "no user MessageEvent emits a WarnEvent" {
-        val emitted = agent().run(listOf(agentMessage("I am the agent."))).toList()
+    "invalid loopConfig emits a WarnEvent and does not call the runner" {
+        val runner = runnerReturning(completed)
+        val invalid = objectMapper.readTree("""{"note": "not a payload"}""")
 
-        emitted.warnMessage() shouldContain "No user message"
+        val emitted = agent(runner = runner, loopConfig = invalid).run(listOf(userMessage())).toList()
+
+        emitted shouldHaveSize 3
+        emitted[0].shouldBeInstanceOf<ThinkingEvent>()
+        emitted[1].shouldBeInstanceOf<WarnEvent>()
+        emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+        coVerify(exactly = 0) { runner.run(any(), any(), any()) }
     }
 
     // -------------------------------------------------------------------------
@@ -220,7 +221,7 @@ class AgentLoopUnitSpec : StringSpec({
     "shouldContinue=false emits only AgentFinishedEvent and does not call the runner" {
         val runner = runnerReturning(completed)
 
-        val emitted = agent(runner = runner).run(listOf(userMessage(validPayload)), shouldContinue = { false }).toList()
+        val emitted = agent(runner = runner).run(listOf(userMessage()), shouldContinue = { false }).toList()
 
         emitted shouldHaveSize 1
         emitted[0].shouldBeInstanceOf<AgentFinishedEvent>()
@@ -236,7 +237,7 @@ class AgentLoopUnitSpec : StringSpec({
     "AgentFinishedEvent carries agent identity and no llmProvider" {
         val loop = agent(name = "my-loop")
 
-        val finished = loop.run(listOf(userMessage(validPayload))).toList().last() as AgentFinishedEvent
+        val finished = loop.run(listOf(userMessage())).toList().last() as AgentFinishedEvent
 
         finished.agentName shouldBe "my-loop"
         finished.agentId shouldBe loop.id
@@ -245,7 +246,7 @@ class AgentLoopUnitSpec : StringSpec({
     }
 
     "all events carry the case namespaceId and caseId" {
-        agent().run(listOf(userMessage(validPayload))).toList().forEach { event ->
+        agent().run(listOf(userMessage())).toList().forEach { event ->
             event.namespaceId shouldBe namespaceId
             event.caseId shouldBe caseId
         }

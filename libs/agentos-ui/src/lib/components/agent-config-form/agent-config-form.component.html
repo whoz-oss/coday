@@ -141,6 +141,29 @@
         </p>
       </div>
 
+      @if (isLoopMode()) {
+        <div class="agent-config-form__field">
+          <label class="agent-config-form__label" for="agent-config-loop-config">Loop configuration (JSON)</label>
+          <textarea
+            id="agent-config-loop-config"
+            class="agent-config-form__textarea agent-config-form__textarea--mono"
+            rows="10"
+            [placeholder]="loopConfigPlaceholder"
+            [formControl]="loopConfigControl"
+            spellcheck="false"
+            autocomplete="off"
+          ></textarea>
+          @if (loopConfigControl.invalid && loopConfigControl.touched) {
+            <p class="agent-config-form__field-error" role="alert">Invalid JSON — please fix the syntax.</p>
+          }
+          <p class="agent-config-form__field-hint">
+            Default payload for this loop agent. Overridden at launch time if the first message contains a valid
+            <code class="agent-config-form__code">AgentLoopPayload</code>. Leave empty if you always provide the payload
+            at launch.
+          </p>
+        </div>
+      }
+
       <div class="agent-config-form__field">
         <label class="agent-config-form__toggle-label">
           <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="enabledControl" />

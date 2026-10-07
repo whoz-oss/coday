@@ -28,6 +28,7 @@ api/run-cost-controller.service.ts
 api/scheduled-prompt-controller.service.ts
 api/skill-controller.service.ts
 api/sse.service.ts
+api/tool-invoke-controller.service.ts
 api/usage-configuration-controller.service.ts
 api/usage-record-controller.service.ts
 api/user-controller.service.ts
@@ -124,10 +125,13 @@ model/sync-user-roles-request.ts
 model/text-chunk-event.ts
 model/text.ts
 model/thinking-event.ts
+model/tool-invoke-request.ts
+model/tool-invoke-response.ts
 model/tool-request-event.ts
 model/tool-response-event-all-of-output.ts
 model/tool-response-event.ts
 model/tool-selected-event.ts
+model/tool-summary.ts
 model/unread-count-response.ts
 model/usage-aggregate-by-key.ts
 model/usage-aggregate.ts

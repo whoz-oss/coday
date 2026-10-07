@@ -1,6 +1,6 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.caseFlow.AgentMention
 import io.whozoss.agentos.sdk.actor.Actor
@@ -55,6 +55,9 @@ import java.util.UUID
  * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
  * @param triggerUser   The user who triggered the run.
  * @param caseLauncher  Starts the child cases; null outside a live case.
+ * @param loopConfig    Default [AgentLoopPayload] from [AgentConfig.loopConfig], used when the
+ *                      triggering message carries no parseable payload. A valid payload in the
+ *                      first user message always takes precedence (override).
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
@@ -64,6 +67,7 @@ class AgentLoop(
     private val resolvedTools: Collection<StandardTool<*>> = emptyList(),
     private val triggerUser: User? = null,
     private val caseLauncher: CaseLauncher? = null,
+    private val loopConfig: JsonNode? = null,
 ) : Agent {
     /**
      * AgentLoop does not call any LLM — these fields satisfy the [Agent] contract
@@ -160,37 +164,27 @@ class AgentLoop(
     )
 
     /**
-     * Extracts and parses the JSON payload from the first user [MessageEvent], after removing
-     * the leading `@agentName` mention.
+     * Resolves the [AgentLoopPayload] from [loopConfig] stored in the [AgentConfig].
      *
-     * @throws InvalidLoopPayloadException with a user-facing reason when no payload can be parsed.
+     * Message content is intentionally ignored — overriding the config via the triggering
+     * message is not supported in this version.
+     *
+     * @throws InvalidLoopPayloadException when [loopConfig] is null or cannot be parsed.
      */
     private fun parsePayload(events: List<CaseEvent>): AgentLoopPayload {
-        val firstUserMessage =
-            events
-                .filterIsInstance<MessageEvent>()
-                .firstOrNull { it.actor.role == ActorRole.USER }
-                ?: throw InvalidLoopPayloadException("No user message found in the case.")
-
-        val json =
-            AgentMention
-                .strip(
-                    firstUserMessage.content
-                        .filterIsInstance<MessageContent.Text>()
-                        .joinToString("\n") { it.content },
-                ).takeIf { it.isNotBlank() }
-                ?: throw InvalidLoopPayloadException("The first message carries no JSON payload.")
-
-        val payload =
-            try {
-                objectMapper.readValue(json, AgentLoopPayload::class.java)
-            } catch (e: Exception) {
-                logger.warn(e) { "[AgentLoop] Failed to parse payload JSON: $json" }
-                val reason = (e as? JsonProcessingException)?.originalMessage ?: e.message
-                throw InvalidLoopPayloadException("The payload is not a valid AgentLoop JSON: $reason")
-            }
-        if (payload.tool.isBlank()) throw InvalidLoopPayloadException("The payload is missing the 'tool' field.")
-        return payload
+        if (loopConfig == null) {
+            throw InvalidLoopPayloadException("No loopConfig is configured on this agent.")
+        }
+        return try {
+            val payload = objectMapper.treeToValue(loopConfig, AgentLoopPayload::class.java)
+            if (payload.tool.isBlank()) throw InvalidLoopPayloadException("loopConfig has a blank 'tool' field.")
+            logger.info { "[AgentLoop] '$name': payload resolved from loopConfig (tool=${payload.tool})" }
+            payload
+        } catch (e: InvalidLoopPayloadException) {
+            throw e
+        } catch (e: Exception) {
+            throw InvalidLoopPayloadException("loopConfig could not be parsed as a valid AgentLoopPayload: ${e.message}")
+        }
     }
 
     private class InvalidLoopPayloadException(

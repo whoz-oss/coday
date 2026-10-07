@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.agentConfig
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
@@ -97,4 +98,22 @@ data class AgentConfigDto(
             ),
     )
     val skillSelectors: List<String>? = null,
+    /**
+     * Default payload for LOOP-mode agents, stored as a JSON object.
+     *
+     * When provided, it is used as the default [io.whozoss.agentos.workflow.AgentLoopPayload]
+     * when the triggering message carries no parseable payload. A payload present in the
+     * first user message always takes precedence (override).
+     *
+     * Only meaningful when [executionMode] is LOOP; ignored for SIMPLE and ADVANCED agents.
+     */
+    @field:Schema(
+        description =
+            "Default AgentLoopPayload for LOOP-mode agents. Used when the triggering message carries no " +
+                "parseable payload. A payload in the first user message always takes precedence. " +
+                "Ignored for SIMPLE and ADVANCED agents.",
+        type = "object",
+        nullable = true,
+    )
+    val loopConfig: JsonNode? = null,
 )

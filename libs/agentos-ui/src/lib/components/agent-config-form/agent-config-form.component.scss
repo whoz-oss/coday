@@ -115,6 +115,18 @@
     resize: vertical;
     min-height: 120px;
     line-height: 1.5;
+
+    &--mono {
+      font-family: monospace;
+      font-size: 0.8125rem;
+    }
+  }
+
+  &__field-error {
+    margin: 0.25rem 0 0;
+    font-size: 0.8rem;
+    color: var(--color-error, var(--red, #dc2626));
+    line-height: 1.4;
   }
 
   &__select {

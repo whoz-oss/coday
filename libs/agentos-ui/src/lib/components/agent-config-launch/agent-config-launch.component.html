@@ -8,27 +8,23 @@
   </header>
 
   <p class="agent-config-launch__intro">
-    Provide the <code class="agent-config-launch__code">AgentLoopPayload</code> as JSON. The payload defines which
-    entities to iterate over and what action to apply to each one. A new Case will be created and the agent loop will
-    start immediately; it launches one child case per entity found.
+    The loop configuration below is read from <code class="agent-config-launch__code">AgentConfig.loopConfig</code>
+    and will be used by the backend when the agent loop starts. A new Case will be created and one child case will be
+    launched per entity found.
   </p>
 
   <div class="agent-config-launch__field">
-    <label class="agent-config-launch__label" for="agent-loop-payload">Loop configuration (JSON)</label>
+    <label class="agent-config-launch__label" for="agent-loop-payload">Loop configuration (read-only)</label>
     <textarea
       id="agent-loop-payload"
       class="agent-config-launch__textarea"
       rows="15"
-      [placeholder]="placeholder"
       [value]="payloadJson()"
-      (input)="onInput($event)"
-      [disabled]="isLaunching()"
+      [disabled]="isLaunching() || isLoading()"
+      readonly
       spellcheck="false"
       autocomplete="off"
     ></textarea>
-    @if (payloadError()) {
-      <p class="agent-config-launch__error" role="alert">{{ payloadError() }}</p>
-    }
   </div>
 
   @if (launchError()) {
@@ -44,7 +40,7 @@
       [disabled]="isLaunching()"
       (click)="launch()"
     >
-      {{ isLaunching() ? 'Launching…' : 'Launch' }}
+      {{ isLaunching() ? 'Launching\u2026' : 'Launch' }}
     </button>
     <button class="agent-config-launch__btn" type="button" [disabled]="isLaunching()" (click)="back()">Cancel</button>
   </div>

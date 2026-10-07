@@ -78,24 +78,15 @@
     width: 100%;
     padding: 0.75rem 1rem;
     border: 1px solid var(--color-divider);
-    background: var(--color-surface);
-    color: var(--color-text);
+    background: var(--color-surface-muted, rgba(0, 0, 0, 0.03));
+    color: var(--color-text-secondary);
     font-family: var(--font-heading, monospace);
     font-size: 0.8125rem;
     line-height: 1.6;
     resize: vertical;
     outline: none;
     box-sizing: border-box;
-    transition: border-color 0.15s ease;
-
-    &:focus {
-      border-color: var(--color-accent);
-    }
-
-    &::placeholder {
-      color: var(--color-neutral-500);
-      opacity: 0.6;
-    }
+    cursor: default;
 
     &:disabled {
       opacity: 0.6;

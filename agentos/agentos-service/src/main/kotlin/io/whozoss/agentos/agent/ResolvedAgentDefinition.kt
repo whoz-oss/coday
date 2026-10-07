@@ -1,5 +1,6 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
@@ -41,6 +42,9 @@ import java.util.UUID
  *   `AgentAdvanced` it is passed to [AgentAdvancedContext.redirectGuideline] and consumed by
  *   [AgentIntentionGenerator]'s planning prompt; for an `AgentSimple` it is appended to
  *   [instructions] instead. See [io.whozoss.agentos.agent.AgentServiceImpl.resolveRedirectGuideline].
+ * @param loopConfig Default [io.whozoss.agentos.workflow.AgentLoopPayload] for LOOP-mode agents,
+ *   carried from [io.whozoss.agentos.agentConfig.AgentConfig.loopConfig]. Null for SIMPLE/ADVANCED
+ *   agents or when no default was configured.
  */
 data class ResolvedAgentDefinition(
     val agentConfigId: UUID,
@@ -58,4 +62,5 @@ data class ResolvedAgentDefinition(
     val namespaceId: UUID,
     val userId: UUID?,
     val redirectGuideline: String? = null,
+    val loopConfig: JsonNode? = null,
 )

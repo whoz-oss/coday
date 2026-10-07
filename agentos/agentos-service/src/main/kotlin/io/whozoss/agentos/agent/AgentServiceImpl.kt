@@ -423,6 +423,7 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             userId = context.userId,
             redirectGuideline = redirectGuideline,
+            loopConfig = agentConfig.loopConfig,
         )
     }
 
@@ -489,6 +490,7 @@ class AgentServiceImpl(
             resolvedTools = definition.tools,
             resolvedUser = resolvedUser,
             redirectGuideline = definition.redirectGuideline,
+            loopConfig = definition.loopConfig,
         )
     }
 
@@ -555,6 +557,7 @@ class AgentServiceImpl(
         resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
         redirectGuideline: String? = null,
+        loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
     ): Agent {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
@@ -572,6 +575,7 @@ class AgentServiceImpl(
                     resolvedTools = resolvedTools,
                     triggerUser = resolvedUser,
                     caseLauncher = context.caseLauncher,
+                    loopConfig = loopConfig,
                 )
 
             ExecutionMode.ADVANCED -> {

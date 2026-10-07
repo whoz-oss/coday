@@ -1,25 +1,20 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { HttpClient } from '@angular/common/http'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfigControllerService, Case, Configuration } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, AgentConfigControllerService, Case, Configuration } from '@whoz-oss/agentos-api-client'
 import { firstValueFrom } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 
 /**
  * AgentConfigLaunchComponent — launch page for LOOP-mode agent configs.
  *
- * Provides a monospace textarea for the AgentLoopPayload JSON, validates it,
- * creates a Case, sends the payload as the first message, and navigates to
- * the new case chat.
+ * Displays the AgentConfig.loopConfig as read-only JSON so the user can
+ * inspect what will be used, then creates a Case and sends a minimal start
+ * message. The backend reads loopConfig directly from AgentConfig — the
+ * textarea content is informational only and is never sent in the message.
  *
- * The message is prefixed with `@<agentName>` so the case routes it to this LOOP agent
- * rather than to the namespace default agent; AgentLoop strips the mention before parsing.
- *
- * Route: `/:namespaceId/agent-configs/:agentConfigId/launch` — namespace only, since a
- * loop creates cases and cases always live in a namespace.
- *
- * Navigation mirrors CaseHomeComponent.submit():
- *   POST /api/cases → addCase() → POST /api/cases/:id/messages → navigate
+ * Route: `/:namespaceId/agent-configs/:agentConfigId/launch`
  */
 @Component({
   selector: 'agentos-agent-config-launch',
@@ -28,21 +23,23 @@ import { CaseStateService } from '../../services/case-state.service'
   styleUrl: './agent-config-launch.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class AgentConfigLaunchComponent {
+export class AgentConfigLaunchComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
   private readonly http = inject(HttpClient)
   private readonly config = inject(Configuration)
   private readonly caseState = inject(CaseStateService)
   private readonly agentConfigController = inject(AgentConfigControllerService)
+  private readonly destroyRef = inject(DestroyRef)
+
   protected readonly namespaceId = this.route.snapshot.params['namespaceId'] as string
   protected readonly agentConfigId = this.route.snapshot.params['agentConfigId'] as string
 
-  /** Raw JSON entered by the user. */
-  protected readonly payloadJson = signal('')
+  /** Resolved agent config — stored to avoid a second fetch at launch time. */
+  private resolvedAgentConfig: AgentConfig | null = null
 
-  /** Inline error shown under the textarea when the JSON is invalid. */
-  protected readonly payloadError = signal<string | null>(null)
+  /** Read-only JSON display of loopConfig, pre-filled from the resolved AgentConfig. */
+  protected readonly payloadJson = signal('')
 
   /** Error shown when the API calls fail. */
   protected readonly launchError = signal<string | null>(null)
@@ -50,74 +47,68 @@ export class AgentConfigLaunchComponent {
   /** True while the launch sequence is in flight. */
   protected readonly isLaunching = signal(false)
 
-  /** Placeholder illustrating the AgentLoopPayload shape. */
-  protected readonly placeholder = JSON.stringify(
-    {
-      tool: 'SearchTalents',
-      searchInput: { endDatePeriod: ['THIS_WEEK'], resolveTargets: ['OWNER'] },
-      act: {
-        agentName: 'talent-analyzer',
-        promptTemplate: 'Analyse this entity: {entityId}',
-      },
-    },
-    null,
-    2
-  )
+  /** True while the agent config is being fetched on init. */
+  protected readonly isLoading = signal(false)
 
-  protected onInput(event: Event): void {
-    this.payloadJson.set((event.target as HTMLTextAreaElement).value)
+  ngOnInit(): void {
+    this.isLoading.set(true)
+    this.agentConfigController
+      .getByIdAgentConfig(this.agentConfigId)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: (agentConfig) => {
+          this.resolvedAgentConfig = agentConfig
+          if (agentConfig.loopConfig != null) {
+            this.payloadJson.set(JSON.stringify(agentConfig.loopConfig, null, 2))
+          }
+          this.isLoading.set(false)
+        },
+        error: () => {
+          this.isLoading.set(false)
+        },
+      })
   }
 
   /**
    * Launch sequence:
-   * 1. Validate the textarea content as JSON.
-   * 2. Resolve the agent name used for the `@mention`.
-   * 3. POST /api/cases to create a new case in the current namespace.
-   * 4. Prepend the case to CaseStateService.
-   * 5. POST /api/cases/:id/messages with `@<agentName> <json>` as content.
-   * 6. Navigate to the case chat.
+   * 1. Use the already-loaded agent config (or fetch if not yet resolved).
+   * 2. POST /api/cases to create a new case in the current namespace.
+   * 3. Prepend the case to CaseStateService.
+   * 4. POST /api/cases/:id/messages with a minimal start message.
+   *    The backend reads loopConfig from AgentConfig directly.
+   * 5. Navigate to the case chat.
    */
   protected async launch(): Promise<void> {
-    const raw = this.payloadJson().trim()
-    this.payloadError.set(null)
     this.launchError.set(null)
-
-    // Step 1: validate JSON.
-    if (!raw) {
-      this.payloadError.set('Payload is required.')
-      return
-    }
-    try {
-      JSON.parse(raw)
-    } catch {
-      this.payloadError.set('Invalid JSON — please fix the syntax and try again.')
-      return
-    }
-
     this.isLaunching.set(true)
-    try {
-      // Step 2: resolve the agent name for the @mention routing.
-      const agentConfig = await firstValueFrom(this.agentConfigController.getByIdAgentConfig(this.agentConfigId))
 
-      // Step 3: create the case.
+    try {
+      // Step 1: use the cached config or fetch it if the init call is still pending.
+      const agentConfig =
+        this.resolvedAgentConfig ??
+        (await firstValueFrom(this.agentConfigController.getByIdAgentConfig(this.agentConfigId)))
+
+      // Step 2: create the case.
       const createdCase = await firstValueFrom(
         this.http.post<Case>(`${this.config.basePath}/api/cases`, {
           namespaceId: this.namespaceId,
         })
       )
-      // Step 4: register the case in the drawer immediately.
+
+      // Step 3: register the case in the drawer immediately.
       this.caseState.addCase(createdCase)
       const caseId = createdCase.id ?? ''
 
-      // Step 5: send the loop payload as the first message, routed to this agent.
+      // Step 4: send a minimal start message routed to this agent.
+      // The backend reads loopConfig from AgentConfig — no payload in the message.
       await firstValueFrom(
         this.http.post(`${this.config.basePath}/api/cases/${caseId}/messages`, {
-          content: `@${agentConfig.name} ${raw}`,
+          content: `@${agentConfig.name} start`,
           userId: 'default-user',
         })
       )
 
-      // Step 6: navigate to the new case.
+      // Step 5: navigate to the new case.
       this.router.navigate(['/agentos/home'], {
         queryParams: { ns: this.namespaceId, case: caseId },
       })

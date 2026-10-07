@@ -30,6 +30,7 @@ export interface AgentConfig {
   id?: string
   instructions?: string
   integrations?: { [key: string]: Array<string> }
+  loopConfig?: any | null
   modelName?: string
   name: string
   namespaceId?: string

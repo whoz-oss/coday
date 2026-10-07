@@ -1,6 +1,22 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal, inject, signal } from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  OnInit,
+  WritableSignal,
+  computed,
+  inject,
+  signal,
+} from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import {
+  AbstractControl,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
@@ -128,7 +144,23 @@ export class AgentConfigFormComponent implements OnInit {
       validators: [Validators.min(1), Validators.max(2147483647), Validators.pattern(/^\d+$/)],
     }),
     enabled: new FormControl<boolean>(false, { nonNullable: true }),
+    loopConfig: new FormControl<string | null>(null, { validators: [AgentConfigFormComponent.jsonValidator] }),
   })
+
+  /**
+   * Validates that the control value is either empty/null or a valid JSON string.
+   * Returns `{ invalidJson: true }` when the value is non-empty but cannot be parsed.
+   */
+  static jsonValidator(control: AbstractControl): ValidationErrors | null {
+    const value = control.value?.trim()
+    if (!value) return null
+    try {
+      JSON.parse(value)
+      return null
+    } catch {
+      return { invalidJson: true }
+    }
+  }
 
   protected get nameControl() {
     return this.form.controls.name
@@ -163,6 +195,22 @@ export class AgentConfigFormComponent implements OnInit {
     return this.form.controls.enabled
   }
 
+  protected get loopConfigControl() {
+    return this.form.controls.loopConfig
+  }
+
+  /**
+   * Reactive signal tracking the current execution mode value.
+   * Bridges the FormControl observable world into the signal world so that
+   * `@if (isLoopMode())` in the OnPush template reacts to select changes.
+   */
+  private readonly executionModeValue = toSignal(this.form.controls.executionMode.valueChanges, {
+    initialValue: this.form.controls.executionMode.value,
+  })
+
+  /** True when the selected execution mode is LOOP. */
+  protected readonly isLoopMode = computed(() => this.executionModeValue() === AgentConfigExecutionModeEnum.LOOP)
+
   // ── Sub-agents list ───────────────────────────────────────────────────────
 
   /** Current list of sub-agent glob patterns, each backed by a live FormControl. */
@@ -178,6 +226,20 @@ export class AgentConfigFormComponent implements OnInit {
 
   /** Expose the enum to the template for option value bindings. */
   protected readonly ExecutionMode = AgentConfigExecutionModeEnum
+
+  /** Placeholder illustrating the AgentLoopPayload shape expected by loopConfig. */
+  protected readonly loopConfigPlaceholder = JSON.stringify(
+    {
+      tool: 'SearchTalents',
+      searchInput: { endDatePeriod: ['THIS_WEEK'] },
+      act: {
+        agentName: 'talent-analyzer',
+        promptTemplate: 'Analyse this entity: {entityId}',
+      },
+    },
+    null,
+    2
+  )
 
   /**
    * Built-in integration rows (e.g. file exchange) surfaced by the backend only when their
@@ -252,6 +314,7 @@ export class AgentConfigFormComponent implements OnInit {
           this.form.controls.advancedExecution.setValue(config.advancedExecution ?? false)
           this.delegationTimeoutControl.setValue(config.delegationTimeoutSeconds ?? null)
           this.enabledControl.setValue(config.enabled ?? true)
+          this.loopConfigControl.setValue(config.loopConfig != null ? JSON.stringify(config.loopConfig, null, 2) : null)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, config.integrations ?? undefined))
@@ -484,6 +547,7 @@ export class AgentConfigFormComponent implements OnInit {
       enabled: this.enabledControl.value,
       subAgents: this.buildSubAgentsPayload(),
       delegationTimeoutSeconds: this.delegationTimeoutControl.value,
+      loopConfig: this.buildLoopConfigPayload(),
     } as AgentConfig
 
     const call$ = this.isEditMode()
@@ -517,6 +581,27 @@ export class AgentConfigFormComponent implements OnInit {
         },
         error: () => this.isExporting.set(false),
       })
+  }
+
+  /**
+   * Parse the loopConfig textarea value into an object for the API payload.
+   * Returns undefined when the textarea is empty or null, preserving the existing
+   * value from the server (via existingConfig) when the field was never touched.
+   * Returns null only when the user explicitly cleared a previously-set value.
+   */
+  private buildLoopConfigPayload(): object | null | undefined {
+    const raw = this.loopConfigControl.value?.trim()
+    if (!raw) {
+      // If the user cleared the field and there was a previous value, send null to clear it.
+      // If there was no previous value, omit the field entirely.
+      return this.existingConfig?.loopConfig != null ? null : undefined
+    }
+    try {
+      return JSON.parse(raw) as object
+    } catch {
+      // Validator should have caught this; guard anyway.
+      return undefined
+    }
   }
 
   protected cancel(): void {
