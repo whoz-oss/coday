@@ -942,7 +942,14 @@ class PromptServiceImplSpec : StringSpec() {
         "translate persists new translations so subsequent calls are cache hits" {
             val repo = InMemoryPromptRepository()
             val service =
-                PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
+                PromptServiceImpl(
+                    repository = repo,
+                    agentConfigService = agentConfigService,
+                    translationService = translationService,
+                    scheduledPromptRepository = InMemoryScheduledPromptRepository(),
+                    permissionService = permissionService,
+                    batchTranslationProperties = batchTranslationProperties,
+                )
             val nsId = UUID.randomUUID()
             val saved =
                 service.create(
@@ -999,7 +1006,14 @@ class PromptServiceImplSpec : StringSpec() {
         "translate uses cached content and only calls LLM for title when content is already cached" {
             val repo = InMemoryPromptRepository()
             val service =
-                PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
+                PromptServiceImpl(
+                    repository = repo,
+                    agentConfigService = agentConfigService,
+                    translationService = translationService,
+                    scheduledPromptRepository = InMemoryScheduledPromptRepository(),
+                    permissionService = permissionService,
+                    batchTranslationProperties = batchTranslationProperties,
+                )
             val nsId = UUID.randomUUID()
             val cachedContent = mapOf("fr" to listOf("Bonjour"))
             val saved =
@@ -1028,7 +1042,14 @@ class PromptServiceImplSpec : StringSpec() {
         "translate accumulates translations for multiple languages" {
             val repo = InMemoryPromptRepository()
             val service =
-                PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
+                PromptServiceImpl(
+                    repository = repo,
+                    agentConfigService = agentConfigService,
+                    translationService = translationService,
+                    scheduledPromptRepository = InMemoryScheduledPromptRepository(),
+                    permissionService = permissionService,
+                    batchTranslationProperties = batchTranslationProperties,
+                )
             val nsId = UUID.randomUUID()
             val saved =
                 service.create(
