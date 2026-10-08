@@ -1,7 +1,8 @@
 rootProject.name = "factory"
 
-// Enable version catalog
-enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+// Type-safe project accessors are unused in this composite root.
+// Do not enable them: the root name "factory" generates a getFactory()
+// accessor that collides with Gradle's internal accessor base class.
 
 // ── Composite build: all factory modules are included from source ──────────────
 // The dependency graph is:
@@ -14,11 +15,9 @@ enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
 // this root composite wires them together so `./gradlew :<module>:<task>`
 // works from the factory/ directory, mirroring the agentos/ layout.
 //
-// NO dependencyResolutionManagement block here: each included build already
-// declares its own `libs` catalog pointing at ../gradle/libs.versions.toml.
-// Declaring it again at the root would register `libs` twice and cause a
-// "version catalog ... has already been declared" error. Gradle deduplicates
-// included builds by canonical path; catalog declarations are not deduplicated.
+// Gradle automatically imports this root's gradle/libs.versions.toml as `libs`.
+// Do not add an explicit from(...) import for the same root catalog.
+// Included builds have independent catalogs configured in their own settings.
 
 includeBuild("factory-sdk")
 includeBuild("factory-verification-core")
