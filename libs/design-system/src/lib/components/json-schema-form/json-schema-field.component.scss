@@ -82,6 +82,16 @@
     flex: 1;
   }
 
+  &__input--duplicate {
+    border-color: var(--color-error, #d32f2f);
+  }
+
+  &__checkbox-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
   &__array-remove {
     flex-shrink: 0;
     width: 28px;
