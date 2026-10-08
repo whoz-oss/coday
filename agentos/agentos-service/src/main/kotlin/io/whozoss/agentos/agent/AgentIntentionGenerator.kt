@@ -135,7 +135,7 @@ You must respond with **exactly** this XML structure and **nothing else** — no
 <intention>$intentionDescription</intention>
 <toolName>[The exact name of the tool to be called]</toolName>
 
-The tag names intention and toolName are fixed. The chosen tool’s name goes inside <toolName>, i.e. <toolName>Name of the tool</toolName; it must not become an XML tag. Do not reorder them.
+The tag names intention and toolName are fixed. The chosen tool’s name goes inside <toolName>, i.e. <toolName>Name of the tool</toolName>; it must not become an XML tag. Do not reorder them.
 Do not wrap in code blocks. Do not add any text before or after the XML.
         """.trimIndent()
 
