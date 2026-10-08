@@ -57,6 +57,7 @@ export class SessionPageComponent {
 
   protected readonly effectiveRunId = computed(() => this.runId() || this.routeRunId())
   protected readonly session = computed(() => this.store.session(this.effectiveRunId()))
+  private readonly run = computed(() => this.store.runs().find((candidate) => candidate.id === this.effectiveRunId()))
   protected readonly selectedBlock = signal('')
   protected readonly selectedStepId = signal('')
 
@@ -64,10 +65,19 @@ export class SessionPageComponent {
     effect(() => {
       const s = this.session()
       if (s?.phase.stepId && !this.selectedStepId()) this.selectedStepId.set(s.phase.stepId)
+      const run = this.run()
+      const namespaceId = run?.namespaceId
+      const workstreamName = namespaceId
+        ? (this.store.namespaces().get(namespaceId) ?? namespaceId)
+        : (s?.sandbox ?? '…')
       this.shell.crumbs.set([
-        { label: 'Sandboxes', link: '/sandboxes' },
-        { label: s?.sandbox ?? '…', link: '/sandboxes', mono: true },
-        { label: this.effectiveRunId(), mono: true },
+        { label: 'Workstreams', link: '/workstreams' },
+        {
+          label: namespaceId && workstreamName !== namespaceId ? capitalizeFirstLetter(workstreamName) : workstreamName,
+          link: '/workstreams',
+          mono: !namespaceId || workstreamName === namespaceId,
+        },
+        { label: run?.title || this.effectiveRunId(), mono: !run?.title },
       ])
     })
   }
@@ -136,4 +146,8 @@ export class SessionPageComponent {
     if (!id) return
     this.store.stopCost(id)
   }
+}
+
+function capitalizeFirstLetter(value: string): string {
+  return value ? value[0]!.toUpperCase() + value.slice(1) : value
 }
