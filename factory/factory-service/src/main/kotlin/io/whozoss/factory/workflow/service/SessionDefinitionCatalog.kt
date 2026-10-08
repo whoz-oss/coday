@@ -5,6 +5,7 @@ import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
+import io.whozoss.factory.workflow.domain.executionPolicyOf
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver
@@ -38,6 +39,7 @@ class SessionDefinitionCatalog(
                     version = validation.definition["version"] as String,
                     definitionHash = hashWorkflowDefinition(validation.definition),
                     definition = validation.definition,
+                    executionPolicy = executionPolicyOf(validation.definition),
                 )
                 is WorkflowDefinitionValidation.Invalid -> throw IllegalArgumentException(
                     "Bundled session definition ${resource.filename} is invalid: " +

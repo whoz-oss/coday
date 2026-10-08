@@ -148,4 +148,51 @@ class WorkflowDefinitionValidatorTest {
         assertThat(errorCode(bad)).isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
         assertThat(errorPath(bad)).isEqualTo("$")
     }
+
+    // ------------------------------------------------------------------
+    // Optional execution plugin selection (Factory Forge)
+    // ------------------------------------------------------------------
+
+    private fun definitionWithExecution(execution: Any?): Map<String, Any?> =
+        definition(step("one")) + mapOf("execution" to execution)
+
+    @Test
+    fun `normalizes a valid execution plugin selection`() {
+        val result = WorkflowDefinitionValidator.validate(definitionWithExecution(mapOf("plugin" to "forge")))
+        val normalized = (result as WorkflowDefinitionValidation.Valid).definition
+        assertThat(normalized["execution"]).isEqualTo(mapOf("plugin" to "forge"))
+    }
+
+    @Test
+    fun `omits the execution key when the block is absent`() {
+        val result = WorkflowDefinitionValidator.validate(definition(step("one")))
+        val normalized = (result as WorkflowDefinitionValidation.Valid).definition
+        assertThat(normalized).doesNotContainKey("execution")
+    }
+
+    @Test
+    fun `rejects a non-map execution block`() {
+        assertThat(errorCode(definitionWithExecution("forge"))).isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
+        assertThat(errorPath(definitionWithExecution("forge"))).isEqualTo("execution")
+    }
+
+    @Test
+    fun `rejects an unknown key inside execution`() {
+        val bad = definitionWithExecution(mapOf("plugin" to "forge", "extra" to "x"))
+        assertThat(errorCode(bad)).isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
+        assertThat(errorPath(bad)).isEqualTo("execution")
+    }
+
+    @Test
+    fun `rejects a non-string blank or unsafe execution plugin`() {
+        assertThat(errorCode(definitionWithExecution(mapOf("plugin" to 123))))
+            .isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
+        assertThat(errorPath(definitionWithExecution(mapOf("plugin" to 123)))).isEqualTo("execution.plugin")
+        assertThat(errorCode(definitionWithExecution(mapOf("plugin" to "  "))))
+            .isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
+        assertThat(errorCode(definitionWithExecution(mapOf("plugin" to "bad id!"))))
+            .isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
+        assertThat(errorCode(definitionWithExecution(mapOf("plugin" to "a".repeat(129)))))
+            .isEqualTo(WorkflowDefinitionErrorCodes.INVALID_VALUE)
+    }
 }

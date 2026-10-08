@@ -33,8 +33,11 @@ sealed interface WorkflowDefinitionValidation {
 
 private val SAFE_ID = Regex("^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,127})$")
 private val SEMVER = Regex("^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$")
-private val DEFINITION_FIELDS = setOf("schemaVersion", "workflowType", "version", "title", "trustedExecution", "steps")
+private val DEFINITION_FIELDS = setOf("schemaVersion", "workflowType", "version", "title", "trustedExecution", "execution", "steps")
 private val TRUSTED_EXECUTION_FIELDS = setOf("allowedPaths")
+
+/** Allowed keys of the optional top-level `execution` block. */
+private val EXECUTION_FIELDS = setOf("plugin")
 private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn")
 private val RESPONSIBILITY_FIELDS = setOf("kind", "name")
 
@@ -94,6 +97,24 @@ object WorkflowDefinitionValidator {
                 normalizedPaths.add(path)
             }
             trustedExecution = mapOf("allowedPaths" to normalizedPaths)
+        }
+
+        // Optional execution-plugin selection (Factory Forge). Backward compatible:
+        // a definition without an `execution` block never carries the key and keeps
+        // its historical canonical hash.
+        var execution: Map<String, Any?>? = null
+        if (record.containsKey("execution") && record["execution"] != null) {
+            val rawExecution = record["execution"]
+            if (rawExecution !is Map<*, *>) {
+                return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "execution")
+            }
+            val executionRecord = rawExecution.entries.associate { it.key.toString() to it.value }
+            if (executionRecord.keys.any { it !in EXECUTION_FIELDS }) {
+                return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "execution")
+            }
+            val (plugin, pluginError) = text(executionRecord["plugin"], "execution.plugin", safe = true, maximum = 128)
+            if (pluginError != null) return WorkflowDefinitionValidation.Invalid(pluginError)
+            execution = mapOf("plugin" to plugin!!)
         }
 
         val rawSteps = record["steps"]
@@ -178,6 +199,7 @@ object WorkflowDefinitionValidator {
             "title" to title,
         )
         if (trustedExecution != null) normalized["trustedExecution"] = trustedExecution
+        if (execution != null) normalized["execution"] = execution
         normalized["steps"] = normalizedStepJsons
 
         return WorkflowDefinitionValidation.Valid(normalized, steps)
