@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference
  * tool loop is disabled: its cumulative Usage loses native cache counts. The same tool
  * callbacks are executed here, after accounting and the user's cost confirmation.
  * Native chunks are inspected BEFORE MessageAggregator discards their native metadata.
+ * A cost reported by the provider for a request ([providerCost]) replaces the pricing estimate.
  */
 class UsageTrackingChatModel(
     private val delegate: ChatModel,
@@ -34,6 +35,7 @@ class UsageTrackingChatModel(
     private val model: AiModel,
     private val toolManager: ToolCallingManager = DefaultToolCallingManager.builder().build(),
     private val maxToolRounds: Int = 20,
+    private val providerCost: ProviderReportedCost? = null,
 ) : ChatModel by delegate {
     override fun call(prompt: Prompt): ChatResponse =
         try {
@@ -48,8 +50,9 @@ class UsageTrackingChatModel(
         round: Int,
     ): ChatResponse {
         awaitPermission()
+        providerCost?.clear()
         val response = delegate.call(prompt)
-        accumulator.record(CostCalculator.extract(response, apiType, model))
+        accumulator.record(withProviderCost(CostCalculator.extract(response, apiType, model)))
         if (!response.hasToolCalls()) return response
         if (round >= maxToolRounds) {
             throw IllegalStateException("Maximum tool rounds reached")
@@ -75,14 +78,18 @@ class UsageTrackingChatModel(
             val raw =
                 Mono
                     .fromFuture(accumulator.beforeCall())
-                    .thenMany(Flux.defer { delegate.stream(prompt) })
+                    .thenMany(
+                        Flux.defer {
+                            providerCost?.clear()
+                            delegate.stream(prompt)
+                        },
+                    )
                     .doOnNext { response ->
                         val usage = CostCalculator.extract(response, apiType, model)
                         if (usage != LlmUsage.ZERO) lastUsage.set(usage)
-                    }.doOnComplete { lastUsage.getAndSet(null)?.let(accumulator::record) }
-                    .doOnError {
-                        lastUsage.getAndSet(null)?.let(accumulator::record)
-                    }.doOnCancel { lastUsage.getAndSet(null)?.let(accumulator::record) }
+                    }.doOnComplete { recordLast(lastUsage) }
+                    .doOnError { recordLast(lastUsage) }
+                    .doOnCancel { recordLast(lastUsage) }
             MessageAggregator().aggregate(raw, aggregated::set).concatWith(
                 Flux.defer {
                     val response = aggregated.get()
@@ -106,6 +113,14 @@ class UsageTrackingChatModel(
                 },
             )
         }
+
+    private fun recordLast(lastUsage: AtomicReference<LlmUsage?>) {
+        lastUsage.getAndSet(null)?.let { accumulator.record(withProviderCost(it)) }
+    }
+
+    /** The provider's own figure is authoritative; the estimate remains the fallback. */
+    private fun withProviderCost(usage: LlmUsage): LlmUsage =
+        providerCost?.take()?.let { usage.copy(estimatedCostUsd = it) } ?: usage
 
     private fun markFailure(error: Throwable) {
         val interrupted =
