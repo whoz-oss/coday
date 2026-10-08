@@ -130,20 +130,19 @@ jobs:
       !contains(needs.*.result, 'cancelled') &&
       startsWith(github.base_ref, 'workstream/') &&
       github.event.pull_request.head.repo.full_name == github.repository
-    # Serialise all writes to integration/<slug> under a group keyed on the slug.
-    # group resolves to e.g. "workstream-talent-portal" for slug "talent-portal".
-    # github.base_ref for a workstream PR is "workstream/<slug>/<base>", so
-    # split(..., '/')[1] extracts the slug.
+    # Serialise all writes to integration/<slug> under a group keyed on the full base ref.
+    # github.base_ref is the full branch name (e.g. "workstream/<slug>/master") and is
+    # unique per workstream. Using it directly avoids the unsupported split() function.
     #
     # This group MUST match the group in integration-reset.yml so that a reset
     # and a promote for the same slug never run concurrently.
-    # workstream-build.yml uses split(github.ref_name, '/')[1] on "integration/<slug>"
-    # which also yields the slug -- same string, different context variable.
+    # workstream-build.yml uses github.ref_name on "integration/<slug>" -- a different
+    # variable but equally unique per workstream.
     #
     # cancel-in-progress: false is mandatory -- cancelling a promote would leave
     # the integration branch in an indeterminate state.
     concurrency:
-      group: workstream-${{ split(github.base_ref, '/')[1] }}
+      group: workstream-${{ github.base_ref }}
       cancel-in-progress: false
     permissions:
       contents: write

@@ -30,16 +30,15 @@ on:
 # cancel-in-progress: false is mandatory -- cancelling mid-publish can leave a
 # partial artifact set that appears coherent but is missing packages.
 #
-# group resolves to e.g. "workstream-talent-portal" for slug "talent-portal".
-# github.ref_name for an integration push is "integration/<slug>", so
-# split(..., '/')[1] extracts the slug.
+# group resolves to e.g. "workstream-integration/talent-portal" for a given slug.
+# github.ref_name for an integration push is "integration/<slug>" and is unique
+# per workstream. Using it directly avoids the unsupported split() function.
 #
 # This group MUST match the group in validate.yml (promote-to-integration) and
 # integration-reset.yml so that a build, promote, and reset for the same slug
-# are never concurrent. All three use split(..., '/')[1] on their respective
-# context variable (ref_name vs base_ref) but the slug segment is always [1].
+# are never concurrent.
 concurrency:
-  group: workstream-${{ split(github.ref_name, '/')[1] }}
+  group: workstream-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:

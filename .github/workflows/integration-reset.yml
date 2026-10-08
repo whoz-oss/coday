@@ -35,9 +35,9 @@ jobs:
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     # Serialise writes to integration/<slug> under a group keyed on the slug.
-    # group resolves to e.g. "workstream-talent-portal" for slug "talent-portal".
-    # github.base_ref for a merged workstream PR is "workstream/<slug>/<base>", so
-    # split(..., '/')[1] extracts the slug.
+    # group resolves to e.g. "workstream-workstream/talent-portal/master" for a
+    # workstream PR. github.base_ref is the full branch name (e.g. "workstream/<slug>/master").
+    # Using it directly is unique per workstream and avoids the unsupported split() function.
     #
     # This group MUST match the group in validate.yml (promote-to-integration) and
     # workstream-build.yml so that a reset, promote, and build for the same slug
@@ -46,7 +46,7 @@ jobs:
     # cancel-in-progress: false is mandatory -- cancelling a reset mid-push could
     # leave the integration branch in a corrupt state.
     concurrency:
-      group: workstream-${{ split(github.base_ref, '/')[1] }}
+      group: workstream-${{ github.base_ref }}
       cancel-in-progress: false
     permissions:
       contents: write
