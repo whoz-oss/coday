@@ -24,6 +24,9 @@ object ForgeStoryOperations {
     /** Policy version of the Story oracle campaign. */
     const val STORY_ORACLE_POLICY_VERSION = "forge-story-oracles-v1"
 
+    /** Schema version of the frozen Story context envelope. */
+    const val STORY_CONTEXT_ENVELOPE_SCHEMA_VERSION = 1
+
     const val MAX_FILES = 30
     const val MAX_TEXT = 4_000
 
@@ -181,5 +184,93 @@ object ForgeStoryOperations {
                 "List only EXISTING files within allow and outside deny. If all work is net-new creation (no existing files to modify), " +
                 "use an empty array: {\"files\":[],\"doneWhen\":\"...\",\"steps\":[\"...\"]}.",
         ).filter { it.isNotEmpty() }.joinToString("\n\n")
+    }
+
+    /**
+     * Frozen context envelope of a Story-phase agent execution (Lot D).
+     *
+     * Mirrors the Factory core attempt context envelope: it pins the identity
+     * of the Epic/Story, the spec hash and policy version the brief was built
+     * from, the assembled brief itself and its SHA-256. It is JSON-serializable
+     * ([toJson] / [fromJson]) so it can be persisted and replayed verbatim by
+     * the caller instead of re-deriving the brief from the ledger.
+     *
+     * [expectedAmendmentSeq] is carried for schema completeness; amendment
+     * resolution belongs to Lot E and is intentionally absent.
+     */
+    data class StoryContextEnvelope(
+        val schemaVersion: Int = STORY_CONTEXT_ENVELOPE_SCHEMA_VERSION,
+        val policyVersion: String,
+        val epicId: String?,
+        val storyId: String?,
+        val specPath: String,
+        val specHash: String,
+        val brief: String,
+        val briefHash: String,
+        val frontmatterKeys: List<String> = emptyList(),
+        val supplement: String? = null,
+        val expectedAmendmentSeq: Long? = null,
+    ) {
+        fun toMap(): Map<String, Any?> = linkedMapOf(
+            "schemaVersion" to schemaVersion,
+            "policyVersion" to policyVersion,
+            "epicId" to epicId,
+            "storyId" to storyId,
+            "specPath" to specPath,
+            "specHash" to specHash,
+            "brief" to brief,
+            "briefHash" to briefHash,
+            "frontmatterKeys" to frontmatterKeys,
+            "supplement" to supplement,
+            "expectedAmendmentSeq" to expectedAmendmentSeq,
+        )
+
+        fun toJson(): String = ForgeJson.stringify(toMap())
+
+        companion object {
+            fun fromJson(json: String): StoryContextEnvelope {
+                val raw = ForgeJson.parseObject(json)
+                return StoryContextEnvelope(
+                    schemaVersion = (raw["schemaVersion"] as? Number)?.toInt()
+                        ?: STORY_CONTEXT_ENVELOPE_SCHEMA_VERSION,
+                    policyVersion = raw["policyVersion"] as? String ?: "",
+                    epicId = raw["epicId"] as? String,
+                    storyId = raw["storyId"] as? String,
+                    specPath = raw["specPath"] as? String ?: "",
+                    specHash = raw["specHash"] as? String ?: "",
+                    brief = raw["brief"] as? String ?: "",
+                    briefHash = raw["briefHash"] as? String ?: "",
+                    frontmatterKeys = (raw["frontmatterKeys"] as? List<*>).orEmpty().map { it.toString() },
+                    supplement = raw["supplement"] as? String,
+                    expectedAmendmentSeq = (raw["expectedAmendmentSeq"] as? Number)?.toLong(),
+                )
+            }
+        }
+    }
+
+    /** Builds the frozen Story context envelope around the read-only analysis brief. */
+    fun buildContextEnvelope(
+        epic: ForgeLedgerEvent,
+        story: ForgeLedgerEvent,
+        specPath: String,
+        specHash: String,
+        policyVersion: String,
+        frontmatter: Map<String, Any?>,
+        supplement: String?,
+        expectedAmendmentSeq: Long? = null,
+    ): StoryContextEnvelope {
+        val brief = buildBrief(epic, story, specPath, specHash, policyVersion, frontmatter, supplement)
+        return StoryContextEnvelope(
+            policyVersion = policyVersion,
+            epicId = asMap(epic["workItem"])?.get("id") as? String,
+            storyId = asMap(story["workItem"])?.get("id") as? String,
+            specPath = specPath,
+            specHash = specHash,
+            brief = brief,
+            briefHash = ForgeJson.sha256(brief),
+            frontmatterKeys = frontmatter.keys.sorted(),
+            supplement = supplement,
+            expectedAmendmentSeq = expectedAmendmentSeq,
+        )
     }
 }

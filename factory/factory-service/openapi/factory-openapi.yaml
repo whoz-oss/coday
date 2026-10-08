@@ -3300,6 +3300,9 @@ components:
           format: int32
         resumptionContext:
           type: string
+        expectedAmendmentSeq:
+          type: integer
+          format: int64
         revision:
           type: integer
           format: int32

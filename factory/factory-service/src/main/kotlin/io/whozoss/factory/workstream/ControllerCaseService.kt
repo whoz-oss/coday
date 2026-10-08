@@ -77,7 +77,12 @@ class ControllerCaseService(
         limit: Int?,
     ): ControllerResumptionPackage {
         workstreamService.assertWithinWorkstream(caller, workstreamId)
-        val projection = projectionService.getAggregatedProjection(caller, workstreamId, namespaceId, limit)
+        // Explicit workstream <-> namespace resolution (Lot D): fall back to the
+        // namespace declared by the workstream registry entry, so callers never
+        // rely on the projection service to re-derive the mapping implicitly.
+        val effectiveNamespace = namespaceId?.takeIf { it.isNotBlank() }
+            ?: workstreamService.declaredNamespaceId(caller.scope, workstreamId)
+        val projection = projectionService.getAggregatedProjection(caller, workstreamId, effectiveNamespace, limit)
         return packageBuilder.build(projection)
     }
 

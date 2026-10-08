@@ -89,6 +89,8 @@ class Neo4jDurableAgentAttemptRepository(
             environmentRef = attempt.environmentRef,
             expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
             resumptionContext = attempt.resumptionContext,
+            contextEnvelope = attempt.contextEnvelope,
+            expectedAmendmentSeq = attempt.expectedAmendmentSeq,
             now = now,
         )
         if (isNew) {

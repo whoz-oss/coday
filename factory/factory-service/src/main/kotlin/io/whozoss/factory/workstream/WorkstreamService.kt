@@ -139,6 +139,28 @@ class WorkstreamService(
         }
     }
 
+    /**
+     * Explicit workstream <-> namespace resolution (Lot D).
+     *
+     * Returns the effective namespace of a workstream-scoped execution: the
+     * caller-requested [requestedNamespaceId] when present, otherwise the
+     * namespace declared by the workstream registry entry, otherwise the
+     * [DEFAULT_NAMESPACE_ID] fallback. Centralizing this mapping removes the
+     * implicit `namespaceId ?: workstream.namespaceId ?: ...` scattered across
+     * call sites.
+     */
+    fun resolveNamespaceId(scope: TenantScope, requestedNamespaceId: String?): String =
+        requestedNamespaceId?.takeIf { it.isNotBlank() }
+            ?: declaredNamespaceId(scope)
+            ?: DEFAULT_NAMESPACE_ID
+
+    /**
+     * The namespace declared by [workstreamId] in the registry (defaulting to
+     * the caller's workstream), or `null` when the workstream declares none.
+     */
+    fun declaredNamespaceId(scope: TenantScope, workstreamId: String = scope.workstreamId): String? =
+        findDomain(scope, workstreamId)?.namespaceId?.takeIf { it.isNotBlank() }
+
     private fun validateAllowedWorkflowTypes(raw: List<String>?): List<String> {
         val types = raw.orEmpty().map { it.trim() }
         if (types.size > WorkstreamBounds.MAX_LIMIT) {
@@ -154,5 +176,10 @@ class WorkstreamService(
             )
         }
         return types.distinct()
+    }
+
+    companion object {
+        /** Namespace used when neither the request nor the workstream declares one. */
+        const val DEFAULT_NAMESPACE_ID = "default"
     }
 }

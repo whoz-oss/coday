@@ -9,6 +9,7 @@ import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
+import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
@@ -248,13 +249,22 @@ class CapabilityExecutionService(
         return visited
     }
 
-    private fun buildBrief(
+    /** The structured pieces assembled for one attempt's turn brief. */
+    private data class BriefAssembly(
+        val ticketInstruction: String?,
+        val entryStep: Boolean,
+        val inputs: Map<String, Any?>,
+        val runBrief: Map<String, Any?>?,
+        val controllerRequest: String?,
+    )
+
+    private fun assembleBrief(
         scope: TenantScope,
         namespaceId: String,
         workflowId: String,
         step: WorkflowStepDefinition,
         ticket: String?,
-    ): String {
+    ): BriefAssembly {
         val ticketInstruction = briefFromTicket(ticket)
         val entryStep = step.dependsOn.isEmpty()
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
@@ -315,6 +325,15 @@ class CapabilityExecutionService(
             .let { it as? String }
             ?.takeIf { it.isNotBlank() }
 
+        return BriefAssembly(ticketInstruction, entryStep, inputs, runBrief, controllerRequest)
+    }
+
+    private fun renderBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
+        val ticketInstruction = assembly.ticketInstruction
+        val entryStep = assembly.entryStep
+        val inputs = assembly.inputs
+        val runBrief = assembly.runBrief
+        val controllerRequest = assembly.controllerRequest
         return buildString {
             controllerRequest?.let {
                 appendLine("## User request")
@@ -352,6 +371,60 @@ class CapabilityExecutionService(
             appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
             append("- Once Factory accepts the result, stop working on this step.")
         }
+    }
+
+    private fun buildBrief(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        ticket: String?,
+    ): String = renderBrief(step, assembleBrief(scope, namespaceId, workflowId, step, ticket))
+
+    /**
+     * Builds the frozen context envelope (Lot D) of an attempt together with
+     * the turn brief it pins. The envelope is the structured, JSON-serializable
+     * form of the context ([AttemptContextEnvelope]) and is persisted verbatim
+     * on the attempt so a replay never re-derives it from upstream evidence.
+     */
+    private fun buildContextEnvelope(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        ticket: String?,
+        attemptNumber: Int,
+        agentName: String,
+        expectedAmendmentSeq: Long? = null,
+    ): Pair<String, AttemptContextEnvelope> {
+        val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
+        val brief = renderBrief(step, assembly)
+        val envelope = AttemptContextEnvelope(
+            organizationId = scope.organizationId,
+            workstreamId = scope.workstreamId,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            stepId = step.id,
+            attemptNumber = attemptNumber,
+            agentName = agentName,
+            ticket = ticket,
+            briefHash = CanonicalJsonHash.sha256(brief),
+            inputs = assembly.inputs,
+            runBrief = assembly.runBrief,
+            controllerRequest = assembly.controllerRequest,
+            expectedAmendmentSeq = expectedAmendmentSeq,
+        )
+        return brief to envelope
+    }
+
+    /** The frozen brief + serialized envelope of an attempt, reused verbatim on replay. */
+    private data class FrozenContext(val brief: String, val envelopeJson: String)
+
+    /** The frozen context of an existing attempt, or `null` for legacy records without one. */
+    private fun frozenContextOf(attempt: DurableAgentAttempt?): FrozenContext? {
+        val envelopeJson = attempt?.contextEnvelope ?: return null
+        val frozenBrief = attempt.brief ?: return null
+        return FrozenContext(frozenBrief, envelopeJson)
     }
 
     /** Finds the first standard run-brief artifact in a structured result value. */
@@ -550,11 +623,21 @@ class CapabilityExecutionService(
         // registers N+1. The DAG must follow that authoritative successor;
         // otherwise only the recovery scanner can drive N+1 while this path
         // remains anchored to the terminal predecessor.
-        val attemptId = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
-            ?.attemptId
-            ?: stableAttemptId(workflowId, step.id)
+        val latestAttempt = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
+        val attemptId = latestAttempt?.attemptId ?: stableAttemptId(workflowId, step.id)
         val ownerToken = UUID.randomUUID().toString()
-        val brief = buildBrief(scope, namespaceId, workflowId, step, ticket)
+        // Lot D - replay integrity: an existing attempt replays its FROZEN context
+        // verbatim; only a brand-new attempt assembles a fresh envelope from the
+        // current durable inputs and persists it at registration.
+        val context = frozenContextOf(latestAttempt) ?: run {
+            val (brief, envelope) = buildContextEnvelope(
+                scope, namespaceId, workflowId, step, ticket,
+                attemptNumber = latestAttempt?.attemptNumber ?: 1,
+                agentName = agentId,
+            )
+            FrozenContext(brief, envelope.toJson())
+        }
+        val brief = context.brief
 
         // Phase 1 - short transactions: reserve the attempt (register + atomic,
         // lease-fenced claim). Each durable-attempt operation owns its own short
@@ -563,7 +646,8 @@ class CapabilityExecutionService(
         // registration.
         val reservation = withReservationLock("$workflowId#${step.id}") {
             reserveAgentAttempt(
-                attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId, brief, entryAgentStepId,
+                attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId, brief,
+                context.envelopeJson, entryAgentStepId,
             )
         }
         reservation.terminalStatus?.let {
@@ -715,6 +799,7 @@ class CapabilityExecutionService(
         ownerToken: String,
         agentId: String,
         brief: String,
+        contextEnvelope: String,
         entryAgentStepId: String,
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
@@ -764,6 +849,7 @@ class CapabilityExecutionService(
                     agentName = agentId,
                     capabilityToken = capabilityToken,
                     brief = brief,
+                    contextEnvelope = contextEnvelope,
                     environmentRef = environment?.environmentId,
                     expectedEnvironmentRevision = environment?.revision,
                     rootCaseId = family.rootCaseId,
