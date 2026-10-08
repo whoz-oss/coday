@@ -27,46 +27,56 @@ const require = createRequire(import.meta.url);
  * 2. Workspace protocol resolution (development)
  * 3. Relative path fallback (monorepo development)
  */
-function resolveClientPath() {
+function resolveStaticPackagePath(packageName, developmentPath, displayName) {
+  const developmentBrowserPath = resolve(__dirname, developmentPath);
+
   try {
-    // Try to resolve the client package using Node's module resolution
-    const clientPackagePath = require.resolve('@whoz-oss/coday-client/package.json');
-    const clientPath = dirname(clientPackagePath);
-    
-    // Check if browser directory exists
-    const browserPath = resolve(clientPath, 'browser');
+    const packageJsonPath = require.resolve(`${packageName}/package.json`);
+    const packagePath = dirname(packageJsonPath);
+    const browserPath = resolve(packagePath, 'browser');
+
     if (existsSync(browserPath)) {
       return browserPath;
     }
-    
-    // Fallback: browser might be at package root for published package
-    if (existsSync(resolve(clientPath, 'index.html'))) {
-      return clientPath;
+
+    // Keep compatibility with packages exposing their browser build at the root.
+    if (existsSync(resolve(packagePath, 'index.html'))) {
+      return packagePath;
     }
-    
-    console.error('Client package found but browser directory is missing.');
-    console.error(`Checked paths: ${browserPath}, ${clientPath}`);
+
+    if (existsSync(developmentBrowserPath)) {
+      console.log(`Using development ${displayName.toLowerCase()} build from monorepo`);
+      return developmentBrowserPath;
+    }
+
+    console.error(`${displayName} package found but browser directory is missing.`);
+    console.error(`Checked paths: ${browserPath}, ${packagePath}, ${developmentBrowserPath}`);
     process.exit(1);
   } catch (error) {
-    // Fallback for monorepo development
-    const devClientPath = resolve(__dirname, '../../client/dist/browser');
-    if (existsSync(devClientPath)) {
-      console.log('Using development client build from monorepo');
-      return devClientPath;
+    if (existsSync(developmentBrowserPath)) {
+      console.log(`Using development ${displayName.toLowerCase()} build from monorepo`);
+      return developmentBrowserPath;
     }
-    
-    console.error('Could not resolve @whoz-oss/coday-client package.');
-    console.error('Please ensure dependencies are installed: pnpm install');
+
+    console.error(`Could not resolve ${packageName} package.`);
+    console.error('Please ensure dependencies are installed and the application is built.');
     console.error('Error:', error.message);
     process.exit(1);
   }
 }
 
-// Resolve and set the client path
-const clientPath = resolveClientPath();
+// Resolve and expose static application paths to the server.
+const clientPath = resolveStaticPackagePath('@whoz-oss/coday-client', '../client/dist/browser', 'Client');
+const factoryCockpitPath = resolveStaticPackagePath(
+  '@whoz-oss/coday-factory-cockpit',
+  '../factory-cockpit/dist/browser',
+  'Factory cockpit'
+);
 process.env.CODAY_CLIENT_PATH = clientPath;
+process.env.CODAY_FACTORY_COCKPIT_PATH = factoryCockpitPath;
 
 console.log(`Coday Web: Using client files from ${clientPath}`);
+console.log(`Coday Web: Using factory cockpit files from ${factoryCockpitPath}`);
 
 // Import and run the server
 // The server package exports its main module which starts the server
@@ -74,7 +84,17 @@ try {
   // Try to resolve the server package
   const serverPackagePath = require.resolve('@whoz-oss/coday-server/package.json');
   const serverDir = dirname(serverPackagePath);
-  const serverMainPath = resolve(serverDir, 'server.js');
+  const packagedServerMainPath = resolve(serverDir, 'server.js');
+  const developmentServerMainPath = resolve(__dirname, '../server/dist/server.js');
+  const serverMainPath = existsSync(packagedServerMainPath)
+    ? packagedServerMainPath
+    : developmentServerMainPath;
+
+  if (!existsSync(serverMainPath)) {
+    throw new Error(
+      `Server entry point is missing. Checked paths: ${packagedServerMainPath}, ${developmentServerMainPath}`
+    );
+  }
   
   // Import the server module
   // Convert Windows absolute path to file:// URL for ESM import

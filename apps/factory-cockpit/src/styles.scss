@@ -1,0 +1,186 @@
+@use '@angular/material' as mat;
+
+/* ───────────── Tokens Software Factory ───────────── */
+:root {
+  --sf-bg: #0a0d13;
+  --sf-chrome: #0d1118;
+  --sf-surface: #10141d;
+  --sf-surface-2: #151a25;
+  --sf-outline: #242b3b;
+  --sf-outline-strong: #2f3950;
+  --sf-outline-active: #33486e;
+
+  --sf-primary: #c4a1ff; /* IDs, action principale */
+  --sf-primary-deep: #a98cff;
+  --sf-on-primary: #1b1030;
+  --sf-secondary: #5fd4e0; /* workflows, agents, branches */
+  --sf-tertiary: #f0c75e; /* humain, vagues, demande */
+
+  --sf-success: #4ade80;
+  --sf-running: #9dbaf9;
+  --sf-error: #ff4d4f;
+
+  --sf-text-primary: #e7eaf2;
+  --sf-text: #e7eaf2;
+  --sf-text-2: #c9cfdd;
+  --sf-text-muted: #9199ad;
+  --sf-text-faint: #7d859a;
+
+  --sf-font: 'Manrope', system-ui, sans-serif;
+  --sf-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --sf-radius: 16px;
+}
+
+/* ───────────── Thème Angular Material (M3, v19+) ───────────── */
+html {
+  color-scheme: dark;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$violet-palette,
+        tertiary: mat.$cyan-palette,
+        theme-type: dark,
+      ),
+      typography: (
+        plain-family: 'Manrope, system-ui, sans-serif',
+        brand-family: 'Manrope, system-ui, sans-serif',
+      ),
+      density: -1,
+    )
+  );
+
+  @include mat.toolbar-overrides(
+    (
+      container-background-color: var(--sf-chrome),
+    )
+  );
+  @include mat.sidenav-overrides(
+    (
+      container-background-color: var(--sf-chrome),
+      content-background-color: var(--sf-bg),
+      container-shape: 0,
+    )
+  );
+  @include mat.card-overrides(
+    (
+      outlined-container-color: var(--sf-surface),
+      outlined-outline-color: var(--sf-outline),
+      outlined-container-shape: var(--sf-radius),
+    )
+  );
+  @include mat.table-overrides(
+    (
+      background-color: var(--sf-surface),
+      header-headline-color: var(--sf-text-faint),
+      row-item-outline-color: #1a1f2c,
+    )
+  );
+  @include mat.paginator-overrides(
+    (
+      container-background-color: var(--sf-surface),
+    )
+  );
+  @include mat.expansion-overrides(
+    (
+      container-background-color: transparent,
+      header-text-weight: 700,
+    )
+  );
+  @include mat.form-field-overrides(
+    (
+      outlined-outline-color: var(--sf-outline-strong),
+      outlined-focus-outline-color: var(--sf-primary-deep),
+      outlined-focus-label-text-color: var(--sf-primary),
+    )
+  );
+}
+
+html,
+body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  background: var(--sf-bg);
+  color: var(--sf-text);
+  font-family: var(--sf-font);
+}
+
+/* ───────────── Utilitaires ───────────── */
+.sf-mono {
+  font-family: var(--sf-mono);
+}
+.sf-muted {
+  color: var(--sf-text-muted);
+}
+.sf-id {
+  font-family: var(--sf-mono);
+  color: var(--sf-primary);
+  font-weight: 700;
+}
+.sf-workflow {
+  font-family: var(--sf-mono);
+  color: var(--sf-secondary);
+}
+.sf-overline {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sf-text-muted);
+}
+.sf-panel {
+  background: var(--sf-surface);
+  border: 1px solid var(--sf-outline);
+  border-radius: var(--sf-radius);
+}
+.sf-spacer {
+  flex: 1 1 auto;
+}
+.sf-ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+@keyframes sf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.sf-spin {
+  animation: sf-spin 1s linear infinite;
+}
+
+/* ───────────── Boutons ───────────── */
+.mat-mdc-unelevated-button.sf-primary {
+  background: linear-gradient(135deg, #d4b8ff, var(--sf-primary-deep));
+  color: var(--sf-on-primary);
+  font-weight: 800;
+  border-radius: 10px;
+}
+.mat-mdc-outlined-button.sf-secondary {
+  background: #141926;
+  border-color: var(--sf-outline-strong);
+  color: var(--sf-text);
+  border-radius: 10px;
+}
+.mat-mdc-outlined-button.sf-danger {
+  border-color: #6b2a2e;
+  color: #f58f8f;
+  border-radius: 10px;
+  font-weight: 700;
+}
+.mat-mdc-button.sf-ghost {
+  color: var(--sf-text-2);
+  border-radius: 10px;
+}
+
+/* ───────────── Icônes Material Symbols ───────────── */
+.material-symbols-outlined {
+  font-variation-settings:
+    'wght' 400,
+    'opsz' 20;
+}
