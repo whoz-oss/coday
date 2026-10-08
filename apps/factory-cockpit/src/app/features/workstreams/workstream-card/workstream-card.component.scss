@@ -41,6 +41,10 @@
   color: var(--sf-text-primary);
 }
 
+.title::first-letter {
+  text-transform: uppercase;
+}
+
 .namespace-id {
   font-size: 12px;
   color: var(--sf-text-muted);
