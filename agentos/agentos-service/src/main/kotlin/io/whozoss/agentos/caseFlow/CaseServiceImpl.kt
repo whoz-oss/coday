@@ -345,8 +345,8 @@ class CaseServiceImpl(
     private fun buildRuntime(
         case: Case,
         inputEvents: List<CaseEvent> = emptyList(),
-    ): CaseRuntime {
-        return CaseRuntime(
+    ): CaseRuntime =
+        CaseRuntime(
             id = case.id,
             namespaceId = case.namespaceId,
             caseCreatedAt = case.metadata.created,
@@ -378,7 +378,6 @@ class CaseServiceImpl(
             initialStatus = case.status,
             maxIterations = limitsConfig.caseMaxIterations,
         ).also { startEvictionWatcher(case.id, it) }
-    }
 
     // ======================================================
     // Message handling (called by controller)

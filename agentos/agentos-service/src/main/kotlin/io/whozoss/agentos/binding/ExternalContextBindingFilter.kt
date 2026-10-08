@@ -33,7 +33,7 @@ class ExternalContextBindingFilter(
     private val objectMapper: ObjectMapper,
 ) : OncePerRequestFilter() {
     override fun shouldNotFilter(request: HttpServletRequest): Boolean =
-        request.method != HttpMethod.POST.name() || !request.requestURI.endsWith(CASES_PATH)
+        request.method != HttpMethod.POST.name() || request.servletPath != CASES_PATH
 
     override fun doFilterInternal(
         request: HttpServletRequest,

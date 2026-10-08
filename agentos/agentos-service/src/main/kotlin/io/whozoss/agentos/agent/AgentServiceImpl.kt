@@ -845,7 +845,7 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
-            timeoutMs = agentConfigProperties.delegationTimeoutMinutes.toLong() * 60 * 1_000L,
+            timeoutMs = agentConfigProperties.delegationTimeoutMinutes * 60_000L,
         )
     }
 

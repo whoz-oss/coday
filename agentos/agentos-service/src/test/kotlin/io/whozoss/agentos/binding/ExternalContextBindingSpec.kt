@@ -132,7 +132,7 @@ class ExternalContextBindingSpec : StringSpec({
             response,
             FilterChain { _, res ->
                 (res as HttpServletResponse).status = 201
-                res.writer.write("""{"id":"${UUID.randomUUID()}","namespaceId":"${UUID.randomUUID()}"}""")
+                res.writer.write("""{"id":"${UUID.randomUUID()}","namespaceId":"${UUID.randomUUID()}"}""".trimIndent())
             },
         )
 

@@ -26,9 +26,9 @@ import java.util.UUID
  * plugin's own concern.
  *
  * The endpoint is fail-closed:
- * - unknown case → 404;
- * - no registrar loaded (plugin absent) → 404;
- * - no registrar accepted the binding (wrong/absent secret, invalid identity) → 401.
+ * - unknown case -> 404;
+ * - no registrar loaded (plugin absent) -> 404;
+ * - no registrar accepted the binding (wrong/absent secret, invalid identity) -> 401.
  */
 @RestController
 @RequestMapping("/internal")
