@@ -128,6 +128,7 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
             attemptId: String,
             capabilityToken: String?,
             caseId: String,
+            parentCaseId: String?,
         ): CaseHandle = CaseHandle(caseId = caseId, namespaceId = namespaceId, recovered = false)
 
         override fun startTurn(
