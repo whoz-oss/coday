@@ -55,6 +55,7 @@ data class WorkflowProjectionNode(
         relations = objectMapper.readJsonMapOrNull(relations),
         controllerExecution = objectMapper.readJsonMapOrNull(controllerExecution),
         lifecycleState = lifecycleState,
+        createdAt = createdAt,
     )
 
     companion object {
