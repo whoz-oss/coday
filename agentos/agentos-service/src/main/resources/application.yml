@@ -191,11 +191,22 @@ agentos:
   # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
   # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
   query-user:
-    # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
-    # integrations map. On by default: asking a question is a primitive of conversation, not an
-    # integration, so agents should not have to declare it. An agent can still opt out by mapping
-    # the QUERY_USER key to an empty list [] in its integrations map — the right choice for fully
-    # autonomous agents triggered by webhooks where nobody is listening.
+    # Declare that a platform-scoped 'QUERY_USER' integration configuration should exist. When true
+    # (shipped default), QueryUserConfigSeeder creates it at startup if absent, with autoGrant=true
+    # and all three question types allowed — so every agent of the environment receives the
+    # queryUser tool without declaring it, as before.
+    #
+    # This declares EXISTENCE, not content: once the configuration exists it belongs to the
+    # administrator and startup never rewrites it. It is also create-only — setting this back to
+    # false later does NOT delete an already-seeded configuration (a warning is logged instead);
+    # set autoGrant=false on that configuration, or delete it, through the API.
+    #
+    # Restrict the allowed question types for a namespace by creating a configuration with the same
+    # name scoped to it: the 4-tier overlay merges them parameter by parameter.
+    #
+    # An agent always keeps the last word: mapping 'QUERY_USER' to an empty list [] in its
+    # integrations map opts out, which beats autoGrant — the right choice for fully autonomous
+    # agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     enabled-by-default: true
   limits:

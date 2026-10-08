@@ -47,9 +47,6 @@ import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
 import io.whozoss.agentos.git.GitMetadataEntries
-import io.whozoss.agentos.queryUser.QueryUserConfigProperties
-import io.whozoss.agentos.queryUser.QueryUserToolGrantService
-import io.whozoss.agentos.queryUser.QueryUserToolPlugin
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
@@ -122,9 +119,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
     // Strict on purpose: a relaxed mock would return a non-null ExchangeGrant and silently grant the
     // exchange in every unrelated test. The defaults stubbed in init deny both scopes.
     private val exchangeToolGrantService: ExchangeToolGrantService = mockk()
-    // Relaxed: queryUser grant is a side concern for most tests in this spec; a relaxed mock returns
-    // false for isGranted() (Boolean default) which means no tools are added — a safe neutral state.
-    private val queryUserToolGrantService: QueryUserToolGrantService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
@@ -153,7 +147,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(delegationTimeoutSeconds = 2),
             limitsConfig = LimitsConfigProperties(),
-            queryUserToolGrantService = queryUserToolGrantService,
             exchangeRootResolver = exchangeRootResolver,
         )
 
@@ -613,7 +606,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
-                    queryUserToolGrantService = queryUserToolGrantService,
                     exchangeRootResolver = exchangeRootResolver,
                 )
             val caseTool = mockk<StandardTool<*>>()
@@ -948,7 +940,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
-                    queryUserToolGrantService = queryUserToolGrantService,
                     exchangeRootResolver = exchangeRootResolver,
                 )
             val configs =
