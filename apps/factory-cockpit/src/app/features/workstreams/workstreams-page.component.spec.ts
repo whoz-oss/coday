@@ -137,16 +137,14 @@ describe('WorkstreamsPageComponent', () => {
     expect(values).toContain('$3.00')
   })
 
-  it('exposes a launch entry point to the /lancer screen', async () => {
+  it('keeps the header launch entry point without rendering the secondary launch and recent tasks panels', async () => {
     const { host } = await setup(createStore())
 
     const header = host.querySelector<HTMLAnchorElement>('header [data-workstreams-launch]')
     expect(header).not.toBeNull()
     expect(header?.getAttribute('href')).toBe('/lancer')
-
-    const panel = host.querySelector<HTMLAnchorElement>('[data-workstreams-launch-panel]')
-    expect(panel).not.toBeNull()
-    expect(panel?.getAttribute('href')).toBe('/lancer')
+    expect(host.querySelector('[data-workstreams-launch-panel]')).toBeNull()
+    expect(host.textContent).not.toContain('Recent tasks')
   })
 
   it('targets actions with the exact run id, not the display name', async () => {

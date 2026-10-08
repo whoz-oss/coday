@@ -31,45 +31,6 @@
     </article>
   </section>
 
-  <div class="split">
-    <!-- New run: entry point to the real launch form -->
-    <section class="new sf-panel" aria-labelledby="new-title">
-      <h2 id="new-title" class="sf-overline">New run</h2>
-      <p class="sf-muted note">
-        The container fleet has no backend: the workstreams below reflect the real active workflows. To start a
-        workflow, launch a run from factory-service.
-      </p>
-      <div class="form-actions">
-        <a mat-flat-button class="sf-primary" routerLink="/lancer" data-workstreams-launch-panel="true">
-          <mat-icon>play_arrow</mat-icon>
-          Launch a run
-        </a>
-      </div>
-    </section>
-
-    <!-- Recent tasks -->
-    <section class="tasks sf-panel" aria-labelledby="tasks-title">
-      <div class="tasks-head">
-        <h2 id="tasks-title" class="sf-overline">Recent tasks</h2>
-        <span class="sf-spacer"></span>
-        <a routerLink="/historique" class="link">Full history</a>
-      </div>
-      <ul class="task-grid">
-        @for (t of store.recentTasks(); track t.title) {
-          <li class="task">
-            <span class="task-title sf-ellipsis"><span class="ok-dot"></span>{{ t.title }}</span>
-            <span class="task-log sf-mono sf-ellipsis">{{ t.log }}</span>
-            <span class="task-cost sf-mono"
-              >final cost · workflows <b>{{ t.costUsd | usd }}</b></span
-            >
-          </li>
-        } @empty {
-          <li class="empty sf-muted">No recent tasks.</li>
-        }
-      </ul>
-    </section>
-  </div>
-
   <!-- Workstreams → runs -->
   <section class="cards" aria-label="Workstreams">
     @for (ws of store.workstreams(); track ws.namespaceId) {

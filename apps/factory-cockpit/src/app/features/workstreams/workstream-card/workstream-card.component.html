@@ -7,13 +7,16 @@
 >
   <!-- Workstream header: NO overall state badge. -->
   <header class="workstream-head">
-    <h2 class="title">{{ ws.title }}</h2>
-    <code class="namespace-id sf-mono" [title]="'Namespace ID: ' + ws.namespaceId">{{ ws.namespaceId }}</code>
-    <span class="sf-spacer"></span>
-    <span class="count" [attr.aria-label]="runCount() + ' runs'">
-      {{ runCount() }} run{{ runCount() === 1 ? '' : 's' }}
-    </span>
-    <span class="cost" [attr.aria-label]="'Workstream cost'">{{ totalCost() | usd: 2 : unknownCostCount() }}</span>
+    <div class="workstream-identity">
+      <h2 class="title">{{ ws.title }}</h2>
+      <code class="namespace-id sf-mono" [title]="'Namespace ID: ' + ws.namespaceId">{{ ws.namespaceId }}</code>
+    </div>
+    <div class="workstream-totals" aria-label="Workstream totals">
+      <span class="count" [attr.aria-label]="runCount() + ' runs'">
+        {{ runCount() }} run{{ runCount() === 1 ? '' : 's' }}
+      </span>
+      <span class="cost" [attr.aria-label]="'Workstream cost'">{{ totalCost() | usd: 2 : unknownCostCount() }}</span>
+    </div>
   </header>
 
   <div class="runs" role="list">

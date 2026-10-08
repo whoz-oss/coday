@@ -60,27 +60,33 @@
   <!-- Run summary -->
   @if (r.run; as summary) {
     <section class="run" aria-label="Run summary">
-      <div class="run-head">
-        @if (summary.status === 'running') {
-          @if (summary.waitingHuman) {
+      @if (summary.status === 'running') {
+        @if (summary.waitingHuman) {
+          <div class="run-notice">
             <sf-status-chip tone="amber" size="sm" icon="person_alert">
               Waiting for reply{{ summary.currentPhase ? ' · ' + summary.currentPhase : '' }}
             </sf-status-chip>
-          } @else {
+          </div>
+        } @else {
+          <div class="run-notice">
             <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>
               running{{ summary.currentPhase ? ' · ' + summary.currentPhase : '' }}
             </sf-status-chip>
-          }
+          </div>
         }
-        <span class="sf-spacer"></span>
-        <sf-metric icon="paid" label="Run cost" [unknownCostCount]="summary.unknownCostCount ?? 0">{{
-          summary.costUsd | usd: 4 : summary.unknownCostCount
-        }}</sf-metric>
-        <sf-metric icon="timer" label="Duration">{{ summary.durationSec | duration }}</sf-metric>
-        <sf-metric icon="link" label="Tokens">{{ summary.tokens | tokens }}</sf-metric>
+      }
+      <div class="run-details">
+        <div class="run-steps">
+          <sf-step-dots [phases]="summary.phases" />
+        </div>
+        <div class="run-metrics" aria-label="Run metrics">
+          <sf-metric icon="paid" label="Run cost" [unknownCostCount]="summary.unknownCostCount ?? 0">{{
+            summary.costUsd | usd: 4 : summary.unknownCostCount
+          }}</sf-metric>
+          <sf-metric icon="timer" label="Duration">{{ summary.durationSec | duration }}</sf-metric>
+          <sf-metric icon="link" label="Tokens">{{ summary.tokens | tokens }}</sf-metric>
+        </div>
       </div>
-      <p class="goal">{{ summary.goal }}</p>
-      <sf-step-dots [phases]="summary.phases" />
     </section>
   } @else if (r.status === 'destroyed') {
     <p class="final-cost">
