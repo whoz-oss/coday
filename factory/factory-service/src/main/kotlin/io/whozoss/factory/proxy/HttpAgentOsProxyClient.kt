@@ -75,6 +75,22 @@ class HttpAgentOsProxyClient(
             null
         }
 
+    /**
+     * Namespace Git association (`GET /api/namespaces/{id}/git`). AgentOS answers
+     * 404 when the GIT plugin is not loaded or the namespace is unknown; both
+     * resolve to null so the pre-check reports Git workspaces as unavailable.
+     */
+    override fun fetchNamespaceGit(namespaceId: String, externalUserId: String?): Map<String, Any?>? =
+        try {
+            relay(
+                "/api/namespaces/$namespaceId/git",
+                externalUserId,
+                object : ParameterizedTypeReference<Map<String, Any?>>() {},
+            )
+        } catch (_: AgentOsNotFound) {
+            null
+        }
+
     override fun fetchCaseEvents(caseId: String, externalUserId: String?): Any? =
         relay("/api/case-events/by-parentId/$caseId", externalUserId, object : ParameterizedTypeReference<Any>() {})
 
