@@ -4,6 +4,7 @@ import java.util.concurrent.ConcurrentHashMap
 import mu.KotlinLogging
 import org.springframework.core.ParameterizedTypeReference
 import org.springframework.http.MediaType
+import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
 
 /** Thrown by [AgentOsExecutionAdapter.startTurn] when the case is not quiescent. */
@@ -59,6 +60,7 @@ class DefaultAgentOsExecutionAdapter(
     private data class ExecutionRecord(
         val caseId: String,
         val namespaceId: String?,
+        val parentCaseId: String? = null,
         val externalUserId: String?,
         val capabilityToken: String?,
         val agentName: String? = null,
@@ -69,6 +71,7 @@ class DefaultAgentOsExecutionAdapter(
         fun toBinding(attemptId: String): TrustedCaseBinding = TrustedCaseBinding(
             caseId = caseId,
             namespaceId = namespaceId,
+            parentCaseId = parentCaseId,
             attemptId = attemptId,
             runtimeId = runtimeId,
             capabilityToken = capabilityToken,
@@ -82,15 +85,22 @@ class DefaultAgentOsExecutionAdapter(
     // ---- AgentRuntimeAdapter contract (binding/token based) ----
 
     override fun createOrRecoverExecution(binding: TrustedCaseBinding, workflowId: String, stepId: String): CaseHandle {
+        // Hot path: this process already bound the attempt (idempotent by attemptId).
         executions[binding.attemptId]?.let {
             registry.register(it.toBinding(binding.attemptId))
             return CaseHandle(it.caseId, it.namespaceId, recovered = true)
         }
+        // Cold cache: this process restarted or lost its in-memory record. The
+        // deterministic caseId may already exist remotely in AgentOS; adopt it
+        // when it belongs to the same case family instead of creating a
+        // duplicate. A family mismatch is refused, never silently re-created.
+        adoptRemoteCaseIfCompatible(binding)?.let { return it }
         val body = LinkedHashMap<String, Any?>()
         body["namespaceId"] = binding.namespaceId
         body["title"] = "Factory session $workflowId · step $stepId"
         body["id"] = binding.caseId
         body["attemptId"] = binding.attemptId
+        if (!binding.parentCaseId.isNullOrBlank()) body["parentCaseId"] = binding.parentCaseId
         if (!binding.capabilityToken.isNullOrBlank()) body["capabilityToken"] = binding.capabilityToken
         val spec = client.post()
             .uri("/api/cases")
@@ -105,11 +115,23 @@ class DefaultAgentOsExecutionAdapter(
             spec.header("X-External-Context-Agent-Name", binding.agentName ?: "*")
             spec.header("X-External-Context-Secret", secret)
         }
-        val response = spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+        val response = try {
+            spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+        } catch (conflict: HttpClientErrorException.Conflict) {
+            // A concurrent creator won the race on this deterministic caseId.
+            // Re-read it and adopt it when compatible — never duplicate, never
+            // change the case id.
+            return adoptRemoteCaseIfCompatible(binding)
+                ?: throw IllegalStateException(
+                    "AgentOS reports case ${binding.caseId} already exists but it could not be adopted by this binding",
+                    conflict,
+                )
+        }
         val resolvedCaseId = (response?.get("id") as? String) ?: binding.caseId
         val record = ExecutionRecord(
             caseId = resolvedCaseId,
             namespaceId = binding.namespaceId,
+            parentCaseId = binding.parentCaseId,
             externalUserId = binding.externalUserId,
             capabilityToken = binding.capabilityToken,
             agentName = binding.agentName,
@@ -126,6 +148,63 @@ class DefaultAgentOsExecutionAdapter(
             CaseHandle(resolvedCaseId, binding.namespaceId, recovered = false)
         }
     }
+
+    /**
+     * Cold-cache reconciliation: `GET /api/cases/{caseId}` and adopt the remote
+     * case when it is compatible with the requested binding.
+     *
+     * @return the recovered [CaseHandle] when the remote case exists and is
+     *   compatible, or `null` when no remote case exists (404) so the caller
+     *   proceeds to creation.
+     * @throws IllegalStateException when a remote case exists but belongs to a
+     *   different namespace or case family: adoption is refused and the case id
+     *   is never duplicated or changed.
+     */
+    private fun adoptRemoteCaseIfCompatible(binding: TrustedCaseBinding): CaseHandle? {
+        if (binding.caseId.isBlank()) return null
+        val remote = getRemoteCase(binding.caseId, binding.externalUserId) ?: return null
+        val remoteNamespaceId = remote["namespaceId"] as? String
+        val remoteParentId = (remote["parentCaseId"] as? String) ?: (remote["parentId"] as? String)
+        val namespaceMatches = binding.namespaceId.isNullOrBlank() ||
+            remoteNamespaceId.isNullOrBlank() ||
+            binding.namespaceId == remoteNamespaceId
+        val parentMatches = binding.parentCaseId.normalizedCaseId() == remoteParentId.normalizedCaseId()
+        if (!namespaceMatches || !parentMatches) {
+            throw IllegalStateException(
+                "Case ${binding.caseId} exists in AgentOS but is not adoptable by this binding: " +
+                    "namespaceId expected=${binding.namespaceId} actual=$remoteNamespaceId, " +
+                    "parentCaseId expected=${binding.parentCaseId} actual=$remoteParentId",
+            )
+        }
+        val record = ExecutionRecord(
+            caseId = binding.caseId,
+            namespaceId = remoteNamespaceId ?: binding.namespaceId,
+            parentCaseId = remoteParentId ?: binding.parentCaseId,
+            externalUserId = binding.externalUserId,
+            capabilityToken = binding.capabilityToken,
+            agentName = binding.agentName,
+            runtimeId = binding.runtimeId,
+            environmentRef = binding.environmentRef,
+            environmentRevision = binding.environmentRevision,
+        )
+        executions[binding.attemptId] = record
+        registry.register(record.toBinding(binding.attemptId))
+        logger.info { "Recovered existing AgentOS case ${binding.caseId} for attempt ${binding.attemptId} (cold cache)" }
+        return CaseHandle(binding.caseId, record.namespaceId, recovered = true)
+    }
+
+    /** `GET /api/cases/{caseId}`; `null` when AgentOS reports the case does not exist (404). */
+    private fun getRemoteCase(caseId: String, externalUserId: String?): Map<String, Any?>? {
+        val spec = client.get().uri("/api/cases/$caseId")
+        if (!externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", externalUserId)
+        return try {
+            spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
+        } catch (_: HttpClientErrorException.NotFound) {
+            null
+        }
+    }
+
+    private fun String?.normalizedCaseId(): String? = this?.takeIf { it.isNotBlank() }
 
     override fun startTurn(binding: TrustedCaseBinding, persona: String, brief: String): TurnToken {
         val caseId = binding.caseId
@@ -251,11 +330,13 @@ class DefaultAgentOsExecutionAdapter(
         attemptId: String,
         capabilityToken: String?,
         caseId: String,
+        parentCaseId: String?,
     ): CaseHandle = createOrRecoverExecution(
         TrustedCaseBinding(
             caseId = caseId,
             namespaceId = namespaceId,
             attemptId = attemptId,
+            parentCaseId = parentCaseId,
             capabilityToken = capabilityToken,
             externalUserId = externalUserId,
         ),

@@ -5,12 +5,14 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.match.MockRestRequestMatchers.header
 import org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withServerError
+import org.springframework.test.web.client.response.MockRestResponseCreators.withStatus
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
 import org.springframework.web.client.RestClient
 
@@ -57,6 +59,8 @@ class DefaultAgentOsExecutionAdapterTest {
     @Test
     fun `createOrRecoverExecution is idempotent by attemptId - the case is created only once`() {
         val (adapter, server) = build()
+        // Cold cache: the deterministic case id does not exist remotely yet.
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         server.expect(requestTo("$baseUrl/api/cases"))
             .andExpect(header("X-External-User-Id", "user-1"))
             .andExpect(header("X-External-Context-Attempt-Id", "attempt-1"))
@@ -89,7 +93,172 @@ class DefaultAgentOsExecutionAdapterTest {
 
         assertThat(created).isEqualTo(CaseHandle("case-1", "ns-1", recovered = false))
         assertThat(recovered).isEqualTo(CaseHandle("case-1", "ns-1", recovered = true))
-        server.verify() // a single POST /api/cases — the second call recovered
+        server.verify() // a single POST /api/cases — the second call recovered from the hot cache
+    }
+
+    @Test
+    fun `parentCaseId is sent in the POST body when present`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(jsonPath("$.id").value("case-1"))
+            .andExpect(jsonPath("$.parentCaseId").value("parent-1"))
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1","parentCaseId":"parent-1"}""", MediaType.APPLICATION_JSON))
+
+        val handle = adapter.createOrRecoverExecution(
+            TrustedCaseBinding(
+                caseId = "case-1",
+                attemptId = "attempt-1",
+                namespaceId = "ns-1",
+                parentCaseId = "parent-1",
+            ),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        assertThat(handle).isEqualTo(CaseHandle("case-1", "ns-1", recovered = false))
+        server.verify()
+    }
+
+    @Test
+    fun `parentCaseId is omitted from the POST body for a root case`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(jsonPath("$.id").value("case-1"))
+            .andExpect(jsonPath("$.parentCaseId").doesNotExist())
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
+
+        adapter.createOrRecoverExecution(
+            TrustedCaseBinding(caseId = "case-1", attemptId = "attempt-1", namespaceId = "ns-1"),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        server.verify()
+    }
+
+    @Test
+    fun `cold cache adoption - a compatible existing remote case is recovered, never re-created`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(
+            withSuccess(
+                """{"id":"case-1","namespaceId":"ns-1","parentCaseId":"parent-1"}""",
+                MediaType.APPLICATION_JSON,
+            ),
+        )
+
+        val handle = adapter.createOrRecoverExecution(
+            TrustedCaseBinding(
+                caseId = "case-1",
+                attemptId = "attempt-1",
+                namespaceId = "ns-1",
+                parentCaseId = "parent-1",
+            ),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        assertThat(handle).isEqualTo(CaseHandle("case-1", "ns-1", recovered = true))
+        server.verify() // no POST: the case id is preserved, never duplicated
+    }
+
+    @Test
+    fun `cold cache adoption - a differing parentCaseId is refused and never duplicated`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(
+            withSuccess(
+                """{"id":"case-1","namespaceId":"ns-1","parentCaseId":"other-parent"}""",
+                MediaType.APPLICATION_JSON,
+            ),
+        )
+
+        assertThatThrownBy {
+            adapter.createOrRecoverExecution(
+                TrustedCaseBinding(
+                    caseId = "case-1",
+                    attemptId = "attempt-1",
+                    namespaceId = "ns-1",
+                    parentCaseId = "parent-1",
+                ),
+                workflowId = "wf-1",
+                stepId = "step-1",
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("not adoptable")
+
+        server.verify()
+    }
+
+    @Test
+    fun `cold cache adoption - a differing namespace is refused`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(
+            withSuccess(
+                """{"id":"case-1","namespaceId":"ns-other","parentCaseId":"parent-1"}""",
+                MediaType.APPLICATION_JSON,
+            ),
+        )
+
+        assertThatThrownBy {
+            adapter.createOrRecoverExecution(
+                TrustedCaseBinding(
+                    caseId = "case-1",
+                    attemptId = "attempt-1",
+                    namespaceId = "ns-1",
+                    parentCaseId = "parent-1",
+                ),
+                workflowId = "wf-1",
+                stepId = "step-1",
+            )
+        }.isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("not adoptable")
+
+        server.verify()
+    }
+
+    @Test
+    fun `cold cache miss - a 404 remote case proceeds to POST`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
+
+        val handle = adapter.createOrRecoverExecution(
+            TrustedCaseBinding(caseId = "case-1", attemptId = "attempt-1", namespaceId = "ns-1"),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        assertThat(handle).isEqualTo(CaseHandle("case-1", "ns-1", recovered = false))
+        server.verify()
+    }
+
+    @Test
+    fun `a 409 conflict on create adopts the compatible existing remote case`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases")).andRespond(withStatus(HttpStatus.CONFLICT))
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(
+            withSuccess(
+                """{"id":"case-1","namespaceId":"ns-1","parentCaseId":"parent-1"}""",
+                MediaType.APPLICATION_JSON,
+            ),
+        )
+
+        val handle = adapter.createOrRecoverExecution(
+            TrustedCaseBinding(
+                caseId = "case-1",
+                attemptId = "attempt-1",
+                namespaceId = "ns-1",
+                parentCaseId = "parent-1",
+            ),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        assertThat(handle).isEqualTo(CaseHandle("case-1", "ns-1", recovered = true))
+        server.verify()
     }
 
     @Test
@@ -97,6 +266,8 @@ class DefaultAgentOsExecutionAdapterTest {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
         val adapter = DefaultAgentOsExecutionAdapter(builder, baseUrl)
+        // The cold-cache probe still runs before the secret check.
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
 
         assertThatThrownBy {
             adapter.createOrRecoverExecution("ns-1", "wf-1", "step-1", null, "attempt-1", "token-1", "case-1")
@@ -109,6 +280,7 @@ class DefaultAgentOsExecutionAdapterTest {
     fun `a different attemptId drives a new case creation`() {
         val (adapter, server) = build()
         repeat(2) {
+            server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
             server.expect(requestTo("$baseUrl/api/cases"))
                 .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         }
@@ -268,6 +440,7 @@ class DefaultAgentOsExecutionAdapterTest {
     @Test
     fun `observeTurn derives a non-authoritative Indeterminate from the SSE replay of a completed free-text turn`() {
         val (adapter, server) = build(sseFactory())
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         server.expect(requestTo("$baseUrl/api/cases"))
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         adapter.createOrRecoverExecution("ns-1", "wf-1", "step-1", "user-1", "attempt-1", null, "case-1")

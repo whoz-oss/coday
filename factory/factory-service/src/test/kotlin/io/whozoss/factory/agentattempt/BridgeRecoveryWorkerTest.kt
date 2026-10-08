@@ -34,15 +34,22 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
 
     private data class StartTurn(val caseId: String, val brief: String, val attemptId: String)
 
+    private data class CreateCall(
+        val caseId: String,
+        val attemptId: String,
+        val parentCaseId: String?,
+    )
+
     private class FakeAdapter(
         private val reconcileVerdict: (String) -> AgentOsExecutionVerdict,
         private val observeVerdict: (String) -> AgentOsExecutionVerdict,
         private val history: List<CaseEventView> = emptyList(),
     ) : AgentOsExecutionAdapter {
         val startTurns = CopyOnWriteArrayList<StartTurn>()
+        val createCalls = CopyOnWriteArrayList<CreateCall>()
         val reconcileCalls = AtomicInteger()
         val observeCalls = AtomicInteger()
-        val createCalls = AtomicInteger()
+        val createCallCount = AtomicInteger()
 
         override fun createOrRecoverExecution(
             namespaceId: String,
@@ -52,8 +59,10 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
             attemptId: String,
             capabilityToken: String?,
             caseId: String,
+            parentCaseId: String?,
         ): CaseHandle {
-            createCalls.incrementAndGet()
+            createCallCount.incrementAndGet()
+            createCalls.add(CreateCall(caseId, attemptId, parentCaseId))
             return CaseHandle(caseId, namespaceId, false)
         }
 
@@ -88,7 +97,11 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
     private fun caseIdFor(attemptId: String): String =
         UUID.nameUUIDFromBytes("case:$attemptId".toByteArray()).toString()
 
-    private fun attempt(attemptId: String, brief: String? = "do the thing"): DurableAgentAttempt = DurableAgentAttempt(
+    private fun attempt(
+        attemptId: String,
+        brief: String? = "do the thing",
+        parentCaseId: String? = null,
+    ): DurableAgentAttempt = DurableAgentAttempt(
         attemptId = attemptId,
         caseId = caseIdFor(attemptId),
         namespaceId = namespace,
@@ -97,6 +110,7 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         attemptNumber = 1,
         agentName = "architect",
         brief = brief,
+        parentCaseId = parentCaseId,
     )
 
     private fun claimToRunning(attemptId: String, ownerToken: String, leaseTtlMs: Long) {
@@ -175,6 +189,24 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
         assertThat(adapter.startTurns).hasSize(1)
         assertThat(adapter.startTurns.single().attemptId).isEqualTo("attempt-redrive")
         assertThat(adapter.startTurns.single().brief).isEqualTo("recover me")
+    }
+
+    @Test
+    fun `a re-driven turn preserves the case-family parentCaseId`() {
+        val root = caseIdFor("root-attempt")
+        attempts.register(scope, attempt("attempt-redrive-child", brief = "recover me", parentCaseId = root))
+        val adapter = FakeAdapter(
+            reconcileVerdict = { AgentOsExecutionVerdict.Indeterminate("no events yet") },
+            observeVerdict = { AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "ok")) },
+        )
+
+        val report = BridgeRecoveryWorker(attempts, adapter).recover()
+
+        assertThat(report.redriven).isEqualTo(1)
+        val create = adapter.createCalls.single()
+        assertThat(create.caseId).isEqualTo(caseIdFor("attempt-redrive-child"))
+        assertThat(create.attemptId).isEqualTo("attempt-redrive-child")
+        assertThat(create.parentCaseId).isEqualTo(root)
     }
 
     @Test

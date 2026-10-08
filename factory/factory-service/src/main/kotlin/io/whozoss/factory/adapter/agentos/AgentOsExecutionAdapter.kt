@@ -44,6 +44,11 @@ interface AgentOsExecutionAdapter : AgentRuntimeAdapter {
     /**
      * Create the AgentOS case for an attempt, or recover the existing one when
      * this `attemptId` was already bound (idempotent by `attemptId`).
+     *
+     * @param parentCaseId parent case of this execution inside the durable case
+     *   family (Lot B): `null` for the root entry step, the run's `rootCaseId`
+     *   for every child sub-case. Forwarded verbatim to AgentOS and preserved
+     *   across dispatch, retry and recovery.
      */
     fun createOrRecoverExecution(
         namespaceId: String,
@@ -53,6 +58,7 @@ interface AgentOsExecutionAdapter : AgentRuntimeAdapter {
         attemptId: String,
         capabilityToken: String?,
         caseId: String,
+        parentCaseId: String? = null,
     ): CaseHandle
 
     /**
@@ -114,6 +120,7 @@ interface AgentOsExecutionAdapter : AgentRuntimeAdapter {
             attemptId = binding.attemptId,
             capabilityToken = binding.capabilityToken,
             caseId = binding.caseId,
+            parentCaseId = binding.parentCaseId,
         )
 
     /**

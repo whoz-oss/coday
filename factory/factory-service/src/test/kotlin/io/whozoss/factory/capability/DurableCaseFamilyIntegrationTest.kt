@@ -145,6 +145,8 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         private val verdictFor: (String) -> AgentOsExecutionVerdict = { AgentOsExecutionVerdict.Succeeded(emptyMap()) },
     ) : AgentOsExecutionAdapter {
         val startTurns = CopyOnWriteArrayList<String>()
+        /** caseId → parentCaseId as received at the adapter boundary, for family-propagation assertions. */
+        val createdCaseParents = CopyOnWriteArrayList<Pair<String, String?>>()
         private val knownCases = ConcurrentHashMap.newKeySet<String>()
 
         override fun createOrRecoverExecution(
@@ -155,7 +157,9 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
             attemptId: String,
             capabilityToken: String?,
             caseId: String,
+            parentCaseId: String?,
         ): CaseHandle {
+            createdCaseParents.add(caseId to parentCaseId)
             val recovered = !knownCases.add(caseId)
             return CaseHandle(caseId = caseId, namespaceId = namespaceId, recovered = recovered)
         }
@@ -216,6 +220,8 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         // A single AgentOS case id was ever used, and a single turn started.
         assertThat(adapter.startTurns).hasSize(1)
         assertThat(adapter.startTurns.toSet()).containsExactly(root)
+        // The entry (root) step carries no parent link.
+        assertThat(adapter.createdCaseParents.firstOrNull { it.first == root }?.second).isNull()
     }
 
     // ----- 2. Crash after reservation ⇒ same root case, no recreation -----
@@ -271,6 +277,8 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(b.parentCaseId).isEqualTo(root)
         assertThat(b.caseId).isEqualTo(CapabilityExecutionService.stableCaseId(workflowId, "B"))
         assertThat(b.caseId).isNotEqualTo(root)
+        // The child sub-case reaches the AgentOS boundary with the root as parent.
+        assertThat(adapter.createdCaseParents.firstOrNull { it.first == b.caseId }?.second).isEqualTo(root)
     }
 
     // ----- 4. Retry of a failed step ⇒ new sub-case, same worktree --------
@@ -333,6 +341,13 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         // The failed attempt is immutable: same case id, same status.
         val stillFirst = attempt(workflowId, "B", CapabilityExecutionService.stableAttemptId(workflowId, "B"))!!
         assertThat(stillFirst.caseId).isEqualTo(failedCaseB)
+
+        // Driving the retry through the bridge carries the same family identity:
+        // the new sub-case reaches AgentOS with the worktree root as its parent.
+        adapter.createdCaseParents.clear()
+        service.resolveAndRecord(scope, namespace, workflowId, agentStep("B", listOf("A")), repoRoot)
+        assertThat(adapter.createdCaseParents.firstOrNull { it.first == retryCaseId }?.second).isEqualTo(root)
+        assertThat(adapter.startTurns).contains(retryCaseId)
     }
 
     // ----- 5. Isolation ⇒ two runs, two worktrees -------------------------

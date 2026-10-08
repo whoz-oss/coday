@@ -511,6 +511,8 @@ class CapabilityExecutionService(
         val caseId: String,
         val ownerToken: String,
         val capabilityToken: String?,
+        /** Case-family parent (Lot B): `null` for the root entry step, the root case id for child sub-cases. */
+        val parentCaseId: String? = null,
         /** Whether a `startTurn` already happened for this attempt (recovered mid-flight). */
         val turnStarted: Boolean,
         /** Set when the attempt is already terminal: the outcome is replayed, not re-driven. */
@@ -724,6 +726,7 @@ class CapabilityExecutionService(
                 caseId = existing.caseId,
                 ownerToken = existing.ownerToken ?: ownerToken,
                 capabilityToken = existing.capabilityToken,
+                parentCaseId = existing.parentCaseId,
                 turnStarted = true,
                 terminalStatus = existing.status,
             )
@@ -798,6 +801,7 @@ class CapabilityExecutionService(
             caseId = resolvedCaseId,
             ownerToken = ownerToken,
             capabilityToken = persisted.capabilityToken,
+            parentCaseId = persisted.parentCaseId,
             turnStarted = turnStarted,
             conflicted = !claimed,
         )
@@ -825,6 +829,7 @@ class CapabilityExecutionService(
         val binding = TrustedCaseBinding(
             caseId = reservation.caseId,
             namespaceId = namespaceId,
+            parentCaseId = reservation.parentCaseId,
             attemptId = reservation.attemptId,
             capabilityToken = reservation.capabilityToken,
             agentName = agentId,

@@ -228,6 +228,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
             attemptId: String,
             capabilityToken: String?,
             caseId: String,
+            parentCaseId: String?,
         ): CaseHandle {
             createCalls.incrementAndGet()
             val alreadyKnown = !knownCases.add(caseId)
@@ -561,13 +562,14 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
                 attemptId: String,
                 capabilityToken: String?,
                 caseId: String,
+                parentCaseId: String?,
             ): CaseHandle {
                 // Req 3: at the very first AgentOS case creation, the durable
                 // attempt already exists AND is reserved (claimed), not pending.
                 statusAtCaseCreation = durableAgentAttemptService.find(
                     scope, namespace, workflowId, "A", CapabilityExecutionService.stableAttemptId(workflowId, "A"),
                 )?.status
-                return super.createOrRecoverExecution(namespaceId, workflowId, stepId, externalUserId, attemptId, capabilityToken, caseId)
+                return super.createOrRecoverExecution(namespaceId, workflowId, stepId, externalUserId, attemptId, capabilityToken, caseId, parentCaseId)
             }
 
             override fun startTurn(
@@ -749,6 +751,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
                 attemptId: String,
                 capabilityToken: String?,
                 caseId: String,
+                parentCaseId: String?,
             ): CaseHandle = CaseHandle(caseId, namespaceId, false)
 
             override fun startTurn(
@@ -868,6 +871,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
                 attemptId: String,
                 capabilityToken: String?,
                 caseId: String,
+                parentCaseId: String?,
             ): CaseHandle = CaseHandle(caseId, namespaceId, false)
 
             override fun startTurn(
