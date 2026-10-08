@@ -27,4 +27,24 @@ object IntegrationTypeConstraints {
 
     fun isNamespaceSingleton(integrationType: String?): Boolean =
         integrationType?.uppercase() in NAMESPACE_SINGLETON_TYPES
+
+    /** The conversational `queryUser` tool. See `io.whozoss.agentos.queryUser.QueryUserToolPlugin`. */
+    const val QUERY_USER_TYPE: String = "QUERY_USER"
+
+    /**
+     * Types that may set [IntegrationConfig.autoGrant], i.e. be handed to every agent in the
+     * config's scope without the agent naming it.
+     *
+     * The list deliberately starts closed, with a single conversational type. `autoGrant` at
+     * platform scope hands a tool to *every agent of the environment at once*; on a type that
+     * reaches the network, that is an unreviewed, environment-wide capability grant. The codebase
+     * already carries this caution elsewhere: `IntegrationsProperties.userScopeDeniedTypes` forbids
+     * user-level overlays of `HTTP_API`, `MCP_*` and `GIT` for a closely related reason.
+     *
+     * Opening the list when a use case justifies it costs one line. Starting open costs an
+     * incident — and one that stays invisible until an agent uses a tool nobody meant to give it.
+     */
+    val AUTO_GRANTABLE_TYPES: Set<String> = setOf(QUERY_USER_TYPE)
+
+    fun isAutoGrantable(integrationType: String?): Boolean = integrationType?.uppercase() in AUTO_GRANTABLE_TYPES
 }

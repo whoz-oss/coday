@@ -51,9 +51,11 @@
           <div class="ds-field__array-row">
             <input
               class="ds-field__input ds-field__input--array-item"
+              [class.ds-field__input--duplicate]="isDuplicateScalarItem($index)"
               [type]="itemInputType"
               [formControl]="getScalarItemControl($index)"
               [attr.aria-label]="label + ' item ' + ($index + 1)"
+              [attr.title]="isDuplicateScalarItem($index) ? 'Duplicate value — items must be unique' : null"
             />
             <button
               class="ds-field__array-remove"
@@ -66,6 +68,22 @@
           </div>
         }
         <button class="ds-field__array-add" type="button" (click)="addScalarItem()">+ Add {{ label }}</button>
+      </div>
+    }
+    @case ('multi-enum') {
+      <div class="ds-field__checkbox-group" role="group" [attr.aria-label]="label">
+        @for (option of multiEnumOptions; track option; let i = $index) {
+          <div class="ds-field__checkbox-row">
+            <input
+              class="ds-field__checkbox"
+              type="checkbox"
+              [id]="multiEnumOptionId(i)"
+              [checked]="isMultiEnumChecked(option)"
+              (change)="toggleMultiEnumOption(option, $any($event.target).checked)"
+            />
+            <label class="ds-field__checkbox-label" [for]="multiEnumOptionId(i)">{{ option }}</label>
+          </div>
+        }
       </div>
     }
     @case ('array-object') {

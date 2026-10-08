@@ -98,6 +98,7 @@ class IntegrationConfigController(
                     description = resource.description,
                     parameters = resource.parameters,
                     authSettingName = resource.authSettingName,
+                    autoGrant = resource.autoGrant,
                 )
             },
             crud =
@@ -216,6 +217,7 @@ class IntegrationConfigController(
                     description = resource.description,
                     parameters = resource.parameters,
                     authSettingName = resource.authSettingName,
+                    autoGrant = resource.autoGrant,
                 )
             return toDto(integrationConfigService.create(entity))
         }
@@ -247,6 +249,7 @@ class IntegrationConfigController(
                     description = resource.description,
                     parameters = resource.parameters,
                     authSettingName = resource.authSettingName,
+                    autoGrant = resource.autoGrant,
                 ),
             ),
         )
@@ -362,6 +365,7 @@ private fun toDto(entity: IntegrationConfig) =
         description = entity.description,
         parameters = entity.parameters,
         authSettingName = entity.authSettingName,
+        autoGrant = entity.autoGrant,
     )
 
 /**
@@ -379,4 +383,7 @@ private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
         entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
         entity.parameters?.let { put("parameters", it) }
         entity.authSettingName?.takeIf { it.isNotBlank() }?.let { put("authSettingName", it) }
+        // Only emitted when set: `autoGrant: false` is the default, and writing it on every export
+        // would add noise to files whose point is to be read and diffed by humans.
+        if (entity.autoGrant) put("autoGrant", true)
     }

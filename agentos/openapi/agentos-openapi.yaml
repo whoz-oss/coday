@@ -4954,6 +4954,8 @@ components:
       properties:
         authSettingName:
           type: string
+        autoGrant:
+          type: boolean
         description:
           type: string
         id:
@@ -4978,11 +4980,18 @@ components:
           - "null"
           format: uuid
       required:
+      - autoGrant
       - integrationType
       - name
     IntegrationTypeDescriptor:
       type: object
       properties:
+        autoGrantable:
+          type: boolean
+          description: "Whether a configuration of this type may set autoGrant, handing\
+            \ itself to every agent within its scope without the agent naming it.\
+            \ Clients should show the toggle only when this is true; the server rejects\
+            \ the flag on any other type with HTTP 422."
         builtIn:
           type: boolean
         configSchema:
@@ -5001,6 +5010,7 @@ components:
         type:
           type: string
       required:
+      - autoGrantable
       - builtIn
       - description
       - displayName

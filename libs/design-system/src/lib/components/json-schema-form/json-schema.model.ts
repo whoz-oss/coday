@@ -23,6 +23,12 @@ export interface JsonSchemaObject {
   /** Describes the schema of array items — used to render typed item inputs. */
   items?: JsonSchemaObject
   /**
+   * Array keyword: when true, the array must not contain duplicate items.
+   * Honoured cosmetically by ds-json-schema-field for 'array-scalar' fields
+   * (duplicate entries are visually flagged rather than hard-blocked).
+   */
+  uniqueItems?: boolean
+  /**
    * UI widget override (JSON Schema extension keyword).
    * `"textarea"` forces a multiline <textarea> instead of the default <input type="text">
    * for string fields expected to hold long text (prompts, templates, paths, etc.).

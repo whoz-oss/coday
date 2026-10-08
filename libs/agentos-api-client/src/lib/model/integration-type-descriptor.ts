@@ -9,6 +9,10 @@
  */
 
 export interface IntegrationTypeDescriptor {
+  /**
+   * Whether a configuration of this type may set autoGrant, handing itself to every agent within its scope without the agent naming it. Clients should show the toggle only when this is true; the server rejects the flag on any other type with HTTP 422.
+   */
+  autoGrantable: boolean
   builtIn: boolean
   configSchema?: any | null
   description: string
