@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import org.springframework.security.access.AccessDeniedException
 import java.util.UUID
 
 /**
@@ -178,7 +179,7 @@ class CaseLauncherServiceImplSpec :
 
             val launcher = buildLauncher(caseService = caseService, permissionService = permissionService)
 
-            shouldThrow<IllegalStateException> {
+            shouldThrow<AccessDeniedException> {
                 launcher.launchCase(
                     namespaceId = namespaceId,
                     agentName = agentName,
@@ -206,7 +207,7 @@ class CaseLauncherServiceImplSpec :
                     every { grantPermission(any(), any(), any(), any()) } throws RuntimeException("grant failed")
                 }
 
-            shouldThrow<IllegalStateException> {
+            shouldThrow<AccessDeniedException> {
                 buildLauncher(caseService = caseService, permissionService = permissionService).launchCase(
                     namespaceId = namespaceId,
                     agentName = agentName,
