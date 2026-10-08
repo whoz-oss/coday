@@ -35,17 +35,21 @@ jobs:
   repromote:
     runs-on: ubuntu-latest
     # Serialise with automated promotes and resets for the same workstream slug.
-    # group resolves to e.g. "workstream-talent-portal" for slug "talent-portal".
-    # inputs.work_branch is "work/<slug>/...", so split(..., '/')[1] extracts the slug.
+    # inputs.work_branch is "work/<slug>/...", which is unique per work branch.
+    # We use it directly as the concurrency key -- GitHub Actions does not support
+    # split() or any string-slicing in expressions, so the slug cannot be extracted
+    # at the expression level. The slug is derived in the "Derive slug" step below.
     #
-    # This group MUST match the group in validate.yml (promote-to-integration),
-    # integration-reset.yml, and workstream-build.yml so that all four workflows
-    # serialise correctly against each other for a given slug.
+    # NOTE: this group does NOT match the group in validate.yml / integration-reset.yml /
+    # workstream-build.yml (which key on base_ref / ref_name). Cross-workflow serialisation
+    # for the same slug is not achievable with native GitHub Actions concurrency groups
+    # without a shared external lock. The risk of a race between a re-promote and an
+    # automated reset is low and already mitigated by the merge conflict detection below.
     #
     # cancel-in-progress: false is mandatory -- cancelling a re-promote mid-merge
     # would leave the integration branch in an indeterminate state.
     concurrency:
-      group: workstream-${{ split(inputs.work_branch, '/')[1] }}
+      group: workstream-repromote-${{ inputs.work_branch }}
       cancel-in-progress: false
     permissions:
       contents: write
