@@ -31,6 +31,13 @@ object WorkflowErrorCodes {
     const val WORKFLOW_DEFINITION_INVALID = "WORKFLOW_DEFINITION_INVALID"
     const val WORKFLOW_DEFINITION_AMBIGUOUS = "WORKFLOW_DEFINITION_AMBIGUOUS"
     const val WORKFLOW_DEFINITION_MISMATCH = "WORKFLOW_DEFINITION_MISMATCH"
+
+    /**
+     * 400 — the workflow definition declares an execution plugin
+     * (`execution.plugin`) that is absent from the PF4J plugin manager or not
+     * started. The run is refused before any persistence or external effect.
+     */
+    const val WORKFLOW_EXECUTION_PLUGIN_NOT_FOUND = "WORKFLOW_EXECUTION_PLUGIN_NOT_FOUND"
     const val WORKFLOW_NOT_GOVERNED = "WORKFLOW_NOT_GOVERNED"
     const val DECLARATIVE_WORKFLOW = "DECLARATIVE_WORKFLOW"
     const val GOVERNED_WORKFLOW_REQUIRES_TRANSITION = "GOVERNED_WORKFLOW_REQUIRES_TRANSITION"
@@ -87,6 +94,7 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.INVALID_NAMESPACE_ID,
     WorkflowErrorCodes.INVALID_WORKFLOW_ID,
     WorkflowErrorCodes.INVALID_START_REQUEST,
+    WorkflowErrorCodes.WORKFLOW_EXECUTION_PLUGIN_NOT_FOUND,
     WorkflowErrorCodes.INVALID_PROJECTION,
     WorkflowErrorCodes.INVALID_TRANSITION_REQUEST,
     WorkflowErrorCodes.UNTRUSTED_REQUEST_ID,

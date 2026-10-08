@@ -232,4 +232,39 @@ class ForgeStoryOperationsTest {
         val result = io.whozoss.factory.forge.domain.ForgePlanParser.checkPlanFiles(listOf("src/a.ts", "src/missing.ts"), root.toString())
         assertThat(result["missingFiles"] as List<*>).containsExactly("src/missing.ts")
     }
+
+    // ----- frozen context envelope (Lot D) -----------------------------------
+
+    @Test
+    fun `the story context envelope round-trips through json and pins the brief`() {
+        val epic: Map<String, Any?> = mapOf("workItem" to mapOf("id" to "EPIC-1", "kind" to "Epic"))
+        val story: Map<String, Any?> = mapOf("workItem" to mapOf("id" to "STORY-1", "kind" to "Story"))
+        val frontmatter: Map<String, Any?> = mapOf(
+            "scope" to mapOf("allow" to listOf("src/a.ts")),
+            "oracles" to listOf("front.build"),
+        )
+
+        val envelope = ForgeStoryOperations.buildContextEnvelope(
+            epic = epic,
+            story = story,
+            specPath = "specs/epic.md",
+            specHash = "sha256:abc",
+            policyVersion = ForgeStoryOperations.STORY_ANALYSIS_POLICY_VERSION,
+            frontmatter = frontmatter,
+            supplement = "extra context",
+            expectedAmendmentSeq = 3L,
+        )
+
+        assertThat(envelope.epicId).isEqualTo("EPIC-1")
+        assertThat(envelope.storyId).isEqualTo("STORY-1")
+        assertThat(envelope.schemaVersion).isEqualTo(ForgeStoryOperations.STORY_CONTEXT_ENVELOPE_SCHEMA_VERSION)
+        assertThat(envelope.brief).contains("# Factory Story analysis")
+        assertThat(envelope.briefHash).isEqualTo(ForgeSpec.computeForgeSpecHash(envelope.brief))
+        assertThat(envelope.frontmatterKeys).containsExactly("oracles", "scope")
+        assertThat(envelope.expectedAmendmentSeq).isEqualTo(3L)
+
+        val restored = ForgeStoryOperations.StoryContextEnvelope.fromJson(envelope.toJson())
+        assertThat(restored).isEqualTo(envelope)
+        assertThat(restored.toJson()).isEqualTo(envelope.toJson())
+    }
 }

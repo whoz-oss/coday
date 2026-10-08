@@ -8,6 +8,7 @@ import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.proxy.AgentOsUnavailableException
 import io.whozoss.factory.proxy.UsageTrackingUnavailableException
+import io.whozoss.factory.sdk.spi.FactoryWorkflowExecutionPolicy
 import io.whozoss.factory.workflow.domain.AllowedActionDto
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.ControllerExecutionInput
@@ -39,6 +40,7 @@ import io.whozoss.factory.workflow.domain.WorkflowStepResponsibility
 import io.whozoss.factory.workflow.domain.WorkflowTransitionPolicy
 import io.whozoss.factory.workflow.domain.WorkflowTransitionRequest
 import io.whozoss.factory.workflow.domain.createWorkflowInstance
+import io.whozoss.factory.workflow.domain.executionPolicyOf
 import io.whozoss.factory.workflow.domain.nowIso
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.persistence.EvidenceAppendResult
@@ -49,6 +51,8 @@ import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.sse.WorkflowProjectionEvents
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
 import mu.KotlinLogging
+import org.pf4j.PluginManager
+import org.pf4j.PluginState
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.TransactionDefinition
@@ -100,6 +104,13 @@ class WorkflowService(
     private val agentOsExecutionAdapter: AgentOsExecutionAdapter? = null,
     /** Durable runner submission used by start_workflow; absent only in narrow unit tests. */
     private val sessionRunSubmissionService: SessionRunSubmissionService? = null,
+    /**
+     * PF4J plugin manager used to resolve the execution plugin declared by a
+     * definition (`execution.plugin`) before any external effect. Optional so a
+     * narrow unit test can omit it; a definition that declares an execution
+     * plugin is refused when the manager is unavailable.
+     */
+    private val pluginManager: PluginManager? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -338,11 +349,16 @@ class WorkflowService(
         repoRoot: String? = null,
     ): WorkflowHttpResult {
         val definitionRecord = resolveUniqueDefinition(scope, command.workflowType)
+        // Resolve the declared execution plugin BEFORE any persistence or external
+        // effect: an absent/unknown plugin must refuse the start explicitly.
+        val executionPolicy = definitionRecord.executionPolicy ?: executionPolicyOf(definitionRecord.definition)
+        executionPolicy?.let { resolveAndValidateExecutionPlugin(it.plugin) }
         val definitionInput = WorkflowDefinitionInput(
             workflowType = definitionRecord.workflowType,
             version = definitionRecord.version,
             definitionHash = definitionRecord.definitionHash,
             steps = definitionRecord.toPolicyDefinition().steps,
+            executionPolicy = executionPolicy,
         )
         val existing = repository.findInstance(scope, namespaceId, command.workflowId)
         if (existing != null) {
@@ -449,6 +465,37 @@ class WorkflowService(
         if (matches.isEmpty()) throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND)
         if (matches.size > 1) throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_AMBIGUOUS)
         return matches.first()
+    }
+
+    /**
+     * Ensures the execution plugin declared by a definition is present before any
+     * external effect of a start command.
+     *
+     * The declared id is matched against the logical ids exposed by the
+     * [FactoryWorkflowExecutionPolicy] extensions first (a plugin packaged as
+     * `factory-forge-plugin` may declare `forge`), then against the literal PF4J
+     * plugin id. A missing/unknown/disabled plugin is refused with an explicit
+     * [WorkflowErrorCodes.WORKFLOW_EXECUTION_PLUGIN_NOT_FOUND] before anything is
+     * persisted or submitted.
+     */
+    private fun resolveAndValidateExecutionPlugin(pluginId: String) {
+        val manager = pluginManager
+        val extensions = if (manager == null) {
+            emptyList()
+        } else {
+            runCatching { manager.getExtensions(FactoryWorkflowExecutionPolicy::class.java) }.getOrDefault(emptyList())
+        }
+        if (extensions.any { it.getPluginId() == pluginId }) return
+
+        val wrapper = manager?.let { runCatching { it.getPlugin(pluginId) }.getOrNull() }
+        val disabled = wrapper != null && runCatching { wrapper.pluginState == PluginState.DISABLED }.getOrDefault(false)
+        if (wrapper == null || disabled) {
+            throw workflowException(
+                WorkflowErrorCodes.WORKFLOW_EXECUTION_PLUGIN_NOT_FOUND,
+                "Execution plugin '$pluginId' was not found or is disabled.",
+                mapOf("plugin" to pluginId),
+            )
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1687,6 +1734,7 @@ private fun WorkflowSnapshot.toInstance(previous: WorkflowInstanceRecord): Workf
     creationCommandHash = previous.creationCommandHash,
     instance = instance,
     projection = projection,
+    rootCaseId = previous.rootCaseId,
 )
 
 private fun TransitionDecision.Denied.toException() = workflowException(code, reason, missingEvidence?.let { mapOf("missingEvidence" to it) })

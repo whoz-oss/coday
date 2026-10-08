@@ -362,6 +362,15 @@ class AgentStepQuestionService(
                 environmentRef = predecessor.environmentRef,
                 expectedEnvironmentRevision = predecessor.expectedEnvironmentRevision,
                 resumptionContext = resumptionContext,
+                // Lot D: the successor attempt inherits the predecessor's frozen
+                // context envelope and its amendment pin, so the resumed turn
+                // replays the exact context the step was first registered with.
+                contextEnvelope = predecessor.contextEnvelope,
+                expectedAmendmentSeq = predecessor.expectedAmendmentSeq,
+                // Lot B durable case family: a successor attempt continues the
+                // SAME worktree / sub-case; it never changes the family.
+                rootCaseId = predecessor.rootCaseId,
+                parentCaseId = predecessor.parentCaseId,
             ),
             now,
         )

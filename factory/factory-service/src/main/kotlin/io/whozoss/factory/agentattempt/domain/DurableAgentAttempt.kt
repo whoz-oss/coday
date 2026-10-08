@@ -63,6 +63,22 @@ data class DurableAgentAttempt(
      * [StepQuestionLimits.RESUMPTION_CONTEXT_BYTES] UTF-8 bytes.
      */
     val resumptionContext: String? = null,
+    /**
+     * The frozen context envelope (Lot D) of this attempt, serialized as JSON
+     * once at registration (see [AttemptContextEnvelope]). A replay reuses it
+     * verbatim instead of re-deriving the context from upstream evidence, so a
+     * replayed attempt observes exactly the context it was first registered
+     * with. `null` on legacy records and on attempts registered before the
+     * frozen envelope existed.
+     */
+    val contextEnvelope: String? = null,
+    /**
+     * The amendment sequence this attempt's context was frozen against
+     * (Lot D schema field). Carried for replay/completeness only; the
+     * amendment resolution logic belongs to Lot E and is intentionally absent.
+     * `null` when no amendment pin applies.
+     */
+    val expectedAmendmentSeq: Long? = null,
     val status: AgentAttemptStatus = AgentAttemptStatus.PENDING,
     val failureCode: String? = null,
     val resultEvidenceId: String? = null,
@@ -73,6 +89,19 @@ data class DurableAgentAttempt(
     val updatedAt: Instant = Instant.now(),
     val completedAt: Instant? = null,
     val leaseExpiresAt: Instant? = null,
+    /**
+     * Root case id of the durable case family this attempt belongs to (Lot B
+     * durable case family). It identifies the run's worktree and is shared by
+     * every attempt of the run. Set once at registration and never mutated;
+     * `null` on legacy records and on runs that predate the case family.
+     */
+    val rootCaseId: String? = null,
+    /**
+     * Parent case of this attempt: `null` for the entry (root) attempt and the
+     * [rootCaseId] for every subsequent (child) attempt of the family. Set once
+     * at registration and never mutated; `null` on legacy records.
+     */
+    val parentCaseId: String? = null,
 ) {
     /** Whether the attempt may move from its current [status] to [next]. */
     fun canTransitionTo(next: AgentAttemptStatus): Boolean = status.canTransitionTo(next)

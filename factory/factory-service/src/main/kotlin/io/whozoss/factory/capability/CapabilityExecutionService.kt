@@ -9,6 +9,7 @@ import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
+import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
@@ -248,13 +249,22 @@ class CapabilityExecutionService(
         return visited
     }
 
-    private fun buildBrief(
+    /** The structured pieces assembled for one attempt's turn brief. */
+    private data class BriefAssembly(
+        val ticketInstruction: String?,
+        val entryStep: Boolean,
+        val inputs: Map<String, Any?>,
+        val runBrief: Map<String, Any?>?,
+        val controllerRequest: String?,
+    )
+
+    private fun assembleBrief(
         scope: TenantScope,
         namespaceId: String,
         workflowId: String,
         step: WorkflowStepDefinition,
         ticket: String?,
-    ): String {
+    ): BriefAssembly {
         val ticketInstruction = briefFromTicket(ticket)
         val entryStep = step.dependsOn.isEmpty()
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
@@ -315,6 +325,15 @@ class CapabilityExecutionService(
             .let { it as? String }
             ?.takeIf { it.isNotBlank() }
 
+        return BriefAssembly(ticketInstruction, entryStep, inputs, runBrief, controllerRequest)
+    }
+
+    private fun renderBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
+        val ticketInstruction = assembly.ticketInstruction
+        val entryStep = assembly.entryStep
+        val inputs = assembly.inputs
+        val runBrief = assembly.runBrief
+        val controllerRequest = assembly.controllerRequest
         return buildString {
             controllerRequest?.let {
                 appendLine("## User request")
@@ -352,6 +371,60 @@ class CapabilityExecutionService(
             appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
             append("- Once Factory accepts the result, stop working on this step.")
         }
+    }
+
+    private fun buildBrief(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        ticket: String?,
+    ): String = renderBrief(step, assembleBrief(scope, namespaceId, workflowId, step, ticket))
+
+    /**
+     * Builds the frozen context envelope (Lot D) of an attempt together with
+     * the turn brief it pins. The envelope is the structured, JSON-serializable
+     * form of the context ([AttemptContextEnvelope]) and is persisted verbatim
+     * on the attempt so a replay never re-derives it from upstream evidence.
+     */
+    private fun buildContextEnvelope(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        ticket: String?,
+        attemptNumber: Int,
+        agentName: String,
+        expectedAmendmentSeq: Long? = null,
+    ): Pair<String, AttemptContextEnvelope> {
+        val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
+        val brief = renderBrief(step, assembly)
+        val envelope = AttemptContextEnvelope(
+            organizationId = scope.organizationId,
+            workstreamId = scope.workstreamId,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            stepId = step.id,
+            attemptNumber = attemptNumber,
+            agentName = agentName,
+            ticket = ticket,
+            briefHash = CanonicalJsonHash.sha256(brief),
+            inputs = assembly.inputs,
+            runBrief = assembly.runBrief,
+            controllerRequest = assembly.controllerRequest,
+            expectedAmendmentSeq = expectedAmendmentSeq,
+        )
+        return brief to envelope
+    }
+
+    /** The frozen brief + serialized envelope of an attempt, reused verbatim on replay. */
+    private data class FrozenContext(val brief: String, val envelopeJson: String)
+
+    /** The frozen context of an existing attempt, or `null` for legacy records without one. */
+    private fun frozenContextOf(attempt: DurableAgentAttempt?): FrozenContext? {
+        val envelopeJson = attempt?.contextEnvelope ?: return null
+        val frozenBrief = attempt.brief ?: return null
+        return FrozenContext(frozenBrief, envelopeJson)
     }
 
     /** Finds the first standard run-brief artifact in a structured result value. */
@@ -541,15 +614,30 @@ class CapabilityExecutionService(
         onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
+        // Lot B durable case family: the run's root case (worktree) is anchored
+        // on its single entry agent step. An ambiguous DAG (zero or several entry
+        // agent steps) cannot define a unique worktree and is refused explicitly
+        // BEFORE any remote call.
+        val entryAgentStepId = requireSingleEntryAgentStep(scope, namespaceId, workflowId).id
         // Attempt #1 has a stable id, but a human answer supersedes it and
         // registers N+1. The DAG must follow that authoritative successor;
         // otherwise only the recovery scanner can drive N+1 while this path
         // remains anchored to the terminal predecessor.
-        val attemptId = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
-            ?.attemptId
-            ?: stableAttemptId(workflowId, step.id)
+        val latestAttempt = attempts.findLatestForStep(scope, namespaceId, workflowId, step.id)
+        val attemptId = latestAttempt?.attemptId ?: stableAttemptId(workflowId, step.id)
         val ownerToken = UUID.randomUUID().toString()
-        val brief = buildBrief(scope, namespaceId, workflowId, step, ticket)
+        // Lot D - replay integrity: an existing attempt replays its FROZEN context
+        // verbatim; only a brand-new attempt assembles a fresh envelope from the
+        // current durable inputs and persists it at registration.
+        val context = frozenContextOf(latestAttempt) ?: run {
+            val (brief, envelope) = buildContextEnvelope(
+                scope, namespaceId, workflowId, step, ticket,
+                attemptNumber = latestAttempt?.attemptNumber ?: 1,
+                agentName = agentId,
+            )
+            FrozenContext(brief, envelope.toJson())
+        }
+        val brief = context.brief
 
         // Phase 1 - short transactions: reserve the attempt (register + atomic,
         // lease-fenced claim). Each durable-attempt operation owns its own short
@@ -557,7 +645,10 @@ class CapabilityExecutionService(
         // must not be nested in an outer transaction that holds the uncommitted
         // registration.
         val reservation = withReservationLock("$workflowId#${step.id}") {
-            reserveAgentAttempt(attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId, brief)
+            reserveAgentAttempt(
+                attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId, brief,
+                context.envelopeJson, entryAgentStepId,
+            )
         }
         reservation.terminalStatus?.let {
             return terminalAgentExecution(scope, namespaceId, workflowId, step, reservation)
@@ -605,6 +696,94 @@ class CapabilityExecutionService(
     }
 
     /**
+     * Durable case family (Lot B) of a NEW attempt: the resolved case the turn
+     * runs in plus its `rootCaseId` / `parentCaseId` links.
+     */
+    private data class CaseFamily(
+        val caseId: String,
+        val rootCaseId: String?,
+        val parentCaseId: String?,
+    )
+
+    /**
+     * Identifies the workflow's single entry agent step (Lot B). The run's root
+     * case (worktree) is anchored on it, so a definition exposing zero or several
+     * candidate entry agent steps (`kind == agent` and `dependsOn.isEmpty()`) has
+     * no unambiguous worktree and is refused with a clear error.
+     */
+    private fun requireSingleEntryAgentStep(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+    ): WorkflowStepDefinition {
+        val entries = projectedSteps(scope, namespaceId, workflowId)
+            .filter { it.responsibility.kind == ResponsibilityKind.AGENT && it.dependsOn.isEmpty() }
+        if (entries.size != 1) {
+            throw IllegalStateException(
+                "Workflow execution run requires exactly 1 entry agent step, found ${entries.size} " +
+                    "(workflow '$workflowId')",
+            )
+        }
+        return entries.single()
+    }
+
+    /**
+     * The projected step definitions of a workflow instance, reconstructed from
+     * the persisted projection — the same source the run briefs are built from.
+     */
+    private fun projectedSteps(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+    ): List<WorkflowStepDefinition> {
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId) ?: return emptyList()
+        val rawSteps = (instance.projection["steps"] as? List<*>)?.filterIsInstance<Map<*, *>>()
+            ?: return emptyList()
+        return rawSteps.mapNotNull { raw ->
+            val id = raw["id"] as? String ?: return@mapNotNull null
+            val deps = (raw["dependsOn"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
+            val respMap = raw["responsibility"] as? Map<*, *>
+            val kind = ResponsibilityKind.fromWire(respMap?.get("kind") as? String) ?: ResponsibilityKind.AGENT
+            val name = raw["name"] as? String ?: id
+            val respName = respMap?.get("name") as? String
+            WorkflowStepDefinition(id, name, WorkflowStepResponsibility(kind, respName), deps)
+        }
+    }
+
+    /**
+     * Resolves the durable case family of a NEW attempt:
+     *  - the entry agent step anchors the run's root case, reserved atomically on
+     *    the workflow instance before any remote call, and runs IN that root case
+     *    (`caseId == rootCaseId`, `parentCaseId == null`);
+     *  - a subsequent step runs in its own sub-case whose parent is the root case;
+     *  - a legacy run without a reserved root case (and whose step is not the
+     *    entry agent step) keeps a null family and is never implicitly converted.
+     */
+    private fun resolveCaseFamily(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        entryAgentStepId: String,
+    ): CaseFamily {
+        val persistedRoot = workflowRepository.findInstance(scope, namespaceId, workflowId)?.rootCaseId
+        if (step.id == entryAgentStepId) {
+            val root = persistedRoot
+                ?: workflowRepository.reserveRootCase(scope, namespaceId, workflowId, stableCaseId(workflowId, step.id))
+                ?: stableCaseId(workflowId, step.id)
+            return CaseFamily(caseId = root, rootCaseId = root, parentCaseId = null)
+        }
+        if (persistedRoot == null) {
+            return CaseFamily(caseId = stableCaseId(workflowId, step.id), rootCaseId = null, parentCaseId = null)
+        }
+        return CaseFamily(
+            caseId = stableCaseId(workflowId, step.id),
+            rootCaseId = persistedRoot,
+            parentCaseId = persistedRoot,
+        )
+    }
+
+    /**
      * Registers/claims the durable attempt inside a short transaction. A recovered
      * non-terminal attempt is adopted (its `caseId`/`ownerToken` are reused) so the
      * bridge never re-creates the AgentOS case; a live competing lease yields a
@@ -620,6 +799,8 @@ class CapabilityExecutionService(
         ownerToken: String,
         agentId: String,
         brief: String,
+        contextEnvelope: String,
+        entryAgentStepId: String,
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
         if (existing != null && existing.status.terminal) {
@@ -647,18 +828,20 @@ class CapabilityExecutionService(
         }
         val newAttempt = existing == null
         if (newAttempt) {
+            // Lot B durable case family: resolve (and atomically reserve, for the
+            // entry step) the run's root case BEFORE the AgentOS case is created.
+            val family = resolveCaseFamily(scope, namespaceId, workflowId, step, entryAgentStepId)
             // Bind the attempt to the environment it runs against, captured at
             // reservation time (Req 8). Null when no environment exists yet.
-            val caseId = stableCaseId(workflowId, step.id)
             val environment = workEnvironmentRepository?.findLatestByWorkflowId(scope, workflowId)
             val capabilityToken = issueDurableCapability(
-                scope, namespaceId, workflowId, step, attemptId, caseId, agentId, brief,
+                scope, namespaceId, workflowId, step, attemptId, family.caseId, agentId, brief,
             )
             attempts.register(
                 scope,
                 DurableAgentAttempt(
                     attemptId = attemptId,
-                    caseId = caseId,
+                    caseId = family.caseId,
                     namespaceId = namespaceId,
                     workflowId = workflowId,
                     stepId = step.id,
@@ -666,8 +849,11 @@ class CapabilityExecutionService(
                     agentName = agentId,
                     capabilityToken = capabilityToken,
                     brief = brief,
+                    contextEnvelope = contextEnvelope,
                     environmentRef = environment?.environmentId,
                     expectedEnvironmentRevision = environment?.revision,
+                    rootCaseId = family.rootCaseId,
+                    parentCaseId = family.parentCaseId,
                 ),
             )
         }

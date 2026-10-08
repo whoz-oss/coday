@@ -80,6 +80,8 @@ class Neo4jDurableAgentAttemptRepository(
             caseId = attempt.caseId,
             agentName = attempt.agentName,
             attemptNumber = attempt.attemptNumber,
+            rootCaseId = attempt.rootCaseId,
+            parentCaseId = attempt.parentCaseId,
             capabilityToken = attempt.capabilityToken,
             turnCorrelation = attempt.turnCorrelation,
             commandId = attempt.commandId,
@@ -87,6 +89,8 @@ class Neo4jDurableAgentAttemptRepository(
             environmentRef = attempt.environmentRef,
             expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
             resumptionContext = attempt.resumptionContext,
+            contextEnvelope = attempt.contextEnvelope,
+            expectedAmendmentSeq = attempt.expectedAmendmentSeq,
             now = now,
         )
         if (isNew) {

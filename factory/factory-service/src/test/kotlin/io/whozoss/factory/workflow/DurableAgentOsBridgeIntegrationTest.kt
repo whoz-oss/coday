@@ -504,24 +504,26 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `a run brief from an independent branch is not injected into another branch`() {
         val workflowId = isolatedWorkflowId("wf-bridge-isolated-run-brief")
+        // A single entry agent step (Lot B requires exactly one) fans out into two
+        // sibling branches X and B; the run-brief produced by X must not leak into B.
         startSession(
             "bridge-isolated-run-brief",
             workflowId,
             listOf(
                 stepJson("A", "agent", "architect", emptyList()),
-                stepJson("X", "agent", "architect", emptyList()),
-                stepJson("B", "agent", "architect", listOf("X")),
+                stepJson("X", "agent", "architect", listOf("A")),
+                stepJson("B", "agent", "architect", listOf("A")),
             ),
         )
-        val branchABrief = mapOf(
+        val branchXBrief = mapOf(
             "kind" to "run-brief",
             "encoding" to "markdown",
-            "content" to "# Objectif\nSecret framing from independent branch A.",
+            "content" to "# Objectif\nSecret framing from independent branch X.",
         )
         val adapter = FakeAdapter(caseSteps(workflowId, "A", "X", "B")) { stepId ->
             when (stepId) {
-                "A" -> AgentOsExecutionVerdict.Succeeded(mapOf("artifacts" to listOf(branchABrief)))
-                "X" -> AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "branch X output"))
+                "A" -> AgentOsExecutionVerdict.Succeeded(mapOf("summary" to "root output"))
+                "X" -> AgentOsExecutionVerdict.Succeeded(mapOf("artifacts" to listOf(branchXBrief)))
                 else -> AgentOsExecutionVerdict.Succeeded(emptyMap())
             }
         }
@@ -530,7 +532,7 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
 
         assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
         val bBrief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "B") }.brief
-        assertThat(bBrief).doesNotContain("Secret framing from independent branch A")
+        assertThat(bBrief).doesNotContain("Secret framing from independent branch X")
         assertThat(bBrief).doesNotContain("Run brief handoff")
     }
 

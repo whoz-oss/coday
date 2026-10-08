@@ -32,6 +32,13 @@ data class DurableAgentAttemptDto(
      * chain of an attempt series. No secrets; `null` on first attempts.
      */
     val resumptionContext: String? = null,
+    /**
+     * The amendment sequence this attempt's context was frozen against
+     * (Lot D schema field). Amendment logic itself belongs to Lot E.
+     * The raw frozen context envelope is intentionally NOT exposed here: it can
+     * carry the turn brief, which never crosses the public boundary.
+     */
+    val expectedAmendmentSeq: Long? = null,
     val revision: Int,
     val createdAt: Instant,
     val startedAt: Instant? = null,
@@ -65,6 +72,7 @@ fun DurableAgentAttempt.toDto(): DurableAgentAttemptDto = DurableAgentAttemptDto
     environmentRef = environmentRef,
     expectedEnvironmentRevision = expectedEnvironmentRevision,
     resumptionContext = resumptionContext,
+    expectedAmendmentSeq = expectedAmendmentSeq,
     revision = revision,
     createdAt = createdAt,
     startedAt = startedAt,

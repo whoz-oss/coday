@@ -91,6 +91,34 @@ interface SpringDataNeo4jWorkflowInstanceRepository : Neo4jRepository<WorkflowIn
         @Param("toStatus") toStatus: String,
         @Param("updatedAt") updatedAt: Instant,
     ): Long
+
+    /**
+     * Atomically reserves the run's root case (Lot B durable case family) on an
+     * `active` instance that has no root case yet. The `WHERE i.rootCaseId IS
+     * NULL` predicate is the compare-and-set: of N concurrent reservations for
+     * the same instance exactly ONE matches and writes (count 1); the losers
+     * match nothing (count 0) and must re-read the winning value. An already
+     * reserved instance is therefore never overwritten.
+     *
+     * The revision is incremented so the reservation is an observable instance
+     * mutation (existing `casUpdateInstance` statements keep the root case
+     * untouched).
+     */
+    @Query(
+        """
+        MATCH (i:WorkflowInstance {id: ${'$'}id})
+        WHERE i.status = 'active' AND i.rootCaseId IS NULL
+        SET i.rootCaseId = ${'$'}rootCaseId,
+            i.revision = i.revision + 1,
+            i.updatedAt = ${'$'}updatedAt
+        RETURN count(i) AS updated
+        """,
+    )
+    fun reserveRootCase(
+        @Param("id") id: String,
+        @Param("rootCaseId") rootCaseId: String,
+        @Param("updatedAt") updatedAt: Instant,
+    ): Long
 }
 
 interface SpringDataNeo4jWorkflowProjectionRepository : Neo4jRepository<WorkflowProjectionNode, String> {
