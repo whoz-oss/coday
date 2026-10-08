@@ -8,7 +8,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
-import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.agent.AgentInterrupt
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
@@ -90,13 +90,30 @@ class QueryUserToolPluginSpec : StringSpec({
     // direct construction-based coverage of the same tolerance).
     // -------------------------------------------------------------------------
 
-    suspend fun acceptsOpenChoice(tool: QueryUserTool): Boolean {
-        val result = tool.execute(
-            QueryUserTool.Input(question = "q", options = listOf("A", "B"), allowCustomAnswer = true),
-            mockk(relaxed = true),
-        )
-        return result.success
-    }
+    /**
+     * Returns whether [tool] accepts an OPEN_CHOICE call.
+     *
+     * Note the inversion: on the **happy path** `execute` does not return at all, it throws
+     * [AgentInterrupt.AwaitAnswer] -- a control-flow signal handing the turn back to the
+     * orchestrator, not an error. Reaching the line after the call therefore means the call was
+     * *refused*, and the only way to observe acceptance is to catch the interrupt.
+     *
+     * Asserting on `result.success` here would be silently wrong: it can never be true, so every
+     * "accepted" case would fail on an uncaught exception and every "refused" case would pass for
+     * the wrong reason.
+     */
+    suspend fun acceptsOpenChoice(tool: QueryUserTool): Boolean =
+        try {
+            val result = tool.execute(
+                QueryUserTool.Input(question = "q", options = listOf("A", "B"), allowCustomAnswer = true),
+                mockk(relaxed = true),
+            )
+            // Refused: the only non-throwing path is ToolExecutionResult.error.
+            result.success shouldBe false
+            false
+        } catch (_: AgentInterrupt.AwaitAnswer) {
+            true
+        }
 
     "provideTools allows all three types when config is null" {
         val tool = QueryUserToolPlugin().provideTools(config = null, configName = null, context = context()).first() as QueryUserTool
