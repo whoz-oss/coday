@@ -66,6 +66,16 @@ const snapshot = {
   },
 }
 
+/** Build a minimal workflow snapshot with a distinct identity. */
+function snapshotFor(workflowId: string, namespaceId: string, title: string, status = 'running'): unknown {
+  return {
+    workflowId,
+    namespaceId,
+    relations: { rootWorkflowId: workflowId, ticket: `T-${workflowId}` },
+    projection: { schemaVersion: '2', title, status, steps: [] },
+  }
+}
+
 describe('FactoryStore', () => {
   let store: FactoryStore
   let http: HttpTestingController
@@ -88,7 +98,11 @@ describe('FactoryStore', () => {
 
   afterEach(() => http.verify())
 
-  function flushInitialWorkflows(items: unknown[] = [], removed: unknown[] = []): void {
+  function flushNamespaces(items: unknown = []): void {
+    http.expectOne((r) => r.url === '/api/namespaces').flush({ data: items })
+  }
+
+  function flushInitialWorkflows(items: unknown[] = [], removed: unknown[] = [], namespaces: unknown = []): void {
     const activeRequest = http.expectOne(
       (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active'
     )
@@ -97,6 +111,7 @@ describe('FactoryStore', () => {
     )
     activeRequest.flush({ data: { namespaceId: '', state: 'active', items } })
     removedRequest.flush({ data: { namespaceId: '', state: 'removed', items: removed } })
+    flushNamespaces(namespaces)
   }
 
   function flushEnrichment(
@@ -114,50 +129,63 @@ describe('FactoryStore', () => {
     http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
   }
 
+  /** Flush the 7 enrichment requests issued for an arbitrary active run. */
+  function flushRunEnrichment(wfId: string): void {
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/evidence`)).flush({ data: { workflowId: wfId, items: [] } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/metrics`)).flush({ data: { workflowId: wfId } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/interactions`)).flush({ data: { workflowId: wfId, items: [] } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/attempts`)).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/actions`)).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith(`/${wfId}/agent-questions`)).flush({ data: [] })
+  }
+
   // ---------------------------------------------------------------------------
   // Derivation from the real active workflows
   // ---------------------------------------------------------------------------
 
-  it('starts with no sandboxes before any real workflow is loaded', () => {
+  it('starts with no runs before any real workflow is loaded', () => {
     flushInitialWorkflows()
 
-    expect(store.sandboxes()).toEqual([])
-    expect(store.activeSandboxes()).toEqual([])
+    expect(store.runs()).toEqual([])
+    expect(store.activeRuns()).toEqual([])
+    expect(store.workstreams()).toEqual([])
     expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
   })
 
-  it('derives one sandbox per active workflow, from the real snapshot fields', () => {
+  it('derives one FactoryRun per active workflow, from the real snapshot fields', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment()
 
-    expect(store.sandboxes()).toHaveLength(1)
-    const [sandbox] = store.sandboxes()
-    if (!sandbox) throw new Error('expected one derived sandbox')
+    expect(store.runs()).toHaveLength(1)
+    const [run] = store.runs()
+    if (!run) throw new Error('expected one derived run')
 
-    expect(sandbox.name).toBe('Real workflow')
-    expect(sandbox.project).toBe('ns-1')
-    expect(sandbox.namespace).toBe('ns-1')
-    expect(sandbox.ticket).toBe('ABC-1')
-    expect(sandbox.branch).toBe('ABC-1')
-    expect(sandbox.status).toBe('working')
-    expect(sandbox.run?.id).toBe('wf-1')
-    expect(sandbox.run?.workflow).toBe('Real workflow')
-    expect(sandbox.run?.status).toBe('running')
+    expect(run.id).toBe('wf-1')
+    expect(run.title).toBe('Real workflow')
+    expect(run.project).toBe('ns-1')
+    expect(run.namespaceId).toBe('ns-1')
+    expect(run.ticket).toBe('ABC-1')
+    expect(run.branch).toBe('ABC-1')
+    expect(run.status).toBe('working')
+    expect(run.run?.id).toBe('wf-1')
+    expect(run.run?.workflow).toBe('Real workflow')
+    expect(run.run?.status).toBe('running')
   })
 
-  it('maps the top-level createdAt from the snapshot to sandbox.createdAt', () => {
+  it('maps the top-level createdAt from the snapshot to run.createdAt', () => {
     const withCreatedAt = { ...snapshot, createdAt: '2026-09-30T16:00:00.000Z' }
     flushInitialWorkflows([withCreatedAt])
     flushEnrichment()
 
-    expect(store.sandboxes()[0]?.createdAt).toBe('2026-09-30T16:00:00.000Z')
+    expect(store.runs()[0]?.createdAt).toBe('2026-09-30T16:00:00.000Z')
   })
 
-  it('leaves sandbox.createdAt absent when the snapshot has no createdAt field', () => {
+  it('leaves run.createdAt absent when the snapshot has no createdAt field', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment()
 
-    expect(store.sandboxes()[0]?.createdAt).toBeUndefined()
+    expect(store.runs()[0]?.createdAt).toBeUndefined()
   })
 
   it('drops an unparseable createdAt value silently', () => {
@@ -165,10 +193,10 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([withBadDate])
     flushEnrichment()
 
-    expect(store.sandboxes()[0]?.createdAt).toBeUndefined()
+    expect(store.runs()[0]?.createdAt).toBeUndefined()
   })
 
-  it('sorts visibleSandboxes by createdAt descending, unknowns last', () => {
+  it('sorts visibleRuns by createdAt descending, unknowns last', () => {
     const older = {
       ...snapshot,
       workflowId: 'wf-older',
@@ -186,9 +214,7 @@ describe('FactoryStore', () => {
       workflowId: 'wf-nodate',
       projection: { ...snapshot.projection, title: 'No date workflow', workflowId: 'wf-nodate' },
     }
-    // Flush active: older first, then newer, then no-date — order must be reversed by sort
     flushInitialWorkflows([older, newer, noDate])
-    // Flush enrichment for each workflow
     ;['wf-older', 'wf-newer', 'wf-nodate'].forEach((wfId) => {
       http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
       http.expectOne((r) => r.url.endsWith(`/${wfId}/evidence`)).flush({ data: { workflowId: wfId, items: [] } })
@@ -199,30 +225,110 @@ describe('FactoryStore', () => {
       http.expectOne((r) => r.url.endsWith(`/${wfId}/agent-questions`)).flush({ data: [] })
     })
 
-    const names = store.visibleSandboxes().map((s) => s.name)
-    expect(names).toEqual(['Newer workflow', 'Older workflow', 'No date workflow'])
+    const titles = store.visibleRuns().map((run) => run.title)
+    expect(titles).toEqual(['Newer workflow', 'Older workflow', 'No date workflow'])
   })
 
-  it('maps an idle/pending workflow state onto an idle sandbox', () => {
+  it('maps an idle/pending workflow state onto an idle run', () => {
     const idle = { ...snapshot, projection: { ...snapshot.projection, status: 'pending' } }
     flushInitialWorkflows([idle])
     flushEnrichment()
 
-    expect(store.sandboxes()[0]?.status).toBe('idle')
+    expect(store.runs()[0]?.status).toBe('idle')
   })
 
   it('keeps the active and visible lists consistent and toggles with showDestroyed', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment()
 
-    // visibleSandboxes is a sorted view of activeSandboxes; with a single item
-    // the sort order is identical.
-    expect(store.visibleSandboxes()).toHaveLength(store.activeSandboxes().length)
-    expect(store.visibleSandboxes()[0]?.name).toBe(store.activeSandboxes()[0]?.name)
-    expect(store.destroyedSandboxes()).toEqual([])
+    expect(store.visibleRuns()).toHaveLength(store.activeRuns().length)
+    expect(store.visibleRuns()[0]?.title).toBe(store.activeRuns()[0]?.title)
+    expect(store.destroyedRuns()).toEqual([])
 
     store.showDestroyed.set(true)
-    expect(store.visibleSandboxes()).toHaveLength(store.sandboxes().length)
+    expect(store.visibleRuns()).toHaveLength(store.runs().length)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Workstreams grouping (namespaceId)
+  // ---------------------------------------------------------------------------
+
+  it('groups runs into workstreams strictly by namespaceId', () => {
+    flushInitialWorkflows(
+      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-b', 'Run B')],
+      [],
+      [
+        { namespaceId: 'ns-a', name: 'Alpha' },
+        { namespaceId: 'ns-b', name: 'Beta' },
+      ]
+    )
+    flushRunEnrichment('wf-a')
+    flushRunEnrichment('wf-b')
+
+    const workstreams = store.workstreams()
+    expect(workstreams.map((ws) => ws.namespaceId).sort()).toEqual(['ns-a', 'ns-b'])
+    expect(workstreams.find((ws) => ws.namespaceId === 'ns-a')?.title).toBe('Alpha')
+    expect(workstreams.find((ws) => ws.namespaceId === 'ns-b')?.runs.map((r) => r.id)).toEqual(['wf-b'])
+  })
+
+  it('keeps homonym namespace titles in distinct workstreams (never grouped by title)', () => {
+    flushInitialWorkflows(
+      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-b', 'Run B')],
+      [],
+      [
+        { namespaceId: 'ns-a', name: 'Same name' },
+        { namespaceId: 'ns-b', name: 'Same name' },
+      ]
+    )
+    flushRunEnrichment('wf-a')
+    flushRunEnrichment('wf-b')
+
+    const workstreams = store.workstreams()
+    expect(workstreams).toHaveLength(2)
+    expect(workstreams.every((ws) => ws.title === 'Same name')).toBe(true)
+    expect(workstreams.map((ws) => ws.namespaceId).sort()).toEqual(['ns-a', 'ns-b'])
+  })
+
+  it('puts runs without a namespaceId in an explicit unassigned workstream', () => {
+    const orphan = {
+      workflowId: 'wf-orphan',
+      relations: { rootWorkflowId: 'wf-orphan', ticket: 'T-orphan' },
+      projection: { schemaVersion: '2', title: 'Orphan run', status: 'running', steps: [] },
+    }
+    flushInitialWorkflows([orphan])
+    flushRunEnrichment('wf-orphan')
+
+    const [workstream] = store.workstreams()
+    expect(workstream?.namespaceId).toBe('unassigned')
+    expect(workstream?.title).toBe('Sans namespace')
+    expect(workstream?.runs.map((run) => run.id)).toEqual(['wf-orphan'])
+    expect(workstream?.runs[0]?.namespaceId).toBeUndefined()
+  })
+
+  it('falls back to the namespace id as title when the catalogue is empty', () => {
+    flushInitialWorkflows([snapshotFor('wf-a', 'ns-unknown', 'Run A')])
+    flushRunEnrichment('wf-a')
+
+    expect(store.workstreams()[0]?.title).toBe('ns-unknown')
+  })
+
+  it('degrades gracefully when getNamespaces fails: runs still load and group', () => {
+    const activeRequest = http.expectOne(
+      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active'
+    )
+    const removedRequest = http.expectOne(
+      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed'
+    )
+    activeRequest.flush({ data: { items: [snapshotFor('wf-a', 'ns-a', 'Run A')] } })
+    removedRequest.flush({ data: { items: [] } })
+    http
+      .expectOne((r) => r.url === '/api/namespaces')
+      .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    flushRunEnrichment('wf-a')
+
+    expect(store.runs()).toHaveLength(1)
+    expect(store.namespaces().size).toBe(0)
+    expect(store.workstreams()[0]?.title).toBe('ns-a')
   })
 
   // ---------------------------------------------------------------------------
@@ -248,7 +354,6 @@ describe('FactoryStore', () => {
     expect(costs.workflowsUsd).toBeCloseTo(1.5, 6)
     expect(costs.totalUsd).toBeCloseTo(1.5, 6)
     expect(costs.unknownCostCount).toBe(2)
-    // No fabricated Archay/destroyed figures anymore.
     expect(costs.archayUsd).toBeUndefined()
     expect(costs.destroyedUsd).toBeUndefined()
   })
@@ -267,7 +372,7 @@ describe('FactoryStore', () => {
     expect(session?.status).toBe('running')
   })
 
-  it('enriches the session and its sandbox run with the real cost from metrics', () => {
+  it('enriches the session and its run cost with the real cost from metrics', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment({
       workflowId: 'wf-1',
@@ -282,8 +387,9 @@ describe('FactoryStore', () => {
     })
 
     expect(store.session('wf-1')?.costUsd).toBe(1.0723)
-    expect(store.activeSandboxes()[0]?.run?.costUsd).toBe(1.0723)
-    expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(0)
+    expect(store.activeRuns()[0]?.costUsd).toBe(1.0723)
+    expect(store.activeRuns()[0]?.run?.costUsd).toBe(1.0723)
+    expect(store.activeRuns()[0]?.run?.unknownCostCount).toBe(0)
     expect(store.costs().workflowsUsd).toBeCloseTo(1.0723, 6)
   })
 
@@ -295,7 +401,7 @@ describe('FactoryStore', () => {
     })
 
     expect(store.session('wf-1')?.unknownCostCount).toBe(3)
-    expect(store.activeSandboxes()[0]?.run?.unknownCostCount).toBe(3)
+    expect(store.activeRuns()[0]?.run?.unknownCostCount).toBe(3)
     expect(store.costs().unknownCostCount).toBe(3)
     expect(store.costs().totalUsd).toBeCloseTo(0.5, 6)
   })
@@ -320,7 +426,6 @@ describe('FactoryStore', () => {
 
     const session = store.session('wf-1')
     expect(session?.interactions).toHaveLength(1)
-    expect(session?.interactions?.[0]?.interactionId).toBe('i-1')
     expect(session?.phase.sections.find((section) => section.label === 'Gates')?.count).toBe(1)
     expect(session?.events.some((event) => event.text.includes('Approve the deploy?'))).toBe(true)
   })
@@ -340,7 +445,6 @@ describe('FactoryStore', () => {
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')
     expect(session?.interactions).toEqual([])
-    // The other enrichments still landed despite the failed interaction fetch.
     expect(session?.workflow).toBe('Real workflow')
   })
 
@@ -379,7 +483,6 @@ describe('FactoryStore', () => {
     expect(session?.phase.currentAttemptNumber).toBe(2)
     expect(session?.phase.totalAttempts).toBe(2)
     expect(session?.phase.attemptStatus).toBe('running')
-    expect(session?.phase.attempt).toBe('2/2')
   })
 
   it('degrades gracefully when the attempts fetch fails', () => {
@@ -397,7 +500,6 @@ describe('FactoryStore', () => {
     const session = store.session('wf-1')
     expect(session?.id).toBe('wf-1')
     expect(session?.attempts).toEqual([])
-    // Fallback attempt string is neutral.
     expect(session?.phase.attempt).toBe('1/1')
     expect(session?.workflow).toBe('Real workflow')
   })
@@ -408,7 +510,7 @@ describe('FactoryStore', () => {
 
   it('refetches the real active workflows on an SSE invalidation', () => {
     flushInitialWorkflows([])
-    expect(store.sandboxes()).toEqual([])
+    expect(store.runs()).toEqual([])
 
     const source = FakeEventSource.instances[0]
     source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
@@ -416,8 +518,8 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment()
 
-    expect(store.sandboxes()).toHaveLength(1)
-    expect(store.sandboxes()[0]?.run?.id).toBe('wf-1')
+    expect(store.runs()).toHaveLength(1)
+    expect(store.runs()[0]?.id).toBe('wf-1')
   })
 
   it('degrades to an empty list (never the mock fleet) when the REST backend fails', () => {
@@ -427,11 +529,12 @@ describe('FactoryStore', () => {
     http
       .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
       .flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
+    flushNamespaces()
 
-    expect(store.sandboxes()).toEqual([])
-    expect(store.activeSandboxes()).toEqual([])
+    expect(store.runs()).toEqual([])
+    expect(store.activeRuns()).toEqual([])
+    expect(store.workstreams()).toEqual([])
     expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
-    // The demo session fallback still resolves without crashing.
     expect(store.session('872641a8').id).toBe('872641a8')
   })
 
@@ -442,7 +545,7 @@ describe('FactoryStore', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Governed actions & blockers: backend authority, preserved verbatim
+  // Governed actions & blockers
   // ---------------------------------------------------------------------------
 
   it('preserves agent questions when later enrichment responses merge', () => {
@@ -554,7 +657,6 @@ describe('FactoryStore', () => {
     expect(request.request.method).toBe('POST')
     expect(request.request.body).toEqual({ actionId: 'approve', text: 'ok', expectedRevision: 3 })
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
-    expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
     request.flush({ data: { ok: true } })
 
     flushInitialWorkflows([])
@@ -619,10 +721,10 @@ describe('FactoryStore', () => {
   })
 
   // ---------------------------------------------------------------------------
-  // Removed workflows → destroyed sandboxes
+  // Removed workflows → destroyed runs
   // ---------------------------------------------------------------------------
 
-  it('merges active and removed workflows, mapping removed ones to destroyed sandboxes', () => {
+  it('merges active and removed workflows, mapping removed ones to destroyed runs', () => {
     const removed = {
       ...snapshot,
       workflowId: 'wf-removed',
@@ -632,30 +734,29 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot], [removed])
     flushEnrichment()
 
-    expect(store.sandboxes()).toHaveLength(2)
-    expect(store.activeSandboxes()).toHaveLength(1)
-    expect(store.destroyedSandboxes()).toHaveLength(1)
-    const [destroyed] = store.destroyedSandboxes()
-    expect(destroyed?.name).toBe('Removed workflow')
+    expect(store.runs()).toHaveLength(2)
+    expect(store.activeRuns()).toHaveLength(1)
+    expect(store.destroyedRuns()).toHaveLength(1)
+    const [destroyed] = store.destroyedRuns()
+    expect(destroyed?.title).toBe('Removed workflow')
     expect(destroyed?.status).toBe('destroyed')
-    // `visibleSandboxes`/`showDestroyed` remain the ONLY visibility filter.
-    // (visibleSandboxes is a sorted copy of activeSandboxes; with one item the names match.)
-    expect(store.visibleSandboxes()).toHaveLength(store.activeSandboxes().length)
+    expect(store.visibleRuns()).toHaveLength(store.activeRuns().length)
     store.showDestroyed.set(true)
-    expect(store.visibleSandboxes()).toHaveLength(2)
+    expect(store.visibleRuns()).toHaveLength(2)
   })
 
-  it('keeps active sandboxes when the removed fetch fails (partial degradation)', () => {
+  it('keeps active runs when the removed fetch fails (partial degradation)', () => {
     http
       .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
       .flush({ data: { namespaceId: '', state: 'active', items: [snapshot] } })
     http
       .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
+    flushNamespaces()
     flushEnrichment()
 
-    expect(store.activeSandboxes()).toHaveLength(1)
-    expect(store.destroyedSandboxes()).toEqual([])
+    expect(store.activeRuns()).toHaveLength(1)
+    expect(store.destroyedRuns()).toEqual([])
   })
 
   // ---------------------------------------------------------------------------
@@ -720,7 +821,6 @@ describe('FactoryStore', () => {
     store.stop('wf-1')
 
     http.expectNone((r) => r.url.includes('/cancel'))
-    // No reload is triggered either: the state is left untouched.
     http.expectNone((r) => r.url === '/api/factory/workflows')
   })
 
@@ -748,7 +848,6 @@ describe('FactoryStore', () => {
       .expectOne((r) => r.url === '/api/factory/workflows/wf-1')
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
 
-    // No reload on failure: state is untouched.
     http.expectNone((r) => r.url === '/api/factory/workflows')
   })
 

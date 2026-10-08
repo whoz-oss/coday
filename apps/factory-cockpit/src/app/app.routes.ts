@@ -3,17 +3,17 @@ import { Routes } from '@angular/router'
 /**
  * Cockpit V2 client-side routes.
  *
- * The sandboxes and history screens still point at minimal placeholder
- * components; the session screen is fully ported (session-page with its
- * agent-timeline and event-log children). The remaining ports of the mockups'
- * `sandboxes-page` and `history-page` components are reserved for the next
- * waves.
+ * The workstreams screen groups the real Factory runs by namespace; the session
+ * screen is fully ported (session-page with its agent-timeline and event-log
+ * children). The legacy `/sandboxes` path is kept as a redirect for bookmarks.
  */
 export const routes: Routes = [
-  { path: '', pathMatch: 'full', redirectTo: 'sandboxes' },
+  { path: '', pathMatch: 'full', redirectTo: 'workstreams' },
+  { path: 'sandboxes', redirectTo: 'workstreams', pathMatch: 'full' },
   {
-    path: 'sandboxes',
-    loadComponent: () => import('./features/sandboxes/sandboxes-page.component').then((m) => m.SandboxesPageComponent),
+    path: 'workstreams',
+    loadComponent: () =>
+      import('./features/workstreams/workstreams-page.component').then((m) => m.WorkstreamsPageComponent),
   },
   {
     path: 'lancer',
@@ -40,5 +40,5 @@ export const routes: Routes = [
     path: 'reglages',
     loadComponent: () => import('./features/admin/admin-page.component').then((m) => m.AdminPageComponent),
   },
-  { path: '**', redirectTo: 'sandboxes' },
+  { path: '**', redirectTo: 'workstreams' },
 ]

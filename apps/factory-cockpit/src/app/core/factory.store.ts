@@ -1,10 +1,10 @@
 import { Injectable, InjectionToken, computed, inject, signal } from '@angular/core'
 import { Observable, Subscription, catchError, forkJoin, of, switchMap, tap } from 'rxjs'
-import { FactoryApiError, FactoryApiService } from './factory-api.service'
+import { FactoryApiError, FactoryApiService, NamespaceItem, extractNamespaceOptions } from './factory-api.service'
 import { AgentOsApiService } from './agentos-api.service'
 import { SupervisorCaseStoreService } from './supervisor-case-store.service'
 import {
-  controllerCaseIdOf,
+  mapProjectionToFactoryRun,
   mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
   namespaceOf,
@@ -13,14 +13,14 @@ import {
 import {
   AgentQuestion,
   CostSummary,
+  FactoryRun,
   GetActionsResponse,
   SupervisorCaseResult,
   RecentTask,
-  RunStatus,
   RunSummary,
-  Sandbox,
-  SandboxStatus,
   SessionDetail,
+  UNASSIGNED_NAMESPACE_ID,
+  WorkstreamView,
 } from './models'
 import { SESSION_872641A8 } from './mock-data'
 import { SseService } from './sse.service'
@@ -99,8 +99,14 @@ export class FactoryStore {
   private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
   private readonly supervisorCaseStore = inject(SupervisorCaseStoreService)
 
-  /** Sandbox cards derived from the real active workflows (empty until loaded). */
-  readonly sandboxes = signal<Sandbox[]>([])
+  /**
+   * Namespace id → human name, populated from `GET /api/namespaces`.
+   * Used to title workstreams; a missing id falls back to the id itself.
+   */
+  readonly namespaces = signal<Map<string, string>>(new Map())
+
+  /** Factory runs derived from the real active/removed workflows (empty until loaded). */
+  readonly runs = signal<FactoryRun[]>([])
   /** No real recent-teardown API exists yet; kept empty for backwards-compat. */
   readonly recentTasks = signal<RecentTask[]>([])
   readonly showDestroyed = signal(false)
@@ -109,29 +115,56 @@ export class FactoryStore {
     null
   )
 
-  readonly activeSandboxes = computed(() => this.sandboxes().filter((s) => s.status !== 'destroyed'))
-  readonly destroyedSandboxes = computed(() => this.sandboxes().filter((s) => s.status === 'destroyed'))
+  /** @deprecated Use {@link runs}. Kept as an alias for compatibility. */
+  readonly sandboxes = computed(() => this.runs())
+
+  readonly activeRuns = computed(() => this.runs().filter((run) => run.status !== 'destroyed'))
+  readonly destroyedRuns = computed(() => this.runs().filter((run) => run.status === 'destroyed'))
 
   /**
-   * Sandboxes sorted by creation date, most recent first.
+   * Runs sorted by creation date, most recent first.
    *
-   * Sorting is stable-descending on `createdAt` (epoch ms). Sandboxes whose
+   * Sorting is stable-descending on `createdAt` (epoch ms). Runs whose
    * `createdAt` is absent are placed at the end (unknown creation date).
    * The source signal is never mutated: `[...list]` creates a fresh copy
    * before sorting.
    */
-  readonly visibleSandboxes = computed(() => {
-    const list = this.showDestroyed() ? this.sandboxes() : this.activeSandboxes()
-    return sortSandboxesByCreation([...list])
+  readonly visibleRuns = computed(() => {
+    const list = this.showDestroyed() ? this.runs() : this.activeRuns()
+    return sortRunsByCreation([...list])
+  })
+
+  /**
+   * Runs grouped into workstreams STRICTLY by `namespaceId` (never by title),
+   * so namespaces sharing the same human name stay in distinct groups. Runs
+   * without a `namespaceId` land in the explicit {@link UNASSIGNED_NAMESPACE_ID}
+   * workstream.
+   */
+  readonly workstreams = computed<WorkstreamView[]>(() => {
+    const names = this.namespaces()
+    const groups = new Map<string, FactoryRun[]>()
+    for (const run of this.visibleRuns()) {
+      const namespaceId = run.namespaceId?.trim() || UNASSIGNED_NAMESPACE_ID
+      const bucket = groups.get(namespaceId) ?? []
+      bucket.push(run)
+      groups.set(namespaceId, bucket)
+    }
+    return [...groups.entries()]
+      .map(([namespaceId, runs]) => ({
+        namespaceId,
+        title: namespaceId === UNASSIGNED_NAMESPACE_ID ? 'Sans namespace' : (names.get(namespaceId) ?? namespaceId),
+        runs,
+      }))
+      .sort((left, right) => left.title.localeCompare(right.title))
   })
 
   readonly costs = computed<CostSummary>(() => {
-    const active = this.activeSandboxes()
+    const active = this.activeRuns()
     // REAL: the active workflows' costs, mapped from each run's `/metrics`
     // payload (0 when the backend exposes no run-cost).
-    const workflowsUsd = active.reduce((sum, s) => sum + (s.run?.costUsd ?? 0), 0)
+    const workflowsUsd = active.reduce((sum, run) => sum + (run.run?.costUsd ?? run.costUsd ?? 0), 0)
     // Uncertainty is propagated verbatim: sum of the runs' unknownCostCount.
-    const unknownCostCount = active.reduce((sum, s) => sum + (s.run?.unknownCostCount ?? 0), 0)
+    const unknownCostCount = active.reduce((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
     // No other real cost source exists (no Archay/destroyed fleet API).
     return {
       active: active.length,
@@ -181,24 +214,38 @@ export class FactoryStore {
 
   /** Re-fetch the active workflow projections and re-derive the state. */
   private load(): void {
-    // Fetch active AND removed workflow snapshots concurrently. Inner
-    // `catchError`s mean a partial backend failure (e.g. the removed endpoint is
-    // unavailable) still yields the other half instead of breaking the load.
+    // Fetch active AND removed workflow snapshots concurrently, plus the
+    // namespace catalogue used to title workstreams. Inner `catchError`s mean a
+    // partial backend failure (e.g. the removed endpoint unavailable) still
+    // yields the other half instead of breaking the load. `getNamespaces()`
+    // already degrades to `[]`, so a namespace failure never blocks the run
+    // projection (workstream titles simply fall back to their ids).
     forkJoin({
       active: this.api.getWorkflows('active').pipe(catchError(() => of([] as unknown[]))),
       removed: this.api.getWorkflows('removed').pipe(catchError(() => of([] as unknown[]))),
+      namespaces: this.api.getNamespaces(),
     }).subscribe({
-      next: ({ active, removed }) => this.applyWorkflows(active, removed),
+      next: ({ active, removed, namespaces }) => {
+        this.applyNamespaces(namespaces)
+        this.applyWorkflows(active, removed)
+      },
       error: () => {
         // Graceful degradation: the backend is unavailable, so there is no real
         // workflow to show. Clear everything instead of crashing or falling
         // back onto fabricated mock data.
         this.workflows.set([])
-        this.sandboxes.set([])
+        this.runs.set([])
         this.sessions.set(new Map())
         this.enrichment.clear()
       },
     })
+  }
+
+  /** Populate the namespace id→name map; a failed payload leaves it empty. */
+  private applyNamespaces(items: NamespaceItem[]): void {
+    const map = new Map<string, string>()
+    for (const option of extractNamespaceOptions(items)) map.set(option.id, option.name)
+    this.namespaces.set(map)
   }
 
   private applyWorkflows(activeItems: unknown[], removedItems: unknown[]): void {
@@ -208,12 +255,12 @@ export class FactoryStore {
     this.workflows.set(snapshots)
     this.enrichment.clear()
 
-    // Derive one sandbox card per real workflow snapshot. Removed snapshots are
-    // surfaced as destroyed sandboxes; `showDestroyed`/`visibleSandboxes` remain
-    // the ONLY visibility filter.
-    const activeSandboxes = active.map((snapshot) => this.toSandbox(snapshot))
-    const destroyedSandboxes = removed.map((snapshot) => this.toSandbox(snapshot, 'destroyed'))
-    this.sandboxes.set([...activeSandboxes, ...destroyedSandboxes])
+    // Derive one FactoryRun per real workflow snapshot. Removed snapshots are
+    // surfaced as destroyed runs; `showDestroyed`/`visibleRuns` remain the ONLY
+    // visibility filter.
+    const activeRuns = active.map((snapshot) => mapProjectionToFactoryRun(snapshot))
+    const destroyedRuns = removed.map((snapshot) => mapProjectionToFactoryRun(snapshot, 'destroyed'))
+    this.runs.set([...activeRuns, ...destroyedRuns])
 
     const sessionMap = new Map<string, SessionDetail>()
     for (const snapshot of snapshots) {
@@ -225,47 +272,6 @@ export class FactoryStore {
     // Enrich active runs only: removed workflows have no live backend surface to
     // enrich (and their session keeps the projection-only detail).
     for (const snapshot of active) this.enrichSession(snapshot)
-  }
-
-  /**
-   * Map one real active workflow snapshot onto a displayable {@link Sandbox}.
-   * Every field comes from the snapshot/relations; nothing is fabricated.
-   */
-  private toSandbox(snapshot: unknown, forcedStatus?: SandboxStatus): Sandbox {
-    const run = mapProjectionToRunSummary(snapshot)
-    const obj = asRecord(snapshot)
-    const projection = asRecord(obj?.['projection']) ?? obj
-    const relations = asRecord(obj?.['relations']) ?? asRecord(asRecord(obj?.['instance'])?.['relations'])
-    const namespace = namespaceOf(snapshot)
-    const ticket = readString(relations, 'ticket')
-    const branch = readString(relations, 'branch') ?? ticket
-    const workflowType = readString(projection, 'workflowType')
-    const title = readString(projection, 'title')
-    const goal = readString(projection, 'goal')
-    const state = readString(projection, 'status')
-    const name = title ?? (run.id !== 'unknown' ? run.id : (ticket ?? goal ?? 'workflow'))
-
-    const sandbox: Sandbox = {
-      name,
-      project: namespace ?? ticket ?? 'coday',
-      status: forcedStatus ?? deriveSandboxStatus(state, run.status),
-      run,
-    }
-    const controllerCaseId = controllerCaseIdOf(snapshot)
-    if (namespace) sandbox.namespace = namespace
-    if (workflowType) sandbox.workflowType = workflowType
-    if (ticket) sandbox.ticket = ticket
-    if (branch) sandbox.branch = branch
-    if (controllerCaseId) sandbox.controllerCaseId = controllerCaseId
-    // Real creation timestamp: `createdAt` is the Neo4j audit timestamp of
-    // when the WorkflowProjection node was first written, preserved across
-    // all subsequent updates by Neo4jWorkflowRepository.publishProjection.
-    // Exposed via publicSnapshot() as an ISO-8601 string.
-    // Validated before use: an unparseable value is silently dropped so
-    // DatePipe and the sort never receive an invalid date.
-    const rawCreatedAt = readString(obj, 'createdAt')
-    if (rawCreatedAt && isValidIsoDate(rawCreatedAt)) sandbox.createdAt = rawCreatedAt
-    return sandbox
   }
 
   private enrichSession(snapshot: unknown): void {
@@ -304,7 +310,7 @@ export class FactoryStore {
       // known, re-map the run attached to its sandbox so the fleet reflects the
       // real cost (and its uncertainty) instead of the projection-only fallback.
       if (partial.metrics !== undefined) {
-        this.updateSandboxRun(mapProjectionToRunSummary(snapshot, partial.metrics))
+        this.updateRun(mapProjectionToRunSummary(snapshot, partial.metrics))
       }
     }
 
@@ -462,9 +468,9 @@ export class FactoryStore {
    * **Scope**: local browser only. A different browser, incognito context, or
    * device will return `undefined` (see {@link SupervisorCaseStoreService}).
    */
-  restoreSupervisorCase(sandbox: Sandbox): SupervisorCaseResult | undefined {
-    const namespaceId = sandbox.namespace
-    const workflowId = sandbox.run?.id
+  restoreSupervisorCase(run: FactoryRun): SupervisorCaseResult | undefined {
+    const namespaceId = run.namespaceId
+    const workflowId = run.id
     if (!namespaceId || !workflowId) return undefined
     const entry = this.supervisorCaseStore.load({ workflowId, namespaceId })
     if (!entry) return undefined
@@ -476,7 +482,7 @@ export class FactoryStore {
   }
 
   /**
-   * Create an AgentOS supervisor assistance case for a sandbox, send an initial
+   * Create an AgentOS supervisor assistance case for a run, send an initial
    * context message mentioning `@Heimdall`, and return the result.
    *
    * **Persistence**: the case id is persisted in `localStorage` immediately
@@ -486,7 +492,7 @@ export class FactoryStore {
    * identifiers — and the AgentOS URL is always reconstructed from the current
    * {@link AGENTOS_BASE_URL} injection so it is never frozen.
    *
-   * **Namespace**: `sandbox.namespace` must be a valid UUID string — the
+   * **Namespace**: `run.namespaceId` must be a valid UUID string — the
    * AgentOS backend validates `namespaceId` with `@NotNull UUID`. The caller
    * must guard against a missing or non-UUID namespace before calling this
    * method.
@@ -496,11 +502,11 @@ export class FactoryStore {
    * The caller opens the target window before subscribing to this observable,
    * then navigates it once the case id is known.
    */
-  openSupervisorCase(sandbox: Sandbox): Observable<SupervisorCaseResult> {
-    const namespaceId = sandbox.namespace!
-    const workflowId = sandbox.run?.id ?? sandbox.name
-    const title = `Supervisor assistance — ${sandbox.name}`
-    const initialMessage = buildSupervisorCaseMessage(sandbox.name, workflowId, sandbox.ticket, sandbox.workflowType)
+  openSupervisorCase(run: FactoryRun): Observable<SupervisorCaseResult> {
+    const namespaceId = run.namespaceId!
+    const workflowId = run.id
+    const title = `Supervisor assistance — ${run.title}`
+    const initialMessage = buildSupervisorCaseMessage(run.title, workflowId, run.ticket, run.workflowType)
     return this.agentOs.createCase({ namespaceId, title }).pipe(
       // Persist immediately after creation, before the message POST.
       // This guarantees the association survives a page refresh even if the
@@ -526,9 +532,22 @@ export class FactoryStore {
     )
   }
 
-  /** Replace the run attached to a sandbox once its real cost is known. */
-  private updateSandboxRun(run: RunSummary): void {
-    this.sandboxes.update((list) => list.map((sandbox) => (sandbox.run?.id === run.id ? { ...sandbox, run } : sandbox)))
+  /** Replace the summary attached to a run once its real cost is known. */
+  private updateRun(summary: RunSummary): void {
+    this.runs.update((list) =>
+      list.map((run) =>
+        run.id === summary.id
+          ? {
+              ...run,
+              run: summary,
+              costUsd: summary.costUsd,
+              durationSec: summary.durationSec,
+              tokens: summary.tokens,
+              phases: summary.phases,
+            }
+          : run
+      )
+    )
   }
 }
 
@@ -553,47 +572,14 @@ function agentQuestionError(
 }
 
 /**
- * Returns true when [value] is a non-empty string that parses to a finite Date.
- * Used to guard `createdAt` before handing it to DatePipe or Date.parse in the
- * sort — both silently produce NaN on invalid input, which is hard to debug.
- */
-function isValidIsoDate(value: string): boolean {
-  if (!value) return false
-  const ms = Date.parse(value)
-  return Number.isFinite(ms)
-}
-
-function asRecord(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
-}
-
-function readString(obj: Record<string, unknown> | undefined, key: string): string | undefined {
-  const value = obj?.[key]
-  return typeof value === 'string' && value.length > 0 ? value : undefined
-}
-
-const WORKING_STATES = new Set(['running', 'active', 'waiting_human'])
-const IDLE_STATES = new Set(['idle', 'ready', 'pending', 'queued'])
-
-/** Map a real workflow state onto the cockpit sandbox status. */
-function deriveSandboxStatus(state: string | undefined, runStatus: RunStatus): SandboxStatus {
-  const normalized = (state ?? '').toLowerCase()
-  if (WORKING_STATES.has(normalized)) return 'working'
-  if (IDLE_STATES.has(normalized)) return 'idle'
-  return runStatus === 'running' ? 'working' : 'idle'
-}
-
-/**
- * Sort sandboxes by creation date, most recent first (descending).
+ * Sort runs by creation date, most recent first (descending).
  *
  * Uses `createdAt` (ISO-8601 from WorkflowProjectionNode.createdAt, exposed
- * by publicSnapshot()) as the sort key. Sandboxes without a known creation
- * date are placed at the end. The input array is sorted in-place (caller
- * must pass a copy).
+ * by publicSnapshot()) as the sort key. Runs without a known creation date are
+ * placed at the end. The input array is sorted in-place (caller must pass a
+ * copy).
  */
-function sortSandboxesByCreation(list: Sandbox[]): Sandbox[] {
+function sortRunsByCreation(list: FactoryRun[]): FactoryRun[] {
   return list.sort((a, b) => {
     const ta = a.createdAt ? Date.parse(a.createdAt) : null
     const tb = b.createdAt ? Date.parse(b.createdAt) : null

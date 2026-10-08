@@ -98,14 +98,27 @@
   background: var(--sf-chrome);
   border: 1px solid var(--sf-outline);
 }
-.run-head {
+.run-notice {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 15px;
+  min-width: 0;
 }
-.run-head .sf-id {
-  text-decoration: none;
+.run-details {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+}
+.run-steps {
+  min-width: 0;
+}
+.run-metrics {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex: 0 0 auto;
 }
 .goal {
   margin: 0;
@@ -156,6 +169,28 @@
 
 // Inline error message shown below the action bar when supervisor case creation fails.
 // Displayed as a visible block (not just a tooltip/title) so the user cannot miss it.
+@media (max-width: 760px) {
+  .card {
+    padding: 16px;
+  }
+
+  .meta,
+  .actions {
+    flex-wrap: wrap;
+  }
+
+  .run-details {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .run-metrics {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
 .supervisor-error {
   display: flex;
   align-items: center;
