@@ -11,3 +11,4 @@ spring:
 logging:
   level:
     org.apache.hc: TRACE
+    org.springframework.ai.chat.metadata.ChatResponseMetadata: WARN
