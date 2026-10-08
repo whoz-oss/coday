@@ -250,51 +250,182 @@ class AgentIntentionGeneratorSpec :
             ex.response shouldBe response
         }
 
-        "parseIntentionAndTool — two toolName tags throws InvalidFormat" {
-            val generator = makeGenerator()
-            val response =
+        // Recovery selects the last complete adjacent pair, not independent tags.
+        val recoveryCases = listOf(
+            Triple(
+                "nested intention tags are preserved inside the outer decision",
                 """
-                <intention>I need to read the file to answer the question.</intention>
+                <intention>
+                Some reasoning containing <intention>an example</intention>.
+                </intention>
+                <toolName>Answer</toolName>
+                """.trimIndent(),
+                "Some reasoning containing <intention>an example</intention>." to "Answer",
+            ),
+            Triple(
+                "multiple nesting levels and sibling examples are preserved",
+                "<intention>Use <intention>outer <intention>inner</intention></intention> and <intention>another</intention>.</intention><toolName>Answer</toolName>",
+                "Use <intention>outer <intention>inner</intention></intention> and <intention>another</intention>." to "Answer",
+            ),
+            Triple(
+                "a completed outer decision takes precedence over its embedded pair",
+                "<intention>Example: <intention>Read.</intention><toolName>FILES__ReadFile</toolName> Instead, answer.</intention><toolName>Answer</toolName>",
+                "Example: <intention>Read.</intention><toolName>FILES__ReadFile</toolName> Instead, answer." to "Answer",
+            ),
+            Triple(
+                "unmatched closing tags do not prevent recovery",
+                "</intention><toolName>FILES__ReadFile</toolName><intention>Done.</intention><toolName>Answer</toolName>",
+                "Done." to "Answer",
+            ),
+            Triple(
+                "an extra toolName does not replace the paired tool",
+                """
+                <intention>Read the file.</intention>
                 <toolName>Answer</toolName>
                 <toolName>FILES__ReadFile</toolName>
-                """.trimIndent()
-
-            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
-                generator.parseIntentionAndTool(response, validTools)
-            }
-            ex.message shouldContain "Multiple <toolName> tags found"
-            ex.response shouldBe response
-        }
-
-        "parseIntentionAndTool — two intention tags throws InvalidFormat" {
-            val generator = makeGenerator()
-            val response =
+                """.trimIndent(),
+                "Read the file." to "Answer",
+            ),
+            Triple(
+                "an unpaired intention before the decision is ignored",
                 """
                 <intention>First intention.</intention>
                 <intention>Second intention.</intention>
                 <toolName>Answer</toolName>
-                """.trimIndent()
-
-            val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
-                generator.parseIntentionAndTool(response, validTools)
-            }
-            ex.message shouldContain "Multiple <intention> tags found"
-            ex.response shouldBe response
-        }
-
-        "parseIntentionAndTool — two toolName and two intention tags throws InvalidFormat" {
-            val generator = makeGenerator()
-            val response =
+                """.trimIndent(),
+                "Second intention." to "Answer",
+            ),
+            Triple(
+                "the last of several complete pairs is selected",
                 """
                 <intention>First intention.</intention>
                 <toolName>Answer</toolName>
                 <intention>Second intention.</intention>
                 <toolName>FILES__ReadFile</toolName>
+                """.trimIndent(),
+                "Second intention." to "FILES__ReadFile",
+            ),
+            Triple(
+                "trailing Done is tolerated",
+                """
+                <intention>Finished.</intention>
+                <toolName>Answer</toolName>
+                Done
+                """.trimIndent(),
+                "Finished." to "Answer",
+            ),
+            Triple(
+                "an unfinished outer intention is skipped",
+                """
+                <intention>Long unfinished reasoning.
+                <intention>The final decision.</intention>
+                <toolName>Answer</toolName>
+                """.trimIndent(),
+                "The final decision." to "Answer",
+            ),
+            Triple(
+                "a quoted format example before the decision is skipped",
+                """
+                Wait, the output format is:
+                <intention>...</intention>
+                <toolName>Answer</toolName>
+                More reasoning.
+                <intention>Read the file first.</intention>
+                <toolName>FILES__ReadFile</toolName>
+                """.trimIndent(),
+                "Read the file first." to "FILES__ReadFile",
+            ),
+            Triple(
+                "an unfinished wrapper with an example and trailing text is recovered",
+                """
+                <intention>Long reasoning referencing <ProfileCaretaker_tools>.
+                Wait, the output format is:
+                <intention>...</intention>
+                <toolName>Answer</toolName>
+                More reasoning about the missing tools.
+                <intention>Ask the user for the profile content.</intention>
+                <toolName>Answer</toolName>
+                Done
+                """.trimIndent(),
+                "Ask the user for the profile content." to "Answer",
+            ),
+            Triple(
+                "other XML-like tags in the intention are preserved",
+                "<intention>Follow <instructions> and <ProfileCaretaker_tools>.</intention><toolName>Answer</toolName>",
+                "Follow <instructions> and <ProfileCaretaker_tools>." to "Answer",
+            ),
+            Triple(
+                "whitespace is trimmed and tool casing is canonicalized",
+                "<intention>  Read the file.  </intention>\n\t<toolName>  files__readfile  </toolName>",
+                "Read the file." to "FILES__ReadFile",
+            ),
+            Triple(
+                "an incomplete trailing pair does not replace the last complete pair",
+                """
+                <intention>Complete decision.</intention>
+                <toolName>Answer</toolName>
+                <intention>Unfinished decision.</intention>
+                <toolName>
+                """.trimIndent(),
+                "Complete decision." to "Answer",
+            ),
+        )
+
+        recoveryCases.forEach { (description, response, expected) ->
+            "parseIntentionAndTool — $description" {
+                makeGenerator().parseIntentionAndTool(response, validTools) shouldBe expected
+            }
+        }
+
+        val invalidPairCases = listOf(
+            "separated tags are not combined into a pair" to
+                "<intention>Decision.</intention>Unrelated text<toolName>Answer</toolName>",
+            "reversed tags are not combined into a pair" to
+                "<toolName>Answer</toolName><intention>Decision.</intention>",
+            "empty intention is rejected" to
+                "<intention> \n </intention><toolName>Answer</toolName>",
+            "a blank response is rejected" to " \n\t ",
+        )
+
+        invalidPairCases.forEach { (description, response) ->
+            "parseIntentionAndTool — $description" {
+                val ex = shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
+                    makeGenerator().parseIntentionAndTool(response, validTools)
+                }
+                ex.response shouldBe response
+            }
+        }
+
+        "parseIntentionAndTool — an unknown tool in the last pair does not fall back to an earlier pair" {
+            val response =
+                """
+                <intention>Earlier example.</intention>
+                <toolName>Answer</toolName>
+                <intention>Actual decision.</intention>
+                <toolName>UNKNOWN__Tool</toolName>
+                Done
                 """.trimIndent()
 
-            shouldThrow<AgentIntentionGenerationException.InvalidFormat> {
-                generator.parseIntentionAndTool(response, validTools)
+            val ex = shouldThrow<AgentIntentionGenerationException.UnknownTool> {
+                makeGenerator().parseIntentionAndTool(response, validTools)
             }
+            ex.toolName shouldBe "UNKNOWN__Tool"
+            ex.response shouldBe response
+        }
+
+        "parseIntentionAndTool — a trailing format example is indistinguishable from a decision" {
+            // Document the recovery heuristic's limitation: position, not meaning,
+            // determines which complete pair is selected.
+            val response =
+                """
+                <intention>Read the file.</intention>
+                <toolName>FILES__ReadFile</toolName>
+                The output format is:
+                <intention>...</intention>
+                <toolName>Answer</toolName>
+                """.trimIndent()
+
+            makeGenerator().parseIntentionAndTool(response, validTools) shouldBe ("..." to "Answer")
         }
 
         "parseIntentionAndTool — completely empty response throws AgentIntentionGenerationException" {
@@ -453,7 +584,7 @@ class AgentIntentionGeneratorSpec :
 
             result.toolName shouldBe "Answer"
             result.intention shouldContain "Failed to plan next step after"
-            result.intention shouldContain "Missing <toolName> tag"
+            result.intention shouldContain "Expected <intention>...</intention> followed by <toolName>...</toolName>"
             result.isFailedIntention shouldBe true
         }
 
