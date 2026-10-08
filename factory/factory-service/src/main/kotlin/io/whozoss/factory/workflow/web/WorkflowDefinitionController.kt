@@ -12,6 +12,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
+import io.whozoss.factory.workflow.domain.executionPolicyOf
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.domain.workflowException
 import io.whozoss.factory.workflow.service.WorkflowService
@@ -150,6 +151,7 @@ class WorkflowDefinitionController(
             version = valid.definition["version"] as String,
             definitionHash = hashWorkflowDefinition(valid.definition),
             definition = valid.definition,
+            executionPolicy = executionPolicyOf(valid.definition),
         )
         service.registerDefinition(caller.scope, record)
         return ResponseEntity.status(HttpStatus.CREATED).body(
