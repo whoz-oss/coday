@@ -1,8 +1,13 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, inject, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { HttpClient } from '@angular/common/http'
 import { ActivatedRoute, Router } from '@angular/router'
-import { AgentConfig, AgentConfigControllerService, Case, Configuration } from '@whoz-oss/agentos-api-client'
+import {
+  AddMessageRequest,
+  AgentConfig,
+  AgentConfigControllerService,
+  Case,
+  CaseControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { firstValueFrom } from 'rxjs'
 import { CaseStateService } from '../../services/case-state.service'
 
@@ -26,8 +31,7 @@ import { CaseStateService } from '../../services/case-state.service'
 export class AgentConfigLaunchComponent implements OnInit {
   private readonly route = inject(ActivatedRoute)
   private readonly router = inject(Router)
-  private readonly http = inject(HttpClient)
-  private readonly config = inject(Configuration)
+  private readonly caseController = inject(CaseControllerService)
   private readonly caseState = inject(CaseStateService)
   private readonly agentConfigController = inject(AgentConfigControllerService)
   private readonly destroyRef = inject(DestroyRef)
@@ -89,10 +93,10 @@ export class AgentConfigLaunchComponent implements OnInit {
         (await firstValueFrom(this.agentConfigController.getByIdAgentConfig(this.agentConfigId)))
 
       // Step 2: create the case.
+      // Cast: the backend only needs namespaceId at creation; the generated type requires
+      // all non-optional fields (favorite, removed, status) that the server sets itself.
       const createdCase = await firstValueFrom(
-        this.http.post<Case>(`${this.config.basePath}/api/cases`, {
-          namespaceId: this.namespaceId,
-        })
+        this.caseController.createCase({ namespaceId: this.namespaceId } as Case)
       )
 
       // Step 3: register the case in the drawer immediately.
@@ -101,12 +105,8 @@ export class AgentConfigLaunchComponent implements OnInit {
 
       // Step 4: send a minimal start message routed to this agent.
       // The backend reads loopConfig from AgentConfig — no payload in the message.
-      await firstValueFrom(
-        this.http.post(`${this.config.basePath}/api/cases/${caseId}/messages`, {
-          content: `@${agentConfig.name} start`,
-          userId: 'default-user',
-        })
-      )
+      const startMessage: AddMessageRequest = { content: `@${agentConfig.name} start` }
+      await firstValueFrom(this.caseController.addMessageCase(caseId, startMessage))
 
       // Step 5: navigate to the new case.
       this.router.navigate(['/agentos/home'], {

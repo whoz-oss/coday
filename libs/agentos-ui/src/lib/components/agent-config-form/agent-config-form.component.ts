@@ -139,7 +139,6 @@ export class AgentConfigFormComponent implements OnInit {
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
     executionMode: new FormControl<ExecutionMode>(AgentConfigExecutionModeEnum.SIMPLE, { nonNullable: true }),
-    advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
     delegationTimeoutSeconds: new FormControl<number | null>(null, {
       validators: [Validators.min(1), Validators.max(2147483647), Validators.pattern(/^\d+$/)],
     }),
@@ -314,7 +313,6 @@ export class AgentConfigFormComponent implements OnInit {
             config.executionMode ??
             (config.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
           this.executionModeControl.setValue(mode)
-          this.form.controls.advancedExecution.setValue(config.advancedExecution ?? false)
           this.delegationTimeoutControl.setValue(config.delegationTimeoutSeconds ?? null)
           this.enabledControl.setValue(config.enabled ?? true)
           this.loopConfigControl.setValue(config.loopConfig != null ? JSON.stringify(config.loopConfig, null, 2) : null)
