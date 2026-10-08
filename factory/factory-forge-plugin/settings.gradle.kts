@@ -1,7 +1,9 @@
 rootProject.name = "factory-forge-plugin"
 
-// Enable version catalog (libs.versions.toml)
-enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+// TYPESAFE_PROJECT_ACCESSORS is intentionally absent: the composite root is named
+// "factory", which would generate a getFactory() accessor colliding with Gradle's
+// internal RootProjectAccessor base class (Gradle 9.4+). None of the factory
+// modules reference `projects.*`, so the preview is unused.
 
 // The Forge plugin compiles against the host Factory Service (and, transitively,
 // the Factory SDK it exposes via `api`). Both are `compileOnly`: at runtime the

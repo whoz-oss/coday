@@ -1,7 +1,9 @@
 rootProject.name = "factory-service"
 
-// Enable version catalog (libs.versions.toml)
-enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+// TYPESAFE_PROJECT_ACCESSORS is intentionally absent: the composite root is named
+// "factory", which would generate a getFactory() accessor colliding with Gradle's
+// internal RootProjectAccessor base class (Gradle 9.4+). None of the factory
+// modules reference `projects.*`, so the preview is unused.
 
 // The shared factory version catalog lives at factory/gradle/libs.versions.toml.
 // All factory modules (sdk, service, verification-core, forge-plugin) reference it

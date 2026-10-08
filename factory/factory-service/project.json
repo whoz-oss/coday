@@ -10,8 +10,18 @@
       "outputs": ["{projectRoot}/build/libs"],
       "dependsOn": [{ "target": "build", "projects": ["factory-sdk", "factory-verification-core"] }],
       "options": {
-        "command": "../gradlew build",
-        "cwd": "factory/factory-service"
+        "command": "./gradlew :factory-service:build",
+        "cwd": "factory"
+      }
+    },
+    "assemble": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "dependsOn": [{ "target": "assemble", "projects": ["factory-sdk", "factory-verification-core"] }],
+      "options": {
+        "command": "./gradlew :factory-service:assemble",
+        "cwd": "factory"
       }
     },
     "test": {
@@ -19,16 +29,24 @@
       "cache": false,
       "dependsOn": [{ "target": "test", "projects": ["factory-sdk", "factory-verification-core"] }],
       "options": {
-        "command": "../gradlew test",
-        "cwd": "factory/factory-service"
+        "command": "./gradlew :factory-service:test",
+        "cwd": "factory"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-service:clean",
+        "cwd": "factory"
       }
     },
     "bootRun": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "../gradlew bootRun",
-        "cwd": "factory/factory-service"
+        "command": "./gradlew :factory-service:bootRun",
+        "cwd": "factory"
       }
     },
     "bootJar": {
@@ -36,8 +54,8 @@
       "cache": true,
       "outputs": ["{projectRoot}/build/libs"],
       "options": {
-        "command": "../gradlew bootJar",
-        "cwd": "factory/factory-service"
+        "command": "./gradlew :factory-service:bootJar",
+        "cwd": "factory"
       }
     },
     "generate-openapi-spec": {
@@ -45,8 +63,8 @@
       "cache": false,
       "outputs": ["{workspaceRoot}/factory/factory-service/openapi/factory-openapi.yaml"],
       "options": {
-        "command": "../gradlew generateOpenApiDocs --no-configuration-cache",
-        "cwd": "factory/factory-service"
+        "command": "./gradlew :factory-service:generateOpenApiDocs --no-configuration-cache",
+        "cwd": "factory"
       }
     },
     "check-openapi-spec": {

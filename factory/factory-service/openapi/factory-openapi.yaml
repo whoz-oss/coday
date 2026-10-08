@@ -1570,6 +1570,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/agent-step-results/capability/refresh:
+    post:
+      tags:
+      - agent-step-result-refresh-controller
+      operationId: refreshAgentStepResultRefresh
+      parameters:
+      - name: trustContext
+        in: query
+        required: false
+        schema:
+          $ref: "#/components/schemas/TrustContext"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeData"
   /api/factory/agent-step-questions:
     post:
       tags:
@@ -1979,6 +2002,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeListDurableAgentAttemptDto"
+  /api/factory/workflows/{workflowId}/agent-questions:
+    get:
+      tags:
+      - workflows
+      summary: List unresolved standard AgentOS questions from durable case history.
+      operationId: listAgentQuestionsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeListMapStringObject"
   /api/factory/workflows/{workflowId}/actions:
     get:
       tags:
@@ -2683,6 +2730,77 @@ components:
           $ref: "#/components/schemas/AgentStepResultData"
       required:
       - data
+    Request:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        runtimeId:
+          type: string
+        agentName:
+          type: string
+    TrustContext:
+      type: object
+      properties:
+        principalId:
+          type: string
+        principalType:
+          type: string
+        organizationId:
+          type: string
+        workstreamId:
+          type: string
+        squadId:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        correlationId:
+          type: string
+        authenticationMethod:
+          type: string
+        serviceIdentityId:
+          type: string
+        loopback:
+          type: boolean
+        namespaceId:
+          type: string
+        caseId:
+          type: string
+        authenticated:
+          type: boolean
+      required:
+      - authenticated
+      - authenticationMethod
+      - loopback
+      - principalType
+      - roles
+      - scopes
+    Data:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        capabilityToken:
+          type: string
+        expiresAt:
+          type: string
+      required:
+      - attemptId
+      - capabilityToken
+      - expiresAt
+    EnvelopeData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Data"
+      required:
+      - data
     AgentStepQuestionRequest:
       type: object
       properties:
@@ -2701,11 +2819,18 @@ components:
           type: string
         idempotent:
           type: boolean
+        revision:
+          type: integer
+          format: int32
+        workflowId:
+          type: string
       required:
       - attemptId
       - idempotent
       - interactionId
+      - revision
       - status
+      - workflowId
     AgentStepQuestionEnvelopeAgentStepQuestionData:
       type: object
       properties:
@@ -3209,6 +3334,16 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DurableAgentAttemptDto"
+      required:
+      - data
+    WorkflowDataEnvelopeListMapStringObject:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
       required:
       - data
     AllowedActionDto:

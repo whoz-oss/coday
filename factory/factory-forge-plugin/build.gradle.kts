@@ -91,6 +91,13 @@ tasks.named<Jar>("jar") {
 // factory-service application, so the JAR must exist first and its path is handed
 // to the test through a system property.
 val pluginJar = tasks.named<Jar>("jar")
+// Resolve the plugin JAR path at configuration time so the configuration cache
+// can serialize it as a plain String. Capturing pluginJar (a TaskProvider) or
+// archiveFile (a Provider<RegularFile>) inside a doFirst closure would hold a
+// reference to a Gradle script object, which the configuration cache cannot
+// serialize and would fail with:
+//   "configuration cache cannot serialize Gradle script object references".
+val pluginJarPath: String = pluginJar.get().archiveFile.get().asFile.absolutePath
 tasks.withType<Test> {
     useJUnitPlatform()
     dependsOn(pluginJar)
@@ -98,9 +105,7 @@ tasks.withType<Test> {
     // JDK emit a class-data-sharing warning on the test JVM. Disabling CDS for
     // tests removes the noise without affecting test behaviour.
     jvmArgs("-Xshare:off")
-    doFirst {
-        systemProperty("factory.forge.plugin.jar", pluginJar.get().archiveFile.get().asFile.absolutePath)
-    }
+    systemProperty("factory.forge.plugin.jar", pluginJarPath)
 }
 
 /**
