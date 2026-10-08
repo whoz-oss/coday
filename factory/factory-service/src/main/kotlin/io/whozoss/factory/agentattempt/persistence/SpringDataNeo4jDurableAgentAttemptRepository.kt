@@ -40,6 +40,8 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
                       a.environmentRef = ${'$'}environmentRef,
                       a.expectedEnvironmentRevision = ${'$'}expectedEnvironmentRevision,
                       a.resumptionContext = ${'$'}resumptionContext,
+                      a.contextEnvelope = ${'$'}contextEnvelope,
+                      a.expectedAmendmentSeq = ${'$'}expectedAmendmentSeq,
                       a.status = 'pending',
                       a.revision = 1,
                       a.createdAt = ${'$'}now,
@@ -67,6 +69,8 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
         environmentRef: String?,
         expectedEnvironmentRevision: Int?,
         resumptionContext: String?,
+        contextEnvelope: String?,
+        expectedAmendmentSeq: Long?,
         now: Instant,
     ): DurableAgentAttemptNode
 

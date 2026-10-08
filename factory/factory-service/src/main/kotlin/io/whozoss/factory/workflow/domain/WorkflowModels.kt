@@ -130,6 +130,12 @@ data class WorkflowStartCommand(
     /** Optional Jira/issue ticket carried through the session (brief, branch naming, relations). */
     val ticket: String? = null,
     val controllerRequest: ControllerRequestInput? = null,
+    /**
+     * Amendment sequence this run's context is frozen against (Lot D schema
+     * field). Carried through the start command for completeness; the amendment
+     * resolution logic belongs to Lot E and is intentionally absent.
+     */
+    val expectedAmendmentSeq: Long? = null,
 )
 
 /** The trusted controlling runtime of a governed workflow. */

@@ -53,6 +53,10 @@ data class DurableAgentAttemptNode(
     val expectedEnvironmentRevision: Int? = null,
     /** Bounded resumption context of a successor attempt (see [DurableAgentAttempt.resumptionContext]). */
     val resumptionContext: String? = null,
+    /** Frozen context envelope JSON of the attempt (see [DurableAgentAttempt.contextEnvelope]). */
+    val contextEnvelope: String? = null,
+    /** Amendment pin of the attempt (see [DurableAgentAttempt.expectedAmendmentSeq]). */
+    val expectedAmendmentSeq: Long? = null,
     val failureCode: String? = null,
     val resultEvidenceId: String? = null,
     val lastObservedEventId: String? = null,
@@ -80,6 +84,8 @@ data class DurableAgentAttemptNode(
         environmentRef = environmentRef,
         expectedEnvironmentRevision = expectedEnvironmentRevision,
         resumptionContext = resumptionContext,
+        contextEnvelope = contextEnvelope,
+        expectedAmendmentSeq = expectedAmendmentSeq,
         status = AgentAttemptStatus.fromDbValue(status),
         failureCode = failureCode,
         resultEvidenceId = resultEvidenceId,
@@ -133,6 +139,8 @@ data class DurableAgentAttemptNode(
                 environmentRef = attempt.environmentRef,
                 expectedEnvironmentRevision = attempt.expectedEnvironmentRevision,
                 resumptionContext = attempt.resumptionContext,
+                contextEnvelope = attempt.contextEnvelope,
+                expectedAmendmentSeq = attempt.expectedAmendmentSeq,
                 failureCode = attempt.failureCode,
                 resultEvidenceId = attempt.resultEvidenceId,
                 lastObservedEventId = attempt.lastObservedEventId,

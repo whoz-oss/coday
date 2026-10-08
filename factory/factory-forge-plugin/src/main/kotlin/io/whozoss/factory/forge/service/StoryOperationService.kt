@@ -189,7 +189,7 @@ class StoryOperationService(
         val executionId = "exec_${UUID.randomUUID()}"
         val created = runtime.createCase(namespaceId, "Forge analysis ${asMap(story["workItem"])?.get("id")}")
         val caseId = created["id"] as? String ?: ""
-        val brief = ForgeStoryOperations.buildBrief(
+        val brief = ForgeStoryOperations.buildContextEnvelope(
             epic = epic,
             story = story,
             specPath = spec.path,
@@ -197,7 +197,7 @@ class StoryOperationService(
             policyVersion = g2Event["policyVersion"] as? String ?: "",
             frontmatter = spec.frontmatter,
             supplement = supplement,
-        )
+        ).brief
         ledgerStore.append(
             path,
             linkedMapOf(

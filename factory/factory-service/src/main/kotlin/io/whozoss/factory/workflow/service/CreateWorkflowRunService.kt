@@ -23,6 +23,11 @@ class CreateWorkflowRunService(
         val initialRequest: String?,
         val parameters: Map<String, Any?> = emptyMap(),
         val idempotencyKey: String,
+        /**
+         * Amendment sequence this run's context is frozen against (Lot D schema
+         * field). Carried through for completeness; amendment logic is Lot E.
+         */
+        val expectedAmendmentSeq: Long? = null,
     )
 
     fun create(
@@ -74,6 +79,7 @@ class CreateWorkflowRunService(
                         source = INITIAL_REQUEST_SOURCE,
                     )
                 },
+                expectedAmendmentSeq = command.expectedAmendmentSeq,
             ),
             ControllerExecutionInput(
                 runtimeId = "factory-control-plane",
