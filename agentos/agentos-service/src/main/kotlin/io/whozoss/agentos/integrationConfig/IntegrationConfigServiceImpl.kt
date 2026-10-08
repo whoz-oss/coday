@@ -43,6 +43,7 @@ class IntegrationConfigServiceImpl(
             )
         }
         assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
         assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         saveOrConflict(entity).also { saved ->
@@ -60,6 +61,7 @@ class IntegrationConfigServiceImpl(
                 )
             }
         assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
         assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         saveOrConflict(entity).also { saved ->
@@ -276,6 +278,30 @@ class IntegrationConfigServiceImpl(
                         "('${existing.name}'). Update that one, or remove it first.",
                 )
             }
+    }
+
+    /**
+     * Only a type listed in [IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES] may set
+     * [IntegrationConfig.autoGrant].
+     *
+     * `autoGrant` hands the integration to every agent in the config's scope without any agent
+     * naming it. At platform scope that is the whole environment at once, which is acceptable for
+     * a conversational primitive and not for a type that reaches the network with a shared
+     * credential. Rejecting here keeps the refusal where the mistake was made, rather than
+     * surfacing it as a surprising tool in some unrelated agent's prompt weeks later.
+     */
+    private fun assertAutoGrantRules(entity: IntegrationConfig) {
+        if (!entity.autoGrant) return
+        if (IntegrationTypeConstraints.isAutoGrantable(entity.integrationType)) return
+
+        throw ResponseStatusException(
+            HttpStatus.UNPROCESSABLE_ENTITY,
+            "An integration of type '${entity.integrationType}' cannot be auto-granted. Setting autoGrant hands " +
+                "this configuration to every agent within its scope without any agent declaring it \u2014 at platform " +
+                "scope, that is every agent of the environment. Only these types may be auto-granted: " +
+                "${IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES.joinToString(", ")}. Reference this " +
+                "configuration explicitly from the agents that need it instead.",
+        )
     }
 
     /**

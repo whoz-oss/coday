@@ -24,10 +24,24 @@ class ToolResolverService(
      * leaves the plugin without one.
      *
      * @param agentIntegrations Optional integration filter from AgentConfig.integrations.
-     *   When null, the agent has no integration bindings and this resolver returns no tools.
-     *   That is a property of this resolver only, not of the whole run: the built-in exchange
-     *   scopes are granted outside it by [io.whozoss.agentos.exchange.ExchangeToolGrantService],
-     *   whose platform defaults can hand the file-plugin tools to an agent that declares nothing.
+     *   When null, the agent declares no explicit integration bindings, but it still receives
+     *   every config with `autoGrant == true` in [allIntegrationConfigs]: this resolver no longer
+     *   returns no tools in that case. The built-in exchange scopes remain granted outside this
+     *   resolver by [io.whozoss.agentos.exchange.ExchangeToolGrantService], whose platform defaults
+     *   can hand the file-plugin tools to an agent that declares nothing.
+     *
+     *   Resolution is an **union minus opt-out**:
+     *
+     *   | Config in `agentIntegrations`? | `autoGrant` | Included? | `allowedNames` passed to [extractTools] |
+     *   |---|---|---|---|
+     *   | named, with a non-empty list   | any   | yes | the declared list |
+     *   | named, with an empty list      | any   | **no** (sovereign opt-out) | n/a |
+     *   | not named                      | true  | yes | `null` (all tools) |
+     *   | not named                      | false | no | n/a |
+     *
+     *   The explicit empty-list opt-out always wins over `autoGrant`: it is what protects an
+     *   autonomous, webhook-triggered agent (nobody listening) from a tool question with no
+     *   respondent that would block the case forever.
      * @param context Runtime context forwarded to each [ToolPlugin.provideTools] call.
      * @param credentialProviderFactory Builds the [CredentialProvider] for a config's
      *   `authSettingName`; a `null` result leaves the context without a provider.
@@ -38,8 +52,19 @@ class ToolResolverService(
         allIntegrationConfigs: List<IntegrationConfig>,
         credentialProviderFactory: (String) -> CredentialProvider? = { null },
     ): Collection<StandardTool<*>> {
-        val integrationNames = agentIntegrations?.keys?.toList() ?: emptyList()
-        val integrationConfigs = allIntegrationConfigs.filter { it.name in integrationNames }
+        // Sovereign opt-out: the agent explicitly mapped this integration to an empty tool list.
+        // This is never mutated back into AgentConfig.integrations; it is purely local to this resolver.
+        val optedOutNames =
+            agentIntegrations
+                ?.filterValues { it != null && it.isEmpty() }
+                ?.keys
+                ?: emptySet()
+        val explicitlyNamedNames = agentIntegrations?.keys ?: emptySet()
+        val integrationConfigs =
+            allIntegrationConfigs.filter { config ->
+                config.name !in optedOutNames &&
+                    (config.name in explicitlyNamedNames || config.autoGrant)
+            }
         val allTools =
             integrationConfigs
                 .mapNotNull { config ->
