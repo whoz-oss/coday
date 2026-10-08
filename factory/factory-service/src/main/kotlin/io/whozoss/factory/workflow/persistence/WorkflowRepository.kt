@@ -84,6 +84,17 @@ interface WorkflowRepository {
         candidateRootCaseId: String,
     ): String?
 
+    /**
+     * Atomically increments the run's authoritative plan-amendment counter
+     * (Lot E) and returns the new value. The counter is distinct from
+     * `expectedEnvironmentRevision`: it counts accepted plan-change amendments.
+     * The increment is a single graph-native statement, so concurrent accepted
+     * amendments never lose an update. Returns `0` when the instance does not
+     * exist (best-effort: an amendment accepted before the instance is
+     * materialized cannot corrupt a run).
+     */
+    fun incrementAmendmentSeq(scope: TenantScope, namespaceId: String, workflowId: String): Long
+
     fun deleteInstance(scope: TenantScope, namespaceId: String, workflowId: String): Boolean
 
     // ----- transition logs -----------------------------------------------

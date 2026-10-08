@@ -28,7 +28,7 @@ class ResultChannelRecoveryWorker(
     fun onApplicationReady() {
         runCatching { service.reconcileOnStartup() }
             .onSuccess { report ->
-                if (report.submittedFinalized > 0 || report.expiredReservations > 0) {
+                if (report.submittedFinalized > 0 || report.expiredReservations > 0 || report.needsResearchDeferred > 0) {
                     logger.info { "Result channel startup reconciliation: $report" }
                 }
             }

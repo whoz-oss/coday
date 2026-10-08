@@ -83,6 +83,24 @@ sealed interface CapabilityOutcome {
         val facts: Map<String, Any?> = emptyMap(),
     ) : CapabilityOutcome
 
+    /**
+     * The worker proved (through the authoritative result channel) that the step
+     * is BLOCKED for missing research. The proof (summary / findings / artifacts /
+     * claims) is preserved, the dependants are NOT launched and the step is NEVER
+     * converted into a terminal `FAIL`. The engine routes the step to a Searcher
+     * attempt, then re-arms it as a brand-new attempt on the same worktree.
+     */
+    data class AgentNeedsResearch(
+        val stepId: String,
+        val persona: String?,
+        val attemptId: String?,
+        val resultId: String?,
+        val summary: String,
+        val findings: List<Any?> = emptyList(),
+        val artifacts: List<Any?> = emptyList(),
+        val claims: Map<String, Any?> = emptyMap(),
+    ) : CapabilityOutcome
+
     /** A human checkpoint is required for this step; the projection/instance opens it. */
     data class HumanCheckpointRequired(
         val stepId: String,

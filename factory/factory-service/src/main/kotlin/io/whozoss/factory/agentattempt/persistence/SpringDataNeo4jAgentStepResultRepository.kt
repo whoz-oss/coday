@@ -61,10 +61,12 @@ interface SpringDataNeo4jAgentStepResultRepository : Neo4jRepository<AgentStepRe
     ): Long
 
     /**
-     * Read-only startup-reconciliation sweep: every submitted result
-     * (`success`/`failure`) whose attempt is NOT in a terminal status, across
-     * all tenant scopes. The join on the six identity fields keeps each row
-     * fenced to its own attempt; the scope is read back from the node.
+     * Read-only startup-reconciliation sweep: every submitted result whose
+     * attempt is NOT in a terminal status, across all tenant scopes. The join on
+     * the six identity fields keeps each row fenced to its own attempt; the scope
+     * is read back from the node. `needs_research` rows are included so the
+     * reconciliation can report (and deliberately leave) them blocked — they are
+     * never terminalized as a failure.
      */
     @Query(
         """
@@ -75,7 +77,7 @@ interface SpringDataNeo4jAgentStepResultRepository : Neo4jRepository<AgentStepRe
           AND r.workflowId = a.workflowId
           AND r.stepId = a.stepId
           AND r.attemptId = a.attemptId
-          AND r.resultStatus IN ['success', 'failure']
+          AND r.resultStatus IN ['success', 'failure', 'needs_research']
           AND NOT a.status IN ['completed', 'failed']
         RETURN r
         ORDER BY r.createdAt ASC

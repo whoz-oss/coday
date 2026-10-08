@@ -960,6 +960,25 @@ class CapabilityExecutionService(
                         message = acceptedResult.summary,
                         evidence = mapOf("resultId" to acceptedResult.resultId, "source" to "factory-step-result"),
                     )
+                io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH ->
+                    // Blocked, not failed: the Succeeded carrier is used ONLY to
+                    // hand the authoritative result to the finalize phase, which
+                    // detects the `NEEDS_RESEARCH` marker and emits
+                    // [CapabilityOutcome.AgentNeedsResearch] without terminalizing
+                    // the attempt as a failure and without sealing the run.
+                    AgentOsExecutionVerdict.Succeeded(
+                        outputs = mapOf(
+                            "summary" to acceptedResult.summary,
+                            "claims" to acceptedResult.claims,
+                            "findings" to acceptedResult.findings,
+                            "artifacts" to acceptedResult.artifacts,
+                        ),
+                        evidence = mapOf(
+                            "resultId" to acceptedResult.resultId,
+                            "source" to "factory-step-result",
+                            "status" to NEEDS_RESEARCH_MARKER,
+                        ),
+                    )
             }
         }
         // Without an accepted result, an indeterminate observation starts the
@@ -1015,19 +1034,56 @@ class CapabilityExecutionService(
         }
         return when (verdict) {
             is AgentOsExecutionVerdict.Succeeded -> {
-                val evidenceId = persistEvidence(
-                    "pass",
-                    mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence),
-                )
-                durableAgentAttemptService.finalize(
-                    scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
-                    AgentAttemptStatus.SUCCEEDED, resultEvidenceId = evidenceId,
-                )
-                CapabilityExecution(
-                    CapabilityOutcome.AgentCompleted(step.id, step.responsibility.name, "PASS", verdict.outputs),
-                    evidenceId = evidenceId,
-                    attemptId = reservation.attemptId,
-                )
+                if (verdict.evidence["status"] == NEEDS_RESEARCH_MARKER) {
+                    // Authoritative NEEDS_RESEARCH verdict: the step is BLOCKED, not
+                    // failed. Persist the original proof and record the predecessor
+                    // attempt as `indeterminate` (terminal, but neither a success nor
+                    // a failure) — never as `failed`. The routing layer re-arms the
+                    // step as a brand-new attempt on the same worktree.
+                    val evidenceId = persistEvidence(
+                        "needs_research",
+                        mapOf(
+                            "status" to NEEDS_RESEARCH_MARKER,
+                            "summary" to verdict.outputs["summary"],
+                            "outputs" to verdict.outputs,
+                            "evidence" to verdict.evidence,
+                        ),
+                    )
+                    durableAgentAttemptService.finalize(
+                        scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
+                        AgentAttemptStatus.INDETERMINATE,
+                        failureCode = "AGENT_NEEDS_RESEARCH",
+                        resultEvidenceId = evidenceId,
+                    )
+                    CapabilityExecution(
+                        CapabilityOutcome.AgentNeedsResearch(
+                            stepId = step.id,
+                            persona = step.responsibility.name,
+                            attemptId = reservation.attemptId,
+                            resultId = verdict.evidence["resultId"]?.toString(),
+                            summary = verdict.outputs["summary"]?.toString() ?: "",
+                            findings = (verdict.outputs["findings"] as? List<Any?>) ?: emptyList(),
+                            artifacts = (verdict.outputs["artifacts"] as? List<Any?>) ?: emptyList(),
+                            claims = (verdict.outputs["claims"] as? Map<String, Any?>) ?: emptyMap(),
+                        ),
+                        evidenceId = evidenceId,
+                        attemptId = reservation.attemptId,
+                    )
+                } else {
+                    val evidenceId = persistEvidence(
+                        "pass",
+                        mapOf("status" to "PASS", "outputs" to verdict.outputs, "evidence" to verdict.evidence),
+                    )
+                    durableAgentAttemptService.finalize(
+                        scope, namespaceId, workflowId, step.id, reservation.attemptId, reservation.ownerToken,
+                        AgentAttemptStatus.SUCCEEDED, resultEvidenceId = evidenceId,
+                    )
+                    CapabilityExecution(
+                        CapabilityOutcome.AgentCompleted(step.id, step.responsibility.name, "PASS", verdict.outputs),
+                        evidenceId = evidenceId,
+                        attemptId = reservation.attemptId,
+                    )
+                }
             }
             is AgentOsExecutionVerdict.Failed -> {
                 val evidenceId = persistEvidence(
@@ -1352,6 +1408,9 @@ class CapabilityExecutionService(
         /** Evidence kind carrying the durable, structured outputs of an agent step. */
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
         private const val RUN_BRIEF_KIND = "run-brief"
+
+        /** Evidence marker of an authoritative NEEDS_RESEARCH verdict (blocked, not failed). */
+        const val NEEDS_RESEARCH_MARKER = "NEEDS_RESEARCH"
 
         /** Failure code returned when another execution holds a live lease on the attempt. */
         const val AGENT_ATTEMPT_CONFLICT = "AGENT_ATTEMPT_CONFLICT"

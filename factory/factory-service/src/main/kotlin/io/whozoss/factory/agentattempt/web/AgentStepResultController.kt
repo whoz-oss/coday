@@ -1,5 +1,7 @@
 package io.whozoss.factory.agentattempt.web
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -66,7 +68,7 @@ class AgentStepResultController(
         ),
         ApiResponse(
             responseCode = "409",
-            description = "RESULT_SEMANTIC_COLLISION or IDEMPOTENCY_KEY_COLLISION",
+            description = "RESULT_SEMANTIC_COLLISION, IDEMPOTENCY_KEY_COLLISION or STALE_AMENDMENT_SEQUENCE",
             content = [Content(schema = Schema(implementation = ErrorResponse::class))],
         ),
         ApiResponse(
@@ -88,7 +90,10 @@ class AgentStepResultController(
             ?: throw TrustContextUnavailableException("A bearer capability token is required")
 
         val body = request ?: throw InvalidResultRequestException("A JSON body is required")
-        val business = body.result ?: body.business
+        val business = foldAmendmentSeq(
+            body.result ?: body.business,
+            body.expected_amendment_seq ?: body.expectedAmendmentSeq,
+        )
         val attemptId = body.observed?.attemptId?.takeIf { it.isNotBlank() }
             ?: body.attemptId?.takeIf { it.isNotBlank() }
             ?: throw InvalidResultRequestException("'attemptId' is required")
@@ -142,6 +147,21 @@ class AgentStepResultController(
                 ),
             ),
         )
+    }
+
+    /**
+     * Folds a top-level `expected_amendment_seq` into the business payload so the
+     * amendment counter is part of the canonical, hashed result identity. An
+     * explicit value already carried inside `business` wins, so a divergent
+     * top-level field is never silently rewritten.
+     */
+    private fun foldAmendmentSeq(business: JsonNode?, seq: Long?): JsonNode? {
+        if (business == null || seq == null || !business.isObject) return business
+        val node = (business as ObjectNode).deepCopy()
+        if (!node.has("expected_amendment_seq") && !node.has("expectedAmendmentSeq")) {
+            node.put("expected_amendment_seq", seq)
+        }
+        return node
     }
 
     private fun bearerToken(authorization: String?): String? {

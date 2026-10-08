@@ -20,8 +20,10 @@ import io.whozoss.factory.agentattempt.domain.ResultCapabilityInvalidException
 import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableException
 import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.ResultSemanticCollisionException
+import io.whozoss.factory.agentattempt.domain.StaleAmendmentSequenceException
 import io.whozoss.factory.agentattempt.domain.SubmitOutcome
 import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import mu.KotlinLogging
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
@@ -57,6 +59,13 @@ class Neo4jAgentStepResultRepository(
     private val outbox: SpringDataNeo4jOutboxRepository,
     private val attempts: AgentStepAttemptRepository,
     private val objectMapper: ObjectMapper,
+    /**
+     * Read port of the workflow instance used to enforce the authoritative
+     * amendment counter compare-and-set (Lot E). Optional so a hand-assembled
+     * persistence stack (restart tests) can omit it; when absent an
+     * `expected_amendment_seq` cannot be validated and is simply ignored.
+     */
+    private val workflowRepository: WorkflowRepository? = null,
 ) : AgentStepResultRepository {
 
     private val logger = KotlinLogging.logger {}
@@ -213,6 +222,7 @@ class Neo4jAgentStepResultRepository(
         if (now.isAfter(Instant.parse(capability.expiresAt))) throw ResultCapabilityExpiredException()
 
         val parsed = AgentStepResultValidation.parseBusiness(business)
+        validateAmendmentSequence(scope, capability, parsed)
         val submitted = AgentStepResultSubmitted(
             type = SUBMITTED_TYPE,
             resultId = existing?.resultId ?: UUID.randomUUID().toString(),
@@ -230,6 +240,7 @@ class Neo4jAgentStepResultRepository(
             findings = parsed.findings,
             submittedAt = now.toString(),
             resultHash = resultHash,
+            expectedAmendmentSeq = parsed.expectedAmendmentSeq,
         )
         val payload = serialize(submitted)
         val resultStatus = DB_RESULT_STATUS.getValue(parsed.status)
@@ -239,25 +250,38 @@ class Neo4jAgentStepResultRepository(
             insertSubmitted(scope, capability, submitted.resultId, resultStatus, resultHash, payload, now)
         }
 
-        val terminalized = attempts.terminalize(
-            scope,
-            capability.namespaceId,
-            capability.workflowId,
-            capability.stepId,
-            capability.attemptId,
-            ATTEMPT_TERMINAL_STATUS.getValue(parsed.status),
-        )
-        if (terminalized == 0) {
-            // Phase 10 late-result policy: the attempt is already sealed in a
-            // terminal status. Do NOT throw and never rewrite the verdict —
-            // the sealed attempt stays byte-for-byte unchanged and the result
-            // row above remains governed by the semantic-collision guard (an
-            // identical late submission replays, a divergent one was already
-            // rejected before reaching this point). Observed for audit only.
-            logger.warn {
-                "Late result ignored for sealed attempt '${capability.attemptId}' " +
-                    "(workflow '${capability.workflowId}', step '${capability.stepId}'): " +
-                    "the terminal verdict is immutable and was left unchanged"
+        // A NEEDS_RESEARCH verdict is NOT a terminal failure: the step is blocked
+        // and will be re-armed as a brand-new attempt on the same worktree once a
+        // Searcher attempt has filled the gap. The result-channel attempt is
+        // therefore left non-terminal (the submitted result row is authoritative)
+        // and is never sealed as `failed`.
+        val attemptTerminalStatus = ATTEMPT_TERMINAL_STATUS[parsed.status]
+        if (attemptTerminalStatus != null) {
+            val terminalized = attempts.terminalize(
+                scope,
+                capability.namespaceId,
+                capability.workflowId,
+                capability.stepId,
+                capability.attemptId,
+                attemptTerminalStatus,
+            )
+            if (terminalized == 0) {
+                // Phase 10 late-result policy: the attempt is already sealed in a
+                // terminal status. Do NOT throw and never rewrite the verdict —
+                // the sealed attempt stays byte-for-byte unchanged and the result
+                // row above remains governed by the semantic-collision guard (an
+                // identical late submission replays, a divergent one was already
+                // rejected before reaching this point). Observed for audit only.
+                logger.warn {
+                    "Late result ignored for sealed attempt '${capability.attemptId}' " +
+                        "(workflow '${capability.workflowId}', step '${capability.stepId}'): " +
+                        "the terminal verdict is immutable and was left unchanged"
+                }
+            }
+        } else {
+            logger.info {
+                "NEEDS_RESEARCH result '${submitted.resultId}' for attempt '${capability.attemptId}' " +
+                    "is blocked (not terminal); the step stays open for Searcher re-arm"
             }
         }
         insertOutbox(scope, submitted, now)
@@ -490,6 +514,28 @@ class Neo4jAgentStepResultRepository(
     // Helpers
     // ------------------------------------------------------------------
 
+    private fun validateAmendmentSequence(
+        scope: TenantScope,
+        capability: AgentStepResultCapability,
+        parsed: io.whozoss.factory.agentattempt.domain.AgentStepResultBusiness,
+    ) {
+        val expected = parsed.expectedAmendmentSeq ?: return
+        val repository = workflowRepository ?: return
+        val instance = repository.findInstance(scope, capability.namespaceId, capability.workflowId)
+        val current = instance?.amendmentSeq ?: 0L
+        if (expected != current) {
+            throw StaleAmendmentSequenceException(
+                "Result for attempt '${capability.attemptId}' declares expected_amendment_seq=$expected " +
+                    "but the workflow '${capability.workflowId}' amendment sequence is $current",
+                details = mapOf(
+                    "workflowId" to capability.workflowId,
+                    "expectedAmendmentSeq" to expected,
+                    "currentAmendmentSeq" to current,
+                ),
+            )
+        }
+    }
+
     private fun validateIdentity(identity: AgentStepResultCapabilityIdentity) {
         val fields = listOf(
             identity.attemptId,
@@ -539,6 +585,7 @@ class Neo4jAgentStepResultRepository(
         val DB_RESULT_STATUS: Map<AgentStepResultStatus, String> = mapOf(
             AgentStepResultStatus.PASS to "success",
             AgentStepResultStatus.FAIL to "failure",
+            AgentStepResultStatus.NEEDS_RESEARCH to "needs_research",
         )
         val ATTEMPT_TERMINAL_STATUS: Map<AgentStepResultStatus, String> = mapOf(
             AgentStepResultStatus.PASS to "completed",

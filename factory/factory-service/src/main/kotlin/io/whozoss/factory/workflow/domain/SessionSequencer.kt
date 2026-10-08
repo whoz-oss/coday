@@ -73,14 +73,20 @@ object SessionSequencer {
     /**
      * The overall session status once no step is `ready`/`running` any more.
      *
-     * `waiting_human` wins (the session is suspended, not terminal); otherwise
-     * `completed` iff every step completed; otherwise `failed` (a failed/blocked
-     * branch, or a deadlock that can never make progress — both are failures).
+     * `waiting_human` wins (the session is suspended, not terminal); then a step
+     * blocked for missing research keeps the session NON-terminal
+     * ([WorkflowStatuses.NEEDS_RESEARCH]) as long as no step genuinely failed —
+     * the engine routes a Searcher and re-arms the step. Otherwise `completed`
+     * iff every step completed; otherwise `failed` (a failed/blocked branch, or a
+     * deadlock that can never make progress — both are failures).
      */
     fun terminalStatus(steps: List<WorkflowStepDefinition>, statuses: Map<String, String>): String {
         val values = steps.map { statuses[it.id] }
         if (values.any { it == WorkflowStatuses.WAITING_HUMAN }) return WorkflowStatuses.WAITING_HUMAN
         if (values.all { it == WorkflowStatuses.COMPLETED }) return WorkflowStatuses.COMPLETED
+        if (values.any { it == WorkflowStatuses.NEEDS_RESEARCH } && values.none { it == WorkflowStatuses.FAILED }) {
+            return WorkflowStatuses.NEEDS_RESEARCH
+        }
         return WorkflowStatuses.FAILED
     }
 
