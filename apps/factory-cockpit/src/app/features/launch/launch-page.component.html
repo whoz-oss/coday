@@ -1,9 +1,9 @@
 <div class="page">
   <header class="page-head">
     <div class="titles">
-      <h1>Lancer un run</h1>
+      <h1>Launch a run</h1>
       <p class="sf-muted">
-        Crée et soumet durablement un workflow réel. Factory attribue l’identité et le contexte d’exécution.
+        Creates and durably submits a real workflow. Factory assigns identity and execution context.
       </p>
     </div>
   </header>
@@ -29,7 +29,7 @@
 
   <form class="sf-panel launch-form" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
     <mat-form-field appearance="outline" class="field">
-      <mat-label>Définition de workflow</mat-label>
+      <mat-label>Workflow definition</mat-label>
       @if (workflowTypes().length > 0) {
         <mat-select formControlName="workflowType" data-launch-workflow-type="true">
           @for (type of workflowTypes(); track type) {
@@ -46,9 +46,9 @@
         />
       }
       @if (form.controls.workflowType.hasError('required')) {
-        <mat-error>La définition de workflow est requise.</mat-error>
+        <mat-error>Workflow definition is required.</mat-error>
       }
-      <mat-hint>{{ definitionsLoading() ? 'Chargement des définitions…' : 'workflowType' }}</mat-hint>
+      <mat-hint>{{ definitionsLoading() ? 'Loading definitions…' : 'workflowType' }}</mat-hint>
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field">
@@ -69,29 +69,29 @@
         />
       }
       @if (form.controls.namespaceId.hasError('required')) {
-        <mat-error>Le namespace est requis.</mat-error>
+        <mat-error>Namespace is required.</mat-error>
       }
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field field--wide">
-      <mat-label>Titre (optionnel)</mat-label>
+      <mat-label>Title (optional)</mat-label>
       <input
         matInput
         formControlName="title"
         maxlength="200"
-        placeholder="Titre lisible du run"
+        placeholder="Readable run title"
         data-launch-title="true"
       />
-      <mat-hint>Factory génère un titre lisible si omis.</mat-hint>
+      <mat-hint>Factory generates a readable title if omitted.</mat-hint>
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field">
-      <mat-label>Ticket Jira (optionnel)</mat-label>
+      <mat-label>Jira ticket (optional)</mat-label>
       <input matInput class="sf-mono" formControlName="ticket" placeholder="ABC-123" data-launch-ticket="true" />
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field field--wide">
-      <mat-label>Que souhaitez-vous faire ? (optionnel)</mat-label>
+      <mat-label>What would you like to do? (optional)</mat-label>
       <textarea
         matInput
         id="launch-initial-request"
@@ -102,19 +102,19 @@
         data-launch-initial-request="true"
       ></textarea>
       @if (form.controls.initialRequest.hasError('maxlength')) {
-        <mat-error>L’objectif ne doit pas dépasser 4 000 caractères.</mat-error>
+        <mat-error>The objective must not exceed 4,000 characters.</mat-error>
       }
       <mat-hint id="launch-initial-request-help">
-        Décrivez votre objectif, même brièvement. L’agent vous demandera les précisions nécessaires.
+        Describe your objective, even briefly. The agent will ask for any clarifications needed.
       </mat-hint>
     </mat-form-field>
 
     <div class="form-actions">
       <button mat-flat-button class="sf-primary" type="submit" [disabled]="submitting()" data-launch-submit="true">
         <mat-icon>{{ submitting() ? 'hourglass_top' : 'play_arrow' }}</mat-icon>
-        {{ submitting() ? 'Lancement…' : 'Lancer le run' }}
+        {{ submitting() ? 'Launching…' : 'Launch run' }}
       </button>
-      <a mat-stroked-button class="sf-secondary" routerLink="/sandboxes">Annuler</a>
+      <a mat-stroked-button class="sf-secondary" routerLink="/sandboxes">Cancel</a>
     </div>
   </form>
 </div>

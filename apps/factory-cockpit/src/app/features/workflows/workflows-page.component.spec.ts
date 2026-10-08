@@ -1,19 +1,18 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideNoopAnimations } from '@angular/platform-browser/animations'
+import { provideRouter } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FactoryApiError, FactoryApiService, WorkflowDefinition } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
-import { WorkflowsPageComponent } from './workflows-page.component'
+import { WorkflowsPageComponent, extractWorkflowDefinitions } from './workflows-page.component'
 
 interface ApiStub {
   getWorkflowDefinitions: jest.Mock
-  getWorkflowDefinition: jest.Mock
 }
 
 function createApi(overrides: Partial<ApiStub> = {}): ApiStub {
   return {
     getWorkflowDefinitions: jest.fn().mockReturnValue(of([])),
-    getWorkflowDefinition: jest.fn().mockReturnValue(of({})),
     ...overrides,
   }
 }
@@ -32,33 +31,13 @@ const definitions: WorkflowDefinition[] = [
   },
 ]
 
-const fullDefinition = {
-  schemaVersion: '1',
-  workflowType: 'adw_simple_sdlc',
-  version: 'v1',
-  title: 'Simple SDLC',
-  steps: [
-    {
-      id: 'plan',
-      name: 'Plan',
-      responsibility: { kind: 'agent', name: 'planner' },
-    },
-    {
-      id: 'build',
-      name: 'Build',
-      responsibility: { kind: 'agent', name: 'builder' },
-      dependsOn: ['plan'],
-    },
-  ],
-}
-
 describe('WorkflowsPageComponent', () => {
   async function setup(
     api: ApiStub
   ): Promise<{ host: HTMLElement; fixture: ComponentFixture<WorkflowsPageComponent> }> {
     await TestBed.configureTestingModule({
       imports: [WorkflowsPageComponent],
-      providers: [provideNoopAnimations(), { provide: FactoryApiService, useValue: api }],
+      providers: [provideNoopAnimations(), provideRouter([]), { provide: FactoryApiService, useValue: api }],
     }).compileComponents()
     const fixture = TestBed.createComponent(WorkflowsPageComponent)
     fixture.detectChanges()
@@ -99,53 +78,28 @@ describe('WorkflowsPageComponent', () => {
     const api = createApi()
     const { host } = await setup(api)
     expect(host.querySelector('[data-workflow-empty]')).not.toBeNull()
-    expect(host.textContent).toContain('Aucune définition de workflow enregistrée.')
+    expect(host.textContent).toContain('No workflow definitions registered.')
   })
 
-  it('loads the full definition on card click and renders step details', async () => {
-    const api = createApi({
-      getWorkflowDefinitions: jest.fn().mockReturnValue(of(definitions)),
-      getWorkflowDefinition: jest.fn().mockReturnValue(of(fullDefinition)),
-    })
-    const { host, fixture } = await setup(api)
+  it('renders each card as a router link pointing to the detail route', async () => {
+    const api = createApi({ getWorkflowDefinitions: jest.fn().mockReturnValue(of(definitions)) })
+    const { host } = await setup(api)
 
-    query<HTMLButtonElement>(host, '[data-workflow-card-toggle="adw_simple_sdlc@v1"]').click()
-    fixture.detectChanges()
-
-    expect(api.getWorkflowDefinition).toHaveBeenCalledTimes(1)
-    expect(api.getWorkflowDefinition).toHaveBeenCalledWith('adw_simple_sdlc', 'v1')
-
-    const steps = host.querySelectorAll('[data-workflow-step]')
-    expect(steps).toHaveLength(2)
-    expect(host.querySelector('[data-step-id]')?.textContent).toContain('plan')
-    expect(host.querySelector('[data-step-name]')?.textContent).toContain('Plan')
-
-    const responsibilities = host.querySelectorAll('[data-step-responsibility]')
-    expect(responsibilities).toHaveLength(2)
-    expect(host.querySelector('[data-step-responsibility-kind]')?.textContent).toContain('agent')
-    expect(host.querySelector('[data-step-responsibility-name]')?.textContent).toContain('planner')
-
-    const deps = host.querySelectorAll('[data-step-depend]')
-    expect(deps).toHaveLength(1)
-    expect(deps[0].textContent).toContain('plan')
+    const link = query<HTMLAnchorElement>(host, '[data-workflow-card-link="adw_simple_sdlc@v1"]')
+    // The element must be an anchor (navigable via keyboard and assistive tech).
+    expect(link.tagName.toLowerCase()).toBe('a')
+    // href must include the encoded type and version segments.
+    expect(link.getAttribute('href')).toContain('adw_simple_sdlc')
+    expect(link.getAttribute('href')).toContain('v1')
   })
 
-  it('caches the loaded definition and does not refetch it on re-open', async () => {
-    const api = createApi({
-      getWorkflowDefinitions: jest.fn().mockReturnValue(of(definitions)),
-      getWorkflowDefinition: jest.fn().mockReturnValue(of(fullDefinition)),
-    })
-    const { host, fixture } = await setup(api)
+  it('does not render any expansion panel or detail section in the list', async () => {
+    const api = createApi({ getWorkflowDefinitions: jest.fn().mockReturnValue(of(definitions)) })
+    const { host } = await setup(api)
 
-    const toggle = query<HTMLButtonElement>(host, '[data-workflow-card-toggle="adw_full@v2"]')
-    toggle.click()
-    fixture.detectChanges()
-    toggle.click()
-    fixture.detectChanges()
-    toggle.click()
-    fixture.detectChanges()
-
-    expect(api.getWorkflowDefinition).toHaveBeenCalledTimes(1)
+    expect(host.querySelector('[data-workflow-detail]')).toBeNull()
+    expect(host.querySelector('[data-workflow-steps]')).toBeNull()
+    expect(host.querySelector('[data-workflow-card-toggle]')).toBeNull()
   })
 
   it('shows a friendly error banner when the definitions list fails', async () => {
@@ -162,20 +116,28 @@ describe('WorkflowsPageComponent', () => {
     expect(banner.textContent).toContain('registre indisponible')
     expect(host.querySelector('[data-workflow-card]')).toBeNull()
   })
+})
 
-  it('shows a per-card error banner when the full definition fails', async () => {
-    const error: FactoryApiError = { code: 'NOT_FOUND', message: 'définition introuvable', status: 404, raw: null }
-    const api = createApi({
-      getWorkflowDefinitions: jest.fn().mockReturnValue(of(definitions)),
-      getWorkflowDefinition: jest.fn().mockReturnValue(throwError(() => error)),
-    })
-    const { host, fixture } = await setup(api)
+describe('extractWorkflowDefinitions', () => {
+  it('handles a raw array', () => {
+    const input = [{ workflowType: 'a', version: 'v1' }]
+    expect(extractWorkflowDefinitions(input)).toEqual(input)
+  })
 
-    query<HTMLButtonElement>(host, '[data-workflow-card-toggle="adw_simple_sdlc@v1"]').click()
-    fixture.detectChanges()
+  it('handles an { items } envelope', () => {
+    const input = [{ workflowType: 'b', version: 'v2' }]
+    expect(extractWorkflowDefinitions({ items: input })).toEqual(input)
+  })
 
-    const banner = query<HTMLElement>(host, '[data-workflow-detail-error]')
-    expect(banner.textContent).toContain('définition introuvable')
-    expect(host.querySelector('[data-workflow-steps]')).toBeNull()
+  it('handles a nested { data: { items } } envelope', () => {
+    const input = [{ workflowType: 'c', version: 'v3' }]
+    expect(extractWorkflowDefinitions({ data: { items: input } })).toEqual(input)
+  })
+
+  it('degrades to [] on unexpected input', () => {
+    expect(extractWorkflowDefinitions(null)).toEqual([])
+    expect(extractWorkflowDefinitions(undefined)).toEqual([])
+    expect(extractWorkflowDefinitions('string')).toEqual([])
+    expect(extractWorkflowDefinitions({})).toEqual([])
   })
 })

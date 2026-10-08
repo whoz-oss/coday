@@ -1,11 +1,11 @@
 <div class="page">
   <header class="page-head">
     <div class="titles">
-      <h1>Gouvernance des artefacts</h1>
-      <p class="sf-muted">Administration des artefacts et des définitions de workflow.</p>
+      <h1>Workflow definitions</h1>
+      <p class="sf-muted">Import and manage registered workflow definitions.</p>
     </div>
     <sf-status-chip [tone]="adminDisabled() ? 'red' : 'green'" dot>
-      {{ adminDisabled() ? 'Accès refusé' : 'Admin' }}
+      {{ adminDisabled() ? 'Access denied' : 'Admin' }}
     </sf-status-chip>
   </header>
 
@@ -16,178 +16,10 @@
     </div>
   }
 
-  <!-- 1. Garbage collection -->
-  <section class="section sf-panel" data-admin-gc="true">
-    <h2 class="section-title">Garbage collection</h2>
-    <p class="sf-muted section-desc">
-      Réconcilie le stockage objet et les lignes de métadonnées ; recycle les uploads de staging orphelins.
-    </p>
-    <div class="row">
-      <mat-checkbox
-        [checked]="gcDryRun()"
-        [disabled]="adminDisabled() || gcRunning()"
-        (change)="gcDryRun.set($event.checked)"
-        data-admin-gc-dry-run="true"
-      >
-        Dry-run
-      </mat-checkbox>
-      <span class="sf-spacer"></span>
-      <button
-        mat-flat-button
-        class="sf-primary"
-        (click)="runGc()"
-        [disabled]="adminDisabled() || gcRunning()"
-        data-admin-gc-run="true"
-      >
-        <mat-icon>{{ gcRunning() ? 'hourglass_top' : 'recycling' }}</mat-icon>
-        {{ gcRunning() ? 'GC en cours…' : 'Lancer GC' }}
-      </button>
-    </div>
-    @if (gcReport()) {
-      <div class="result" data-admin-gc-result="true">
-        <span class="result-chip" [attr.data-gc-reclaimed]="gcReclaimed()">staging recyclés : {{ gcReclaimed() }}</span>
-        <span class="result-chip" [attr.data-gc-blobs]="gcBlobs()">blobs scannés : {{ gcBlobs() }}</span>
-        <span class="result-chip" [attr.data-gc-rows]="gcRows()">lignes métadonnées : {{ gcRows() }}</span>
-        <span
-          class="result-chip"
-          [class.result-chip--error]="gcAnomalies() > 0"
-          [attr.data-gc-anomalies]="gcAnomalies()"
-        >
-          anomalies : {{ gcAnomalies() }}
-        </span>
-        @if (gcTimestamp(); as timestamp) {
-          <span class="sf-mono timestamp">{{ timestamp }}</span>
-        }
-      </div>
-    }
-    @if (gcError(); as message) {
-      <div class="banner banner--warn" role="alert" data-admin-gc-error="true">{{ message }}</div>
-    }
-  </section>
-
-  <!-- 2. Purge -->
-  <section class="section sf-panel" data-admin-purge="true">
-    <h2 class="section-title">Purger un artefact</h2>
-    <mat-form-field appearance="outline" class="field">
-      <mat-label>Identifiant d’artefact</mat-label>
-      <input
-        matInput
-        class="sf-mono"
-        [value]="purgeArtifactId()"
-        (input)="purgeArtifactId.set($any($event.target).value)"
-        [disabled]="adminDisabled() || purgeRunning()"
-        data-admin-purge-id="true"
-      />
-    </mat-form-field>
-    <mat-form-field appearance="outline" class="field">
-      <mat-label>Motif (optionnel)</mat-label>
-      <input
-        matInput
-        class="sf-mono"
-        [value]="purgeReason()"
-        (input)="purgeReason.set($any($event.target).value)"
-        [disabled]="adminDisabled() || purgeRunning()"
-        data-admin-purge-reason="true"
-      />
-    </mat-form-field>
-    <div class="row">
-      <button
-        mat-flat-button
-        class="sf-danger"
-        (click)="purge()"
-        [disabled]="adminDisabled() || purgeRunning()"
-        data-admin-purge-submit="true"
-      >
-        <mat-icon>delete_forever</mat-icon>
-        {{ purgeRunning() ? 'Purge…' : 'Purger l’artefact' }}
-      </button>
-    </div>
-    @if (purgeResult(); as result) {
-      <div class="result" data-admin-purge-result="true">
-        <span class="result-chip result-chip--success">{{ result.status ?? 'purged' }}</span>
-        <span class="sf-mono">{{ result.artifactId ?? purgeArtifactId() }}</span>
-        @if (purgeFreed(); as freed) {
-          <span class="result-chip">libéré : {{ freed }}</span>
-        }
-        @if (result.reason) {
-          <span class="result-chip">motif : {{ result.reason }}</span>
-        }
-      </div>
-    }
-    @if (purgeError(); as message) {
-      <div class="banner banner--warn" role="alert" data-admin-purge-error="true">{{ message }}</div>
-    }
-  </section>
-
-  <!-- 3. Legal hold -->
-  <section class="section sf-panel" data-admin-legal="true">
-    <h2 class="section-title">Legal hold</h2>
-    <mat-form-field appearance="outline" class="field">
-      <mat-label>Identifiant d’artefact</mat-label>
-      <input
-        matInput
-        class="sf-mono"
-        [value]="legalArtifactId()"
-        (input)="legalArtifactId.set($any($event.target).value)"
-        [disabled]="adminDisabled() || legalRunning()"
-        data-admin-legal-id="true"
-      />
-    </mat-form-field>
-    <mat-checkbox
-      [checked]="legalHold()"
-      [disabled]="adminDisabled() || legalRunning()"
-      (change)="legalHold.set($event.checked)"
-      data-admin-legal-state="true"
-    >
-      Placer le legal hold
-    </mat-checkbox>
-    <mat-form-field appearance="outline" class="field">
-      <mat-label>Motif (optionnel)</mat-label>
-      <input
-        matInput
-        class="sf-mono"
-        [value]="legalReason()"
-        (input)="legalReason.set($any($event.target).value)"
-        [disabled]="adminDisabled() || legalRunning()"
-        data-admin-legal-reason="true"
-      />
-    </mat-form-field>
-    <div class="row">
-      <button
-        mat-flat-button
-        class="sf-primary"
-        (click)="applyLegalHold()"
-        [disabled]="adminDisabled() || legalRunning()"
-        data-admin-legal-submit="true"
-      >
-        <mat-icon>lock</mat-icon>
-        {{ legalRunning() ? 'Application…' : 'Appliquer le legal hold' }}
-      </button>
-    </div>
-    @if (legalResult(); as result) {
-      <div class="result" data-admin-legal-result="true">
-        <span
-          class="result-chip"
-          [class.result-chip--error]="legalActive()"
-          [class.result-chip--success]="!legalActive()"
-        >
-          legal hold : {{ legalActive() ? 'actif' : 'inactif' }}
-        </span>
-        <span class="sf-mono">{{ result.id ?? result.artifactId ?? legalArtifactId() }}</span>
-        @if (legalReasonText(); as reason) {
-          <span class="result-chip">motif : {{ reason }}</span>
-        }
-      </div>
-    }
-    @if (legalError(); as message) {
-      <div class="banner banner--warn" role="alert" data-admin-legal-error="true">{{ message }}</div>
-    }
-  </section>
-
-  <!-- 4. Workflow definitions -->
+  <!-- Workflow definitions -->
   <section class="section sf-panel" data-admin-definitions="true">
     <h2 class="section-title">Workflow definitions</h2>
-    <p class="sf-muted section-desc">Importez une définition JSON (format v1) et gérez les définitions enregistrées.</p>
+    <p class="sf-muted section-desc">Import a JSON definition (v1 format) and manage registered definitions.</p>
     <div class="row file-row">
       <input
         type="file"
@@ -208,7 +40,7 @@
         data-admin-definition-upload="true"
       >
         <mat-icon>upload</mat-icon>
-        {{ uploading() ? 'Import…' : 'Importer la définition' }}
+        {{ uploading() ? 'Importing…' : 'Import definition' }}
       </button>
       <button
         mat-stroked-button
@@ -218,7 +50,7 @@
         data-admin-definition-refresh="true"
       >
         <mat-icon>refresh</mat-icon>
-        Rafraîchir
+        Refresh
       </button>
     </div>
 
@@ -249,7 +81,7 @@
             [disabled]="adminDisabled() || deletingKey() === definitionKey(def)"
             data-admin-definition-delete="true"
           >
-            {{ deletingKey() === definitionKey(def) ? 'Suppression…' : 'Supprimer' }}
+            {{ deletingKey() === definitionKey(def) ? 'Deleting…' : 'Delete' }}
           </button>
         </td>
       </ng-container>
@@ -258,7 +90,7 @@
     </table>
     @if (definitions().length === 0) {
       <p class="sf-muted empty" data-definition-empty="true">
-        {{ definitionsLoading() ? 'Chargement…' : 'Aucune définition enregistrée.' }}
+        {{ definitionsLoading() ? 'Loading…' : 'No definitions registered.' }}
       </p>
     }
   </section>

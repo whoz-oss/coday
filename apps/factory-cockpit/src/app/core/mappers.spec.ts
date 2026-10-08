@@ -146,6 +146,20 @@ describe('mappers', () => {
       const segments = mapStepsToPhaseSegments([{ id: 'a' }, { id: 'b' }], 0)
       expect(segments[0]?.ratio).toBeCloseTo(0.5)
     })
+
+    it('carries a readable label only when name differs from id', () => {
+      const segments = mapStepsToPhaseSegments(
+        [
+          { id: 'request', name: 'request' }, // same → no label
+          { id: 'plan', name: 'Plan the work' }, // differs → label set
+          { id: 'build' }, // no name → no label
+        ],
+        0
+      )
+      expect(segments[0]?.label).toBeUndefined()
+      expect(segments[1]?.label).toBe('Plan the work')
+      expect(segments[2]?.label).toBeUndefined()
+    })
   })
 
   describe('mapProjectionToRunSummary', () => {
@@ -201,6 +215,29 @@ describe('mappers', () => {
       )
       expect(run.costUsd).toBe(9.99)
       expect(run.unknownCostCount).toBe(0)
+    })
+
+    it('injects a synthetic Demande utilisateur segment first when controllerRequest is present and no request step exists', () => {
+      const run = mapProjectionToRunSummary(snapshotWithControllerRequest)
+      expect(run.phases[0]?.key).toBe('user-request')
+      expect(run.phases[0]?.label).toBe('Demande utilisateur')
+      expect(run.phases[0]?.tone).toBe('amber')
+      // At least one step has startedAt → status should be 'done'
+      expect(run.phases[0]?.status).toBe('done')
+      // Original steps follow in order
+      expect(run.phases.slice(1).map((p) => p.key)).toEqual(['plan', 'build'])
+    })
+
+    it('does not inject a Demande utilisateur segment when a request step already exists in phases', () => {
+      // snapshot already contains a step with id='request'
+      const run = mapProjectionToRunSummary({ ...snapshot, controllerRequest })
+      expect(run.phases.map((p) => p.key)).toEqual(['request', 'plan', 'build'])
+      expect(run.phases.some((p) => p.key === 'user-request')).toBe(false)
+    })
+
+    it('does not inject a Demande utilisateur segment when there is no controllerRequest', () => {
+      const run = mapProjectionToRunSummary(snapshot)
+      expect(run.phases.map((p) => p.key)).toEqual(['request', 'plan', 'build'])
     })
   })
 

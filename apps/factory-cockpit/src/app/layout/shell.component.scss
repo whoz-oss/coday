@@ -21,6 +21,13 @@
   color: var(--sf-primary);
   text-decoration: none;
 }
+.whoz-logo {
+  height: 28px;
+  width: auto;
+  /* Le SVG W.svg est bleu marine (#001442) — invisible sur fond sombre.
+     On le ramène en blanc pur pour garantir le contraste sur ce thème dark-only. */
+  filter: brightness(0) invert(1);
+}
 .logo {
   display: flex;
   flex-direction: column;

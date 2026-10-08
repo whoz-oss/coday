@@ -4,7 +4,7 @@ import { MatTooltipModule } from '@angular/material/tooltip'
 import { TimelineBlock, TimelineLane } from '../../core/models'
 import { DurationPipe } from '../../shared/pipes/format.pipes'
 
-/** Chronologie en couloirs : un couloir par acteur (humain, workspace, agents). */
+/** Agent timeline with one lane per actor (human, workspace, agents). */
 @Component({
   selector: 'sf-agent-timeline',
   imports: [MatIconModule, MatTooltipModule, DurationPipe],
@@ -69,7 +69,7 @@ export class AgentTimelineComponent {
     }))
   })
 
-  /** Fin d'axe : maintenant + ~5 %, arrondi au tick suivant */
+  /** Axis end: now + ~5%, rounded up to the next tick */
   protected readonly axisEnd = computed(() => {
     const step = this.tickEverySec()
     return Math.ceil((this.effectiveNowSec() * 1.04) / step) * step
@@ -115,21 +115,21 @@ export class AgentTimelineComponent {
   protected statusLabel(block: TimelineBlock): string {
     switch (block.status) {
       case 'pending':
-        return 'en attente'
+        return 'waiting'
       case 'ready':
-        return 'prêt, en attente de prise en charge'
+        return 'ready, waiting to be picked up'
       case 'running':
-        return 'en cours'
+        return 'running'
       case 'waiting_human':
-        return 'en attente d’une intervention humaine'
+        return 'waiting for human intervention'
       case 'completed':
-        return 'terminé'
+        return 'completed'
       case 'failed':
-        return 'échoué'
+        return 'failed'
       case 'indeterminate':
-        return 'état indéterminé'
+        return 'indeterminate state'
       case 'cancelled':
-        return 'annulé'
+        return 'cancelled'
     }
   }
 }

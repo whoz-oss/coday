@@ -17,6 +17,8 @@ interface StoreStub {
   stop: jest.Mock
   remove: jest.Mock
   restore: jest.Mock
+  openSupervisorCase: jest.Mock
+  restoreSupervisorCase: jest.Mock
 }
 
 function createStore(
@@ -39,6 +41,10 @@ function createStore(
     stop: jest.fn(),
     remove: jest.fn(),
     restore: jest.fn(),
+    // SandboxCardComponent delegates supervisor case creation to the store.
+    // Provide a no-op stub so the page tests never perform real HTTP calls.
+    openSupervisorCase: jest.fn().mockReturnValue(of(null)),
+    restoreSupervisorCase: jest.fn().mockReturnValue(undefined),
   }
 }
 
@@ -94,7 +100,7 @@ describe('SandboxesPageComponent', () => {
   it('shows a neutral empty state when there is no active workflow', async () => {
     const { host } = await setup(createStore())
 
-    expect(host.textContent).toContain('Aucun workflow actif.')
+    expect(host.textContent).toContain('No active workflows.')
     expect(host.querySelectorAll('sf-sandbox-card')).toHaveLength(0)
   })
 
@@ -111,7 +117,7 @@ describe('SandboxesPageComponent', () => {
     expect(values).toContain('1')
     expect(values).toContain('$1.50')
     // The fabricated destroyed-sandbox KPI is gone.
-    expect(host.textContent).not.toContain('Sandboxes détruites')
+    expect(host.textContent).not.toContain('Destroyed sandboxes')
   })
 
   it('exposes a launch entry point to the /lancer screen', async () => {
@@ -120,7 +126,7 @@ describe('SandboxesPageComponent', () => {
     const header = host.querySelector<HTMLAnchorElement>('header [data-sandboxes-launch]')
     expect(header).not.toBeNull()
     expect(header?.getAttribute('href')).toBe('/lancer')
-    expect(header?.textContent).toContain('Lancer un run')
+    expect(header?.textContent).toContain('Launch a run')
 
     const panel = host.querySelector<HTMLAnchorElement>('[data-sandboxes-launch-panel]')
     expect(panel).not.toBeNull()
@@ -132,7 +138,7 @@ describe('SandboxesPageComponent', () => {
       const store = createStore({ sandboxes: [sandbox], activeAttemptId: 'attempt-1' })
       const { host } = await setup(store)
 
-      buttonByText(host, 'Arrêter')?.click()
+      buttonByText(host, 'Stop')?.click()
 
       expect(store.stop).toHaveBeenCalledWith('wf-1')
     })
@@ -141,7 +147,7 @@ describe('SandboxesPageComponent', () => {
       const store = createStore({ sandboxes: [{ ...sandbox, status: 'destroyed' }] })
       const { host } = await setup(store)
 
-      buttonByText(host, 'Restaurer')?.click()
+      buttonByText(host, 'Restore')?.click()
 
       expect(store.restore).toHaveBeenCalledWith('wf-1')
     })
@@ -150,14 +156,14 @@ describe('SandboxesPageComponent', () => {
       const store = createStore({ sandboxes: [sandbox] })
       const { host, dialog } = await setup(store, true)
 
-      buttonByText(host, 'Supprimer')?.click()
+      buttonByText(host, 'Remove')?.click()
 
       expect(dialog.open).toHaveBeenCalledTimes(1)
       const [component, config] = dialog.open.mock.calls[0] as [unknown, { data: Record<string, unknown> }]
       expect(component).toBe(ConfirmDialogComponent)
-      expect(config.data['title']).toBe('Supprimer la sandbox')
-      expect(config.data['message']).toContain('récupérable via le toggle')
-      expect(config.data['confirmLabel']).toBe('Supprimer')
+      expect(config.data['title']).toBe('Remove sandbox')
+      expect(config.data['message']).toContain('recoverable via the destroyed sandboxes toggle')
+      expect(config.data['confirmLabel']).toBe('Remove')
       expect(config.data['destructive']).toBe(true)
       expect(store.remove).toHaveBeenCalledWith('wf-1')
     })
@@ -166,7 +172,7 @@ describe('SandboxesPageComponent', () => {
       const store = createStore({ sandboxes: [sandbox] })
       const { host, dialog } = await setup(store, false)
 
-      buttonByText(host, 'Supprimer')?.click()
+      buttonByText(host, 'Remove')?.click()
 
       expect(dialog.open).toHaveBeenCalledTimes(1)
       expect(store.remove).not.toHaveBeenCalled()

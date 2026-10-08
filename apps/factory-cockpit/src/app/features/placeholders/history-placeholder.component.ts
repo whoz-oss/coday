@@ -12,8 +12,8 @@ import { ChangeDetectionStrategy, Component } from '@angular/core'
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section class="placeholder">
-      <h1>Historique</h1>
-      <p class="sf-muted">Écran à venir.</p>
+      <h1>History</h1>
+      <p class="sf-muted">Coming soon.</p>
     </section>
   `,
   styles: `

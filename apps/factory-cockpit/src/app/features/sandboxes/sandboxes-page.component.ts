@@ -35,7 +35,11 @@ export class SandboxesPageComponent {
       case 'restore':
         this.store.restore(workflowId)
         return
-      default:
+      case 'ask':
+      case 'conversation':
+        // Both actions are handled entirely by the child card component:
+        // 'conversation' opens the controller case link directly from the card;
+        // 'ask' is no longer emitted (supervisor flow is orchestrated via FactoryStore).
         return
     }
   }
@@ -43,10 +47,10 @@ export class SandboxesPageComponent {
   /** Soft-remove a sandbox only after an explicit, destructive confirmation. */
   private confirmRemove(workflowId: string): void {
     const data: ConfirmDialogData = {
-      title: 'Supprimer la sandbox',
+      title: 'Remove sandbox',
       message:
-        "Voulez-vous vraiment supprimer cette sandbox ? L'action est récupérable via le toggle des sandboxes détruites.",
-      confirmLabel: 'Supprimer',
+        'Are you sure you want to remove this sandbox? The action is recoverable via the destroyed sandboxes toggle.',
+      confirmLabel: 'Remove',
       destructive: true,
     }
     this.dialog

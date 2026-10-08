@@ -14,7 +14,7 @@ import { ChangeDetectionStrategy, Component, input } from '@angular/core'
     <section class="placeholder">
       <h1>Session</h1>
       <p class="sf-muted">
-        Run <span class="sf-id">{{ runId() }}</span> — écran à venir.
+        Run <span class="sf-id">{{ runId() }}</span> — coming soon.
       </p>
     </section>
   `,

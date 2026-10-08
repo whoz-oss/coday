@@ -6,9 +6,6 @@ import { ShellState } from '../../core/shell-state'
 import { AdminPageComponent } from './admin-page.component'
 
 interface ApiStub {
-  runGarbageCollection: jest.Mock
-  purgeArtifact: jest.Mock
-  setLegalHold: jest.Mock
   getWorkflowDefinitions: jest.Mock
   uploadWorkflowDefinition: jest.Mock
   deleteWorkflowDefinition: jest.Mock
@@ -16,9 +13,6 @@ interface ApiStub {
 
 function createApi(overrides: Partial<ApiStub> = {}): ApiStub {
   return {
-    runGarbageCollection: jest.fn().mockReturnValue(of({})),
-    purgeArtifact: jest.fn().mockReturnValue(of({})),
-    setLegalHold: jest.fn().mockReturnValue(of({})),
     getWorkflowDefinitions: jest.fn().mockReturnValue(of([])),
     uploadWorkflowDefinition: jest.fn().mockReturnValue(of({})),
     deleteWorkflowDefinition: jest.fn().mockReturnValue(of({})),
@@ -68,103 +62,19 @@ describe('AdminPageComponent', () => {
     return element as T
   }
 
-  function setInput(host: HTMLElement, selector: string, value: string, fixture: ComponentFixture<unknown>): void {
-    const input = query<HTMLInputElement>(host, selector)
-    input.value = value
-    input.dispatchEvent(new Event('input'))
-    fixture.detectChanges()
-  }
-
   it('sets the breadcrumb and fetches the workflow definitions on init', async () => {
     const definitions = [{ workflowType: 't', version: 'v1', definitionHash: 'h1' }]
     const api = createApi({ getWorkflowDefinitions: jest.fn().mockReturnValue(of(definitions)) })
     const { host } = await setup(api)
 
-    expect(TestBed.inject(ShellState).crumbs()).toEqual([{ label: 'Gouvernance des artefacts' }])
+    expect(TestBed.inject(ShellState).crumbs()).toEqual([{ label: 'Workflow definitions' }])
     expect(api.getWorkflowDefinitions).toHaveBeenCalledTimes(1)
-    expect(host.querySelector('[data-admin-gc]')).not.toBeNull()
-    expect(host.querySelector('[data-admin-purge]')).not.toBeNull()
-    expect(host.querySelector('[data-admin-legal]')).not.toBeNull()
+    expect(host.querySelector('[data-admin-gc]')).toBeNull()
+    expect(host.querySelector('[data-admin-purge]')).toBeNull()
+    expect(host.querySelector('[data-admin-legal]')).toBeNull()
     expect(host.querySelector('[data-admin-definitions]')).not.toBeNull()
     expect(host.querySelectorAll('[data-definition-type]')).toHaveLength(1)
     expect(host.querySelector('[data-definition-type]')?.textContent).toContain('t')
-  })
-
-  it('runs GC with the dryRun flag and renders the report metrics', async () => {
-    const report = {
-      reclaimedStagingKeys: ['a', 'b'],
-      scannedBlobKeys: ['x'],
-      scannedMetadataRows: 7,
-      anomalies: [],
-      timestamp: '2026-01-01T00:00:00Z',
-    }
-    const api = createApi({ runGarbageCollection: jest.fn().mockReturnValue(of(report)) })
-    const { host, fixture } = await setup(api)
-
-    const dryRun = query<HTMLInputElement>(host, '[data-admin-gc-dry-run] input[type="checkbox"]')
-    dryRun.click()
-    fixture.detectChanges()
-
-    query<HTMLButtonElement>(host, '[data-admin-gc-run]').click()
-    fixture.detectChanges()
-
-    expect(api.runGarbageCollection).toHaveBeenCalledWith({ dryRun: true })
-    const result = query<HTMLElement>(host, '[data-admin-gc-result]')
-    expect(result.textContent).toContain('staging recyclés : 2')
-    expect(result.textContent).toContain('blobs scannés : 1')
-    expect(result.textContent).toContain('lignes métadonnées : 7')
-    expect(result.textContent).toContain('anomalies : 0')
-    expect(result.textContent).toContain('2026-01-01T00:00:00Z')
-  })
-
-  it('purges an artifact after confirmation and renders the result', async () => {
-    const api = createApi({
-      purgeArtifact: jest
-        .fn()
-        .mockReturnValue(of({ status: 'purged', artifactId: 'art-1', reason: 'expired', metadata: { size: 2048 } })),
-    })
-    const { host, fixture, dialog } = await setup(api, true)
-
-    setInput(host, '[data-admin-purge-id]', 'art-1', fixture)
-    setInput(host, '[data-admin-purge-reason]', 'expired', fixture)
-    query<HTMLButtonElement>(host, '[data-admin-purge-submit]').click()
-    fixture.detectChanges()
-
-    expect(dialog.open).toHaveBeenCalledTimes(1)
-    expect(api.purgeArtifact).toHaveBeenCalledWith('art-1', { reason: 'expired' })
-    const result = query<HTMLElement>(host, '[data-admin-purge-result]')
-    expect(result.textContent).toContain('purged')
-    expect(result.textContent).toContain('art-1')
-    expect(result.textContent).toContain('libéré : 2.0 Ko')
-    expect(result.textContent).toContain('motif : expired')
-  })
-
-  it('does not call the purge API when the confirmation is cancelled', async () => {
-    const api = createApi()
-    const { host, fixture } = await setup(api, false)
-
-    setInput(host, '[data-admin-purge-id]', 'art-1', fixture)
-    query<HTMLButtonElement>(host, '[data-admin-purge-submit]').click()
-    fixture.detectChanges()
-
-    expect(api.purgeArtifact).not.toHaveBeenCalled()
-    expect(host.querySelector('[data-admin-purge-result]')).toBeNull()
-  })
-
-  it('applies a legal hold and renders the active state', async () => {
-    const api = createApi({
-      setLegalHold: jest.fn().mockReturnValue(of({ id: 'art-2', legalHold: true, legalHoldReason: 'audit' })),
-    })
-    const { host, fixture } = await setup(api)
-
-    setInput(host, '[data-admin-legal-id]', 'art-2', fixture)
-    query<HTMLButtonElement>(host, '[data-admin-legal-submit]').click()
-    fixture.detectChanges()
-
-    expect(api.setLegalHold).toHaveBeenCalledWith('art-2', { legalHold: true })
-    const result = query<HTMLElement>(host, '[data-admin-legal-result]')
-    expect(result.textContent).toContain('legal hold : actif')
-    expect(result.textContent).toContain('motif : audit')
   })
 
   it('uploads the selected file and refreshes the definitions', async () => {
@@ -223,40 +133,21 @@ describe('AdminPageComponent', () => {
     const banner = query<HTMLElement>(host, '[data-admin-forbidden]')
     expect(banner.textContent).toContain('droits d’administration requis')
     expect(banner.textContent).toContain('FORBIDDEN_ADMIN_REQUIRED')
-    expect(query<HTMLButtonElement>(host, '[data-admin-gc-run]').disabled).toBe(true)
-    expect(query<HTMLButtonElement>(host, '[data-admin-purge-submit]').disabled).toBe(true)
     expect(query<HTMLButtonElement>(host, '[data-admin-definition-upload]').disabled).toBe(true)
   })
 
-  it('disables admin actions and shows the verbatim message when a command returns 403', async () => {
-    const api = createApi({ runGarbageCollection: jest.fn().mockReturnValue(throwError(() => forbiddenError)) })
-    const { host, fixture } = await setup(api)
-
-    query<HTMLButtonElement>(host, '[data-admin-gc-run]').click()
-    fixture.detectChanges()
-
-    const banner = query<HTMLElement>(host, '[data-admin-forbidden]')
-    expect(banner.textContent).toContain('droits d’administration requis')
-    expect(banner.textContent).toContain('FORBIDDEN_ADMIN_REQUIRED')
-    expect(query<HTMLButtonElement>(host, '[data-admin-gc-run]').disabled).toBe(true)
-    expect(query<HTMLInputElement>(host, '[data-admin-purge-id]').disabled).toBe(true)
-  })
-
-  it('shows a non-forbidden error in the section banner without locking the page', async () => {
+  it('shows a non-forbidden error in the definitions section banner without locking the page', async () => {
     const serverError: FactoryApiError = {
       code: 'SERVICE_UNAVAILABLE',
       message: 'moteur indisponible',
       status: 503,
       raw: null,
     }
-    const api = createApi({ runGarbageCollection: jest.fn().mockReturnValue(throwError(() => serverError)) })
-    const { host, fixture } = await setup(api)
-
-    query<HTMLButtonElement>(host, '[data-admin-gc-run]').click()
-    fixture.detectChanges()
+    const api = createApi({ getWorkflowDefinitions: jest.fn().mockReturnValue(throwError(() => serverError)) })
+    const { host } = await setup(api)
 
     expect(host.querySelector('[data-admin-forbidden]')).toBeNull()
-    expect(query<HTMLElement>(host, '[data-admin-gc-error]').textContent).toContain('moteur indisponible')
-    expect(query<HTMLButtonElement>(host, '[data-admin-gc-run]').disabled).toBe(false)
+    expect(query<HTMLElement>(host, '[data-admin-definition-error]').textContent).toContain('moteur indisponible')
+    expect(query<HTMLButtonElement>(host, '[data-admin-definition-upload]').disabled).toBe(false)
   })
 })

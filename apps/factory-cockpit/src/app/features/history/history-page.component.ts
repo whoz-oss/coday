@@ -10,6 +10,7 @@ import { MatPaginator, MatPaginatorIntl, MatPaginatorModule } from '@angular/mat
 import { MatSelectModule } from '@angular/material/select'
 import { MatSort, MatSortModule } from '@angular/material/sort'
 import { MatTableDataSource, MatTableModule } from '@angular/material/table'
+import { FactoryApiService, NamespaceOption, extractNamespaceOptions } from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
 import { Sandbox } from '../../core/models'
 import { FrPaginatorIntl } from '../../core/paginator-intl.fr'
@@ -48,16 +49,22 @@ interface Row extends Sandbox {
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HistoryPageComponent {
+  private readonly api = inject(FactoryApiService)
   private readonly store = inject(FactoryStore)
 
   protected readonly columns = ['name', 'branch', 'status', 'run', 'phases', 'cost', 'actions']
   protected readonly query = signal('')
   protected readonly status = signal<StatusFilter>('all')
-  protected readonly project = signal('coday')
+  protected readonly project = signal('')
+
+  protected readonly namespaces = signal<NamespaceOption[]>([])
+  protected readonly namespacesLoading = signal(false)
+  protected readonly namespacesError = signal<string | null>(null)
 
   protected readonly rows = computed<Row[]>(() =>
     this.store.sandboxes().map((s) => ({ ...s, cost: s.run?.costUsd ?? s.finalCostUsd ?? 0 }))
   )
+
   protected readonly counts = computed(() => ({
     all: this.rows().length,
     working: this.rows().filter((r) => r.status !== 'destroyed').length,
@@ -67,9 +74,10 @@ export class HistoryPageComponent {
   protected readonly filtered = computed(() => {
     const q = this.query().trim().toLowerCase()
     const st = this.status()
+    const proj = this.project()
     return this.rows().filter(
       (r) =>
-        r.project === this.project() &&
+        (!proj || r.project === proj) &&
         (st === 'all' || (st === 'working' ? r.status !== 'destroyed' : r.status === 'destroyed')) &&
         (!q || [r.name, r.branch, r.run?.id, r.run?.workflow].some((v) => v?.toLowerCase().includes(q)))
     )
@@ -77,7 +85,7 @@ export class HistoryPageComponent {
 
   protected readonly totalCost = computed(() => this.filtered().reduce((sum, r) => sum + r.cost, 0))
 
-  /** Barres « coût par sandbox », triées du plus cher au moins cher */
+  /** Cost bars per sandbox, sorted from highest to lowest cost */
   protected readonly costBars = computed(() => {
     const rows = [...this.filtered()].sort((a, b) => b.cost - a.cost)
     const max = Math.max(...rows.map((r) => r.cost), 0.0001)
@@ -94,7 +102,8 @@ export class HistoryPageComponent {
   private readonly paginator = viewChild(MatPaginator)
 
   constructor() {
-    inject(ShellState).crumbs.set([{ label: 'Historique' }])
+    inject(ShellState).crumbs.set([{ label: 'History' }])
+    this.loadNamespaces()
     effect(() => {
       this.dataSource.data = this.filtered()
     })
@@ -104,9 +113,24 @@ export class HistoryPageComponent {
     })
   }
 
+  private loadNamespaces(): void {
+    this.namespacesLoading.set(true)
+    this.namespacesError.set(null)
+    this.api.getNamespaces().subscribe({
+      next: (payload) => {
+        this.namespaces.set(extractNamespaceOptions(payload))
+        this.namespacesLoading.set(false)
+      },
+      error: () => {
+        this.namespacesError.set('Projects unavailable.')
+        this.namespacesLoading.set(false)
+      },
+    })
+  }
+
   protected exportCsv(): void {
     const lines = [
-      'sandbox;projet;branche;statut;run;workflow;cout_usd',
+      'sandbox;project;branch;status;run;workflow;cost_usd',
       ...this.filtered().map((r) =>
         [r.name, r.project, r.branch ?? '', r.status, r.run?.id ?? '', r.run?.workflow ?? '', r.cost.toFixed(4)].join(
           ';'

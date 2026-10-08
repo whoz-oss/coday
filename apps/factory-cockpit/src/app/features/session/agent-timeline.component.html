@@ -1,7 +1,7 @@
-<section class="timeline" aria-label="Chronologie des agents">
-  <!-- Axe -->
+<section class="timeline" aria-label="Agent timeline">
+  <!-- Axis -->
   <div class="row axis">
-    <div class="label-col sf-overline">Acteurs</div>
+    <div class="label-col sf-overline">Actors</div>
     <div class="request-col">request</div>
     <div class="track">
       @for (t of ticks(); track t.sec) {
@@ -11,7 +11,7 @@
     </div>
   </div>
 
-  <!-- Couloirs -->
+  <!-- Lanes -->
   @for (lane of effectiveLanes(); track lane.id) {
     <div class="row lane">
       <div class="label-col">
@@ -22,7 +22,7 @@
         <span class="lane-sub sf-mono">{{ lane.subtitle }}</span>
         @if (lane.contextPct !== undefined) {
           <span class="ctx">
-            <span class="ctx-label">Contexte</span>
+            <span class="ctx-label">Context</span>
             <span class="ctx-bar"><span [style.width.%]="lane.contextPct"></span></span>
             <span class="sf-mono">{{ lane.contextPct }}%</span>
           </span>
