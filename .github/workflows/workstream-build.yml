@@ -30,13 +30,23 @@ on:
 # cancel-in-progress: false is mandatory -- cancelling mid-publish can leave a
 # partial artifact set that appears coherent but is missing packages.
 #
-# group resolves to e.g. "workstream-integration/talent-portal" for a given slug.
-# github.ref_name for an integration push is "integration/<slug>" and is unique
-# per workstream. Using it directly avoids the unsupported split() function.
+# group resolves to e.g. "workstream-integration/talent-portal".
+# github.ref_name for an integration push is "integration/<slug>", unique per
+# workstream, so builds for the SAME integration branch serialise correctly.
 #
-# This group MUST match the group in validate.yml (promote-to-integration) and
-# integration-reset.yml so that a build, promote, and reset for the same slug
-# are never concurrent.
+# KNOWN LIMITATION -- this group does NOT match validate.yml or
+# integration-reset.yml (both key on github.base_ref = "workstream/<slug>/master").
+# GitHub Actions expressions have no split/substring function (the available set is
+# contains, startsWith, endsWith, format, join, toJSON, fromJSON, hashFiles plus the
+# status checks), and `concurrency` is evaluated before any step runs, so a slug
+# buried mid-ref CANNOT be extracted for use as a shared key. A build is therefore
+# NOT serialised against a concurrent promote or reset.
+#
+# In practice this is tolerable: a promote/reset push simply triggers another build,
+# and this group ensures those builds queue rather than overlap. If true
+# cross-workflow serialisation is ever required, the options are (a) flatten the
+# taxonomy so the slug is the whole ref segment, or (b) route through workflow_call
+# passing the slug as an input, making inputs.slug usable in concurrency.group.
 concurrency:
   group: workstream-${{ github.ref_name }}
   cancel-in-progress: false
@@ -62,8 +72,10 @@ jobs:
       NPM_CONFIG_PROVENANCE: true
     steps:
       # fetch-depth: 0 is MANDATORY.
-      # Version computation requires: git tag --list 'release/*'
+      # Version computation reads refs/tags/release/* to find the last release.
       # A shallow clone produces an empty tag list and the version step fails.
+      # (filter: tree:0 would be safe here -- partial clone omits blobs/trees,
+      # not tags -- but is not currently used.)
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -120,7 +132,24 @@ jobs:
         run: |
           SLUG="${{ steps.slug.outputs.slug }}"
 
-          LAST_TAG=$(git tag --list 'release/*' --sort=-v:refname | head -1)
+          # Use for-each-ref --count=1 rather than `git tag --list ... | head -1`.
+          #
+          # CRITICAL: do NOT reintroduce a pipe to `head` here. This workflow sets
+          # `defaults.run.shell: bash`, which GitHub expands to
+          # `bash --noprofile --norc -eo pipefail {0}` -- note the `pipefail`.
+          # (The implicit Linux default is only `bash -e {0}`, WITHOUT pipefail.)
+          # `head -1` closes the pipe after one line; `git tag --sort` must emit all
+          # matching tags, so with 240+ release/* tags git overflows the pipe buffer,
+          # takes SIGPIPE and exits 141. Under pipefail that becomes the pipeline's
+          # exit status and `-e` kills the step before the guard below ever runs.
+          # This was an observed failure, not a hypothetical one.
+          #
+          # --count=1 makes git itself do the limiting: no pipe, no SIGPIPE.
+          # %(refname:short) yields "release/0.241.0", matching the old `git tag`
+          # output exactly, so the ${LAST_TAG#release/} stripping below is unchanged.
+          LAST_TAG=$(git for-each-ref --count=1 --sort=-v:refname \
+                       --format='%(refname:short)' 'refs/tags/release/*')
+
           if [ -z "$LAST_TAG" ]; then
             echo "ERROR: no release/* tags found." >&2
             echo "This usually means fetch-depth: 0 was not set on the checkout step." >&2
@@ -245,7 +274,15 @@ jobs:
           NOTES="${NOTES} Published from integration branch ${BRANCH} at commit ${SHA}."
           NOTES="${NOTES} This is a prerelease -- do not use in production."
 
+          # --target is MANDATORY. Without it, `gh release create` creates the
+          # underlying git tag at the DEFAULT branch (master) HEAD, not at the
+          # commit being built. That would silently produce a prerelease whose
+          # tag points at unrelated master code while its attached JARs were
+          # built from this integration branch.
+          # (release.yml does not need this: it uses `gh release upload` against
+          # a tag nx release already created at the right commit.)
           gh release create "$TAG" \
+            --target "$SHA" \
             --prerelease \
             --title "Workstream ${SLUG} - ${VERSION}" \
             --notes "$NOTES" \
