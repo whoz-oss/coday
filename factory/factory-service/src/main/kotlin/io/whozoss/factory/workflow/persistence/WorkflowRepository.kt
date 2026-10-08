@@ -65,6 +65,25 @@ interface WorkflowRepository {
 
     fun setInstanceStatus(scope: TenantScope, namespaceId: String, workflowId: String, from: String, to: String): Boolean
 
+    /**
+     * Atomically reserves the run's root case id (Lot B durable case family) on
+     * the workflow instance, BEFORE any remote agent call. The first reservation
+     * wins the compare-and-set; a concurrent loser re-reads the winner's value,
+     * so exactly one root case is ever created for a run.
+     *
+     * Returns the effective root case id: the freshly reserved
+     * [candidateRootCaseId] when this call won, the already reserved value
+     * otherwise, or `null` when the instance does not exist. A legacy instance
+     * that was never reserved stays `null` (strict compatibility — it is never
+     * implicitly converted into a case family).
+     */
+    fun reserveRootCase(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        candidateRootCaseId: String,
+    ): String?
+
     fun deleteInstance(scope: TenantScope, namespaceId: String, workflowId: String): Boolean
 
     // ----- transition logs -----------------------------------------------

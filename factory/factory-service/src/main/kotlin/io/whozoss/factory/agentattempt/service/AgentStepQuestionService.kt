@@ -362,6 +362,10 @@ class AgentStepQuestionService(
                 environmentRef = predecessor.environmentRef,
                 expectedEnvironmentRevision = predecessor.expectedEnvironmentRevision,
                 resumptionContext = resumptionContext,
+                // Lot B durable case family: a successor attempt continues the
+                // SAME worktree / sub-case; it never changes the family.
+                rootCaseId = predecessor.rootCaseId,
+                parentCaseId = predecessor.parentCaseId,
             ),
             now,
         )

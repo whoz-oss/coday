@@ -1687,6 +1687,7 @@ private fun WorkflowSnapshot.toInstance(previous: WorkflowInstanceRecord): Workf
     creationCommandHash = previous.creationCommandHash,
     instance = instance,
     projection = projection,
+    rootCaseId = previous.rootCaseId,
 )
 
 private fun TransitionDecision.Denied.toException() = workflowException(code, reason, missingEvidence?.let { mapOf("missingEvidence" to it) })
