@@ -17,6 +17,17 @@ interface AgentOsProxyClient {
     /** Fetch a namespace record. Returns null when AgentOS answers 404. */
     fun fetchNamespace(namespaceId: String, externalUserId: String?): Map<String, Any?>?
 
+    /**
+     * Read the namespace Git association (`GET /api/namespaces/{id}/git`,
+     * `NamespaceGitResource`). Returns null when the endpoint is unavailable —
+     * AgentOS answers 404 when the GIT plugin is not loaded or the namespace is
+     * unknown.
+     *
+     * Defaulted to `null` so existing implementations/doubles stay
+     * source-compatible; [HttpAgentOsProxyClient] implements the real read.
+     */
+    fun fetchNamespaceGit(namespaceId: String, externalUserId: String?): Map<String, Any?>? = null
+
     /** Fetch all events for a case. */
     fun fetchCaseEvents(caseId: String, externalUserId: String?): Any?
 
