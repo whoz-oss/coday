@@ -1,0 +1,108 @@
+# Integration Reset -- force-resets integration/<slug> to the workstream head after a PR merges.
+#
+# Triggered by: a PR merging into workstream/**.
+#
+# After a work/* PR is squash-merged into the workstream branch, the integration branch
+# may contain commits from OTHER work branches that were promoted but not yet merged.
+# Those commits are discarded by this reset (known trade-off -- see WORKSTREAM_WORKFLOW.md
+# "Known trade-off: reset discards in-flight promotions").
+#
+# The force-reset push MUST use RELEASE_PAT for two reasons:
+#   1. GITHUB_TOKEN pushes do not trigger downstream workflows. The reset push IS the
+#      trigger for workstream-build.yml to publish the post-merge artifact set.
+#      Using GITHUB_TOKEN here would silently leave the integration branch unbuilt.
+#   2. Force-pushing a branch requires write access that GITHUB_TOKEN may not have
+#      depending on repository settings.
+#
+# The post-reset build publishes a coherent prerelease of the stable workstream state,
+# which reviewers can exercise before approving the next work PR.
+
+name: Integration Reset
+
+on:
+  pull_request:
+    types: [closed]
+    branches:
+      - 'workstream/**'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  reset:
+    # Only run when the PR was actually merged (not just closed/abandoned).
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    # Serialise writes to integration/<slug> under a group keyed on the slug.
+    # group resolves to e.g. "workstream-talent-portal" for slug "talent-portal".
+    # github.base_ref for a merged workstream PR is "workstream/<slug>/<base>", so
+    # split(..., '/')[1] extracts the slug.
+    #
+    # This group MUST match the group in validate.yml (promote-to-integration) and
+    # workstream-build.yml so that a reset, promote, and build for the same slug
+    # are never concurrent.
+    #
+    # cancel-in-progress: false is mandatory -- cancelling a reset mid-push could
+    # leave the integration branch in a corrupt state.
+    concurrency:
+      group: workstream-${{ split(github.base_ref, '/')[1] }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      # github.base_ref is the PR target branch, e.g. "workstream/talent-portal/master".
+      # Extract the middle segment (index 1 after split on '/').
+      - name: Derive slug
+        id: slug
+        run: |
+          BASE_REF="${{ github.base_ref }}"
+          SLUG=$(echo "$BASE_REF" | cut -d'/' -f2)
+          echo "slug=${SLUG}" >> $GITHUB_OUTPUT
+          echo "integration_branch=integration/${SLUG}" >> $GITHUB_OUTPUT
+          echo "Workstream slug: ${SLUG}"
+          echo "Integration branch to reset: integration/${SLUG}"
+
+      # fetch-depth: 0 so we can resolve both the workstream head and the
+      # integration branch.
+      # token: RELEASE_PAT so the force-push triggers workstream-build.yml.
+      # GITHUB_TOKEN pushes are silently ignored by workflow triggers -- if we
+      # used it here, the post-merge artifact build would never run.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # Force-reset integration/<slug> to the workstream head.
+      # This discards any in-flight promoted work branches from the integration
+      # branch, leaving it at the stable post-merge workstream state.
+      # The force-push triggers workstream-build.yml, which publishes the
+      # coherent post-merge artifact set.
+      - name: Force-reset integration branch to workstream head
+        run: |
+          BASE_REF="${{ github.base_ref }}"
+          INTEGRATION_BRANCH="${{ steps.slug.outputs.integration_branch }}"
+
+          git fetch origin
+
+          # If the integration branch does not exist (e.g. no work PR was ever
+          # promoted for this initiative), skip gracefully.
+          if ! git ls-remote --exit-code origin "refs/heads/${INTEGRATION_BRANCH}" > /dev/null 2>&1; then
+            echo "::notice::Integration branch '${INTEGRATION_BRANCH}' does not exist. Nothing to reset."
+            exit 0
+          fi
+
+          WORKSTREAM_HEAD=$(git rev-parse "origin/${BASE_REF}")
+          echo "Workstream head (${BASE_REF}): ${WORKSTREAM_HEAD}"
+
+          # Force-reset: move integration/<slug> to exactly the workstream head.
+          # --force is required because the integration branch may have commits
+          # (promoted work branches) that are not ancestors of the workstream head.
+          git push origin "${WORKSTREAM_HEAD}:refs/heads/${INTEGRATION_BRANCH}" --force
+
+          echo "::notice::Force-reset ${INTEGRATION_BRANCH} to ${WORKSTREAM_HEAD}. workstream-build.yml will publish the post-merge artifact set."
