@@ -78,11 +78,10 @@ class LoopWorkflowRunnerUnitSpec :
         ) {
             val userService = mockk<UserService>()
             val agentConfigService = mockk<AgentConfigService>()
-            val caseLauncherService = mockk<CaseLauncherService>()
             val launches = mutableListOf<Launch>()
             val launchedIds = mutableListOf<UUID>()
             var failLaunchForUser: UUID? = null
-            val launcher =
+            private val launcher =
                 CaseLauncherService { namespaceId, agentName, task, userId, sessionContext ->
                     if (failLaunchForUser != null && userId == failLaunchForUser) error("boom")
                     launches += Launch(namespaceId, agentName, task, userId, sessionContext)
@@ -95,7 +94,7 @@ class LoopWorkflowRunnerUnitSpec :
                     agentConfigService = agentConfigService,
                     limitsConfig = LimitsConfigProperties(agentLoopMaxItems = maxItems),
                     userSessionContextResolver = userSessionContextResolver,
-                    caseLauncherService = caseLauncherService,
+                    caseLauncherService = launcher,
                 )
 
             fun knownUser(externalId: String): User =
@@ -166,7 +165,6 @@ class LoopWorkflowRunnerUnitSpec :
             fixture: Fixture,
             tools: Collection<StandardTool<*>>,
             user: User? = triggerUser,
-            withLauncher: Boolean = true,
         ) = LoopRunContext(
             namespaceId = namespaceId,
             caseId = caseId,
@@ -193,14 +191,6 @@ class LoopWorkflowRunnerUnitSpec :
             f.runner
                 .run(payload, context(f, listOf(searchTool(listOf("a"))), user = null)) { true }
                 .reason() shouldContain "identified user"
-        }
-
-        "aborts without a case launcher" {
-            val f = Fixture(objectMapper)
-
-            f.runner
-                .run(payload, context(f, listOf(searchTool(listOf("a"))), withLauncher = false)) { true }
-                .reason() shouldContain "not available"
         }
 
         // -------------------------------------------------------------------------
