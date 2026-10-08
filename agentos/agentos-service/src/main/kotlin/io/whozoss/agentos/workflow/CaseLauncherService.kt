@@ -13,7 +13,7 @@ import java.util.UUID
  * Unlike a sub-case, a launched case has no parent link: its lifecycle is independent from the
  * case that launched it (killing the launcher case does not kill it).
  */
-fun interface CaseLauncher {
+fun interface CaseLauncherService {
     /**
      * Create a case owned by [onBehalfOfUserId], send [task] to [agentName] as its first message
      * and start it. Returns immediately with the new case id; the case runs in the background.

@@ -3,7 +3,6 @@ package io.whozoss.agentos.agent
 import io.whozoss.agentos.chat.UsageAccumulator
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.ToolContext
-import io.whozoss.agentos.workflow.CaseLauncher
 import java.time.Instant
 import java.util.UUID
 
@@ -31,8 +30,6 @@ import java.util.UUID
  *   [io.whozoss.agentos.chat.UsageTrackingChatModel] to record each provider request.
  *   The caller retrieves the totals at the end of the run and attaches them to [io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent].
  *   Null when usage tracking is not needed (e.g. definition resolution, tests).
- * @param caseLauncher Starts standalone cases on behalf of other users — used by [AgentLoop].
- *   Null when running outside a live case.
  */
 data class AgentExecutionContext(
     val namespaceId: UUID,
@@ -42,7 +39,6 @@ data class AgentExecutionContext(
     val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     val emitEvent: ((CaseEvent) -> CaseEvent)? = null,
     val usageAccumulator: UsageAccumulator? = null,
-    val caseLauncher: CaseLauncher? = null,
 ) {
     fun toToolContext(
         userExternalId: String?,

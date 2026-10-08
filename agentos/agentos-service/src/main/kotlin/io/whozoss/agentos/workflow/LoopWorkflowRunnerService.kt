@@ -30,18 +30,19 @@ import java.util.UUID
  * 3. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
  *    a. resolve the end-user via [UserService.findByExternalId] — skip if unknown;
  *    b. check the end-user can access the target agent — refuse otherwise;
- *    c. launch one standalone case through [CaseLauncher], fire-and-forget.
+ *    c. launch one standalone case through [CaseLauncherService], fire-and-forget.
  *
  * Errors that prevent the whole run return [LoopRunOutcome.Aborted]; per-entity problems are
  * counted in [LoopRunOutcome.Completed] and never stop the loop.
  */
 @Service
-class LoopWorkflowRunner(
+class LoopWorkflowRunnerService(
     private val objectMapper: ObjectMapper,
     private val userService: UserService,
     private val agentConfigService: AgentConfigService,
     private val limitsConfig: LimitsConfigProperties,
     private val userSessionContextResolver: UserSessionContextResolver,
+    private val caseLauncherService: CaseLauncherService,
 ) {
     suspend fun run(
         payload: AgentLoopPayload,
@@ -51,9 +52,6 @@ class LoopWorkflowRunner(
         val triggerUser =
             context.triggerUser
                 ?: return LoopRunOutcome.Aborted("An AgentLoop must be launched by an identified user.")
-        val caseLauncher =
-            context.caseLauncher
-                ?: return LoopRunOutcome.Aborted("Case launching is not available in this execution context.")
 
         val search =
             when (val searchOutcome = search(payload, context, triggerUser)) {
@@ -65,15 +63,15 @@ class LoopWorkflowRunner(
         val items = search.data.take(maxItems)
         val launchedCaseIds = mutableListOf<UUID>()
         val counts = mutableMapOf<ItemOutcome, Int>()
-        var interrupted = false
         for (item in items) {
             if (!shouldContinue()) {
-                interrupted = true
                 break
             }
-            when (val outcome = act(item, payload.act, context, caseLauncher)) {
-                is ItemOutcome.Launched -> launchedCaseIds += outcome.caseId
-                else -> counts.merge(outcome, 1, Int::plus)
+            val outcome = act(item, payload.act, context)
+            if (outcome is ItemOutcome.Launched) {
+                launchedCaseIds += outcome.caseId
+            } else {
+                counts.merge(outcome, 1, Int::plus)
             }
         }
 
@@ -89,10 +87,19 @@ class LoopWorkflowRunner(
             overLimit = (search.data.size - maxItems).coerceAtLeast(0),
             maxItems = maxItems,
             targetAgent = payload.act.agentName,
-            interrupted = interrupted,
+            interrupted = !shouldContinue(),
         )
     }
 
+    /**
+     * Executes the SEARCH phase: invokes the configured tool and parses its output as
+     * [SearchResult].
+     *
+     * **Whoz-specific coupling (V0):** [SearchResult], [SearchResultItem], and the
+     * structured-output contract assumed here are tightly coupled to the Whoz Search tool
+     * response schema. This method should be generalised once a stable cross-tool contract
+     * exists (tracked in TODO: extract search-result contract to SDK).
+     */
     private suspend fun search(
         payload: AgentLoopPayload,
         context: LoopRunContext,
@@ -127,14 +134,13 @@ class LoopWorkflowRunner(
         if (!result.success) {
             return SearchOutcome.Failure("Search tool '$toolName' returned a failure: ${result.output}")
         }
-        val structured =
-            result.structuredOutput
-                ?: run {
-                    logger.warn { "[LoopWorkflowRunner] Search tool '$toolName' returned no structured output. Raw output: ${result.output}" }
-                    return SearchOutcome.Failure(
-                        "Search tool '$toolName' returned no structured output. Check the tool's outputSchema(). Raw output: ${result.output}",
-                    )
-                }
+        if (result.structuredOutput == null) {
+            logger.warn { "[LoopWorkflowRunner] Search tool '$toolName' returned no structured output. Raw output: ${result.output}" }
+            return SearchOutcome.Failure(
+                "Search tool '$toolName' returned no structured output. Check the tool's outputSchema(). Raw output: ${result.output}",
+            )
+        }
+        val structured = result.structuredOutput
         return try {
             SearchOutcome.Success(objectMapper.treeToValue(structured, SearchResult::class.java))
         } catch (e: Exception) {
@@ -147,7 +153,6 @@ class LoopWorkflowRunner(
         item: SearchResultItem,
         act: AgentLoopAct,
         context: LoopRunContext,
-        caseLauncher: CaseLauncher,
     ): ItemOutcome {
         val userTarget = item.targets?.firstOrNull { it.entityType.equals("User", ignoreCase = true) }
         if (userTarget == null) {
@@ -185,6 +190,7 @@ class LoopWorkflowRunner(
                     }
                     userSessionContextResolver.mergePreferredLanguage(result.sessionContext, preferredLanguage)
                 }
+
                 is UserContextResult.PermanentFailure -> {
                     logger.error {
                         "[LoopWorkflowRunner] Permanent context failure for entity='${item.entityId}'" +
@@ -192,6 +198,7 @@ class LoopWorkflowRunner(
                     }
                     return ItemOutcome.Failed
                 }
+
                 is UserContextResult.TransientFailure -> {
                     logger.warn {
                         "[LoopWorkflowRunner] Transient context failure for entity='${item.entityId}'" +
@@ -201,25 +208,26 @@ class LoopWorkflowRunner(
                 }
             }
 
-        val enrichedSessionContext: Map<String, Any?> = buildMap {
-            if (sessionContext != null) putAll(sessionContext)
-            put(
-                "activeContext",
-                listOf(
-                    mapOf(
-                        "type" to item.entityType,
-                        "data" to mapOf("id" to item.entityId),
+        val enrichedSessionContext: Map<String, Any?> =
+            buildMap {
+                if (sessionContext != null) putAll(sessionContext)
+                put(
+                    "activeContext",
+                    listOf(
+                        mapOf(
+                            "type" to item.entityType,
+                            "data" to mapOf("id" to item.entityId),
+                        ),
                     ),
-                ),
-            )
-        }
+                )
+            }
 
         return try {
             val launchedCaseId =
-                caseLauncher.launchCase(
+                caseLauncherService.launchCase(
                     namespaceId = context.namespaceId,
                     agentName = act.agentName,
-                    task = act.promptTemplate,
+                    task = act.prompt,
                     onBehalfOfUserId = endUserId,
                     sessionContext = enrichedSessionContext,
                 )
@@ -280,7 +288,6 @@ class LoopWorkflowRunner(
  *
  * @param triggerUser  The user who launched the run, or null when it cannot be resolved.
  * @param tools        Tools resolved for the loop agent — the Search tool is looked up here.
- * @param caseLauncher Null when the agent is instantiated outside a live case.
  */
 data class LoopRunContext(
     val namespaceId: UUID,
@@ -289,10 +296,9 @@ data class LoopRunContext(
     val triggerUser: User?,
     val tools: Collection<StandardTool<*>>,
     val caseEvents: List<CaseEvent>,
-    val caseLauncher: CaseLauncher?,
 )
 
-/** Result of a [LoopWorkflowRunner.run]. */
+/** Result of a [LoopWorkflowRunnerService.run]. */
 sealed interface LoopRunOutcome {
     /** The run could not proceed at all; [reason] is shown to the user. */
     data class Aborted(
@@ -336,8 +342,9 @@ sealed interface LoopRunOutcome {
                 if (hasMorePages) append("\n- More results exist: only the first page was processed.")
                 if (interrupted) append("\n- Interrupted before all entities were processed.")
                 if (launchedCaseIds.isNotEmpty()) {
-                    append("\n\nLaunched cases:")
-                    launchedCaseIds.forEach { append("\n- $it") }
+                    append("\n\nLaunched cases (first 10):")
+                    launchedCaseIds.take(10).forEach { append("\n- $it") }
+                    if (launchedCaseIds.size > 10) append("\n- ... and ${launchedCaseIds.size - 10} more")
                 }
             }
     }

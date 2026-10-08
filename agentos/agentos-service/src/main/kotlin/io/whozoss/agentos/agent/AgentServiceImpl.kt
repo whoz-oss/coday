@@ -23,10 +23,10 @@ import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.redirect.RedirectToolPlugin
@@ -49,8 +49,7 @@ import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.IdCompressorService
-import io.whozoss.agentos.workflow.CaseLauncher
-import io.whozoss.agentos.workflow.LoopWorkflowRunner
+import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
@@ -94,7 +93,7 @@ class AgentServiceImpl(
     private val exchangeRootResolver: ExchangeRootResolver,
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
-    private val loopWorkflowRunner: LoopWorkflowRunner
+    private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -241,7 +240,9 @@ class AgentServiceImpl(
                 userId = context.userId,
             )
         val effectiveIntegrationConfigs =
-            runIntegrationCustomizers.fold(integrationConfigService.findEffective(context.namespaceId, context.userId)) { configs, customizer ->
+            runIntegrationCustomizers.fold(
+                integrationConfigService.findEffective(context.namespaceId, context.userId),
+            ) { configs, customizer ->
                 customizer.customize(configs, context)
             }
         val namespace = namespaceService.findById(context.namespaceId)
@@ -453,8 +454,11 @@ class AgentServiceImpl(
         effectiveIntegrationConfigs: List<IntegrationConfig>,
     ): String? =
         effectiveIntegrationConfigs
-            .filter { it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(it.name) == true }
-            .sortedBy { it.name }
+            .filter {
+                it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(
+                    it.name,
+                ) == true
+            }.sortedBy { it.name }
             .mapNotNull {
                 it.parameters
                     ?.get(RedirectToolPlugin.GUIDELINE_PARAM)
@@ -566,20 +570,26 @@ class AgentServiceImpl(
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
         return when (executionMode) {
-            ExecutionMode.LOOP ->
+            ExecutionMode.LOOP -> {
                 AgentLoop(
                     metadata = EntityMetadata(id = agentId),
                     name = agentName,
                     objectMapper = objectMapper,
-                    runner = loopWorkflowRunner,
+                    runner = loopWorkflowRunnerService,
                     resolvedTools = resolvedTools,
                     triggerUser = resolvedUser,
-                    caseLauncher = context.caseLauncher,
                     loopConfig = loopConfig,
                 )
+            }
 
             ExecutionMode.ADVANCED -> {
-                val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
+                val chatClient =
+                    chatClientProvider.getChatClient(
+                        modelConfig,
+                        providerConfig,
+                        context.caseId?.toString(),
+                        context.usageAccumulator,
+                    )
                 val advancedContext =
                     AgentAdvancedContext(
                         chatClient = CompressingChatClient(chatClient, idCompressorService),
@@ -609,7 +619,13 @@ class AgentServiceImpl(
             }
 
             ExecutionMode.SIMPLE -> {
-                val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
+                val chatClient =
+                    chatClientProvider.getChatClient(
+                        modelConfig,
+                        providerConfig,
+                        context.caseId?.toString(),
+                        context.usageAccumulator,
+                    )
                 AgentSimple(
                     metadata = EntityMetadata(id = agentId),
                     name = agentName,
@@ -649,8 +665,9 @@ class AgentServiceImpl(
         val integrationDescriptions =
             coroutineScope {
                 effectiveIntegrationConfigs
-                    .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
-                    .map { (config, plugin) ->
+                    .mapNotNull { config ->
+                        toolRegistryService.findPlugin(config.integrationType)?.let { config to it }
+                    }.map { (config, plugin) ->
                         async {
                             plugin
                                 .runCatching { describeNamespace(config.parameters, config.name, toolContext) }
@@ -747,8 +764,13 @@ class AgentServiceImpl(
         val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
         val skillsBlock = SkillCatalogRenderer.buildBlock(resolvedSkills)
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock, skillsBlock)
-            .joinToString("\n")
+        return listOfNotNull(
+            baseInstructions.takeUnless { it.isNullOrBlank() },
+            integrationsBlock,
+            userBlock,
+            docsBlock,
+            skillsBlock,
+        ).joinToString("\n")
     }
 
     /**
@@ -839,7 +861,11 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
-            timeoutMs = (config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds).toLong() * 1_000L,
+            timeoutMs =
+                (
+                    config.delegationTimeoutSeconds
+                        ?: agentConfigProperties.delegationTimeoutSeconds
+                ).toLong() * 1_000L,
         )
     }
 
@@ -908,9 +934,17 @@ class AgentServiceImpl(
             // invoking user's permission on that owner: delegation does not confer its rights.
             val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
             val userId = context.userId?.toString()
-            val canRead = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+            val canRead =
+                root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
             if (canRead) {
-                val canWrite = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                val canWrite =
+                    root.ownerCaseId == caseId ||
+                        exchangeCapabilityService.canAccessCase(
+                            userId,
+                            caseId,
+                            root,
+                            Action.WRITE,
+                        )
                 tools +=
                     exchangeToolGrantService.grantTools(
                         root = root.requireUsable(),

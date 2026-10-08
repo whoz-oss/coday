@@ -82,7 +82,11 @@ data class AgentConfigDto(
     )
     val subAgents: List<String>? = null,
     @field:Positive
-    @field:Schema(description = "Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.", minimum = "1", nullable = true)
+    @field:Schema(
+        description = "Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.",
+        minimum = "1",
+        nullable = true,
+    )
     val delegationTimeoutSeconds: Int? = null,
     @ArraySchema(
         schema =

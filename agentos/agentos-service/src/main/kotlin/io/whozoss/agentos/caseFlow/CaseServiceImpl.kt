@@ -3,7 +3,6 @@ package io.whozoss.agentos.caseFlow
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.AgentService
-import io.whozoss.agentos.workflow.CaseLauncher
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.caseEvent.lastUserIdOrNull
@@ -31,9 +30,9 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -87,8 +86,7 @@ class CaseServiceImpl(
     /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
     private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
 ) : CaseService,
-    SubCaseManager,
-    CaseLauncher {
+    SubCaseManager {
     /**
      * Coroutine scope used to run case execution loops and fire-and-forget
      * post-processing tasks (e.g. automatic naming) in the background.
@@ -107,7 +105,15 @@ class CaseServiceImpl(
 
     /** Turns held back by [caseLaunchGate]; null without a gate. */
     private val gatedRuns =
-        caseLaunchGate?.let { GatedRunLauncher(it, scope, activeRuntimes::get, { id -> findById(id)?.status }, ::storeEvent) }
+        caseLaunchGate?.let {
+            GatedRunLauncher(
+                it,
+                scope,
+                activeRuntimes::get,
+                { id -> findById(id)?.status },
+                ::storeEvent,
+            )
+        }
 
     override fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean =
         caseIds.any { gatedRuns?.isAdmitted(it) == true || activeRuntimes[it]?.isRunning() == true }
@@ -130,8 +136,7 @@ class CaseServiceImpl(
     // ======================================================
 
     @Transactional
-    override fun create(entity: Case): Case =
-        caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
+    override fun create(entity: Case): Case = caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
 
     private fun createCase(entity: Case): Case {
         checkCaseCreationPreconditions(entity)
@@ -688,7 +693,6 @@ class CaseServiceImpl(
                     saved
                 },
                 usageAccumulator = usageAccumulator,
-                caseLauncher = this,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agent = agentService.findAgentByName(agentName, context, this)
@@ -1064,47 +1068,6 @@ class CaseServiceImpl(
         return runtime
     }
 
-    /**
-     * [CaseLauncher] implementation: a standalone case owned by [onBehalfOfUserId], with no parent
-     * link so its lifecycle is independent from the launching case. Same sequence as
-     * [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor]: create, grant ADMIN, add message.
-     *
-     * [sessionContext] is forwarded to [addMessage] and embedded on the first [MessageEvent].
-     * Callers (e.g. [io.whozoss.agentos.agent.LoopWorkflowRunner]) should resolve it via
-     * [io.whozoss.agentos.scheduledPrompt.UserSessionContextResolver] before calling this method.
-     */
-    override fun launchCase(
-        namespaceId: UUID,
-        agentName: String,
-        task: String,
-        onBehalfOfUserId: UUID,
-        sessionContext: Map<String, Any?>?,
-    ): UUID {
-        val case = create(Case(namespaceId = namespaceId, title = task.take(MAX_LAUNCHED_CASE_TITLE_LENGTH)))
-        try {
-            permissionService.grantPermission(
-                onBehalfOfUserId.toString(),
-                EntityType.CASE,
-                case.id.toString(),
-                PermissionRelation.ADMIN,
-            )
-        } catch (e: Exception) {
-            logger.error(e) { "Auto-ADMIN grant failed for launched case ${case.id} (user $onBehalfOfUserId) — killing case" }
-            runCatching { killCase(case.id) }
-                .onFailure { killErr -> logger.warn(killErr) { "Failed to kill orphaned launched case ${case.id}" } }
-            throw IllegalStateException("Failed to grant permissions on launched case ${case.id}: ${e.message}", e)
-        }
-        // @mention routes the first message to the requested agent through the normal selectAgent resolution.
-        addMessage(
-            caseId = case.id,
-            actor = resolveActor(onBehalfOfUserId),
-            content = listOf(MessageContent.Text("@$agentName $task")),
-            sessionContext = sessionContext,
-        )
-        logger.info { "Launched case ${case.id} for user $onBehalfOfUserId, agent=$agentName" }
-        return case.id
-    }
-
     // ======================================================
     // Launch gate
     // ======================================================
@@ -1224,8 +1187,5 @@ class CaseServiceImpl(
 
         /** Maximum character length for a sub-case title derived from the task description. */
         private const val MAX_SUBCASE_TITLE_LENGTH = 50
-
-        /** Maximum character length for a launched case title derived from its task. */
-        private const val MAX_LAUNCHED_CASE_TITLE_LENGTH = 80
     }
 }

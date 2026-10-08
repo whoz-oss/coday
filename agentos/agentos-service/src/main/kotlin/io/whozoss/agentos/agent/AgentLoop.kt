@@ -6,19 +6,18 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
+import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.workflow.AgentLoopPayload
-import io.whozoss.agentos.workflow.CaseLauncher
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
-import io.whozoss.agentos.workflow.LoopWorkflowRunner
+import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import mu.KLogging
@@ -29,10 +28,10 @@ import java.util.UUID
  * returned by a Search tool.
  *
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
- * adapter between the case and [LoopWorkflowRunner]:
+ * adapter between the case and [LoopWorkflowRunnerService]:
  *
  * 1. Resolve the [AgentLoopPayload] from [loopConfig] stored on the [AgentConfig].
- * 2. Delegate the workflow to [LoopWorkflowRunner].
+ * 2. Delegate the workflow to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
  *    when the run could not proceed. Always ends with [AgentFinishedEvent].
  *
@@ -46,7 +45,7 @@ import java.util.UUID
  *     "tool": "SearchTalents",
  *     "params": { "endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"] }
  *   },
- *   "act": { "agentName": "talent-analyzer", "promptTemplate": "Analyse this entity: {entityId}" }
+ *   "act": { "agentName": "talent-analyzer", "prompt": "Analyse this entity: {entityId}" }
  * }
  * ```
  *
@@ -56,7 +55,6 @@ import java.util.UUID
  * @param runner        Executes the workflow.
  * @param resolvedTools Tools available to this agent — the Search tool is looked up here.
  * @param triggerUser   The user who triggered the run.
- * @param caseLauncher  Starts the child cases; null outside a live case.
  * @param loopConfig    The [AgentLoopPayload] persisted on [AgentConfig]. Must be non-null
  *                      and parseable for the run to proceed.
  */
@@ -64,10 +62,9 @@ class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
     private val objectMapper: ObjectMapper,
-    private val runner: LoopWorkflowRunner,
+    private val runner: LoopWorkflowRunnerService,
     private val resolvedTools: Collection<StandardTool<*>> = emptyList(),
     private val triggerUser: User? = null,
-    private val caseLauncher: CaseLauncher? = null,
     private val loopConfig: JsonNode? = null,
 ) : Agent {
     /**
@@ -96,12 +93,24 @@ class AgentLoop(
                 return@flow
             }
 
-            emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
+            emit(
+                AgentRunningEvent(
+                    namespaceId = namespaceId,
+                    caseId = caseId,
+                    agentId = id,
+                    agentName = name,
+                    // AgentLoop never calls an LLM — omit provider/model.
+                    llmProvider = null,
+                    llmModel = null,
+                ),
+            )
 
             val outcome =
                 try {
                     val payload = resolvePayload()
-                    logger.info { "[AgentLoop] '$name' starting — tool=${payload.search.tool}, actAgent=${payload.act.agentName} (caseId=$caseId)" }
+                    logger.info {
+                        "[AgentLoop] '$name' starting — tool=${payload.search.tool}, actAgent=${payload.act.agentName} (caseId=$caseId)"
+                    }
                     runner.run(
                         payload = payload,
                         context =
@@ -112,18 +121,24 @@ class AgentLoop(
                                 triggerUser = triggerUser,
                                 tools = resolvedTools,
                                 caseEvents = events,
-                                caseLauncher = caseLauncher,
                             ),
                         shouldContinue = shouldContinue,
                     )
                 } catch (e: InvalidLoopPayloadException) {
+                    logger.error(e) { "[AgentLoop] '$name' invalid loopConfig (caseId=$caseId): ${e.message}" }
                     LoopRunOutcome.Aborted(e.message ?: "Invalid AgentLoop payload")
                 }
 
             when (outcome) {
                 is LoopRunOutcome.Aborted -> {
                     logger.warn { "[AgentLoop] '$name' aborted: ${outcome.reason} (caseId=$caseId)" }
-                    emit(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "AgentLoop '$name': ${outcome.reason}"))
+                    emit(
+                        WarnEvent(
+                            namespaceId = namespaceId,
+                            caseId = caseId,
+                            message = "AgentLoop '$name': ${outcome.reason}",
+                        ),
+                    )
                 }
 
                 is LoopRunOutcome.Completed -> {
@@ -181,13 +196,17 @@ class AgentLoop(
         } catch (e: InvalidLoopPayloadException) {
             throw e
         } catch (e: Exception) {
-            throw InvalidLoopPayloadException("loopConfig could not be parsed as a valid AgentLoopPayload: ${e.message}")
+            throw InvalidLoopPayloadException(
+                "loopConfig could not be parsed as a valid AgentLoopPayload: ${e.message}",
+                e,
+            )
         }
     }
 
     private class InvalidLoopPayloadException(
         message: String,
-    ) : IllegalArgumentException(message)
+        cause: Exception? = null,
+    ) : IllegalArgumentException(message, cause)
 
     companion object : KLogging() {
         /**

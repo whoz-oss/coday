@@ -12,7 +12,7 @@ import java.util.UUID
  * for a given end-user.
  *
  * Shared by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] and
- * [io.whozoss.agentos.workflow.LoopWorkflowRunner] so that both code paths produce
+ * [io.whozoss.agentos.workflow.LoopWorkflowRunnerService] so that both code paths produce
  * identical context enrichment:
  * 1. Call the optional [UserContextProvider] plugin — returns business context (e.g. talent profile).
  * 2. Overlay [preferredLanguage] on top: the user's stored language preference is the authoritative
