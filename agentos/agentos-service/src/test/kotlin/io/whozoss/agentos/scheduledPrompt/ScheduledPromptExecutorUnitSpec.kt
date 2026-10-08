@@ -103,7 +103,6 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         scheduledPromptId = sp.id,
         scheduledFor = nowInstant,
         status = RunStatus.CLAIMED,
-        correlationId = "test-run",
     )
 
     private fun makePromptTemplate(content: String = "Run your weekly digest report.") = Prompt(
