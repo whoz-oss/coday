@@ -41,6 +41,9 @@ import io.whozoss.agentos.usage.RunCostService
 import io.whozoss.agentos.usage.UsageOutcome
 import io.whozoss.agentos.usage.UsageRecord
 import io.whozoss.agentos.usage.UsageRecordService
+import io.whozoss.agentos.sdk.spi.AnswerInterceptor
+import io.whozoss.agentos.sdk.spi.CaseLifecycleObserver
+import io.whozoss.agentos.sdk.spi.ToolGrantPolicy
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
@@ -61,6 +64,13 @@ import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/**
+ * Core case orchestration service.
+ *
+ * Carries no integration-specific logic: integrations plug in exclusively through the
+ * SDK SPI hooks injected below — [AnswerInterceptor], [CaseLifecycleObserver] and
+ * [ToolGrantPolicy] — so all integration behaviour lives outside this service.
+ */
 @Service
 class CaseServiceImpl(
     private val agentService: AgentService,
@@ -78,6 +88,22 @@ class CaseServiceImpl(
     private val usageRecordService: UsageRecordService,
     private val runCostService: RunCostService? = null,
     private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
+    /**
+     * Optional SPI hooks consulted for every answer before an [io.whozoss.agentos.sdk.caseEvent.AnswerEvent]
+     * is persisted. Empty by default (Spring injects all registered beans): no interception.
+     * Integrations register their own interceptors here rather than being wired into the core.
+     */
+    private val answerInterceptors: List<AnswerInterceptor> = emptyList(),
+    /**
+     * Optional SPI observers notified of case status transitions and stored events.
+     * Empty by default (Spring injects all registered beans): no observation.
+     */
+    private val lifecycleObservers: List<CaseLifecycleObserver> = emptyList(),
+    /**
+     * Optional SPI policies evaluated against the tools resolved for an agent run.
+     * Empty by default (Spring injects all registered beans): pass-through, no filtering.
+     */
+    private val toolGrantPolicies: List<ToolGrantPolicy> = emptyList(),
     /**
      * Installed only by an optional capability (Git workspaces behind
      * `agentos.git.workspaces.enabled`). Null: every run starts immediately, as it always did.
@@ -327,6 +353,8 @@ class CaseServiceImpl(
             updateStatusCallback = { caseId, newStatus -> handleStatusChange(caseId, newStatus) },
             storeEvent = { event -> storeEvent(event) },
             selectAgent = { content, pastEvents -> selectAgent(content, pastEvents, case.namespaceId, case.id) },
+            answerInterceptors = answerInterceptors,
+            lifecycleObservers = lifecycleObservers,
             isAgentAuthorized = { agentName, userId ->
                 userId == null ||
                     agentConfigService
@@ -675,6 +703,7 @@ class CaseServiceImpl(
                 caseCreatedAt = runtime.caseCreatedAt,
                 userId = userId,
                 caseEventsProvider = eventsProvider,
+                toolGrantPolicies = toolGrantPolicies,
                 emitEvent = { event ->
                     val saved = storeEvent(event)
                     runtime.emitEvent(saved)
@@ -842,9 +871,22 @@ class CaseServiceImpl(
             logger.info { "Case $caseId status: $oldStatus -> $newStatus" }
         }
 
+        // SPI observation: notify registered observers of the transition. Notifications only —
+        // a faulty hook is logged and never breaks the status change.
+        lifecycleObservers.forEach { observer ->
+            runCatching { observer.onStatusChanged(caseId, oldStatus, newStatus) }
+                .onFailure { error ->
+                    logger.warn(error) {
+                        "CaseLifecycleObserver ${observer::class.simpleName} failed on status change of case $caseId"
+                    }
+                }
+        }
+
         // Trigger post-processing on turn completion so processors can refine their
         // work with the full agent response available (e.g. naming refinement on 2nd turn).
         if (newStatus == CaseStatus.IDLE && postProcess) {
+            // IDLE can be observed between turns; the runtime stays alive so the
+            // naming trigger below can refine the case name with the full response.
             val runtime = activeRuntimes[caseId]
             if (runtime != null) {
                 triggerNamingIfNeeded(

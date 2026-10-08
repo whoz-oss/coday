@@ -1,0 +1,95 @@
+package io.whozoss.agentos.binding
+
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.sdk.spi.ExternalContextBindingRegistrar
+import jakarta.servlet.FilterChain
+import jakarta.servlet.http.HttpServletRequest
+import jakarta.servlet.http.HttpServletResponse
+import mu.KLogging
+import org.pf4j.PluginManager
+import org.springframework.http.HttpMethod
+import org.springframework.stereotype.Component
+import org.springframework.web.filter.OncePerRequestFilter
+import org.springframework.web.util.ContentCachingResponseWrapper
+import java.time.Instant
+import java.util.UUID
+
+/**
+ * Intercepts `POST /api/cases` so a case created with the `X-External-Context-*` headers
+ * binds its external step-result capability in the same round-trip.
+ *
+ * An external integration creates the case and immediately posts the brief; binding at
+ * creation time (rather than on a later message) removes the race where the agent turn
+ * starts before the capability is known. The filter is a strict no-op when no
+ * [ExternalContextBindingRegistrar] is loaded or when the request carries no binding
+ * attributes, so ordinary case creation is untouched.
+ *
+ * The created case id and namespace are read from the JSON response body — the host never
+ * trusts a body-supplied id for a resource it did not itself return.
+ */
+@Component
+class ExternalContextBindingFilter(
+    private val pluginManager: PluginManager,
+    private val objectMapper: ObjectMapper,
+) : OncePerRequestFilter() {
+    override fun shouldNotFilter(request: HttpServletRequest): Boolean =
+        request.method != HttpMethod.POST.name() || request.servletPath != CASES_PATH
+
+    override fun doFilterInternal(
+        request: HttpServletRequest,
+        response: HttpServletResponse,
+        filterChain: FilterChain,
+    ) {
+        val registrars = pluginManager.getExtensions(ExternalContextBindingRegistrar::class.java)
+        val attributes =
+            ExternalContextBindingController.attributes(
+                attemptId = request.getHeader(ExternalContextBindingController.ATTEMPT_ID_HEADER),
+                capabilityToken = request.getHeader(ExternalContextBindingController.CAPABILITY_TOKEN_HEADER),
+                runtimeId = request.getHeader(ExternalContextBindingController.RUNTIME_ID_HEADER),
+                agentName = request.getHeader(ExternalContextBindingController.AGENT_NAME_HEADER),
+            )
+        if (registrars.isEmpty() || attributes.isEmpty()) {
+            filterChain.doFilter(request, response)
+            return
+        }
+
+        val credential = request.getHeader(ExternalContextBindingController.SECRET_HEADER)
+        val expiresAt =
+            request
+                .getHeader(ExternalContextBindingController.EXPIRES_AT_HEADER)
+                ?.let { runCatching { Instant.parse(it) }.getOrNull() }
+
+        val wrapped = ContentCachingResponseWrapper(response)
+        filterChain.doFilter(request, wrapped)
+        try {
+            if (wrapped.status in 200..299) {
+                bindFromResponse(wrapped.contentAsByteArray, registrars, credential, attributes, expiresAt)
+            }
+        } finally {
+            // The wrapper buffers the body; it must be copied back or the client sees an
+            // empty response.
+            wrapped.copyBodyToResponse()
+        }
+    }
+
+    private fun bindFromResponse(
+        body: ByteArray,
+        registrars: List<ExternalContextBindingRegistrar>,
+        credential: String?,
+        attributes: Map<String, String>,
+        expiresAt: Instant?,
+    ) {
+        val node = runCatching { objectMapper.readTree(body) }.getOrNull() ?: return
+        val caseId = node.get("id")?.asText()?.takeIf { it.isNotBlank() }?.let { parseUuid(it) } ?: return
+        val namespaceId = node.get("namespaceId")?.asText()?.takeIf { it.isNotBlank() }?.let { parseUuid(it) } ?: return
+        ExternalContextBindingController.bind(registrars, caseId, namespaceId, credential, attributes, expiresAt)
+    }
+
+    private fun parseUuid(value: String): UUID? = runCatching { UUID.fromString(value) }.getOrNull()
+
+    companion object : KLogging() {
+        // Header names live on [ExternalContextBindingController], which owns the wire
+        // contract shared by both admission paths.
+        const val CASES_PATH = "/api/cases"
+    }
+}
