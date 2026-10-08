@@ -211,7 +211,7 @@ agentos:
   # executions. When this limit is reached the agent emits a WarnEvent and breaks out
   # of the loop, producing its final response based on what it has gathered so far.
   # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
-  # agent-max-iterations: 20
+  agent-max-iterations: 10
   # Maximum amount the platform accepts spending without a human check-in, in the platform's
   # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
   # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.

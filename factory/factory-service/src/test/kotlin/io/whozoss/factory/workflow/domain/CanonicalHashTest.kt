@@ -71,6 +71,16 @@ class CanonicalHashTest {
     }
 
     @Test
+    fun `workflow start identity includes ticket and workstream context`() {
+        val definition = WorkflowDefinitionInput("demo", "1", definitionHash, emptyList())
+        val command = WorkflowStartCommand("wf", "demo", "Title", ticket = "WZ-34575", workstream = "forge")
+
+        assertThat(CanonicalHash.workflowStartCommandHash(command, definition))
+            .isNotEqualTo(CanonicalHash.workflowStartCommandHash(command.copy(workstream = "other"), definition))
+            .isNotEqualTo(CanonicalHash.workflowStartCommandHash(command.copy(ticket = "WZ-99999"), definition))
+    }
+
+    @Test
     fun `workflowProjectionHash matches the Node vector`() {
         val projection = linkedMapOf<String, Any?>(
             "schemaVersion" to "2",

@@ -42,13 +42,13 @@ class FactoryStartWorkflowToolSpec : StringSpec({
             tool.name shouldBe "FACTORY_WORKSTREAM__start_workflow"
             val schema = mapper.readTree(tool.inputSchema)
             schema.path("additionalProperties").asBoolean() shouldBe false
-            schema.path("properties").fieldNames().asSequence().toSet() shouldBe setOf("workflowType", "title", "ticket")
+            schema.path("properties").fieldNames().asSequence().toSet() shouldBe setOf("workflowType", "title", "ticket", "workstream")
             val ns = UUID.randomUUID()
             val case = UUID.randomUUID()
             val context =
                 ToolContext(ns, UUID.randomUUID(), "actor-external", listOf(CaseStatusEvent(metadata = EntityMetadata(), namespaceId = ns, caseId = case, status = CaseStatus.PENDING)), "ProductEngineer")
             val trustedContext = context.copy(toolRequestId = "tool-request-1")
-            val result = tool.execute(FactoryStartWorkflowTool.Input("bmad-story", "Story"), trustedContext)
+            val result = tool.execute(FactoryStartWorkflowTool.Input("bmad-story", "Story", "WZ-35341", "talent-portal"), trustedContext)
             result.success shouldBe true
             val output = mapper.readTree(result.output)
             // Phase 7 standardized command output.
@@ -58,9 +58,11 @@ class FactoryStartWorkflowToolSpec : StringSpec({
             output.path("created").asBoolean() shouldBe true
             path shouldBe "/api/factory/workflows"
             val sent = mapper.readTree(body)
-            sent.fieldNames().asSequence().toSet() shouldBe setOf("workflowType", "title")
+            sent.fieldNames().asSequence().toSet() shouldBe setOf("workflowType", "title", "parameters")
             sent.path("workflowType").asText() shouldBe "bmad-story"
             sent.path("title").asText() shouldBe "Story"
+            sent.path("parameters").path("ticket").asText() shouldBe "WZ-35341"
+            sent.path("parameters").path("workstream").asText() shouldBe "talent-portal"
             headers["idempotency-key"] shouldBe "agentos-tool:tool-request-1"
             headers["x-proxy-principal-id"] shouldBe "actor-external"
             headers["x-proxy-principal-type"] shouldBe "service"

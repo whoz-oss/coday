@@ -45,4 +45,19 @@ class SessionDefinitionCatalogTest {
         val kinds = steps.map { (it["responsibility"] as Map<String, Any?>)["kind"] }.toSet()
         assertThat(kinds).isEqualTo(setOf("agent", "human", "code"))
     }
+
+    @Test
+    fun `the ForgeController projection requires Searcher evidence before technical design`() {
+        val records = catalogue.load()
+
+        val record = records.firstOrNull { it.workflowType == "forge-controller-v1-searcher" }
+        assertThat(record).isNotNull
+
+        @Suppress("UNCHECKED_CAST")
+        val steps = record!!.definition["steps"] as List<Map<String, Any?>>
+        val research = steps.single { it["id"] == "codebase-research" }
+        val technicalDesign = steps.single { it["id"] == "technical-design" }
+        assertThat((research["responsibility"] as Map<String, Any?>)["name"]).isEqualTo("Searcher")
+        assertThat(technicalDesign["dependsOn"]).isEqualTo(listOf("ux-design", "codebase-research"))
+    }
 }
