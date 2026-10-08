@@ -17,6 +17,7 @@ import io.whozoss.factory.planchange.domain.planChangeIdempotencyCollision
 import io.whozoss.factory.planchange.domain.planChangeProposalNotFound
 import io.whozoss.factory.planchange.domain.toDomain
 import io.whozoss.factory.planchange.persistence.Neo4jPlanChangeProposalRepository
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.UUID
@@ -50,6 +51,12 @@ data class PlanChangeProposalResult(
 @Service
 class PlanChangeProposalService(
     private val repository: Neo4jPlanChangeProposalRepository,
+    /**
+     * Authoritative workflow instance counter (Lot E): an accepted amendment
+     * increments the run's `amendmentSeq` atomically so a result submitted
+     * against an obsolete plan revision is rejected by compare-and-set.
+     */
+    private val workflowRepository: WorkflowRepository,
 ) {
 
     private val canonicalMapper = ObjectMapper()
@@ -215,12 +222,29 @@ class PlanChangeProposalService(
             reason = command.reason,
             idempotencyKey = idempotencyKey,
         )
+        // An ACCEPTED amendment advances the run's authoritative amendment
+        // counter exactly once (the idempotent replay returned above). The
+        // counter is distinct from `expectedEnvironmentRevision`; a stale
+        // result submission is rejected by compare-and-set against it.
+        if (isAcceptedAmendment(command.decision)) {
+            workflowRepository.incrementAmendmentSeq(scope, namespaceId, workflowId)
+        }
         return PlanChangeProposalResult(
             proposal = updated,
             decisions = repository.listDecisions(scope, namespaceId, workflowId, proposalId),
             idempotent = false,
         )
     }
+
+    /**
+     * Whether a decided plan change is an ACCEPTED amendment (applied to the
+     * run) and therefore advances the authoritative amendment counter. A
+     * `REJECTED` proposal and a `GATE_REQUIRED` proposal (awaiting a human gate)
+     * do not change the plan.
+     */
+    private fun isAcceptedAmendment(status: PlanChangeDecisionStatus): Boolean =
+        status == PlanChangeDecisionStatus.AUTO_APPLIED ||
+            status == PlanChangeDecisionStatus.REQUIRES_NEW_DEFINITION
 
     /**
      * Canonical SHA-256 hash of the normalized submit payload (idempotency-key

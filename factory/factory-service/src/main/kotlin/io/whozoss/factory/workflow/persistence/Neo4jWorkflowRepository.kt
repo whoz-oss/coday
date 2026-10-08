@@ -134,6 +134,9 @@ class Neo4jWorkflowRepository(
         return readInstance(scope, namespaceId, workflowId)?.rootCaseId
     }
 
+    override fun incrementAmendmentSeq(scope: TenantScope, namespaceId: String, workflowId: String): Long =
+        instances.incrementAmendmentSeq(instanceId(scope, namespaceId, workflowId), Instant.now()) ?: 0L
+
     override fun deleteInstance(scope: TenantScope, namespaceId: String, workflowId: String): Boolean {
         val id = instanceId(scope, namespaceId, workflowId)
         if (!instances.existsById(id)) return false

@@ -70,6 +70,63 @@ class AgentStepResultValidationTest {
     }
 
     @Test
+    fun `accepts the three verdicts including NEEDS_RESEARCH`() {
+        listOf("PASS", "FAIL", "NEEDS_RESEARCH").forEach { status ->
+            val node = json("""{"status":"$status","summary":"ok","claims":{"modifiedFiles":[]}}""")
+            assertThat(AgentStepResultValidation.validateBusiness(node))
+                .withFailMessage("status %s should be accepted", status)
+                .isTrue()
+        }
+    }
+
+    @Test
+    fun `parses NEEDS_RESEARCH preserving findings and artifacts`() {
+        val node = json(
+            """
+            {
+              "status": "NEEDS_RESEARCH",
+              "summary": "missing the upstream contract",
+              "claims": { "modifiedFiles": ["libs/a.ts"] },
+              "artifacts": [ { "kind": "report", "encoding": "markdown", "content": "# blocked" } ],
+              "findings": [ { "severity": "blocking", "code": "MISSING", "summary": "need research" } ]
+            }
+            """.trimIndent(),
+        )
+        val parsed = AgentStepResultValidation.parseBusiness(node)
+        assertThat(parsed.status).isEqualTo(AgentStepResultStatus.NEEDS_RESEARCH)
+        assertThat(parsed.artifacts).hasSize(1)
+        assertThat(parsed.findings.single().code).isEqualTo("MISSING")
+    }
+
+    @Test
+    fun `accepts and parses a non-negative expected amendment sequence`() {
+        val snake = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"expected_amendment_seq":3}""")
+        assertThat(AgentStepResultValidation.validateBusiness(snake)).isTrue()
+        assertThat(AgentStepResultValidation.parseBusiness(snake).expectedAmendmentSeq).isEqualTo(3L)
+
+        val camel = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"expectedAmendmentSeq":0}""")
+        assertThat(AgentStepResultValidation.validateBusiness(camel)).isTrue()
+        assertThat(AgentStepResultValidation.parseBusiness(camel).expectedAmendmentSeq).isEqualTo(0L)
+    }
+
+    @Test
+    fun `rejects a negative or non-integer expected amendment sequence`() {
+        val negative = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"expected_amendment_seq":-1}""")
+        assertThat(AgentStepResultValidation.validateBusiness(negative)).isFalse()
+
+        val fractional = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"expected_amendment_seq":1.5}""")
+        assertThat(AgentStepResultValidation.validateBusiness(fractional)).isFalse()
+    }
+
+    @Test
+    fun `rejects divergent snake and camel amendment sequences`() {
+        val divergent = json(
+            """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"expected_amendment_seq":1,"expectedAmendmentSeq":2}""",
+        )
+        assertThat(AgentStepResultValidation.validateBusiness(divergent)).isFalse()
+    }
+
+    @Test
     fun `rejects an empty or oversized summary`() {
         assertThat(AgentStepResultValidation.validateBusiness(withSummary("\"\""))).isFalse()
         val tooLong = mapper.writeValueAsString("x".repeat(AgentStepResultLimits.SUMMARY + 1))

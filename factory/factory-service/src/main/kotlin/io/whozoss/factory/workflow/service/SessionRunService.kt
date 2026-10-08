@@ -5,6 +5,7 @@ import io.whozoss.factory.capability.AgentObservationUpdate
 import io.whozoss.factory.capability.CapabilityExecution
 import io.whozoss.factory.capability.CapabilityExecutionService
 import io.whozoss.factory.capability.CapabilityOutcome
+import io.whozoss.factory.capability.NeedsResearchRouter
 import io.whozoss.factory.oracle.domain.OracleApplicableCondition
 import io.whozoss.factory.oracle.domain.OracleDefinition
 import io.whozoss.factory.oracle.domain.OracleExecutionStatus
@@ -161,6 +162,14 @@ class SessionRunService(
      * omit it and the recovery then runs inline.
      */
     private val transactionManager: PlatformTransactionManager? = null,
+    /**
+     * Optional automatic NEEDS_RESEARCH → Searcher router (Lot E). When present,
+     * a step whose authoritative result is `NEEDS_RESEARCH` is routed to a
+     * Searcher turn and re-armed on the same worktree, instead of stalling.
+     * Pure unit tests may omit it and the step then simply stays blocked in
+     * `needs_research` (never sealed as failed).
+     */
+    private val needsResearchRouter: NeedsResearchRouter? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -392,6 +401,18 @@ class SessionRunService(
             return null
         }
         var terminal = classify(execution.outcome)
+        // Lot E: an authoritative NEEDS_RESEARCH verdict BLOCKS the step (its
+        // dependants are not launched) but NEVER seals the run as FAILED. The
+        // engine routes a Searcher attempt and, once the research is available,
+        // re-arms the step as a brand-new attempt on the same worktree.
+        if (execution.outcome is CapabilityOutcome.AgentNeedsResearch) {
+            val reArmed = routeNeedsResearch(scope, namespaceId, workflowId, step, execution.outcome, repoRoot, ticket)
+            transition(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, expectedRevision)
+            val resultingStatus = if (reArmed) WorkflowStatuses.READY else WorkflowStatuses.NEEDS_RESEARCH
+            setStatus(scope, namespaceId, workflowId, step.id, resultingStatus, statuses)
+            recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution)
+            return resultingStatus
+        }
         // Auto-oracles: once the step's own capability has succeeded, run every
         // oracle definition whose `applicable` conditions match this
         // (workflowType, stepId). A failing oracle gates the transition: the step
@@ -475,7 +496,35 @@ class SessionRunService(
         is CapabilityOutcome.AgentCompleted -> WorkflowStatuses.COMPLETED
         is CapabilityOutcome.AgentFailed -> WorkflowStatuses.FAILED
         is CapabilityOutcome.AgentDeferred -> WorkflowStatuses.FAILED
+        is CapabilityOutcome.AgentNeedsResearch -> WorkflowStatuses.NEEDS_RESEARCH
         is CapabilityOutcome.HumanCheckpointRequired -> WorkflowStatuses.WAITING_HUMAN
+    }
+
+    /**
+     * Routes a NEEDS_RESEARCH step to a Searcher attempt and re-arms the initial
+     * attempt on the same worktree. Returns `true` when the step was re-armed
+     * (and must be re-run), `false` when it stays blocked.
+     */
+    private fun routeNeedsResearch(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        outcome: CapabilityOutcome.AgentNeedsResearch,
+        repoRoot: Path,
+        ticket: String?,
+    ): Boolean {
+        val router = needsResearchRouter ?: return false
+        return runCatching {
+            router.route(scope, namespaceId, workflowId, step, outcome) { searcherStep ->
+                capabilityExecutionService.resolveAndRecord(scope, namespaceId, workflowId, searcherStep, repoRoot, ticket)
+            }.reArmed
+        }.getOrElse { error ->
+            logger.warn(error) {
+                "NEEDS_RESEARCH routing failed for step '${step.id}' of workflow '$workflowId'; leaving it blocked"
+            }
+            false
+        }
     }
 
     /**

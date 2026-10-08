@@ -6,8 +6,11 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.capability.AgentTurnCapability
 import io.whozoss.factory.capability.AgentTurnRequest
 import io.whozoss.factory.capability.AgentTurnResult
+import io.whozoss.factory.capability.CapabilityExecution
 import io.whozoss.factory.capability.CapabilityExecutionService
+import io.whozoss.factory.capability.CapabilityOutcome
 import io.whozoss.factory.capability.CapabilityResolver
+import io.whozoss.factory.capability.NeedsResearchRouter
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.oracle.domain.OracleApplicableCondition
@@ -22,6 +25,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.WorkflowStartCommand
 import io.whozoss.factory.workflow.domain.WorkflowStatuses
+import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
@@ -34,6 +38,7 @@ import io.mockk.mockk
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicBoolean
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -175,6 +180,70 @@ class SessionSequencerIntegrationTest : Neo4jDomainIntegrationTest() {
             ),
             sseHub,
         )
+
+    /**
+     * Lot E end-to-end: a `NEEDS_RESEARCH` verdict blocks the step (its dependants
+     * are not launched), automatically runs a Searcher attempt, then re-arms the
+     * step as a new attempt on the same worktree — WITHOUT sealing the run as a
+     * terminal `FAILED`.
+     */
+    @Test
+    fun `NEEDS_RESEARCH routes a Searcher then re-arms without sealing the run`() {
+        val workflowId = "wf-needs-research"
+        startSession("nr-dag", workflowId, listOf(stepJson("s1", "agent", "architect", emptyList())))
+
+        val observedStepIds = mutableListOf<String>()
+        val firstCall = AtomicBoolean(true)
+        val capability = mockk<CapabilityExecutionService>()
+        every { capability.resolveAndRecord(any(), any(), any(), any(), any(), any(), any()) } answers {
+            val step = invocation.args[3] as WorkflowStepDefinition
+            observedStepIds += step.id
+            if (step.id == "s1" && firstCall.getAndSet(false)) {
+                CapabilityExecution(
+                    outcome = CapabilityOutcome.AgentNeedsResearch(
+                        stepId = "s1",
+                        persona = "architect",
+                        attemptId = "attempt-1",
+                        resultId = "result-1",
+                        summary = "missing upstream contract",
+                        findings = listOf(mapOf("severity" to "blocking", "code" to "MISSING")),
+                    ),
+                    attemptId = "attempt-1",
+                )
+            } else {
+                CapabilityExecution(
+                    outcome = CapabilityOutcome.AgentCompleted(step.id, step.responsibility.name, "PASS", emptyMap()),
+                    attemptId = "attempt-${step.id}",
+                )
+            }
+        }
+        val router = NeedsResearchRouter(mockk<DurableAgentAttemptService>(relaxed = true), evidenceRepository)
+        val service = SessionRunService(
+            workflowRepository,
+            evidenceRepository,
+            interactionRepository,
+            capability,
+            sseHub,
+            oracleDefinitionRegistry = null,
+            oracleExecutionService = null,
+            transactionManager = null,
+            needsResearchRouter = router,
+        )
+
+        val result = service.runSession(scope, namespace, workflowId, repoRoot)
+
+        // The run is NOT sealed as a terminal failure.
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        assertThat(statusOf(workflowId, "s1")).isEqualTo(WorkflowStatuses.COMPLETED)
+        // A Searcher attempt ran, and the initial step was re-executed.
+        assertThat(observedStepIds).contains("s1", NeedsResearchRouter.searcherStepId("s1"))
+        assertThat(observedStepIds.count { it == "s1" }).isGreaterThanOrEqualTo(2)
+        // The original NEEDS_RESEARCH proof is preserved.
+        val proof = evidenceRepository.list(scope, namespace, workflowId, "s1")
+            .filter { it.kind == NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND }
+        assertThat(proof).hasSize(1)
+        assertThat(proof.single().outcome).isEqualTo(NeedsResearchRouter.NEEDS_RESEARCH_OUTCOME)
+    }
 
     // ----- tests ---------------------------------------------------------
 

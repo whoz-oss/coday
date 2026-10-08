@@ -32,6 +32,8 @@ data class WorkflowInstanceNode(
     val projection: String = "{}",
     /** Root case id of the run's durable case family (Lot B); null on legacy instances. */
     val rootCaseId: String? = null,
+    /** Authoritative plan-amendment counter of the run (Lot E). */
+    val amendmentSeq: Long = 0L,
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
 ) {
@@ -44,6 +46,7 @@ data class WorkflowInstanceNode(
         instance = objectMapper.readJsonMap(instance),
         projection = objectMapper.readJsonMap(projection),
         rootCaseId = rootCaseId,
+        amendmentSeq = amendmentSeq,
     )
 
     companion object {
@@ -71,6 +74,7 @@ data class WorkflowInstanceNode(
                 instance = objectMapper.writeJson(record.instance),
                 projection = objectMapper.writeJson(record.projection),
                 rootCaseId = record.rootCaseId,
+                amendmentSeq = record.amendmentSeq,
             )
     }
 }

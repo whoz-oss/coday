@@ -15,10 +15,11 @@ import com.fasterxml.jackson.databind.JsonNode
  */
 object AgentStepResultValidation {
 
-    private val BUSINESS_FIELDS = setOf("status", "summary", "artifacts", "claims", "findings")
+    private val BUSINESS_FIELDS =
+        setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq")
     private val ARTIFACT_FIELDS = setOf("kind", "encoding", "content")
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
-    private val STATUSES = setOf("PASS", "FAIL")
+    private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
 
     /** True when [value] is a structurally valid business result. */
     fun validateBusiness(value: JsonNode?): Boolean {
@@ -52,8 +53,28 @@ object AgentStepResultValidation {
         val findings = value.get("findings")
         if (findings != null && !isValidFindings(findings)) return false
 
+        if (!isValidAmendmentSeq(value)) return false
+
         return true
     }
+
+    /**
+     * `expected_amendment_seq` / `expectedAmendmentSeq` is an optional,
+     * non-negative integral amendment counter. When both spellings are present
+     * they must agree — a divergent payload is rejected rather than silently
+     * resolved.
+     */
+    private fun isValidAmendmentSeq(value: JsonNode): Boolean {
+        val snake = value.get("expected_amendment_seq")
+        val camel = value.get("expectedAmendmentSeq")
+        if (snake != null && !isValidAmendmentSeqValue(snake)) return false
+        if (camel != null && !isValidAmendmentSeqValue(camel)) return false
+        if (snake != null && camel != null && snake.asLong() != camel.asLong()) return false
+        return true
+    }
+
+    private fun isValidAmendmentSeqValue(value: JsonNode): Boolean =
+        value.isIntegralNumber && value.asLong() >= 0L
 
     private fun isValidArtifacts(artifacts: JsonNode): Boolean {
         if (!artifacts.isArray || artifacts.size() > AgentStepResultLimits.ARTIFACTS) return false
@@ -129,6 +150,8 @@ object AgentStepResultValidation {
             ),
             artifacts = artifacts,
             findings = findings,
+            expectedAmendmentSeq = value.get("expected_amendment_seq")?.asLong()
+                ?: value.get("expectedAmendmentSeq")?.asLong(),
         )
     }
 }
