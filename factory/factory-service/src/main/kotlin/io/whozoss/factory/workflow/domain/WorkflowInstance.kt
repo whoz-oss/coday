@@ -107,6 +107,15 @@ fun createWorkflowInstance(
         "steps" to steps,
     )
     command.controllerRequest?.let { projection["controllerRequest"] = it.toJson() }
+    // Optional execution-plugin selection: carried by both the governed instance
+    // and its projection so downstream consumers can attribute the run to the
+    // declared plugin. Absent for definitions without an `execution` block, which
+    // keeps the historical instance/projection shape (and hashes) unchanged.
+    definition.executionPolicy?.let { policy ->
+        val execution = policy.toJson()
+        instance["execution"] = execution
+        projection["execution"] = execution
+    }
     return CreatedWorkflowInstance(
         instance = instance,
         projection = projection,

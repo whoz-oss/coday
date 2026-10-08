@@ -3,6 +3,7 @@ package io.whozoss.factory.workflow.persistence
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
+import io.whozoss.factory.workflow.domain.executionPolicyOf
 import org.springframework.data.neo4j.core.schema.Id
 import org.springframework.data.neo4j.core.schema.Node
 import java.time.Instant
@@ -29,13 +30,17 @@ data class WorkflowDefinitionNode(
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
 ) {
-    fun toDomain(objectMapper: ObjectMapper): WorkflowDefinitionRecord = WorkflowDefinitionRecord(
-        workflowType = workflowType,
-        version = version,
-        definitionHash = definitionHash,
-        definition = objectMapper.readJsonMap(definition),
-        schemaVersion = schemaVersion,
-    )
+    fun toDomain(objectMapper: ObjectMapper): WorkflowDefinitionRecord {
+        val definitionMap = objectMapper.readJsonMap(definition)
+        return WorkflowDefinitionRecord(
+            workflowType = workflowType,
+            version = version,
+            definitionHash = definitionHash,
+            definition = definitionMap,
+            schemaVersion = schemaVersion,
+            executionPolicy = executionPolicyOf(definitionMap),
+        )
+    }
 
     companion object {
         fun compositeId(organizationId: String, workflowType: String, version: String): String =

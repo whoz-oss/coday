@@ -52,6 +52,18 @@ class CanonicalHashTest {
     }
 
     @Test
+    fun `workflowStartCommandHash includes the declared execution policy when present`() {
+        val command = WorkflowStartCommand(workflowId = "wf-exec", workflowType = "demo", title = "Exec")
+        val plain = WorkflowDefinitionInput("demo", "1", definitionHash, emptyList())
+        val withForge = plain.copy(executionPolicy = WorkflowExecutionPolicy("forge"))
+        val replayed = withForge.copy()
+
+        assertThat(CanonicalHash.workflowStartCommandHash(command, withForge))
+            .isEqualTo(CanonicalHash.workflowStartCommandHash(command, replayed))
+            .isNotEqualTo(CanonicalHash.workflowStartCommandHash(command, plain))
+    }
+
+    @Test
     fun `workflow start identity includes initial request text but ignores observation metadata`() {
         val definition = WorkflowDefinitionInput("demo", "1", definitionHash, emptyList())
         val first = WorkflowStartCommand(
@@ -119,5 +131,36 @@ class CanonicalHashTest {
         val second = WorkflowDefinitionValidator.validate(input) as WorkflowDefinitionValidation.Valid
         assertThat(hashWorkflowDefinition(first.definition)).isEqualTo(hashWorkflowDefinition(second.definition))
         assertThat(canonicalizeWorkflowDefinition(first.definition)).contains("\"workflowType\":\"bmad-story\"")
+    }
+
+    @Test
+    fun `a definition without execution keeps its historical digest and execution changes it deterministically`() {
+        val without = linkedMapOf<String, Any?>(
+            "schemaVersion" to "1",
+            "workflowType" to "wf",
+            "version" to "1.0.0",
+            "title" to "T",
+            "steps" to listOf(
+                linkedMapOf<String, Any?>(
+                    "id" to "s1",
+                    "name" to "S",
+                    "responsibility" to linkedMapOf("kind" to "agent", "name" to "a"),
+                    "dependsOn" to emptyList<String>(),
+                ),
+            ),
+        )
+        val plain = WorkflowDefinitionValidator.validate(without) as WorkflowDefinitionValidation.Valid
+        // Historical digest: a definition without `execution` must hash exactly as before this lot.
+        assertThat(hashWorkflowDefinition(plain.definition))
+            .isEqualTo("d0bd249bb7c097e64e3bbfc3f03d19cd8977409e3b9cdf318184f080286321a4")
+
+        val withExecution = without + mapOf("execution" to mapOf("plugin" to "forge"))
+        val first = WorkflowDefinitionValidator.validate(withExecution) as WorkflowDefinitionValidation.Valid
+        val second = WorkflowDefinitionValidator.validate(withExecution) as WorkflowDefinitionValidation.Valid
+        assertThat(hashWorkflowDefinition(first.definition))
+            .isEqualTo("fb90fc605294e2bf5c0b7655a94760f41ff182805298dc07d6179ce112a032f8")
+            .isEqualTo(hashWorkflowDefinition(second.definition))
+            .isNotEqualTo(hashWorkflowDefinition(plain.definition))
+        assertThat(canonicalizeWorkflowDefinition(first.definition)).contains("\"execution\":{\"plugin\":\"forge\"}")
     }
 }

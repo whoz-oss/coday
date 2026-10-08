@@ -103,7 +103,31 @@ data class WorkflowDefinitionInput(
     val version: String,
     val definitionHash: String,
     val steps: List<WorkflowStepDefinition>,
-)
+    /** Optional execution-plugin selection of the definition (Factory Forge). */
+    val executionPolicy: WorkflowExecutionPolicy? = null,
+) {
+    /** The optional execution block as a normalized definition fragment. */
+    val execution: Map<String, Any?>?
+        get() = executionPolicy?.let { mapOf("plugin" to it.plugin) }
+}
+
+/**
+ * Optional execution-plugin selection declared by a workflow definition
+ * (`execution: { "plugin": "<id>" }`). The `plugin` id is the logical id exposed
+ * by a `FactoryWorkflowExecutionPolicy` PF4J extension, resolved by the host at
+ * start time before any external effect.
+ */
+data class WorkflowExecutionPolicy(val plugin: String) {
+    /** The normalized definition/projection fragment (`{ "plugin": "<id>" }`). */
+    fun toJson(): Map<String, Any?> = mapOf("plugin" to plugin)
+}
+
+/** Extracts the optional execution policy from a normalized definition map. */
+fun executionPolicyOf(definition: Map<String, Any?>): WorkflowExecutionPolicy? {
+    val execution = definition["execution"] as? Map<*, *> ?: return null
+    val plugin = execution["plugin"] as? String ?: return null
+    return WorkflowExecutionPolicy(plugin)
+}
 
 /** A validated workflow definition aggregate as persisted. */
 data class WorkflowDefinitionRecord(
@@ -112,7 +136,13 @@ data class WorkflowDefinitionRecord(
     val definitionHash: String,
     val definition: Map<String, Any?>,
     val schemaVersion: String = WORKFLOW_DEFINITION_SCHEMA_VERSION,
-)
+    /** Optional execution-plugin selection of the definition (Factory Forge). */
+    val executionPolicy: WorkflowExecutionPolicy? = null,
+) {
+    /** The optional execution block as a normalized definition fragment. */
+    val execution: Map<String, Any?>?
+        get() = executionPolicy?.let { mapOf("plugin" to it.plugin) }
+}
 
 /** Trusted attribution captured by Factory for the engineer's launch request. */
 data class ControllerRequestInput(

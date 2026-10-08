@@ -83,6 +83,10 @@ object CanonicalHash {
         // initial request must remain idempotent. A different text still changes
         // the command identity and is rejected rather than overwritten.
         command.controllerRequest?.let { payload["initialRequest"] = it.text }
+        // The declared execution plugin is part of the run identity. Omitted when
+        // absent so the legacy digest of a definition without `execution` is
+        // byte-for-byte preserved.
+        definition.executionPolicy?.let { payload["execution"] = it.toJson() }
         return canonicalHash(payload)
     }
 
