@@ -49,9 +49,9 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
             {
                 "search": {
                     "tool": "SearchTalents",
-                    "params": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]}
+                    "params": {"talentId": ["6ac76692a909eaaae0b078d6"], "resolveTargets": ["MANAGER"], "next": null}
                 },
-                "act": {"agentName": "ProfileCaretaker", "promptTemplate": "Review and improve this talent profile: {entityId}"}
+                "act": {"agentName": "ProfileCaretaker", "promptTemplate": "This talent has not completed their profile. As their manager, I need you to help me review and improve it."}
             }
             """.trimIndent(),
             AgentLoopPayload::class.java,
@@ -78,10 +78,10 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         val agentConfigService = mockk<AgentConfigService>()
         val launches = mutableListOf<Launch>()
         val launchedIds = mutableListOf<UUID>()
-        var failLaunchFor: String? = null
+        var failLaunchForUser: UUID? = null
         val launcher =
             CaseLauncher { namespaceId, agentName, task, userId, sessionContext ->
-                if (failLaunchFor != null && task.contains(failLaunchFor!!)) error("boom")
+                if (failLaunchForUser != null && userId == failLaunchForUser) error("boom")
                 launches += Launch(namespaceId, agentName, task, userId, sessionContext)
                 UUID.randomUUID().also { launchedIds += it }
             }
@@ -110,9 +110,9 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
     /**
      * Builds a mock search tool whose structured output contains items with:
      * - `entityId` = `"task-$userExternalId"` (business entity id)
-     * - `targets[0].entityId` = `userExternalId` (AgentOS user external id)
+     * - `targets[0].entityType` = `"User"`, `targets[0].entityId` = `userExternalId` (AgentOS user external id)
      *
-     * This validates that the runner correctly reads the user id from `targets`, not from `entityId`.
+     * This validates that the runner correctly reads the user id from the target with entityType='User'.
      */
     fun searchTool(
         userExternalIds: List<String>,
@@ -126,7 +126,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
                 {
                     "entityType": "TALENT",
                     "entityId": "task-$userExtId",
-                    "targets": [{"entityType": "USER", "entityId": "$userExtId"}]
+                    "targets": [{"entityType": "User", "entityId": "$userExtId"}]
                 }
                 """.trimIndent()
             }
@@ -241,9 +241,18 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         outcome.launchedCaseIds shouldBe f.launchedIds
         outcome.summary() shouldContain f.launchedIds.single().toString()
-        // task uses entityId (root) = "task-alice", not the user external id
-        f.launches shouldBe
-            listOf(Launch(namespaceId, "ProfileCaretaker", "Review and improve this talent profile: task-alice", alice.metadata.id))
+        // task is the static promptTemplate — entityId is injected via activeContext in sessionContext
+        f.launches.single().also { launch ->
+            launch.namespaceId shouldBe namespaceId
+            launch.agentName shouldBe "ProfileCaretaker"
+            launch.task shouldBe "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
+            launch.userId shouldBe alice.metadata.id
+            @Suppress("UNCHECKED_CAST")
+            val activeContext = launch.sessionContext!!["activeContext"] as List<Map<String, Any?>>
+            activeContext.single()["type"] shouldBe "TALENT"
+            @Suppress("UNCHECKED_CAST")
+            (activeContext.single()["data"] as Map<String, Any?>)["id"] shouldBe "task-alice"
+        }
     }
 
     "rows without entityType and with unknown fields are still processed" {
@@ -254,7 +263,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         val node =
             objectMapper.readTree(
                 """
-                {"data": [{"entityId": "task-alice", "name": "Task A", "targets": [{"entityId": "alice", "role": "OWNER"}]}],
+                {"data": [{"entityId": "task-alice", "name": "Task A", "targets": [{"entityType": "User", "entityId": "alice", "role": "OWNER"}]}],
                  "metadata": {"totalCount": 1, "next": null, "page": 1}, "extra": true}
                 """.trimIndent(),
             )
@@ -269,7 +278,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         outcome.launched shouldBe 1
         f.launches.single().userId shouldBe alice.metadata.id
-        f.launches.single().task shouldBe "Review and improve this talent profile: task-alice"
+        f.launches.single().task shouldBe "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
     }
 
     "skips entities whose targets list is null" {
@@ -333,15 +342,15 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
     "a failed launch is counted and does not stop the loop" {
         val f = Fixture(objectMapper)
-        f.failLaunchFor = "task-alice"
-        f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+        val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+        f.failLaunchForUser = alice.metadata.id
         f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
 
         val outcome = f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
         outcome.failed shouldBe 1
         outcome.launched shouldBe 1
-        f.launches.map { it.task } shouldBe listOf("Review and improve this talent profile: task-bob")
+        f.launches.map { it.task } shouldBe listOf("This talent has not completed their profile. As their manager, I need you to help me review and improve it.")
     }
 
     "processes at most agentLoopMaxItems entities" {
@@ -406,7 +415,12 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
         val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
         outcome.launched shouldBe 1
-        f.launches.single().sessionContext shouldBe providerContext
+        val ctx = f.launches.single().sessionContext!!
+        ctx["talentId"] shouldBe "t42"
+        ctx["score"] shouldBe 9.5
+        @Suppress("UNCHECKED_CAST")
+        val activeContext = ctx["activeContext"] as List<Map<String, Any?>>
+        activeContext.single()["type"] shouldBe "TALENT"
     }
 
     "preferredLanguage from user is forwarded to the launcher in sessionContext" {
@@ -426,6 +440,9 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         outcome.launched shouldBe 1
         f.launches.single().sessionContext!![SessionContextKeys.PREFERRED_LANGUAGE] shouldBe "fr"
+        @Suppress("UNCHECKED_CAST")
+        val activeContext = f.launches.single().sessionContext!!["activeContext"] as List<Map<String, Any?>>
+        activeContext.single()["type"] shouldBe "TALENT"
     }
 
     "PermanentFailure from provider counts entity as failed and loop continues" {
@@ -442,7 +459,7 @@ class LoopWorkflowRunnerUnitSpec : StringSpec({
 
         outcome.failed shouldBe 1
         outcome.launched shouldBe 1
-        f.launches.single().task shouldBe "Review and improve this talent profile: task-bob"
+        f.launches.single().task shouldBe "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
     }
 
     "TransientFailure from provider counts entity as failed and loop continues" {

@@ -52,9 +52,9 @@ class AgentLoopUnitSpec : StringSpec({
         {
             "search": {
                 "tool": "SearchTalents",
-                "params": {"endDatePeriod": ["THIS_WEEK"], "resolveTargets": ["OWNER"]}
+                "params": {"talentId": ["6ac76692a909eaaae0b078d6"], "resolveTargets": ["MANAGER"], "next": null}
             },
-            "act": {"agentName": "ProfileCaretaker", "promptTemplate": "Review and improve this talent profile: {entityId}"}
+            "act": {"agentName": "ProfileCaretaker", "promptTemplate": "This talent has not completed their profile. As their manager, I need you to help me review and improve it."}
         }
         """.trimIndent()
 
@@ -147,7 +147,7 @@ class AgentLoopUnitSpec : StringSpec({
 
         coVerify { runner.run(capture(payloadSlot), capture(contextSlot), any()) }
         payloadSlot.captured.search.tool shouldBe "SearchTalents"
-        payloadSlot.captured.act shouldBe AgentLoopAct("ProfileCaretaker", "Review and improve this talent profile: {entityId}")
+        payloadSlot.captured.act shouldBe AgentLoopAct("ProfileCaretaker", "This talent has not completed their profile. As their manager, I need you to help me review and improve it.")
         contextSlot.captured.namespaceId shouldBe namespaceId
         contextSlot.captured.caseId shouldBe caseId
         contextSlot.captured.agentName shouldBe "my-loop"
@@ -161,7 +161,7 @@ class AgentLoopUnitSpec : StringSpec({
             objectMapper.readTree(
                 """
                 {"search": {"tool": "SearchTalents", "params": {}, "version": 0},
-                 "act": {"agentName": "ProfileCaretaker", "promptTemplate": "Review and improve this talent profile: {entityId}", "note": "x"}}
+                 "act": {"agentName": "ProfileCaretaker", "promptTemplate": "This talent has not completed their profile. As their manager, I need you to help me review and improve it.", "note": "x"}}
                 """.trimIndent(),
             )
 

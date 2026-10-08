@@ -232,11 +232,12 @@ export class AgentConfigFormComponent implements OnInit {
     {
       search: {
         tool: 'SearchTalents',
-        params: { endDatePeriod: ['THIS_WEEK'], resolveTargets: ['OWNER'] },
+        params: { talentId: ['6ac76692a909eaaae0b078d6'], resolveTargets: ['MANAGER'], next: null },
       },
       act: {
         agentName: 'ProfileCaretaker',
-        promptTemplate: 'Review and improve this talent profile: {entityId}',
+        promptTemplate:
+          'This talent has not completed their profile. As their manager, I need you to help me review and improve it.',
       },
     },
     null,

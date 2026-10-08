@@ -149,11 +149,15 @@ class LoopWorkflowRunner(
         context: LoopRunContext,
         caseLauncher: CaseLauncher,
     ): ItemOutcome {
-        val userExternalId = item.targets?.firstOrNull()?.entityId
-        if (userExternalId == null) {
-            logger.warn { "[LoopWorkflowRunner] No target found for entity='${item.entityId}' — skipping" }
+        val userTarget = item.targets?.firstOrNull { it.entityType.equals("User", ignoreCase = true) }
+        if (userTarget == null) {
+            logger.warn {
+                "[LoopWorkflowRunner] No target with entityType='User' found for entity='${item.entityId}' " +
+                    "(available targets: ${item.targets?.map { "${it.entityType}:${it.entityId}" }}) — skipping"
+            }
             return ItemOutcome.UnknownUser
         }
+        val userExternalId = userTarget.entityId
         val endUser = userService.findByExternalId(userExternalId)
         if (endUser == null) {
             logger.warn { "[LoopWorkflowRunner] No user found for userExternalId='$userExternalId' (entity='${item.entityId}') — skipping" }
@@ -197,15 +201,27 @@ class LoopWorkflowRunner(
                 }
             }
 
-        val task = act.promptTemplate.replace("{entityId}", item.entityId)
+        val enrichedSessionContext: Map<String, Any?> = buildMap {
+            if (sessionContext != null) putAll(sessionContext)
+            put(
+                "activeContext",
+                listOf(
+                    mapOf(
+                        "type" to item.entityType,
+                        "data" to mapOf("id" to item.entityId),
+                    ),
+                ),
+            )
+        }
+
         return try {
             val launchedCaseId =
                 caseLauncher.launchCase(
                     namespaceId = context.namespaceId,
                     agentName = act.agentName,
-                    task = task,
+                    task = act.promptTemplate,
                     onBehalfOfUserId = endUserId,
-                    sessionContext = sessionContext,
+                    sessionContext = enrichedSessionContext,
                 )
             logger.info {
                 "[LoopWorkflowRunner] Launched case $launchedCaseId for entity '${item.entityId}' " +
