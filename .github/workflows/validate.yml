@@ -74,7 +74,7 @@ jobs:
         run: |
           AFFECTED_JVM=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm" --json --quiet | jq -r 'join(",")')
           if [ -n "$AFFECTED_JVM" ]; then
-            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS_JVM --verbose
+            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS --verbose
           else
             echo "No affected JVM projects"
           fi
@@ -132,12 +132,16 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     # Serialise all writes to integration/<slug> under a group keyed on the full base ref.
     # github.base_ref is the full branch name (e.g. "workstream/<slug>/master") and is
-    # unique per workstream. Using it directly avoids the unsupported split() function.
+    # unique per workstream.
     #
-    # This group MUST match the group in integration-reset.yml so that a reset
-    # and a promote for the same slug never run concurrently.
-    # workstream-build.yml uses github.ref_name on "integration/<slug>" -- a different
-    # variable but equally unique per workstream.
+    # This group DOES match integration-reset.yml (same github.base_ref expression), so a
+    # promote and a reset for the same workstream never run concurrently -- which is the
+    # pairing that actually matters, since both write to the integration branch.
+    #
+    # It does NOT match workstream-build.yml (which keys on github.ref_name =
+    # "integration/<slug>"). GitHub Actions expressions have no split/substring function,
+    # and concurrency is evaluated before any step runs, so the slug cannot be extracted
+    # from a mid-ref position to form a shared key. See the note in workstream-build.yml.
     #
     # cancel-in-progress: false is mandatory -- cancelling a promote would leave
     # the integration branch in an indeterminate state.
