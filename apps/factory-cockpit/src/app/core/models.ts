@@ -37,21 +37,50 @@ export interface RunSummary {
 }
 
 /**
- * One active sandbox card, DERIVED from a real active workflow snapshot.
+ * One Factory run, DERIVED from a real workflow snapshot.
  *
  * The container fleet itself has no backend API; the available truth is the
- * list of active workflows, so every real field below is mapped from a
- * `/api/factory/workflows?state=active` item. The legacy mock-only fields
- * (`roster`, `wave`, `archayCostUsd`) are kept optional so older fixtures keep
- * compiling, but nothing derives or displays them anymore.
+ * list of workflows, so every real field below is mapped from a
+ * `/api/factory/workflows` item.
+ *
+ * `id` (the workflow id) is the unique run identity: it is the ONLY key the UI
+ * may use to target an action. `namespaceId` is the workstream attribution and
+ * is carried strictly in projections/mappings.
  */
-export interface Sandbox {
-  name: string
-  project: string
-  branch?: string
+export interface FactoryRun {
+  /** Unique run identity (workflow id). */
+  id: string
+  /** Workflow type (e.g. `adw_simple_sdlc`), when known. */
+  workflowType?: string
+  /** Lifecycle status of the run. */
   status: SandboxStatus
-  /** Namespace attribution of the underlying workflow, when known. */
-  namespace?: string
+  /**
+   * Workstream attribution of the underlying workflow, when known. Runs without
+   * one are regrouped into an explicit `unassigned` workstream.
+   */
+  namespaceId?: string
+  /** Human-readable title of the run. */
+  title: string
+  /** Project the run belongs to (namespace id when known). */
+  project: string
+  /** Jira/issue ticket carried through the workflow relations, when known. */
+  ticket?: string
+  branch?: string
+  /**
+   * ISO-8601 creation timestamp of the workflow: when the `WorkflowProjection`
+   * node was first written to Neo4j, preserved across all subsequent updates.
+   * Absent when the backend did not return the field (e.g. non-governed
+   * declarative projections). An unparseable value is dropped at mapping time.
+   */
+  createdAt?: string
+  /** Real cost of the run (USD). */
+  costUsd: number
+  /** Total run duration in seconds. */
+  durationSec: number
+  /** Total tokens consumed by the run. */
+  tokens: number
+  /** Phase-bar segments of the run. */
+  phases: PhaseSegment[]
   /**
    * AgentOS case id of the workflow controller execution (snapshot
    * `controllerExecution.caseId`). This is the STARTING case created by the
@@ -60,28 +89,28 @@ export interface Sandbox {
    * (normal state when no agent step has executed yet).
    */
   controllerCaseId?: string
-  /** Workflow type (e.g. `adw_simple_sdlc`), when known. */
-  workflowType?: string
-  /** Jira/issue ticket carried through the workflow relations, when known. */
-  ticket?: string
-  finalCostUsd?: number // sandboxes d\u00e9truites (only set when a real teardown exists)
-  /**
-   * ISO-8601 creation timestamp of the workflow: when the `WorkflowProjection`
-   * node was first written to Neo4j, preserved across all subsequent updates.
-   * Exposed by `WorkflowService.publicSnapshot()` as a top-level field.
-   * Absent for snapshots where the backend did not return the field
-   * (e.g. non-governed declarative projections via `publicInstanceSnapshot`).
-   * An unparseable value is dropped at mapping time and treated as absent.
-   */
-  createdAt?: string
+  finalCostUsd?: number // destroyed runs (only set when a real teardown exists)
+  /** Full run summary (status, current phase, goal…). */
   run?: RunSummary
-  /** @deprecated no real source: model roster of the former mocked fleet. */
-  roster?: string
-  /** @deprecated no real source: wave label of the former mocked fleet. */
-  wave?: string
-  /** @deprecated no real source: Archay orchestrator cost. */
-  archayCostUsd?: number
 }
+
+/**
+ * Visible workstream: every run grouped by its `namespaceId`.
+ *
+ * Grouping is done STRICTLY on `namespaceId` (never on the human title), so two
+ * namespaces sharing the same display name remain distinct groups (homonyms).
+ */
+export interface WorkstreamView {
+  namespaceId: string
+  title: string
+  runs: FactoryRun[]
+}
+
+/** Fallback workstream id for runs whose `namespaceId` is unknown. */
+export const UNASSIGNED_NAMESPACE_ID = 'unassigned'
+
+/** @deprecated Use {@link FactoryRun}. Kept as an alias for compatibility. */
+export type Sandbox = FactoryRun
 
 export interface RecentTask {
   title: string

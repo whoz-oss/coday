@@ -2,10 +2,10 @@
   <!-- Page header -->
   <header class="page-head">
     <div class="titles">
-      <h1>Sandboxes</h1>
-      <p class="sf-muted">Active agent workflows, derived from the real runs exposed by factory-service.</p>
+      <h1>Workstreams</h1>
+      <p class="sf-muted">Runs grouped by namespace, derived from the real workflows exposed by factory-service.</p>
     </div>
-    <a mat-flat-button class="sf-primary" routerLink="/lancer" data-sandboxes-launch="true">
+    <a mat-flat-button class="sf-primary" routerLink="/lancer" data-workstreams-launch="true">
       <mat-icon>play_arrow</mat-icon>
       Launch a run
     </a>
@@ -36,11 +36,11 @@
     <section class="new sf-panel" aria-labelledby="new-title">
       <h2 id="new-title" class="sf-overline">New run</h2>
       <p class="sf-muted note">
-        The container fleet has no backend: the cards below reflect the real active workflows. To start a workflow,
-        launch a run from factory-service.
+        The container fleet has no backend: the workstreams below reflect the real active workflows. To start a
+        workflow, launch a run from factory-service.
       </p>
       <div class="form-actions">
-        <a mat-flat-button class="sf-primary" routerLink="/lancer" data-sandboxes-launch-panel="true">
+        <a mat-flat-button class="sf-primary" routerLink="/lancer" data-workstreams-launch-panel="true">
           <mat-icon>play_arrow</mat-icon>
           Launch a run
         </a>
@@ -70,10 +70,10 @@
     </section>
   </div>
 
-  <!-- Sandboxes -->
-  <section class="cards" aria-label="Sandboxes">
-    @for (s of store.visibleSandboxes(); track s.name) {
-      <sf-sandbox-card [sandbox]="s" (action)="onAction(s.run?.id ?? s.name, $event)" />
+  <!-- Workstreams → runs -->
+  <section class="cards" aria-label="Workstreams">
+    @for (ws of store.workstreams(); track ws.namespaceId) {
+      <sf-workstream-card [workstream]="ws" (action)="onAction($event)" />
     } @empty {
       <p class="empty sf-panel sf-muted">No active workflows.</p>
     }

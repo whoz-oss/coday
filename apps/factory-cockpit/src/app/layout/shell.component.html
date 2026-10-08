@@ -1,5 +1,5 @@
 <mat-toolbar class="topbar">
-  <a class="brand" routerLink="/sandboxes" aria-label="WHOZ Factory, home">
+  <a class="brand" routerLink="/workstreams" aria-label="WHOZ Factory, home">
     <img src="W.svg" alt="WHOZ" class="whoz-logo" aria-hidden="true" />
     WHOZ Factory
   </a>
@@ -38,7 +38,7 @@
     [checked]="store.showDestroyed()"
     (change)="store.showDestroyed.set($event.checked)"
   >
-    Destroyed sandboxes
+    Destroyed runs
   </mat-slide-toggle>
 
   <span class="avatar" aria-label="Benjamin Valdes">BV</span>

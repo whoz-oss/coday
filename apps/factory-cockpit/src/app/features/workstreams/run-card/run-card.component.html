@@ -1,21 +1,20 @@
-@let s = sandbox();
+@let r = run();
 <mat-card
   appearance="outlined"
   class="card"
-  [class.card--working]="s.status === 'working'"
-  [class.card--destroyed]="s.status === 'destroyed'"
+  role="region"
+  [attr.aria-label]="'Run ' + r.title"
+  [attr.data-run-id]="r.id"
+  [class.card--working]="r.status === 'working'"
+  [class.card--destroyed]="r.status === 'destroyed'"
 >
-  <!-- Header: name, status, workflow type -->
+  <!-- Header: title, status, workflow type -->
   <header class="head">
     <h3 class="name">
-      @if (s.run) {
-        <a [routerLink]="['/sessions', s.run.id]">{{ s.name }}</a>
-      } @else {
-        {{ s.name }}
-      }
+      <a [routerLink]="['/sessions', r.id]">{{ r.title }}</a>
     </h3>
 
-    @switch (s.status) {
+    @switch (r.status) {
       @case ('working') {
         <sf-status-chip tone="blue" icon="progress_activity" spin>working</sf-status-chip>
       }
@@ -28,73 +27,71 @@
     }
 
     <span class="sf-spacer"></span>
-    @if (s.workflowType) {
-      <sf-status-chip tone="cyan" icon="polyline">{{ s.workflowType }}</sf-status-chip>
+    @if (r.workflowType) {
+      <sf-status-chip tone="cyan" icon="polyline">{{ r.workflowType }}</sf-status-chip>
     }
   </header>
 
   <!-- Meta: project › branch · ticket + service links -->
   <div class="meta">
     <mat-icon class="branch-icon" aria-hidden="true">account_tree</mat-icon>
-    <span class="sf-workflow">{{ s.project }}</span>
-    @if (s.branch) {
-      <span>›</span><span class="sf-workflow">{{ s.branch }}</span>
+    <span class="sf-workflow">{{ r.project }}</span>
+    @if (r.branch) {
+      <span>›</span><span class="sf-workflow">{{ r.branch }}</span>
     }
-    @if (s.ticket) {
+    @if (r.ticket) {
       <span>·</span>
       <span
-        >ticket <span class="sf-workflow">{{ s.ticket }}</span></span
+        >ticket <span class="sf-workflow">{{ r.ticket }}</span></span
       >
     }
     <span class="sf-spacer"></span>
-    @if (s.run) {
-      <a class="service-link" [routerLink]="['/sessions', s.run.id]"><span class="dot"></span>Factory trace</a>
-    }
+    <a class="service-link" [routerLink]="['/sessions', r.id]"><span class="dot"></span>Factory trace</a>
   </div>
 
   <!-- Creation date -->
-  @if (s.createdAt) {
+  @if (r.createdAt) {
     <p class="created-at">
       Created on
-      <time [dateTime]="s.createdAt">{{ s.createdAt | date: 'MMM d, yyyy' }} at {{ s.createdAt | date: 'HH:mm' }}</time>
+      <time [dateTime]="r.createdAt">{{ r.createdAt | date: 'MMM d, yyyy' }} at {{ r.createdAt | date: 'HH:mm' }}</time>
     </p>
   }
 
-  <!-- Active run -->
-  @if (s.run; as run) {
-    <section class="run" aria-label="Active run">
+  <!-- Run summary -->
+  @if (r.run; as summary) {
+    <section class="run" aria-label="Run summary">
       <div class="run-head">
-        <a class="sf-workflow" [routerLink]="['/sessions', run.id]">{{ run.workflow || run.id }}</a>
-        <code class="sf-id" [title]="'Workflow ID: ' + run.id">{{ run.id }}</code>
-        @if (run.status === 'running') {
-          @if (run.waitingHuman) {
+        <a class="sf-workflow" [routerLink]="['/sessions', r.id]">{{ summary.workflow || r.id }}</a>
+        <code class="sf-id" [title]="'Run ID: ' + r.id">{{ r.id }}</code>
+        @if (summary.status === 'running') {
+          @if (summary.waitingHuman) {
             <sf-status-chip tone="amber" size="sm" icon="person_alert">
-              Waiting for reply{{ run.currentPhase ? ' · ' + run.currentPhase : '' }}
+              Waiting for reply{{ summary.currentPhase ? ' · ' + summary.currentPhase : '' }}
             </sf-status-chip>
           } @else {
             <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>
-              running{{ run.currentPhase ? ' · ' + run.currentPhase : '' }}
+              running{{ summary.currentPhase ? ' · ' + summary.currentPhase : '' }}
             </sf-status-chip>
           }
         }
         <span class="sf-spacer"></span>
-        <sf-metric icon="paid" label="Run cost" [unknownCostCount]="run.unknownCostCount ?? 0">{{
-          run.costUsd | usd: 4 : run.unknownCostCount
+        <sf-metric icon="paid" label="Run cost" [unknownCostCount]="summary.unknownCostCount ?? 0">{{
+          summary.costUsd | usd: 4 : summary.unknownCostCount
         }}</sf-metric>
-        <sf-metric icon="timer" label="Duration">{{ run.durationSec | duration }}</sf-metric>
-        <sf-metric icon="link" label="Tokens">{{ run.tokens | tokens }}</sf-metric>
+        <sf-metric icon="timer" label="Duration">{{ summary.durationSec | duration }}</sf-metric>
+        <sf-metric icon="link" label="Tokens">{{ summary.tokens | tokens }}</sf-metric>
       </div>
-      <p class="goal">{{ run.goal }}</p>
-      <sf-step-dots [phases]="run.phases" />
+      <p class="goal">{{ summary.goal }}</p>
+      <sf-step-dots [phases]="summary.phases" />
     </section>
-  } @else if (s.status === 'destroyed') {
+  } @else if (r.status === 'destroyed') {
     <p class="final-cost">
-      Final cost · workflows <b>{{ s.finalCostUsd | usd }}</b>
+      Final cost · workflows <b>{{ r.finalCostUsd | usd }}</b>
     </p>
   }
 
-  <!-- Actions -->
-  @if (s.status !== 'destroyed') {
+  <!-- Actions: always at the RUN level, targeted by run id -->
+  @if (r.status !== 'destroyed') {
     <footer class="actions">
       @if (supervisorState() === 'done' && supervisorCaseUrl()) {
         <a
@@ -108,7 +105,7 @@
           <mat-icon>open_in_new</mat-icon>
           View supervisor case
         </a>
-      } @else if (s.namespace) {
+      } @else if (r.namespaceId) {
         <button
           mat-flat-button
           class="sf-primary supervisor-btn"

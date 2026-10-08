@@ -6,6 +6,7 @@ import {
   extractBlockers,
   extractInteractions,
   extractRealCost,
+  mapProjectionToFactoryRun,
   mapProjectionToLanes,
   mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
@@ -982,6 +983,42 @@ describe('mappers', () => {
       expect(extractBlockers(undefined)).toEqual([])
       expect(extractBlockers(null)).toEqual([])
       expect(extractBlockers({ foo: 'bar' })).toEqual([])
+    })
+  })
+
+  describe('mapProjectionToFactoryRun', () => {
+    const snapshot = {
+      workflowId: 'wf-1',
+      namespaceId: 'ns-1',
+      relations: { rootWorkflowId: 'wf-1', ticket: 'ABC-1', branch: 'feature/x' },
+      projection: {
+        schemaVersion: '2',
+        title: 'My run',
+        status: 'running',
+        workflowType: 'adw_simple_sdlc',
+        steps: [],
+      },
+    }
+
+    it('maps the run identity and carries the namespaceId', () => {
+      const run = mapProjectionToFactoryRun(snapshot)
+      expect(run.id).toBe('wf-1')
+      expect(run.title).toBe('My run')
+      expect(run.namespaceId).toBe('ns-1')
+      expect(run.project).toBe('ns-1')
+      expect(run.ticket).toBe('ABC-1')
+      expect(run.branch).toBe('feature/x')
+      expect(run.workflowType).toBe('adw_simple_sdlc')
+      expect(run.status).toBe('working')
+    })
+
+    it('leaves namespaceId undefined when the snapshot has none', () => {
+      const run = mapProjectionToFactoryRun({ workflowId: 'wf-2', projection: { title: 'No ns', steps: [] } })
+      expect(run.namespaceId).toBeUndefined()
+    })
+
+    it('forces the status for removed snapshots', () => {
+      expect(mapProjectionToFactoryRun(snapshot, 'destroyed').status).toBe('destroyed')
     })
   })
 })
