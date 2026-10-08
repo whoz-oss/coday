@@ -33,6 +33,11 @@ The `ToolPlugin` implementations shipped with the service (`./gradlew deployPlug
 | `agentos-mcp-plugin` | `MCP_STDIO`, `MCP_HTTP` | Tools of a local (stdio) or remote (HTTP) MCP server |
 | `agentos-http-plugin` | `HTTP_API` | Operations of an OpenAPI-described HTTP API (see [http-api-integration.md](http-api-integration.md)) |
 | `agentos-tmux-plugin` | `TMUX` | Long-running processes in persistent tmux sessions |
+| `agentos-factory-bridge-plugin` | `FACTORY_WORKSTREAM`, `FACTORY_WORKER` | Factory Workstream reads and worker step-result submission, human checkpoints and the bridge SPI extensions (see [`agentos-factory-bridge-plugin/README.md`](../agentos-factory-bridge-plugin/README.md)) |
+
+`./gradlew deployPlugins` must be re-run after changing any plugin (it cleans, rebuilds and
+copies every plugin JAR into `plugins/`). For a one-shot local run, `./gradlew bootRunWithPlugins`
+deploys the plugins and then boots `agentos-service`.
 
 ## Filesystem Plugin
 

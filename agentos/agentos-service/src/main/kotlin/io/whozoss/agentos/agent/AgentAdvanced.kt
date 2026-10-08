@@ -396,7 +396,12 @@ class AgentAdvanced(
         if (!shouldContinue()) return GateOutcome.ContinueLoop
 
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
-        val toolCtx = tool?.let { buildToolContext(it.name, namespaceId, toolRequestId) }
+        val emittedEvents = mutableListOf<CaseEvent>()
+        val toolCtx = tool?.let {
+            buildToolContext(it.name, namespaceId, toolRequestId) { event ->
+                emittedEvents.add(event)
+            }
+        }
         val confirmationMode =
             tool?.getConfirmationMode(parameters.args, toolCtx) ?: ConfirmationMode.NONE
         return when {
@@ -444,6 +449,10 @@ class AgentAdvanced(
                                 success = true,
                             )
                         }
+                    emittedEvents.forEach { event ->
+                        emitEvent(event)
+                        accumulatedEvents.add(event)
+                    }
                     emitEvent(response)
                     accumulatedEvents.add(response)
                     interrupt?.let { throw it }
@@ -939,13 +948,16 @@ class AgentAdvanced(
         toolName: String,
         namespaceId: UUID,
         toolRequestId: String? = null,
+        emitEvent: ((CaseEvent) -> Unit)? = null,
     ): ToolContext =
         ToolContext(
             namespaceId = namespaceId,
             userId = userId,
             userExternalId = userExternalId,
             caseEvents = filterEventsByIntegration(toolName, caseEventsProvider()),
+            agentName = name,
             toolRequestId = toolRequestId,
+            emitEvent = emitEvent,
         )
 
     private fun filterEventsByIntegration(
@@ -1565,6 +1577,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                                 userId = userId,
                                 userExternalId = userExternalId,
                                 caseEvents = filteredEvents,
+                                agentName = name,
                                 toolRequestId = toolRequest.toolRequestId,
                             ),
                         )
