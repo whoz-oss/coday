@@ -3,11 +3,13 @@ package io.whozoss.factory.adapter.agentos
 import java.io.IOException
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.ExpectedCount
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withServerError
+import org.springframework.test.web.client.response.MockRestResponseCreators.withStatus
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
 import org.springframework.web.client.RestClient
 
@@ -74,6 +76,7 @@ class AgentRuntimeAdapterBaselineTest {
         ]"""
         val (adapter, server) = build()
         // Scripted exchange, in request order:
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         server.expect(requestTo("$baseUrl/api/cases"))
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         // turn 1: baseline capture on an empty history, then the turn is posted
@@ -129,6 +132,7 @@ class AgentRuntimeAdapterBaselineTest {
     fun `the adapter registers every created case in the ActiveCaseRegistry and tracks its lifecycle state`() {
         val registry = ActiveCaseRegistry()
         val (adapter, server) = build(registry)
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         server.expect(requestTo("$baseUrl/api/cases"))
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         server.expect(requestTo(eventsUrl)).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
@@ -155,6 +159,8 @@ class AgentRuntimeAdapterBaselineTest {
         val registry = ActiveCaseRegistry()
         // The shutdown iteration order across cases is not significant.
         val (adapter, server) = build(registry, ignoreExpectOrder = true)
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases/case-2")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         server.expect(requestTo("$baseUrl/api/cases"))
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         server.expect(requestTo("$baseUrl/api/cases"))
@@ -221,6 +227,7 @@ class AgentRuntimeAdapterBaselineTest {
     fun `reconciliation after a factory restart resumes observation without concluding from silence`() {
         // Before the "restart": the case exists and a turn was started.
         val (before, serverBefore) = build()
+        serverBefore.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         serverBefore.expect(requestTo("$baseUrl/api/cases"))
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         serverBefore.expect(requestTo(eventsUrl)).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))

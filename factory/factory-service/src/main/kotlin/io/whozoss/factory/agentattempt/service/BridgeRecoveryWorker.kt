@@ -3,6 +3,7 @@ package io.whozoss.factory.agentattempt.service
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseEventView
+import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
@@ -271,18 +272,23 @@ class BridgeRecoveryWorker(
         val attempt = candidate.attempt
         val brief = attempt.brief ?: return Outcome.SKIPPED
         val owner = claimFresh(attempt, candidate.scope) ?: return Outcome.CONFLICTED
-        adapter.createOrRecoverExecution(
-            namespaceId = attempt.namespaceId,
-            workflowId = attempt.workflowId,
-            stepId = attempt.stepId,
-            externalUserId = null,
-            attemptId = attempt.attemptId,
-            capabilityToken = attempt.capabilityToken,
+        // The binding carries the full trusted identity of the attempt —
+        // including the Lot B case-family parent — so a re-driven turn lands in
+        // the exact same case family it was originally dispatched into.
+        val binding = TrustedCaseBinding(
             caseId = attempt.caseId,
+            attemptId = attempt.attemptId,
+            namespaceId = attempt.namespaceId,
+            parentCaseId = attempt.parentCaseId,
+            capabilityToken = attempt.capabilityToken,
+            agentName = attempt.agentName,
+            environmentRef = attempt.environmentRef,
+            environmentRevision = attempt.expectedEnvironmentRevision,
         )
+        adapter.createOrRecoverExecution(binding, attempt.workflowId, attempt.stepId)
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.STARTING)
         runCatching {
-            adapter.startTurn(attempt.caseId, attempt.agentName, brief, null, attempt.attemptId, attempt.capabilityToken)
+            adapter.startTurn(binding, attempt.agentName, brief)
         }
         attempts.transition(candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId, owner, AgentAttemptStatus.RUNNING)
         val verdict = runCatching { adapter.observeTurn(attempt.caseId, attempt.attemptId, observationTimeoutMs) }

@@ -18,7 +18,7 @@ class ObservationEscalationPolicyTest {
         private fun next(results: MutableList<AgentOsExecutionVerdict>, fallback: AgentOsExecutionVerdict) =
             if (results.isEmpty()) fallback else results.removeAt(0)
 
-        override fun createOrRecoverExecution(namespaceId: String, workflowId: String, stepId: String, externalUserId: String?, attemptId: String, capabilityToken: String?, caseId: String) = CaseHandle(caseId, namespaceId, false)
+        override fun createOrRecoverExecution(namespaceId: String, workflowId: String, stepId: String, externalUserId: String?, attemptId: String, capabilityToken: String?, caseId: String, parentCaseId: String?) = CaseHandle(caseId, namespaceId, false)
         override fun startTurn(caseId: String, persona: String, brief: String, externalUserId: String?, attemptId: String, capabilityToken: String?) = Unit
         override fun observeTurn(caseId: String, attemptId: String, timeoutMs: Long): AgentOsExecutionVerdict { observeCalls.incrementAndGet(); return next(observeResults, defaultObserve) }
         override fun reconcile(caseId: String): AgentOsExecutionVerdict { reconcileCalls.incrementAndGet(); return next(reconcileResults, defaultReconcile) }

@@ -177,6 +177,7 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
             attemptId: String,
             capabilityToken: String?,
             caseId: String,
+            parentCaseId: String?,
         ): CaseHandle = CaseHandle(caseId, namespaceId, false)
 
         override fun startTurn(

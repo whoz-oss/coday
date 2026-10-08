@@ -13,6 +13,11 @@ package io.whozoss.factory.adapter.agentos
  * @property attemptId durable attempt identifier; the idempotency key.
  * @property namespaceId owning namespace, when the caller boundary resolved
  *   one (legacy entry points that never carried it pass null).
+ * @property parentCaseId parent case of this execution inside the durable case
+ *   family (Lot B): `null` for the entry (root) agent step and the run's
+ *   `rootCaseId` for every subsequent (child) sub-case. Carried verbatim to
+ *   AgentOS (`parentCaseId`) and used as the family-compatibility proof when a
+ *   case is adopted from a cold cache (never silently dropped).
  * @property runtimeId identifier of the runtime serving the case (e.g.
  *   `agentos-primary`), when known.
  * @property capabilityToken single-use capability token bound to the attempt.
@@ -25,6 +30,7 @@ data class TrustedCaseBinding(
     val caseId: String,
     val attemptId: String,
     val namespaceId: String? = null,
+    val parentCaseId: String? = null,
     val runtimeId: String? = null,
     val capabilityToken: String? = null,
     val agentName: String? = null,
