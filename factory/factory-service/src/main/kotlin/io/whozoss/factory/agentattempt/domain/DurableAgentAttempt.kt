@@ -73,6 +73,19 @@ data class DurableAgentAttempt(
     val updatedAt: Instant = Instant.now(),
     val completedAt: Instant? = null,
     val leaseExpiresAt: Instant? = null,
+    /**
+     * Root case id of the durable case family this attempt belongs to (Lot B
+     * durable case family). It identifies the run's worktree and is shared by
+     * every attempt of the run. Set once at registration and never mutated;
+     * `null` on legacy records and on runs that predate the case family.
+     */
+    val rootCaseId: String? = null,
+    /**
+     * Parent case of this attempt: `null` for the entry (root) attempt and the
+     * [rootCaseId] for every subsequent (child) attempt of the family. Set once
+     * at registration and never mutated; `null` on legacy records.
+     */
+    val parentCaseId: String? = null,
 ) {
     /** Whether the attempt may move from its current [status] to [next]. */
     fun canTransitionTo(next: AgentAttemptStatus): Boolean = status.canTransitionTo(next)

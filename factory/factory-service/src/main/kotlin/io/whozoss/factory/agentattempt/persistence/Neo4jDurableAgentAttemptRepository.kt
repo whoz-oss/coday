@@ -80,6 +80,8 @@ class Neo4jDurableAgentAttemptRepository(
             caseId = attempt.caseId,
             agentName = attempt.agentName,
             attemptNumber = attempt.attemptNumber,
+            rootCaseId = attempt.rootCaseId,
+            parentCaseId = attempt.parentCaseId,
             capabilityToken = attempt.capabilityToken,
             turnCorrelation = attempt.turnCorrelation,
             commandId = attempt.commandId,

@@ -30,6 +30,8 @@ data class WorkflowInstanceNode(
     val creationCommandHash: String? = null,
     val instance: String = "{}",
     val projection: String = "{}",
+    /** Root case id of the run's durable case family (Lot B); null on legacy instances. */
+    val rootCaseId: String? = null,
     val createdAt: Instant = Instant.now(),
     val updatedAt: Instant = Instant.now(),
 ) {
@@ -41,6 +43,7 @@ data class WorkflowInstanceNode(
         creationCommandHash = creationCommandHash,
         instance = objectMapper.readJsonMap(instance),
         projection = objectMapper.readJsonMap(projection),
+        rootCaseId = rootCaseId,
     )
 
     companion object {
@@ -67,6 +70,7 @@ data class WorkflowInstanceNode(
                 creationCommandHash = record.creationCommandHash,
                 instance = objectMapper.writeJson(record.instance),
                 projection = objectMapper.writeJson(record.projection),
+                rootCaseId = record.rootCaseId,
             )
     }
 }

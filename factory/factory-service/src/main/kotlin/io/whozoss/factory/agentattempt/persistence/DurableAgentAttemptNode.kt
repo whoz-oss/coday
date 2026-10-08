@@ -38,6 +38,10 @@ data class DurableAgentAttemptNode(
     val status: String,
     val revision: Int,
     val capabilityToken: String? = null,
+    /** Root case / worktree of the durable case family (see [DurableAgentAttempt.rootCaseId]). */
+    val rootCaseId: String? = null,
+    /** Parent case of this attempt (see [DurableAgentAttempt.parentCaseId]). */
+    val parentCaseId: String? = null,
     val ownerToken: String? = null,
     val turnCorrelation: String? = null,
     val commandId: String? = null,
@@ -67,6 +71,8 @@ data class DurableAgentAttemptNode(
         attemptNumber = attemptNumber,
         agentName = agentName,
         capabilityToken = capabilityToken,
+        rootCaseId = rootCaseId,
+        parentCaseId = parentCaseId,
         ownerToken = ownerToken,
         turnCorrelation = turnCorrelation,
         commandId = commandId,
@@ -115,6 +121,8 @@ data class DurableAgentAttemptNode(
                 caseId = attempt.caseId,
                 agentName = attempt.agentName,
                 attemptNumber = attempt.attemptNumber,
+                rootCaseId = attempt.rootCaseId,
+                parentCaseId = attempt.parentCaseId,
                 status = attempt.status.dbValue,
                 revision = attempt.revision,
                 capabilityToken = attempt.capabilityToken,

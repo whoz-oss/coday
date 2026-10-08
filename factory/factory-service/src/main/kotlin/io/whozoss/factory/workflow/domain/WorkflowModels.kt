@@ -175,6 +175,13 @@ data class WorkflowInstanceRecord(
     val creationCommandHash: String?,
     val instance: Map<String, Any?>,
     val projection: Map<String, Any?>,
+    /**
+     * Root case id of the durable case family of this execution run (Lot B).
+     * Reserved atomically once, before any remote agent call, and shared by
+     * every durable attempt of the run. `null` on legacy instances that predate
+     * the case family — a legacy run is never converted (strict compatibility).
+     */
+    val rootCaseId: String? = null,
 )
 
 /** The declarative WorkflowProjection v1/v2 store row. */

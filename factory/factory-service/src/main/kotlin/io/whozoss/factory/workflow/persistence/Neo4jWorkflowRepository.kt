@@ -118,6 +118,22 @@ class Neo4jWorkflowRepository(
             updatedAt = Instant.now(),
         ) > 0
 
+    override fun reserveRootCase(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        candidateRootCaseId: String,
+    ): String? {
+        // The atomic CAS (WHERE rootCaseId IS NULL) decides the winner; either
+        // way, re-reading the instance returns the effective, unique root case.
+        instances.reserveRootCase(
+            id = instanceId(scope, namespaceId, workflowId),
+            rootCaseId = candidateRootCaseId,
+            updatedAt = Instant.now(),
+        )
+        return readInstance(scope, namespaceId, workflowId)?.rootCaseId
+    }
+
     override fun deleteInstance(scope: TenantScope, namespaceId: String, workflowId: String): Boolean {
         val id = instanceId(scope, namespaceId, workflowId)
         if (!instances.existsById(id)) return false
