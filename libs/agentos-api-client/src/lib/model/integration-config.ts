@@ -9,6 +9,10 @@
  */
 
 export interface IntegrationConfig {
+  /**
+   * When true, this configuration is granted to every agent within its scope without the agent having to name it in its integrations map. Only allowed on types whose descriptor reports autoGrantable.
+   */
+  autoGrant?: boolean
   authSettingName?: string
   description?: string
   id?: string

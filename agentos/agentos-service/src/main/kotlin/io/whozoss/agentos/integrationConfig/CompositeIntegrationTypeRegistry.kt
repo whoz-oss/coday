@@ -40,6 +40,9 @@ class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
                 .replace('_', ' '),
             description = "Configuration for the ${plugin.integrationType} integration.",
             configSchema = schema,
+            // Derived from the single source of truth rather than restated here, so adding a type to
+            // AUTO_GRANTABLE_TYPES surfaces its toggle in the UI with no further change.
+            autoGrantable = IntegrationTypeConstraints.isAutoGrantable(plugin.integrationType),
         )
         val previous = pluginDescriptors.put(plugin.integrationType, descriptor)
         if (previous != null) {

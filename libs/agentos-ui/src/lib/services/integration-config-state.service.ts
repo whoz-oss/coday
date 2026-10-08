@@ -39,6 +39,11 @@ export interface IntegrationConfigDraft {
   description: string | null
   parameters?: unknown
   authSettingName?: string | null
+  /**
+   * Hands this configuration to every agent within its scope without the agent naming it.
+   * Only accepted by the backend on auto-grantable types (HTTP 422 otherwise).
+   */
+  autoGrant?: boolean
 }
 
 /** Backend sentinel: `?namespaceId=none` means `namespaceId IS NULL` (platform or user-global rows). */
@@ -175,6 +180,7 @@ export class IntegrationConfigStateService {
         description: draft.description as string | undefined,
         parameters: draft.parameters,
         authSettingName: draft.authSettingName ?? undefined,
+        autoGrant: draft.autoGrant ?? false,
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
@@ -188,6 +194,7 @@ export class IntegrationConfigStateService {
         namespaceId,
         parameters: draft.parameters,
         authSettingName: draft.authSettingName ?? undefined,
+        autoGrant: draft.autoGrant ?? false,
       }
       return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
     }
@@ -206,6 +213,7 @@ export class IntegrationConfigStateService {
       namespaceId: scope === 'userOnNs' ? (namespaceId as string) : undefined,
       parameters: draft.parameters,
       authSettingName: draft.authSettingName ?? undefined,
+      autoGrant: draft.autoGrant ?? false,
     }
     return this.nsController.createIntegrationConfig(payload).pipe(tap(() => this.refresh()))
   }
@@ -227,6 +235,7 @@ export class IntegrationConfigStateService {
       namespaceId: existing.namespaceId,
       parameters: draft.parameters,
       authSettingName: draft.authSettingName ?? undefined,
+      autoGrant: draft.autoGrant ?? false,
     }
     void scope
     return this.nsController.updateIntegrationConfig(id, payload).pipe(tap(() => this.refresh()))

@@ -88,6 +88,7 @@ export class IntegrationFormComponent implements OnInit {
       validators: [Validators.required],
     }),
     scope: new FormControl<IntegrationScope>('namespace', { nonNullable: true }),
+    autoGrant: new FormControl<boolean>(false, { nonNullable: true }),
   })
 
   protected get nameControl() {
@@ -104,6 +105,10 @@ export class IntegrationFormComponent implements OnInit {
 
   protected get scopeControl() {
     return this.form.controls.scope
+  }
+
+  protected get autoGrantControl() {
+    return this.form.controls.autoGrant
   }
 
   protected readonly isEditMode = signal(false)
@@ -140,12 +145,49 @@ export class IntegrationFormComponent implements OnInit {
     initialValue: this.form.controls.type.value,
   })
 
+  /** Current scope as a signal, so the auto-grant hint tracks the radio in real time. */
+  private readonly scopeValue = toSignal(this.form.controls.scope.valueChanges, {
+    initialValue: this.form.controls.scope.value,
+  })
+
   /** JSON Schema for the currently selected integration type, or null */
   protected readonly schema = computed<JsonSchemaObject | null>(() => {
     const typeKey = this.selectedType()
     if (!typeKey) return null
     const descriptor = this.integrationTypes().find((d) => d.type === typeKey)
     return (descriptor?.configSchema as JsonSchemaObject) ?? null
+  })
+
+  /**
+   * Whether the selected type may be auto-granted, straight from its descriptor.
+   *
+   * The eligible-type list is NOT restated here: the server owns it
+   * (`IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES`) and exposes the verdict per type, so
+   * adding a type there surfaces the toggle with no front-end change. Offering the checkbox on an
+   * ineligible type would also promise something the API answers with 422.
+   */
+  protected readonly isAutoGrantable = computed<boolean>(() => {
+    const typeKey = this.selectedType()
+    if (!typeKey) return false
+    return this.integrationTypes().find((d) => d.type === typeKey)?.autoGrantable ?? false
+  })
+
+  /**
+   * Reach of the auto-grant for the scope being edited, used in the checkbox hint.
+   *
+   * The flag's blast radius is the scope of the configuration carrying it, and "every agent of
+   * this environment" is a very different promise from "every agent of this namespace". A generic
+   * label would let an administrator arm the broadest of the two without noticing.
+   */
+  protected readonly autoGrantReach = computed<string>(() => {
+    switch (this.scopeValue()) {
+      case 'platform':
+        return 'every agent of this environment'
+      case 'namespace':
+        return 'every agent of this namespace'
+      default:
+        return 'your own runs'
+    }
   })
 
   /** Kept for the update payload (preserves server-side fields like userId). */
@@ -292,6 +334,7 @@ export class IntegrationFormComponent implements OnInit {
     this.initialParams.set(config.parameters as Record<string, unknown> | null)
     this.paramsValue.set(config.parameters as Record<string, unknown> | null)
     this.authSettingNameControl.setValue(config.authSettingName ?? null)
+    this.autoGrantControl.setValue(config.autoGrant ?? false)
   }
 
   /**
@@ -349,6 +392,9 @@ export class IntegrationFormComponent implements OnInit {
       integrationType: this.typeControl.value,
       parameters: this.paramsValue(),
       authSettingName: this.authSettingNameControl.value || null,
+      // Never send true for a type the server would reject: the checkbox is hidden for ineligible
+      // types, but the control keeps its last value if the user switches type after ticking it.
+      autoGrant: this.isAutoGrantable() && this.autoGrantControl.value,
     }
     // getRawValue() includes the scope control even when disabled in edit mode.
     const scope = this.form.getRawValue().scope
