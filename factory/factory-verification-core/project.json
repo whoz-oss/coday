@@ -9,16 +9,33 @@
       "cache": true,
       "outputs": ["{projectRoot}/build/libs"],
       "options": {
-        "command": "../gradlew build",
-        "cwd": "factory/factory-verification-core"
+        "command": "./gradlew :factory-verification-core:build",
+        "cwd": "factory"
+      }
+    },
+    "assemble": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew :factory-verification-core:assemble",
+        "cwd": "factory"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "../gradlew test",
-        "cwd": "factory/factory-verification-core"
+        "command": "./gradlew :factory-verification-core:test",
+        "cwd": "factory"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-verification-core:clean",
+        "cwd": "factory"
       }
     }
   },

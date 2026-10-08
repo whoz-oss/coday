@@ -9,16 +9,33 @@
       "cache": true,
       "outputs": ["{projectRoot}/build/libs"],
       "options": {
-        "command": "../gradlew build",
-        "cwd": "factory/factory-sdk"
+        "command": "./gradlew :factory-sdk:build",
+        "cwd": "factory"
+      }
+    },
+    "assemble": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew :factory-sdk:assemble",
+        "cwd": "factory"
       }
     },
     "test": {
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "../gradlew test",
-        "cwd": "factory/factory-sdk"
+        "command": "./gradlew :factory-sdk:test",
+        "cwd": "factory"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-sdk:clean",
+        "cwd": "factory"
       }
     }
   },
