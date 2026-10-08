@@ -15,6 +15,7 @@ import io.whozoss.factory.oracle.service.OracleRunCommand
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.CanonicalHash
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
+import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.SessionSequencer
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
@@ -30,6 +31,8 @@ import io.whozoss.factory.workflow.persistence.HumanInteractionRepository
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
 import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.sse.WorkflowSseHub
+import io.whozoss.factory.workspace.RunWorktreeResolver
+import io.whozoss.factory.workspace.WorkspacePrecheckService
 import java.nio.file.Path
 import java.time.Duration
 import java.time.Instant
@@ -170,6 +173,20 @@ class SessionRunService(
      * `needs_research` (never sealed as failed).
      */
     private val needsResearchRouter: NeedsResearchRouter? = null,
+    /**
+     * Optional read-only workspace pre-check (Lot F). When present it runs BEFORE
+     * the run's root case is created, refusing a run whose namespace/Git/workstream
+     * prerequisites are missing with an actionable error (never a repair). Pure
+     * unit tests may omit it.
+     */
+    private val workspacePrecheckService: WorkspacePrecheckService? = null,
+    /**
+     * Optional run-worktree resolver (Lot F). When present, every `code` step's
+     * `repoRoot` is explicitly bound to the run's validated Git worktree (proven
+     * usable by the waiter) instead of the namespace repo root. Pure unit tests
+     * may omit it and keep the caller-provided root.
+     */
+    private val runWorktreeResolver: RunWorktreeResolver? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -241,8 +258,23 @@ class SessionRunService(
         if (steps.isEmpty()) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The session has no steps.")
         }
+        // Lot F read-only pre-check: BEFORE the run's root case is created, refuse
+        // a run whose namespace/Git/workstream/agents prerequisites are missing.
+        // It never repairs; a missing prerequisite is surfaced as an actionable
+        // error (WorkspacePrecheckException).
+        workspacePrecheckService?.precheck(
+            scope = scope,
+            namespaceId = namespaceId,
+            requiredAgents = steps
+                .filter { it.responsibility.kind == ResponsibilityKind.AGENT }
+                .mapNotNull { it.responsibility.name },
+        )
         val statuses = loadProgress(scope, namespaceId, workflowId, steps)
         var suspended = false
+        // Lot F: the repo root every `code` step runs against. It starts as the
+        // caller-provided root and is re-bound to the run's validated worktree
+        // before the first code step (once the root case exists).
+        var effectiveRepoRoot = repoRoot
         val guard = steps.size * 4 + 8
         var iterations = 0
         run {
@@ -257,7 +289,26 @@ class SessionRunService(
                 }
                 val readyId = SessionSequencer.readySteps(steps, statuses.statuses).firstOrNull() ?: return@run
                 val step = steps.first { it.id == readyId }
-                executeStep(scope, namespaceId, workflowId, steps, statuses, step, repoRoot, effectiveTicket, expectedRevision, workflowType)?.let { terminal ->
+                // Lot F: bind a `code` step's repoRoot to the run's worktree
+                // explicitly. Resolved once, right before the step executes
+                // (after the entry agent step created the root case) and never
+                // inside a transaction; the waiter either proves the exact
+                // worktree or throws — it never silently uses another directory.
+                if (step.responsibility.kind == ResponsibilityKind.CODE) {
+                    runWorktreeResolver?.resolve(scope, workflowId, effectiveRepoRoot)?.let { effectiveRepoRoot = it }
+                }
+                executeStep(
+                    scope,
+                    namespaceId,
+                    workflowId,
+                    steps,
+                    statuses,
+                    step,
+                    effectiveRepoRoot,
+                    effectiveTicket,
+                    expectedRevision,
+                    workflowType,
+                )?.let { terminal ->
                     if (terminal == WorkflowStatuses.WAITING_HUMAN) {
                         suspended = true
                         return@run

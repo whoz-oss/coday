@@ -70,6 +70,13 @@ factory:
     drain-enabled: ${FACTORY_OUTBOX_DRAIN_ENABLED:true}
     drain-interval-ms: ${FACTORY_OUTBOX_DRAIN_INTERVAL_MS:5000}
     drain-initial-delay-ms: ${FACTORY_OUTBOX_DRAIN_INITIAL_DELAY_MS:10000}
+  workspace:
+    # Lot F: read-only workspace pre-check + run-worktree binding of code steps.
+    enabled: ${FACTORY_WORKSPACE_ENABLED:true}
+    git-workspaces-enabled: ${FACTORY_WORKSPACE_GIT_WORKSPACES_ENABLED:true}
+    auto-worktree-for-root-cases: ${FACTORY_WORKSPACE_AUTO_WORKTREE_FOR_ROOT_CASES:true}
+    ready-timeout-ms: ${FACTORY_WORKSPACE_READY_TIMEOUT_MS:120000}
+    ready-poll-interval-ms: ${FACTORY_WORKSPACE_READY_POLL_INTERVAL_MS:1000}
   workflow:
     seed:
       # Registers the bundled declarative session definitions
