@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -1058,7 +1059,7 @@ class CaseServiceImpl(
                 .onFailure { killErr ->
                     logger.warn(killErr) { "Failed to kill orphaned sub-case ${subCase.id} after permission grant failure" }
                 }
-            throw IllegalStateException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
+            throw AccessDeniedException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
 
         val runtime = activeRuntimes[subCase.id]!!

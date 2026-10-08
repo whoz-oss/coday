@@ -11,6 +11,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.context.annotation.Lazy
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -72,7 +73,7 @@ class CaseLauncherServiceImpl(
             logger.error(e) { "Auto-ADMIN grant failed for launched case ${case.id} (user $onBehalfOfUserId) — killing case" }
             runCatching { caseService.delete(case.id) }
                 .onFailure { killErr -> logger.warn(killErr) { "Failed to kill orphaned launched case ${case.id}" } }
-            throw IllegalStateException("Failed to grant permissions on launched case ${case.id}: ${e.message}", e)
+            throw AccessDeniedException("Failed to grant permissions on launched case ${case.id}: ${e.message}", e)
         }
         val user = userService.getById(onBehalfOfUserId)
         val actor =

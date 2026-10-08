@@ -4,12 +4,11 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.context.UserSessionContextResolver
-import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
-import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
+import io.whozoss.agentos.util.tak
 import kotlinx.coroutines.CancellationException
 import mu.KLogging
 import org.springframework.stereotype.Service
@@ -60,20 +59,18 @@ class LoopWorkflowRunnerService(
             }
 
         val maxItems = limitsConfig.agentLoopMaxItems
-        val items = search.data.take(maxItems)
-        val launchedCaseIds = mutableListOf<UUID>()
-        val counts = mutableMapOf<ItemOutcome, Int>()
-        for (item in items) {
-            if (!shouldContinue()) {
-                break
+        val items = search.data.tak(maxItems)
+
+        val outcomes =
+            buildList {
+                for (item in items) {
+                    if (!shouldContinue()) break
+                    add(act(item, payload.act, context))
+                }
             }
-            val outcome = act(item, payload.act, context)
-            if (outcome is ItemOutcome.Launched) {
-                launchedCaseIds += outcome.caseId
-            } else {
-                counts.merge(outcome, 1, Int::plus)
-            }
-        }
+
+        val launchedCaseIds = outcomes.filterIsInstance<ItemOutcome.Launched>().map { it.caseId }
+        val countByFailureType = outcomes.filter { it !is ItemOutcome.Launched }.groupingBy { it }.eachCount()
 
         return LoopRunOutcome.Completed(
             searchTool = payload.search.tool,
@@ -81,9 +78,9 @@ class LoopWorkflowRunnerService(
             totalCount = search.metadata?.totalCount,
             hasMorePages = search.metadata?.next != null,
             launchedCaseIds = launchedCaseIds,
-            unknownUser = counts[ItemOutcome.UnknownUser] ?: 0,
-            noAgentAccess = counts[ItemOutcome.NoAgentAccess] ?: 0,
-            failed = counts[ItemOutcome.Failed] ?: 0,
+            unknownUser = countByFailureType[ItemOutcome.UnknownUser] ?: 0,
+            noAgentAccess = countByFailureType[ItemOutcome.NoAgentAccess] ?: 0,
+            failed = countByFailureType[ItemOutcome.Failed] ?: 0,
             overLimit = (search.data.size - maxItems).coerceAtLeast(0),
             maxItems = maxItems,
             targetAgent = payload.act.agentName,
@@ -208,19 +205,7 @@ class LoopWorkflowRunnerService(
                 }
             }
 
-        val enrichedSessionContext: Map<String, Any?> =
-            buildMap {
-                if (sessionContext != null) putAll(sessionContext)
-                put(
-                    "activeContext",
-                    listOf(
-                        mapOf(
-                            "type" to item.entityType,
-                            "data" to mapOf("id" to item.entityId),
-                        ),
-                    ),
-                )
-            }
+        val enrichedSessionContext: Map<String, Any?> = addActiveContext(sessionContext, item)
 
         return try {
             val launchedCaseId =
@@ -283,69 +268,19 @@ class LoopWorkflowRunnerService(
     companion object : KLogging()
 }
 
-/**
- * Everything an [io.whozoss.agentos.agent.AgentLoop] run needs from its case and agent definition.
- *
- * @param triggerUser  The user who launched the run, or null when it cannot be resolved.
- * @param tools        Tools resolved for the loop agent — the Search tool is looked up here.
- */
-data class LoopRunContext(
-    val namespaceId: UUID,
-    val caseId: UUID,
-    val agentName: String,
-    val triggerUser: User?,
-    val tools: Collection<StandardTool<*>>,
-    val caseEvents: List<CaseEvent>,
-)
-
-/** Result of a [LoopWorkflowRunnerService.run]. */
-sealed interface LoopRunOutcome {
-    /** The run could not proceed at all; [reason] is shown to the user. */
-    data class Aborted(
-        val reason: String,
-    ) : LoopRunOutcome
-
-    /**
-     * The SEARCH phase succeeded and the ACT phase went through the entities.
-     *
-     * @param returned        Number of entities on the processed search page.
-     * @param launchedCaseIds Ids of the standalone cases launched, for traceability.
-     * @param overLimit    Entities ignored because [maxItems] was reached.
-     * @param interrupted  True when a kill/interrupt stopped the ACT phase early.
-     */
-    data class Completed(
-        val searchTool: String,
-        val returned: Int,
-        val totalCount: Long?,
-        val hasMorePages: Boolean,
-        val launchedCaseIds: List<UUID>,
-        val unknownUser: Int,
-        val noAgentAccess: Int,
-        val failed: Int,
-        val overLimit: Int,
-        val maxItems: Int,
-        val targetAgent: String,
-        val interrupted: Boolean,
-    ) : LoopRunOutcome {
-        val launched: Int get() = launchedCaseIds.size
-
-        fun summary(): String =
-            buildString {
-                append("Launched $launched case(s) with '$targetAgent' out of $returned entity/entities ")
-                append("returned by '$searchTool'")
-                totalCount?.let { append(" (totalCount=$it)") }
-                append('.')
-                if (unknownUser > 0) append("\n- Skipped, no matching user: $unknownUser")
-                if (noAgentAccess > 0) append("\n- Refused, user cannot access '$targetAgent': $noAgentAccess")
-                if (failed > 0) append("\n- Failed to launch: $failed")
-                if (overLimit > 0) append("\n- Not processed, over the limit of $maxItems per run: $overLimit")
-                if (hasMorePages) append("\n- More results exist: only the first page was processed.")
-                if (interrupted) append("\n- Interrupted before all entities were processed.")
-                if (launchedCaseIds.isNotEmpty()) {
-                    append("\n\nLaunched cases (first 10):")
-                    launchedCaseIds.take(10).forEach { append("\n- $it") }
-                    if (launchedCaseIds.size > 10) append("\n- ... and ${launchedCaseIds.size - 10} more")
-                }
-            }
+private fun addActiveContext(
+    sessionContext: Map<String, Any?>?,
+    item: SearchResultItem,
+): Map<String, Any?> =
+    buildMap {
+        if (sessionContext != null) putAll(sessionContext)
+        put(
+            "activeContext",
+            listOf(
+                mapOf(
+                    "type" to item.entityType,
+                    "data" to mapOf("id" to item.entityId),
+                ),
+            ),
+        )
     }
-}

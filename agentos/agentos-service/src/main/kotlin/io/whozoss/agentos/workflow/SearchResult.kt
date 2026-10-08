@@ -7,6 +7,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 
 /**
  * A single entity returned by the Search tool.
+ * This is temporary code that is tied too tightly to external vendor.
  *
  * @param entityType Category of the entity (e.g. "TALENT", "TASK"). Informational only — optional so a
  *                   row without it is still processed.

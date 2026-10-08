@@ -215,7 +215,7 @@ agentos:
   # Maximum number of entities processed by one AgentLoop run. Each entity launches one case
   # immediately, so this bounds concurrent agent runs started by a single loop.
   # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
-  # agent-loop-max-items: 50
+  agent-loop-max-items: 50
   # Maximum amount the platform accepts spending without a human check-in, in the platform's
   # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
   # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.

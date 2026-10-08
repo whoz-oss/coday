@@ -186,7 +186,6 @@ data class AgentConfig(
      * fallback: when [executionMode] is null, [advancedExecution] is used
      * (`true` → [ExecutionMode.ADVANCED], `false` → [ExecutionMode.SIMPLE]).
      */
-    @Suppress("DEPRECATION")
     val resolvedExecutionMode: ExecutionMode
         get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
 }
