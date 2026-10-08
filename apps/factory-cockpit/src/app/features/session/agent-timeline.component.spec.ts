@@ -142,7 +142,7 @@ describe('AgentTimelineComponent', () => {
     const labels = [...fixture.nativeElement.querySelectorAll('button.block')].map((button: Element) =>
       button.getAttribute('aria-label')
     )
-    expect(labels).toEqual(expect.arrayContaining([expect.stringContaining('Tony failed, échoué')]))
+    expect(labels).toEqual(expect.arrayContaining([expect.stringContaining('Tony failed, failed')]))
     expect(labels.some((label: string | null) => label?.startsWith('Thor'))).toBe(false)
   })
 })

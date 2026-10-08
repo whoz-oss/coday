@@ -6,7 +6,13 @@ import { MatFormFieldModule } from '@angular/material/form-field'
 import { MatIconModule } from '@angular/material/icon'
 import { MatInputModule } from '@angular/material/input'
 import { MatSelectModule } from '@angular/material/select'
-import { FactoryApiError, FactoryApiService, generateCorrelationId } from '../../core/factory-api.service'
+import {
+  FactoryApiError,
+  FactoryApiService,
+  NamespaceOption,
+  extractNamespaceOptions,
+  generateCorrelationId,
+} from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
 import { ShellState } from '../../core/shell-state'
 
@@ -29,37 +35,11 @@ export function extractWorkflowTypes(payload: unknown): string[] {
   return Array.from(types)
 }
 
-/** Namespace option displayed by name while submitting its stable id. */
-export interface NamespaceOption {
-  id: string
-  name: string
-}
-
-/** Extract unique namespace options from the AgentOS namespace API payload. */
-export function extractNamespaceOptions(payload: unknown): NamespaceOption[] {
-  const items = Array.isArray(payload) ? payload : []
-  const options = new Map<string, NamespaceOption>()
-  for (const item of items) {
-    if (typeof item === 'string') {
-      const id = item.trim()
-      if (id) options.set(id, { id, name: id })
-      continue
-    }
-    const record = item as { namespaceId?: unknown; id?: unknown; name?: unknown } | null
-    const rawId = record?.namespaceId ?? record?.id
-    if (typeof rawId !== 'string' || !rawId.trim()) continue
-    const id = rawId.trim()
-    const name = typeof record?.name === 'string' && record.name.trim() ? record.name.trim() : id
-    options.set(id, { id, name })
-  }
-  return Array.from(options.values()).sort((left, right) => left.name.localeCompare(right.name))
-}
-
 /** Human-readable, non-fabricated launch error message. */
 export function formatLaunchError(error: FactoryApiError | null | undefined): string {
   const code = error?.code ?? 'UNKNOWN_ERROR'
   const message = error?.message?.trim()
-  return message ? `${message} (${code})` : `Lancement impossible (${code}).`
+  return message ? `${message} (${code})` : `Launch failed (${code}).`
 }
 
 /**
@@ -105,7 +85,7 @@ export class LaunchPageComponent {
   })
 
   constructor() {
-    inject(ShellState).crumbs.set([{ label: 'Sandboxes', link: '/sandboxes' }, { label: 'Lancer un run' }])
+    inject(ShellState).crumbs.set([{ label: 'Sandboxes', link: '/sandboxes' }, { label: 'Launch a run' }])
     this.loadDefinitions()
     this.loadNamespaces()
   }
@@ -125,7 +105,7 @@ export class LaunchPageComponent {
         this.definitionsLoading.set(false)
       },
       error: (error: FactoryApiError) => {
-        this.definitionsError.set(error?.message ?? 'Définitions de workflow indisponibles.')
+        this.definitionsError.set(error?.message ?? 'Workflow definitions unavailable.')
         this.definitionsLoading.set(false)
       },
     })
@@ -176,7 +156,7 @@ export class LaunchPageComponent {
         next: (response) => {
           this.submitting.set(false)
           const submissionId = response?.submissionId
-          this.successMessage.set(submissionId ? `Lancement accepté (id: ${submissionId})` : 'Lancement accepté.')
+          this.successMessage.set(submissionId ? `Launch accepted (id: ${submissionId})` : 'Launch accepted.')
           this.store.refresh()
           void this.router.navigate(['/sessions', response.workflowId])
         },

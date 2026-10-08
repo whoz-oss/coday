@@ -7,7 +7,7 @@ import { RunEvent, RunEventType } from '../../core/models'
 
 type Filter = 'all' | RunEventType
 
-/** Journal d'événements d'une phase, filtrable, virtualisé, en suivi live. */
+/** Event log for a phase, filterable, virtualised, with live-follow support. */
 @Component({
   selector: 'sf-event-log',
   imports: [ScrollingModule, MatButtonToggleModule, MatCheckboxModule, MatIconModule],
@@ -23,7 +23,7 @@ export class EventLogComponent {
   protected readonly filter = signal<Filter>('all')
   protected readonly follow = signal(true)
   protected readonly filters: { value: Filter; label: string }[] = [
-    { value: 'all', label: 'Tous' },
+    { value: 'all', label: 'All' },
     { value: 'thinking', label: 'thinking' },
     { value: 'tool_call', label: 'tool_call' },
     { value: 'agent_message', label: 'agent_message' },
@@ -37,7 +37,7 @@ export class EventLogComponent {
   private readonly viewport = viewChild(CdkVirtualScrollViewport)
 
   constructor() {
-    // Suivi live : on colle en bas à chaque nouvel événement
+    // Live follow: scroll to bottom on each new event
     effect(() => {
       const count = this.visible().length
       const vp = this.viewport()

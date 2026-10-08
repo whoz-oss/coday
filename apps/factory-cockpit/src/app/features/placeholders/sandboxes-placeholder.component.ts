@@ -13,7 +13,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core'
   template: `
     <section class="placeholder">
       <h1>Sandboxes</h1>
-      <p class="sf-muted">Écran à venir.</p>
+      <p class="sf-muted">Coming soon.</p>
     </section>
   `,
   styles: `

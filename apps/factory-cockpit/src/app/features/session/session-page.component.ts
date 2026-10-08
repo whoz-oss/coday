@@ -6,7 +6,7 @@ import { MatExpansionModule } from '@angular/material/expansion'
 import { MatIconModule } from '@angular/material/icon'
 import { ActivatedRoute } from '@angular/router'
 import { map } from 'rxjs'
-import { FactoryStore } from '../../core/factory.store'
+import { AGENTOS_BASE_URL, FactoryStore, buildAgentOsCaseUrl } from '../../core/factory.store'
 import { TimelineBlock } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
 import { DurationPipe, TokensPipe, UsdPipe } from '../../shared/pipes/format.pipes'
@@ -49,6 +49,7 @@ export class SessionPageComponent {
   private readonly route = inject(ActivatedRoute)
   protected readonly store = inject(FactoryStore)
   private readonly shell = inject(ShellState)
+  private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
 
   private readonly routeRunId = toSignal(this.route.paramMap.pipe(map((p) => p.get('runId') ?? '')), {
     initialValue: '',
@@ -77,11 +78,7 @@ export class SessionPageComponent {
   }
 
   protected caseLink(caseId: string): string {
-    const params = new URLSearchParams()
-    const namespaceId = this.currentNamespaceId()
-    if (namespaceId) params.set('ns', namespaceId)
-    params.set('case', caseId)
-    return `/agentos/home?${params.toString()}`
+    return buildAgentOsCaseUrl(caseId, this.currentNamespaceId() || undefined, this.agentOsBaseUrl)
   }
 
   protected currentNamespaceId(): string {

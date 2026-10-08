@@ -1,48 +1,66 @@
 @if (session(); as s) {
   <div class="page">
-    <!-- En-tête du run -->
+    <!-- Run header -->
     <section class="run-head sf-panel">
       <div class="title-row">
         <h1>{{ s.goal }}</h1>
-        <button mat-stroked-button class="sf-secondary">Conversation</button>
+        @if (s.controllerCaseId) {
+          <a
+            mat-stroked-button
+            class="sf-secondary"
+            [href]="caseLink(s.controllerCaseId)"
+            target="_blank"
+            rel="noopener"
+            >Conversation</a
+          >
+        } @else {
+          <button
+            mat-stroked-button
+            class="sf-secondary"
+            disabled
+            title="AgentOS controller case unavailable (no agent step executed for this workflow yet)"
+          >
+            Conversation
+          </button>
+        }
       </div>
 
       <div class="meta-row">
         @if (s.executionState === 'waiting_human') {
-          <sf-status-chip tone="amber" icon="person_alert">attente humaine</sf-status-chip>
+          <sf-status-chip tone="amber" icon="person_alert">waiting for human</sf-status-chip>
         } @else {
           @switch (s.status) {
             @case ('running') {
               <sf-status-chip tone="blue" icon="progress_activity" spin>running</sf-status-chip>
             }
             @case ('succeeded') {
-              <sf-status-chip tone="green" icon="check">terminé</sf-status-chip>
+              <sf-status-chip tone="green" icon="check">completed</sf-status-chip>
             }
             @case ('failed') {
-              <sf-status-chip tone="red" icon="close">échec</sf-status-chip>
+              <sf-status-chip tone="red" icon="close">failed</sf-status-chip>
             }
             @default {
-              <sf-status-chip tone="neutral">en attente</sf-status-chip>
+              <sf-status-chip tone="neutral">waiting</sf-status-chip>
             }
           }
         }
         <span class="sf-muted started"
-          >démarré le {{ s.startedAt | date: 'd MMM' }} à
+          >started {{ s.startedAt | date: 'MMM d' }} at
           <span class="sf-mono">{{ s.startedAt | date: 'HH:mm:ss' }}</span></span
         >
         <span class="sf-workflow">{{ s.workflow }}</span>
         <span class="sf-spacer"></span>
-        <sf-metric icon="paid" label="Coût" [unknownCostCount]="s.unknownCostCount ?? 0">{{
+        <sf-metric icon="paid" label="Cost" [unknownCostCount]="s.unknownCostCount ?? 0">{{
           s.costUsd | usd: 2 : s.unknownCostCount
         }}</sf-metric>
-        <sf-metric icon="timer" label="Durée">{{ s.durationSec | duration }}</sf-metric>
-        <sf-metric icon="link" label="Tokens contexte">{{ s.tokens | tokens }}</sf-metric>
-        <sf-metric icon="menu_book" label="Tokens lus">{{ s.tokensRead | tokens }}</sf-metric>
-        <sf-metric icon="edit" label="Tokens écrits">{{ s.tokensWritten | tokens }}</sf-metric>
+        <sf-metric icon="timer" label="Duration">{{ s.durationSec | duration }}</sf-metric>
+        <sf-metric icon="link" label="Context tokens">{{ s.tokens | tokens }}</sf-metric>
+        <sf-metric icon="menu_book" label="Tokens read">{{ s.tokensRead | tokens }}</sf-metric>
+        <sf-metric icon="edit" label="Tokens written">{{ s.tokensWritten | tokens }}</sf-metric>
       </div>
 
-      <!-- Étapes -->
-      <ol class="steps" aria-label="Étapes du workflow">
+      <!-- Steps -->
+      <ol class="steps" aria-label="Workflow steps">
         @for (step of s.steps; track step.key; let last = $last) {
           <li
             class="step"
@@ -66,9 +84,9 @@
                 {{ step.durationSec | duration
                 }}{{
                   step.status === 'running'
-                    ? ' · en cours'
+                    ? ' · running'
                     : step.status === 'waiting_human'
-                      ? ' · en attente humaine'
+                      ? ' · waiting for human'
                       : ''
                 }}
               </span>
@@ -81,7 +99,7 @@
       </ol>
     </section>
 
-    <!-- Actions pilotées par le backend (allowedActions / blockers) -->
+    <!-- Backend-governed actions (allowedActions / blockers) -->
     <sf-action-bar
       [allowedActions]="s.allowedActions ?? []"
       [blockers]="s.blockers ?? []"
@@ -100,7 +118,7 @@
       (stopCost)="onStopCost()"
     />
 
-    <!-- Chronologie -->
+    <!-- Timeline -->
     <sf-agent-timeline
       [lanes]="s.lanes"
       [nowSec]="s.nowSec"
@@ -110,13 +128,13 @@
       (blockSelect)="selectBlock($event)"
     />
 
-    <!-- Détail de phase + événements -->
+    <!-- Phase detail + events -->
     <div class="bottom">
       <section class="phase sf-panel" aria-labelledby="phase-title">
         <header class="phase-head">
           <h2 id="phase-title">{{ s.phase.name }}</h2>
           @if (s.phase.stepStatus === 'waiting_human') {
-            <sf-status-chip tone="amber" size="sm" icon="person_alert">attente humaine</sf-status-chip>
+            <sf-status-chip tone="amber" size="sm" icon="person_alert">waiting for human</sf-status-chip>
           } @else if (s.phase.stepStatus === 'running') {
             <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>running</sf-status-chip>
           } @else {
@@ -142,7 +160,7 @@
                 <mat-panel-title>{{ sec.label }}</mat-panel-title>
                 @if (sec.notAvailable) {
                   <mat-panel-description>
-                    <span class="badge badge--off">indisponible</span>
+                    <span class="badge badge--off">unavailable</span>
                   </mat-panel-description>
                 } @else if (sec.count !== undefined) {
                   <mat-panel-description>
@@ -180,7 +198,7 @@
                 @if (sec.body) {
                   <p class="sf-muted section-body">{{ sec.body }}</p>
                 } @else if (!sec.items?.length) {
-                  <p class="sf-muted section-body">Aucun contenu pour le moment.</p>
+                  <p class="sf-muted section-body">No content yet.</p>
                 }
               </div>
             </mat-expansion-panel>
@@ -191,10 +209,10 @@
       <sf-event-log
         [events]="s.events"
         [running]="s.activelyRunning"
-        [activityLabel]="(s.phase.agentName || s.phase.owner) + ' travaille…'"
+        [activityLabel]="(s.phase.agentName || s.phase.owner) + ' is working…'"
       />
     </div>
   </div>
 } @else {
-  <p class="sf-muted">Session introuvable.</p>
+  <p class="sf-muted">Session not found.</p>
 }

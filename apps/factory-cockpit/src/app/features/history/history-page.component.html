@@ -1,40 +1,49 @@
 <div class="page">
   <header class="page-head">
     <div class="titles">
-      <h1>Historique des sandboxes</h1>
-      <p class="sf-muted">Runs terminés, arrêtés et détruits, avec leur coût et phases</p>
+      <h1>Sandbox history</h1>
+      <p class="sf-muted">Completed, stopped and destroyed runs, with their cost and phases</p>
     </div>
     <button mat-stroked-button class="sf-secondary" (click)="exportCsv()">
-      <mat-icon>download</mat-icon>Exporter CSV
+      <mat-icon>download</mat-icon>Export CSV
     </button>
   </header>
 
-  <!-- Filtres -->
+  <!-- Filters -->
   <div class="filters">
     <mat-form-field appearance="outline" class="search" subscriptSizing="dynamic">
       <mat-icon matPrefix>search</mat-icon>
       <input
         matInput
-        placeholder="Rechercher une sandbox, un run, une branche…"
-        aria-label="Rechercher"
+        placeholder="Search sandbox, run, branch…"
+        aria-label="Search"
         [value]="query()"
         (input)="query.set($any($event.target).value)"
       />
     </mat-form-field>
 
-    <mat-chip-listbox aria-label="Filtrer par statut" [value]="status()" (change)="status.set($event.value ?? 'all')">
-      <mat-chip-option value="all">Tous · {{ counts().all }}</mat-chip-option>
-      <mat-chip-option value="working">En cours · {{ counts().working }}</mat-chip-option>
-      <mat-chip-option value="destroyed">Terminés / Arrêtés · {{ counts().destroyed }}</mat-chip-option>
+    <mat-chip-listbox aria-label="Filter by status" [value]="status()" (change)="status.set($event.value ?? 'all')">
+      <mat-chip-option value="all">All · {{ counts().all }}</mat-chip-option>
+      <mat-chip-option value="working">In progress · {{ counts().working }}</mat-chip-option>
+      <mat-chip-option value="destroyed">Completed / Stopped · {{ counts().destroyed }}</mat-chip-option>
     </mat-chip-listbox>
 
     <span class="sf-spacer"></span>
 
     <mat-form-field appearance="outline" class="project" subscriptSizing="dynamic">
-      <mat-label>Projet</mat-label>
+      <mat-label>Project</mat-label>
       <mat-select [value]="project()" (selectionChange)="project.set($event.value)">
-        <mat-option value="coday">coday</mat-option>
+        <mat-option value="">All</mat-option>
+        @for (ns of namespaces(); track ns.id) {
+          <mat-option [value]="ns.id">{{ ns.name }}</mat-option>
+        }
       </mat-select>
+      @if (namespacesLoading()) {
+        <mat-hint>Loading…</mat-hint>
+      }
+      @if (namespacesError()) {
+        <mat-hint class="hint--error">{{ namespacesError() }}</mat-hint>
+      }
     </mat-form-field>
   </div>
 
@@ -53,7 +62,7 @@
       </ng-container>
 
       <ng-container matColumnDef="branch">
-        <th mat-header-cell *matHeaderCellDef>Projet › branche</th>
+        <th mat-header-cell *matHeaderCellDef>Project › branch</th>
         <td mat-cell *matCellDef="let r" class="mono-cell" [class.cyan]="r.branch">
           {{ r.project }}
           @if (r.branch) {
@@ -63,18 +72,18 @@
       </ng-container>
 
       <ng-container matColumnDef="status">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header>Statut</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
         <td mat-cell *matCellDef="let r">
           @if (r.status === 'destroyed') {
-            <sf-status-chip tone="neutral" size="sm" dot>terminé / arrêté</sf-status-chip>
+            <sf-status-chip tone="neutral" size="sm" dot>completed / stopped</sf-status-chip>
           } @else {
-            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>en cours</sf-status-chip>
+            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>in progress</sf-status-chip>
           }
         </td>
       </ng-container>
 
       <ng-container matColumnDef="run">
-        <th mat-header-cell *matHeaderCellDef>Dernier run</th>
+        <th mat-header-cell *matHeaderCellDef>Last run</th>
         <td mat-cell *matCellDef="let r" class="mono-cell">
           @if (r.run) {
             <span class="run-cell"
@@ -82,7 +91,7 @@
               ><span class="sf-workflow">{{ r.run.workflow }}</span></span
             >
           } @else {
-            <span class="sf-muted plain">teardown terminé</span>
+            <span class="sf-muted plain">teardown completed</span>
           }
         </td>
       </ng-container>
@@ -99,7 +108,7 @@
       </ng-container>
 
       <ng-container matColumnDef="cost">
-        <th mat-header-cell *matHeaderCellDef mat-sort-header arrowPosition="before" class="num">Coût</th>
+        <th mat-header-cell *matHeaderCellDef mat-sort-header arrowPosition="before" class="num">Cost</th>
         <td mat-cell *matCellDef="let r" class="num mono-cell" [class.zero]="r.cost === 0">{{ r.cost | usd }}</td>
       </ng-container>
 
@@ -111,11 +120,9 @@
           </button>
           <mat-menu #menu="matMenu">
             @if (r.run) {
-              <a mat-menu-item [routerLink]="['/sessions', r.run.id]"
-                ><mat-icon>monitoring</mat-icon>Ouvrir la session</a
-              >
+              <a mat-menu-item [routerLink]="['/sessions', r.run.id]"><mat-icon>monitoring</mat-icon>Open session</a>
             }
-            <button mat-menu-item><mat-icon>receipt_long</mat-icon>Voir le log</button>
+            <button mat-menu-item><mat-icon>receipt_long</mat-icon>View log</button>
           </mat-menu>
         </td>
       </ng-container>
@@ -123,26 +130,26 @@
       <tr mat-header-row *matHeaderRowDef="columns"></tr>
       <tr mat-row *matRowDef="let r; columns: columns" [class.row--active]="r.status !== 'destroyed'"></tr>
       <tr class="mat-row" *matNoDataRow>
-        <td class="mat-cell empty" [attr.colspan]="columns.length">Aucune sandbox ne correspond à ces filtres.</td>
+        <td class="mat-cell empty" [attr.colspan]="columns.length">No sandbox matches these filters.</td>
       </tr>
     </table>
 
     <footer class="table-foot">
       <span
-        >{{ filtered().length }} sandboxes · coût cumulé <b class="sf-mono">{{ totalCost() | usd: 2 }}</b></span
+        >{{ filtered().length }} sandboxes · cumulative cost <b class="sf-mono">{{ totalCost() | usd: 2 }}</b></span
       >
       <span class="sf-spacer"></span>
       <mat-paginator [pageSize]="25" [pageSizeOptions]="[10, 25, 50]" aria-label="Pagination" />
     </footer>
   </section>
 
-  <!-- Coût par sandbox -->
+  <!-- Cost per sandbox -->
   <section class="costs sf-panel" aria-labelledby="costs-title">
     <header class="costs-head">
-      <h2 id="costs-title" class="sf-overline">Coût par sandbox</h2>
+      <h2 id="costs-title" class="sf-overline">Cost per sandbox</h2>
       <span class="sf-spacer"></span>
       <span class="legend"><i class="sw sw--active"></i>active</span>
-      <span class="legend"><i class="sw"></i>détruite</span>
+      <span class="legend"><i class="sw"></i>destroyed</span>
     </header>
     <ul class="bars">
       @for (b of costBars(); track b.name) {

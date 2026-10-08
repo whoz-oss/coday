@@ -145,6 +145,64 @@ describe('FactoryStore', () => {
     expect(sandbox.run?.status).toBe('running')
   })
 
+  it('maps the top-level createdAt from the snapshot to sandbox.createdAt', () => {
+    const withCreatedAt = { ...snapshot, createdAt: '2026-09-30T16:00:00.000Z' }
+    flushInitialWorkflows([withCreatedAt])
+    flushEnrichment()
+
+    expect(store.sandboxes()[0]?.createdAt).toBe('2026-09-30T16:00:00.000Z')
+  })
+
+  it('leaves sandbox.createdAt absent when the snapshot has no createdAt field', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    expect(store.sandboxes()[0]?.createdAt).toBeUndefined()
+  })
+
+  it('drops an unparseable createdAt value silently', () => {
+    const withBadDate = { ...snapshot, createdAt: 'not-a-date' }
+    flushInitialWorkflows([withBadDate])
+    flushEnrichment()
+
+    expect(store.sandboxes()[0]?.createdAt).toBeUndefined()
+  })
+
+  it('sorts visibleSandboxes by createdAt descending, unknowns last', () => {
+    const older = {
+      ...snapshot,
+      workflowId: 'wf-older',
+      createdAt: '2026-09-01T10:00:00.000Z',
+      projection: { ...snapshot.projection, title: 'Older workflow', workflowId: 'wf-older' },
+    }
+    const newer = {
+      ...snapshot,
+      workflowId: 'wf-newer',
+      createdAt: '2026-09-30T16:00:00.000Z',
+      projection: { ...snapshot.projection, title: 'Newer workflow', workflowId: 'wf-newer' },
+    }
+    const noDate = {
+      ...snapshot,
+      workflowId: 'wf-nodate',
+      projection: { ...snapshot.projection, title: 'No date workflow', workflowId: 'wf-nodate' },
+    }
+    // Flush active: older first, then newer, then no-date — order must be reversed by sort
+    flushInitialWorkflows([older, newer, noDate])
+    // Flush enrichment for each workflow
+    ;['wf-older', 'wf-newer', 'wf-nodate'].forEach((wfId) => {
+      http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
+      http.expectOne((r) => r.url.endsWith(`/${wfId}/evidence`)).flush({ data: { workflowId: wfId, items: [] } })
+      http.expectOne((r) => r.url.endsWith(`/${wfId}/metrics`)).flush({ data: { workflowId: wfId } })
+      http.expectOne((r) => r.url.endsWith(`/${wfId}/interactions`)).flush({ data: { workflowId: wfId, items: [] } })
+      http.expectOne((r) => r.url.endsWith(`/${wfId}/attempts`)).flush({ data: [] })
+      http.expectOne((r) => r.url.endsWith(`/${wfId}/actions`)).flush({ data: { allowedActions: [], blockers: [] } })
+      http.expectOne((r) => r.url.endsWith(`/${wfId}/agent-questions`)).flush({ data: [] })
+    })
+
+    const names = store.visibleSandboxes().map((s) => s.name)
+    expect(names).toEqual(['Newer workflow', 'Older workflow', 'No date workflow'])
+  })
+
   it('maps an idle/pending workflow state onto an idle sandbox', () => {
     const idle = { ...snapshot, projection: { ...snapshot.projection, status: 'pending' } }
     flushInitialWorkflows([idle])
@@ -157,11 +215,14 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment()
 
-    expect(store.visibleSandboxes()).toEqual(store.activeSandboxes())
+    // visibleSandboxes is a sorted view of activeSandboxes; with a single item
+    // the sort order is identical.
+    expect(store.visibleSandboxes()).toHaveLength(store.activeSandboxes().length)
+    expect(store.visibleSandboxes()[0]?.name).toBe(store.activeSandboxes()[0]?.name)
     expect(store.destroyedSandboxes()).toEqual([])
 
     store.showDestroyed.set(true)
-    expect(store.visibleSandboxes()).toEqual(store.sandboxes())
+    expect(store.visibleSandboxes()).toHaveLength(store.sandboxes().length)
   })
 
   // ---------------------------------------------------------------------------
@@ -578,7 +639,8 @@ describe('FactoryStore', () => {
     expect(destroyed?.name).toBe('Removed workflow')
     expect(destroyed?.status).toBe('destroyed')
     // `visibleSandboxes`/`showDestroyed` remain the ONLY visibility filter.
-    expect(store.visibleSandboxes()).toEqual(store.activeSandboxes())
+    // (visibleSandboxes is a sorted copy of activeSandboxes; with one item the names match.)
+    expect(store.visibleSandboxes()).toHaveLength(store.activeSandboxes().length)
     store.showDestroyed.set(true)
     expect(store.visibleSandboxes()).toHaveLength(2)
   })

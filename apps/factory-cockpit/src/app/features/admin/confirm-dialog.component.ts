@@ -31,9 +31,9 @@ export interface ConfirmDialogData {
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button mat-button [mat-dialog-close]="false">Annuler</button>
+      <button mat-button [mat-dialog-close]="false">Cancel</button>
       <button mat-flat-button [class.sf-danger]="data.destructive" [mat-dialog-close]="true">
-        {{ data.confirmLabel ?? 'Confirmer' }}
+        {{ data.confirmLabel ?? 'Confirm' }}
       </button>
     </mat-dialog-actions>
   `,

@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 
 import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../core/models'
+import { AGENTOS_BASE_URL, buildAgentOsCaseUrl } from '../../core/factory.store'
 
 export interface ReplyIntent {
   interactionId: string
@@ -145,12 +146,11 @@ export class ActionBarComponent {
     return ['FREE_TEXT', 'SINGLE_CHOICE', 'OPEN_CHOICE'].includes(question.questionType ?? '')
   }
 
+  private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
+
   protected caseLink(caseId: string, namespaceId?: string): string {
-    const params = new URLSearchParams()
     const namespace = namespaceId || this.namespaceId()
-    if (namespace) params.set('ns', namespace)
-    params.set('case', caseId)
-    return `/agentos/home?${params.toString()}`
+    return buildAgentOsCaseUrl(caseId, namespace || undefined, this.agentOsBaseUrl)
   }
 
   protected submitAgentQuestion(question: AgentQuestion, choice?: string): void {

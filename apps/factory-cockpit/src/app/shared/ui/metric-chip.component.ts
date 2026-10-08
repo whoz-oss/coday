@@ -45,6 +45,6 @@ export class MetricChipComponent {
   protected readonly tooltip = computed(() => {
     const base = this.label()
     const unknown = this.unknownCostCount()
-    return unknown > 0 ? `${base} · ${unknown} tour(s) au coût inconnu (valeur plancher)` : base
+    return unknown > 0 ? `${base} · ${unknown} round(s) with unknown cost (floor value)` : base
   })
 }

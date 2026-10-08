@@ -1,11 +1,20 @@
-import { Injectable, computed, inject, signal } from '@angular/core'
-import { Subscription, catchError, forkJoin, of } from 'rxjs'
+import { Injectable, InjectionToken, computed, inject, signal } from '@angular/core'
+import { Observable, Subscription, catchError, forkJoin, of, switchMap, tap } from 'rxjs'
 import { FactoryApiError, FactoryApiService } from './factory-api.service'
-import { mapProjectionToRunSummary, mapProjectionToSessionDetail, namespaceOf, workflowIdOf } from './mappers'
+import { AgentOsApiService } from './agentos-api.service'
+import { SupervisorCaseStoreService } from './supervisor-case-store.service'
+import {
+  controllerCaseIdOf,
+  mapProjectionToRunSummary,
+  mapProjectionToSessionDetail,
+  namespaceOf,
+  workflowIdOf,
+} from './mappers'
 import {
   AgentQuestion,
   CostSummary,
   GetActionsResponse,
+  SupervisorCaseResult,
   RecentTask,
   RunStatus,
   RunSummary,
@@ -15,6 +24,57 @@ import {
 } from './models'
 import { SESSION_872641A8 } from './mock-data'
 import { SseService } from './sse.service'
+
+/**
+ * Base URL of the AgentOS UI, used to build deep-link URLs pointing to the
+ * AgentOS case viewer (`/agentos/home?ns=…&case=…`).
+ *
+ * - **Production**: empty string — both apps are served behind the same gateway
+ *   origin, so an absolute path (`/agentos/home?…`) resolves correctly.
+ * - **Development**: `'http://localhost:4200'` — the AgentOS UI (`apps/client`)
+ *   runs on port 4200 while the cockpit runs on port 4300. A path-only URL
+ *   would resolve to the cockpit origin and land on a 404.
+ *
+ * `isDevMode()` is intentionally NOT used here: it reflects the Angular build
+ * mode (optimization flag), not the runtime environment. A production build
+ * served locally would still get an empty string and break.
+ *
+ * Override this token in `app.config.ts` for any environment:
+ *   `{ provide: AGENTOS_BASE_URL, useValue: 'http://localhost:4200' }`
+ */
+export const AGENTOS_BASE_URL = new InjectionToken<string>('AGENTOS_BASE_URL', {
+  providedIn: 'root',
+  // Default: empty — correct for production (same-origin gateway).
+  // For local dev, override explicitly in app.config.ts (see comment above).
+  factory: () => '',
+})
+
+/**
+ * Build an AgentOS deep-link URL for a case, using the configured base URL.
+ *
+ * All four link-generation paths in the cockpit (supervisor case, conversation
+ * link, action-bar case links, session-page case links) must go through this
+ * helper so the base URL is applied consistently.
+ *
+ * @param caseId      The AgentOS case id.
+ * @param namespaceId The namespace the case belongs to (omitted when falsy).
+ * @param baseUrl     Origin prefix injected via {@link AGENTOS_BASE_URL}.
+ */
+export function buildAgentOsCaseUrl(caseId: string, namespaceId: string | undefined, baseUrl: string): string {
+  const params = new URLSearchParams()
+  if (namespaceId) params.set('ns', namespaceId)
+  params.set('case', caseId)
+  return `${baseUrl}/agentos/home?${params.toString()}`
+}
+
+/**
+ * @deprecated Use {@link buildAgentOsCaseUrl} directly.
+ * Kept for backwards-compat with the supervisor-case flow; will be removed
+ * once all callers are migrated.
+ */
+export function buildSupervisorCaseUrl(caseId: string, namespaceId: string, baseUrl = ''): string {
+  return buildAgentOsCaseUrl(caseId, namespaceId, baseUrl)
+}
 
 /**
  * Application state exposed as Angular signals.
@@ -34,7 +94,10 @@ import { SseService } from './sse.service'
 @Injectable({ providedIn: 'root' })
 export class FactoryStore {
   private readonly api = inject(FactoryApiService)
+  private readonly agentOs = inject(AgentOsApiService)
   private readonly sse = inject(SseService)
+  private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
+  private readonly supervisorCaseStore = inject(SupervisorCaseStoreService)
 
   /** Sandbox cards derived from the real active workflows (empty until loaded). */
   readonly sandboxes = signal<Sandbox[]>([])
@@ -49,7 +112,18 @@ export class FactoryStore {
   readonly activeSandboxes = computed(() => this.sandboxes().filter((s) => s.status !== 'destroyed'))
   readonly destroyedSandboxes = computed(() => this.sandboxes().filter((s) => s.status === 'destroyed'))
 
-  readonly visibleSandboxes = computed(() => (this.showDestroyed() ? this.sandboxes() : this.activeSandboxes()))
+  /**
+   * Sandboxes sorted by creation date, most recent first.
+   *
+   * Sorting is stable-descending on `createdAt` (epoch ms). Sandboxes whose
+   * `createdAt` is absent are placed at the end (unknown creation date).
+   * The source signal is never mutated: `[...list]` creates a fresh copy
+   * before sorting.
+   */
+  readonly visibleSandboxes = computed(() => {
+    const list = this.showDestroyed() ? this.sandboxes() : this.activeSandboxes()
+    return sortSandboxesByCreation([...list])
+  })
 
   readonly costs = computed<CostSummary>(() => {
     const active = this.activeSandboxes()
@@ -177,10 +251,20 @@ export class FactoryStore {
       status: forcedStatus ?? deriveSandboxStatus(state, run.status),
       run,
     }
+    const controllerCaseId = controllerCaseIdOf(snapshot)
     if (namespace) sandbox.namespace = namespace
     if (workflowType) sandbox.workflowType = workflowType
     if (ticket) sandbox.ticket = ticket
     if (branch) sandbox.branch = branch
+    if (controllerCaseId) sandbox.controllerCaseId = controllerCaseId
+    // Real creation timestamp: `createdAt` is the Neo4j audit timestamp of
+    // when the WorkflowProjection node was first written, preserved across
+    // all subsequent updates by Neo4jWorkflowRepository.publishProjection.
+    // Exposed via publicSnapshot() as an ISO-8601 string.
+    // Validated before use: an unparseable value is silently dropped so
+    // DatePipe and the sort never receive an invalid date.
+    const rawCreatedAt = readString(obj, 'createdAt')
+    if (rawCreatedAt && isValidIsoDate(rawCreatedAt)) sandbox.createdAt = rawCreatedAt
     return sandbox
   }
 
@@ -292,7 +376,7 @@ export class FactoryStore {
             interactionId: question.questionEventId,
             kind: conflict ? 'conflict' : 'error',
             message: conflict
-              ? "La question a changé. L'état autorisé a été actualisé; vérifiez votre réponse."
+              ? 'The question has changed. The allowed state has been updated; please review your answer.'
               : error.message,
           })
           if (conflict) this.load()
@@ -365,6 +449,83 @@ export class FactoryStore {
     this.api.restoreWorkflow(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
   }
 
+  /**
+   * Restore a previously created supervisor case for a sandbox from the local
+   * browser store. Returns a {@link SupervisorCaseResult} when a valid persisted
+   * entry exists, or `undefined` when no entry is found (first visit, storage
+   * unavailable, or corrupt entry).
+   *
+   * The AgentOS URL is always reconstructed from the current
+   * {@link AGENTOS_BASE_URL} injection — never stored as a frozen string — so
+   * it remains correct across environment changes.
+   *
+   * **Scope**: local browser only. A different browser, incognito context, or
+   * device will return `undefined` (see {@link SupervisorCaseStoreService}).
+   */
+  restoreSupervisorCase(sandbox: Sandbox): SupervisorCaseResult | undefined {
+    const namespaceId = sandbox.namespace
+    const workflowId = sandbox.run?.id
+    if (!namespaceId || !workflowId) return undefined
+    const entry = this.supervisorCaseStore.load({ workflowId, namespaceId })
+    if (!entry) return undefined
+    return {
+      caseId: entry.caseId,
+      namespaceId: entry.namespaceId,
+      agentOsUrl: buildAgentOsCaseUrl(entry.caseId, entry.namespaceId, this.agentOsBaseUrl),
+    }
+  }
+
+  /**
+   * Create an AgentOS supervisor assistance case for a sandbox, send an initial
+   * context message mentioning `@Heimdall`, and return the result.
+   *
+   * **Persistence**: the case id is persisted in `localStorage` immediately
+   * after creation (before the message POST). This ensures that a page refresh
+   * restores the association even if the message delivery fails. The persisted
+   * entry is keyed by `workflowId + namespaceId` — both stable backend
+   * identifiers — and the AgentOS URL is always reconstructed from the current
+   * {@link AGENTOS_BASE_URL} injection so it is never frozen.
+   *
+   * **Namespace**: `sandbox.namespace` must be a valid UUID string — the
+   * AgentOS backend validates `namespaceId` with `@NotNull UUID`. The caller
+   * must guard against a missing or non-UUID namespace before calling this
+   * method.
+   *
+   * **`window.open` is intentionally absent here**: opening a popup must happen
+   * synchronously in a user-gesture handler to avoid popup-blocker rejection.
+   * The caller opens the target window before subscribing to this observable,
+   * then navigates it once the case id is known.
+   */
+  openSupervisorCase(sandbox: Sandbox): Observable<SupervisorCaseResult> {
+    const namespaceId = sandbox.namespace!
+    const workflowId = sandbox.run?.id ?? sandbox.name
+    const title = `Supervisor assistance — ${sandbox.name}`
+    const initialMessage = buildSupervisorCaseMessage(sandbox.name, workflowId, sandbox.ticket, sandbox.workflowType)
+    return this.agentOs.createCase({ namespaceId, title }).pipe(
+      // Persist immediately after creation, before the message POST.
+      // This guarantees the association survives a page refresh even if the
+      // message delivery fails (message failure is swallowed below).
+      tap((createdCase) => {
+        this.supervisorCaseStore.save(
+          { workflowId, namespaceId },
+          { caseId: createdCase.id, namespaceId, createdAt: new Date().toISOString() }
+        )
+      }),
+      switchMap((createdCase) =>
+        this.agentOs.addMessage(createdCase.id, initialMessage).pipe(
+          catchError(() => of(undefined)),
+          switchMap(() =>
+            of<SupervisorCaseResult>({
+              caseId: createdCase.id,
+              namespaceId,
+              agentOsUrl: buildAgentOsCaseUrl(createdCase.id, namespaceId, this.agentOsBaseUrl),
+            })
+          )
+        )
+      )
+    )
+  }
+
   /** Replace the run attached to a sandbox once its real cost is known. */
   private updateSandboxRun(run: RunSummary): void {
     this.sandboxes.update((list) => list.map((sandbox) => (sandbox.run?.id === run.id ? { ...sandbox, run } : sandbox)))
@@ -391,6 +552,17 @@ function agentQuestionError(
   }
 }
 
+/**
+ * Returns true when [value] is a non-empty string that parses to a finite Date.
+ * Used to guard `createdAt` before handing it to DatePipe or Date.parse in the
+ * sort — both silently produce NaN on invalid input, which is hard to debug.
+ */
+function isValidIsoDate(value: string): boolean {
+  if (!value) return false
+  const ms = Date.parse(value)
+  return Number.isFinite(ms)
+}
+
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -411,4 +583,45 @@ function deriveSandboxStatus(state: string | undefined, runStatus: RunStatus): S
   if (WORKING_STATES.has(normalized)) return 'working'
   if (IDLE_STATES.has(normalized)) return 'idle'
   return runStatus === 'running' ? 'working' : 'idle'
+}
+
+/**
+ * Sort sandboxes by creation date, most recent first (descending).
+ *
+ * Uses `createdAt` (ISO-8601 from WorkflowProjectionNode.createdAt, exposed
+ * by publicSnapshot()) as the sort key. Sandboxes without a known creation
+ * date are placed at the end. The input array is sorted in-place (caller
+ * must pass a copy).
+ */
+function sortSandboxesByCreation(list: Sandbox[]): Sandbox[] {
+  return list.sort((a, b) => {
+    const ta = a.createdAt ? Date.parse(a.createdAt) : null
+    const tb = b.createdAt ? Date.parse(b.createdAt) : null
+    // Both unknown: preserve original order (stable).
+    if (ta === null && tb === null) return 0
+    // Unknown always goes after a known date.
+    if (ta === null) return 1
+    if (tb === null) return -1
+    // Both known: most recent first.
+    return tb - ta
+  })
+}
+
+/** Build the initial context message for a new supervisor case. */
+function buildSupervisorCaseMessage(
+  sandboxName: string,
+  workflowId: string,
+  ticket?: string,
+  workflowType?: string
+): string {
+  return [
+    `@Heimdall Hello. I am opening this case from the Factory Cockpit for sandbox **${sandboxName}**.`,
+    '',
+    'Available identifiers:',
+    `- Workflow ID: \`${workflowId}\``,
+    ...(ticket ? [`- Ticket: \`${ticket}\``] : []),
+    ...(workflowType ? [`- Workflow type: \`${workflowType}\``] : []),
+    '',
+    'Could you check the state of this workflow and let me know what is happening?',
+  ].join('\n')
 }

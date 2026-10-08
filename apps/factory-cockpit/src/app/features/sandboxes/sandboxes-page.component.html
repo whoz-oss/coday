@@ -1,58 +1,58 @@
 <div class="page">
-  <!-- En-tête de page -->
+  <!-- Page header -->
   <header class="page-head">
     <div class="titles">
       <h1>Sandboxes</h1>
-      <p class="sf-muted">Workflows d'agents actifs, dérivés des runs réels exposés par factory-service.</p>
+      <p class="sf-muted">Active agent workflows, derived from the real runs exposed by factory-service.</p>
     </div>
     <a mat-flat-button class="sf-primary" routerLink="/lancer" data-sandboxes-launch="true">
       <mat-icon>play_arrow</mat-icon>
-      Lancer un run
+      Launch a run
     </a>
   </header>
 
-  <!-- Indicateurs -->
+  <!-- KPIs -->
   @let c = store.costs();
-  <section class="kpis" aria-label="Indicateurs">
+  <section class="kpis" aria-label="Key metrics">
     <article class="kpi sf-panel">
-      <h2 class="sf-overline">Workflows actifs</h2>
+      <h2 class="sf-overline">Active workflows</h2>
       <span class="kpi-value">{{ c.active }}</span>
-      <span class="kpi-sub"><span class="ok-dot"></span>runs réels en cours</span>
+      <span class="kpi-sub"><span class="ok-dot"></span>real runs in progress</span>
     </article>
     <article class="kpi sf-panel">
-      <h2 class="sf-overline">Coût workflows</h2>
+      <h2 class="sf-overline">Workflow cost</h2>
       <span class="kpi-value kpi-value--cyan">{{ c.workflowsUsd | usd: 2 : c.unknownCostCount }}</span>
-      <span class="kpi-sub">coût réel cumulé</span>
+      <span class="kpi-sub">cumulative real cost</span>
     </article>
     <article class="kpi sf-panel kpi--total">
       <h2 class="sf-overline">Total</h2>
       <span class="kpi-value kpi-value--violet">{{ c.totalUsd | usd: 2 : c.unknownCostCount }}</span>
-      <span class="kpi-sub">coût réel des workflows actifs</span>
+      <span class="kpi-sub">real cost of active workflows</span>
     </article>
   </section>
 
   <div class="split">
-    <!-- Nouveau run : point d'entrée vers le formulaire de lancement réel -->
+    <!-- New run: entry point to the real launch form -->
     <section class="new sf-panel" aria-labelledby="new-title">
-      <h2 id="new-title" class="sf-overline">Nouveau run</h2>
+      <h2 id="new-title" class="sf-overline">New run</h2>
       <p class="sf-muted note">
-        La flotte de conteneurs n'a pas de backend : les cartes ci-dessous reflètent les workflows actifs réels. Pour
-        démarrer un workflow, lancez un run depuis factory-service.
+        The container fleet has no backend: the cards below reflect the real active workflows. To start a workflow,
+        launch a run from factory-service.
       </p>
       <div class="form-actions">
         <a mat-flat-button class="sf-primary" routerLink="/lancer" data-sandboxes-launch-panel="true">
           <mat-icon>play_arrow</mat-icon>
-          Lancer un run
+          Launch a run
         </a>
       </div>
     </section>
 
-    <!-- Tâches récentes -->
+    <!-- Recent tasks -->
     <section class="tasks sf-panel" aria-labelledby="tasks-title">
       <div class="tasks-head">
-        <h2 id="tasks-title" class="sf-overline">Tâches récentes</h2>
+        <h2 id="tasks-title" class="sf-overline">Recent tasks</h2>
         <span class="sf-spacer"></span>
-        <a routerLink="/historique" class="link">Tout l'historique</a>
+        <a routerLink="/historique" class="link">Full history</a>
       </div>
       <ul class="task-grid">
         @for (t of store.recentTasks(); track t.title) {
@@ -60,11 +60,11 @@
             <span class="task-title sf-ellipsis"><span class="ok-dot"></span>{{ t.title }}</span>
             <span class="task-log sf-mono sf-ellipsis">{{ t.log }}</span>
             <span class="task-cost sf-mono"
-              >coût final · workflows <b>{{ t.costUsd | usd }}</b></span
+              >final cost · workflows <b>{{ t.costUsd | usd }}</b></span
             >
           </li>
         } @empty {
-          <li class="empty sf-muted">Aucune tâche récente.</li>
+          <li class="empty sf-muted">No recent tasks.</li>
         }
       </ul>
     </section>
@@ -75,7 +75,7 @@
     @for (s of store.visibleSandboxes(); track s.name) {
       <sf-sandbox-card [sandbox]="s" (action)="onAction(s.run?.id ?? s.name, $event)" />
     } @empty {
-      <p class="empty sf-panel sf-muted">Aucun workflow actif.</p>
+      <p class="empty sf-panel sf-muted">No active workflows.</p>
     }
   </section>
 </div>

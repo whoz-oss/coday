@@ -213,9 +213,13 @@ export function mapWorkflowStateToRunStatus(state?: string, steps?: unknown[]): 
 
 function phaseSegmentStatus(step: unknown): PhaseSegment['status'] {
   const state = resolveStepState(step)
-  if (state === 'running' || state === 'waiting_human') return 'running'
+  if (state === 'waiting_human') return 'waiting_human'
+  if (state === 'running') return 'running'
   if (state === 'pending' || state === 'ready') return 'pending'
-  return 'done'
+  if (state === 'failed') return 'failed'
+  if (state === 'cancelled') return 'cancelled'
+  if (state === 'indeterminate') return 'indeterminate'
+  return 'done' // completed
 }
 
 function phaseTone(step: unknown): Tone {
@@ -230,13 +234,19 @@ export function mapStepsToPhaseSegments(steps: unknown[], totalDurationSec = 0):
   const summed = durations.reduce((sum, duration) => sum + duration, 0)
   const total = totalDurationSec > 0 ? totalDurationSec : summed
   return list.map((step, index) => {
+    const obj = asObject(step)
+    const id = getString(obj, 'id') ?? getString(obj, 'name') ?? `step-${index + 1}`
+    const name = getString(obj, 'name')
     const duration = durations[index] ?? 0
-    return {
-      key: getString(asObject(step), 'id') ?? getString(asObject(step), 'name') ?? `step-${index + 1}`,
+    const segment: PhaseSegment = {
+      key: id,
       ratio: total > 0 ? duration / total : 1 / list.length,
       tone: phaseTone(step),
       status: phaseSegmentStatus(step),
     }
+    // Carry the readable name only when it differs from the id (avoids redundancy).
+    if (name && name !== id) segment.label = name
+    return segment
   })
 }
 
@@ -323,7 +333,39 @@ export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): Run
     getString(snapshot, 'workflowId') ??
     ''
 
-  return {
+  // Derive waiting_human from steps — same logic as mapProjectionToSessionDetail.
+  // This stays separate from `status` (which remains 'running') so the global
+  // sandbox badge (SandboxStatus 'working') is not altered.
+  const stepStates = steps.map(resolveStepState)
+  const waitingHuman = stepStates.some((state) => state === 'waiting_human')
+
+  const phases = mapStepsToPhaseSegments(steps, durationSec)
+
+  // Inject a synthetic "Demande utilisateur" segment from the persisted
+  // controllerRequest when no step with id/name 'request' already appears in
+  // the phases (avoids duplication). The status is derived from real data only:
+  // 'done' when at least one step has started (the request is implicitly
+  // complete), 'pending' otherwise. No success is fabricated.
+  const controllerRequest = readControllerRequest(snapshot, projection)
+  const hasRequestStep = phases.some((segment) => segment.key === 'request' || segment.label === 'request')
+  if (controllerRequest && !hasRequestStep) {
+    const hasAnyStartedStep = steps.some((step) => getString(asObject(step), 'startedAt') !== undefined)
+    const requestSegment: PhaseSegment = {
+      key: 'user-request',
+      label: 'Demande utilisateur',
+      // Ratio: give the request segment a minimal visual presence (same as
+      // a 1-step even split at most, but capped to avoid dominating the bar).
+      ratio: phases.length > 0 ? Math.min(1 / (phases.length + 1), 0.15) : 1,
+      tone: 'amber',
+      status: hasAnyStartedStep ? 'done' : 'pending',
+    }
+    // Adjust existing segment ratios to preserve proportions after insertion.
+    const remaining = 1 - requestSegment.ratio
+    const adjusted = phases.map((segment) => ({ ...segment, ratio: segment.ratio * remaining }))
+    phases.splice(0, phases.length, requestSegment, ...adjusted)
+  }
+
+  const summary: RunSummary = {
     id,
     workflow: getString(projection, 'title') ?? id,
     status: mapWorkflowStateToRunStatus(getString(projection, 'status'), steps),
@@ -335,8 +377,10 @@ export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): Run
     unknownCostCount: realCost?.unknownCostCount ?? 0,
     durationSec,
     tokens: getNumber(projection, 'tokens') ?? 0,
-    phases: mapStepsToPhaseSegments(steps, durationSec),
+    phases,
   }
+  if (waitingHuman) summary.waitingHuman = true
+  return summary
 }
 
 // ---------------------------------------------------------------------------
@@ -1064,6 +1108,20 @@ export function namespaceOf(snapshot: unknown): string | undefined {
 }
 
 /**
+ * Resolve the AgentOS controller case id from a workflow snapshot.
+ *
+ * This is the STARTING case created by the Factory controller execution
+ * (`snapshot.controllerExecution.caseId`). It is distinct from attempt
+ * case ids (which change on each retry) and question case ids.
+ * Returns `undefined` when the snapshot does not expose a controller case.
+ */
+export function controllerCaseIdOf(snapshot: unknown): string | undefined {
+  const obj = asObject(snapshot)
+  const controller = asObject(obj?.['controllerExecution'])
+  return getString(controller, 'caseId')
+}
+
+/**
  * Map a workflow snapshot (+ optional timing / evidence / metrics payloads) to a
  * complete {@link SessionDetail}. Any missing enrichment simply yields defaults.
  */
@@ -1103,6 +1161,7 @@ export function mapProjectionToSessionDetail(
   const activeAttemptRevision = cancelAttemptAction?.expectedRevision ?? runningAttempt?.revision
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
+  const controllerCaseId = controllerCaseIdOf(snapshot)
   const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
   const stepStates = steps.map(resolveStepState)
   const waitingHuman =
@@ -1132,7 +1191,7 @@ export function mapProjectionToSessionDetail(
   const tokens =
     getNumber(projection, 'tokens') ?? liveTokens ?? getNumber(metricsObj, 'tokens') ?? tokensRead + tokensWritten
 
-  return {
+  const result: SessionDetail = {
     id,
     sandbox:
       getString(relations, 'ticket') ?? getString(controller, 'caseId') ?? getString(snapshot, 'namespaceId') ?? id,
@@ -1171,5 +1230,7 @@ export function mapProjectionToSessionDetail(
     agentQuestions: agentQuestions ?? [],
     ...(activeAttemptId !== undefined ? { activeAttemptId } : {}),
     ...(activeAttemptRevision !== undefined ? { activeAttemptRevision } : {}),
+    ...(controllerCaseId !== undefined ? { controllerCaseId } : {}),
   }
+  return result
 }

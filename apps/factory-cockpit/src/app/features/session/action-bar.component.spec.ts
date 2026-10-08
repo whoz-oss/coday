@@ -57,7 +57,7 @@ describe('ActionBarComponent', () => {
     expect(host.querySelector('.actions')).not.toBeNull()
     // A reply would require the corresponding allowed action: it is absent.
     expect(buttons(host)).toHaveLength(1)
-    expect(buttons(host)[0]?.textContent).toContain("Relancer l'étape")
+    expect(buttons(host)[0]?.textContent).toContain('Retry step')
   })
 
   it('renders the reply choices and prompt from the interaction', () => {
@@ -128,7 +128,7 @@ describe('ActionBarComponent', () => {
     const host = render([], [], [])
 
     expect(host.textContent).toContain('Architecture?')
-    expect(host.querySelector('input[placeholder="Votre réponse"]')).not.toBeNull()
+    expect(host.querySelector('input[placeholder="Your answer"]')).not.toBeNull()
   })
 
   it('renders a Case fallback when question projection is unavailable', () => {
@@ -159,7 +159,7 @@ describe('ActionBarComponent', () => {
     }
     fixture.componentRef.setInput('agentQuestionsInput', [unsupported])
     const host = render([], [], [])
-    expect(host.textContent).toContain('Type de question non pris en charge')
+    expect(host.textContent).toContain('Unsupported question type')
     expect(buttons(host)).toHaveLength(0)
   })
 

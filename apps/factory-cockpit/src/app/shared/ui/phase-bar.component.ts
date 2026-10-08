@@ -74,9 +74,17 @@ export class PhaseBarComponent {
   readonly showLegend = input(true)
   readonly ariaLabel = computed(
     () =>
-      'Phases : ' +
+      'Phases: ' +
       this.phases()
-        .map((p) => `${p.key} ${p.status === 'running' ? 'en cours' : 'terminée'}`)
+        .map((p) => {
+          if (p.status === 'running') return `${p.key} running`
+          if (p.status === 'waiting_human') return `${p.key} waiting for human`
+          if (p.status === 'failed') return `${p.key} failed`
+          if (p.status === 'indeterminate') return `${p.key} indeterminate`
+          if (p.status === 'cancelled') return `${p.key} cancelled`
+          if (p.status === 'pending') return `${p.key} waiting`
+          return `${p.key} completed`
+        })
         .join(', ')
   )
 }

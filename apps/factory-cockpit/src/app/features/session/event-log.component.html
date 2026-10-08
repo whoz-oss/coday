@@ -1,13 +1,13 @@
 <section class="log sf-panel" aria-labelledby="events-title">
   <header class="log-head">
     <mat-icon aria-hidden="true">monitoring</mat-icon>
-    <h2 id="events-title">Événements</h2>
+    <h2 id="events-title">Events</h2>
     <span class="count sf-mono">{{ events().length }}</span>
     <span class="sf-spacer"></span>
 
     <mat-button-toggle-group
       class="filters"
-      aria-label="Filtrer par type"
+      aria-label="Filter by type"
       [value]="filter()"
       (change)="filter.set($event.value)"
       hideSingleSelectionIndicator
@@ -17,7 +17,7 @@
       }
     </mat-button-toggle-group>
 
-    <mat-checkbox [checked]="follow()" (change)="follow.set($event.checked)">Suivre en direct</mat-checkbox>
+    <mat-checkbox [checked]="follow()" (change)="follow.set($event.checked)">Follow live</mat-checkbox>
   </header>
 
   <cdk-virtual-scroll-viewport itemSize="33" class="viewport" role="log" aria-live="polite">

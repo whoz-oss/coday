@@ -2,25 +2,25 @@ import { Injectable } from '@angular/core'
 import { MatPaginatorIntl } from '@angular/material/paginator'
 
 /**
- * French labels for `mat-paginator`.
+ * English labels for `mat-paginator`.
  *
- * The application runs with `LOCALE_ID` set to `fr` but Angular Material ships
- * English paginator strings by default, so we override them explicitly.
+ * Angular Material ships English paginator strings by default, but we
+ * override them explicitly to ensure consistency across locale changes.
  */
 @Injectable()
 export class FrPaginatorIntl extends MatPaginatorIntl {
-  override itemsPerPageLabel = 'Éléments par page'
-  override nextPageLabel = 'Page suivante'
-  override previousPageLabel = 'Page précédente'
-  override firstPageLabel = 'Première page'
-  override lastPageLabel = 'Dernière page'
+  override itemsPerPageLabel = 'Items per page'
+  override nextPageLabel = 'Next page'
+  override previousPageLabel = 'Previous page'
+  override firstPageLabel = 'First page'
+  override lastPageLabel = 'Last page'
 
   override getRangeLabel = (page: number, pageSize: number, length: number): string => {
     if (length === 0 || pageSize === 0) {
-      return `0 sur ${length}`
+      return `0 of ${length}`
     }
     const startIndex = page * pageSize
     const endIndex = Math.min(startIndex + pageSize, length)
-    return `${startIndex + 1} – ${endIndex} sur ${length}`
+    return `${startIndex + 1} – ${endIndex} of ${length}`
   }
 }

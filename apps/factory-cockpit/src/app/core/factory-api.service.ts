@@ -89,6 +89,32 @@ export interface NamespaceItem {
   [key: string]: unknown
 }
 
+/** Namespace option displayed by name while submitting its stable id. */
+export interface NamespaceOption {
+  id: string
+  name: string
+}
+
+/** Extract unique namespace options from the AgentOS namespace API payload. */
+export function extractNamespaceOptions(payload: unknown): NamespaceOption[] {
+  const items = Array.isArray(payload) ? payload : []
+  const options = new Map<string, NamespaceOption>()
+  for (const item of items) {
+    if (typeof item === 'string') {
+      const id = item.trim()
+      if (id) options.set(id, { id, name: id })
+      continue
+    }
+    const record = item as { namespaceId?: unknown; id?: unknown; name?: unknown } | null
+    const rawId = record?.namespaceId ?? record?.id
+    if (typeof rawId !== 'string' || !rawId.trim()) continue
+    const id = rawId.trim()
+    const name = typeof record?.name === 'string' && record.name.trim() ? record.name.trim() : id
+    options.set(id, { id, name })
+  }
+  return Array.from(options.values()).sort((left, right) => left.name.localeCompare(right.name))
+}
+
 /** Bounded caller-owned input of the canonical create-run use case. */
 export interface CreateWorkflowRunRequest {
   workflowType: string

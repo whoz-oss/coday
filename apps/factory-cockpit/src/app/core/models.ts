@@ -2,12 +2,14 @@ export type SandboxStatus = 'working' | 'idle' | 'destroyed'
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'queued'
 export type Tone = 'violet' | 'cyan' | 'amber' | 'green' | 'blue' | 'red' | 'neutral'
 
-/** Segment de la barre de phases (request · plan · code · build…) */
+/** Segment de la barre de phases (request \u00b7 plan \u00b7 code \u00b7 build\u2026) */
 export interface PhaseSegment {
   key: string
-  ratio: number // part de la durée totale (0–1)
+  /** Nom lisible de la step (name du backend quand il diffère de l'id, ou libellé synthétique). */
+  label?: string
+  ratio: number // part de la dur\u00e9e totale (0\u20131)
   tone: Tone
-  status: 'done' | 'running' | 'pending'
+  status: 'done' | 'failed' | 'cancelled' | 'indeterminate' | 'running' | 'waiting_human' | 'pending'
 }
 
 export interface RunSummary {
@@ -15,6 +17,12 @@ export interface RunSummary {
   workflow: string
   status: RunStatus
   currentPhase?: string
+  /**
+   * True when at least one step is in `waiting_human` state.
+   * Kept separate from `status` (which stays `'running'`) so the global
+   * sandbox badge is not affected — only the run detail chip changes.
+   */
+  waitingHuman?: boolean
   goal: string
   costUsd: number
   /**
@@ -44,11 +52,28 @@ export interface Sandbox {
   status: SandboxStatus
   /** Namespace attribution of the underlying workflow, when known. */
   namespace?: string
+  /**
+   * AgentOS case id of the workflow controller execution (snapshot
+   * `controllerExecution.caseId`). This is the STARTING case created by the
+   * Factory controller to orchestrate the entire workflow run \u2014 not a
+   * question/attempt case. Absent when the backend exposes no controller case
+   * (normal state when no agent step has executed yet).
+   */
+  controllerCaseId?: string
   /** Workflow type (e.g. `adw_simple_sdlc`), when known. */
   workflowType?: string
   /** Jira/issue ticket carried through the workflow relations, when known. */
   ticket?: string
-  finalCostUsd?: number // sandboxes détruites (only set when a real teardown exists)
+  finalCostUsd?: number // sandboxes d\u00e9truites (only set when a real teardown exists)
+  /**
+   * ISO-8601 creation timestamp of the workflow: when the `WorkflowProjection`
+   * node was first written to Neo4j, preserved across all subsequent updates.
+   * Exposed by `WorkflowService.publicSnapshot()` as a top-level field.
+   * Absent for snapshots where the backend did not return the field
+   * (e.g. non-governed declarative projections via `publicInstanceSnapshot`).
+   * An unparseable value is dropped at mapping time and treated as absent.
+   */
+  createdAt?: string
   run?: RunSummary
   /** @deprecated no real source: model roster of the former mocked fleet. */
   roster?: string
@@ -82,7 +107,7 @@ export interface CostSummary {
   unknownCostCount?: number
 }
 
-/* ───── Session ───── */
+/* \u2500\u2500\u2500\u2500\u2500 Session \u2500\u2500\u2500\u2500\u2500 */
 
 export interface SessionStep {
   key: string
@@ -108,18 +133,18 @@ export interface TimelineBlock {
   startSec: number
   endSec: number
   status: TimelineStepStatus
-  ticksSec?: number[] // instants d'événements (petits traits)
+  ticksSec?: number[] // instants d'\u00e9v\u00e9nements (petits traits)
   errorTicksSec?: number[]
 }
 
 export interface TimelineLane {
   id: string
   label: string
-  subtitle: string // rôle ou modèle
+  subtitle: string // r\u00f4le ou mod\u00e8le
   kind: 'human' | 'workspace' | 'agent'
   tone: Tone
   contextPct?: number
-  request?: TimelineBlock // bloc placé dans la colonne « request »
+  request?: TimelineBlock // bloc plac\u00e9 dans la colonne \u00ab request \u00bb
   blocks: TimelineBlock[]
 }
 
@@ -128,7 +153,7 @@ export type RunEventType = 'phase_start' | 'log' | 'agent_start' | 'thinking' | 
 export interface RunEvent {
   time: string // HH:mm:ss
   type: RunEventType
-  tool?: string // read, write, bash, ls…
+  tool?: string // read, write, bash, ls\u2026
   text: string
   durationSec?: number
 }
@@ -155,7 +180,7 @@ export interface AgentAttempt {
 
 /**
  * One concrete entry rendered inside a {@link PhaseSection} (a gate, a real
- * output/evidence item, an agent configuration line…). Only real fields are
+ * output/evidence item, an agent configuration line\u2026). Only real fields are
  * carried; a missing field is left absent rather than fabricated.
  */
 export interface PhaseSectionItem {
@@ -226,6 +251,24 @@ export interface AgentQuestion {
   }
 }
 
+/**
+ * Result of a successful supervisor case creation, returned by
+ * {@link FactoryStore.openSupervisorCase}.
+ */
+export interface SupervisorCaseResult {
+  /** The newly created AgentOS case id. */
+  caseId: string
+  /** The namespace id the case was created in. */
+  namespaceId: string
+  /**
+   * The relative AgentOS UI URL (`/agentos/home?ns=...&case=...`).
+   * The caller uses this to navigate an already-open window, avoiding
+   * popup-blocker rejection (the window must be opened synchronously before
+   * the async case-creation call).
+   */
+  agentOsUrl: string
+}
+
 export interface HumanInteraction {
   interactionId: string
   workflowId?: string
@@ -243,7 +286,7 @@ export interface HumanInteraction {
   createdAt?: string
 }
 
-/* ───── Governed actions & blockers (backend authority) ───── */
+/* \u2500\u2500\u2500\u2500\u2500 Governed actions & blockers (backend authority) \u2500\u2500\u2500\u2500\u2500 */
 
 /** Stable `type` values of an {@link AllowedAction} (backend `WorkflowActionTypes`). */
 export type AllowedActionType = 'reply' | 'retry' | 'cancel_attempt' | 'continue_cost' | 'stop_cost'
@@ -295,6 +338,12 @@ export interface SessionDetail {
   id: string
   sandbox: string
   goal: string
+  /**
+   * AgentOS case id of the workflow controller execution (snapshot
+   * `controllerExecution.caseId`). Same source as {@link Sandbox.controllerCaseId}.
+   * Absent when the backend exposes no controller case.
+   */
+  controllerCaseId?: string
   status: RunStatus
   /** Authoritative execution state, kept separate from the coarse run status. */
   executionState: TimelineStepStatus

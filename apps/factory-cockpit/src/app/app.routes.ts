@@ -32,6 +32,11 @@ export const routes: Routes = [
     loadComponent: () => import('./features/workflows/workflows-page.component').then((m) => m.WorkflowsPageComponent),
   },
   {
+    path: 'workflows/:type/:version',
+    loadComponent: () =>
+      import('./features/workflows/workflow-detail-page.component').then((m) => m.WorkflowDetailPageComponent),
+  },
+  {
     path: 'reglages',
     loadComponent: () => import('./features/admin/admin-page.component').then((m) => m.AdminPageComponent),
   },
