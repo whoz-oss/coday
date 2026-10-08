@@ -1559,7 +1559,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
-          description: RESULT_SEMANTIC_COLLISION or IDEMPOTENCY_KEY_COLLISION
+          description: "RESULT_SEMANTIC_COLLISION, IDEMPOTENCY_KEY_COLLISION or STALE_AMENDMENT_SEQUENCE"
           content:
             application/json:
               schema:
@@ -2700,6 +2700,12 @@ components:
           type: string
         idempotencyKey:
           type: string
+        expectedAmendmentSeq:
+          type: integer
+          format: int64
+        expected_amendment_seq:
+          type: integer
+          format: int64
     JsonNode: {}
     ObservedIdentityRequest:
       type: object
