@@ -77,6 +77,8 @@ object CanonicalHash {
             "definitionVersion" to definition.version,
             "definitionHash" to definition.definitionHash,
         )
+        command.ticket?.let { payload["ticket"] = it }
+        command.workstream?.let { payload["workstream"] = it }
         // Preserve the legacy digest for callers that do not yet carry a
         // controller request. When present, hash only its semantic text: the
         // trusted observedAt snapshot changes on an HTTP retry, but an identical

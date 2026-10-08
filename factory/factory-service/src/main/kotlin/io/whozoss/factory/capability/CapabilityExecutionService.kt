@@ -255,7 +255,6 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         ticket: String?,
     ): String {
-        val ticketInstruction = briefFromTicket(ticket)
         val entryStep = step.dependsOn.isEmpty()
         val evidence = evidenceRepository.list(scope, namespaceId, workflowId)
         val inputs = LinkedHashMap<String, Any?>()
@@ -278,6 +277,8 @@ class CapabilityExecutionService(
         // Fetch the instance once: used both for the transitive run-brief search
         // and for the controller-request text.
         val workflowInstance = workflowRepository.findInstance(scope, namespaceId, workflowId)
+        val ticketInstruction = briefFromTicket(ticket)
+        val workstream = (workflowInstance?.instance?.get("workstream") as? String)?.takeIf { it.isNotBlank() }
 
         val runBrief: Map<String, Any?>? = inputs.values.firstNotNullOfOrNull(::findRunBrief)
             ?: run {
@@ -327,6 +328,7 @@ class CapabilityExecutionService(
             appendLine("Role: ${step.responsibility.name ?: step.responsibility.kind.wire}")
             appendLine("Scope: Work only on this step.")
             ticketInstruction?.let { appendLine("Ticket context: $it") }
+            workstream?.let { appendLine("Workstream context: $it") }
             if (inputs.isNotEmpty()) appendLine("Inputs: ${renderValue(inputs)}")
             if (!entryStep && runBrief != null) appendLine("Run brief handoff: ${renderValue(runBrief)}")
             appendLine()
@@ -341,10 +343,15 @@ class CapabilityExecutionService(
                 appendLine("- Consume the structured dependency inputs and the run-brief handoff above while following this step's own instructions; the original user request remains the governing intention.")
                 appendLine("- Preserve every run-brief artifact received from direct dependencies unchanged in this step's artifacts so later steps can relay the correct branch framing. Add separate artifacts for this step's own work; never rewrite or merge independent framings.")
             }
-            appendLine("- Choose deliverables from the work actually requested when the definition has no explicit deliverable metadata:")
-            appendLine("  - Analysis or design: provide reasoned findings, decisions/options, constraints, open questions, and a durable Markdown artifact; do not implement unless requested.")
-            appendLine("  - Implementation: provide the scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.")
-            appendLine("  - Review: provide prioritized findings with locations/evidence and residual risks; do not modify code unless requested.")
+            if (step.deliverables.isEmpty()) {
+                appendLine("- Choose deliverables from the work actually requested when the definition has no explicit deliverable metadata:")
+                appendLine("  - Analysis or design: provide reasoned findings, decisions/options, constraints, open questions, and a durable Markdown artifact; do not implement unless requested.")
+                appendLine("  - Implementation: provide the scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.")
+                appendLine("  - Review: provide prioritized findings with locations/evidence and residual risks; do not modify code unless requested.")
+            } else {
+                appendLine("- Produce the following required deliverables in a durable Markdown artifact:")
+                step.deliverables.forEach { appendLine("  - $it") }
+            }
             appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If that tool is unavailable, do not guess or bypass the clarification requirement.")
             appendLine("- Call FACTORY_WORKER__submit_step_result only when the analysis, editing, or review work is complete, or when a justified terminal failure prevents completion.")
             appendLine("- Use PASS or FAIL according to this step's criteria. Do not invent criteria.")

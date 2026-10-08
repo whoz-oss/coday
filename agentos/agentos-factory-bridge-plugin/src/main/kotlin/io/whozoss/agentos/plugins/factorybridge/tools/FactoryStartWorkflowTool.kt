@@ -21,14 +21,20 @@ class FactoryStartWorkflowTool(
     private val objectMapper: ObjectMapper,
     private val trustedHeaderSigner: FactoryTrustedHeaderSigner,
 ) : StandardTool<FactoryStartWorkflowTool.Input> {
-    data class Input(val workflowType: String, val title: String? = null, val ticket: String? = null)
+    /** Ticket and BMAD workstream are distinct run inputs; neither substitutes for the other. */
+    data class Input(
+        val workflowType: String,
+        val title: String? = null,
+        val ticket: String? = null,
+        val workstream: String? = null,
+    )
 
     override val name = "FACTORY_WORKSTREAM__start_workflow"
     override val description = "Create an authoritative governed workflow from the unique configured immutable definition."
-    override val version = "2.0.0"
+    override val version = "2.1.0"
     override val paramType = Input::class.java
     override val inputSchema =
-        """{"type":"object","additionalProperties":false,"properties":{"workflowType":{"type":"string","maxLength":128},"title":{"type":"string","maxLength":200},"ticket":{"type":"string","maxLength":64}},"required":["workflowType"]}"""
+        """{"type":"object","additionalProperties":false,"properties":{"workflowType":{"type":"string","maxLength":128},"title":{"type":"string","maxLength":200},"ticket":{"type":"string","maxLength":64},"workstream":{"type":"string","maxLength":128}},"required":["workflowType"]}"""
 
     override suspend fun execute(
         input: Input?,
@@ -39,7 +45,10 @@ class FactoryStartWorkflowTool(
         if (caseIds.size != 1) return failure("CASE_CONTEXT_UNAVAILABLE", "A single controlling case is required.")
         val requestIdentity = context.toolRequestId?.takeIf { it.isNotBlank() }
             ?: return failure("TOOL_REQUEST_CONTEXT_UNAVAILABLE", "A stable tool request identity is required.")
-        val parameters = buildMap<String, Any> { input.ticket?.trim()?.takeIf { it.isNotEmpty() }?.let { put("ticket", it) } }
+        val parameters = buildMap<String, Any> {
+            input.ticket?.trim()?.takeIf { it.isNotEmpty() }?.let { put("ticket", it) }
+            input.workstream?.trim()?.takeIf { it.isNotEmpty() }?.let { put("workstream", it) }
+        }
         val body = objectMapper.writeValueAsString(buildMap<String, Any> {
             put("workflowType", input.workflowType)
             input.title?.trim()?.takeIf { it.isNotEmpty() }?.let { put("title", it) }

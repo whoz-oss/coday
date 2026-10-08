@@ -97,6 +97,9 @@ fun createWorkflowInstance(
     if (!command.ticket.isNullOrBlank()) {
         instance["ticket"] = command.ticket
     }
+    if (!command.workstream.isNullOrBlank()) {
+        instance["workstream"] = command.workstream
+    }
     command.controllerRequest?.let { instance["controllerRequest"] = it.toJson() }
     val projection = linkedMapOf<String, Any?>(
         "schemaVersion" to "2",
