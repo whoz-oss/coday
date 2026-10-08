@@ -1,0 +1,28 @@
+@let ws = workstream();
+<section
+  class="workstream"
+  role="region"
+  [attr.aria-label]="'Workstream ' + ws.title"
+  [attr.data-namespace-id]="ws.namespaceId"
+>
+  <!-- Workstream header: NO overall state badge. -->
+  <header class="workstream-head">
+    <h2 class="title">{{ ws.title }}</h2>
+    <code class="namespace-id sf-mono" [title]="'Namespace ID: ' + ws.namespaceId">{{ ws.namespaceId }}</code>
+    <span class="sf-spacer"></span>
+    <span class="count" [attr.aria-label]="runCount() + ' runs'">
+      {{ runCount() }} run{{ runCount() === 1 ? '' : 's' }}
+    </span>
+    <span class="cost" [attr.aria-label]="'Workstream cost'">{{ totalCost() | usd: 2 : unknownCostCount() }}</span>
+  </header>
+
+  <div class="runs" role="list">
+    @for (run of ws.runs; track run.id) {
+      <div class="run-item" role="listitem">
+        <sf-run-card [run]="run" (action)="onRunAction(run.id, $event)" />
+      </div>
+    } @empty {
+      <p class="empty sf-muted">No run in this workstream.</p>
+    }
+  </div>
+</section>

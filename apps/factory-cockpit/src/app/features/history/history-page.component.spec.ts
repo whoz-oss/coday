@@ -6,17 +6,17 @@ import { provideRouter } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FactoryApiService, NamespaceOption } from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
-import { Sandbox } from '../../core/models'
+import { FactoryRun } from '../../core/models'
 import { HistoryPageComponent } from './history-page.component'
 
-type Row = Sandbox & { cost: number }
+type Row = FactoryRun & { cost: number }
 type StatusFilter = 'all' | 'working' | 'destroyed'
 
 /** Accessor for the component's protected members, exercised directly by the tests. */
 interface HistoryInternals {
   query: WritableSignal<string>
   status: WritableSignal<StatusFilter>
-  project: WritableSignal<string>
+  namespaceId: WritableSignal<string>
   namespaces: WritableSignal<NamespaceOption[]>
   namespacesLoading: WritableSignal<boolean>
   namespacesError: WritableSignal<string | null>
@@ -30,19 +30,25 @@ interface HistoryInternals {
 }
 
 interface StoreStub {
-  sandboxes: WritableSignal<Sandbox[]>
+  runs: WritableSignal<FactoryRun[]>
 }
 
 interface ApiStub {
   getNamespaces: jest.Mock
 }
 
-const activeSandbox: Sandbox = {
-  name: 'wf-active',
+const activeRun: FactoryRun = {
+  id: 'wf-active',
+  title: 'wf-active',
   project: 'coday',
+  namespaceId: 'coday',
   branch: 'feature/alpha',
   status: 'working',
   workflowType: 'adw_simple_sdlc',
+  costUsd: 3,
+  durationSec: 90,
+  tokens: 1000,
+  phases: [],
   run: {
     id: 'wf-active',
     workflow: 'adw_simple_sdlc',
@@ -55,12 +61,18 @@ const activeSandbox: Sandbox = {
   },
 }
 
-const destroyedWithRun: Sandbox = {
-  name: 'wf-done',
+const destroyedWithRun: FactoryRun = {
+  id: 'wf-done',
+  title: 'wf-done',
   project: 'coday',
+  namespaceId: 'coday',
   branch: 'feature/beta',
   status: 'destroyed',
   workflowType: 'adw_full',
+  costUsd: 2,
+  durationSec: 60,
+  tokens: 800,
+  phases: [],
   run: {
     id: 'wf-done',
     workflow: 'adw_full',
@@ -73,22 +85,34 @@ const destroyedWithRun: Sandbox = {
   },
 }
 
-const destroyedWithoutRun: Sandbox = {
-  name: 'wf-teardown',
+const destroyedWithoutRun: FactoryRun = {
+  id: 'wf-teardown',
+  title: 'wf-teardown',
   project: 'coday',
+  namespaceId: 'coday',
   status: 'destroyed',
+  costUsd: 5,
+  durationSec: 0,
+  tokens: 0,
+  phases: [],
   finalCostUsd: 5,
 }
 
-const otherProjectSandbox: Sandbox = {
-  name: 'wf-other',
+const otherNamespaceRun: FactoryRun = {
+  id: 'wf-other',
+  title: 'wf-other',
   project: 'other-ns',
+  namespaceId: 'other-ns',
   status: 'working',
+  costUsd: 1,
+  durationSec: 30,
+  tokens: 500,
+  phases: [],
   run: {
     id: 'wf-other',
     workflow: 'adw_simple_sdlc',
     status: 'running',
-    goal: 'Other project run',
+    goal: 'Other namespace run',
     costUsd: 1,
     durationSec: 30,
     tokens: 500,
@@ -101,14 +125,11 @@ const defaultNamespaces: NamespaceOption[] = [
   { id: 'other-ns', name: 'Other NS' },
 ]
 
-function createStore(sandboxes: Sandbox[] = [activeSandbox, destroyedWithRun, destroyedWithoutRun]): StoreStub {
-  return { sandboxes: signal<Sandbox[]>([...sandboxes]) }
+function createStore(runs: FactoryRun[] = [activeRun, destroyedWithRun, destroyedWithoutRun]): StoreStub {
+  return { runs: signal<FactoryRun[]>([...runs]) }
 }
 
 function createApi(namespaces: NamespaceOption[] = defaultNamespaces): ApiStub {
-  // getNamespaces returns the raw API payload; extractNamespaceOptions is called inside the component.
-  // We return already-shaped NamespaceOption objects here because the component pipes through
-  // extractNamespaceOptions which accepts any unknown payload, so passing shaped objects is fine.
   return { getNamespaces: jest.fn().mockReturnValue(of(namespaces)) }
 }
 
@@ -122,10 +143,10 @@ function tableNames(host: HTMLElement): string[] {
 
 describe('HistoryPageComponent', () => {
   async function setup(
-    sandboxes: Sandbox[] = [activeSandbox, destroyedWithRun, destroyedWithoutRun],
+    runs: FactoryRun[] = [activeRun, destroyedWithRun, destroyedWithoutRun],
     apiOverrides: Partial<ApiStub> = {}
   ): Promise<{ host: HTMLElement; fixture: ComponentFixture<HistoryPageComponent>; c: HistoryInternals }> {
-    const store = createStore(sandboxes)
+    const store = createStore(runs)
     const apiStub = { ...createApi(), ...apiOverrides }
     await TestBed.configureTestingModule({
       imports: [HistoryPageComponent],
@@ -151,46 +172,38 @@ describe('HistoryPageComponent', () => {
     expect(c.namespacesError()).toBeNull()
   })
 
-  it('exposes a namespace that has no sandbox in the store (namespace without sandbox appears)', async () => {
-    // Only activeSandbox (project: 'coday') in the store, but both namespaces come from the API.
-    const { c } = await setup([activeSandbox])
-
-    expect(c.namespaces().map((ns) => ns.id)).toContain('other-ns')
-  })
-
   it('sets namespacesError and clears loading when getNamespaces fails', async () => {
-    const { c } = await setup([activeSandbox], {
+    const { c } = await setup([activeRun], {
       getNamespaces: jest.fn().mockReturnValue(throwError(() => new Error('network'))),
     })
 
-    expect(c.namespacesError()).toBe('Projects unavailable.')
+    expect(c.namespacesError()).toBe('Namespaces unavailable.')
     expect(c.namespacesLoading()).toBe(false)
     expect(c.namespaces()).toEqual([])
   })
 
-  it('initialises project to empty string (all projects)', async () => {
+  it('initialises namespaceId to empty string (all namespaces)', async () => {
     const { c } = await setup()
 
-    expect(c.project()).toBe('')
+    expect(c.namespaceId()).toBe('')
   })
 
   // -- Rendering ---------------------------------------------------------------
 
-  it('creates the component and renders the sandbox history header', async () => {
+  it('creates the component and renders the run history header', async () => {
     const { host } = await setup()
 
-    expect(host.querySelector('h1')?.textContent).toContain('Sandbox history')
-    expect(host.textContent).toContain('Completed, stopped and destroyed runs, with their cost and phases')
+    expect(host.querySelector('h1')?.textContent).toContain('Run history')
+    expect(host.textContent).toContain('Every Factory run with its cost, status, duration and phases')
   })
 
-  it('renders the columns and every sandbox row from store.sandboxes()', async () => {
+  it('renders the columns and every run row from store.runs()', async () => {
     const { host, c } = await setup()
 
     const headers = Array.from(host.querySelectorAll('th')).map((el) => el.textContent?.trim())
-    expect(headers).toEqual(expect.arrayContaining(['Sandbox', 'Status', 'Cost']))
+    expect(headers).toEqual(expect.arrayContaining(['Run', 'Namespace', 'Status', 'Cost']))
 
     expect(c.rows()).toHaveLength(3)
-    // The table defaults to sorting by cost descending.
     expect(tableNames(host)).toEqual(['wf-teardown', 'wf-active', 'wf-done'])
   })
 
@@ -204,29 +217,28 @@ describe('HistoryPageComponent', () => {
     expect(c.counts()).toEqual({ all: 3, working: 1, destroyed: 2 })
   })
 
-  // -- Project filter ----------------------------------------------------------
+  // -- Namespace filter --------------------------------------------------------
 
-  it('shows all rows when project filter is empty (All)', async () => {
-    const { c } = await setup([activeSandbox, otherProjectSandbox])
+  it('shows all rows when namespace filter is empty (All)', async () => {
+    const { c } = await setup([activeRun, otherNamespaceRun])
 
-    expect(c.project()).toBe('')
-    expect(c.filtered().map((r) => r.name)).toEqual(expect.arrayContaining(['wf-active', 'wf-other']))
+    expect(c.namespaceId()).toBe('')
+    expect(c.filtered().map((r) => r.title)).toEqual(expect.arrayContaining(['wf-active', 'wf-other']))
   })
 
-  it('filters rows to the selected project id when a project is chosen', async () => {
-    const { c, fixture } = await setup([activeSandbox, destroyedWithRun, destroyedWithoutRun, otherProjectSandbox])
+  it('filters rows to the selected namespace id when a namespace is chosen', async () => {
+    const { c, fixture } = await setup([activeRun, destroyedWithRun, destroyedWithoutRun, otherNamespaceRun])
 
-    c.project.set('other-ns')
+    c.namespaceId.set('other-ns')
     fixture.detectChanges()
 
-    expect(c.filtered().map((r) => r.name)).toEqual(['wf-other'])
+    expect(c.filtered().map((r) => r.title)).toEqual(['wf-other'])
   })
 
-  it('shows no rows when a namespace with no sandbox is selected', async () => {
-    // 'other-ns' is in the namespace list but has no sandbox in the store.
-    const { c, fixture } = await setup([activeSandbox, destroyedWithRun, destroyedWithoutRun])
+  it('shows no rows when a namespace with no run is selected', async () => {
+    const { c, fixture } = await setup([activeRun, destroyedWithRun, destroyedWithoutRun])
 
-    c.project.set('other-ns')
+    c.namespaceId.set('other-ns')
     fixture.detectChanges()
 
     expect(c.filtered()).toHaveLength(0)
@@ -241,10 +253,10 @@ describe('HistoryPageComponent', () => {
     fixture.detectChanges()
 
     expect(tableNames(host)).toEqual(['wf-active'])
-    expect(c.filtered().map((r) => r.name)).toEqual(['wf-active'])
+    expect(c.filtered().map((r) => r.title)).toEqual(['wf-active'])
   })
 
-  it('shows completed/stopped/destroyed runs for the destroyed status filter', async () => {
+  it('shows destroyed runs for the destroyed status filter', async () => {
     const { host, fixture, c } = await setup()
 
     c.status.set('destroyed')
@@ -273,13 +285,12 @@ describe('HistoryPageComponent', () => {
       clone.querySelectorAll('mat-icon').forEach((icon) => icon.remove())
       return clone.textContent?.trim()
     })
-    // Rows are sorted by cost descending: teardown, active, done.
     expect(chips).toEqual(['completed / stopped', 'in progress', 'completed / stopped'])
   })
 
   // -- Search query ------------------------------------------------------------
 
-  it('filters by query across name, branch, run id and workflow', async () => {
+  it('filters by query across title, branch, run id and workflow', async () => {
     const { host, fixture, c } = await setup()
 
     c.query.set('feature/beta')
@@ -288,11 +299,11 @@ describe('HistoryPageComponent', () => {
 
     c.query.set('wf-teardown')
     fixture.detectChanges()
-    expect(c.filtered().map((r) => r.name)).toEqual(['wf-teardown'])
+    expect(c.filtered().map((r) => r.title)).toEqual(['wf-teardown'])
 
     c.query.set('adw_simple_sdlc')
     fixture.detectChanges()
-    expect(c.filtered().map((r) => r.name)).toEqual(['wf-active'])
+    expect(c.filtered().map((r) => r.title)).toEqual(['wf-active'])
 
     c.query.set('no-match')
     fixture.detectChanges()
@@ -305,7 +316,7 @@ describe('HistoryPageComponent', () => {
     c.status.set('destroyed')
     c.query.set('beta')
 
-    expect(c.filtered().map((r) => r.name)).toEqual(['wf-done'])
+    expect(c.filtered().map((r) => r.title)).toEqual(['wf-done'])
   })
 
   // -- Cost --------------------------------------------------------------------
@@ -340,7 +351,7 @@ describe('HistoryPageComponent', () => {
 
   // -- CSV export --------------------------------------------------------------
 
-  it('triggers a CSV download for the filtered rows', async () => {
+  it('triggers a runs.csv download with run-oriented headers', async () => {
     let csvContent = ''
     const blobSpy = jest.spyOn(globalThis, 'Blob').mockImplementation((parts: BlobPart[]) => {
       csvContent = String(parts[0])
@@ -360,9 +371,9 @@ describe('HistoryPageComponent', () => {
 
       expect(createObjectURL).toHaveBeenCalledTimes(1)
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:history')
-      expect(csvContent).toContain('sandbox;project;branch;status;run;workflow;cost_usd')
-      expect(csvContent).toContain('wf-active;coday;feature/alpha;working;wf-active;adw_simple_sdlc;3.0000')
-      expect(csvContent).toContain('wf-teardown;coday;;destroyed;;;5.0000')
+      expect(csvContent).toContain('run_id;namespace_id;project;branch;status;workflow;cost_usd')
+      expect(csvContent).toContain('wf-active;coday;coday;feature/alpha;working;adw_simple_sdlc;3.0000')
+      expect(csvContent).toContain('wf-teardown;coday;coday;;destroyed;wf-teardown;5.0000')
     } finally {
       URL.createObjectURL = originalCreate
       URL.revokeObjectURL = originalRevoke

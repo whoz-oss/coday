@@ -4,6 +4,7 @@ import {
   AllowedAction,
   AllowedActionType,
   BlockerCode,
+  FactoryRun,
   HumanInteraction,
   PhaseDetail,
   PhaseSection,
@@ -13,6 +14,7 @@ import {
   RunEventType,
   RunStatus,
   RunSummary,
+  SandboxStatus,
   SessionDetail,
   SessionStep,
   TimelineBlock,
@@ -1233,4 +1235,68 @@ export function mapProjectionToSessionDetail(
     ...(controllerCaseId !== undefined ? { controllerCaseId } : {}),
   }
   return result
+}
+
+// ---------------------------------------------------------------------------
+// FactoryRun (workstream → runs projections)
+// ---------------------------------------------------------------------------
+
+const RUN_WORKING_STATES = new Set(['running', 'active', 'waiting_human'])
+const RUN_IDLE_STATES = new Set(['idle', 'ready', 'pending', 'queued'])
+
+/** Map a real workflow state onto the cockpit run lifecycle status. */
+export function deriveRunStatus(state: string | undefined, runStatus: RunStatus): SandboxStatus {
+  const normalized = (state ?? '').toLowerCase()
+  if (RUN_WORKING_STATES.has(normalized)) return 'working'
+  if (RUN_IDLE_STATES.has(normalized)) return 'idle'
+  return runStatus === 'running' ? 'working' : 'idle'
+}
+
+function isValidIsoDate(value: string): boolean {
+  if (!value) return false
+  return Number.isFinite(Date.parse(value))
+}
+
+/**
+ * Map one workflow snapshot onto a displayable {@link FactoryRun}.
+ *
+ * The run `id` (workflow id) is the unique identity used for every action. The
+ * `namespaceId` is extracted with {@link namespaceOf} and carried verbatim so
+ * the store can group runs strictly by namespace. Every other field comes from
+ * the snapshot/relations; nothing is fabricated.
+ */
+export function mapProjectionToFactoryRun(snapshot: unknown, forcedStatus?: SandboxStatus): FactoryRun {
+  const run = mapProjectionToRunSummary(snapshot)
+  const obj = asObject(snapshot) ?? {}
+  const projection = asObject(obj['projection']) ?? obj
+  const relations = asObject(obj['relations']) ?? asObject(asObject(obj['instance'])?.['relations'])
+  const namespaceId = namespaceOf(snapshot)
+  const ticket = getString(relations, 'ticket')
+  const branch = getString(relations, 'branch') ?? ticket
+  const workflowType = getString(projection, 'workflowType')
+  const title = getString(projection, 'title')
+  const goal = getString(projection, 'goal')
+  const state = getString(projection, 'status')
+  const name = title ?? (run.id !== 'unknown' ? run.id : (ticket ?? goal ?? 'workflow'))
+
+  const factoryRun: FactoryRun = {
+    id: run.id,
+    title: name,
+    project: namespaceId ?? ticket ?? 'coday',
+    status: forcedStatus ?? deriveRunStatus(state, run.status),
+    costUsd: run.costUsd,
+    durationSec: run.durationSec,
+    tokens: run.tokens,
+    phases: run.phases,
+    run,
+  }
+  if (namespaceId) factoryRun.namespaceId = namespaceId
+  if (workflowType) factoryRun.workflowType = workflowType
+  if (ticket) factoryRun.ticket = ticket
+  if (branch) factoryRun.branch = branch
+  const controllerCaseId = controllerCaseIdOf(snapshot)
+  if (controllerCaseId) factoryRun.controllerCaseId = controllerCaseId
+  const rawCreatedAt = getString(obj, 'createdAt')
+  if (rawCreatedAt && isValidIsoDate(rawCreatedAt)) factoryRun.createdAt = rawCreatedAt
+  return factoryRun
 }
