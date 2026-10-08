@@ -61,8 +61,6 @@
   @if (r.run; as summary) {
     <section class="run" aria-label="Run summary">
       <div class="run-head">
-        <a class="sf-workflow" [routerLink]="['/sessions', r.id]">{{ summary.workflow || r.id }}</a>
-        <code class="sf-id" [title]="'Run ID: ' + r.id">{{ r.id }}</code>
         @if (summary.status === 'running') {
           @if (summary.waitingHuman) {
             <sf-status-chip tone="amber" size="sm" icon="person_alert">
