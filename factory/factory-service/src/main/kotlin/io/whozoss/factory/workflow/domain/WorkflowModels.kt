@@ -193,6 +193,13 @@ data class WorkflowProjectionRecord(
     val relations: Map<String, Any?>?,
     val controllerExecution: Map<String, Any?>?,
     val lifecycleState: String,
+    /**
+     * Audit timestamp: when the projection node was first written to Neo4j.
+     * Preserved across all subsequent updates by [Neo4jWorkflowRepository.publishProjection].
+     * Null when the projection was loaded via a path that does not propagate it
+     * (e.g. older code paths before this field was added to the domain).
+     */
+    val createdAt: java.time.Instant? = null,
 )
 
 /** A validated `POST /transitions` / `POST /code-transitions` request. */

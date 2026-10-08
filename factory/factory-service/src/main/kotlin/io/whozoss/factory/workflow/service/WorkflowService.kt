@@ -222,6 +222,10 @@ class WorkflowService(
         put("namespaceId", record.namespaceId)
         put("revision", record.revision)
         put("projectionHash", record.projectionHash)
+        // Audit timestamp: when the projection was first written to Neo4j.
+        // Preserved across all subsequent updates; absent for declarative
+        // (non-governed) projections loaded via publicInstanceSnapshot.
+        if (record.createdAt != null) put("createdAt", record.createdAt.toString())
         if (record.governanceMode != null) {
             put("governanceMode", record.governanceMode)
             put("definitionVersion", record.definitionVersion)
