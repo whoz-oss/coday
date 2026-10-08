@@ -11,10 +11,23 @@ import io.whozoss.factory.error.FactoryException
 enum class AgentStepResultStatus {
     PASS,
     FAIL,
+
+    /**
+     * The step is BLOQUÉ: the worker proved it lacks missing research. The
+     * proof (findings / artifacts / claims) is preserved, the dependants are
+     * NOT launched, and the verdict is NEVER converted into a terminal
+     * [FAIL] — a terminal run is sealed. The engine routes the step to a
+     * Searcher attempt, then re-arms this step as a brand-new attempt on the
+     * same worktree.
+     */
+    NEEDS_RESEARCH,
     ;
 
     companion object {
         fun fromWire(value: String?): AgentStepResultStatus? = entries.firstOrNull { it.name == value }
+
+        /** Whether the verdict seals the step/run in a terminal failure. */
+        fun isTerminalFailure(value: AgentStepResultStatus): Boolean = value == FAIL
     }
 }
 
@@ -65,6 +78,12 @@ data class AgentStepResultArtifact(
 
 /** The `claims` sub-object of a business result. */
 data class AgentStepResultClaim(
+    /**
+     * Files the worker DECLARED as modified. This is a self-reported claim, not
+     * the verified diff: it is never promoted to proof of an actual change. A
+     * verifier (oracle) must independently confirm the real diff; the two must
+     * stay distinguishable in the durable record.
+     */
     val modifiedFiles: List<String>,
 )
 
@@ -84,6 +103,12 @@ data class AgentStepResultBusiness(
     val claims: AgentStepResultClaim,
     val artifacts: List<AgentStepResultArtifact> = emptyList(),
     val findings: List<AgentStepResultFinding> = emptyList(),
+    /**
+     * Authoritative amendment counter the result was produced against
+     * (compare-and-set); `null` on a submission that does not depend on an
+     * amendment. It is part of the semantic identity of the result.
+     */
+    val expectedAmendmentSeq: Long? = null,
 )
 
 /** Identity a result store issues a submission capability for. */
@@ -154,6 +179,12 @@ data class AgentStepResultSubmitted(
     val findings: List<AgentStepResultFinding>,
     val submittedAt: String,
     val resultHash: String,
+    /**
+     * Amendment sequence the worker declared at submission time. Kept on the
+     * durable record so a divergent replay is a semantic collision, never a
+     * silent reuse, and the accepted verdict stays auditable.
+     */
+    val expectedAmendmentSeq: Long? = null,
 )
 
 /** Stored attempt row projection. */
@@ -218,6 +249,7 @@ object AgentAttemptErrorCodes {
     const val TRUST_CONTEXT_UNAVAILABLE = "TRUST_CONTEXT_UNAVAILABLE"
     const val RESULT_CAPABILITY_REFRESH_FORBIDDEN = "RESULT_CAPABILITY_REFRESH_FORBIDDEN"
     const val RESULT_ATTEMPT_NOT_REFRESHABLE = "RESULT_ATTEMPT_NOT_REFRESHABLE"
+    const val STALE_AMENDMENT_SEQUENCE = "STALE_AMENDMENT_SEQUENCE"
 
     // Phase 4 ask-step-question vocabulary (dedicated worker question channel).
     const val QUESTION_SCHEMA_INVALID = "QUESTION_SCHEMA_INVALID"
@@ -318,6 +350,16 @@ class ResultCapabilityRefreshForbiddenException(
 class ResultAttemptNotRefreshableException(
     message: String = "The attempt cannot receive a renewed result capability",
 ) : AgentAttemptException(AgentAttemptErrorCodes.RESULT_ATTEMPT_NOT_REFRESHABLE, 409, message)
+
+/**
+ * 409 — the submitted result carries an `expected_amendment_seq` that no longer
+ * matches the workflow's authoritative amendment counter: the result was
+ * produced against an obsolete plan revision and is rejected (compare-and-set).
+ */
+class StaleAmendmentSequenceException(
+    message: String = "The expected amendment sequence does not match the current workflow sequence",
+    details: Any? = null,
+) : AgentAttemptException(AgentAttemptErrorCodes.STALE_AMENDMENT_SEQUENCE, 409, message, details)
 
 /** 400 — the structured step question fails validation. */
 class QuestionSchemaInvalidException(

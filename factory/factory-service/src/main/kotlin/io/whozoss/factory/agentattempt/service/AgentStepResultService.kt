@@ -30,6 +30,12 @@ data class ResultChannelRecoveryReport(
      * result channel never fabricates an outcome.
      */
     val expiredReservations: Int,
+    /**
+     * Submitted `NEEDS_RESEARCH` results observed while still non-terminal. They
+     * are deliberately LEFT non-terminal (the step is blocked pending research,
+     * never a terminal failure) and are reported for audit only.
+     */
+    val needsResearchDeferred: Int = 0,
 )
 
 /** Canonical response payload of a capability-backed result submission. */
@@ -195,11 +201,23 @@ class AgentStepResultService(
      */
     fun reconcileOnStartup(now: Instant = Instant.now()): ResultChannelRecoveryReport {
         var finalized = 0
+        var needsResearch = 0
         for (candidate in results.findSubmittedWithNonTerminalAttempt()) {
             val row = candidate.result
             val terminalStatus = when (row.resultStatus) {
                 SUBMITTED_SUCCESS -> ATTEMPT_COMPLETED
                 SUBMITTED_FAILURE -> ATTEMPT_FAILED
+                // A NEEDS_RESEARCH result is NOT terminal: the step is blocked
+                // pending research and must never be sealed as `failed`. It is
+                // counted and left to the Searcher re-arm orchestration.
+                SUBMITTED_NEEDS_RESEARCH -> {
+                    needsResearch++
+                    logger.info {
+                        "Result channel reconciliation left attempt '${row.attemptId}' blocked " +
+                            "(NEEDS_RESEARCH) for Searcher re-arm"
+                    }
+                    continue
+                }
                 else -> continue
             }
             // Defensive immutability re-check under the repository fence: a
@@ -234,12 +252,17 @@ class AgentStepResultService(
                 }
             }
         }
-        return ResultChannelRecoveryReport(submittedFinalized = finalized, expiredReservations = expired)
+        return ResultChannelRecoveryReport(
+            submittedFinalized = finalized,
+            expiredReservations = expired,
+            needsResearchDeferred = needsResearch,
+        )
     }
 
     private companion object {
         const val SUBMITTED_SUCCESS = "success"
         const val SUBMITTED_FAILURE = "failure"
+        const val SUBMITTED_NEEDS_RESEARCH = "needs_research"
         const val ATTEMPT_COMPLETED = "completed"
         const val ATTEMPT_FAILED = "failed"
         val TERMINAL_ATTEMPT_STATUSES = setOf(ATTEMPT_COMPLETED, ATTEMPT_FAILED)

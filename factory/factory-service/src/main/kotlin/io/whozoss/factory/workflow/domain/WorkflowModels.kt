@@ -36,15 +36,25 @@ object WorkflowStatuses {
     const val FAILED = "failed"
     const val CANCELLED = "cancelled"
 
-    val ALL: Set<String> = setOf(PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED)
+    /**
+     * Lot E: a step whose authoritative result was `NEEDS_RESEARCH`. The step is
+     * BLOCKED (its dependants are not launched) but the status is NOT terminal
+     * and NEVER sealed as [FAILED]: the engine routes a Searcher attempt then
+     * re-arms the step as a brand-new attempt.
+     */
+    const val NEEDS_RESEARCH = "needs_research"
+
+    val ALL: Set<String> =
+        setOf(PENDING, READY, RUNNING, WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH)
 
     /** Node `WORKFLOW_TRANSITIONS` state machine. */
     val TRANSITIONS: Map<String, Set<String>> = mapOf(
         PENDING to setOf(READY),
         READY to setOf(RUNNING, BLOCKED, FAILED, CANCELLED),
-        RUNNING to setOf(WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED),
+        RUNNING to setOf(WAITING_HUMAN, BLOCKED, COMPLETED, FAILED, CANCELLED, NEEDS_RESEARCH),
         WAITING_HUMAN to setOf(RUNNING, BLOCKED, FAILED, CANCELLED),
         BLOCKED to setOf(READY, RUNNING, FAILED, CANCELLED),
+        NEEDS_RESEARCH to setOf(READY, RUNNING, FAILED, CANCELLED),
         COMPLETED to emptySet(),
         FAILED to emptySet(),
         CANCELLED to emptySet(),
@@ -218,6 +228,15 @@ data class WorkflowInstanceRecord(
      * the case family — a legacy run is never converted (strict compatibility).
      */
     val rootCaseId: String? = null,
+    /**
+     * Authoritative plan-amendment counter of the run (Lot E). Distinct from
+     * `expectedEnvironmentRevision`: it counts accepted plan-change amendments
+     * and is incremented atomically on the workflow instance. A result
+     * submission declaring `expected_amendment_seq` is compare-and-set against
+     * this value; a stale submission is rejected. Defaults to `0` for
+     * instances that never accepted an amendment.
+     */
+    val amendmentSeq: Long = 0L,
 )
 
 /** The declarative WorkflowProjection v1/v2 store row. */

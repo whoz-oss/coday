@@ -119,6 +119,24 @@ interface SpringDataNeo4jWorkflowInstanceRepository : Neo4jRepository<WorkflowIn
         @Param("rootCaseId") rootCaseId: String,
         @Param("updatedAt") updatedAt: Instant,
     ): Long
+
+    /**
+     * Atomically increments the run's plan-amendment counter (Lot E) and returns
+     * the new value. `coalesce` keeps legacy nodes (without the field) at `0`.
+     * A missing instance returns no row, so the caller observes `0`.
+     */
+    @Query(
+        """
+        MATCH (i:WorkflowInstance {id: ${'$'}id})
+        SET i.amendmentSeq = coalesce(i.amendmentSeq, 0) + 1,
+            i.updatedAt = ${'$'}updatedAt
+        RETURN i.amendmentSeq AS amendmentSeq
+        """,
+    )
+    fun incrementAmendmentSeq(
+        @Param("id") id: String,
+        @Param("updatedAt") updatedAt: Instant,
+    ): Long?
 }
 
 interface SpringDataNeo4jWorkflowProjectionRepository : Neo4jRepository<WorkflowProjectionNode, String> {

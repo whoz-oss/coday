@@ -128,4 +128,46 @@ class SessionSequencerTest {
 
         assertThat(ready).containsExactly("a", "b")
     }
+
+    @Test
+    fun `a needs_research step keeps its dependants pending, not launched`() {
+        val steps = listOf(step("a"), step("b", "a"))
+
+        val evaluation = SessionSequencer.evaluate(
+            steps,
+            statuses("a" to WorkflowStatuses.NEEDS_RESEARCH, "b" to WorkflowStatuses.PENDING),
+        )
+
+        assertThat(evaluation.ready).isEmpty()
+        assertThat(evaluation.blocked).isEmpty()
+    }
+
+    @Test
+    fun `a needs_research step keeps the session non-terminal`() {
+        val steps = listOf(step("a"), step("b", "a"))
+
+        val status = SessionSequencer.terminalStatus(
+            steps,
+            statuses("a" to WorkflowStatuses.NEEDS_RESEARCH, "b" to WorkflowStatuses.PENDING),
+        )
+
+        assertThat(status).isEqualTo(WorkflowStatuses.NEEDS_RESEARCH)
+        assertThat(SessionSequencer.isTerminal(status)).isFalse()
+    }
+
+    @Test
+    fun `a genuine failure still seals the session even alongside needs_research`() {
+        val steps = listOf(step("a"), step("b"), step("c", "b"))
+
+        val status = SessionSequencer.terminalStatus(
+            steps,
+            statuses(
+                "a" to WorkflowStatuses.NEEDS_RESEARCH,
+                "b" to WorkflowStatuses.FAILED,
+                "c" to WorkflowStatuses.BLOCKED,
+            ),
+        )
+
+        assertThat(status).isEqualTo(WorkflowStatuses.FAILED)
+    }
 }

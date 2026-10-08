@@ -23,6 +23,14 @@ data class AgentStepResultRequest(
     val caseId: String? = null,
     val agentName: String? = null,
     val idempotencyKey: String? = null,
+    /**
+     * Optional authoritative amendment counter the result was produced against
+     * (Lot E compare-and-set). Accepted both top-level and inside `business`;
+     * it is folded into the business payload so it is part of the semantic
+     * identity of the result.
+     */
+    val expectedAmendmentSeq: Long? = null,
+    val expected_amendment_seq: Long? = null,
 )
 
 /** The optional `observed` identity block of a submission request. */
