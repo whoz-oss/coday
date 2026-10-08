@@ -1,3 +1,16 @@
+## 3.28.0 (2026-10-08)
+
+### 🚀 Features
+
+- **agentos-service:** more resilient generate intent ([a77e7286](https://github.com/whoz-oss/coday/commit/a77e7286))
+- **agentos-service:** close balis ([90125107](https://github.com/whoz-oss/coday/commit/90125107))
+- **agentos-service:** more resilient generate intent ([#1424](https://github.com/whoz-oss/coday/pull/1424))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 3.27.0 (2026-10-07)
 
 ### 🚀 Features
