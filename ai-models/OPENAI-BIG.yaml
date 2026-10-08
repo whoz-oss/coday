@@ -1,0 +1,14 @@
+# Model tier shared by every checkout. Requires an AI provider named `requesty` in the
+# namespace (or at platform level) holding your own Requesty key; without it this model is
+# ignored. Prices are Requesty's, in USD per million tokens.
+alias: OPENAI-BIG
+apiModelName: openai/gpt-5.6-terra
+provider: requesty
+description: Default OpenAI tier via Requesty
+priority: 10
+contextWindow: 1050000
+pricing:
+  inputMTokens: 2
+  outputMTokens: 12
+  cacheRead: 0.2
+  cacheWrite: 2.5
