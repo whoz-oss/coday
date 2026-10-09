@@ -1,0 +1,190 @@
+# Workstream Sync — keeps every workstream/<slug>/master branch up to date with master.
+#
+# Triggered by every push to master (including release squash-merges and hotfix backports).
+#
+# For each existing workstream/*/master branch, this workflow merges master into it
+# and pushes the result.
+#
+# CONFLICT POLICY — read carefully before modifying:
+# ---------------------------------------------------------
+# It is tempting to add blanket --ours/--theirs resolution for version files
+# (package.json, libs.versions.toml) because release.yml rewrites them on each release.
+# DO NOT DO THIS. The workstream branch never commits version stamps (rule 2 of the
+# three inviolable rules), so these files are unmodified on the workstream side.
+# Git merges line-by-line, so a work branch that adds a dependency to package.json
+# merges cleanly with a master release that changed only the version line.
+# A real conflict in these files means two sides genuinely changed overlapping lines
+# — which is information, not noise.
+#
+# --ours would freeze stale versions and compound on every subsequent sync.
+# --theirs would silently discard legitimate work-branch edits (new dependencies, etc.).
+#
+# CHANGELOG.md is the ONLY safe auto-resolution: it is append-only and exclusively
+# master-authored, so git checkout --theirs -- CHANGELOG.md is safe there and
+# NOWHERE ELSE.
+#
+# For everything else: abort the merge, fail the job loudly, and report clearly
+# which workstream and which files conflict. Manual resolution is required.
+#
+# WHY RELEASE_PAT IS REQUIRED:
+# Pushes made with GITHUB_TOKEN do not trigger downstream workflows. Although
+# workstream-sync does not directly feed another workflow, consistent use of
+# RELEASE_PAT across all workstream pushes avoids subtle breakage if the trigger
+# chain ever changes.
+
+name: Workstream Sync
+
+on:
+  push:
+    branches:
+      - master
+
+concurrency:
+  group: workstream-sync
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # fetch-depth: 0 is required so we have the full history of master and all
+      # workstream branches for the merge.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          # MUST use RELEASE_PAT so that downstream workflow triggers work correctly
+          # if the push chain ever changes. Consistent practice across all workstream
+          # pushes avoids subtle breakage.
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync master into all workstream branches
+        run: |
+          git fetch origin
+
+          # Find all remote workstream/*/master branches.
+          # We match only "workstream/<slug>/master" (not arbitrary base branches)
+          # because master is the only base we auto-sync; other bases would need
+          # their own trigger.
+          WORKSTREAM_BRANCHES=$(git branch -r --list 'origin/workstream/*/master' \
+            | sed 's|origin/||' \
+            | tr -d ' ')
+
+          if [ -z "$WORKSTREAM_BRANCHES" ]; then
+            echo "No workstream/*/master branches found. Nothing to sync."
+            exit 0
+          fi
+
+          echo "Found workstream branches to sync:"
+          echo "$WORKSTREAM_BRANCHES"
+
+          FAILED_BRANCHES=""
+
+          for BRANCH in $WORKSTREAM_BRANCHES; do
+            echo ""
+            echo "======================================================"
+            echo "Syncing master into ${BRANCH}..."
+            echo "======================================================"
+
+            # Check out the workstream branch tracking the remote.
+            git checkout -B "$BRANCH" "origin/${BRANCH}"
+
+            # Attempt the merge.
+            if git merge --no-ff origin/master \
+                 -m "chore: sync master into ${BRANCH} [workstream-sync]"; then
+              echo "Merge succeeded for ${BRANCH}."
+
+              # CHANGELOG.md auto-resolution: it is append-only and exclusively
+              # master-authored, so taking master's version is always correct.
+              # This handles the edge case where a prior partial merge left a
+              # conflict marker in CHANGELOG.md.
+              # NOTE: if the merge succeeded above there is no conflict to resolve;
+              # this is a belt-and-suspenders step for a theoretically clean merge.
+
+              # Push the merged branch.
+              # MUST use RELEASE_PAT — see header comment.
+              if git push origin "${BRANCH}"; then
+                echo "Pushed ${BRANCH} successfully."
+              else
+                echo "::error::Failed to push ${BRANCH} after successful merge."
+                FAILED_BRANCHES="${FAILED_BRANCHES} ${BRANCH}"
+              fi
+
+            else
+              # Collect conflicting files before aborting.
+              CONFLICTING=$(git diff --name-only --diff-filter=U)
+
+              # CHANGELOG.md is the ONLY file we auto-resolve with --theirs.
+              # It is append-only and exclusively master-authored; taking master's
+              # version is always correct and never discards workstream work.
+              if echo "$CONFLICTING" | grep -q '^CHANGELOG.md$'; then
+                echo "Auto-resolving CHANGELOG.md with master's version (safe: append-only)."
+                git checkout --theirs -- CHANGELOG.md
+                git add CHANGELOG.md
+                REMAINING=$(echo "$CONFLICTING" | grep -v '^CHANGELOG.md$')
+              else
+                REMAINING="$CONFLICTING"
+              fi
+
+              if [ -z "$REMAINING" ]; then
+                # Only CHANGELOG.md conflicted — auto-resolution handled it.
+                if git merge --continue --no-edit; then
+                  echo "Merge completed after CHANGELOG.md auto-resolution for ${BRANCH}."
+                  if git push origin "${BRANCH}"; then
+                    echo "Pushed ${BRANCH} successfully."
+                  else
+                    echo "::error::Failed to push ${BRANCH} after CHANGELOG.md auto-resolution."
+                    FAILED_BRANCHES="${FAILED_BRANCHES} ${BRANCH}"
+                  fi
+                else
+                  echo "::error::Merge --continue failed for ${BRANCH} after CHANGELOG.md resolution."
+                  git merge --abort 2>/dev/null || true
+                  FAILED_BRANCHES="${FAILED_BRANCHES} ${BRANCH}"
+                fi
+              else
+                # Genuine conflicts remain that require manual resolution.
+                # Abort the merge and report loudly. Do NOT auto-resolve:
+                # --ours would freeze stale versions; --theirs would silently
+                # discard legitimate work-branch edits.
+                git merge --abort
+
+                CONFLICT_LIST=$(echo "$REMAINING" | sed 's/^/- /')
+                echo "::error::Merge conflict in ${BRANCH} on files that require manual resolution:"
+                echo "$CONFLICT_LIST"
+
+                FAILED_BRANCHES="${FAILED_BRANCHES} ${BRANCH}"
+              fi
+            fi
+
+            # Return to a clean state before the next branch.
+            git checkout master 2>/dev/null || git checkout "${{ github.sha }}" 2>/dev/null || true
+          done
+
+          if [ -n "$FAILED_BRANCHES" ]; then
+            echo ""
+            echo "::error::The following workstream branches failed to sync with master:"
+            for B in $FAILED_BRANCHES; do
+              echo "::error::  - ${B}"
+            done
+            echo ""
+            echo "Manual resolution is required. For each failed branch:"
+            echo "  1. Check out the branch locally."
+            echo "  2. Run: git merge origin/master"
+            echo "  3. Resolve conflicts manually (do NOT use --ours or --theirs on version files)."
+            echo "  4. CHANGELOG.md conflicts may be resolved with: git checkout --theirs -- CHANGELOG.md"
+            echo "  5. Commit and push."
+            exit 1
+          fi
+
+          echo ""
+          echo "All workstream branches synced successfully."
