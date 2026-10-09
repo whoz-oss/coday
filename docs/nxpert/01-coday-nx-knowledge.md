@@ -23,12 +23,14 @@ do not assume from `project.json` alone.
 As a general orientation: `test` and `lint` are typically inferred; `build` and special targets
 like `check-openapi-spec`, `bootRun`, `generate-client` are explicitly declared in `project.json`.
 
-## JVM Sub-workspace (`agentos/`)
+## JVM Sub-workspaces (`agentos/` and `factory/`)
 
-The `agentos/` directory is a separate Gradle multi-project build integrated into Nx via
-`nx:run-commands`. Publishable projects carry the `platform:jvm` tag — use
-`nx show projects --projects="tag:platform:jvm"` to get the current list.
-`agentos-plugins-filesystem` is a legacy project — it has no `platform:jvm` tag and is not published.
+Both `agentos/` and `factory/` are independent Gradle multi-project builds integrated into Nx via
+`nx:run-commands`. Publishable projects carry a platform-scoped tag:
+- AgentOS projects: `platform:jvm-agentos` — use `nx show projects --projects="tag:platform:jvm-agentos"`
+- Factory projects: `platform:jvm-factory` — use `nx show projects --projects="tag:platform:jvm-factory"`
+
+`agentos-plugins-filesystem` is a legacy project — it has no `platform:jvm-agentos` tag and is not published.
 
 Nx integration is handled by a **local plugin** at `tools/plugins/agentos-gradle/src/agentos-gradle.ts`
 (not `@nx/gradle`). It globs `agentos/*/build.gradle.kts` and infers `build`, `test`, `clean`,
@@ -56,7 +58,7 @@ Two-dimension tag system: `scope:<domain>` + `type:<layer>`
 
 **Scopes**: `libs`, `agentos`, `agentos-dataflow`, `design-system`  
 **Types**: `core`, `model`, `integration`, `ui`, `api-client`, `utils`, `app`, `tool`  
-**JVM**: additionally tagged `platform:jvm` + `scope:service` / `scope:sdk` / `scope:plugin`
+**JVM**: additionally tagged `platform:jvm-agentos` (AgentOS) or `platform:jvm-factory` (Factory) + `scope:service` / `scope:sdk` / `scope:plugin`
 
 Boundary rules enforced in root `eslint.config.js`:
 - `scope:design-system` → only `type:model`, `type:utils`
@@ -68,21 +70,24 @@ Boundary rules enforced in root `eslint.config.js`:
 
 Two GitHub Actions workflows in `.github/workflows/`:
 - **`validate.yml`**: PR validation — runs `nx affected --target="lint,test"` + `check-openapi-spec`.
-  JVM projects are handled separately: `nx show projects --affected --projects="tag:platform:jvm" --json --quiet`
-  resolves affected names first, then `nx run-many` is called with explicit names (tag filter can't
-  be forwarded to Gradle executors directly).
+  JVM projects are handled separately: affected names are resolved via
+  `nx show projects --affected --projects="tag:platform:jvm-agentos"` and
+  `nx show projects --affected --projects="tag:platform:jvm-factory"` independently,
+  then `nx run-many` is called with explicit names (tag filter can't be forwarded to
+  Gradle executors directly).
 - **`release.yml`**: Push to master — 5 jobs in sequence:
   1. `check-release` — detects releasable commits since last tag
   2. `release` — runs `nx release` (version bump, changelog, GitHub release, npm publish for Node projects)
   3. `desktop-release` — macOS runner, signs and packages `.pkg` for `tag:platform:npm` desktop apps, uploads to GitHub Release
-  4. `compute-jvm-projects` — resolves `tag:platform:jvm` projects via `nx show projects --json --quiet | jq -c '.'`
-  5. `publish-agentos-artifacts` — matrix job over the dynamic list, publishes each JVM project to GitHub Packages
+  4. `compute-agentos-projects` / `compute-factory-projects` — resolve `tag:platform:jvm-agentos` and `tag:platform:jvm-factory` projects in parallel
+  5. `publish-agentos-artifacts` / `publish-factory-artifacts` — independent matrix jobs per platform, publish each JVM project to GitHub Packages
 
 ## Release System
 
 Uses `nx release` with conventional commits. Tag pattern: `release/{version}`.
 - **npm projects** selected via `tag:platform:npm` in `nx.json` release config
-- **JVM projects** selected via `tag:platform:jvm` — `agentos-plugins-filesystem` explicitly does NOT carry this tag (legacy, not published)
+- **AgentOS JVM projects** selected via `tag:platform:jvm-agentos` — `agentos-plugins-filesystem` explicitly does NOT carry this tag (legacy, not published)
+- **Factory JVM projects** selected via `tag:platform:jvm-factory`
 - Adding a new publishable project only requires the right `platform:*` tag — no CI config changes needed
 
 ## Cache Debugging Checklist

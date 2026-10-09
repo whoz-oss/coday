@@ -232,13 +232,14 @@ jobs:
           echo "| Run | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Job 2: Resolve the list of JVM projects to publish from the platform:jvm tag.
+  # Jobs 2a / 2b: Resolve the list of JVM projects per platform.
   #
-  # Mirrors compute-jvm-projects in release.yml exactly -- a dedicated lightweight
-  # job (no JDK, no Gradle) whose sole output feeds the matrix in publish-jvm.
-  # Runs in parallel with build-jars after prepare completes.
+  # Two lightweight jobs (no JDK, no Gradle) running in parallel after prepare.
+  # Each resolves its own platform tag so the downstream build and publish jobs
+  # are fully isolated: agentos and factory never share a Gradle invocation or
+  # a GitHub Packages matrix runner.
   # ─────────────────────────────────────────────────────────────────────────────
-  compute-jvm-projects:
+  compute-agentos-projects:
     runs-on: ubuntu-latest
     needs: prepare
     outputs:
@@ -258,26 +259,52 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Resolve JVM projects from tag
+      - name: Resolve AgentOS JVM projects from tag
         id: resolve
         run: |
-          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.' || echo '[]')
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-agentos" --json --quiet | jq -c '.' || echo '[]')
+          echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
+
+  compute-factory-projects:
+    runs-on: ubuntu-latest
+    needs: prepare
+    outputs:
+      projects: ${{ steps.resolve.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve Factory JVM projects from tag
+        id: resolve
+        run: |
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-factory" --json --quiet | jq -c '.' || echo '[]')
           echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # Job 3: Build all AgentOS JARs and upload them as a GitHub Actions artifact.
+  # Jobs 3a / 3b: Build JARs per platform and upload as separate artifacts.
   #
-  # Mirrors upload-agentos-jars in release.yml -- JDK only (no pnpm for building),
-  # single Gradle invocation for all projects, then stages JARs with versioned
-  # names and uploads them for the prerelease job to attach.
+  # AgentOS and Factory each get their own runner, their own Gradle invocation
+  # rooted in their respective subfolder (agentos/ or factory/), and their own
+  # uploaded artifact (agentos-jars / factory-jars).
   #
-  # A single Gradle call is intentional: Gradle resolves inter-project dependencies
-  # (e.g. plugins depending on agentos-sdk) more efficiently when all tasks are
-  # submitted together, and the daemon warm-up cost is paid once.
+  # A single Gradle call per platform is intentional: Gradle resolves
+  # inter-project dependencies more efficiently when all tasks are submitted
+  # together, and the daemon warm-up cost is paid once per build.
   #
-  # Runs in parallel with compute-jvm-projects and publish-jvm after prepare.
+  # Both jobs run in parallel after prepare.
   # ─────────────────────────────────────────────────────────────────────────────
-  build-jars:
+  build-agentos-jars:
     runs-on: ubuntu-latest
     needs: prepare
     permissions:
@@ -304,24 +331,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Stamp libs.versions.toml so Gradle embeds the correct version in JAR manifests
-      # and filenames. Done with sed directly -- no tsx invocation needed since we only
-      # need the TOML update, not the npm publish (already done in prepare).
-      - name: Stamp Gradle version in libs.versions.toml
+      # Stamp agentos/gradle/libs.versions.toml so Gradle embeds the correct version
+      # in JAR manifests and filenames. Done with sed directly -- no tsx invocation
+      # needed since we only need the TOML update, not the npm publish (already done
+      # in prepare).
+      - name: Stamp AgentOS Gradle version in libs.versions.toml
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
           sed -i "s/^agentosSdk = .*/agentosSdk = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
           sed -i "s/^agentosService = .*/agentosService = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
-          echo "Stamped libs.versions.toml with version ${VERSION}"
+          echo "Stamped agentos/gradle/libs.versions.toml with version ${VERSION}"
           grep -E '^(agentosSdk|agentosService) =' agentos/gradle/libs.versions.toml
 
       # Derive Gradle tasks from the project list and type tags, then build all at once.
       # type:app -> :<name>:bootJar  (Spring Boot fat jar, no version in filename)
       # type:lib -> :<name>:jar      (standard jar, Gradle embeds version in filename)
-      - name: Resolve Gradle tasks
+      - name: Resolve AgentOS Gradle tasks
         id: gradle
         run: |
-          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -r '.[]')
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-agentos" --json --quiet | jq -r '.[]')
           TASKS=""
           for PROJECT in $PROJECTS; do
             TAGS=$(npx nx show project "$PROJECT" --json --quiet | jq -r '.tags[]')
@@ -344,10 +372,10 @@ jobs:
       # Naming contract: "<artifactId>-<version>.jar" -- identical to release.yml.
       # type:app: bootJar produces <name>.jar (no version suffix) -> rename explicitly.
       # type:lib: jar produces <name>-<version>.jar                -> copy as-is.
-      - name: Stage JARs with versioned names
+      - name: Stage AgentOS JARs with versioned names
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
-          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -r '.[]')
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-agentos" --json --quiet | jq -r '.[]')
           mkdir -p /tmp/agentos-jars
 
           for PROJECT in $PROJECTS; do
@@ -362,36 +390,131 @@ jobs:
 
           cd /tmp/agentos-jars
           sha256sum *.jar > checksums.sha256
-          echo "Staged files:"
+          echo "Staged AgentOS files:"
           cat checksums.sha256
 
-      - name: Upload staged JARs
+      - name: Upload staged AgentOS JARs
         uses: actions/upload-artifact@v4
         with:
           name: agentos-jars
           path: /tmp/agentos-jars/
           retention-days: 1
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Job 4: Publish each JVM artifact to GitHub Packages.
-  #
-  # Mirrors publish-agentos-artifacts in release.yml exactly -- matrix over
-  # jvm projects, fail-fast: false, each runner stamps libs.versions.toml with
-  # sed and calls `pnpm nx publish <project>` (which invokes Gradle publish).
-  #
-  # Runs in parallel with build-jars after compute-jvm-projects completes.
-  # ─────────────────────────────────────────────────────────────────────────────
-  publish-jvm:
-    name: publish ${{ matrix.project }} to github packages
+  build-factory-jars:
     runs-on: ubuntu-latest
-    needs: [prepare, compute-jvm-projects]
+    needs: prepare
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Stamp factory/gradle/libs.versions.toml so Gradle embeds the correct version
+      # in JAR manifests and filenames.
+      - name: Stamp Factory Gradle version in libs.versions.toml
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          sed -i "s/^factorySdk = .*/factorySdk = \"${VERSION}\"/" factory/gradle/libs.versions.toml
+          sed -i "s/^factoryService = .*/factoryService = \"${VERSION}\"/" factory/gradle/libs.versions.toml
+          echo "Stamped factory/gradle/libs.versions.toml with version ${VERSION}"
+          grep -E '^(factorySdk|factoryService) =' factory/gradle/libs.versions.toml
+
+      # Derive Gradle tasks from the project list and type tags, then build all at once.
+      # type:app -> :<name>:bootJar  (Spring Boot fat jar, no version in filename)
+      # type:lib -> :<name>:jar      (standard jar, Gradle embeds version in filename)
+      - name: Resolve Factory Gradle tasks
+        id: gradle
+        run: |
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-factory" --json --quiet | jq -r '.[]')
+          TASKS=""
+          for PROJECT in $PROJECTS; do
+            TAGS=$(npx nx show project "$PROJECT" --json --quiet | jq -r '.tags[]')
+            if echo "$TAGS" | grep -q "type:app"; then
+              TASKS="$TASKS :${PROJECT}:bootJar"
+            else
+              TASKS="$TASKS :${PROJECT}:jar"
+            fi
+          done
+          echo "tasks=$(echo $TASKS | xargs)" >> $GITHUB_OUTPUT
+
+      - name: Grant execute permission for gradlew
+        working-directory: factory
+        run: chmod +x gradlew
+
+      - name: Build Factory JARs
+        working-directory: factory
+        run: ./gradlew ${{ steps.gradle.outputs.tasks }} --no-daemon
+
+      # Naming contract: "<artifactId>-<version>.jar" -- identical to release.yml.
+      # type:app: bootJar produces <name>.jar (no version suffix) -> rename explicitly.
+      # type:lib: jar produces <name>-<version>.jar                -> copy as-is.
+      - name: Stage Factory JARs with versioned names
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm-factory" --json --quiet | jq -r '.[]')
+          mkdir -p /tmp/factory-jars
+
+          for PROJECT in $PROJECTS; do
+            TAGS=$(npx nx show project "$PROJECT" --json --quiet | jq -r '.tags[]')
+            if echo "$TAGS" | grep -q "type:app"; then
+              cp "factory/${PROJECT}/build/libs/${PROJECT}.jar" \
+                 "/tmp/factory-jars/${PROJECT}-${VERSION}.jar"
+            else
+              cp factory/${PROJECT}/build/libs/${PROJECT}-*.jar /tmp/factory-jars/
+            fi
+          done
+
+          cd /tmp/factory-jars
+          sha256sum *.jar > checksums.sha256
+          echo "Staged Factory files:"
+          cat checksums.sha256
+
+      - name: Upload staged Factory JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-jars
+          path: /tmp/factory-jars/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Jobs 4a / 4b: Publish each JVM artifact to GitHub Packages, per platform.
+  #
+  # Two independent matrix jobs -- agentos and factory runners never share a
+  # Gradle daemon or a libs.versions.toml. Each stamps only its own catalog
+  # and calls `pnpm nx publish <project>` (which invokes the appropriate
+  # Gradle publish task via the project's nx target).
+  #
+  # Both run in parallel after their respective compute-*-projects jobs.
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-agentos:
+    name: publish ${{ matrix.project }} (agentos) to github packages
+    runs-on: ubuntu-latest
+    needs: [prepare, compute-agentos-projects]
     permissions:
       contents: read
       packages: write
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ fromJson(needs.compute-jvm-projects.outputs.projects) }}
+        project: ${{ fromJson(needs.compute-agentos-projects.outputs.projects) }}
     steps:
       - uses: actions/checkout@v5
 
@@ -418,13 +541,64 @@ jobs:
         working-directory: agentos
         run: chmod +x gradlew
 
-      - name: Stamp Gradle version in libs.versions.toml
+      - name: Stamp AgentOS Gradle version in libs.versions.toml
         run: |
           VERSION="${{ needs.prepare.outputs.version }}"
           sed -i "s/^agentosSdk = .*/agentosSdk = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
           sed -i "s/^agentosService = .*/agentosService = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
-          echo "Stamped libs.versions.toml with version ${VERSION}"
+          echo "Stamped agentos/gradle/libs.versions.toml with version ${VERSION}"
           grep -E '^(agentosSdk|agentosService) =' agentos/gradle/libs.versions.toml
+
+      - name: Publish to GitHub Packages
+        run: pnpm nx publish ${{ matrix.project }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+
+  publish-factory:
+    name: publish ${{ matrix.project }} (factory) to github packages
+    runs-on: ubuntu-latest
+    needs: [prepare, compute-factory-projects]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.compute-factory-projects.outputs.projects) }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: factory
+        run: chmod +x gradlew
+
+      - name: Stamp Factory Gradle version in libs.versions.toml
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          sed -i "s/^factorySdk = .*/factorySdk = \"${VERSION}\"/" factory/gradle/libs.versions.toml
+          sed -i "s/^factoryService = .*/factoryService = \"${VERSION}\"/" factory/gradle/libs.versions.toml
+          echo "Stamped factory/gradle/libs.versions.toml with version ${VERSION}"
+          grep -E '^(factorySdk|factoryService) =' factory/gradle/libs.versions.toml
 
       - name: Publish to GitHub Packages
         run: pnpm nx publish ${{ matrix.project }}
@@ -435,8 +609,9 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   # Job 5: Create the GitHub prerelease and attach all staged JARs.
   #
-  # Waits for build-jars (JARs ready) and publish-jvm (packages published) so
-  # the release is only visible once the full artifact set is coherent.
+  # Waits for both build-*-jars (JARs ready) and both publish-* jobs (packages
+  # published) so the release is only visible once the full artifact set is
+  # coherent across both platforms.
   #
   # Tag format: workstream-<slug>-<n>  e.g. workstream-forge-4
   # FLAT and DASH-ONLY by design -- no slashes (see rule 1 above).
@@ -445,7 +620,7 @@ jobs:
   # ─────────────────────────────────────────────────────────────────────────────
   prerelease:
     runs-on: ubuntu-latest
-    needs: [prepare, build-jars, publish-jvm]
+    needs: [prepare, build-agentos-jars, build-factory-jars, publish-agentos, publish-factory]
     permissions:
       contents: write
     steps:
@@ -455,11 +630,17 @@ jobs:
         with:
           version: 10
 
-      - name: Download staged JARs
+      - name: Download staged AgentOS JARs
         uses: actions/download-artifact@v4
         with:
           name: agentos-jars
           path: /tmp/agentos-jars
+
+      - name: Download staged Factory JARs
+        uses: actions/download-artifact@v4
+        with:
+          name: factory-jars
+          path: /tmp/factory-jars
 
       - name: Create GitHub prerelease and upload JARs
         env:
@@ -474,11 +655,17 @@ jobs:
           NOTES="${NOTES} Published from ${{ github.ref_name }} at ${{ github.sha }}."
           NOTES="${NOTES} This is a prerelease -- do not use in production."
 
+          # Merge all JARs and a combined checksum manifest into one release.
+          # Both platforms are attached together so consumers can grab everything
+          # from a single `gh release download <tag>`.
+          cat /tmp/agentos-jars/checksums.sha256 /tmp/factory-jars/checksums.sha256 > /tmp/checksums.sha256
+
           gh release create "$TAG" \
             --prerelease \
             --title "Workstream ${SLUG} #${TAG##*-} - ${VERSION}" \
             --notes "$NOTES" \
             /tmp/agentos-jars/*.jar \
-            /tmp/agentos-jars/checksums.sha256
+            /tmp/factory-jars/*.jar \
+            /tmp/checksums.sha256
 
           echo "::notice::Prerelease published: ${TAG}"

@@ -9,7 +9,7 @@ on:
       - 'workstream/**'
 
 env:
-  NX_MAX_WORKERS: 2
+  NX_MAX_WORKERS: 4
 
 defaults:
   run:
@@ -37,10 +37,12 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint and test TypeScript projects
-        run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --exclude="tag:platform:jvm" --parallel=$NX_MAX_WORKERS --verbose
+        run: npx nx affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --target="lint,test" --exclude="tag:platform:jvm-agentos,tag:platform:jvm-factory" --parallel=$NX_MAX_WORKERS --verbose
 
   validate-jvm:
     runs-on: ubuntu-latest
+    env:
+      NX_MAX_WORKERS: 4
     steps:
       - uses: actions/checkout@v5
         with:
@@ -66,15 +68,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # nx affected cannot be used directly with --projects="tag:platform:jvm" because the tag filter
+      # nx affected cannot be used directly with --projects="tag:platform:jvm-*" because the tag filter
       # gets forwarded to the underlying Gradle/Jest commands as an unknown flag, causing build failures.
-      # Instead, we resolve the affected JVM project names first via nx show projects, then pass the
-      # explicit names to nx run-many (which does not forward them to executors).
+      # Instead, we resolve the affected JVM project names first via nx show projects (merging both
+      # platform tags), then pass the explicit names to nx run-many (which does not forward them to
+      # executors).
       - name: Build and test JVM projects
         run: |
-          AFFECTED_JVM=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm" --json --quiet | jq -r 'join(",")')
+          AFFECTED_AGENTOS=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm-agentos" --json --quiet | jq -r '.[]' || true)
+          AFFECTED_FACTORY=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm-factory" --json --quiet | jq -r '.[]' || true)
+          AFFECTED_JVM=$(echo "$AFFECTED_AGENTOS $AFFECTED_FACTORY" | tr ' ' '\n' | grep -v '^$' | sort -u | paste -sd ',' -)
           if [ -n "$AFFECTED_JVM" ]; then
-            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS --verbose
+            npx nx run-many --targets=test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS --verbose
           else
             echo "No affected JVM projects"
           fi
@@ -113,7 +118,7 @@ jobs:
   # ---------------------------------------------------------------------------
   promote-to-integration:
     runs-on: ubuntu-latest
-    needs: [validate-ts, validate-jvm]
+    needs: [validate-ts, validate-jvm, merge-gate]
     # Conditions for this job to run:
     #   - validation must have passed (no failure/cancel in any needed job)
     #   - the PR target must be a workstream branch

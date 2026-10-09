@@ -1,0 +1,53 @@
+<div class="page">
+  <header class="page-head">
+    <div class="titles">
+      <h1>Workflows</h1>
+      <p class="sf-muted">Registered workflow definitions and their governed steps.</p>
+    </div>
+    <button mat-stroked-button class="sf-secondary" (click)="load()" [disabled]="loading()">
+      <mat-icon>refresh</mat-icon>
+      Refresh
+    </button>
+  </header>
+
+  @if (error(); as message) {
+    <div class="banner banner--warn" role="alert" data-workflow-error="true">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  }
+
+  @if (loading()) {
+    <div class="state" data-workflow-loading="true">
+      <mat-progress-spinner diameter="32" mode="indeterminate" />
+      <span class="sf-muted">Loading definitions…</span>
+    </div>
+  } @else if (definitions().length === 0) {
+    <div class="state sf-panel" data-workflow-empty="true">
+      <mat-icon aria-hidden="true">inventory_2</mat-icon>
+      <p class="sf-muted">No workflow definitions registered.</p>
+    </div>
+  } @else {
+    <div class="grid" data-workflow-list="true">
+      @for (definition of definitions(); track definitionKey(definition)) {
+        <a
+          class="wf-card"
+          [routerLink]="detailLink(definition)"
+          [attr.data-workflow-card]="definitionKey(definition)"
+          [attr.data-workflow-card-link]="definitionKey(definition)"
+        >
+          <div class="wf-card__titles">
+            <h2 class="wf-card__title" data-workflow-title>{{ definitionTitle(definition) }}</h2>
+            <p class="wf-card__subtitle sf-mono" data-workflow-subtitle>
+              {{ definition.workflowType }}&#64;{{ definition.version }}
+            </p>
+          </div>
+          <span class="wf-card__hash sf-mono" data-workflow-hash [title]="definition.definitionHash ?? ''">
+            {{ shortHash(definition) }}
+          </span>
+          <mat-icon class="wf-card__chevron" aria-hidden="true">chevron_right</mat-icon>
+        </a>
+      }
+    </div>
+  }
+</div>

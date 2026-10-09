@@ -1,0 +1,94 @@
+server:
+  port: 8141
+
+spring:
+  application:
+    name: factory-service
+  # Connection coordinates for the remote `neo4j` persistence mode.
+  # EmbeddedNeo4jConfiguration provides its own Driver using the port assigned at startup.
+  neo4j:
+    uri: ${SPRING_NEO4J_URI:bolt://localhost:7687}
+    authentication:
+      username: ${SPRING_NEO4J_USERNAME:neo4j}
+      password: ${SPRING_NEO4J_PASSWORD:password}
+
+# Neo4j reports every idempotent `CREATE ... IF NOT EXISTS` as an INFO
+# notification when the schema already exists. Keep actionable warnings while
+# hiding this expected startup noise.
+logging:
+  level:
+    org.springframework.data.neo4j.cypher: WARN
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+factory:
+  persistence:
+    # Persistence mode: `embedded-neo4j` (default, in-process engine, no Docker)
+    # or `neo4j` (standalone server, configure spring.neo4j.*).
+    mode: ${FACTORY_PERSISTENCE_MODE:embedded-neo4j}
+    data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:build/neo4j-data}
+    embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
+    embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:0}
+  cockpit:
+    v2:
+      # Angular build output of `apps/factory-cockpit`, the sole Factory UI, served
+      # same-origin at /cockpit-v2. Relative paths are resolved against the
+      # working directory and then its parent.
+      assets-dir: ${FACTORY_COCKPIT_V2_ASSETS_DIR:apps/factory-cockpit/dist/browser}
+  bind:
+    host: ${FACTORY_BIND_HOST:127.0.0.1}
+    unsafe-allow-remote-bind: ${FACTORY_UNSAFE_ALLOW_REMOTE_BIND:false}
+  tenant:
+    organization-id: ${FACTORY_ORGANIZATION_ID:default}
+    workstream-id: ${FACTORY_WORKSTREAM_ID:default}
+  security:
+    allow-loopback-dev: ${FACTORY_ALLOW_LOOPBACK_DEV:true}
+    fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
+  runs:
+    dir: ${FACTORY_RUNS_DIR:factory/runs}
+    agentos-url: ${AGENTOS_URL:http://localhost:8080}
+    jira-base-url: ${JIRA_BASE_URL:}
+    jira-email: ${JIRA_EMAIL:}
+    jira-api-token: ${JIRA_API_TOKEN:}
+  proxy:
+    agentos-url: ${AGENTOS_URL:http://localhost:8080}
+  outbox:
+    # Background drain of the transactional outbox (`result_submitted` →
+    # sequencer continuation). Enabled in production; the shared integration
+    # test context disables it so background drains never race test fixtures.
+    drain-enabled: ${FACTORY_OUTBOX_DRAIN_ENABLED:true}
+    drain-interval-ms: ${FACTORY_OUTBOX_DRAIN_INTERVAL_MS:5000}
+    drain-initial-delay-ms: ${FACTORY_OUTBOX_DRAIN_INITIAL_DELAY_MS:10000}
+  workspace:
+    # Lot F: read-only workspace pre-check + run-worktree binding of code steps.
+    enabled: ${FACTORY_WORKSPACE_ENABLED:true}
+    git-workspaces-enabled: ${FACTORY_WORKSPACE_GIT_WORKSPACES_ENABLED:true}
+    auto-worktree-for-root-cases: ${FACTORY_WORKSPACE_AUTO_WORKTREE_FOR_ROOT_CASES:true}
+    ready-timeout-ms: ${FACTORY_WORKSPACE_READY_TIMEOUT_MS:120000}
+    ready-poll-interval-ms: ${FACTORY_WORKSPACE_READY_POLL_INTERVAL_MS:1000}
+  workflow:
+    seed:
+      # Registers the bundled declarative session definitions
+      # (`classpath:sessions/*.json`) into the configured default tenant on startup.
+      enabled: ${FACTORY_WORKFLOW_SEED_ENABLED:true}
+  artifact:
+    retention-days: ${ARTIFACT_RETENTION_DAYS:90}
+    signed-url-ttl-seconds: ${ARTIFACT_SIGNED_URL_TTL:900}
+    blob-client: ${ARTIFACT_BLOB_CLIENT:in-memory}
+    s3:
+      endpoint: ${S3_ENDPOINT:http://localhost:9000}
+      region: ${S3_REGION:us-east-1}
+      bucket: ${S3_BUCKET:coday-artifacts}
+      access-key-id: ${S3_ACCESS_KEY_ID:minioadmin}
+      secret-access-key: ${S3_SECRET_ACCESS_KEY:minioadmin}

@@ -8,8 +8,11 @@ import type { VersionData } from 'nx/dist/src/command-line/release/utils/shared'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
-const tomlRelativePath = 'agentos/gradle/libs.versions.toml'
-const tomlVersionKeys = ['agentosSdk', 'agentosService']
+const agentosTomlRelativePath = 'agentos/gradle/libs.versions.toml'
+const agentosTomlVersionKeys = ['agentosSdk', 'agentosService']
+
+const factoryTomlRelativePath = 'factory/gradle/libs.versions.toml'
+const factoryTomlVersionKeys = ['factorySdk', 'factoryService']
 
 /**
  * Stamps an exact version into every package.json in the release group, then updates
@@ -46,17 +49,32 @@ export async function stampVersion(
   }
 
   if (dryRun) {
-    tomlVersionKeys.forEach((key) =>
-      console.log(`[dry-run] Would update libs.versions.toml ${key} to ${workspaceVersion}`)
+    agentosTomlVersionKeys.forEach((key) =>
+      console.log(`[dry-run] Would update agentos/gradle/libs.versions.toml ${key} to ${workspaceVersion}`)
+    )
+    factoryTomlVersionKeys.forEach((key) =>
+      console.log(`[dry-run] Would update factory/gradle/libs.versions.toml ${key} to ${workspaceVersion}`)
     )
   } else {
-    const tomlPath = join(__dirname, '..', '..', tomlRelativePath)
+    const agentosTomlPath = join(__dirname, '..', '..', agentosTomlRelativePath)
     writeFileSync(
-      tomlPath,
-      updateTomlVersions(readFileSync(tomlPath, 'utf-8'), tomlVersionKeys, workspaceVersion),
+      agentosTomlPath,
+      updateTomlVersions(readFileSync(agentosTomlPath, 'utf-8'), agentosTomlVersionKeys, workspaceVersion),
       'utf-8'
     )
-    console.log(`Updated libs.versions.toml keys [${tomlVersionKeys.join(', ')}] to ${workspaceVersion}`)
+    console.log(
+      `Updated agentos/gradle/libs.versions.toml keys [${agentosTomlVersionKeys.join(', ')}] to ${workspaceVersion}`
+    )
+
+    const factoryTomlPath = join(__dirname, '..', '..', factoryTomlRelativePath)
+    writeFileSync(
+      factoryTomlPath,
+      updateTomlVersions(readFileSync(factoryTomlPath, 'utf-8'), factoryTomlVersionKeys, workspaceVersion),
+      'utf-8'
+    )
+    console.log(
+      `Updated factory/gradle/libs.versions.toml keys [${factoryTomlVersionKeys.join(', ')}] to ${workspaceVersion}`
+    )
   }
 
   return { workspaceVersion, projectsVersionData, releaseGraph }

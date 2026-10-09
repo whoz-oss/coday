@@ -163,6 +163,7 @@ class AgentSimpleToolCallbackUnitSpec :
             val agentId = UUID.randomUUID()
 
             val receivedArgs = mutableListOf<String?>()
+            val receivedContexts = mutableListOf<ToolContext>()
             val fakeTool =
                 object : StandardTool<Nothing> {
                     override val name = "GetCurrentDateTime"
@@ -182,6 +183,7 @@ class AgentSimpleToolCallbackUnitSpec :
                         context: ToolContext,
                     ): ToolExecutionResult {
                         receivedArgs += json
+                        receivedContexts += context
                         return ToolExecutionResult.success(
                             """{"success":true,"datetime":"2026-02-27T11:02:37-05:00","timezone":"America/New_York"}""",
                         )
@@ -207,6 +209,7 @@ class AgentSimpleToolCallbackUnitSpec :
 
             // Tool received the args
             receivedArgs.all { it?.contains("America/New_York") == true } shouldBe true
+            receivedContexts.all { it.agentName == "TestAgent" } shouldBe true
 
             // ToolRequestEvent recorded the exact args
             val toolRequest = events.filterIsInstance<ToolRequestEvent>().firstOrNull()
