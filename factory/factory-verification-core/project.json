@@ -39,5 +39,5 @@
       }
     }
   },
-  "tags": ["type:lib", "platform:jvm", "scope:lib"]
+  "tags": ["type:lib", "platform:jvm-factory", "scope:lib"]
 }

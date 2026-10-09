@@ -50,5 +50,5 @@
       }
     }
   },
-  "tags": ["type:lib", "platform:jvm", "scope:plugin"]
+  "tags": ["type:lib", "platform:jvm-factory", "scope:plugin"]
 }

@@ -80,5 +80,5 @@
       }
     }
   },
-  "tags": ["type:app", "platform:jvm", "scope:service"]
+  "tags": ["type:app", "platform:jvm-factory", "scope:service"]
 }
