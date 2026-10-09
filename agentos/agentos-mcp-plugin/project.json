@@ -5,7 +5,7 @@
   "sourceRoot": "agentos/agentos-mcp-plugin/src",
   "tags": [
     "type:lib",
-    "platform:jvm",
+    "platform:jvm-agentos",
     "scope:plugin"
   ]
 }

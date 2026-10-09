@@ -1,0 +1,54 @@
+{
+  "name": "factory-forge-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "factory/factory-forge-plugin/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "dependsOn": [{ "target": "build", "projects": ["factory-service"] }],
+      "options": {
+        "command": "./gradlew :factory-forge-plugin:jar",
+        "cwd": "factory"
+      }
+    },
+    "assemble": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "dependsOn": [{ "target": "assemble", "projects": ["factory-service"] }],
+      "options": {
+        "command": "./gradlew :factory-forge-plugin:jar",
+        "cwd": "factory"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "dependsOn": [{ "target": "test", "projects": ["factory-service"] }],
+      "options": {
+        "command": "./gradlew :factory-forge-plugin:test",
+        "cwd": "factory"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-forge-plugin:clean",
+        "cwd": "factory"
+      }
+    },
+    "deploy-plugin": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-forge-plugin:deployPlugin",
+        "cwd": "factory"
+      }
+    }
+  },
+  "tags": ["type:lib", "platform:jvm-factory", "scope:plugin"]
+}

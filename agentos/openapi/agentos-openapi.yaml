@@ -3822,6 +3822,51 @@ paths:
       summary: "Revoke a user's UserGroup and Namespace access, scoped to one namespace"
       tags:
       - user-controller
+  /internal/external-context/cases/{caseId}/bindings:
+    put:
+      operationId: bindExternalContextBinding
+      parameters:
+      - in: path
+        name: caseId
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - in: header
+        name: X-External-Context-Secret
+        required: false
+        schema:
+          type: string
+      - in: header
+        name: X-External-Context-Attempt-Id
+        required: false
+        schema:
+          type: string
+      - in: header
+        name: X-External-Context-Capability-Token
+        required: false
+        schema:
+          type: string
+      - in: header
+        name: X-External-Context-Runtime-Id
+        required: false
+        schema:
+          type: string
+      - in: header
+        name: X-External-Context-Agent-Name
+        required: false
+        schema:
+          type: string
+      - in: header
+        name: X-External-Context-Expires-At
+        required: false
+        schema:
+          type: string
+      responses:
+        "204":
+          description: No Content
+      tags:
+      - external-context-binding-controller
 components:
   schemas:
     Actor:

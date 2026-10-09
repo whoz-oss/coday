@@ -65,7 +65,7 @@
     }
   ],
   "release": {
-    "projects": ["tag:platform:npm", "tag:platform:jvm"],
+    "projects": ["tag:platform:npm", "tag:platform:jvm-agentos", "tag:platform:jvm-factory"],
     "changelog": {
       "workspaceChangelog": {
         "file": "CHANGELOG.md",

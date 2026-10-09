@@ -11,5 +11,5 @@
       "dependsOn": ["build"]
     }
   },
-  "tags": ["type:lib", "platform:jvm", "scope:sdk"]
+  "tags": ["type:lib", "platform:jvm-agentos", "scope:sdk"]
 }
