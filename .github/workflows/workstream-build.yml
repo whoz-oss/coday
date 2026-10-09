@@ -258,6 +258,47 @@ jobs:
 
       # libs.versions.toml has already been stamped by workstream-release.ts above,
       # so Gradle picks up the correct version automatically.
+      # Resolve JVM projects dynamically from the platform:jvm tag -- mirrors the
+      # compute-jvm-projects job in release.yml, inlined here to avoid job overhead.
+      # Outputs two space-separated lists consumed by the Build and Stage steps:
+      #   JVM_PROJECTS  -- all project names (e.g. "agentos-service agentos-bash-plugin ...")
+      #   GRADLE_TASKS  -- one Gradle task per project
+      #                    type:app  -> :<name>:bootJar
+      #                    type:lib  -> :<name>:jar
+      - name: Resolve JVM projects
+        id: jvm
+        run: |
+          # Fetch the full project list tagged platform:jvm as a JSON array.
+          PROJECTS_JSON=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet)
+          PROJECTS=$(echo "$PROJECTS_JSON" | jq -r '.[]')
+
+          if [ -z "$PROJECTS" ]; then
+            echo "No JVM projects found with tag:platform:jvm"
+            echo "projects=" >> $GITHUB_OUTPUT
+            echo "gradle_tasks=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "JVM projects: $(echo $PROJECTS | tr '\n' ' ')"
+
+          GRADLE_TASKS=""
+          for PROJECT in $PROJECTS; do
+            # Determine the Gradle task from the project's type tag.
+            # type:app uses bootJar (Spring Boot fat jar, no embedded version in filename).
+            # type:lib uses jar (standard library jar, Gradle embeds the version in the filename).
+            TAGS=$(npx nx show project "$PROJECT" --json --quiet | jq -r '.tags[]')
+            if echo "$TAGS" | grep -q "type:app"; then
+              GRADLE_TASKS="$GRADLE_TASKS :${PROJECT}:bootJar"
+            else
+              GRADLE_TASKS="$GRADLE_TASKS :${PROJECT}:jar"
+            fi
+          done
+
+          echo "Gradle tasks:${GRADLE_TASKS}"
+          # Store as newline-free strings for use in subsequent steps.
+          echo "projects=$(echo $PROJECTS | tr '\n' ' ')" >> $GITHUB_OUTPUT
+          echo "gradle_tasks=$(echo $GRADLE_TASKS | xargs)" >> $GITHUB_OUTPUT
+
       - name: Grant execute permission for gradlew
         working-directory: agentos
         run: chmod +x gradlew
@@ -265,53 +306,51 @@ jobs:
       - name: Build AgentOS JARs
         working-directory: agentos
         run: |
-          ./gradlew \
-            :agentos-service:bootJar \
-            :agentos-bash-plugin:jar \
-            :agentos-file-plugin:jar \
-            :agentos-mcp-plugin:jar \
-            :agentos-http-plugin:jar \
-            :agentos-tmux-plugin:jar \
-            :agentos-git-plugin:jar \
-            --no-daemon
+          ./gradlew ${{ steps.jvm.outputs.gradle_tasks }} --no-daemon
 
       # Mirrors the compute-jvm-projects + publish-agentos-artifacts approach in
       # release.yml, inlined into a single step to avoid matrix overhead.
       - name: Publish JVM artifacts to GitHub Packages
         run: |
-          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -r '.[]')
+          PROJECTS="${{ steps.jvm.outputs.projects }}"
           if [ -z "$PROJECTS" ]; then
             echo "No JVM projects found with tag:platform:jvm"
             exit 0
           fi
-          echo "Publishing JVM projects: $(echo $PROJECTS | tr '\n' ' ')"
+          echo "Publishing JVM projects: ${PROJECTS}"
           for PROJECT in $PROJECTS; do
             echo "Publishing ${PROJECT}..."
             pnpm nx publish "$PROJECT"
           done
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
 
       # Naming contract: "<artifactId>-<version>.jar".
-      # agentos-service: bootJar forces archiveFileName="agentos-service.jar" (no version).
-      # We rename it explicitly -- matching the convention in release.yml so that external
-      # consumers downloading by versioned filename work identically for prereleases.
-      # Plugin JARs already carry their Gradle version; we copy them as-is.
+      # type:app projects (agentos-service): bootJar forces archiveFileName without a version
+      # suffix, so we rename them explicitly to "<name>-<version>.jar".
+      # type:lib projects: Gradle already embeds the version in the filename, so we copy as-is.
+      # Both conventions match release.yml so consumers use the same filename scheme for
+      # prereleases and final releases.
       - name: Stage JARs with versioned names
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          PROJECTS="${{ steps.jvm.outputs.projects }}"
           mkdir -p /tmp/agentos-jars
 
-          cp agentos/agentos-service/build/libs/agentos-service.jar \
-             "/tmp/agentos-jars/agentos-service-${VERSION}.jar"
-
-          cp agentos/agentos-bash-plugin/build/libs/agentos-bash-plugin-*.jar   /tmp/agentos-jars/
-          cp agentos/agentos-file-plugin/build/libs/agentos-file-plugin-*.jar   /tmp/agentos-jars/
-          cp agentos/agentos-mcp-plugin/build/libs/agentos-mcp-plugin-*.jar     /tmp/agentos-jars/
-          cp agentos/agentos-http-plugin/build/libs/agentos-http-plugin-*.jar   /tmp/agentos-jars/
-          cp agentos/agentos-tmux-plugin/build/libs/agentos-tmux-plugin-*.jar   /tmp/agentos-jars/
-          cp agentos/agentos-git-plugin/build/libs/agentos-git-plugin-*.jar     /tmp/agentos-jars/
+          for PROJECT in $PROJECTS; do
+            TAGS=$(npx nx show project "$PROJECT" --json --quiet | jq -r '.tags[]')
+            if echo "$TAGS" | grep -q "type:app"; then
+              # bootJar produces <name>.jar (no version) -- rename to <name>-<version>.jar
+              cp "agentos/${PROJECT}/build/libs/${PROJECT}.jar" \
+                 "/tmp/agentos-jars/${PROJECT}-${VERSION}.jar"
+              echo "Staged (app): ${PROJECT}-${VERSION}.jar"
+            else
+              # jar produces <name>-<version>.jar -- copy as-is
+              cp agentos/${PROJECT}/build/libs/${PROJECT}-*.jar /tmp/agentos-jars/
+              echo "Staged (lib): ${PROJECT}-*.jar"
+            fi
+          done
 
           cd /tmp/agentos-jars
           sha256sum *.jar > checksums.sha256
@@ -360,13 +399,7 @@ jobs:
             --prerelease \
             --title "Workstream ${SLUG} #${TAG##*-} - ${VERSION}" \
             --notes "$NOTES" \
-            "/tmp/agentos-jars/agentos-service-${VERSION}.jar" \
-            /tmp/agentos-jars/agentos-bash-plugin-*.jar \
-            /tmp/agentos-jars/agentos-file-plugin-*.jar \
-            /tmp/agentos-jars/agentos-mcp-plugin-*.jar \
-            /tmp/agentos-jars/agentos-http-plugin-*.jar \
-            /tmp/agentos-jars/agentos-tmux-plugin-*.jar \
-            /tmp/agentos-jars/agentos-git-plugin-*.jar \
+            /tmp/agentos-jars/*.jar \
             /tmp/agentos-jars/checksums.sha256
 
           echo "::notice::Prerelease published: ${TAG}"
