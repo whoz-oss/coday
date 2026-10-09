@@ -1,0 +1,24 @@
+# Profile activated by every factory-service integration test
+# (`@ActiveProfiles("test", "embedded-neo4j")`).
+#
+# The Neo4j engine is provided by the in-process harness
+# (EmbeddedNeo4jTestConfiguration); there is no relational datasource.
+# Background work that could race fixtures is disabled here.
+server:
+  port: 0 # random port for tests
+
+factory:
+  persistence:
+    mode: embedded-neo4j
+    data-dir: build/test-neo4j-data/
+  outbox:
+    drain-enabled: false
+  # Lot F is disabled in the shared integration profile: the tests exercise the
+  # DAG sequencer against an in-process Neo4j harness with no live AgentOS, so
+  # the read-only workspace pre-check would refuse every run. The pre-check and
+  # waiter have their own focused unit tests.
+  workspace:
+    enabled: false
+  workflow:
+    seed:
+      enabled: false

@@ -1,0 +1,43 @@
+{
+  "name": "factory-sdk",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "factory/factory-sdk/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew :factory-sdk:build",
+        "cwd": "factory"
+      }
+    },
+    "assemble": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew :factory-sdk:assemble",
+        "cwd": "factory"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-sdk:test",
+        "cwd": "factory"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-sdk:clean",
+        "cwd": "factory"
+      }
+    }
+  },
+  "tags": ["type:lib", "platform:jvm", "scope:lib"]
+}

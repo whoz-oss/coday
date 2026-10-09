@@ -40,6 +40,8 @@ jobs:
 
   validate-jvm:
     runs-on: ubuntu-latest
+    env:
+      NX_MAX_WORKERS_JVM: 1
     steps:
       - uses: actions/checkout@v5
         with:

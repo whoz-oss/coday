@@ -1,0 +1,13 @@
+# Gradle build artefacts (applies to all factory sub-modules)
+.gradle/
+build/
+
+# IDE
+.idea/
+*.iml
+
+# OS
+.DS_Store
+
+# PF4J drop-in plugin directory (created at runtime by factory-service)
+factory-service/plugins/
