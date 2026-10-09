@@ -6,6 +6,7 @@ on:
     branches:
       - master
       - 'hotfix/*'
+      - 'workstream/**'
 
 env:
   NX_MAX_WORKERS: 2
@@ -73,7 +74,7 @@ jobs:
         run: |
           AFFECTED_JVM=$(npx nx show projects --affected --base=origin/${GITHUB_BASE_REF} --head=HEAD --projects="tag:platform:jvm" --json --quiet | jq -r 'join(",")')
           if [ -n "$AFFECTED_JVM" ]; then
-            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS_JVM --verbose
+            npx nx run-many --targets=build,test --projects="$AFFECTED_JVM" --parallel=$NX_MAX_WORKERS --verbose
           else
             echo "No affected JVM projects"
           fi
@@ -95,3 +96,173 @@ jobs:
             exit 1
           fi
           echo "All validation jobs passed or were skipped"
+
+  # ---------------------------------------------------------------------------
+  # promote-to-integration: runs after validation on work/* -> workstream/* PRs.
+  #
+  # Merges the validated PR head into integration/<slug> so that
+  # workstream-build.yml can publish a prerelease artifact set the reviewer can
+  # exercise BEFORE approving the merge into the workstream branch.
+  #
+  # Three inviolable rules enforced here:
+  #   1. Push MUST use RELEASE_PAT. GITHUB_TOKEN pushes do not trigger downstream
+  #      workflows, so workstream-build.yml would silently never run.
+  #   2. A conflict is signal: two tickets collide. Fail loudly, comment on the
+  #      PR, and leave integration unchanged. A silent failure is the worst outcome.
+  #   3. Never create a release/* tag -- workstream builds use workstream/<slug>/<ver>.
+  # ---------------------------------------------------------------------------
+  promote-to-integration:
+    runs-on: ubuntu-latest
+    needs: [validate-ts, validate-jvm, merge-gate]
+    # Conditions for this job to run:
+    #   - validation must have passed (no failure/cancel in any needed job)
+    #   - the PR target must be a workstream branch
+    #   - the PR must come from the same repository (not a fork)
+    #
+    # Fork PRs have no access to RELEASE_PAT or repository write permissions.
+    # A fork PR reaching the push step would fail with an obscure 403. We guard
+    # at the job level so the job is SKIPPED (not failed) for fork PRs.
+    # We deliberately do NOT use pull_request_target, which would run
+    # fork-authored code with full secret access -- a serious security risk.
+    if: |
+      always() &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
+      startsWith(github.base_ref, 'workstream/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    # Serialise all writes to integration/<slug> under a group keyed on the full base ref.
+    # github.base_ref is the full branch name (e.g. "workstream/<slug>/master") and is
+    # unique per workstream.
+    #
+    # This group DOES match integration-reset.yml (same github.base_ref expression), so a
+    # promote and a reset for the same workstream never run concurrently -- which is the
+    # pairing that actually matters, since both write to the integration branch.
+    #
+    # It does NOT match workstream-build.yml (which keys on github.ref_name =
+    # "integration/<slug>"). GitHub Actions expressions have no split/substring function,
+    # and concurrency is evaluated before any step runs, so the slug cannot be extracted
+    # from a mid-ref position to form a shared key. See the note in workstream-build.yml.
+    #
+    # cancel-in-progress: false is mandatory -- cancelling a promote would leave
+    # the integration branch in an indeterminate state.
+    concurrency:
+      group: workstream-${{ github.base_ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # Derive slug from base_ref (e.g. workstream/talent-portal/master -> talent-portal)
+      # and cross-check it against the slug in head_ref.
+      - name: Derive and validate slug
+        id: slug
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          BASE_REF="${{ github.base_ref }}"
+          HEAD_REF="${{ github.head_ref }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+
+          SLUG=$(echo "$BASE_REF" | cut -d'/' -f2)
+
+          # Validate slug: lowercase alphanumerics and single hyphens only.
+          # The slug is embedded in the prerelease version string -- an invalid
+          # slug causes obscure npm publish failures later.
+          if ! echo "$SLUG" | grep -qE "^[a-z0-9]+(-[a-z0-9]+)*$"; then
+            MSG="Workstream slug '${SLUG}' (from '${BASE_REF}') is invalid."
+            MSG="${MSG} Slugs must match: lowercase alphanumerics and single hyphens only."
+            gh pr comment "$PR_NUMBER" \
+              --body "Promote to integration failed -- invalid workstream slug. ${MSG}"
+            echo "::error::${MSG}"
+            exit 1
+          fi
+
+          # Cross-check: slug in head_ref must match slug in base_ref.
+          # A mismatch means a work/foo/* PR is targeting workstream/bar/* -- user error.
+          HEAD_SLUG=$(echo "$HEAD_REF" | cut -d'/' -f2)
+          if [ "$HEAD_SLUG" != "$SLUG" ]; then
+            MSG="Slug mismatch: head branch '${HEAD_REF}' slug '${HEAD_SLUG}' does not"
+            MSG="${MSG} match target branch '${BASE_REF}' slug '${SLUG}'."
+            MSG="${MSG} This PR is targeting the wrong workstream branch."
+            gh pr comment "$PR_NUMBER" \
+              --body "Promote to integration failed -- workstream slug mismatch. ${MSG}"
+            echo "::error::${MSG}"
+            exit 1
+          fi
+
+          echo "slug=${SLUG}" >> $GITHUB_OUTPUT
+          echo "integration_branch=integration/${SLUG}" >> $GITHUB_OUTPUT
+
+      # fetch-depth: 0 for full history needed by the merge.
+      # token: RELEASE_PAT so the subsequent push triggers downstream workflows.
+      # GITHUB_TOKEN pushes are silently ignored by workflow triggers.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # If integration/<slug> does not exist yet, create it from the workstream head.
+      # Requiring manual branch creation before the first PR is unnecessary friction.
+      - name: Ensure integration branch exists
+        run: |
+          INTEGRATION_BRANCH="${{ steps.slug.outputs.integration_branch }}"
+          BASE_REF="${{ github.base_ref }}"
+
+          git fetch origin
+
+          if git ls-remote --exit-code origin "refs/heads/${INTEGRATION_BRANCH}" > /dev/null 2>&1; then
+            echo "Integration branch '${INTEGRATION_BRANCH}' already exists."
+            git checkout -b "${INTEGRATION_BRANCH}" "origin/${INTEGRATION_BRANCH}"
+          else
+            echo "Branch '${INTEGRATION_BRANCH}' not found -- creating from workstream head."
+            git checkout -b "${INTEGRATION_BRANCH}" "origin/${BASE_REF}"
+            git push origin "${INTEGRATION_BRANCH}"
+            echo "Created '${INTEGRATION_BRANCH}' from 'origin/${BASE_REF}'."
+          fi
+
+      # Merge the PR head into integration/<slug>.
+      # A conflict means two work branches genuinely collide -- surface it early.
+      # We must fail loudly; a silent failure is the worst possible outcome because
+      # the reviewer would exercise an artifact that does NOT contain this change.
+      - name: Merge PR head into integration branch
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: |
+          INTEGRATION_BRANCH="${{ steps.slug.outputs.integration_branch }}"
+          PR_HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          HEAD_REF="${{ github.head_ref }}"
+          SLUG="${{ steps.slug.outputs.slug }}"
+
+          echo "Merging ${PR_HEAD_SHA} (${HEAD_REF}) into ${INTEGRATION_BRANCH}..."
+
+          if git merge --no-ff "$PR_HEAD_SHA" \
+               -m "chore: promote ${HEAD_REF} into ${INTEGRATION_BRANCH} [promote]"; then
+            echo "Merge succeeded."
+          else
+            CONFLICTING=$(git diff --name-only --diff-filter=U | sed 's/^/- /' | head -20)
+            git merge --abort
+
+            BODY="Promote to integration failed -- merge conflict."
+            BODY="${BODY} Another work branch in the ${SLUG} workstream conflicts with this PR."
+            BODY="${BODY} Conflicting files: ${CONFLICTING}"
+            BODY="${BODY} The integration branch was NOT updated."
+            BODY="${BODY} Rebase or merge the conflicting branch into this one and push again."
+            gh pr comment "$PR_NUMBER" --body "$BODY"
+
+            echo "::error::Merge conflict. Integration branch NOT updated. See PR comment."
+            exit 1
+          fi
+
+      # MUST use RELEASE_PAT -- GITHUB_TOKEN pushes do not trigger downstream
+      # workflows, so workstream-build.yml would silently never run.
+      - name: Push integration branch
+        run: |
+          INTEGRATION_BRANCH="${{ steps.slug.outputs.integration_branch }}"
+          git push origin "${INTEGRATION_BRANCH}"
+          echo "::notice::Pushed to ${INTEGRATION_BRANCH} -- workstream-build.yml will publish prerelease artifacts."

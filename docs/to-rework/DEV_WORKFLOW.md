@@ -92,10 +92,25 @@ git worktree remove ../coday__feat-xxx         # remove (handled by PM via tools
 git worktree prune                             # clean up stale references
 ```
 
+## Workstream Workflow
+
+For multi-issue initiatives that need to integrate and be reviewed together before reaching
+`master`, Coday provides a parallel delivery lane based on three branch types:
+`workstream/<slug>/<base>`, `work/<slug>/issue-XXXX-desc`, and `integration/<slug>`.
+
+Each work branch PR that passes CI is automatically promoted to the integration branch, which
+publishes a coherent prerelease artifact set (npm packages + AgentOS JARs) that reviewers and
+external systems can consume before the merge happens.
+
+See [WORKSTREAM_WORKFLOW.md](../WORKSTREAM_WORKFLOW.md) for the full architecture.
+
 ## Pull Request Requirements
 
 1. PR title must follow conventional commit format
 2. All commits in a PR must be squashed when merging (squash and merge is mandatory)
+   - **Exception**: `workstream/* → master` PRs MUST use a merge commit, not a squash.
+     Squashing would collapse a multi-issue initiative into a single changelog entry and a
+     single version bump. See [WORKSTREAM_WORKFLOW.md](../WORKSTREAM_WORKFLOW.md#merge-policy).
 3. Address all review comments before merging
 4. Wait for CI checks to pass before merging
 
