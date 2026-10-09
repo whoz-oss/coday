@@ -435,6 +435,14 @@ export const AGENTOS_ROUTES: Route[] = [
               ),
           },
           {
+            path: ':namespaceId/agent-configs/:agentConfigId/launch',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/agent-config-launch/agent-config-launch.component').then(
+                (m) => m.AgentConfigLaunchComponent
+              ),
+          },
+          {
             path: ':namespaceId/agent-configs',
             canActivate: [agentosReadyGuard],
             loadComponent: () =>

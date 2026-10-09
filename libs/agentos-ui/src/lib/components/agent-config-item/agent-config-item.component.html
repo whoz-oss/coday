@@ -1,6 +1,16 @@
 <div class="agent-config-item" role="listitem" dsBlueprint>
   <div class="agent-config-item__body">
-    <span class="agent-config-item__name">{{ config().name }}</span>
+    <div class="agent-config-item__name-row">
+      <span class="agent-config-item__name">{{ config().name }}</span>
+      @if (executionModeBadge(); as badge) {
+        <span
+          class="agent-config-item__mode-badge"
+          [class.agent-config-item__mode-badge--advanced]="badge.mode === 'ADVANCED'"
+          [class.agent-config-item__mode-badge--loop]="badge.mode === 'LOOP'"
+          >{{ badge.label }}</span
+        >
+      }
+    </div>
     @if (config().modelName) {
       <span class="agent-config-item__model">{{ config().modelName }}</span>
     }

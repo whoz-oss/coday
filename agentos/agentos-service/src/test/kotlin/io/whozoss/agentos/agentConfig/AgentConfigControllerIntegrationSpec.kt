@@ -146,6 +146,17 @@ class AgentConfigControllerIntegrationSpec : StringSpec() {
                 .andExpect(jsonPath("$.advancedExecution").value(true))
         }
 
+        "POST /api/agent-configs with executionMode=ADVANCED only also returns advancedExecution=true" {
+            mockMvc
+                .perform(
+                    post("/api/agent-configs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""{ "namespaceId": "$namespaceId", "name": "advanced-by-mode", "executionMode": "ADVANCED" }"""),
+                ).andExpect(status().isCreated)
+                .andExpect(jsonPath("$.executionMode").value("ADVANCED"))
+                .andExpect(jsonPath("$.advancedExecution").value(true))
+        }
+
         // -------------------------------------------------------------------------
         // PUT /api/agent-configs/{id} — update
         // -------------------------------------------------------------------------

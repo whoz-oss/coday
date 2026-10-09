@@ -9,6 +9,10 @@
  */
 
 export interface AgentConfig {
+  /**
+   * Use executionMode instead
+   * @deprecated
+   */
   advancedExecution?: boolean
   createdBy?: string
   createdOn?: string
@@ -18,10 +22,15 @@ export interface AgentConfig {
   delegationTimeoutSeconds?: number
   description?: string
   enabled?: boolean
+  /**
+   * Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental and may change or be removed without notice). Takes precedence over advancedExecution on input; always resolved on output.
+   */
+  executionMode?: AgentConfigExecutionModeEnum
   externalMetadata?: { [key: string]: any }
   id?: string
   instructions?: string
   integrations?: { [key: string]: Array<string> }
+  loopConfig?: any | null
   modelName?: string
   name: string
   namespaceId?: string
@@ -29,4 +38,9 @@ export interface AgentConfig {
   subAgents?: Array<string>
   updatedBy?: string
   updatedOn?: string
+}
+export enum AgentConfigExecutionModeEnum {
+  SIMPLE = 'SIMPLE',
+  ADVANCED = 'ADVANCED',
+  LOOP = 'LOOP',
 }

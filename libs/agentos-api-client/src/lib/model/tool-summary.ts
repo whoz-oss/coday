@@ -8,13 +8,8 @@
  * Do not edit the class manually.
  */
 
-export interface User {
-  bio?: string
-  email?: string
-  externalId?: string
-  firstname?: string
-  id?: string
-  isAdmin: boolean
-  lastname?: string
-  preferredLanguage?: string
+export interface ToolSummary {
+  description: string
+  inputSchema: string
+  name: string
 }

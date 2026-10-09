@@ -1,6 +1,8 @@
 package io.whozoss.agentos.agentConfig
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
+import com.fasterxml.jackson.databind.JsonNode
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.util.UUID
@@ -71,10 +73,22 @@ data class AgentConfig(
      */
     val integrations: Map<String, List<String>?>? = null,
     /**
-     * When true, this agent runs with the advanced multi-step orchestration loop
-     * ([AgentAdvanced]) instead of the default single-call mode ([AgentSimple]).
-     * Defaults to false so existing agents are unaffected.
+     * Execution mode for this agent. When non-null, takes precedence over [advancedExecution].
+     * - [ExecutionMode.SIMPLE]: single LLM call per turn (default).
+     * - [ExecutionMode.ADVANCED]: multi-step LLM orchestration loop.
+     * - [ExecutionMode.LOOP]: zero LLM calls, programmatic tool sequence.
+     *
+     * Null means: fall back to [advancedExecution] for backward compatibility.
      */
+    val executionMode: ExecutionMode? = null,
+    /**
+     * Legacy flag kept for backward compatibility with persisted configs that predate [executionMode].
+     * When [executionMode] is non-null, this field is ignored.
+     * When [executionMode] is null: `true` → ADVANCED, `false` → SIMPLE.
+     *
+     * @deprecated Prefer [executionMode].
+     */
+    @Deprecated("Use executionMode instead")
     val advancedExecution: Boolean = false,
     /**
      * Opaque metadata map for external consumers (e.g. Copilot).
@@ -132,6 +146,17 @@ data class AgentConfig(
      * Only applicable for filesystem-backed agents (namespace with a configPath).
      */
     val skillSelectors: List<String>? = null,
+    /**
+     * Default payload for [ExecutionMode.LOOP] agents, stored as a JSON object.
+     *
+     * When an [AgentLoop] run starts, the first user message is inspected first: if it contains
+     * a valid [io.whozoss.agentos.workflow.AgentLoopPayload] JSON, that value is used (override).
+     * When the message carries no parseable payload, [loopConfig] is used as the default.
+     * If neither source provides a valid payload, the run is aborted with a warning.
+     *
+     * Only meaningful when [executionMode] is [ExecutionMode.LOOP]; ignored otherwise.
+     */
+    val loopConfig: JsonNode? = null,
 ) : Entity {
     init {
         require(delegationTimeoutSeconds == null || delegationTimeoutSeconds > 0) {
@@ -155,4 +180,12 @@ data class AgentConfig(
      */
     val isFilesystemOnly: Boolean
         get() = metadata.version == null
+
+    /**
+     * Resolves the effective [ExecutionMode] for this agent, applying backward-compatibility
+     * fallback: when [executionMode] is null, [advancedExecution] is used
+     * (`true` → [ExecutionMode.ADVANCED], `false` → [ExecutionMode.SIMPLE]).
+     */
+    val resolvedExecutionMode: ExecutionMode
+        get() = executionMode ?: if (advancedExecution) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
 }

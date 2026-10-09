@@ -4,7 +4,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.caseFlow.SessionContextKeys
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -13,7 +13,6 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
-import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PostConstruct
@@ -129,7 +128,7 @@ class ScheduledPromptExecutor(
     private val promptService: PromptService,
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
-    private val userContextProvider: UserContextProvider? = null,
+    private val userSessionContextResolver: UserSessionContextResolver,
     private val caseService: CaseService,
     private val properties: SchedulerProperties,
     private val clock: Clock,
@@ -382,12 +381,10 @@ class ScheduledPromptExecutor(
                 return
             }
             when (
-                val result =
-                    resolveUserContext(
-                        userRun = userRun,
-                        userExternalId = runContext.userExternalId,
-                        namespaceId = runContext.namespaceId,
-                    )
+                val result = userSessionContextResolver.resolve(
+                    userExternalId = runContext.userExternalId,
+                    namespaceId = runContext.namespaceId,
+                )
             ) {
                 is UserContextResult.PermanentFailure -> {
                     logger.error {
@@ -405,13 +402,17 @@ class ScheduledPromptExecutor(
                 }
 
                 is UserContextResult.Success -> {
-                    if (result.sessionContext == null && userContextProvider != null) {
+                    if (result.sessionContext == null && userSessionContextResolver.hasProvider()) {
                         logger.warn {
                             "[Executor] UserContextProvider returned Success(null) for UserRun=${userRun.id}" +
                                 " userId=${userRun.userId} — no sessionContext will be injected. Check provider configuration."
                         }
                     }
-                    val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = result.sessionContext))
+                    val effectiveContext = userSessionContextResolver.mergePreferredLanguage(
+                        result.sessionContext,
+                        runContext.preferredLanguage,
+                    )
+                    val caseId = createAndInjectCase(userRun, runContext.copy(sessionContext = effectiveContext))
                     awaitLaunch(userRun.id, caseId)
                 }
             }
@@ -425,7 +426,7 @@ class ScheduledPromptExecutor(
 
     /**
      * Resolve all execution context for a [ScheduledPromptUserRun], except [UserRunContext.sessionContext]
-     * which is determined later by branching on [resolveSessionContext].
+     * which is resolved later in [processUserRun] via [UserSessionContextResolver].
      *
      * Throws [IllegalStateException] on any missing entity — propagates to the
      * try/catch in [processUserRun] which marks the UserRun FAILED.
@@ -484,46 +485,12 @@ class ScheduledPromptExecutor(
     }
 
     /**
-     * Resolves the user context for a [ScheduledPromptUserRun] by calling [userContextProvider].
-     *
-     * Pure — no side effects (no logging, no markFailed). The caller ([processUserRun])
-     * is responsible for acting on the outcome.
-     *
-     * Returns [UserContextResult.Success](null) when no provider is registered — execution
-     * continues without sessionContext, non-fatal.
-     *
-     * Unexpected exceptions from the provider are caught and returned as
-     * [UserContextResult.TransientFailure].
-     */
-    private fun resolveUserContext(
-        userRun: ScheduledPromptUserRun,
-        userExternalId: String,
-        namespaceId: UUID,
-    ): UserContextResult =
-        userContextProvider?.let { provider ->
-            runCatching {
-                provider.provideUserContext(
-                    userExternalId = userExternalId,
-                    namespaceId = namespaceId,
-                )
-            }.getOrElse { e ->
-                logger.warn(e) {
-                    "[Executor] UserContextProvider threw unexpectedly for UserRun=${userRun.id} userId=${userRun.userId}" +
-                        " — treating as transient failure, lease will expire and UserRun will be reclaimed"
-                }
-                UserContextResult.TransientFailure(e.message ?: "Unexpected exception")
-            }
-        } ?: UserContextResult.Success(null)
-
-    /**
      * Create a [Case], grant ADMIN to the target user, and inject the prompt message.
      * Returns the created [Case] id.
      *
-     * When [UserRunContext.preferredLanguage] is set, it is merged into the [sessionContext]
-     * under the key `"preferredLanguage"`. [AgentAdvanced.buildUserFacingGuidelines] reads
-     * this key as a higher-priority signal than the LLM-based language detection, ensuring
-     * the agent responds in the user's stored language even when the scheduled prompt itself
-     * contains no user messages to detect language from.
+     * [UserRunContext.sessionContext] already contains the merged preferredLanguage (applied
+     * by [processUserRun] via [UserSessionContextResolver.mergePreferredLanguage]) so this
+     * method simply forwards it as-is to [CaseService.addMessage].
      */
     private fun createAndInjectCase(
         userRun: ScheduledPromptUserRun,
@@ -543,24 +510,11 @@ class ScheduledPromptExecutor(
             case.id.toString(),
             PermissionRelation.ADMIN,
         )
-        // Merge preferredLanguage into the session context so the agent can pick it up
-        // without an LLM language-detection call. The user's stored preferredLanguage is the
-        // authoritative source for language — it always wins over anything a UserContextProvider
-        // might put under the same key (providers supply business context, not language choice).
-        val effectiveSessionContext: Map<String, Any?>? =
-            if (context.preferredLanguage == null) {
-                context.sessionContext
-            } else {
-                (
-                    context.sessionContext
-                        ?: emptyMap()
-                ) + mapOf(SessionContextKeys.PREFERRED_LANGUAGE to context.preferredLanguage)
-            }
         caseService.addMessage(
             caseId = case.id,
             actor = context.actor,
             content = listOf(MessageContent.Text(context.message)),
-            sessionContext = effectiveSessionContext,
+            sessionContext = context.sessionContext,
         )
         logger.info {
             "[Executor] UserRun=${userRun.id} — Case ${case.id} created and message injected for user=${userRun.userId}"

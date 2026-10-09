@@ -3858,6 +3858,8 @@ components:
       properties:
         advancedExecution:
           type: boolean
+          deprecated: true
+          description: Use executionMode instead
         createdBy:
           type: string
         createdOn:
@@ -3874,6 +3876,15 @@ components:
           type: string
         enabled:
           type: boolean
+        executionMode:
+          type: string
+          description: "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental\
+            \ and may change or be removed without notice). Takes precedence over\
+            \ advancedExecution on input; always resolved on output."
+          enum:
+          - SIMPLE
+          - ADVANCED
+          - LOOP
         externalMetadata:
           type: object
           additionalProperties: {}
@@ -3888,6 +3899,12 @@ components:
             type: array
             items:
               type: string
+        loopConfig:
+          $ref: "#/components/schemas/JsonNode"
+          description: Default AgentLoopPayload for LOOP-mode agents. Used when the
+            triggering message carries no parseable payload. A payload in the first
+            user message always takes precedence. Ignored for SIMPLE and ADVANCED
+            agents.
         modelName:
           type: string
         name:
@@ -3951,11 +3968,22 @@ components:
       properties:
         advancedExecution:
           type: boolean
-          description: Whether the agent uses the advanced multi-step execution engine.
+          deprecated: true
+          description: "Whether the agent uses the advanced multi-step execution engine.\
+            \ Deprecated: use executionMode instead."
         agentConfigId:
           type: string
           format: uuid
           description: The ID of the AgentConfig this definition was resolved from.
+        executionMode:
+          type: string
+          description: "The resolved execution mode for this agent (SIMPLE, ADVANCED,\
+            \ or LOOP). LOOP is experimental and may change or be removed without\
+            \ notice."
+          enum:
+          - SIMPLE
+          - ADVANCED
+          - LOOP
         instructions:
           type: string
           description: "Final system instructions sent to the LLM, including injected\
@@ -3990,6 +4018,7 @@ components:
       required:
       - advancedExecution
       - agentConfigId
+      - executionMode
       - name
       - namespaceId
       - resolvedModelApiName

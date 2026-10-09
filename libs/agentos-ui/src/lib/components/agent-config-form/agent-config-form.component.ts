@@ -1,10 +1,27 @@
-import { ChangeDetectionStrategy, Component, DestroyRef, OnInit, WritableSignal, inject, signal } from '@angular/core'
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
-import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  OnInit,
+  WritableSignal,
+  computed,
+  inject,
+  signal,
+} from '@angular/core'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
+import {
+  AbstractControl,
+  FormControl,
+  FormGroup,
+  ReactiveFormsModule,
+  ValidationErrors,
+  Validators,
+} from '@angular/forms'
 import { ActivatedRoute, Router, RouterLink } from '@angular/router'
 import {
   AgentConfig,
   AgentConfigControllerService,
+  AgentConfigExecutionModeEnum,
   AgentConfigDefaultsControllerService,
   AgentConfigExportService,
   IntegrationConfig,
@@ -13,6 +30,9 @@ import {
 } from '@whoz-oss/agentos-api-client'
 import { catchError, forkJoin, map, Observable, of } from 'rxjs'
 import { IntegrationConfigStateService } from '../../services/integration-config-state.service'
+
+/** Convenience alias for the generated enum. */
+type ExecutionMode = AgentConfigExecutionModeEnum
 
 /** Represents one sub-agent glob pattern entry in the list. */
 interface SubAgentRow {
@@ -118,12 +138,28 @@ export class AgentConfigFormComponent implements OnInit {
     description: new FormControl<string | null>(null),
     modelName: new FormControl<string | null>(null),
     instructions: new FormControl<string | null>(null),
-    advancedExecution: new FormControl<boolean>(false, { nonNullable: true }),
+    executionMode: new FormControl<ExecutionMode>(AgentConfigExecutionModeEnum.SIMPLE, { nonNullable: true }),
     delegationTimeoutSeconds: new FormControl<number | null>(null, {
       validators: [Validators.min(1), Validators.max(2147483647), Validators.pattern(/^\d+$/)],
     }),
     enabled: new FormControl<boolean>(false, { nonNullable: true }),
+    loopConfig: new FormControl<string | null>(null, { validators: [AgentConfigFormComponent.jsonValidator] }),
   })
+
+  /**
+   * Validates that the control value is either empty/null or a valid JSON string.
+   * Returns `{ invalidJson: true }` when the value is non-empty but cannot be parsed.
+   */
+  static jsonValidator(control: AbstractControl): ValidationErrors | null {
+    const value = control.value?.trim()
+    if (!value) return null
+    try {
+      JSON.parse(value)
+      return null
+    } catch {
+      return { invalidJson: true }
+    }
+  }
 
   protected get nameControl() {
     return this.form.controls.name
@@ -141,8 +177,8 @@ export class AgentConfigFormComponent implements OnInit {
     return this.form.controls.instructions
   }
 
-  protected get advancedExecutionControl() {
-    return this.form.controls.advancedExecution
+  protected get executionModeControl() {
+    return this.form.controls.executionMode
   }
 
   protected get delegationTimeoutControl() {
@@ -158,6 +194,22 @@ export class AgentConfigFormComponent implements OnInit {
     return this.form.controls.enabled
   }
 
+  protected get loopConfigControl() {
+    return this.form.controls.loopConfig
+  }
+
+  /**
+   * Reactive signal tracking the current execution mode value.
+   * Bridges the FormControl observable world into the signal world so that
+   * `@if (isLoopMode())` in the OnPush template reacts to select changes.
+   */
+  private readonly executionModeValue = toSignal(this.form.controls.executionMode.valueChanges, {
+    initialValue: this.form.controls.executionMode.value,
+  })
+
+  /** True when the selected execution mode is LOOP. */
+  protected readonly isLoopMode = computed(() => this.executionModeValue() === AgentConfigExecutionModeEnum.LOOP)
+
   // ── Sub-agents list ───────────────────────────────────────────────────────
 
   /** Current list of sub-agent glob patterns, each backed by a live FormControl. */
@@ -170,6 +222,26 @@ export class AgentConfigFormComponent implements OnInit {
   protected readonly isSubmitting = signal(false)
   protected readonly isLoading = signal(false)
   protected readonly isExporting = signal(false)
+
+  /** Expose the enum to the template for option value bindings. */
+  protected readonly ExecutionMode = AgentConfigExecutionModeEnum
+
+  /** Placeholder illustrating the AgentLoopPayload shape expected by loopConfig. */
+  protected readonly loopConfigPlaceholder = JSON.stringify(
+    {
+      search: {
+        tool: 'SearchTalents',
+        params: { talentId: ['6ac76692a909eaaae0b078d6'], resolveTargets: ['MANAGER'], next: null },
+      },
+      act: {
+        agentName: 'ProfileCaretaker',
+        promptTemplate:
+          'This talent has not completed their profile. As their manager, I need you to help me review and improve it.',
+      },
+    },
+    null,
+    2
+  )
 
   /**
    * Built-in integration rows (e.g. file exchange) surfaced by the backend only when their
@@ -236,9 +308,14 @@ export class AgentConfigFormComponent implements OnInit {
           this.descriptionControl.setValue(config.description ?? null)
           this.modelNameControl.setValue(config.modelName ?? null)
           this.instructionsControl.setValue(config.instructions ?? null)
-          this.advancedExecutionControl.setValue(config.advancedExecution ?? false)
+          // Backward compat: if executionMode is absent but advancedExecution is true, infer ADVANCED.
+          const mode: ExecutionMode =
+            config.executionMode ??
+            (config.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
+          this.executionModeControl.setValue(mode)
           this.delegationTimeoutControl.setValue(config.delegationTimeoutSeconds ?? null)
           this.enabledControl.setValue(config.enabled ?? true)
+          this.loopConfigControl.setValue(config.loopConfig != null ? JSON.stringify(config.loopConfig, null, 2) : null)
           const allIntegrations = [...platformIntegrations, ...namespaceIntegrations]
           this.integrationRows.set(this.buildIntegrationRows(allIntegrations, config.integrations ?? undefined))
           this.builtInRows.set(this.buildBuiltInRows(builtInTypes, config.integrations ?? undefined))
@@ -465,10 +542,13 @@ export class AgentConfigFormComponent implements OnInit {
       modelName: this.modelNameControl.value?.trim() || undefined,
       instructions: this.instructionsControl.value?.trim() || undefined,
       integrations: this.buildIntegrationsPayload(),
-      advancedExecution: this.advancedExecutionControl.value,
+      executionMode: this.executionModeControl.value,
+      // Keep advancedExecution for backward compat with older backend versions.
+      advancedExecution: this.executionModeControl.value === AgentConfigExecutionModeEnum.ADVANCED,
       enabled: this.enabledControl.value,
       subAgents: this.buildSubAgentsPayload(),
       delegationTimeoutSeconds: this.delegationTimeoutControl.value,
+      loopConfig: this.buildLoopConfigPayload(),
     } as AgentConfig
 
     const call$ = this.isEditMode()
@@ -502,6 +582,27 @@ export class AgentConfigFormComponent implements OnInit {
         },
         error: () => this.isExporting.set(false),
       })
+  }
+
+  /**
+   * Parse the loopConfig textarea value into an object for the API payload.
+   * Returns undefined when the textarea is empty or null, preserving the existing
+   * value from the server (via existingConfig) when the field was never touched.
+   * Returns null only when the user explicitly cleared a previously-set value.
+   */
+  private buildLoopConfigPayload(): object | null | undefined {
+    const raw = this.loopConfigControl.value?.trim()
+    if (!raw) {
+      // If the user cleared the field and there was a previous value, send null to clear it.
+      // If there was no previous value, omit the field entirely.
+      return this.existingConfig?.loopConfig != null ? null : undefined
+    }
+    try {
+      return JSON.parse(raw) as object
+    } catch {
+      // Validator should have caught this; guard anyway.
+      return undefined
+    }
   }
 
   protected cancel(): void {

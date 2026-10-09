@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
 import { Router } from '@angular/router'
-import { AgentConfig } from '@whoz-oss/agentos-api-client'
+import { AgentConfig, AgentConfigExecutionModeEnum } from '@whoz-oss/agentos-api-client'
 import { BlueprintDirective, IconButtonComponent, KebabMenuComponent, KebabMenuItem } from '@whoz-oss/design-system'
 
 /**
@@ -40,11 +40,40 @@ export class AgentConfigItemComponent {
 
   protected readonly pendingDelete = signal(false)
 
-  protected readonly menuItems: KebabMenuItem[] = [
-    { key: 'edit', label: 'Edit agent config', icon: 'edit' },
-    { key: 'inspect', label: 'Inspect definition', icon: 'search' },
-    { key: 'delete', label: 'Delete agent config', icon: 'delete', variant: 'danger' },
-  ]
+  /**
+   * Badge metadata for the execution mode. Returns null for SIMPLE (no badge shown),
+   * a label + mode string for ADVANCED and LOOP so the template can apply the right modifier.
+   * Backward compat: if executionMode is absent but advancedExecution is true, show ADVANCED.
+   */
+  protected readonly executionModeBadge = computed(() => {
+    const cfg = this.config()
+    const mode =
+      cfg.executionMode ??
+      (cfg.advancedExecution ? AgentConfigExecutionModeEnum.ADVANCED : AgentConfigExecutionModeEnum.SIMPLE)
+    if (mode === AgentConfigExecutionModeEnum.ADVANCED) return { mode, label: 'ADVANCED' }
+    if (mode === AgentConfigExecutionModeEnum.LOOP) return { mode, label: 'LOOP' }
+    return null
+  })
+
+  /**
+   * True when the "Launch loop" entry should appear in the kebab menu: LOOP agents only, and
+   * never in platform mode since a loop creates cases, which always live in a namespace.
+   */
+  protected readonly canLaunch = computed(
+    () => !this.platformMode() && this.config().executionMode === AgentConfigExecutionModeEnum.LOOP
+  )
+
+  protected get menuItems(): KebabMenuItem[] {
+    const items: KebabMenuItem[] = [
+      { key: 'edit', label: 'Edit agent config', icon: 'edit' },
+      { key: 'inspect', label: 'Inspect definition', icon: 'search' },
+    ]
+    if (this.canLaunch()) {
+      items.push({ key: 'launch', label: 'Launch loop', icon: 'play_arrow' })
+    }
+    items.push({ key: 'delete', label: 'Delete agent config', icon: 'delete', variant: 'danger' })
+    return items
+  }
 
   protected readonly readOnlyMenuItems: KebabMenuItem[] = [
     { key: 'inspect', label: 'Inspect definition', icon: 'search' },
@@ -65,6 +94,9 @@ export class AgentConfigItemComponent {
         } else {
           this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'inspect'])
         }
+        break
+      case 'launch':
+        this.router.navigate(['/agentos', this.namespaceId(), 'agent-configs', this.config().id, 'launch'])
         break
       case 'delete':
         this.pendingDelete.set(true)

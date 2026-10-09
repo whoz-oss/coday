@@ -1,0 +1,47 @@
+<div class="agent-config-launch">
+  <header class="agent-config-launch__header">
+    <button class="agent-config-launch__back" type="button" (click)="back()" title="Back to agent config">
+      <span class="agent-config-launch__back-icon">&#8592;</span>
+      Edit agent config
+    </button>
+    <h1 class="agent-config-launch__title">Launch loop agent</h1>
+  </header>
+
+  <p class="agent-config-launch__intro">
+    The loop configuration below is read from <code class="agent-config-launch__code">AgentConfig.loopConfig</code>
+    and will be used by the backend when the agent loop starts. A new Case will be created and one child case will be
+    launched per entity found.
+  </p>
+
+  <div class="agent-config-launch__field">
+    <label class="agent-config-launch__label" for="agent-loop-payload">Loop configuration (read-only)</label>
+    <textarea
+      id="agent-loop-payload"
+      class="agent-config-launch__textarea"
+      rows="15"
+      [value]="payloadJson()"
+      [disabled]="isLaunching() || isLoading()"
+      readonly
+      spellcheck="false"
+      autocomplete="off"
+    ></textarea>
+  </div>
+
+  @if (launchError()) {
+    <p class="agent-config-launch__error agent-config-launch__error--banner" role="alert">
+      {{ launchError() }}
+    </p>
+  }
+
+  <div class="agent-config-launch__actions">
+    <button
+      class="agent-config-launch__btn agent-config-launch__btn--primary"
+      type="button"
+      [disabled]="isLaunching()"
+      (click)="launch()"
+    >
+      {{ isLaunching() ? 'Launching\u2026' : 'Launch' }}
+    </button>
+    <button class="agent-config-launch__btn" type="button" [disabled]="isLaunching()" (click)="back()">Cancel</button>
+  </div>
+</div>

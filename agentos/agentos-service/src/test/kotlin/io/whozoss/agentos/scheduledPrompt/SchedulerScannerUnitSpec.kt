@@ -12,6 +12,7 @@ import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -85,6 +86,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             caseService = mockk(relaxed = true),
             permissionService = mockk(relaxed = true),
             userService = mockk(relaxed = true),
+            userSessionContextResolver = UserSessionContextResolver(),
             properties = scannerProperties,
             clock = clock,
         )
@@ -123,6 +125,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             caseService = mockk(relaxed = true),
             permissionService = mockk(relaxed = true),
             userService = mockk(relaxed = true),
+            userSessionContextResolver = UserSessionContextResolver(),
             properties = properties,
             clock = clock,
         )
@@ -835,6 +838,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 properties = properties,
                 clock = clock,
             )
@@ -918,6 +922,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 properties = badProperties,
                 clock = clock,
             )
@@ -987,6 +992,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 properties = goodProperties,
                 clock = clock,
             )
