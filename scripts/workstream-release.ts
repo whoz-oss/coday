@@ -46,8 +46,9 @@ function parseArgs(): { version: string; slug: string; dryRun: boolean } {
     errors.push('--version is required')
   } else if (slug && isValidSlug(slug) && !isValidWorkstreamVersion(version, slug)) {
     errors.push(
-      `--version "${version}" is invalid. Must be a semver prerelease of the form X.Y.Z-<slug>.<n> ` +
-        `matching slug "${slug}", e.g. 0.241.0-${slug}.47`
+      `--version "${version}" is invalid. Must be a semver prerelease of the form ` +
+        `X.Y.Z-workstream-<slug>.<n> matching slug "${slug}", e.g. 0.0.0-workstream-${slug}.1. ` +
+        `The literal "workstream-" prefix is required.`
     )
   }
 
