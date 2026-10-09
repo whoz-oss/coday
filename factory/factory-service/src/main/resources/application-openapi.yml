@@ -1,0 +1,19 @@
+# Profile used by the springdoc `generateOpenApiDocs` task.
+#
+# Spec generation boots on the embedded Neo4j engine, with the workflow seed
+# and the outbox drain disabled so no background work interferes with spec
+# generation. The generated OpenAPI document is a pure function of the
+# controllers/annotations, so the persistence state is irrelevant.
+factory:
+  persistence:
+    # Fresh database directory wiped by `./gradlew clean`.
+    data-dir: build/openapi-neo4j-data/
+  security:
+    allow-loopback-dev: true
+  outbox:
+    # Spec generation must never schedule a background drain.
+    drain-enabled: false
+  workflow:
+    seed:
+      # Never run the definition seed during spec generation.
+      enabled: false

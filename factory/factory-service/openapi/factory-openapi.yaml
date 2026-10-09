@@ -1,0 +1,3422 @@
+openapi: 3.1.0
+info:
+  title: Factory Service API
+  description: REST API for the Factory Service — autonomous Kotlin/Spring Boot backend
+  version: 0.0.1
+servers:
+- url: http://localhost:18141
+  description: Generated server url
+tags:
+- name: work-environments
+  description: Work-unit environment provisioning control plane
+- name: workflows
+  description: "Workflow projections, transitions and interactions"
+- name: agentos-proxy
+  description: AgentOS relay endpoints
+- name: step-result-bindings
+  description: Verify a capability-bound agent step result submission
+- name: delivery
+  description: Governed delivery control plane
+- name: agent-step-results
+  description: Capability-bound agent step result submission
+- name: delivery-operations
+  description: "Delivery deployment, verification and rollback control plane"
+- name: plan-change-proposals
+  description: Governed replanning plan-change proposals
+- name: workflows
+  description: Workflow definitions
+- name: workstreams
+  description: Factory workstreams
+- name: oracles
+  description: Oracle definitions and execution runs
+- name: agent-step-questions
+  description: Capability-bound worker step questions (ask-step-question)
+paths:
+  /api/factory/workstreams/{workstreamId}:
+    get:
+      tags:
+      - workstreams
+      summary: Read one workstream registry entry of the caller's trusted workstream.
+      operationId: getWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+    put:
+      tags:
+      - workstreams
+      summary: Save a new revision of a workstream registry entry.
+      operationId: updateWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: If-Match
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWorkstreamRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/workflows/{workflowId}/projection:
+    get:
+      tags:
+      - workflows
+      summary: Read the current workflow projection.
+      operationId: projectionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    put:
+      tags:
+      - workflows
+      summary: Publish a declarative workflow projection.
+      operationId: publishProjectionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workstreams:
+    get:
+      tags:
+      - workstreams
+      summary: List workstreams for the caller's tenant.
+      operationId: listWorkstream
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  type: object
+                  additionalProperties: {}
+    post:
+      tags:
+      - workstreams
+      summary: Create a workstream entry.
+      operationId: createWorkstream
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWorkstreamRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/workstreams/{workstreamId}/controller-case:
+    get:
+      tags:
+      - workstreams
+      summary: Read the active controller case of the caller's trusted workstream.
+      operationId: activeControllerCaseWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseResponse"
+    post:
+      tags:
+      - workstreams
+      summary: Start the first controller case of the caller's trusted workstream.
+      operationId: startControllerCaseWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartControllerCaseRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseResponse"
+  /api/factory/workstreams/{workstreamId}/controller-case/compact:
+    post:
+      tags:
+      - workstreams
+      summary: Compact / renew the controller case of the caller's trusted workstream.
+      operationId: compactControllerCaseWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CompactControllerCaseRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseResponse"
+  /api/factory/workflows:
+    get:
+      tags:
+      - workflows
+      summary: List workflow projections of the caller's tenant scope (optionally
+        filtered by namespace).
+      operationId: listWorkflow
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: workflowType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - workflows
+      summary: Create and durably submit a workflow run. Factory assigns identity
+        and execution context.
+      operationId: createRunWorkflow
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a revision-safe workflow transition.
+      operationId: transitionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/steps/{stepId}/oracles/{oracleId}/runs:
+    post:
+      tags:
+      - oracles
+      summary: Run an oracle against a workflow step
+      description: Starts (or idempotently replays) one oracle execution for the given
+        step.
+      operationId: runOracle
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: stepId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: oracleId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OracleRunRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelopeOracleRunResponse"
+  /api/factory/workflows/{workflowId}/start:
+    post:
+      tags:
+      - workflows
+      summary: Start a governed workflow instance from a definition.
+      operationId: startWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+      deprecated: true
+  /api/factory/workflows/{workflowId}/run:
+    post:
+      tags:
+      - workflows
+      summary: Run the frontend-controlled workflow.
+      operationId: runWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sync
+        in: query
+        required: false
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/retries:
+    get:
+      tags:
+      - workflows
+      summary: Read workflow retry aggregates.
+      operationId: retriesMetricsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - workflows
+      summary: Open a retry for a blocked step.
+      operationId: retriesWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/restore:
+    post:
+      tags:
+      - workflows
+      summary: Restore a removed workflow projection.
+      operationId: restoreWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/purge:
+    post:
+      tags:
+      - workflows
+      summary: Purge a removed workflow projection.
+      operationId: purgePostWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    delete:
+      tags:
+      - workflows
+      summary: Purge a removed workflow projection (DELETE form).
+      operationId: purgeDeleteWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/interactions:
+    get:
+      tags:
+      - workflows
+      summary: List human interactions for a workflow.
+      operationId: listInteractionsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+    post:
+      tags:
+      - workflows
+      summary: Open a human interaction at an exact workflow revision.
+      operationId: openInteractionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/interactions/{interactionId}/reply:
+    post:
+      tags:
+      - workflows
+      summary: Reply to a human interaction atomically.
+      operationId: replyInteractionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/evidence:
+    get:
+      tags:
+      - workflows
+      summary: List workflow evidence.
+      operationId: listEvidenceWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: stepId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+    post:
+      tags:
+      - workflows
+      summary: Append an audited workflow evidence fact.
+      operationId: appendEvidenceWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/environment/release:
+    post:
+      tags:
+      - work-environments
+      summary: Release (decommission) the workflow environment
+      operationId: releaseWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReleaseEnvironmentRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/environment/reconcile:
+    post:
+      tags:
+      - work-environments
+      summary: Reconcile the workflow environment against its Git worktree
+      operationId: reconcileWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/environment/provision:
+    post:
+      tags:
+      - work-environments
+      summary: Provision (or idempotently reuse) the workflow environment
+      operationId: provisionWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProvisionEnvironmentRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/delivery/verify:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a production-verification operation
+      operationId: verifyDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create a rollback request bound to a trusted target
+      operationId: requestRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks/{rollbackRequestId}/verify:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a rollback-verification operation
+      operationId: verifyRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: rollbackRequestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks/{rollbackRequestId}/execute:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a rollback operation
+      operationId: executeRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: rollbackRequestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/rollbacks/{rollbackRequestId}/approve:
+    post:
+      tags:
+      - delivery-operations
+      summary: Approve a pending rollback request
+      operationId: approveRollbackDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: rollbackRequestId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/push:
+    post:
+      tags:
+      - delivery
+      summary: Push the delivery branch to the configured remote
+      operationId: pushDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/pull-request:
+    post:
+      tags:
+      - delivery
+      summary: Create a draft pull request for the delivery
+      operationId: pullRequestDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/promote:
+    post:
+      tags:
+      - delivery
+      summary: "Evaluate and apply an ordered, evidence-gated promotion"
+      operationId: promoteDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/evidence:
+    post:
+      tags:
+      - delivery
+      summary: Record a Factory delivery evidence fact
+      operationId: recordEvidenceDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/deployment/reconcile:
+    post:
+      tags:
+      - delivery-operations
+      summary: Reconcile a running or indeterminate delivery operation
+      operationId: reconcileDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/deploy:
+    post:
+      tags:
+      - delivery-operations
+      summary: Create and execute a deployment operation
+      operationId: deployDeliveryOperation
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/delivery/checkpoint:
+    post:
+      tags:
+      - delivery
+      summary: Create a git checkpoint commit for the delivery
+      operationId: checkpointDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/cost/stop:
+    post:
+      tags:
+      - workflows
+      summary: Relay a run-cost stop to AgentOS for the workflow's cases.
+      operationId: stopCostWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/cost/continue:
+    post:
+      tags:
+      - workflows
+      summary: Relay a run-cost continuation to AgentOS for the workflow's cases.
+      operationId: continueCostWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/continue:
+    post:
+      tags:
+      - workflows
+      summary: Continue a paused workflow.
+      operationId: continueWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sync
+        in: query
+        required: false
+        schema:
+          type: boolean
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/code-transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a deterministic code transition.
+      operationId: codeTransitionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/attempts/{attemptId}/cancel:
+    post:
+      tags:
+      - workflows
+      summary: "Explicitly cancel a durable agent attempt (revision-fenced, interrupt/kill\
+        \ + reconcile)."
+      operationId: cancelAttemptWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: attemptId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/agent-step-questions/{interactionId}/answer:
+    post:
+      tags:
+      - workflows
+      summary: "Submit an authenticated human answer to a worker step question (supersedes\
+        \ attempt N, resumes as N+1)."
+      operationId: answerAgentStepQuestionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: interactionId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/agent-questions/{questionEventId}/answer:
+    post:
+      tags:
+      - workflows
+      summary: Submit an authenticated answer to the active AgentOS question.
+      operationId: answerAgentQuestionWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: questionEventId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a revision-safe workflow transition (collection form).
+      operationId: transitionCollectionWorkflow
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/start:
+    post:
+      tags:
+      - workflows
+      summary: Start a governed workflow instance (collection form).
+      operationId: startCollectionWorkflow
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflows/code-transitions:
+    post:
+      tags:
+      - workflows
+      summary: Apply a deterministic code transition (collection form).
+      operationId: codeTransitionCollectionWorkflow
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeObject"
+  /api/factory/workflow-definitions:
+    get:
+      tags:
+      - workflows
+      summary: List registered workflow definitions.
+      operationId: listWorkflowDefinition
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - workflows
+      summary: Register or update a workflow definition.
+      operationId: registerWorkflowDefinition
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflow-definitions/upload:
+    post:
+      tags:
+      - workflows
+      summary: Upload and register a workflow definition JSON file.
+      operationId: uploadDefinitionWorkflowDefinition
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/step-result-bindings:
+    post:
+      tags:
+      - step-result-bindings
+      summary: Verify a step-result capability and resolve its binding.
+      description: "Requires an `Authorization: Bearer <capability>` token (or the\
+        \ token in the body). Never redeems the capability."
+      operationId: verifyFactoryStepResultBinding
+      parameters:
+      - name: Authorization
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FactoryStepResultBindingRequest"
+      responses:
+        "200":
+          description: The capability is valid and the binding is resolved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryStepResultBindingEnvelopeFactoryStepResultBindingData"
+        "401":
+          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: RESULT_IDENTITY_MISMATCH
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/plan-change-proposals:
+    get:
+      tags:
+      - plan-change-proposals
+      summary: "List the plan-change proposals of a workflow, optionally filtered\
+        \ by status."
+      operationId: listPlanChangeProposal
+      parameters:
+      - name: workflowId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopeListPlanChangeProposalResponse"
+    post:
+      tags:
+      - plan-change-proposals
+      summary: Submit a plan-change proposal
+      description: "Validates the bounded payload, computes the deterministic classification\
+        \ and recommended governance verdict, and persists the immutable proposal.\
+        \ Idempotent on (organizationId, workstreamId, workflowId, idempotencyKey)."
+      operationId: submitPlanChangeProposal
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitPlanChangeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopePlanChangeProposalResponse"
+  /api/factory/plan-change-proposals/{proposalId}/decide:
+    post:
+      tags:
+      - plan-change-proposals
+      summary: Record a governance decision on a plan-change proposal
+      description: "Appends an immutable decision event (AUTO_APPLIED, GATE_REQUIRED,\
+        \ REQUIRES_NEW_DEFINITION or REJECTED). Decisions violating the governance\
+        \ Rules 1–3 are rejected with 409 PLAN_CHANGE_GATE_REQUIRED."
+      operationId: decidePlanChangeProposal
+      parameters:
+      - name: proposalId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: workflowId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecidePlanChangeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopePlanChangeProposalResponse"
+  /api/factory/agent-step-results:
+    post:
+      tags:
+      - agent-step-results
+      summary: Submit a capability-bound agent step result.
+      description: "Requires an `Authorization: Bearer <capability>` token issued\
+        \ by the Factory."
+      operationId: submitAgentStepResult
+      parameters:
+      - name: Authorization
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Case-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Agent-Name
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentStepResultRequest"
+      responses:
+        "201":
+          description: Result created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStepResultEnvelopeAgentStepResultData"
+        "200":
+          description: Idempotent replay of an identical submission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStepResultEnvelopeAgentStepResultData"
+        "400":
+          description: "RESULT_SCHEMA_INVALID, RESULT_IDENTITY_MISMATCH or INVALID_RESULT_REQUEST"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: "RESULT_SEMANTIC_COLLISION, IDEMPOTENCY_KEY_COLLISION or STALE_AMENDMENT_SEQUENCE"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: RESULT_CAPABILITY_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/agent-step-results/capability/refresh:
+    post:
+      tags:
+      - agent-step-result-refresh-controller
+      operationId: refreshAgentStepResultRefresh
+      parameters:
+      - name: trustContext
+        in: query
+        required: false
+        schema:
+          $ref: "#/components/schemas/TrustContext"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Request"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvelopeData"
+  /api/factory/agent-step-questions:
+    post:
+      tags:
+      - agent-step-questions
+      summary: Ask a durable human step question and park the attempt in waiting_human.
+      description: "Requires an `Authorization: Bearer <capability>` token issued\
+        \ by the Factory. Returns as soon as the question is durably recorded — the\
+        \ answer never blocks the worker call."
+      operationId: askAgentStepQuestion
+      parameters:
+      - name: Authorization
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Case-Id
+        in: header
+        required: false
+        schema:
+          type: string
+      - name: X-AgentOS-Agent-Name
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentStepQuestionRequest"
+      responses:
+        "202":
+          description: Question durably recorded (or idempotent replay)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentStepQuestionEnvelopeAgentStepQuestionData"
+        "400":
+          description: "QUESTION_SCHEMA_INVALID, RESULT_IDENTITY_MISMATCH or INVALID_RESULT_REQUEST"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: QUESTION_ATTEMPT_NOT_WAITABLE or QUESTION_ALREADY_ASKED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "410":
+          description: RESULT_CAPABILITY_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/factory/admin/artifacts/{artifactId}/purge:
+    post:
+      tags:
+      - artifact-admin-controller
+      operationId: purgeArtifactArtifactAdmin
+      parameters:
+      - name: artifactId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/admin/artifacts/{artifactId}/legal-hold:
+    post:
+      tags:
+      - artifact-admin-controller
+      operationId: setLegalHoldArtifactAdmin
+      parameters:
+      - name: artifactId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/factory/admin/artifacts/gc:
+    post:
+      tags:
+      - artifact-admin-controller
+      operationId: collectAndAuditGarbageArtifactAdmin
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+  /api/namespaces:
+    get:
+      tags:
+      - agentos-proxy
+      summary: List AgentOS namespaces visible to the trusted caller.
+      operationId: namespacesAgentOsProxy
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/factory/workstreams/{workstreamId}/projection:
+    get:
+      tags:
+      - workstreams
+      summary: Read-only aggregated projection of the caller's trusted workstream.
+      operationId: projectionWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/WorkstreamProjectionResponse"
+  /api/factory/workstreams/{workstreamId}/controller-case/history:
+    get:
+      tags:
+      - workstreams
+      summary: List the controller case history (active + archived) of the caller's
+        trusted workstream.
+      operationId: controllerCaseHistoryWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerCaseHistoryResponse"
+  /api/factory/workstreams/{workstreamId}/controller-case/context:
+    get:
+      tags:
+      - workstreams
+      summary: Preview the bounded controller resumption context package of the caller's
+        trusted workstream.
+      operationId: controllerCaseContextWorkstream
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: "#/components/schemas/ControllerResumptionPackage"
+  /api/factory/workflows/{workflowId}:
+    get:
+      tags:
+      - workflows
+      summary: Read a workflow projection or its lifecycle state.
+      operationId: detailWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    delete:
+      tags:
+      - workflows
+      summary: Remove a workflow projection (recoverable).
+      operationId: removeWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/timing:
+    get:
+      tags:
+      - workflows
+      summary: Read workflow timing aggregates.
+      operationId: timingWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/session:
+    get:
+      tags:
+      - workflows
+      summary: Read the session DAG state (per-step statuses + overall status).
+      operationId: sessionStateWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/metrics:
+    get:
+      tags:
+      - workflows
+      summary: Per-workflow operational metrics.
+      operationId: metricsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: scope
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workflows/{workflowId}/environment:
+    get:
+      tags:
+      - work-environments
+      summary: Get the current environment of a workflow
+      operationId: getEnvironmentWorkUnitEnvironment
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvironmentDataEnvelopeEnvironmentResponse"
+  /api/factory/workflows/{workflowId}/delivery:
+    get:
+      tags:
+      - delivery
+      summary: Get the current delivery status of a workflow
+      operationId: statusDelivery
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeliveryDataEnvelopeObject"
+  /api/factory/workflows/{workflowId}/attempts:
+    get:
+      tags:
+      - workflows
+      summary: List durable execution attempts of a workflow.
+      operationId: listAttemptsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: stepId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeListDurableAgentAttemptDto"
+  /api/factory/workflows/{workflowId}/agent-questions:
+    get:
+      tags:
+      - workflows
+      summary: List unresolved standard AgentOS questions from durable case history.
+      operationId: listAgentQuestionsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeListMapStringObject"
+  /api/factory/workflows/{workflowId}/actions:
+    get:
+      tags:
+      - workflows
+      summary: Authoritative allowed actions and blockers of a workflow.
+      operationId: actionsWorkflow
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeWorkflowActionsResponseDto"
+  /api/factory/workflow-definitions/{workflowType}/{version}:
+    get:
+      tags:
+      - workflows
+      summary: Get one workflow definition by type and version.
+      operationId: detailWorkflowDefinition
+      parameters:
+      - name: workflowType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    delete:
+      tags:
+      - workflows
+      summary: Delete a workflow definition by type and version.
+      operationId: deleteDefinitionWorkflowDefinition
+      parameters:
+      - name: workflowType
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/plan-change-proposals/{proposalId}:
+    get:
+      tags:
+      - plan-change-proposals
+      summary: Read one plan-change proposal with its full immutable decision timeline.
+      operationId: getPlanChangeProposal
+      parameters:
+      - name: proposalId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: workflowId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactoryDataEnvelopePlanChangeProposalResponse"
+  /api/cases/{caseId}/events:
+    get:
+      tags:
+      - agentos-proxy
+      summary: Relay the events of an AgentOS case.
+      operationId: caseEventsAgentOsProxy
+      parameters:
+      - name: caseId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /api/agents:
+    get:
+      tags:
+      - agentos-proxy
+      summary: List AgentOS agent configs for a namespace.
+      operationId: agentsAgentOsProxy
+      parameters:
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+components:
+  schemas:
+    UpdateWorkstreamRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        namespaceId:
+          type: string
+        controllerAgentRef:
+          type: string
+        allowedWorkflowTypes:
+          type: array
+          items:
+            type: string
+        governancePolicyRef:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
+    WorkflowDataEnvelopeObject:
+      type: object
+      properties:
+        data: {}
+      required:
+      - data
+    CreateWorkstreamRequest:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        namespaceId:
+          type: string
+        controllerAgentRef:
+          type: string
+        allowedWorkflowTypes:
+          type: array
+          items:
+            type: string
+        governancePolicyRef:
+          type: string
+    StartControllerCaseRequest:
+      type: object
+      properties:
+        caseId:
+          type: string
+    ControllerCaseResponse:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        caseId:
+          type: string
+        controllerAgentRef:
+          type: string
+        status:
+          type: string
+        sequence:
+          type: integer
+          format: int32
+        startedAt:
+          type: string
+        archivedAt:
+          type: string
+        compactionReason:
+          type: string
+        contextRevision:
+          type: string
+      required:
+      - caseId
+      - controllerAgentRef
+      - sequence
+      - startedAt
+      - status
+      - workstreamId
+    CompactControllerCaseRequest:
+      type: object
+      properties:
+        caseId:
+          type: string
+        compactionReason:
+          type: string
+    OracleRunRequest:
+      type: object
+      properties:
+        namespaceId:
+          type: string
+        idempotencyKey:
+          type: string
+    DataEnvelopeOracleRunResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/OracleRunResponse"
+      required:
+      - data
+    OracleRunResponse:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        oracleId:
+          type: string
+        executionId:
+          type: string
+        status:
+          type: string
+        revision:
+          type: integer
+          format: int32
+        outcome:
+          type: string
+        evidenceId:
+          type: string
+        artifactId:
+          type: string
+        created:
+          type: boolean
+        idempotent:
+          type: boolean
+      required:
+      - created
+      - executionId
+      - idempotent
+      - oracleId
+      - outcome
+      - revision
+      - status
+      - stepId
+      - workflowId
+    WorkflowDataEnvelopeMapStringObject:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties: {}
+      required:
+      - data
+    ReleaseEnvironmentRequest:
+      type: object
+      properties:
+        state:
+          type: string
+    EnvironmentDataEnvelopeEnvironmentResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/EnvironmentResponse"
+      required:
+      - data
+    EnvironmentResponse:
+      type: object
+      properties:
+        revision:
+          type: integer
+          format: int32
+        environment:
+          $ref: "#/components/schemas/WorkEnvironment"
+        reconciliation:
+          $ref: "#/components/schemas/ReconciliationResponse"
+        headCommit:
+          type: string
+        fileAccess:
+          $ref: "#/components/schemas/FileAccessResponse"
+      required:
+      - environment
+      - fileAccess
+      - revision
+    FileAccessResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        code:
+          type: string
+        rootPath:
+          type: string
+      required:
+      - rootPath
+      - status
+    ReconciliationResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        headCommit:
+          type: string
+        baseCommit:
+          type: string
+      required:
+      - status
+    WorkEnvironment:
+      type: object
+      properties:
+        organizationId:
+          type: string
+        workstreamId:
+          type: string
+        environmentId:
+          type: string
+        workUnitId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        parentCaseId:
+          type: string
+        repoRoot:
+          type: string
+        integrationBranch:
+          type: string
+        branch:
+          type: string
+        worktreePath:
+          type: string
+        baseCommit:
+          type: string
+        lifecycleState:
+          type: string
+          enum:
+          - provisioning
+          - ready
+          - busy
+          - decommissioned
+        createdBy:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        revision:
+          type: integer
+          format: int32
+        envType:
+          type: string
+      required:
+      - branch
+      - createdAt
+      - createdBy
+      - envType
+      - environmentId
+      - integrationBranch
+      - lifecycleState
+      - namespaceId
+      - organizationId
+      - repoRoot
+      - revision
+      - workUnitId
+      - workflowId
+      - workstreamId
+      - worktreePath
+    ProvisionEnvironmentRequest:
+      type: object
+      properties:
+        workUnitId:
+          type: string
+        integrationBranch:
+          type: string
+        branch:
+          type: string
+        namespaceId:
+          type: string
+        parentCaseId:
+          type: string
+        repoRoot:
+          type: string
+    DeliveryDataEnvelopeObject:
+      type: object
+      properties:
+        data: {}
+      required:
+      - data
+    FactoryStepResultBindingRequest:
+      type: object
+      properties:
+        capabilityToken:
+          type: string
+        attemptId:
+          type: string
+    ErrorDetail:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+      required:
+      - code
+      - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+      required:
+      - error
+    FactoryStepResultBindingData:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        namespaceId:
+          type: string
+        caseId:
+          type: string
+        agentName:
+          type: string
+        issuedAt:
+          type: string
+        expiresAt:
+          type: string
+        submissionBudget:
+          type: integer
+          format: int32
+        verified:
+          type: boolean
+      required:
+      - agentName
+      - attemptId
+      - caseId
+      - expiresAt
+      - issuedAt
+      - namespaceId
+      - stepId
+      - submissionBudget
+      - verified
+      - workflowId
+    FactoryStepResultBindingEnvelopeFactoryStepResultBindingData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/FactoryStepResultBindingData"
+      required:
+      - data
+    DependencyChangeDto:
+      type: object
+      properties:
+        op:
+          type: string
+        fromStepId:
+          type: string
+        toStepId:
+          type: string
+    ScopeChangeDto:
+      type: object
+      properties:
+        op:
+          type: string
+        target:
+          type: string
+        detail:
+          type: string
+    SubmitPlanChangeRequest:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
+        reasonCode:
+          type: string
+        summary:
+          type: string
+        proposalType:
+          type: string
+        affectedStepIds:
+          type: array
+          items:
+            type: string
+        proposedDependencyChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyChangeDto"
+        proposedScopeChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScopeChangeDto"
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        idempotencyKey:
+          type: string
+    FactoryDataEnvelopePlanChangeProposalResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/PlanChangeProposalResponse"
+      required:
+      - data
+    PlanChangeDecisionResponse:
+      type: object
+      properties:
+        sequence:
+          type: integer
+          format: int64
+        status:
+          type: string
+        actorId:
+          type: string
+        reason:
+          type: string
+        recordedAt:
+          type: string
+          format: date-time
+      required:
+      - actorId
+      - recordedAt
+      - sequence
+      - status
+    PlanChangeProposalResponse:
+      type: object
+      properties:
+        proposalId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        workstreamId:
+          type: string
+        reasonCode:
+          type: string
+        summary:
+          type: string
+        proposalType:
+          type: string
+        kind:
+          type: string
+        recommendedVerdict:
+          type: string
+        status:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
+        affectedStepIds:
+          type: array
+          items:
+            type: string
+        proposedDependencyChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/DependencyChangeDto"
+        proposedScopeChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScopeChangeDto"
+        evidenceRefs:
+          type: array
+          items:
+            type: string
+        revision:
+          type: integer
+          format: int32
+        idempotent:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        decisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanChangeDecisionResponse"
+      required:
+      - affectedStepIds
+      - createdAt
+      - decisions
+      - evidenceRefs
+      - expectedRevision
+      - idempotent
+      - kind
+      - namespaceId
+      - proposalId
+      - proposalType
+      - proposedDependencyChanges
+      - reasonCode
+      - recommendedVerdict
+      - revision
+      - status
+      - summary
+      - updatedAt
+      - workflowId
+      - workstreamId
+    DecidePlanChangeRequest:
+      type: object
+      properties:
+        expectedRevision:
+          type: integer
+          format: int32
+        decision:
+          type: string
+        reason:
+          type: string
+        idempotencyKey:
+          type: string
+    AgentStepResultRequest:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        result:
+          $ref: "#/components/schemas/JsonNode"
+        business:
+          $ref: "#/components/schemas/JsonNode"
+        observed:
+          $ref: "#/components/schemas/ObservedIdentityRequest"
+        caseId:
+          type: string
+        agentName:
+          type: string
+        idempotencyKey:
+          type: string
+        expectedAmendmentSeq:
+          type: integer
+          format: int64
+        expected_amendment_seq:
+          type: integer
+          format: int64
+    JsonNode: {}
+    ObservedIdentityRequest:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        caseId:
+          type: string
+        agentName:
+          type: string
+    AgentStepResultData:
+      type: object
+      properties:
+        resultId:
+          type: string
+        idempotent:
+          type: boolean
+        resultHash:
+          type: string
+      required:
+      - idempotent
+      - resultHash
+      - resultId
+    AgentStepResultEnvelopeAgentStepResultData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/AgentStepResultData"
+      required:
+      - data
+    Request:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        runtimeId:
+          type: string
+        agentName:
+          type: string
+    TrustContext:
+      type: object
+      properties:
+        principalId:
+          type: string
+        principalType:
+          type: string
+        organizationId:
+          type: string
+        workstreamId:
+          type: string
+        squadId:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        correlationId:
+          type: string
+        authenticationMethod:
+          type: string
+        serviceIdentityId:
+          type: string
+        loopback:
+          type: boolean
+        namespaceId:
+          type: string
+        caseId:
+          type: string
+        authenticated:
+          type: boolean
+      required:
+      - authenticated
+      - authenticationMethod
+      - loopback
+      - principalType
+      - roles
+      - scopes
+    Data:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        capabilityToken:
+          type: string
+        expiresAt:
+          type: string
+      required:
+      - attemptId
+      - capabilityToken
+      - expiresAt
+    EnvelopeData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Data"
+      required:
+      - data
+    AgentStepQuestionRequest:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        question:
+          $ref: "#/components/schemas/JsonNode"
+    AgentStepQuestionData:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        interactionId:
+          type: string
+        status:
+          type: string
+        idempotent:
+          type: boolean
+        revision:
+          type: integer
+          format: int32
+        workflowId:
+          type: string
+      required:
+      - attemptId
+      - idempotent
+      - interactionId
+      - revision
+      - status
+      - workflowId
+    AgentStepQuestionEnvelopeAgentStepQuestionData:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/AgentStepQuestionData"
+      required:
+      - data
+    AttemptSummary:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        agentName:
+          type: string
+        status:
+          type: string
+        revision:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+      required:
+      - agentName
+      - attemptId
+      - revision
+      - status
+      - stepId
+      - workflowId
+    ChangeSummary:
+      type: object
+      properties:
+        kind:
+          type: string
+        refId:
+          type: string
+        workflowId:
+          type: string
+        timestamp:
+          type: string
+      required:
+      - kind
+      - refId
+      - timestamp
+    EnvironmentSection:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        byState:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/EnvironmentSummary"
+        truncated:
+          type: boolean
+      required:
+      - byState
+      - count
+      - items
+      - truncated
+    EnvironmentSummary:
+      type: object
+      properties:
+        environmentId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        lifecycleState:
+          type: string
+        revision:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - environmentId
+      - lifecycleState
+      - namespaceId
+      - revision
+      - workflowId
+    HumanActionSummary:
+      type: object
+      properties:
+        interactionId:
+          type: string
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        interactionType:
+          type: string
+        status:
+          type: string
+      required:
+      - interactionId
+      - workflowId
+    OracleFailureSummary:
+      type: object
+      properties:
+        executionId:
+          type: string
+        oracleId:
+          type: string
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        updatedAt:
+          type: string
+      required:
+      - executionId
+    StepCounts:
+      type: object
+      properties:
+        running:
+          type: integer
+          format: int32
+        waitingHuman:
+          type: integer
+          format: int32
+        blocked:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StepSummary"
+        truncated:
+          type: boolean
+      required:
+      - blocked
+      - items
+      - running
+      - truncated
+      - waitingHuman
+    StepSummary:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        stepId:
+          type: string
+        name:
+          type: string
+        status:
+          type: string
+      required:
+      - status
+      - stepId
+      - workflowId
+    WorkflowSummary:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        namespaceId:
+          type: string
+        workflowType:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        revision:
+          type: integer
+          format: int32
+      required:
+      - revision
+      - workflowId
+    WorkstreamProjectionResponse:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        namespaceId:
+          type: string
+        status:
+          type: string
+        workstreamRevision:
+          type: string
+        activeWorkflows:
+          $ref: "#/components/schemas/WorkstreamSectionWorkflowSummary"
+        steps:
+          $ref: "#/components/schemas/StepCounts"
+        attempts:
+          $ref: "#/components/schemas/WorkstreamSectionAttemptSummary"
+        humanActions:
+          $ref: "#/components/schemas/WorkstreamSectionHumanActionSummary"
+        failedOracles:
+          $ref: "#/components/schemas/WorkstreamSectionOracleFailureSummary"
+        environments:
+          $ref: "#/components/schemas/EnvironmentSection"
+        recentChanges:
+          $ref: "#/components/schemas/WorkstreamSectionChangeSummary"
+        boundaryViolations:
+          type: integer
+          format: int32
+      required:
+      - activeWorkflows
+      - attempts
+      - boundaryViolations
+      - environments
+      - failedOracles
+      - humanActions
+      - recentChanges
+      - status
+      - steps
+      - workstreamId
+      - workstreamRevision
+    WorkstreamSectionAttemptSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttemptSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionChangeSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangeSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionHumanActionSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/HumanActionSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionOracleFailureSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/OracleFailureSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    WorkstreamSectionWorkflowSummary:
+      type: object
+      properties:
+        count:
+          type: integer
+          format: int32
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowSummary"
+        truncated:
+          type: boolean
+      required:
+      - count
+      - items
+      - truncated
+    ControllerCaseHistoryResponse:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        activeCaseId:
+          type: string
+        cases:
+          type: array
+          items:
+            $ref: "#/components/schemas/ControllerCaseResponse"
+      required:
+      - cases
+      - workstreamId
+    ContextBlocker:
+      type: object
+      properties:
+        kind:
+          type: string
+        refId:
+          type: string
+        workflowId:
+          type: string
+      required:
+      - kind
+      - refId
+    ContextChange:
+      type: object
+      properties:
+        kind:
+          type: string
+        refId:
+          type: string
+        workflowId:
+          type: string
+        timestamp:
+          type: string
+      required:
+      - kind
+      - refId
+      - timestamp
+    ContextHumanAction:
+      type: object
+      properties:
+        interactionId:
+          type: string
+        workflowId:
+          type: string
+        interactionType:
+          type: string
+        status:
+          type: string
+      required:
+      - interactionId
+      - workflowId
+    ContextWorkflow:
+      type: object
+      properties:
+        workflowId:
+          type: string
+        workflowType:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+      required:
+      - workflowId
+    ControllerContextCounts:
+      type: object
+      properties:
+        activeWorkflows:
+          type: integer
+          format: int32
+        running:
+          type: integer
+          format: int32
+        waitingHuman:
+          type: integer
+          format: int32
+        blocked:
+          type: integer
+          format: int32
+        attempts:
+          type: integer
+          format: int32
+        humanActions:
+          type: integer
+          format: int32
+        failedOracles:
+          type: integer
+          format: int32
+        environments:
+          type: integer
+          format: int32
+      required:
+      - activeWorkflows
+      - attempts
+      - blocked
+      - environments
+      - failedOracles
+      - humanActions
+      - running
+      - waitingHuman
+    ControllerResumptionPackage:
+      type: object
+      properties:
+        workstreamId:
+          type: string
+        sourceRevision:
+          type: string
+        counts:
+          $ref: "#/components/schemas/ControllerContextCounts"
+        activeWorkflows:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextWorkflow"
+        openHumanInteractions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextHumanAction"
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextBlocker"
+        recentChanges:
+          type: array
+          items:
+            $ref: "#/components/schemas/ContextChange"
+      required:
+      - activeWorkflows
+      - blockers
+      - counts
+      - openHumanInteractions
+      - recentChanges
+      - sourceRevision
+      - workstreamId
+    DurableAgentAttemptDto:
+      type: object
+      properties:
+        attemptId:
+          type: string
+        stepId:
+          type: string
+        attemptNumber:
+          type: integer
+          format: int32
+        agentName:
+          type: string
+        status:
+          type: string
+        caseId:
+          type: string
+        failureCode:
+          type: string
+        resultEvidenceId:
+          type: string
+        environmentRef:
+          type: string
+        expectedEnvironmentRevision:
+          type: integer
+          format: int32
+        resumptionContext:
+          type: string
+        expectedAmendmentSeq:
+          type: integer
+          format: int64
+        revision:
+          type: integer
+          format: int32
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        terminal:
+          type: boolean
+        sealingClass:
+          type: string
+      required:
+      - agentName
+      - attemptId
+      - attemptNumber
+      - caseId
+      - createdAt
+      - revision
+      - sealingClass
+      - status
+      - stepId
+      - terminal
+    WorkflowDataEnvelopeListDurableAgentAttemptDto:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/DurableAgentAttemptDto"
+      required:
+      - data
+    WorkflowDataEnvelopeListMapStringObject:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - data
+    AllowedActionDto:
+      type: object
+      properties:
+        type:
+          type: string
+        interactionId:
+          type: string
+        stepId:
+          type: string
+        attemptId:
+          type: string
+        caseId:
+          type: string
+        questionEventId:
+          type: string
+        expectedRevision:
+          type: integer
+          format: int32
+        label:
+          type: string
+      required:
+      - expectedRevision
+      - type
+    WorkflowActionsResponseDto:
+      type: object
+      properties:
+        allowedActions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AllowedActionDto"
+        blockers:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowBlockerDto"
+      required:
+      - allowedActions
+      - blockers
+    WorkflowBlockerDto:
+      type: object
+      properties:
+        code:
+          type: string
+        stepId:
+          type: string
+        message:
+          type: string
+      required:
+      - code
+      - message
+    WorkflowDataEnvelopeWorkflowActionsResponseDto:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/WorkflowActionsResponseDto"
+      required:
+      - data
+    FactoryDataEnvelopeListPlanChangeProposalResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlanChangeProposalResponse"
+      required:
+      - data

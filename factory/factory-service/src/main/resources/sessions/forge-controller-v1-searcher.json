@@ -1,0 +1,137 @@
+{
+  "execution": {
+    "plugin": "forge"
+  },
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "id": "product-specification",
+      "name": "Product specification",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeProductWorker"
+      }
+    },
+    {
+      "dependsOn": ["product-specification"],
+      "id": "product-approval",
+      "name": "Product approval",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product owner"
+      }
+    },
+    {
+      "dependsOn": ["product-approval"],
+      "id": "ux-assessment",
+      "name": "UX assessment",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeUXDesigner"
+      }
+    },
+    {
+      "dependsOn": ["ux-assessment"],
+      "id": "technical-assessment",
+      "name": "Technical assessment",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeTechDesigner"
+      }
+    },
+    {
+      "dependsOn": ["technical-assessment"],
+      "id": "ux-design",
+      "name": "UX specification amendment when applicable",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeUXDesigner"
+      }
+    },
+    {
+      "dependsOn": ["product-approval"],
+      "id": "codebase-research",
+      "name": "Codebase research for technical design",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Searcher"
+      }
+    },
+    {
+      "dependsOn": ["ux-design", "codebase-research"],
+      "id": "technical-design",
+      "name": "Technical specification and ordered delivery steps",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeTechDesigner"
+      }
+    },
+    {
+      "dependsOn": ["technical-design"],
+      "id": "specification-approval",
+      "name": "Combined specification approval",
+      "responsibility": {
+        "kind": "human",
+        "name": "Product and technical authority"
+      }
+    },
+    {
+      "dependsOn": ["specification-approval"],
+      "id": "frontend-implementation",
+      "name": "Frontend implementation work step",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeFrontendWorker"
+      }
+    },
+    {
+      "dependsOn": ["frontend-implementation"],
+      "id": "frontend-verification",
+      "name": "Frontend verification",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeFrontendVerifier"
+      }
+    },
+    {
+      "dependsOn": ["frontend-verification"],
+      "id": "backend-implementation",
+      "name": "Backend implementation work step",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeBackendWorker"
+      }
+    },
+    {
+      "dependsOn": ["backend-implementation"],
+      "id": "backend-verification",
+      "name": "Backend verification",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeBackendVerifier"
+      }
+    },
+    {
+      "dependsOn": ["backend-verification"],
+      "id": "code-review",
+      "name": "Adversarial code review",
+      "responsibility": {
+        "kind": "agent",
+        "name": "ForgeReviewer"
+      }
+    },
+    {
+      "dependsOn": ["code-review"],
+      "id": "functional-approval",
+      "name": "Functional approval evidence",
+      "responsibility": {
+        "kind": "human",
+        "name": "Functional authority"
+      }
+    }
+  ],
+  "title": "Forge Controller v1 — Factory projection with codebase research",
+  "version": "1.0.0",
+  "workflowType": "forge-controller-v1-searcher"
+}
