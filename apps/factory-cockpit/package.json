@@ -1,0 +1,28 @@
+{
+  "name": "@whoz-oss/coday-factory-cockpit",
+  "version": "3.21.0",
+  "repository": "https://github.com/whoz-oss/coday",
+  "type": "module",
+  "dependencies": {
+    "@angular/cdk": "catalog:",
+    "@angular/common": "catalog:",
+    "@angular/compiler": "catalog:",
+    "@angular/core": "catalog:",
+    "@angular/forms": "catalog:",
+    "@angular/material": "catalog:",
+    "@angular/platform-browser": "catalog:",
+    "@angular/router": "catalog:",
+    "rxjs": "catalog:",
+    "tslib": "catalog:",
+    "zone.js": "catalog:"
+  },
+  "devDependencies": {
+    "@angular/build": "catalog:dev",
+    "@angular/compiler-cli": "catalog:dev",
+    "jest-preset-angular": "catalog:dev",
+    "typescript": "catalog:dev"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

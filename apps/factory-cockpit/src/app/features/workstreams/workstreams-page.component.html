@@ -1,0 +1,42 @@
+<div class="page">
+  <!-- Page header -->
+  <header class="page-head">
+    <div class="titles">
+      <h1>Workstreams</h1>
+      <p class="sf-muted">Runs grouped by namespace, derived from the real workflows exposed by factory-service.</p>
+    </div>
+    <a mat-flat-button class="sf-primary" routerLink="/lancer" data-workstreams-launch="true">
+      <mat-icon>play_arrow</mat-icon>
+      Launch a run
+    </a>
+  </header>
+
+  <!-- KPIs -->
+  @let c = store.costs();
+  <section class="kpis" aria-label="Key metrics">
+    <article class="kpi sf-panel">
+      <h2 class="sf-overline">Active workflows</h2>
+      <span class="kpi-value">{{ c.active }}</span>
+      <span class="kpi-sub"><span class="ok-dot"></span>real runs in progress</span>
+    </article>
+    <article class="kpi sf-panel">
+      <h2 class="sf-overline">Workflow cost</h2>
+      <span class="kpi-value kpi-value--cyan">{{ c.workflowsUsd | usd: 2 : c.unknownCostCount }}</span>
+      <span class="kpi-sub">cumulative real cost</span>
+    </article>
+    <article class="kpi sf-panel kpi--total">
+      <h2 class="sf-overline">Total</h2>
+      <span class="kpi-value kpi-value--violet">{{ c.totalUsd | usd: 2 : c.unknownCostCount }}</span>
+      <span class="kpi-sub">real cost of active workflows</span>
+    </article>
+  </section>
+
+  <!-- Workstreams → runs -->
+  <section class="cards" aria-label="Workstreams">
+    @for (ws of store.workstreams(); track ws.namespaceId) {
+      <sf-workstream-card [workstream]="ws" (action)="onAction($event)" />
+    } @empty {
+      <p class="empty sf-panel sf-muted">No active workflows.</p>
+    }
+  </section>
+</div>

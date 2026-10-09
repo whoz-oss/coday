@@ -12,6 +12,7 @@
   ],
   "dependencies": {
     "@whoz-oss/coday-client": "3.28.0",
+    "@whoz-oss/coday-factory-cockpit": "3.28.0",
     "@whoz-oss/coday-server": "3.28.0"
   },
   "publishConfig": {

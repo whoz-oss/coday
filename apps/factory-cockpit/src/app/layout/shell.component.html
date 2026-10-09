@@ -1,0 +1,70 @@
+<mat-toolbar class="topbar">
+  <a class="brand" routerLink="/workstreams" aria-label="WHOZ Factory, home">
+    <img src="W.svg" alt="WHOZ" class="whoz-logo" aria-hidden="true" />
+    WHOZ Factory
+  </a>
+
+  <nav class="crumbs" aria-label="Breadcrumb">
+    @for (crumb of shell.crumbs(); track $index; let last = $last) {
+      <mat-icon class="sep" aria-hidden="true">chevron_right</mat-icon>
+      @if (crumb.link && !last) {
+        <a [routerLink]="crumb.link" [class.sf-mono]="crumb.mono">{{ crumb.label }}</a>
+      } @else {
+        <span [class.sf-mono]="crumb.mono" [class.current]="last" [attr.aria-current]="last ? 'page' : null">
+          {{ crumb.label }}
+        </span>
+      }
+    }
+  </nav>
+
+  <span class="sf-spacer"></span>
+
+  @let c = store.costs();
+  <div class="cost-pill" aria-label="Cost summary">
+    <span class="live-dot" aria-hidden="true"></span>
+    <span class="strong">{{ c.active }} active workflows</span>
+    <span>&middot;</span
+    ><span [attr.title]="c.unknownCostCount ? c.unknownCostCount + ' round(s) with unknown cost' : null"
+      >workflows <b>{{ c.workflowsUsd | usd: 2 : c.unknownCostCount }}</b></span
+    >
+    <span>&middot;</span
+    ><span
+      >total <b class="total">{{ c.totalUsd | usd: 2 : c.unknownCostCount }}</b></span
+    >
+  </div>
+
+  <mat-slide-toggle
+    class="destroyed-toggle"
+    [checked]="store.showDestroyed()"
+    (change)="store.showDestroyed.set($event.checked)"
+  >
+    Destroyed runs
+  </mat-slide-toggle>
+
+  <span class="avatar" aria-label="Benjamin Valdes">BV</span>
+</mat-toolbar>
+
+<mat-sidenav-container class="body">
+  <mat-sidenav mode="side" opened disableClose class="rail">
+    <nav aria-label="Main navigation" class="rail-nav">
+      @for (item of nav; track item.link) {
+        <a
+          class="rail-item"
+          [routerLink]="item.link"
+          routerLinkActive="active"
+          #rla="routerLinkActive"
+          [attr.aria-current]="rla.isActive ? 'page' : null"
+        >
+          <span class="rail-icon"
+            ><mat-icon aria-hidden="true">{{ item.icon }}</mat-icon></span
+          >
+          {{ item.label }}
+        </a>
+      }
+    </nav>
+  </mat-sidenav>
+
+  <mat-sidenav-content class="content">
+    <router-outlet />
+  </mat-sidenav-content>
+</mat-sidenav-container>
