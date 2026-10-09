@@ -452,15 +452,16 @@ export class AiThread {
 
   /**
    * Adds a delegation event to the thread history.
-   * This is an immutable branch marker — emitted once per sub-thread.
-   * Duplicate events for the same subThreadId are ignored.
+   * Each delegation call — including resumptions of an existing sub-thread — produces
+   * its own DelegationEvent, so that the parent thread can display one block per
+   * occurrence at the correct chronological position.
+   * Deduplication is intentionally removed: multiple DelegationEvents for the same
+   * subThreadId are valid and expected when a sub-thread is delegated more than once.
+   * DelegationEvent is safely ignored by all AI providers (returns [] in toOpenAiMessage
+   * and is filtered out in toClaudeMessage), so extra occurrences carry no risk.
    */
   addDelegationEvent(event: DelegationEvent): void {
-    // Only add if no DelegationEvent already exists for this subThreadId
-    const exists = this.messages.some((msg) => msg instanceof DelegationEvent && msg.subThreadId === event.subThreadId)
-    if (!exists) {
-      this.add(event)
-    }
+    this.add(event)
   }
 
   /**

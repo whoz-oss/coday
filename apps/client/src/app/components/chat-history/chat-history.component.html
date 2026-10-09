@@ -1,7 +1,12 @@
 <div class="chat-history">
   @for (message of messages; track message.id; let i = $index) {
     @if (message.type === 'delegation') {
-      <app-delegation-inline [subThreadId]="message.subThreadId!" [agentName]="message.delegationAgentName!">
+      <app-delegation-inline
+        [subThreadId]="message.subThreadId!"
+        [agentName]="message.delegationAgentName!"
+        [windowStart]="message.windowStart"
+        [windowEnd]="message.windowEnd"
+      >
       </app-delegation-inline>
     } @else {
       <app-chat-message

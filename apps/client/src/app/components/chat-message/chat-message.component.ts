@@ -35,6 +35,15 @@ export interface ChatMessage {
   delegationAgentName?: string
   /** Full expandable content for technical messages (tool requests/responses) */
   fullContent?: string
+  /**
+   * Temporal window for delegation blocks.
+   * windowStart: timestamp of this DelegationEvent (inclusive lower bound).
+   * windowEnd: timestamp of the next DelegationEvent for the same subThreadId (exclusive upper bound),
+   *            or undefined for the most recent occurrence (open window).
+   * Sub-thread events whose timestamp falls in [windowStart, windowEnd) belong to this block.
+   */
+  windowStart?: string
+  windowEnd?: string
 }
 
 @Component({
