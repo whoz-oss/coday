@@ -34,7 +34,8 @@ enum class CaseStatus {
     RUNNING,
     IDLE,
     KILLED,
-    ERROR;
+    ERROR,
+    ;
 
     /** Returns true if the case has reached a final state and will no longer produce events. */
     fun isTerminal(): Boolean = this == KILLED || this == ERROR
