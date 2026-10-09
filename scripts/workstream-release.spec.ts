@@ -70,42 +70,69 @@ describe('isValidSlug', () => {
 
 describe('isValidWorkstreamVersion', () => {
   describe('valid versions', () => {
-    it('accepts a canonical workstream version', () => {
-      expect(isValidWorkstreamVersion('0.241.0-talent-portal.47', 'talent-portal')).toBe(true)
+    it('accepts the canonical 0.0.0 workstream version produced by the build', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-talent-portal.47', 'talent-portal')).toBe(true)
     })
 
-    it('accepts run number 0', () => {
-      expect(isValidWorkstreamVersion('1.0.0-talent-portal.0', 'talent-portal')).toBe(true)
+    it('accepts counter 0', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-talent-portal.0', 'talent-portal')).toBe(true)
     })
 
-    it('accepts large run numbers', () => {
-      expect(isValidWorkstreamVersion('0.241.0-talent-portal.9999', 'talent-portal')).toBe(true)
+    it('accepts large counters', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-talent-portal.9999', 'talent-portal')).toBe(true)
     })
 
     it('accepts a single-word slug', () => {
-      expect(isValidWorkstreamVersion('0.1.0-myfeature.3', 'myfeature')).toBe(true)
+      expect(isValidWorkstreamVersion('0.0.0-workstream-myfeature.3', 'myfeature')).toBe(true)
+    })
+
+    it('accepts a non-zero base (shape is validated, base policy is not)', () => {
+      // The build uses a fixed 0.0.0 base, but this function validates SHAPE only.
+      // Pinning 0.0.0 here would make the base decision impossible to revisit without
+      // editing the validator.
+      expect(isValidWorkstreamVersion('3.28.1-workstream-talent-portal.47', 'talent-portal')).toBe(true)
     })
   })
 
   describe('invalid versions', () => {
+    it('rejects a version missing the literal "workstream-" prefix', () => {
+      // This is the OLD format. It must now be rejected -- the prefix is what makes a
+      // workstream artifact self-identifying from its version alone.
+      expect(isValidWorkstreamVersion('0.0.0-talent-portal.47', 'talent-portal')).toBe(false)
+      expect(isValidWorkstreamVersion('3.28.1-talent-portal.47', 'talent-portal')).toBe(false)
+    })
+
     it('rejects a plain semver with no prerelease', () => {
       expect(isValidWorkstreamVersion('0.241.0', 'talent-portal')).toBe(false)
     })
 
     it('rejects a version whose slug does not match the provided slug', () => {
-      expect(isValidWorkstreamVersion('0.241.0-other-slug.47', 'talent-portal')).toBe(false)
+      expect(isValidWorkstreamVersion('0.0.0-workstream-other-slug.47', 'talent-portal')).toBe(false)
     })
 
-    it('rejects a version with an uppercase slug (slug: talent-portal)', () => {
-      expect(isValidWorkstreamVersion('0.241.0-Talent-Portal.47', 'talent-portal')).toBe(false)
+    it('rejects a slug that merely has the right suffix', () => {
+      // Guards against an unanchored pattern: 'not-forge' must not satisfy slug 'forge'.
+      expect(isValidWorkstreamVersion('0.0.0-workstream-not-forge.1', 'forge')).toBe(false)
     })
 
-    it('rejects a version missing the run-number suffix', () => {
-      expect(isValidWorkstreamVersion('0.241.0-talent-portal', 'talent-portal')).toBe(false)
+    it('rejects a slug that merely has the right prefix', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-forge-extra.1', 'forge')).toBe(false)
     })
 
-    it('rejects a version with a non-numeric run-number suffix', () => {
-      expect(isValidWorkstreamVersion('0.241.0-talent-portal.abc', 'talent-portal')).toBe(false)
+    it('rejects a doubled workstream prefix', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-workstream-forge.1', 'forge')).toBe(false)
+    })
+
+    it('rejects a version with an uppercase slug', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-Talent-Portal.47', 'talent-portal')).toBe(false)
+    })
+
+    it('rejects a version missing the counter suffix', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-talent-portal', 'talent-portal')).toBe(false)
+    })
+
+    it('rejects a version with a non-numeric counter suffix', () => {
+      expect(isValidWorkstreamVersion('0.0.0-workstream-talent-portal.abc', 'talent-portal')).toBe(false)
     })
 
     it('rejects an empty string', () => {
@@ -113,11 +140,11 @@ describe('isValidWorkstreamVersion', () => {
     })
 
     it('rejects a version with extra leading text (e.g. v-prefix)', () => {
-      expect(isValidWorkstreamVersion('v0.241.0-talent-portal.47', 'talent-portal')).toBe(false)
+      expect(isValidWorkstreamVersion('v0.0.0-workstream-talent-portal.47', 'talent-portal')).toBe(false)
     })
 
     it('rejects a version with build metadata suffix', () => {
-      expect(isValidWorkstreamVersion('0.241.0-talent-portal.47+build.1', 'talent-portal')).toBe(false)
+      expect(isValidWorkstreamVersion('0.0.0-workstream-talent-portal.47+build.1', 'talent-portal')).toBe(false)
     })
   })
 })

@@ -14,6 +14,13 @@
 #      ambiguity, and is awkward to glob or pass to `gh release download`.
 #      <n> is a PER-WORKSTREAM counter derived by reading this slug's existing tags
 #      and incrementing -- see the "Compute version" and "Reserve workstream tag" steps.
+#      This workflow no longer READS release/* either: the version base is a fixed 0.0.0.
+#
+# The 'workstream' keyword appears in all three published identifiers, by design:
+#      version   0.0.0-workstream-<slug>.<n>
+#      git tag   workstream-<slug>-<n>
+#      dist-tag  workstream-<slug>
+#  so an artifact is self-identifying as a workstream build from any one of them alone.
 #   2. NEVER run releaseChangelog. It commits/tags/pushes -- all wrong here.
 #      Version stamps live only in the working tree and are never committed.
 #   3. NEVER publish to the 'latest' npm dist-tag. npm publishes use
@@ -87,12 +94,14 @@ jobs:
     env:
       NPM_CONFIG_PROVENANCE: true
     steps:
-      # fetch-depth: 0 is MANDATORY.
-      # Version computation reads refs/tags/release/* for the semver base AND
-      # refs/tags/workstream-<slug>-* for the per-workstream counter. A shallow clone
-      # produces an empty tag list: the release lookup fails loudly, but the counter
-      # lookup would silently reset to 1 and collide with an already-published npm
-      # version. Both depend on the full tag set being present.
+      # fetch-depth: 0 is MANDATORY -- and the reason is now SILENT failure, not loud.
+      # Version computation reads refs/tags/workstream-<slug>-* to derive the counter.
+      # (It no longer reads refs/tags/release/* at all: the base is a fixed 0.0.0.)
+      # A shallow clone yields an empty tag list, so the counter would silently reset to
+      # 1 and collide with an already-published npm version -- the tag push would be
+      # rejected, or worse the publish would fail on an immutable version. There is no
+      # loud guard for this case because an empty tag list is indistinguishable from a
+      # genuinely new workstream.
       # (filter: tree:0 would be safe here -- partial clone omits blobs/trees,
       # not tags -- but is not currently used.)
       #
@@ -135,80 +144,50 @@ jobs:
           echo "slug=${SLUG}" >> $GITHUB_OUTPUT
           echo "Workstream slug: ${SLUG}"
 
-      # Produces TWO distinct identifiers:
-      #   version = <major>.<minor>.<patch+1>-<slug>.<n>   e.g. 3.28.1-forge.4
-      #   tag     = workstream-<slug>-<n>                  e.g. workstream-forge-4
+      # Produces TWO identifiers, consistent with each other and with the npm dist-tag:
+      #   version = 0.0.0-workstream-<slug>.<n>   e.g. 0.0.0-workstream-forge.4
+      #   tag     = workstream-<slug>-<n>         e.g. workstream-forge-4
+      #   dist-tag= workstream-<slug>             e.g. workstream-forge
       #
-      # <n> is a PER-WORKSTREAM counter read from the existing workstream tags for this
-      # slug and incremented -- NOT GITHUB_RUN_NUMBER. run_number is scoped to the workflow
-      # FILE, so with two live workstreams the sequences interleave (forge.1, talent.2,
-      # forge.3, talent.4). A per-slug counter gives each workstream a clean 1,2,3,...
+      # WHY THE BASE IS A FIXED 0.0.0 -- and why it is NOT derived from release/*:
+      # Workstream artifacts are deliberately DECOUPLED from the repo's release line.
+      # A base of 3.28.1 wrongly implied "the next patch release, slightly modified",
+      # when these are independent integration builds that may never reach master.
+      # 0.0.0 is a deliberate null: it states "no release lineage is claimed", and it
+      # sorts below every real release, so a workstream prerelease can never be resolved
+      # ahead of a genuine version by any semver range.
       #
-      # The X.Y.Z base is still derived from the last release/* tag and CANNOT be dropped
-      # from the VERSION: npm requires valid semver, scripts/utils/workstream-validators.ts
-      # enforces the X.Y.Z-<slug>.<n> shape, and the base is genuinely informative -- it
-      # records which release line this workstream forked from. It no longer appears in the
-      # TAG, which is where the redundancy actually was.
+      # npm requires a valid semver X.Y.Z triple, so SOME numeric base is unavoidable in
+      # the version (unlike the git tag and dist-tag, which are unconstrained). 0.0.0 is
+      # the minimal compliant choice that asserts nothing.
       #
-      # CRITICAL: use --sort=-v:refname for the release lookup, NOT the default lexicographic
-      # sort. Lexicographic is WRONG: "release/0.9.0" sorts AFTER "release/0.241.0" because
-      # '9' > '2'. -v:refname applies semver-aware ordering to the full refname.
+      # Consequence: the release/* tag lookup is GONE. It was the step that failed with
+      # exit 141 (SIGPIPE under pipefail); it no longer exists, and `release/*` tags are
+      # now irrelevant to this workflow. Rule 1 (never create a release/* tag) still holds
+      # -- we neither read nor write that namespace.
       #
-      # Note on patch increment: we always increment patch regardless of what the
-      # next real release will be. If master subsequently cuts a minor release,
-      # the prerelease version will sort below it -- which is correct behaviour
-      # (prereleases are not guarantees of the next release version). Consumers
-      # install prereleases by exact version or dist-tag, never by range, so
-      # semver ordering of prereleases relative to future releases is irrelevant.
+      # Verified against nx 23.1.1: deriveNewSemverVersion() validates the specifier with
+      # semver.valid() ONLY -- there is no monotonicity check -- so stamping 0.0.0-... over
+      # a current version of 3.28.0 is accepted. semver.valid('0.0.0-workstream-forge.1')
+      # passes: 'workstream-forge' is a legal dot-separated prerelease identifier.
+      #
+      # <n> is a PER-WORKSTREAM counter read from this slug's existing tags and incremented
+      # -- NOT GITHUB_RUN_NUMBER. run_number is scoped to the workflow FILE, so with two
+      # live workstreams the sequences interleave (forge.1, talent.2, forge.3, talent.4).
+      # A per-slug counter gives each workstream a clean 1,2,3,...
       - name: Compute version
         id: version
         run: |
           SLUG="${{ steps.slug.outputs.slug }}"
 
-          # Use for-each-ref --count=1 rather than `git tag --list ... | head -1`.
-          #
-          # CRITICAL: do NOT reintroduce a pipe to `head` here. This workflow sets
-          # `defaults.run.shell: bash`, which GitHub expands to
-          # `bash --noprofile --norc -eo pipefail {0}` -- note the `pipefail`.
-          # (The implicit Linux default is only `bash -e {0}`, WITHOUT pipefail.)
-          # `head -1` closes the pipe after one line; `git tag --sort` must emit all
-          # matching tags, so with 240+ release/* tags git overflows the pipe buffer,
-          # takes SIGPIPE and exits 141. Under pipefail that becomes the pipeline's
-          # exit status and `-e` kills the step before the guard below ever runs.
-          # This was an observed failure, not a hypothetical one.
-          #
-          # --count=1 makes git itself do the limiting: no pipe, no SIGPIPE.
-          # %(refname:short) yields "release/0.241.0", matching the old `git tag`
-          # output exactly, so the ${LAST_TAG#release/} stripping below is unchanged.
-          LAST_TAG=$(git for-each-ref --count=1 --sort=-v:refname \
-                       --format='%(refname:short)' 'refs/tags/release/*')
-
-          if [ -z "$LAST_TAG" ]; then
-            echo "ERROR: no release/* tags found." >&2
-            echo "This usually means fetch-depth: 0 was not set on the checkout step." >&2
-            exit 1
-          fi
-
-          echo "Last release tag: ${LAST_TAG}"
-          IFS='.' read -r major minor patch <<< "${LAST_TAG#release/}"
-
-          # Defensive: ensure the tag parsed into three numeric components.
-          # A malformed tag (e.g. release/v1.2.3 with a leading 'v') would produce
-          # non-numeric components and arithmetic below would fail silently or produce
-          # a garbage version string.
-          if ! [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ && "$patch" =~ ^[0-9]+$ ]]; then
-            echo "ERROR: could not parse numeric version from tag '${LAST_TAG}'." >&2
-            echo "Expected format: release/<major>.<minor>.<patch> with no leading 'v'." >&2
-            exit 1
-          fi
-
           # --- per-workstream counter, read from this slug's own tags ---
           #
-          # The sed pattern anchors on a PURE-NUMERIC suffix. Old-format tags
-          # (workstream-forge-3.28.1-forge.3) contain dots, do not match, and are therefore
-          # ignored -- the migration to this scheme needs no tag cleanup.
+          # The sed pattern anchors on a PURE-NUMERIC suffix. Legacy tags that embedded a
+          # full version (workstream-forge-3.28.1-forge.3) contain dots, do not match, and
+          # are ignored -- no tag cleanup is needed when migrating to this scheme.
           #
-          # The slug is constrained to ^[a-z0-9]+(-[a-z0-9]+)*$, so it contains no regex
+          # The slug is constrained to ^[a-z0-9]+(-[a-z0-9]+)*$ (enforced by the promote job
+          # and by scripts/utils/workstream-validators.ts), so it contains no regex
           # metacharacters and is safe to interpolate into the sed expression.
           #
           # PIPE SAFETY: sed, sort and tail each consume their ENTIRE input before emitting,
@@ -228,7 +207,7 @@ jobs:
             echo "Latest workstream counter for '${SLUG}': ${LAST_N} -> ${N}"
           fi
 
-          VERSION="${major}.${minor}.$((patch + 1))-${SLUG}.${N}"
+          VERSION="0.0.0-workstream-${SLUG}.${N}"
           TAG="workstream-${SLUG}-${N}"
 
           echo "Computed version: ${VERSION}"
