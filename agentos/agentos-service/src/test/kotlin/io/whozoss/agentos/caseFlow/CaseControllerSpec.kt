@@ -80,7 +80,7 @@ class CaseControllerSpec :
         ) = Case(
             metadata = EntityMetadata(id = id),
             namespaceId = namespaceId,
-            status = CaseStatus.PENDING,
+            status = CaseStatus.CREATED,
             title = title,
         )
 
@@ -90,7 +90,7 @@ class CaseControllerSpec :
         ) = CaseDto(
             id = id,
             namespaceId = namespaceId,
-            status = CaseStatus.PENDING,
+            status = CaseStatus.CREATED,
             title = title,
         )
 
@@ -138,7 +138,7 @@ class CaseControllerSpec :
 
             result.id shouldBe entity.metadata.id
             result.namespaceId shouldBe namespaceId
-            result.status shouldBe CaseStatus.PENDING
+            result.status shouldBe CaseStatus.CREATED
             result.title shouldBe "engineering case"
             result.created shouldBe now
             result.modified shouldBe later

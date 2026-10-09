@@ -49,7 +49,7 @@ class CaseMembershipControllerSpec :
             Case(
                 metadata = EntityMetadata(id = caseId),
                 namespaceId = namespaceId,
-                status = CaseStatus.PENDING,
+                status = CaseStatus.CREATED,
                 title = "test case",
             )
 

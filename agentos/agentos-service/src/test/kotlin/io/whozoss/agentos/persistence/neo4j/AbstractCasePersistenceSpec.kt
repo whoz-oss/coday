@@ -44,7 +44,7 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
 
     fun case(
         namespaceId: UUID,
-        status: CaseStatus = CaseStatus.PENDING,
+        status: CaseStatus = CaseStatus.CREATED,
     ) = Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = status)
 
     init {
@@ -56,7 +56,7 @@ abstract class AbstractCasePersistenceSpec : StringSpec() {
             val found = repo.findByIds(listOf(saved.id))
             found shouldHaveSize 1
             found.first().id shouldBe saved.id
-            found.first().status shouldBe CaseStatus.PENDING
+            found.first().status shouldBe CaseStatus.CREATED
         }
 
         "findByParent returns cases for that namespace only" {

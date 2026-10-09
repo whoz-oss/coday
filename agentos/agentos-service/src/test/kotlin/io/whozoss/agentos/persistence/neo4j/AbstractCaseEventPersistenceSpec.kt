@@ -54,7 +54,7 @@ abstract class AbstractCaseEventPersistenceSpec : StringSpec() {
 
     fun namespace() = Namespace(metadata = EntityMetadata(), name = "test-ns")
 
-    fun case(namespaceId: UUID) = Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.PENDING)
+    fun case(namespaceId: UUID) = Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.CREATED)
 
     fun msgEvent(
         caseId: UUID,

@@ -4331,6 +4331,7 @@ components:
         status:
           type: string
           enum:
+          - CREATED
           - PENDING
           - RUNNING
           - IDLE
@@ -4400,6 +4401,7 @@ components:
           status:
             type: string
             enum:
+            - CREATED
             - PENDING
             - RUNNING
             - IDLE

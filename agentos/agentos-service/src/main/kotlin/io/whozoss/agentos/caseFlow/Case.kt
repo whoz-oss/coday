@@ -20,7 +20,7 @@ import java.util.UUID
 data class Case(
     override val metadata: EntityMetadata = EntityMetadata(),
     val namespaceId: UUID,
-    val status: CaseStatus = CaseStatus.PENDING,
+    val status: CaseStatus = CaseStatus.CREATED,
     val title: String = "Case ${metadata.id}",
     /**
      * Id of the parent case when this case was created by a delegation tool.

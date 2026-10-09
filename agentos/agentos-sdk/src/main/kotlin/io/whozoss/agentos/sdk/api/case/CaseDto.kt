@@ -19,7 +19,7 @@ import java.util.UUID
  *
  * @property id Server-assigned UUID. Null on create requests; always present in responses.
  * @property namespaceId The namespace this case belongs to. Required on create.
- * @property status Current lifecycle status. Defaults to [CaseStatus.PENDING] on create.
+ * @property status Current lifecycle status. Defaults to [CaseStatus.CREATED] on create.
  * @property title Optional human-readable title.
  * @property created Server-set creation timestamp. Present in responses only.
  * @property modified Server-set last-modification timestamp. Present in responses only.
@@ -46,7 +46,7 @@ data class CaseDto(
     val id: UUID? = null,
     @field:NotNull(message = "namespaceId must not be null")
     val namespaceId: UUID,
-    val status: CaseStatus = CaseStatus.PENDING,
+    val status: CaseStatus = CaseStatus.CREATED,
     val title: String? = null,
     val parentCaseId: UUID? = null,
     val scheduledPromptId: UUID? = null,
