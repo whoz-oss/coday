@@ -113,7 +113,7 @@ jobs:
   # ---------------------------------------------------------------------------
   promote-to-integration:
     runs-on: ubuntu-latest
-    needs: [validate-ts, validate-jvm]
+    needs: [validate-ts, validate-jvm, merge-gate]
     # Conditions for this job to run:
     #   - validation must have passed (no failure/cancel in any needed job)
     #   - the PR target must be a workstream branch
