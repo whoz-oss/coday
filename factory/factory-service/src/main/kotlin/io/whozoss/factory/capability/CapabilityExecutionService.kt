@@ -256,6 +256,7 @@ class CapabilityExecutionService(
         val inputs: Map<String, Any?>,
         val runBrief: Map<String, Any?>?,
         val controllerRequest: String?,
+        val workstream: String? = null,
     )
 
     private fun assembleBrief(
@@ -288,7 +289,6 @@ class CapabilityExecutionService(
         // Fetch the instance once: used both for the transitive run-brief search
         // and for the controller-request text.
         val workflowInstance = workflowRepository.findInstance(scope, namespaceId, workflowId)
-        val ticketInstruction = briefFromTicket(ticket)
         val workstream = (workflowInstance?.instance?.get("workstream") as? String)?.takeIf { it.isNotBlank() }
 
         val runBrief: Map<String, Any?>? = inputs.values.firstNotNullOfOrNull(::findRunBrief)
@@ -327,7 +327,7 @@ class CapabilityExecutionService(
             .let { it as? String }
             ?.takeIf { it.isNotBlank() }
 
-        return BriefAssembly(ticketInstruction, entryStep, inputs, runBrief, controllerRequest)
+        return BriefAssembly(ticketInstruction, entryStep, inputs, runBrief, controllerRequest, workstream)
     }
 
     private fun renderBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
@@ -336,6 +336,7 @@ class CapabilityExecutionService(
         val inputs = assembly.inputs
         val runBrief = assembly.runBrief
         val controllerRequest = assembly.controllerRequest
+        val workstream = assembly.workstream
         return buildString {
             controllerRequest?.let {
                 appendLine("## User request")
