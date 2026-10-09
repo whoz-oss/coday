@@ -1,0 +1,138 @@
+# Workstream Re-promote -- manually restores a work branch into integration/<slug>.
+#
+# After integration-reset.yml resets the integration branch to the workstream head,
+# any work branches that were previously promoted (but not yet merged) disappear from
+# the artifact set. Developers whose branch was wiped can use this workflow to
+# re-promote their branch without pushing a dummy commit.
+#
+# Usage:
+#   1. Go to Actions -> "Workstream Re-promote" -> Run workflow.
+#   2. Enter the full ref of the work branch
+#      (e.g. work/talent-portal/issue-0042-foo).
+#   3. The branch is merged into integration/<slug> and workstream-build.yml publishes
+#      a new prerelease artifact set.
+#
+# This workflow applies the same conflict detection and RELEASE_PAT rules as the
+# automated promote in validate.yml.
+
+name: Workstream Re-promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      work_branch:
+        description: |
+          Full ref of the work branch to re-promote into integration/<slug>.
+          Example: work/talent-portal/issue-0042-foo
+        required: true
+        type: string
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  repromote:
+    runs-on: ubuntu-latest
+    # Serialise with automated promotes and resets for the same workstream slug.
+    # inputs.work_branch is "work/<slug>/...", which is unique per work branch.
+    # We use it directly as the concurrency key -- GitHub Actions does not support
+    # split() or any string-slicing in expressions, so the slug cannot be extracted
+    # at the expression level. The slug is derived in the "Derive slug" step below.
+    #
+    # NOTE: this group does NOT match the group in validate.yml / integration-reset.yml /
+    # workstream-build.yml (which key on base_ref / ref_name). Cross-workflow serialisation
+    # for the same slug is not achievable with native GitHub Actions concurrency groups
+    # without a shared external lock. The risk of a race between a re-promote and an
+    # automated reset is low and already mitigated by the merge conflict detection below.
+    #
+    # cancel-in-progress: false is mandatory -- cancelling a re-promote mid-merge
+    # would leave the integration branch in an indeterminate state.
+    concurrency:
+      group: workstream-repromote-${{ inputs.work_branch }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    steps:
+      # Derive slug from the work branch name and validate both the branch format
+      # and the slug pattern before touching any remote state.
+      - name: Derive slug and validate input
+        id: slug
+        run: |
+          WORK_BRANCH="${{ inputs.work_branch }}"
+          # Normalise: strip leading "refs/heads/" if present
+          WORK_BRANCH="${WORK_BRANCH#refs/heads/}"
+
+          # work branch format: work/<slug>/issue-XXXX-description
+          if ! echo "$WORK_BRANCH" | grep -qE "^work/[^/]+/.+$"; then
+            echo "::error::Input '${WORK_BRANCH}' does not match the expected pattern work/<slug>/<description>."
+            exit 1
+          fi
+
+          SLUG=$(echo "$WORK_BRANCH" | cut -d'/' -f2)
+
+          if ! echo "$SLUG" | grep -qE "^[a-z0-9]+(-[a-z0-9]+)*$"; then
+            echo "::error::Derived slug '${SLUG}' from '${WORK_BRANCH}' does not match the required pattern."
+            exit 1
+          fi
+
+          echo "slug=${SLUG}" >> $GITHUB_OUTPUT
+          echo "integration_branch=integration/${SLUG}" >> $GITHUB_OUTPUT
+          echo "work_branch=${WORK_BRANCH}" >> $GITHUB_OUTPUT
+          echo "Slug: ${SLUG}, integration branch: integration/${SLUG}"
+
+      # fetch-depth: 0 so we have the full history of both branches.
+      # token: RELEASE_PAT so the push triggers workstream-build.yml.
+      # GITHUB_TOKEN pushes are silently ignored by workflow triggers.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure integration branch exists
+        run: |
+          INTEGRATION_BRANCH="${{ steps.slug.outputs.integration_branch }}"
+          git fetch origin
+
+          if git ls-remote --exit-code origin "refs/heads/${INTEGRATION_BRANCH}" > /dev/null 2>&1; then
+            git checkout -b "${INTEGRATION_BRANCH}" "origin/${INTEGRATION_BRANCH}"
+          else
+            echo "::error::Integration branch '${INTEGRATION_BRANCH}' does not exist."
+            echo "::error::Create it first by running a work/* PR through validate.yml."
+            exit 1
+          fi
+
+      - name: Merge work branch into integration branch
+        run: |
+          INTEGRATION_BRANCH="${{ steps.slug.outputs.integration_branch }}"
+          WORK_BRANCH="${{ steps.slug.outputs.work_branch }}"
+
+          git fetch origin "${WORK_BRANCH}"
+          WORK_SHA=$(git rev-parse "origin/${WORK_BRANCH}")
+
+          echo "Merging ${WORK_BRANCH} (${WORK_SHA}) into ${INTEGRATION_BRANCH}..."
+
+          if git merge --no-ff "$WORK_SHA" \
+               -m "chore: re-promote ${WORK_BRANCH} into ${INTEGRATION_BRANCH} [repromote]"; then
+            echo "Merge succeeded."
+          else
+            CONFLICTING=$(git diff --name-only --diff-filter=U | sed 's/^/- /' | head -20)
+            git merge --abort
+            echo "::error::Merge conflict detected when re-promoting ${WORK_BRANCH}."
+            echo "::error::Conflicting files:"
+            echo "$CONFLICTING"
+            echo "::error::The integration branch was NOT updated."
+            exit 1
+          fi
+
+      # MUST use RELEASE_PAT -- GITHUB_TOKEN pushes do not trigger workstream-build.yml.
+      - name: Push integration branch
+        run: |
+          INTEGRATION_BRANCH="${{ steps.slug.outputs.integration_branch }}"
+          git push origin "${INTEGRATION_BRANCH}"
+          echo "::notice::Pushed to ${INTEGRATION_BRANCH} -- workstream-build.yml will now publish prerelease artifacts."
