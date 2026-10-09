@@ -119,12 +119,82 @@ sequenceDiagram
 Every integration build publishes the **complete** release set at one coherent prerelease
 version:
 
+Each build derives **two distinct identifiers**. They are routinely confused, so be precise:
+the version is not the tag.
+
 ```
-0.241.0-talent-portal.47
-│       │              └── workflow run_number (monotonic, never resets)
-│       └── workstream slug
-└── last release/X.Y.Z tag with patch incremented
+version:  0.241.1-talent-portal.4          tag:  workstream-talent-portal-4
+          │       │             └── n                                   └── n
+          │       └── workstream slug
+          └── last release/X.Y.Z tag, patch incremented
 ```
+
+`n` is a **per-workstream counter**: the build lists `refs/tags/workstream-<slug>-*`, takes the
+highest numeric suffix, and increments. Each workstream therefore gets a clean `1, 2, 3, …`
+independent of every other workstream.
+
+Worked example: with `release/3.28.0` as the newest release tag, slug `forge`, and
+`workstream-forge-3` as the highest existing forge tag — the version is **`3.28.1-forge.4`**
+and the tag is **`workstream-forge-4`**.
+
+- `3.28` — `major`.`minor` carried unchanged from `release/3.28.0`
+- `.1` — `patch + 1`, incremented **unconditionally**
+- `-forge` — slug, stripped from the `integration/forge` branch name
+- `.4` / `-4` — per-slug counter, `3 + 1`
+
+### Why a per-slug counter, not `GITHUB_RUN_NUMBER`
+
+`GITHUB_RUN_NUMBER` is scoped to the **workflow file**, not the workstream. With two live
+workstreams the sequences interleave — `forge.1`, `talent.2`, `forge.3`, `talent.4` — so each
+workstream's own numbering is gappy and conveys nothing. Reading the counter back from the
+slug's own tags gives each workstream a contiguous sequence, and makes the tag namespace
+self-describing: `git tag --list 'workstream-forge-*'` is the complete, ordered build history
+for that workstream.
+
+### Why the tag omits the semver base but the version keeps it
+
+The tag is `workstream-forge-4`, not `workstream-forge-3.28.1-forge.4`. Embedding the version
+in the tag duplicated the slug and the counter for no gain.
+
+The version **cannot** drop the base: npm requires valid semver, and
+`scripts/utils/workstream-validators.ts` enforces the `X.Y.Z-<slug>.<n>` shape, failing the
+build otherwise. The base is also genuinely informative — it records which release line the
+workstream forked from. It is surfaced in the GitHub release title and notes, so omitting it
+from the tag loses no discoverability.
+
+### The tag is a reservation, pushed *before* publishing
+
+The counter is read-modify-write over shared state, which makes ordering load-bearing:
+
+1. **The tag is pushed immediately after the version is computed**, before any npm publish.
+   If the tag were created at the end (as it was when the counter was `GITHUB_RUN_NUMBER`,
+   which is collision-free by construction), a failure between the npm publish and the release
+   creation would burn a version on npm while leaving no tag. The next run would recompute the
+   *same* `n`, and npm would reject the publish — published versions are immutable. The
+   pipeline would wedge until someone intervened manually.
+
+   Pushing first makes the counter consumed at the moment it is computed. A failed build leaves
+   a dangling tag with no release: cheap, self-evident, and strictly better than a poisoned
+   counter.
+
+2. **The `concurrency` group is now a correctness mechanism**, not merely a guard against
+   partial artifact sets. Two concurrent builds on the same integration branch would read the
+   same `n` and the second tag push would be rejected. Same-slug serialisation is what makes
+   the read-modify-write atomic in practice. Builds for *different* slugs may safely overlap —
+   they touch disjoint tag namespaces, exactly the property a per-slug counter has and
+   `GITHUB_RUN_NUMBER` did not.
+
+3. **`fetch-depth: 0` protects the counter, not just the release lookup.** A shallow clone
+   makes the release lookup fail loudly, but would make the counter lookup silently reset to
+   `1` and collide with an already-published npm version.
+
+### Patch increment semantics
+
+The patch increment makes no prediction about the next real release. If `master` subsequently
+cuts `3.29.0`, this prerelease sorts below it — correct behaviour, since a prerelease is not a
+promise about the next release version. Consumers install workstream artifacts by exact version
+or by the `workstream-<slug>` dist-tag, never by semver range, so ordering relative to future
+releases is irrelevant.
 
 ### Why the full set, never `nx affected`
 
@@ -147,8 +217,14 @@ the time and surfaces later somewhere unrelated.
 `nx.json` sets `releaseTag.pattern: release/{version}`, and version derivation finds the most
 recent matching tag and walks conventional commits forward from it. A `release/*` tag created
 by an integration build silently corrupts the *next real release on `master`*, which computes
-its bump from the wrong baseline. Workstream tags live in a disjoint namespace:
-`workstream/<slug>/<version>`.
+its bump from the wrong baseline. Workstream tags live in a disjoint, **flat, dash-only**
+namespace: `workstream-<slug>-<n>` — for example `workstream-forge-4`.
+
+The flat form is deliberate. A hierarchical tag (`refs/tags/workstream/<slug>/<n>`) mirrors the
+branch taxonomy in `refs/heads/workstream/<slug>/<base>`, which invites refname ambiguity and is
+awkward to glob or pass to `gh release download`. The flat form supports
+`git tag --list 'workstream-<slug>-*'` directly — which is also precisely how the build reads
+its own counter back.
 
 **2. Never run `releaseChangelog`.**
 It commits version bumps and `CHANGELOG.md`, tags, and pushes. On an integration branch all
@@ -168,7 +244,7 @@ token in this repository — do not introduce a `NODE_AUTH_TOKEN` / `NPM_TOKEN` 
 | Artifact | Destination |
 |---|---|
 | npm packages (`client`, `factory-cockpit`, `server`, `web`) | public npm, dist-tag `workstream-<slug>` |
-| AgentOS JARs + `checksums.sha256` | GitHub **prerelease**, tag `workstream/<slug>/<version>` |
+| AgentOS JARs + `checksums.sha256` | GitHub **prerelease**, tag `workstream-<slug>-<n>` |
 | JVM artifacts | GitHub Packages |
 | Desktop installers | **not built** — `desktop` / `desktop-twin` already have no-op `nx-release-publish` |
 
@@ -209,21 +285,31 @@ silently half-work: the push succeeds, the build never runs.
 
 ### Concurrency
 
-Every job that writes to `integration/<slug>` must resolve to the **same** group string, keyed on
-the slug alone. All four use the `split()` expression function, which works because the slug is
-always path segment `[1]` — in `workstream/<slug>/<base>`, `integration/<slug>`, and
-`work/<slug>/…` alike:
+**There is no `split()` function in GitHub Actions expressions.** The complete set is `contains`,
+`startsWith`, `endsWith`, `format`, `join`, `toJSON`, `fromJSON`, `hashFiles`, plus the status
+checks. An earlier version of this document prescribed `split(github.base_ref, '/')[1]`; that
+was wrong and must not be reintroduced.
 
-| Workflow | Expression |
-|---|---|
-| `validate.yml` (promote) | `workstream-${{ split(github.base_ref, '/')[1] }}` |
-| `integration-reset.yml` | `workstream-${{ split(github.base_ref, '/')[1] }}` |
-| `workstream-build.yml` | `workstream-${{ split(github.ref_name, '/')[1] }}` |
-| `workstream-repromote.yml` | `workstream-${{ split(inputs.work_branch, '/')[1] }}` |
+Because `concurrency` is evaluated *before any step runs*, a slug derived in a shell step is also
+unavailable to it. A slug sitting mid-ref (`workstream/<slug>/master`, `integration/<slug>`)
+therefore **cannot** be extracted to form a shared key. The actual groups are:
 
-All four yield `workstream-talent-portal` for that slug. Keying on the raw ref instead would
-produce four *different* groups for the same workstream — the jobs would not serialise at all,
-which is the exact race this is meant to prevent.
+| Workflow | Expression | Resolves to (slug `forge`) |
+|---|---|---|
+| `validate.yml` (promote) | `workstream-${{ github.base_ref }}` | `workstream-workstream/forge/master` |
+| `integration-reset.yml` | `workstream-${{ github.base_ref }}` | `workstream-workstream/forge/master` |
+| `workstream-build.yml` | `workstream-${{ github.ref_name }}` | `workstream-integration/forge` |
+| `workstream-repromote.yml` | `workstream-repromote-${{ inputs.work_branch }}` | `workstream-repromote-work/forge/…` |
+
+Promote and reset **do** serialise with each other — the pairing that actually matters, since
+both write the integration branch. Build and repromote serialise only against themselves.
+
+If true cross-workflow serialisation ever becomes necessary, the options are to flatten the
+branch taxonomy so the slug is a whole leading ref segment, or to route through `workflow_call`
+passing the slug as an input so `inputs.slug` is directly usable in `concurrency.group`.
+
+When reviewing any change here, write out the literal group string each workflow produces for
+one concrete slug and confirm byte-equality. Do not trust an inline comment claiming they match.
 
 `cancel-in-progress: false` everywhere. Cancelling a promote loses an artifact set; cancelling a
 reset leaves the branch corrupt.
@@ -305,14 +391,44 @@ non-obvious mechanics; see the inline rationale in each workflow for the rest.
 ```bash
 # -v:refname applies semver ordering to the full refname.
 # A plain lexicographic sort is WRONG: "release/0.9.0" > "release/0.241.0" lexicographically.
-LAST_TAG=$(git tag --list 'release/*' --sort=-v:refname | head -1)
+#
+# --count=1 makes git itself do the limiting. Do NOT pipe to `head`.
+LAST_TAG=$(git for-each-ref --count=1 --sort=-v:refname \
+             --format='%(refname:short)' 'refs/tags/release/*')
 if [ -z "$LAST_TAG" ]; then
   echo "ERROR: no release/* tags found — ensure the checkout uses fetch-depth: 0" >&2
   exit 1
 fi
 IFS='.' read -r major minor patch <<< "${LAST_TAG#release/}"
-VERSION="${major}.${minor}.$((patch + 1))-${SLUG}.${GITHUB_RUN_NUMBER}"
+
+# Per-slug counter. The sed pattern anchors on a PURE-NUMERIC suffix, so legacy tags
+# carrying a full version (workstream-forge-3.28.1-forge.3) contain dots, do not match,
+# and are ignored — the migration to this scheme requires no tag cleanup.
+#
+# PIPE SAFETY: sed, sort and tail each consume their entire input before emitting, so
+# none closes the pipe early. This is NOT the `| head -1` hazard described below.
+LAST_N=$(git for-each-ref --format='%(refname:strip=2)' "refs/tags/workstream-${SLUG}-*" \
+           | sed -n "s/^workstream-${SLUG}-\([0-9][0-9]*\)$/\1/p" \
+           | sort -n | tail -1)
+N=$(( ${LAST_N:-0} + 1 ))
+
+VERSION="${major}.${minor}.$((patch + 1))-${SLUG}.${N}"
+TAG="workstream-${SLUG}-${N}"
 ```
+
+> **Never reintroduce `git tag --list 'release/*' --sort=-v:refname | head -1`.** An earlier
+> version of this document prescribed exactly that, and it killed the first real workstream
+> build with exit 141. `head -1` closes the pipe after one line, but `git tag --sort` must
+> buffer and emit *all* matches; with 240+ `release/*` tags git writes into a closed pipe,
+> takes SIGPIPE and exits 141. These workflows set `defaults.run.shell: bash`, which GitHub
+> expands to `bash --noprofile --norc -eo pipefail {0}` — note `pipefail`, which the implicit
+> Linux default (`bash -e {0}`) does **not** set. Under `pipefail` the SIGPIPE becomes the
+> pipeline's exit status and `-e` kills the step. `%(refname:short)` yields `release/3.28.0`,
+> byte-identical to `git tag --list` output, so downstream `${LAST_TAG#release/}` is unaffected.
+>
+> A secondary lesson: the `-z "$LAST_TAG"` guard above never ran — `set -e` killed the script
+> one line earlier. Under `-e`, validate the *exit status* of the producing command, not only
+> the emptiness of its result.
 
 `fetch-depth: 0` is mandatory. `filter: tree:0` is fine — partial clone affects blob/tree
 fetching, not tags.

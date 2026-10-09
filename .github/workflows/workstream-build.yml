@@ -7,7 +7,13 @@
 # Three inviolable rules this workflow enforces:
 #   1. NEVER create a release/* tag. Doing so corrupts the next real release's
 #      version derivation (nx release walks conventional commits from the last tag).
-#      Workstream tags live in: workstream/<slug>/<version>
+#      Workstream tags live in a FLAT, dash-only namespace:
+#        workstream-<slug>-<n>   e.g. workstream-forge-4
+#      No slashes: a hierarchical tag (refs/tags/workstream/<slug>/...) shadows the
+#      branch taxonomy (refs/heads/workstream/<slug>/master), inviting rev-parse
+#      ambiguity, and is awkward to glob or pass to `gh release download`.
+#      <n> is a PER-WORKSTREAM counter derived by reading this slug's existing tags
+#      and incrementing -- see the "Compute version" and "Reserve workstream tag" steps.
 #   2. NEVER run releaseChangelog. It commits/tags/pushes -- all wrong here.
 #      Version stamps live only in the working tree and are never committed.
 #   3. NEVER publish to the 'latest' npm dist-tag. npm publishes use
@@ -16,9 +22,6 @@
 # Desktop apps (desktop/desktop-twin) are NOT built here -- they have no-op
 # nx-release-publish targets and are excluded from workstream builds.
 #
-# RELEASE_PAT is NOT used for pushes here because this workflow is triggered BY
-# a push (from validate.yml or integration-reset.yml) -- it does not push itself.
-
 name: Workstream Build
 
 on:
@@ -33,6 +36,18 @@ on:
 # group resolves to e.g. "workstream-integration/talent-portal".
 # github.ref_name for an integration push is "integration/<slug>", unique per
 # workstream, so builds for the SAME integration branch serialise correctly.
+#
+# THIS GROUP IS NOW LOAD-BEARING FOR CORRECTNESS, not just artifact coherence.
+# The "Compute version" step performs a read-modify-write on the per-slug tag counter
+# (read refs/tags/workstream-<slug>-*, increment, push). Two concurrent builds on the
+# same integration branch would read the same <n>, and the second tag push would be
+# rejected as already-existing. Serialising same-slug builds is what makes the
+# read-modify-write atomic in practice. Do not weaken this group or set
+# cancel-in-progress: true.
+#
+# Builds for DIFFERENT slugs may safely run concurrently -- they touch disjoint tag
+# namespaces, which is precisely the property a per-slug counter has and
+# GITHUB_RUN_NUMBER did not.
 #
 # KNOWN LIMITATION -- this group does NOT match validate.yml or
 # integration-reset.yml (both key on github.base_ref = "workstream/<slug>/master").
@@ -62,7 +77,8 @@ jobs:
   build-and-publish:
     runs-on: ubuntu-latest
     permissions:
-      # contents: write -- create GitHub prerelease and upload assets
+      # contents: write -- push the reservation tag, create the GitHub prerelease,
+      #                    and upload assets
       contents: write
       # packages: write -- publish JVM artifacts to GitHub Packages
       packages: write
@@ -72,13 +88,19 @@ jobs:
       NPM_CONFIG_PROVENANCE: true
     steps:
       # fetch-depth: 0 is MANDATORY.
-      # Version computation reads refs/tags/release/* to find the last release.
-      # A shallow clone produces an empty tag list and the version step fails.
+      # Version computation reads refs/tags/release/* for the semver base AND
+      # refs/tags/workstream-<slug>-* for the per-workstream counter. A shallow clone
+      # produces an empty tag list: the release lookup fails loudly, but the counter
+      # lookup would silently reset to 1 and collide with an already-published npm
+      # version. Both depend on the full tag set being present.
       # (filter: tree:0 would be safe here -- partial clone omits blobs/trees,
       # not tags -- but is not currently used.)
+      #
+      # token: RELEASE_PAT so the reservation tag push below is authenticated.
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          token: ${{ secrets.RELEASE_PAT }}
 
       - uses: pnpm/action-setup@v6
         with:
@@ -113,13 +135,24 @@ jobs:
           echo "slug=${SLUG}" >> $GITHUB_OUTPUT
           echo "Workstream slug: ${SLUG}"
 
-      # Version format: <major>.<minor>.<patch+1>-<slug>.<run_number>
-      # Example:        0.241.1-talent-portal.47
+      # Produces TWO distinct identifiers:
+      #   version = <major>.<minor>.<patch+1>-<slug>.<n>   e.g. 3.28.1-forge.4
+      #   tag     = workstream-<slug>-<n>                  e.g. workstream-forge-4
       #
-      # CRITICAL: use --sort=-v:refname, NOT the default lexicographic sort.
-      # Lexicographic is WRONG: "release/0.9.0" sorts AFTER "release/0.241.0"
-      # because '9' > '2'. -v:refname applies semver-aware ordering to the full
-      # refname, so 0.241.0 correctly sorts after 0.9.0.
+      # <n> is a PER-WORKSTREAM counter read from the existing workstream tags for this
+      # slug and incremented -- NOT GITHUB_RUN_NUMBER. run_number is scoped to the workflow
+      # FILE, so with two live workstreams the sequences interleave (forge.1, talent.2,
+      # forge.3, talent.4). A per-slug counter gives each workstream a clean 1,2,3,...
+      #
+      # The X.Y.Z base is still derived from the last release/* tag and CANNOT be dropped
+      # from the VERSION: npm requires valid semver, scripts/utils/workstream-validators.ts
+      # enforces the X.Y.Z-<slug>.<n> shape, and the base is genuinely informative -- it
+      # records which release line this workstream forked from. It no longer appears in the
+      # TAG, which is where the redundancy actually was.
+      #
+      # CRITICAL: use --sort=-v:refname for the release lookup, NOT the default lexicographic
+      # sort. Lexicographic is WRONG: "release/0.9.0" sorts AFTER "release/0.241.0" because
+      # '9' > '2'. -v:refname applies semver-aware ordering to the full refname.
       #
       # Note on patch increment: we always increment patch regardless of what the
       # next real release will be. If master subsequently cuts a minor release,
@@ -169,10 +202,62 @@ jobs:
             exit 1
           fi
 
-          VERSION="${major}.${minor}.$((patch + 1))-${SLUG}.${GITHUB_RUN_NUMBER}"
+          # --- per-workstream counter, read from this slug's own tags ---
+          #
+          # The sed pattern anchors on a PURE-NUMERIC suffix. Old-format tags
+          # (workstream-forge-3.28.1-forge.3) contain dots, do not match, and are therefore
+          # ignored -- the migration to this scheme needs no tag cleanup.
+          #
+          # The slug is constrained to ^[a-z0-9]+(-[a-z0-9]+)*$, so it contains no regex
+          # metacharacters and is safe to interpolate into the sed expression.
+          #
+          # PIPE SAFETY: sed, sort and tail each consume their ENTIRE input before emitting,
+          # so none of them closes the pipe early. This is NOT the `| head -1` hazard that
+          # killed an earlier version of this step with SIGPIPE/exit 141 under the pipefail
+          # implied by `defaults.run.shell: bash`. Do not substitute `head` for `tail` here.
+          LAST_N=$(git for-each-ref --format='%(refname:strip=2)' "refs/tags/workstream-${SLUG}-*" \
+                     | sed -n "s/^workstream-${SLUG}-\([0-9][0-9]*\)$/\1/p" \
+                     | sort -n \
+                     | tail -1)
+
+          if [ -z "$LAST_N" ]; then
+            N=1
+            echo "No existing workstream-${SLUG}-<n> tag found; starting counter at 1."
+          else
+            N=$((LAST_N + 1))
+            echo "Latest workstream counter for '${SLUG}': ${LAST_N} -> ${N}"
+          fi
+
+          VERSION="${major}.${minor}.$((patch + 1))-${SLUG}.${N}"
+          TAG="workstream-${SLUG}-${N}"
 
           echo "Computed version: ${VERSION}"
+          echo "Computed tag:     ${TAG}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+      # Reserve the counter by pushing the tag BEFORE anything is published.
+      #
+      # This step is load-bearing, not bookkeeping. The counter is now derived from existing
+      # tags, so creating the tag at the END (correct when the counter was GITHUB_RUN_NUMBER,
+      # which is collision-free by construction) would be unsafe: any failure between the npm
+      # publish and the release creation would burn a version on npm while leaving no tag.
+      # The next run would recompute the SAME <n>, and npm would reject the publish because
+      # published versions are immutable -- a wedged pipeline needing manual intervention.
+      #
+      # Pushing first makes the tag a RESERVATION: the counter is consumed the moment it is
+      # computed. A failed build then leaves a dangling tag with no release, which is cheap,
+      # self-evident, and strictly better than a poisoned counter.
+      #
+      # A lightweight tag needs no committer identity, so no git config is required.
+      # Tag pushes do not match `on: push: branches:`, so this triggers no workflow.
+      - name: Reserve workstream tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          SHA="${{ github.sha }}"
+          git tag "$TAG" "$SHA"
+          git push origin "refs/tags/${TAG}"
+          echo "::notice::Reserved tag ${TAG} at ${SHA}."
 
       # workstream-release.ts stamps ALL package.json files and
       # agentos/gradle/libs.versions.toml with the exact version, then publishes
@@ -190,7 +275,7 @@ jobs:
             --version "${{ steps.version.outputs.version }}" \
             --slug "${{ steps.slug.outputs.slug }}"
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
 
       # libs.versions.toml has already been stamped by workstream-release.ts above,
       # so Gradle picks up the correct version automatically.
@@ -226,7 +311,7 @@ jobs:
             pnpm nx publish "$PROJECT"
           done
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
           GITHUB_ACTOR: ${{ github.actor }}
 
       # Naming contract: "<artifactId>-<version>.jar".
@@ -254,37 +339,47 @@ jobs:
           echo "Staged files:"
           cat checksums.sha256
 
-      # Tag lives in workstream namespace: workstream/<slug>/<version>.
+      # Tag format: workstream-<slug>-<n>   e.g. workstream-forge-4
+      #
+      # FLAT and DASH-ONLY by design -- no slashes. A hierarchical tag such as
+      # workstream/<slug>/<version> lands in refs/tags/workstream/<slug>/... which
+      # mirrors the branch taxonomy in refs/heads/workstream/<slug>/..., inviting
+      # refname ambiguity, and is clumsy to glob or feed to `gh release download`.
+      # The flat form supports `git tag --list 'workstream-<slug>-*'` directly --
+      # which is also exactly how the counter above reads itself back.
+      #
+      # The tag carries ONLY the counter, not the semver base. The semver base still
+      # appears in VERSION (npm requires valid semver) and is surfaced in the release
+      # title and notes below, so nothing is lost by omitting it here.
+      #
       # Rule 1: NEVER use release/* -- a release/* tag corrupts the next real
       # release's version derivation.
       # prerelease: true ensures this never appears as "latest release" in the UI.
+      #
+      # The tag was already created and pushed by the "Reserve workstream tag" step at the
+      # correct commit, so `--target` is neither needed nor meaningful here (gh ignores it
+      # for an existing tag). This also sidesteps the `gh release create` default-branch
+      # trap entirely: with no --target and no pre-existing tag, gh would tag master HEAD.
       - name: Create GitHub prerelease and upload JARs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           SLUG="${{ steps.slug.outputs.slug }}"
-          TAG="workstream/${SLUG}/${VERSION}"
+          TAG="${{ steps.version.outputs.tag }}"
           BRANCH="${{ github.ref_name }}"
           SHA="${{ github.sha }}"
 
-          echo "Creating prerelease tag: ${TAG}"
+          echo "Creating prerelease ${TAG} for version ${VERSION}"
 
           NOTES="Prerelease artifact set for workstream ${SLUG}, version ${VERSION}."
+          NOTES="${NOTES} npm dist-tag: workstream-${SLUG}."
           NOTES="${NOTES} Published from integration branch ${BRANCH} at commit ${SHA}."
           NOTES="${NOTES} This is a prerelease -- do not use in production."
 
-          # --target is MANDATORY. Without it, `gh release create` creates the
-          # underlying git tag at the DEFAULT branch (master) HEAD, not at the
-          # commit being built. That would silently produce a prerelease whose
-          # tag points at unrelated master code while its attached JARs were
-          # built from this integration branch.
-          # (release.yml does not need this: it uses `gh release upload` against
-          # a tag nx release already created at the right commit.)
           gh release create "$TAG" \
-            --target "$SHA" \
             --prerelease \
-            --title "Workstream ${SLUG} - ${VERSION}" \
+            --title "Workstream ${SLUG} #${TAG##*-} - ${VERSION}" \
             --notes "$NOTES" \
             "/tmp/agentos-jars/agentos-service-${VERSION}.jar" \
             /tmp/agentos-jars/agentos-bash-plugin-*.jar \
@@ -309,7 +404,7 @@ jobs:
           echo "| Workstream | ${SLUG} |" >> $GITHUB_STEP_SUMMARY
           echo "| Version | ${VERSION} |" >> $GITHUB_STEP_SUMMARY
           echo "| npm dist-tag | workstream-${SLUG} |" >> $GITHUB_STEP_SUMMARY
-          echo "| GitHub tag | workstream/${SLUG}/${VERSION} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub tag | ${{ steps.version.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Integration branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Run | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
