@@ -74,6 +74,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  NPM_CONFIG_PROVENANCE: true
   NX_MAX_WORKERS: 4
 
 defaults:
@@ -81,18 +82,23 @@ defaults:
     shell: bash
 
 jobs:
-  build-and-publish:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 1: Version, stamp, npm publish.
+  #
+  # Outputs consumed by all downstream jobs:
+  #   version  -- 0.0.0-workstream-<slug>.<n>
+  #   tag      -- workstream-<slug>-<n>
+  #   slug     -- <slug>
+  # ─────────────────────────────────────────────────────────────────────────────
+  prepare:
     runs-on: ubuntu-latest
     permissions:
-      # contents: write -- push the reservation tag, create the GitHub prerelease,
-      #                    and upload assets
-      contents: write
-      # packages: write -- publish JVM artifacts to GitHub Packages
-      packages: write
-      # id-token: write -- required for npm OIDC trusted publishing (no static token needed)
-      id-token: write
-    env:
-      NPM_CONFIG_PROVENANCE: true
+      contents: write   # push the reservation tag
+      id-token: write   # npm OIDC trusted publishing
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag:     ${{ steps.version.outputs.tag }}
+      slug:    ${{ steps.slug.outputs.slug }}
     steps:
       # fetch-depth: 0 is MANDATORY -- and the reason is now SILENT failure, not loud.
       # Version computation reads refs/tags/workstream-<slug>-* to derive the counter.
@@ -102,8 +108,6 @@ jobs:
       # rejected, or worse the publish would fail on an immutable version. There is no
       # loud guard for this case because an empty tag list is indistinguishable from a
       # genuinely new workstream.
-      # (filter: tree:0 would be safe here -- partial clone omits blobs/trees,
-      # not tags -- but is not currently used.)
       #
       # token: RELEASE_PAT so the reservation tag push below is authenticated.
       - uses: actions/checkout@v5
@@ -124,13 +128,6 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://${{ vars.NPM_REGISTRY }}'
 
-      - name: Set up JDK 25
-        uses: actions/setup-java@v5
-        with:
-          java-version: '25'
-          distribution: 'temurin'
-          cache: 'gradle'
-
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -145,55 +142,29 @@ jobs:
           echo "Workstream slug: ${SLUG}"
 
       # Produces TWO identifiers, consistent with each other and with the npm dist-tag:
-      #   version = 0.0.0-workstream-<slug>.<n>   e.g. 0.0.0-workstream-forge.4
-      #   tag     = workstream-<slug>-<n>         e.g. workstream-forge-4
-      #   dist-tag= workstream-<slug>             e.g. workstream-forge
+      #   version  = 0.0.0-workstream-<slug>.<n>   e.g. 0.0.0-workstream-forge.4
+      #   tag      = workstream-<slug>-<n>          e.g. workstream-forge-4
+      #   dist-tag = workstream-<slug>              e.g. workstream-forge
       #
       # WHY THE BASE IS A FIXED 0.0.0 -- and why it is NOT derived from release/*:
       # Workstream artifacts are deliberately DECOUPLED from the repo's release line.
-      # A base of 3.28.1 wrongly implied "the next patch release, slightly modified",
-      # when these are independent integration builds that may never reach master.
       # 0.0.0 is a deliberate null: it states "no release lineage is claimed", and it
       # sorts below every real release, so a workstream prerelease can never be resolved
       # ahead of a genuine version by any semver range.
-      #
-      # npm requires a valid semver X.Y.Z triple, so SOME numeric base is unavoidable in
-      # the version (unlike the git tag and dist-tag, which are unconstrained). 0.0.0 is
-      # the minimal compliant choice that asserts nothing.
-      #
-      # Consequence: the release/* tag lookup is GONE. It was the step that failed with
-      # exit 141 (SIGPIPE under pipefail); it no longer exists, and `release/*` tags are
-      # now irrelevant to this workflow. Rule 1 (never create a release/* tag) still holds
-      # -- we neither read nor write that namespace.
-      #
-      # Verified against nx 23.1.1: deriveNewSemverVersion() validates the specifier with
-      # semver.valid() ONLY -- there is no monotonicity check -- so stamping 0.0.0-... over
-      # a current version of 3.28.0 is accepted. semver.valid('0.0.0-workstream-forge.1')
-      # passes: 'workstream-forge' is a legal dot-separated prerelease identifier.
       #
       # <n> is a PER-WORKSTREAM counter read from this slug's existing tags and incremented
       # -- NOT GITHUB_RUN_NUMBER. run_number is scoped to the workflow FILE, so with two
       # live workstreams the sequences interleave (forge.1, talent.2, forge.3, talent.4).
       # A per-slug counter gives each workstream a clean 1,2,3,...
+      #
+      # PIPE SAFETY: sed, sort and tail each consume their ENTIRE input before emitting,
+      # so none of them closes the pipe early. This is NOT the `| head -1` hazard that
+      # killed an earlier version of this step with SIGPIPE/exit 141.
       - name: Compute version
         id: version
         run: |
           SLUG="${{ steps.slug.outputs.slug }}"
 
-          # --- per-workstream counter, read from this slug's own tags ---
-          #
-          # The sed pattern anchors on a PURE-NUMERIC suffix. Legacy tags that embedded a
-          # full version (workstream-forge-3.28.1-forge.3) contain dots, do not match, and
-          # are ignored -- no tag cleanup is needed when migrating to this scheme.
-          #
-          # The slug is constrained to ^[a-z0-9]+(-[a-z0-9]+)*$ (enforced by the promote job
-          # and by scripts/utils/workstream-validators.ts), so it contains no regex
-          # metacharacters and is safe to interpolate into the sed expression.
-          #
-          # PIPE SAFETY: sed, sort and tail each consume their ENTIRE input before emitting,
-          # so none of them closes the pipe early. This is NOT the `| head -1` hazard that
-          # killed an earlier version of this step with SIGPIPE/exit 141 under the pipefail
-          # implied by `defaults.run.shell: bash`. Do not substitute `head` for `tail` here.
           LAST_N=$(git for-each-ref --format='%(refname:strip=2)' "refs/tags/workstream-${SLUG}-*" \
                      | sed -n "s/^workstream-${SLUG}-\([0-9][0-9]*\)$/\1/p" \
                      | sort -n \
@@ -216,14 +187,6 @@ jobs:
           echo "tag=${TAG}" >> $GITHUB_OUTPUT
 
       # Reserve the counter by pushing the tag BEFORE anything is published.
-      #
-      # This step is load-bearing, not bookkeeping. The counter is now derived from existing
-      # tags, so creating the tag at the END (correct when the counter was GITHUB_RUN_NUMBER,
-      # which is collision-free by construction) would be unsafe: any failure between the npm
-      # publish and the release creation would burn a version on npm while leaving no tag.
-      # The next run would recompute the SAME <n>, and npm would reject the publish because
-      # published versions are immutable -- a wedged pipeline needing manual intervention.
-      #
       # Pushing first makes the tag a RESERVATION: the counter is consumed the moment it is
       # computed. A failed build then leaves a dangling tag with no release, which is cheap,
       # self-evident, and strictly better than a poisoned counter.
@@ -245,9 +208,6 @@ jobs:
       # It performs NO git operations -- version stamps live only in the working tree.
       # (Rule 2: never commit version bumps on an integration branch.)
       # (Rule 3: npm packages are published with --tag workstream-<slug>, never latest.)
-      #
-      # npm auth uses OIDC trusted publishing (id-token: write + registry-url on
-      # setup-node above), matching release.yml exactly. No static token is needed.
       - name: Stamp versions and publish npm packages
         run: |
           npx tsx scripts/workstream-release.ts \
@@ -256,48 +216,122 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
 
-      # libs.versions.toml has already been stamped by workstream-release.ts above,
-      # so Gradle picks up the correct version automatically.
-      # Resolve JVM projects dynamically from the platform:jvm tag -- mirrors the
-      # compute-jvm-projects job in release.yml, inlined here to avoid job overhead.
-      # Outputs two space-separated lists consumed by the Build and Stage steps:
-      #   JVM_PROJECTS  -- all project names (e.g. "agentos-service agentos-bash-plugin ...")
-      #   GRADLE_TASKS  -- one Gradle task per project
-      #                    type:app  -> :<name>:bootJar
-      #                    type:lib  -> :<name>:jar
-      - name: Resolve JVM projects
-        id: jvm
+      - name: Write job summary
+        if: always()
         run: |
-          # Fetch the full project list tagged platform:jvm as a JSON array.
-          PROJECTS_JSON=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet)
-          PROJECTS=$(echo "$PROJECTS_JSON" | jq -r '.[]')
+          echo "## Workstream Prerelease: ${{ steps.version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Workstream | ${{ steps.slug.outputs.slug }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Version | ${{ steps.version.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| npm dist-tag | workstream-${{ steps.slug.outputs.slug }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| GitHub tag | ${{ steps.version.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
 
-          if [ -z "$PROJECTS" ]; then
-            echo "No JVM projects found with tag:platform:jvm"
-            echo "projects=" >> $GITHUB_OUTPUT
-            echo "gradle_tasks=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 2: Resolve the list of JVM projects to publish from the platform:jvm tag.
+  #
+  # Mirrors compute-jvm-projects in release.yml exactly -- a dedicated lightweight
+  # job (no JDK, no Gradle) whose sole output feeds the matrix in publish-jvm.
+  # Runs in parallel with build-jars after prepare completes.
+  # ─────────────────────────────────────────────────────────────────────────────
+  compute-jvm-projects:
+    runs-on: ubuntu-latest
+    needs: prepare
+    outputs:
+      projects: ${{ steps.resolve.outputs.projects }}
+    steps:
+      - uses: actions/checkout@v5
 
-          echo "JVM projects: $(echo $PROJECTS | tr '\n' ' ')"
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
 
-          GRADLE_TASKS=""
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve JVM projects from tag
+        id: resolve
+        run: |
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -c '.' || echo '[]')
+          echo "projects=$PROJECTS" >> $GITHUB_OUTPUT
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 3: Build all AgentOS JARs and upload them as a GitHub Actions artifact.
+  #
+  # Mirrors upload-agentos-jars in release.yml -- JDK only (no pnpm for building),
+  # single Gradle invocation for all projects, then stages JARs with versioned
+  # names and uploads them for the prerelease job to attach.
+  #
+  # A single Gradle call is intentional: Gradle resolves inter-project dependencies
+  # (e.g. plugins depending on agentos-sdk) more efficiently when all tasks are
+  # submitted together, and the daemon warm-up cost is paid once.
+  #
+  # Runs in parallel with compute-jvm-projects and publish-jvm after prepare.
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-jars:
+    runs-on: ubuntu-latest
+    needs: prepare
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Stamp libs.versions.toml so Gradle embeds the correct version in JAR manifests
+      # and filenames. Done with sed directly -- no tsx invocation needed since we only
+      # need the TOML update, not the npm publish (already done in prepare).
+      - name: Stamp Gradle version in libs.versions.toml
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          sed -i "s/^agentosSdk = .*/agentosSdk = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
+          sed -i "s/^agentosService = .*/agentosService = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
+          echo "Stamped libs.versions.toml with version ${VERSION}"
+          grep -E '^(agentosSdk|agentosService) =' agentos/gradle/libs.versions.toml
+
+      # Derive Gradle tasks from the project list and type tags, then build all at once.
+      # type:app -> :<name>:bootJar  (Spring Boot fat jar, no version in filename)
+      # type:lib -> :<name>:jar      (standard jar, Gradle embeds version in filename)
+      - name: Resolve Gradle tasks
+        id: gradle
+        run: |
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -r '.[]')
+          TASKS=""
           for PROJECT in $PROJECTS; do
-            # Determine the Gradle task from the project's type tag.
-            # type:app uses bootJar (Spring Boot fat jar, no embedded version in filename).
-            # type:lib uses jar (standard library jar, Gradle embeds the version in the filename).
             TAGS=$(npx nx show project "$PROJECT" --json --quiet | jq -r '.tags[]')
             if echo "$TAGS" | grep -q "type:app"; then
-              GRADLE_TASKS="$GRADLE_TASKS :${PROJECT}:bootJar"
+              TASKS="$TASKS :${PROJECT}:bootJar"
             else
-              GRADLE_TASKS="$GRADLE_TASKS :${PROJECT}:jar"
+              TASKS="$TASKS :${PROJECT}:jar"
             fi
           done
-
-          echo "Gradle tasks:${GRADLE_TASKS}"
-          # Store as newline-free strings for use in subsequent steps.
-          echo "projects=$(echo $PROJECTS | tr '\n' ' ')" >> $GITHUB_OUTPUT
-          echo "gradle_tasks=$(echo $GRADLE_TASKS | xargs)" >> $GITHUB_OUTPUT
+          echo "tasks=$(echo $TASKS | xargs)" >> $GITHUB_OUTPUT
 
       - name: Grant execute permission for gradlew
         working-directory: agentos
@@ -305,50 +339,24 @@ jobs:
 
       - name: Build AgentOS JARs
         working-directory: agentos
-        run: |
-          ./gradlew ${{ steps.jvm.outputs.gradle_tasks }} --no-daemon
+        run: ./gradlew ${{ steps.gradle.outputs.tasks }} --no-daemon
 
-      # Mirrors the compute-jvm-projects + publish-agentos-artifacts approach in
-      # release.yml, inlined into a single step to avoid matrix overhead.
-      - name: Publish JVM artifacts to GitHub Packages
-        run: |
-          PROJECTS="${{ steps.jvm.outputs.projects }}"
-          if [ -z "$PROJECTS" ]; then
-            echo "No JVM projects found with tag:platform:jvm"
-            exit 0
-          fi
-          echo "Publishing JVM projects: ${PROJECTS}"
-          for PROJECT in $PROJECTS; do
-            echo "Publishing ${PROJECT}..."
-            pnpm nx publish "$PROJECT"
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
-
-      # Naming contract: "<artifactId>-<version>.jar".
-      # type:app projects (agentos-service): bootJar forces archiveFileName without a version
-      # suffix, so we rename them explicitly to "<name>-<version>.jar".
-      # type:lib projects: Gradle already embeds the version in the filename, so we copy as-is.
-      # Both conventions match release.yml so consumers use the same filename scheme for
-      # prereleases and final releases.
+      # Naming contract: "<artifactId>-<version>.jar" -- identical to release.yml.
+      # type:app: bootJar produces <name>.jar (no version suffix) -> rename explicitly.
+      # type:lib: jar produces <name>-<version>.jar                -> copy as-is.
       - name: Stage JARs with versioned names
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          PROJECTS="${{ steps.jvm.outputs.projects }}"
+          VERSION="${{ needs.prepare.outputs.version }}"
+          PROJECTS=$(npx nx show projects --projects="tag:platform:jvm" --json --quiet | jq -r '.[]')
           mkdir -p /tmp/agentos-jars
 
           for PROJECT in $PROJECTS; do
             TAGS=$(npx nx show project "$PROJECT" --json --quiet | jq -r '.tags[]')
             if echo "$TAGS" | grep -q "type:app"; then
-              # bootJar produces <name>.jar (no version) -- rename to <name>-<version>.jar
               cp "agentos/${PROJECT}/build/libs/${PROJECT}.jar" \
                  "/tmp/agentos-jars/${PROJECT}-${VERSION}.jar"
-              echo "Staged (app): ${PROJECT}-${VERSION}.jar"
             else
-              # jar produces <name>-<version>.jar -- copy as-is
               cp agentos/${PROJECT}/build/libs/${PROJECT}-*.jar /tmp/agentos-jars/
-              echo "Staged (lib): ${PROJECT}-*.jar"
             fi
           done
 
@@ -357,42 +365,107 @@ jobs:
           echo "Staged files:"
           cat checksums.sha256
 
-      # Tag format: workstream-<slug>-<n>   e.g. workstream-forge-4
-      #
-      # FLAT and DASH-ONLY by design -- no slashes. A hierarchical tag such as
-      # workstream/<slug>/<version> lands in refs/tags/workstream/<slug>/... which
-      # mirrors the branch taxonomy in refs/heads/workstream/<slug>/..., inviting
-      # refname ambiguity, and is clumsy to glob or feed to `gh release download`.
-      # The flat form supports `git tag --list 'workstream-<slug>-*'` directly --
-      # which is also exactly how the counter above reads itself back.
-      #
-      # The tag carries ONLY the counter, not the semver base. The semver base still
-      # appears in VERSION (npm requires valid semver) and is surfaced in the release
-      # title and notes below, so nothing is lost by omitting it here.
-      #
-      # Rule 1: NEVER use release/* -- a release/* tag corrupts the next real
-      # release's version derivation.
-      # prerelease: true ensures this never appears as "latest release" in the UI.
-      #
-      # The tag was already created and pushed by the "Reserve workstream tag" step at the
-      # correct commit, so `--target` is neither needed nor meaningful here (gh ignores it
-      # for an existing tag). This also sidesteps the `gh release create` default-branch
-      # trap entirely: with no --target and no pre-existing tag, gh would tag master HEAD.
+      - name: Upload staged JARs
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentos-jars
+          path: /tmp/agentos-jars/
+          retention-days: 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 4: Publish each JVM artifact to GitHub Packages.
+  #
+  # Mirrors publish-agentos-artifacts in release.yml exactly -- matrix over
+  # jvm projects, fail-fast: false, each runner stamps libs.versions.toml with
+  # sed and calls `pnpm nx publish <project>` (which invokes Gradle publish).
+  #
+  # Runs in parallel with build-jars after compute-jvm-projects completes.
+  # ─────────────────────────────────────────────────────────────────────────────
+  publish-jvm:
+    name: publish ${{ matrix.project }} to github packages
+    runs-on: ubuntu-latest
+    needs: [prepare, compute-jvm-projects]
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.compute-jvm-projects.outputs.projects) }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v5
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Grant execute permission for gradlew
+        working-directory: agentos
+        run: chmod +x gradlew
+
+      - name: Stamp Gradle version in libs.versions.toml
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          sed -i "s/^agentosSdk = .*/agentosSdk = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
+          sed -i "s/^agentosService = .*/agentosService = \"${VERSION}\"/" agentos/gradle/libs.versions.toml
+          echo "Stamped libs.versions.toml with version ${VERSION}"
+          grep -E '^(agentosSdk|agentosService) =' agentos/gradle/libs.versions.toml
+
+      - name: Publish to GitHub Packages
+        run: pnpm nx publish ${{ matrix.project }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Job 5: Create the GitHub prerelease and attach all staged JARs.
+  #
+  # Waits for build-jars (JARs ready) and publish-jvm (packages published) so
+  # the release is only visible once the full artifact set is coherent.
+  #
+  # Tag format: workstream-<slug>-<n>  e.g. workstream-forge-4
+  # FLAT and DASH-ONLY by design -- no slashes (see rule 1 above).
+  # The tag was already pushed by the "Reserve workstream tag" step in prepare,
+  # so `gh release create` attaches to the existing tag without needing --target.
+  # ─────────────────────────────────────────────────────────────────────────────
+  prerelease:
+    runs-on: ubuntu-latest
+    needs: [prepare, build-jars, publish-jvm]
+    permissions:
+      contents: write
+    steps:
+      - name: Download staged JARs
+        uses: actions/download-artifact@v4
+        with:
+          name: agentos-jars
+          path: /tmp/agentos-jars
+
       - name: Create GitHub prerelease and upload JARs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          SLUG="${{ steps.slug.outputs.slug }}"
-          TAG="${{ steps.version.outputs.tag }}"
-          BRANCH="${{ github.ref_name }}"
-          SHA="${{ github.sha }}"
-
-          echo "Creating prerelease ${TAG} for version ${VERSION}"
+          VERSION="${{ needs.prepare.outputs.version }}"
+          SLUG="${{ needs.prepare.outputs.slug }}"
+          TAG="${{ needs.prepare.outputs.tag }}"
 
           NOTES="Prerelease artifact set for workstream ${SLUG}, version ${VERSION}."
           NOTES="${NOTES} npm dist-tag: workstream-${SLUG}."
-          NOTES="${NOTES} Published from integration branch ${BRANCH} at commit ${SHA}."
+          NOTES="${NOTES} Published from ${{ github.ref_name }} at ${{ github.sha }}."
           NOTES="${NOTES} This is a prerelease -- do not use in production."
 
           gh release create "$TAG" \
@@ -403,20 +476,3 @@ jobs:
             /tmp/agentos-jars/checksums.sha256
 
           echo "::notice::Prerelease published: ${TAG}"
-
-      - name: Write job summary
-        if: always()
-        run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          SLUG="${{ steps.slug.outputs.slug }}"
-          echo "## Workstream Prerelease: ${VERSION}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| Workstream | ${SLUG} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Version | ${VERSION} |" >> $GITHUB_STEP_SUMMARY
-          echo "| npm dist-tag | workstream-${SLUG} |" >> $GITHUB_STEP_SUMMARY
-          echo "| GitHub tag | ${{ steps.version.outputs.tag }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Integration branch | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Run | ${{ github.run_id }} |" >> $GITHUB_STEP_SUMMARY
