@@ -63,6 +63,10 @@ class ExternalContextBindingFilter(
         filterChain.doFilter(request, wrapped)
         try {
             if (wrapped.status in 200..299) {
+                // Flush the writer before reading contentAsByteArray: ContentCachingResponseWrapper
+                // buffers through the writer, which may not have been flushed by the downstream
+                // handler (e.g. in tests or non-committing handlers).
+                wrapped.flushBuffer()
                 bindFromResponse(wrapped.contentAsByteArray, registrars, credential, attributes, expiresAt)
             }
         } finally {

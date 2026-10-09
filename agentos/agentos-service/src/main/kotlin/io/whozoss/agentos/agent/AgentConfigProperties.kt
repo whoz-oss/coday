@@ -58,6 +58,7 @@ data class AgentConfigProperties(
     val delegationTimeoutMinutes: Long = 15,
 ) {
     init {
+        require(delegationTimeoutSeconds > 0) { "agentos.defaults.delegation-timeout-seconds must be positive" }
         require(delegationTimeoutMinutes > 0) { "agentos.defaults.delegation-timeout-minutes must be positive" }
     }
 }
