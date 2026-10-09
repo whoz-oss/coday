@@ -1,5 +1,6 @@
 package io.whozoss.agentos.plugins.factorybridge
 
+import io.whozoss.agentos.plugins.factorybridge.persistence.FactoryStateEncryptor
 import io.whozoss.agentos.sdk.tool.StandardTool
 
 /**
@@ -17,7 +18,8 @@ internal object FactoryTestFixtures {
         secret: String? = null,
     ): FactoryBridgeServices =
         FactoryBridgeServices.create(
-            FactoryBridgeConfig(baseUrl = baseUrl, runtimeId = runtimeId, dataDir = dataDir, secret = secret),
+            config = FactoryBridgeConfig(baseUrl = baseUrl, runtimeId = runtimeId, dataDir = dataDir, secret = secret),
+            encryptor = FactoryStateEncryptor.disabled(),
         )
 
     /** Tools exposed by [FactoryWorkstreamToolPlugin] against a fake Factory [baseUrl]. */
