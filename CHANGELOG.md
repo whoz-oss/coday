@@ -1,3 +1,14 @@
+## 3.30.0 (2026-10-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-35090 AgentLoop V0 : one case per tool result row ([#1414](https://github.com/whoz-oss/coday/pull/1414))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- thomas.martin @thomas-martin-whoz
+
 ## 3.29.0 (2026-10-09)
 
 ### 🚀 Features
