@@ -92,6 +92,7 @@ class ExternalContextBindingSpec : StringSpec({
         val caseId = UUID.randomUUID()
 
         val request = MockHttpServletRequest("POST", "/api/cases").apply {
+            servletPath = "/api/cases"
             addHeader("X-External-Context-Attempt-Id", "attempt")
             addHeader("X-External-Context-Capability-Token", token)
             addHeader("X-External-Context-Secret", "shared-secret")
@@ -124,7 +125,7 @@ class ExternalContextBindingSpec : StringSpec({
         val registrar = RecordingBindingRegistrar()
         val filter = ExternalContextBindingFilter(pluginManager(listOf(registrar)), jacksonObjectMapper())
 
-        val request = MockHttpServletRequest("POST", "/api/cases")
+        val request = MockHttpServletRequest("POST", "/api/cases").apply { servletPath = "/api/cases" }
         val response = MockHttpServletResponse()
 
         filter.doFilter(
