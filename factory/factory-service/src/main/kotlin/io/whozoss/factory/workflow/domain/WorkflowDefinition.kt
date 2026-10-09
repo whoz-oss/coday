@@ -38,7 +38,7 @@ private val TRUSTED_EXECUTION_FIELDS = setOf("allowedPaths")
 
 /** Allowed keys of the optional top-level `execution` block. */
 private val EXECUTION_FIELDS = setOf("plugin")
-private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn")
+private val STEP_FIELDS = setOf("id", "name", "responsibility", "dependsOn", "deliverables")
 private val RESPONSIBILITY_FIELDS = setOf("kind", "name")
 
 object WorkflowDefinitionValidator {
@@ -165,6 +165,23 @@ object WorkflowDefinitionValidator {
                 }
                 dependencies.add(dependency)
             }
+            val rawDeliverables = step["deliverables"] ?: emptyList<Any?>()
+            if (rawDeliverables !is List<*> || rawDeliverables.size > 20) {
+                return failure(WorkflowDefinitionErrorCodes.INVALID_VALUE, "$base.deliverables")
+            }
+            val deliverables = ArrayList<String>()
+            rawDeliverables.forEachIndexed { deliverableIndex, deliverableValue ->
+                val (deliverable, deliverableError) =
+                    text(deliverableValue, "$base.deliverables[$deliverableIndex]", maximum = 512)
+                if (deliverableError != null) return WorkflowDefinitionValidation.Invalid(deliverableError)
+                if (!deliverables.add(deliverable!!)) {
+                    return failure(
+                        WorkflowDefinitionErrorCodes.INVALID_VALUE,
+                        "$base.deliverables[$deliverableIndex]",
+                        mapOf("reason" to "duplicate_deliverable"),
+                    )
+                }
+            }
             steps.add(
                 WorkflowStepDefinition(
                     id = id,
@@ -174,6 +191,7 @@ object WorkflowDefinitionValidator {
                         name = responsibilityName,
                     ),
                     dependsOn = dependencies,
+                    deliverables = deliverables,
                 ),
             )
         }
@@ -191,6 +209,9 @@ object WorkflowDefinitionValidator {
                 "responsibility" to step.responsibility.toJson(),
                 "dependsOn" to step.dependsOn,
             )
+                .also { normalizedStep ->
+                    if (step.deliverables.isNotEmpty()) normalizedStep["deliverables"] = step.deliverables
+                }
         }
         val normalized = linkedMapOf<String, Any?>(
             "schemaVersion" to WORKFLOW_DEFINITION_SCHEMA_VERSION,

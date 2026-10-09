@@ -54,6 +54,7 @@ class CreateWorkflowRunService(
             if (it.length > TITLE_MAX) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "title must not exceed $TITLE_MAX characters.")
         } ?: readableFallback(workflowType)
         val ticket = (command.parameters["ticket"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
+        val workstream = (command.parameters["workstream"] as? String)?.trim()?.takeIf { it.isNotEmpty() }
         val initialRequest = command.initialRequest?.trim()?.takeIf { it.isNotEmpty() }?.also {
             if (it.length > INITIAL_REQUEST_MAX) {
                 throw workflowException(
@@ -70,6 +71,7 @@ class CreateWorkflowRunService(
                 workflowType,
                 title,
                 ticket = ticket,
+                workstream = workstream,
                 controllerRequest = initialRequest?.let {
                     ControllerRequestInput(
                         text = it,
@@ -118,6 +120,6 @@ class CreateWorkflowRunService(
         const val TITLE_MAX = 200
         const val INITIAL_REQUEST_MAX = 4_000
         const val INITIAL_REQUEST_SOURCE = "factory-create-run"
-        val SUPPORTED_PARAMETERS = setOf("ticket")
+        val SUPPORTED_PARAMETERS = setOf("ticket", "workstream")
     }
 }

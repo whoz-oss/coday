@@ -1705,6 +1705,7 @@ fun WorkflowDefinitionRecord.toPolicyDefinition(): WorkflowPolicyDefinition {
             name = step["name"] as String,
             responsibility = WorkflowStepResponsibility(kind, responsibility?.get("name") as? String),
             dependsOn = (step["dependsOn"] as? List<*>)?.map { it as String } ?: emptyList(),
+            deliverables = (step["deliverables"] as? List<*>)?.map { it as String } ?: emptyList(),
         )
     }
     return WorkflowPolicyDefinition(workflowType = workflowType, version = version, definitionHash = definitionHash, steps = steps)

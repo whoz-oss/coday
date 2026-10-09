@@ -95,6 +95,8 @@ data class WorkflowStepDefinition(
     val name: String,
     val responsibility: WorkflowStepResponsibility,
     val dependsOn: List<String>,
+    /** Explicit durable handoff requirements for this step's result artifacts. */
+    val deliverables: List<String> = emptyList(),
 )
 
 /** The resolved identity of a workflow definition used to hash a start command. */
@@ -169,6 +171,8 @@ data class WorkflowStartCommand(
     val relations: Map<String, Any?>? = null,
     /** Optional Jira/issue ticket carried through the session (brief, branch naming, relations). */
     val ticket: String? = null,
+    /** Optional BMAD workstream that owns the canonical ticket artifacts. */
+    val workstream: String? = null,
     val controllerRequest: ControllerRequestInput? = null,
     /**
      * Amendment sequence this run's context is frozen against (Lot D schema
