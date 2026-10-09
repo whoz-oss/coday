@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -186,7 +187,7 @@ class CaseController(
             Case(
                 metadata = metadata,
                 namespaceId = resource.namespaceId,
-                status = resource.status,
+                status = CaseStatus.CREATED,
                 title = resource.title ?: "Case ${metadata.id}",
                 runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
                 parentCaseId = resource.parentCaseId,
@@ -422,7 +423,10 @@ class CaseController(
      * Namespace READ lets a member create a case; attaching it under another case also
      * needs WRITE on that parent, as delegation from it would.
      */
-    private fun checkParentCasePermission(userId: String, parentCaseId: UUID) {
+    private fun checkParentCasePermission(
+        userId: String,
+        parentCaseId: UUID,
+    ) {
         if (!permissionService.hasPermission(userId, EntityType.CASE, parentCaseId.toString(), Action.WRITE)) {
             throw AccessDeniedException("No write permission on the parent case")
         }

@@ -87,9 +87,19 @@ class EmbeddedNeo4jWatchesPersistenceSpec : StringSpec() {
             Namespace(metadata = EntityMetadata(), name = name),
         )
 
-    private fun createCase(namespaceId: UUID): Case =
+    /**
+     * Creates a case in [IDLE][io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE] status by default.
+     *
+     * The [countUnread] query intentionally excludes [CREATED][io.whozoss.agentos.sdk.caseFlow.CaseStatus.CREATED]
+     * cases (no conversation yet), so tests that exercise read-tracking must use a status that
+     * represents an active case (IDLE, RUNNING, PENDING, etc.).
+     */
+    private fun createCase(
+        namespaceId: UUID,
+        status: io.whozoss.agentos.sdk.caseFlow.CaseStatus = io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE,
+    ): Case =
         caseRepository.save(
-            Case(metadata = EntityMetadata(), namespaceId = namespaceId),
+            Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = status),
         )
 
     /** Case ids the user has favorited, resolved via the [FavoriteService.listDirectRelations] API. */

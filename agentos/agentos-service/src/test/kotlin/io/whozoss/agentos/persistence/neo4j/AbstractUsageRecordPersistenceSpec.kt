@@ -48,7 +48,7 @@ abstract class AbstractUsageRecordPersistenceSpec : StringSpec() {
     private fun namespace() = Namespace(metadata = EntityMetadata(), name = "test-ns")
 
     private fun case(namespaceId: UUID) =
-        Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.PENDING)
+        Case(metadata = EntityMetadata(), namespaceId = namespaceId, status = CaseStatus.CREATED)
 
     private fun record(
         caseId: UUID,
