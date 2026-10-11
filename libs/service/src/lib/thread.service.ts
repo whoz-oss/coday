@@ -219,6 +219,21 @@ export class ThreadService {
   }
 
   /**
+   * Refresh one already-persisted thread in the list cache without saving it
+   * again. This lets ThreadUpdateEvent refresh list consumers after autosave
+   * without racing the thread lifecycle's YAML writer.
+   */
+  async refreshThreadCache(projectName: string, threadId: string): Promise<void> {
+    if (!this.threadListCache.has(projectName)) return
+
+    const repository = this.getThreadRepository(projectName)
+    const thread = await repository.getById(projectName, threadId)
+    if (!thread) return
+
+    this.updateThreadInCache(projectName, this.toThreadSummary(thread))
+  }
+
+  /**
    * Create a new thread
    * @param projectName Project name
    * @param username User identifier
