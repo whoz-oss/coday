@@ -26,7 +26,17 @@ class FactorySubmitStepResultTool(
 ) : StandardTool<FactorySubmitStepResultTool.Input> {
     data class Artifact(val kind: String, val encoding: String = "markdown", val content: String)
 
-    data class Claims(val modifiedFiles: List<String>)
+    data class DeliveryAnalysis(
+        val changeType: String,
+        val ticket: String,
+        val title: String,
+        val baseBranch: String? = null,
+    )
+
+    data class Claims(
+        val modifiedFiles: List<String>,
+        val deliveryAnalysis: DeliveryAnalysis? = null,
+    )
 
     data class Finding(
         val severity: String,
@@ -49,7 +59,7 @@ class FactorySubmitStepResultTool(
     override val version = "1.0.0"
     override val paramType = Input::class.java
     override val inputSchema =
-        """{"type":"object","additionalProperties":false,"properties":{"status":{"enum":["PASS","FAIL"]},"summary":{"type":"string","minLength":1,"maxLength":2000},"artifacts":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","maxLength":128},"encoding":{"const":"markdown"},"content":{"type":"string","minLength":1,"maxLength":262144}},"required":["kind","encoding","content"]}},"claims":{"type":"object","additionalProperties":false,"properties":{"modifiedFiles":{"type":"array","maxItems":1000,"items":{"type":"string","maxLength":1024}}},"required":["modifiedFiles"]},"findings":{"type":"array","maxItems":100,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"enum":["info","warning","error","blocking"]},"code":{"type":"string","maxLength":128},"summary":{"type":"string","maxLength":1000},"file":{"type":"string","maxLength":1024},"line":{"type":"integer","minimum":1}},"required":["severity","code","summary"]}}},"required":["status","summary","claims"]}"""
+        """{"type":"object","additionalProperties":false,"properties":{"status":{"enum":["PASS","FAIL","NEEDS_RESEARCH","CHANGES_REQUESTED"]},"summary":{"type":"string","minLength":1,"maxLength":2000},"artifacts":{"type":"array","maxItems":8,"items":{"type":"object","additionalProperties":false,"properties":{"kind":{"type":"string","maxLength":128},"encoding":{"const":"markdown"},"content":{"type":"string","minLength":1,"maxLength":262144}},"required":["kind","encoding","content"]}},"claims":{"type":"object","additionalProperties":false,"properties":{"modifiedFiles":{"type":"array","maxItems":1000,"items":{"type":"string","maxLength":1024}},"deliveryAnalysis":{"type":"object","additionalProperties":false,"properties":{"changeType":{"enum":["feature","bugfix"]},"ticket":{"type":"string","pattern":"^WZ-[0-9]+$"},"title":{"type":"string","minLength":1,"maxLength":200},"baseBranch":{"type":"string","minLength":1,"maxLength":255}},"required":["changeType","ticket","title"]}},"required":["modifiedFiles"]},"findings":{"type":"array","maxItems":100,"items":{"type":"object","additionalProperties":false,"properties":{"severity":{"enum":["info","warning","error","blocking"]},"code":{"type":"string","maxLength":128},"summary":{"type":"string","maxLength":1000},"file":{"type":"string","maxLength":1024},"line":{"type":"integer","minimum":1}},"required":["severity","code","summary"]}}},"required":["status","summary","claims"]}"""
 
     override suspend fun execute(
         input: Input?,
@@ -72,11 +82,25 @@ class FactorySubmitStepResultTool(
                 return failure(code, "Factory result capability could not be renewed: $code.")
             }
         }
+        val claimsPayload = linkedMapOf<String, Any?>("modifiedFiles" to input.claims.modifiedFiles).apply {
+            input.claims.deliveryAnalysis?.let { analysis ->
+                put(
+                    "deliveryAnalysis",
+                    linkedMapOf<String, Any?>(
+                        "changeType" to analysis.changeType,
+                        "ticket" to analysis.ticket,
+                        "title" to analysis.title,
+                    ).apply {
+                        analysis.baseBranch?.let { put("baseBranch", it) }
+                    },
+                )
+            }
+        }
         val resultPayload = linkedMapOf<String, Any?>(
             "status" to input.status,
             "summary" to input.summary,
             "artifacts" to input.artifacts,
-            "claims" to input.claims,
+            "claims" to claimsPayload,
             "findings" to input.findings.map { finding ->
                 linkedMapOf<String, Any?>(
                     "severity" to finding.severity,
