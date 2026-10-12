@@ -1,3 +1,13 @@
+## 3.31.0 (2026-10-12)
+
+### 🚀 Features
+
+- wz-35120 - CREATED status ([#1434](https://github.com/whoz-oss/coday/pull/1434))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.30.0 (2026-10-09)
 
 ### 🚀 Features
