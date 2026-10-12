@@ -12,20 +12,31 @@ import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import mu.KLogging
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 
 /** Holds a pending command to be executed sequentially after the current agent turn. */
 private data class PendingCommand(
@@ -115,6 +126,12 @@ class CaseRuntime(
      */
     private val shutdownStopRequested = AtomicBoolean(false)
 
+    /**
+     * Set only by [requestInterrupt]. Unlike [interruptRequested], which also marks a normal turn-end,
+     * it means a Stop is pending: [cancelInterruptedTurn] and the start of [run] cancel the turn on it.
+     */
+    private val stopRequested = AtomicBoolean(false)
+
     /** What [processNextStep] signals back to the run loop. */
     private enum class StepResult { CONTINUE, AGENT_FINISHED, STOP }
 
@@ -125,6 +142,22 @@ class CaseRuntime(
      * the second invocation returns immediately without doing any work.
      */
     private val runInFlight = AtomicBoolean(false)
+
+    /**
+     * Job of the turn executing inside [run]: from the user's message until the agents hand back to
+     * the user, so it may span several agent turns (redirects, answered questions, queued commands).
+     * Cancelled by [requestKill], [requestShutdownStop] and [cancelInterruptedTurn] so they reach a turn
+     * suspended in a tool or an LLM stream.
+     * Owned by [run] (not its caller's job), so cancelling it never cancels the caller.
+     * Cancelling it is non-blocking: safe under the admission lock.
+     *
+     * Written by the thread running [run], read by the thread requesting the stop. A request always
+     * sets its flag before reading this job, and [run] publishes it before re-reading the flags, so a
+     * request racing with the start of a turn is never lost. Only plain get/set are needed (no
+     * compare-and-set), so `@Volatile` would suffice: it gives the same visibility and ordering.
+     * AtomicReference is used to match the other shared fields of this class.
+     */
+    private val turnJob = AtomicReference<Job?>(null)
 
     private var iterationCount = 0
 
@@ -163,36 +196,49 @@ class CaseRuntime(
     val statusFlow: StateFlow<CaseStatus> = _statusFlow.asStateFlow()
 
     /**
-     * Interrupt the current agent turn, clear the command queue, and return to [CaseStatus.IDLE].
+     * Mark the current turn stopped and clear the command queue: the turn ends as [CaseStatus.IDLE].
      *
-     * Takes effect after the current [processNextStep] returns. The runtime stays alive
-     * and the SSE flow stays open for the next user message.
+     * Only marks the turn: [cancelInterruptedTurn] then cancels it, so a case family can be marked
+     * entirely before any turn is cancelled. Without it, the turn ends after the current
+     * [processNextStep] returns. The runtime stays alive and the SSE flow stays open for the next
+     * user message.
      */
     fun requestInterrupt() {
         commandQueue.clear()
+        stopRequested.set(true)
         interruptRequested.set(true)
     }
 
     /**
+     * Cancel the running turn if a Stop ([requestInterrupt]) is pending, so it does not wait for a
+     * tool or an LLM stream to return. The turn then ends as [CaseStatus.IDLE].
+     */
+    fun cancelInterruptedTurn() {
+        if (stopRequested.get()) turnJob.get()?.cancel(CancellationException("Case $id stopped"))
+    }
+
+    /**
      * Request permanent termination of this runtime.
-     * Sets both [stopRequested] (to break the run loop) and [killRequested] (so
-     * [run] transitions to [CaseStatus.KILLED] rather than [CaseStatus.IDLE]).
-     * Also clears the command queue so no orphaned commands are left behind.
+     * Sets both [interruptRequested] (to break the run loop) and [killRequested] (so
+     * [run] transitions to [CaseStatus.KILLED] rather than [CaseStatus.IDLE]), then cancels
+     * the running turn. Also clears the command queue so no orphaned commands are left behind.
      */
     fun requestKill() {
         killRequested.set(true)
         interruptRequested.set(true)
         commandQueue.clear()
+        turnJob.get()?.cancel(CancellationException("Case $id killed"))
     }
 
     /**
-     * Stop the current turn for a server shutdown that keeps the case open: the agent stops at its
-     * next check, as with [requestKill], but the turn ends as [CaseStatus.IDLE].
+     * Stop the current turn for a server shutdown that keeps the case open: the turn is cancelled,
+     * as with [requestKill], but ends as [CaseStatus.IDLE].
      */
     fun requestShutdownStop() {
         shutdownStopRequested.set(true)
         interruptRequested.set(true)
         commandQueue.clear()
+        turnJob.get()?.cancel(CancellationException("Case $id stopped for shutdown"))
     }
 
     /** Whether a Kill was requested since the current turn started. */
@@ -372,6 +418,7 @@ class CaseRuntime(
                     interruptRequested.set(false)
                     killRequested.set(false)
                     shutdownStopRequested.set(false)
+                    stopRequested.set(false)
                     true
                 }
             }
@@ -380,7 +427,32 @@ class CaseRuntime(
             return
         }
 
+        try {
+            // The turn runs in its own child job so a stop cancels the turn, not run()'s caller.
+            // Undispatched: the body always starts, so even a turn stopped at once publishes its status.
+            coroutineScope {
+                val turn = launch(start = CoroutineStart.UNDISPATCHED) { executeTurn() }
+                turnJob.set(turn)
+                // A stop requested between the claim and the line above found no job to cancel.
+                if (!agentMayContinue() || stopRequested.get()) {
+                    turn.cancel(CancellationException("Case $id stopped before its turn started"))
+                }
+            }
+        } finally {
+            turnJob.set(null)
+            runInFlight.set(false)
+        }
+    }
+
+    /**
+     * Body of [run], executed in [turnJob]. On cancellation (Stop, Kill, shutdown stop or cancelled caller),
+     * closes the open turn and publishes the final status before rethrowing, so the case is never
+     * left [CaseStatus.RUNNING] with a dangling [AgentRunningEvent].
+     */
+    private suspend fun executeTurn() {
         logger.info { "[CaseRuntime $id] run() started" }
+        // Bounds the events a cancellation must close: a message sent during the turn does not start a new one.
+        val startedAt = Instant.now()
         updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 
@@ -400,15 +472,89 @@ class CaseRuntime(
             logger.info { "[CaseRuntime $id] Exited loop → $finalStatus, iterations: $iterationCount" }
             if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
             updateStatus(finalStatus)
-        } catch (e: kotlinx.coroutines.CancellationException) {
+        } catch (e: CancellationException) {
+            withContext(NonCancellable) { closeCancelledTurn(startedAt) }
             throw e
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
             commandQueue.clear()
             updateStatus(CaseStatus.ERROR)
-        } finally {
-            runInFlight.set(false)
         }
+    }
+
+    /** Status a stopped turn ends in: only a Kill is terminal. */
+    private fun stoppedStatus(): CaseStatus = if (killRequested.get()) CaseStatus.KILLED else CaseStatus.IDLE
+
+    /**
+     * Close a cancelled turn: answer the tool calls the cancellation interrupted (otherwise the next
+     * turn would replay them without an outcome), emit the [AgentFinishedEvent] the agent could not
+     * emit (otherwise a rehydration would restart it from its [AgentRunningEvent]), then publish the
+     * final status. Each step is best-effort: a store failure must not replace the cancellation.
+     */
+    private fun closeCancelledTurn(startedAt: Instant) {
+        commandQueue.clear()
+        pendingQuestionResumptions.clear()
+        val status = stoppedStatus()
+        logger.info { "[CaseRuntime $id] Turn cancelled → $status" }
+        closingEventsOfCancelledTurn(startedAt).forEach { event ->
+            runCatching { storeAndEmitEvent(event) }
+                .onFailure { e -> logger.error(e) { "[CaseRuntime $id] Could not close the cancelled turn" } }
+        }
+        runCatching { updateStatus(status) }
+            .onFailure { e -> logger.error(e) { "[CaseRuntime $id] Could not publish status $status" } }
+    }
+
+    /**
+     * Events closing a turn started at [startedAt], in order: a failed [ToolResponseEvent] for each tool
+     * call made since then and left without a response, then the [AgentFinishedEvent] of the agent still
+     * running, if the latest orchestration event since the last user message does not close it already.
+     * A tool call waiting for the user's confirmation is not interrupted: it keeps waiting for the decision.
+     *
+     * Tool calls are bounded by [startedAt], not by the last user message: a message sent while the agent
+     * works comes after the tool calls it may have interrupted. The orchestration events are bounded by
+     * the last user message, as [processNextStep] reads them: the selection of the agent is stored with
+     * that message, before the turn starts.
+     */
+    private fun closingEventsOfCancelledTurn(startedAt: Instant): List<CaseEvent> {
+        val events = eventList.getAll()
+        val answeredIds =
+            events.mapNotNullTo(mutableSetOf()) {
+                when (it) {
+                    is ToolResponseEvent -> it.toolRequestId
+                    is PendingConfirmationEvent -> it.toolRequestId
+                    else -> null
+                }
+            }
+        val interruptedToolCalls =
+            events
+                .filterIsInstance<ToolRequestEvent>()
+                .filter { !it.timestamp.isBefore(startedAt) && it.toolRequestId !in answeredIds }
+                .map { request ->
+                    ToolResponseEvent(
+                        namespaceId = namespaceId,
+                        caseId = id,
+                        toolRequestId = request.toolRequestId,
+                        toolName = request.toolName,
+                        output = MessageContent.Text(INTERRUPTED_TOOL_OUTPUT),
+                        success = false,
+                    )
+                }
+        val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
+        val lastOrchestration =
+            events.drop(lastUserMessageIndex + 1).lastOrNull {
+                it is AgentFinishedEvent || it is AgentRunningEvent || it is AgentSelectedEvent
+            }
+        val openAgent =
+            when (lastOrchestration) {
+                is AgentRunningEvent -> lastOrchestration.agentId to lastOrchestration.agentName
+                is AgentSelectedEvent -> lastOrchestration.agentId to lastOrchestration.agentName
+                else -> null
+            }
+        val agentFinished =
+            openAgent?.let { (agentId, agentName) ->
+                AgentFinishedEvent(namespaceId = namespaceId, caseId = id, agentId = agentId, agentName = agentName)
+            }
+        return interruptedToolCalls + listOfNotNull(agentFinished)
     }
 
     /**
@@ -423,13 +569,13 @@ class CaseRuntime(
      */
     private suspend fun runTurns(): CaseStatus {
         while (iterationCount < maxIterations) {
-            if (interruptRequested.get()) return CaseStatus.IDLE
+            if (interruptRequested.get()) return stoppedStatus()
             logger.debug { "[CaseRuntime $id] Processing iteration $iterationCount" }
             when (processNextStep()) {
                 StepResult.CONTINUE -> iterationCount++
                 StepResult.STOP -> return CaseStatus.KILLED
                 StepResult.AGENT_FINISHED -> {
-                    if (interruptRequested.get()) return CaseStatus.IDLE
+                    if (interruptRequested.get()) return stoppedStatus()
 
                     // A pre-flight may have found several independently answered
                     // questions. Resume them in QuestionEvent history order, strictly
@@ -729,6 +875,10 @@ class CaseRuntime(
 
         /** Multiplier applied to [REDIRECT_SUSPICION_THRESHOLD] to derive the hard stop. */
         private const val REDIRECT_FORCE_STOP_FACTOR = 3
+
+        /** Output of a tool call interrupted by a stop: the next turn must not take it as done. */
+        internal const val INTERRUPTED_TOOL_OUTPUT =
+            "Interrupted: the case was stopped before this tool returned. Its effects may be partial."
 
         /**
          * Maximum number of times the same agent may be selected within a single user turn.

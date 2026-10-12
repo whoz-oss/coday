@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -19,14 +20,24 @@ import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
+import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Authorization check that grants access to all agents. */
 private val TRUE_FOR_ANY_AGENTS: (String, UUID?) -> Boolean = { _, _ -> true }
@@ -167,6 +178,56 @@ class CaseRuntimeSpec : StringSpec() {
 
         return TestFixture(runtime, selectAgent, runAgent, savedEvents)
     }
+
+    /** A runtime whose agent hangs in a suspended call (an LLM stream, a tool) until cancelled. */
+    inner class HangingFixture(
+        hangOnce: Boolean,
+    ) {
+        val agentStarted = CompletableDeferred<Unit>()
+        val agentCancelled = CompletableDeferred<CancellationException>()
+        val statuses = CopyOnWriteArrayList<CaseStatus>()
+        val savedEvents = CopyOnWriteArrayList<CaseEvent>()
+        var runAgentCalls = 0
+        private val runtimeId: UUID = UUID.randomUUID()
+        private val agentId: UUID = UUID.nameUUIDFromBytes("hanging-agent".toByteArray())
+
+        lateinit var runtime: CaseRuntime
+
+        init {
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, status -> statuses += status },
+                    storeEvent = { event -> event.also { savedEvents += it } },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "hanging-agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { name, _, _, _, _ ->
+                        runAgentCalls++
+                        runtime.pushEvents(
+                            listOf(AgentRunningEvent(namespaceId = namespaceId, caseId = runtimeId, agentId = agentId, agentName = name)),
+                        )
+                        if (hangOnce && runAgentCalls > 1) {
+                            runtime.pushEvents(
+                                listOf(AgentFinishedEvent(namespaceId = namespaceId, caseId = runtimeId, agentId = agentId, agentName = name)),
+                            )
+                        } else {
+                            agentStarted.complete(Unit)
+                            try {
+                                awaitCancellation()
+                            } catch (e: CancellationException) {
+                                agentCancelled.complete(e)
+                                throw e
+                            }
+                        }
+                    },
+                )
+            runtime.addUserMessage(userActor, userMessage)
+        }
+    }
+
+    fun hangingRuntime(hangOnce: Boolean = false) = HangingFixture(hangOnce)
 
     init {
 
@@ -353,6 +414,335 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.requestInterrupt()
             // interrupt does not affect shouldContinue — only kill does
             capturedShouldContinue!!.invoke() shouldBe true
+        }
+
+        "shouldContinue lambda returns false after requestShutdownStop is called" {
+            val runtimeId = UUID.randomUUID()
+            var capturedShouldContinue: (() -> Boolean)? = null
+
+            val runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, shouldContinue ->
+                        capturedShouldContinue = shouldContinue
+                    },
+                )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            runtime.requestShutdownStop()
+            capturedShouldContinue!!.invoke() shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // Cancellation of a running turn
+        // -------------------------------------------------------------------------
+
+        "requestInterrupt alone only marks the turn: it does not cancel the agent" {
+            // A Stop marks the whole case family first; cancelInterruptedTurn then cancels each turn.
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.requestInterrupt()
+            delay(200)
+
+            fixture.agentCancelled.isCompleted shouldBe false
+            fixture.runtime.isRunning() shouldBe true
+            fixture.runtime.requestKill()
+            withTimeout(2_000) { run.join() }
+        }
+
+        "cancelInterruptedTurn after requestInterrupt cancels a turn suspended in the agent and ends the case IDLE" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.requestInterrupt()
+            fixture.runtime.cancelInterruptedTurn()
+
+            withTimeout(2_000) { run.join() }
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+            fixture.statuses.last() shouldBe CaseStatus.IDLE
+            fixture.savedEvents.filterIsInstance<AgentFinishedEvent>().single().agentName shouldBe "hanging-agent"
+        }
+
+        "cancelInterruptedTurn without a pending Stop does not cancel the turn" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.cancelInterruptedTurn()
+            delay(200)
+
+            fixture.agentCancelled.isCompleted shouldBe false
+            fixture.runtime.isRunning() shouldBe true
+            fixture.runtime.requestKill()
+            withTimeout(2_000) { run.join() }
+        }
+
+        "a Stop requested before the turn job is published still cancels the turn" {
+            // The turn starts undispatched: a Stop landing before its first suspension finds no job to
+            // cancel, and run() must catch it when it publishes the job.
+            val runtimeId = UUID.randomUUID()
+            val agentCancelled = CompletableDeferred<Unit>()
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, _ ->
+                        runtime.requestInterrupt()
+                        runtime.cancelInterruptedTurn()
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            agentCancelled.complete(Unit)
+                        }
+                    },
+                )
+            runtime.addUserMessage(userActor, userMessage)
+
+            withTimeout(2_000) { runtime.run() }
+
+            agentCancelled.isCompleted shouldBe true
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "a runtime whose turn was stopped runs the next turn normally" {
+            val fixture = hangingRuntime(hangOnce = true)
+            fixture.runtime.enqueueCommand(listOf(MessageContent.Text("queued")))
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+            fixture.runtime.requestInterrupt()
+            fixture.runtime.cancelInterruptedTurn()
+            withTimeout(2_000) { run.join() }
+
+            fixture.runtime.addUserMessage(userActor, listOf(MessageContent.Text("again")))
+            withTimeout(2_000) { fixture.runtime.run() }
+
+            // The queued command of the stopped turn was dropped; the new message ran the agent once more.
+            fixture.savedEvents.filterIsInstance<MessageEvent>().none { it.content == listOf(MessageContent.Text("queued")) } shouldBe true
+            fixture.runAgentCalls shouldBe 2
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "a cancelled turn answers the tool calls it interrupted with a failed response" {
+            // Without it, the next turn would replay the call without an outcome, or as a success once summarized.
+            val runtimeId = UUID.randomUUID()
+            val savedEvents = CopyOnWriteArrayList<CaseEvent>()
+            val agentStarted = CompletableDeferred<Unit>()
+            fun request(requestId: String) =
+                ToolRequestEvent(namespaceId = namespaceId, caseId = runtimeId, toolRequestId = requestId, toolName = "tool", args = "{}")
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { event -> event.also { savedEvents += it } },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, _ ->
+                        runtime.pushEvents(
+                            listOf(
+                                request("answered"),
+                                ToolResponseEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = runtimeId,
+                                    toolRequestId = "answered",
+                                    toolName = "tool",
+                                    output = MessageContent.Text("done"),
+                                ),
+                                request("awaiting-confirmation"),
+                                PendingConfirmationEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = runtimeId,
+                                    toolRequestId = "awaiting-confirmation",
+                                    toolName = "tool",
+                                    inputJson = "{}",
+                                ),
+                                request("interrupted"),
+                            ),
+                        )
+                        agentStarted.complete(Unit)
+                        awaitCancellation()
+                    },
+                )
+            runtime.addUserMessage(userActor, userMessage)
+            val run = launch { runtime.run() }
+            withTimeout(2_000) { agentStarted.await() }
+
+            runtime.requestInterrupt()
+            runtime.cancelInterruptedTurn()
+            withTimeout(2_000) { run.join() }
+
+            val response = savedEvents.filterIsInstance<ToolResponseEvent>().single()
+            response.toolRequestId shouldBe "interrupted"
+            response.success shouldBe false
+            response.output shouldBe MessageContent.Text(CaseRuntime.INTERRUPTED_TOOL_OUTPUT)
+            // Answered before the turn is closed, so the history reads request → response → finished.
+            savedEvents.indexOf(response) shouldBe savedEvents.indexOfFirst { it is AgentFinishedEvent } - 1
+        }
+
+        "a tool call interrupted before a message sent during the turn still gets a failed response" {
+            // The message sent while the agent works becomes the last user message, after the tool call.
+            val runtimeId = UUID.randomUUID()
+            val savedEvents = CopyOnWriteArrayList<CaseEvent>()
+            val agentStarted = CompletableDeferred<Unit>()
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { event -> event.also { savedEvents += it } },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, _ ->
+                        runtime.pushEvents(
+                            listOf(
+                                ToolRequestEvent(
+                                    namespaceId = namespaceId,
+                                    caseId = runtimeId,
+                                    toolRequestId = "interrupted",
+                                    toolName = "tool",
+                                    args = "{}",
+                                ),
+                            ),
+                        )
+                        runtime.addUserMessage(userActor, listOf(MessageContent.Text("and also this")))
+                        agentStarted.complete(Unit)
+                        awaitCancellation()
+                    },
+                )
+            runtime.addUserMessage(userActor, userMessage)
+            val run = launch { runtime.run() }
+            withTimeout(2_000) { agentStarted.await() }
+
+            runtime.requestInterrupt()
+            runtime.cancelInterruptedTurn()
+            withTimeout(2_000) { run.join() }
+
+            val response = savedEvents.filterIsInstance<ToolResponseEvent>().single()
+            response.toolRequestId shouldBe "interrupted"
+            response.success shouldBe false
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "requestKill cancels a turn suspended in the agent and ends the case KILLED" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.requestKill()
+
+            withTimeout(2_000) { run.join() }
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.KILLED
+            fixture.statuses.last() shouldBe CaseStatus.KILLED
+        }
+
+        "requestShutdownStop cancels a turn suspended in the agent and ends the case IDLE" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.requestShutdownStop()
+
+            withTimeout(2_000) { run.join() }
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "a cancelled turn is closed with an AgentFinishedEvent for the agent that was running" {
+            // Without it, the dangling AgentRunningEvent would restart the agent on rehydration.
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.requestShutdownStop()
+            withTimeout(2_000) { run.join() }
+
+            val finished = fixture.savedEvents.filterIsInstance<AgentFinishedEvent>().single()
+            finished.agentName shouldBe "hanging-agent"
+            finished.caseId shouldBe fixture.runtime.id
+        }
+
+        "a Kill cancels only the turn, not the coroutine that called run()" {
+            val fixture = hangingRuntime()
+            var continuedAfterRun = false
+            val run =
+                launch {
+                    fixture.runtime.run()
+                    continuedAfterRun = true
+                }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.requestKill()
+            withTimeout(2_000) { run.join() }
+
+            run.isCancelled shouldBe false
+            continuedAfterRun shouldBe true
+        }
+
+        "cancelling the coroutine that called run() closes the turn and does not leave the case RUNNING" {
+            // e.g. a gated launch cancelled, or the service scope cancelled at shutdown.
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            run.cancel()
+            withTimeout(2_000) { run.join() }
+
+            run.isCancelled shouldBe true
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+            fixture.savedEvents.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+            fixture.runtime.isRunning() shouldBe false
+        }
+
+        "a runtime whose turn was stopped for shutdown runs the next turn normally" {
+            val fixture = hangingRuntime(hangOnce = true)
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+            fixture.runtime.requestShutdownStop()
+            withTimeout(2_000) { run.join() }
+
+            fixture.runtime.addUserMessage(userActor, listOf(MessageContent.Text("again")))
+            withTimeout(2_000) { fixture.runtime.run() }
+
+            fixture.runAgentCalls shouldBe 2
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "requestShutdownStop clears the command queue of the cancelled turn" {
+            val fixture = hangingRuntime(hangOnce = true)
+            fixture.runtime.enqueueCommand(listOf(MessageContent.Text("queued")))
+            val run = launch { fixture.runtime.run() }
+            withTimeout(2_000) { fixture.agentStarted.await() }
+
+            fixture.runtime.requestShutdownStop()
+            withTimeout(2_000) { run.join() }
+
+            // The queued command was dropped: it never became a user message nor a second agent run.
+            fixture.savedEvents.filterIsInstance<MessageEvent>().none { it.content == listOf(MessageContent.Text("queued")) } shouldBe true
+            fixture.runAgentCalls shouldBe 1
         }
 
         "shouldContinue lambda returns false after requestKill is called" {
