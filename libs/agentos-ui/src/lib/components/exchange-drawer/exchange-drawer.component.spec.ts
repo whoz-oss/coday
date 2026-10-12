@@ -1,5 +1,5 @@
 import { fakeAsync, TestBed, tick } from '@angular/core/testing'
-import { BehaviorSubject, Subject } from 'rxjs'
+import { BehaviorSubject, of, Subject } from 'rxjs'
 import { MatDialog } from '@angular/material/dialog'
 import { ExchangeEnvironmentService, ExchangeEnvironment } from '../../services/exchange-environment.service'
 import { CaseWorkspaceService } from '../../services/case-workspace.service'
@@ -61,7 +61,7 @@ describe('ExchangeDrawerComponent directory controls', () => {
       imports: [ExchangeDrawerComponent],
       providers: [
         { provide: ExchangeEnvironmentService, useValue: { get } },
-        { provide: CaseWorkspaceService, useValue: { watch: () => workspace } },
+        { provide: CaseWorkspaceService, useValue: { enabled$: of(true), watch: () => workspace } },
         { provide: MatDialog, useValue: { open: jest.fn() } },
       ],
     })

@@ -2,11 +2,12 @@ import { fakeAsync, TestBed, tick } from '@angular/core/testing'
 import {
   CaseWorkspaceControllerService,
   CaseWorkspaceViewStatusEnum,
+  GitWorkspacesConfigurationControllerService,
   GitWorkspaceSummary,
   GitWorkspaceSummaryBranchStateEnum as BranchState,
   GitWorkspaceSummaryPrStateEnum as PrState,
 } from '@whoz-oss/agentos-api-client'
-import { of, throwError } from 'rxjs'
+import { of, Subject, throwError } from 'rxjs'
 import { CaseWorkspaceService, pullRequestIndicator, WorkspaceState, WorkspaceView } from './case-workspace.service'
 
 describe('case pull request indicator', () => {
@@ -56,12 +57,73 @@ describe('case pull request indicator', () => {
   })
 })
 
+function serviceWithConfiguration(api: object, getGitWorkspacesConfiguration: jest.Mock): CaseWorkspaceService {
+  TestBed.configureTestingModule({
+    providers: [
+      { provide: CaseWorkspaceControllerService, useValue: api },
+      { provide: GitWorkspacesConfigurationControllerService, useValue: { getGitWorkspacesConfiguration } },
+    ],
+  })
+  return TestBed.inject(CaseWorkspaceService)
+}
+
+describe('case workspaces when the configuration turns them off', () => {
+  const disabled = () => jest.fn().mockReturnValue(of({ enabled: false }))
+
+  it('lists nothing and reports every case unavailable without asking the workspace endpoints', fakeAsync(() => {
+    const listCaseWorkspace = jest.fn()
+    const getCaseWorkspace = jest.fn()
+    const service = serviceWithConfiguration({ listCaseWorkspace, getCaseWorkspace }, disabled())
+    const lists: WorkspaceView[][] = []
+    const states: WorkspaceState[] = []
+    service.watchNamespace('ns-1').subscribe((items) => lists.push(items))
+    service.watch('case-1').subscribe((state) => states.push(state))
+    tick(30_000)
+    expect(listCaseWorkspace).not.toHaveBeenCalled()
+    expect(getCaseWorkspace).not.toHaveBeenCalled()
+    expect(lists).toEqual([[]])
+    expect(states).toEqual([{ view: null, errorStatus: 404 }])
+    expect(service.unavailable).toBe(true)
+  }))
+
+  it('reads the configuration once for every namespace and case', fakeAsync(() => {
+    const configuration = disabled()
+    const service = serviceWithConfiguration({}, configuration)
+    service.watchNamespace('ns-1').subscribe()
+    service.watch('case-1').subscribe()
+    service.watchNamespace('ns-2').subscribe()
+    service.watch('case-2').subscribe()
+    tick(30_000)
+    expect(configuration).toHaveBeenCalledTimes(1)
+  }))
+
+  it('waits for the configuration before asking about a case', fakeAsync(() => {
+    const configuration = new Subject<{ enabled: boolean }>()
+    const getCaseWorkspace = jest.fn()
+    const service = serviceWithConfiguration({ getCaseWorkspace }, jest.fn().mockReturnValue(configuration))
+    service.watch('case-1').subscribe()
+    tick()
+    configuration.next({ enabled: false })
+    configuration.complete()
+    tick(30_000)
+    expect(getCaseWorkspace).not.toHaveBeenCalled()
+  }))
+
+  it('polls the workspace endpoints when the configuration turns them on', fakeAsync(() => {
+    const listCaseWorkspace = jest.fn().mockReturnValue(of([]))
+    const service = serviceWithConfiguration({ listCaseWorkspace }, jest.fn().mockReturnValue(of({ enabled: true })))
+    const subscription = service.watchNamespace('ns-1').subscribe()
+    tick(20_000)
+    expect(listCaseWorkspace).toHaveBeenCalledTimes(3)
+    expect(service.unavailable).toBe(false)
+    subscription.unsubscribe()
+  }))
+})
+
 describe('case workspaces on an instance without Git workspaces', () => {
   const notFound = () => throwError(() => ({ status: 404 }))
-  function serviceWith(api: object): CaseWorkspaceService {
-    TestBed.configureTestingModule({ providers: [{ provide: CaseWorkspaceControllerService, useValue: api }] })
-    return TestBed.inject(CaseWorkspaceService)
-  }
+  // An unreadable configuration falls back on the 404 the workspace endpoints answer when the feature is off.
+  const serviceWith = (api: object) => serviceWithConfiguration(api, jest.fn().mockImplementation(notFound))
 
   it('stops polling the namespace after a 404', fakeAsync(() => {
     const listCaseWorkspace = jest.fn().mockImplementation(notFound)
