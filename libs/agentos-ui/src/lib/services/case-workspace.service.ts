@@ -22,6 +22,7 @@ import {
   switchMap,
   takeWhile,
   tap,
+  throwError,
   timer,
 } from 'rxjs'
 
@@ -52,16 +53,19 @@ export class CaseWorkspaceService {
   private noWorkspaces = false
 
   /**
-   * Whether this instance serves Git workspaces, read once: the switch only changes when AgentOS restarts.
+   * Whether this instance serves Git workspaces, kept once answered: the switch only changes when AgentOS restarts.
    * Without an answer the workspace endpoints are still asked, and their 404 stops the polling.
    */
   readonly enabled$: Observable<boolean> = defer(() => this.configuration.getGitWorkspacesConfiguration()).pipe(
     map((configuration) => configuration?.enabled !== false),
-    catchError(() => of(true)),
+    // An AgentOS without this endpoint answers 404 for good: settle on asking the workspace endpoints.
+    catchError((error: { status?: number }) => (error.status === 404 ? of(true) : throwError(() => error))),
     tap((enabled) => {
       if (!enabled) this.noWorkspaces = true
     }),
-    shareReplay({ bufferSize: 1, refCount: false })
+    shareReplay({ bufferSize: 1, refCount: false }),
+    // Any other failure is not kept: shareReplay resets on error, so the next consumer asks again.
+    catchError(() => of(true))
   )
 
   /** Whether this instance already answered that it has no Git workspaces. */
@@ -91,10 +95,10 @@ export class CaseWorkspaceService {
       shareReplay({ bufferSize: 1, refCount: true })
     )
     return this.enabled$.pipe(
-      switchMap(() =>
+      switchMap((enabled) =>
         defer(() => {
           this.byRoot.set({})
-          if (this.noWorkspaces) return of([])
+          if (!enabled || this.noWorkspaces) return of([])
           this.namespace.next(source)
           return source.pipe(
             filter((items): items is WorkspaceView[] => items !== null),

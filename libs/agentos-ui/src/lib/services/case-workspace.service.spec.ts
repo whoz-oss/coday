@@ -68,7 +68,9 @@ function serviceWithConfiguration(api: object, getGitWorkspacesConfiguration: je
 }
 
 describe('case workspaces when the configuration turns them off', () => {
-  const disabled = () => jest.fn().mockReturnValue(of({ enabled: false }))
+  function disabled(): jest.Mock {
+    return jest.fn().mockReturnValue(of({ enabled: false }))
+  }
 
   it('lists nothing and reports every case unavailable without asking the workspace endpoints', fakeAsync(() => {
     const listCaseWorkspace = jest.fn()
@@ -118,12 +120,43 @@ describe('case workspaces when the configuration turns them off', () => {
     expect(service.unavailable).toBe(false)
     subscription.unsubscribe()
   }))
+
+  it('asks the configuration again after a transient failure, probing the endpoints meanwhile', fakeAsync(() => {
+    const configuration = jest
+      .fn()
+      .mockReturnValueOnce(throwError(() => ({ status: 502 })))
+      .mockReturnValue(of({ enabled: false }))
+    const listCaseWorkspace = jest.fn().mockReturnValue(of([]))
+    const service = serviceWithConfiguration({ listCaseWorkspace }, configuration)
+    const first = service.watchNamespace('ns-1').subscribe()
+    tick()
+    expect(listCaseWorkspace).toHaveBeenCalledTimes(1)
+    first.unsubscribe()
+    const lists: WorkspaceView[][] = []
+    service.watchNamespace('ns-2').subscribe((items) => lists.push(items))
+    tick(30_000)
+    expect(configuration).toHaveBeenCalledTimes(2)
+    expect(listCaseWorkspace).toHaveBeenCalledTimes(1)
+    expect(lists).toEqual([[]])
+  }))
 })
 
 describe('case workspaces on an instance without Git workspaces', () => {
   const notFound = () => throwError(() => ({ status: 404 }))
-  // An unreadable configuration falls back on the 404 the workspace endpoints answer when the feature is off.
-  const serviceWith = (api: object) => serviceWithConfiguration(api, jest.fn().mockImplementation(notFound))
+  // An AgentOS without the configuration endpoint falls back on the 404 its workspace endpoints answer.
+  const configuration = jest.fn().mockImplementation(notFound)
+  function serviceWith(api: object): CaseWorkspaceService {
+    return serviceWithConfiguration(api, configuration)
+  }
+  beforeEach(() => configuration.mockClear())
+
+  it('asks an AgentOS without the configuration endpoint only once', fakeAsync(() => {
+    const service = serviceWith({ listCaseWorkspace: jest.fn().mockReturnValue(of([])) })
+    service.watchNamespace('ns-1').subscribe().unsubscribe()
+    service.watchNamespace('ns-2').subscribe().unsubscribe()
+    tick()
+    expect(configuration).toHaveBeenCalledTimes(1)
+  }))
 
   it('stops polling the namespace after a 404', fakeAsync(() => {
     const listCaseWorkspace = jest.fn().mockImplementation(notFound)
