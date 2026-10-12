@@ -1,3 +1,13 @@
+## 3.32.0 (2026-10-12)
+
+### 🚀 Features
+
+- **agentos-service:** try to change tool balis to have more consiste… ([#1439](https://github.com/whoz-oss/coday/pull/1439))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
 ## 3.31.0 (2026-10-12)
 
 ### 🚀 Features
