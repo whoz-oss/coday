@@ -2,7 +2,6 @@ package io.whozoss.agentos.sdk.spi
 
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
-import kotlinx.coroutines.CancellationException
 import org.pf4j.ExtensionPoint
 import java.util.UUID
 
@@ -46,19 +45,14 @@ sealed interface AnswerInterceptResult {
  *
  * ### Exception handling — fail-closed
  *
- * Use [evaluate] to consult interceptors: one that throws rejects the answer.
- *
  * An interceptor must never throw for an expected rejection — it must return
  * [AnswerInterceptResult.Reject] instead. An interceptor is a gate: one that cannot
  * answer has not granted passage. Accepting on failure would let an answer through
  * precisely when the check meant to validate it is broken.
  *
- * The reason surfaced on a faulty interceptor says that validation could not be
- * completed, not that the answer was invalid — the two are different facts and the
- * user is owed the right one. A rejection is recoverable: the question stands and the
- * user may retry.
- *
- * Cancellation is not a fault and is never converted into a rejection: see [evaluate].
+ * The evaluation rule (fail-closed, cancellation-safe) lives in the service layer
+ * (`SpiEvaluatorService`), not here, so improvements to it never require a new SDK
+ * version or a rebuild of deployed plugins.
  *
  * ### Suspension
  *
@@ -85,64 +79,4 @@ interface AnswerInterceptor : ExtensionPoint {
         answerText: String,
         actor: Actor,
     ): AnswerInterceptResult = AnswerInterceptResult.Accept
-
-    companion object {
-        /**
-         * Consult every interceptor and return the resulting verdict.
-         *
-         * Lives in the SDK so the fail-closed rule is applied once, here, rather than
-         * re-implemented at each call site — where a `runCatching { … }.getOrElse { … }`
-         * could quietly pick the permissive branch.
-         *
-         * Resolution, in order of precedence:
-         *
-         * - an interceptor that **throws** → [AnswerInterceptResult.Reject];
-         * - any [AnswerInterceptResult.Reject] → that rejection, immediately;
-         * - any [AnswerInterceptResult.ExternallyHandled] → ownership of the
-         *   continuation has been transferred, stop and report it;
-         * - otherwise → [AnswerInterceptResult.Accept].
-         *
-         * Evaluation short-circuits on the first non-[AnswerInterceptResult.Accept]
-         * outcome: the verdict can no longer change, and once an interceptor claims
-         * ownership the remaining ones must not also act on the same answer.
-         *
-         * [CancellationException] is deliberately excluded from the fail-closed rule and
-         * rethrown as-is. Cancellation is not an interceptor failing to answer — it is
-         * the caller withdrawing the question. Turning it into a rejection would both
-         * report a verdict nobody is waiting for and swallow the signal that must unwind
-         * the case coroutine.
-         *
-         * @param onError notified when an interceptor throws, so the host can log the
-         *   cause that the user-facing reason deliberately omits; must never throw.
-         */
-        suspend fun evaluate(
-            interceptors: Iterable<AnswerInterceptor>,
-            caseId: UUID,
-            questionEvent: QuestionEvent,
-            answerText: String,
-            actor: Actor,
-            onError: (interceptor: AnswerInterceptor, cause: Throwable) -> Unit = { _, _ -> },
-        ): AnswerInterceptResult {
-            interceptors.forEach { interceptor ->
-                val result =
-                    try {
-                        interceptor.interceptAnswer(caseId, questionEvent, answerText, actor)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        onError(interceptor, e)
-                        return AnswerInterceptResult.Reject(
-                            "Your answer could not be validated because a validation step failed. " +
-                                "The question is still open — please try again.",
-                        )
-                    }
-                when (result) {
-                    is AnswerInterceptResult.Accept -> Unit
-                    is AnswerInterceptResult.Reject -> return result
-                    is AnswerInterceptResult.ExternallyHandled -> return result
-                }
-            }
-            return AnswerInterceptResult.Accept
-        }
-    }
 }
