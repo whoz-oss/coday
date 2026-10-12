@@ -1,10 +1,9 @@
 package io.whozoss.agentos.aiModelConfig
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -27,8 +26,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class AiModelControllerMvcIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class AiModelControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
 
