@@ -435,7 +435,7 @@ class CaseRuntimeSpec : StringSpec() {
         "statusFlow reflects RUNNING during run() and IDLE after normal completion" {
             val (runtime) = buildRuntime()
 
-            runtime.statusFlow.value shouldBe CaseStatus.PENDING
+            runtime.statusFlow.value shouldBe CaseStatus.CREATED
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
             runtime.statusFlow.value shouldBe CaseStatus.IDLE

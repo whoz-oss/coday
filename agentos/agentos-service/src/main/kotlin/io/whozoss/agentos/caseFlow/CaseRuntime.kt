@@ -85,7 +85,7 @@ class CaseRuntime(
         shouldContinue: () -> Boolean,
     ) -> Unit,
     inputEvents: List<CaseEvent> = emptyList(),
-    initialStatus: CaseStatus = CaseStatus.PENDING,
+    initialStatus: CaseStatus = CaseStatus.CREATED,
     private val emitter: DefaultCaseEventEmitter = DefaultCaseEventEmitter(),
     /**
      * Maximum number of internal steps per user message before the runtime transitions to
@@ -156,7 +156,7 @@ class CaseRuntime(
      * Reactive view of the current [CaseStatus].
      * Updated synchronously inside [run] before and after each transition.
      * Initialised to [initialStatus] so rehydrated runtimes start with the
-     * correct persisted status rather than always [CaseStatus.PENDING].
+     * correct persisted status rather than always [CaseStatus.CREATED].
      * Consumers can combine this with [subscriptionCount] to react to the
      * conjunction of "case is idle" and "no SSE subscribers".
      */
@@ -212,7 +212,7 @@ class CaseRuntime(
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
-     * Claim the PENDING transition atomically, in memory only.
+     * Claim the [CaseStatus.PENDING] (gated-hold) transition atomically, in memory only.
      *
      * Must be called under this instance's monitor (the admission lock). Returns the
      * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
@@ -227,12 +227,12 @@ class CaseRuntime(
     }
 
     /**
-     * Claim the IDLE transition atomically, in memory only, for a turn that was held
-     * back and never started (mirror of [claimPending] for the cancel path).
+     * Claim the [CaseStatus.IDLE] transition atomically, in memory only, for a gated turn
+     * that was held back and never started (mirror of [claimPending] for the cancel path).
      *
      * Must be called under this instance's monitor (the admission lock). Returns the
      * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
-     * running or not in PENDING state. The caller is responsible for calling
+     * running or not in [CaseStatus.PENDING] state. The caller is responsible for calling
      * [publishStatus] **outside** the monitor.
      */
     fun claimCancelPending(): CaseStatus? = synchronized(this) {

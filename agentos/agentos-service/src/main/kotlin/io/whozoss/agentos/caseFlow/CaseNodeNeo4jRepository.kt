@@ -255,6 +255,7 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
     @Query(
         $$"""MATCH (c:Case)-[:BELONGS_TO]->(ns:Namespace {id: $namespaceId})
             WHERE (c.removed IS NULL OR c.removed = false)
+              AND NOT c.status IN ['CREATED']
               AND EXISTS { MATCH (:User {id: $userId})-[:ADMIN|MEMBER]->(c) }
             OPTIONAL MATCH (:User {id: $userId})-[state:WATCHES]->(c)
             WITH c, state.readAt AS readAt

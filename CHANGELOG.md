@@ -1,3 +1,47 @@
+## 3.31.0 (2026-10-12)
+
+### 🚀 Features
+
+- wz-35120 - CREATED status ([#1434](https://github.com/whoz-oss/coday/pull/1434))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.30.0 (2026-10-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-35090 AgentLoop V0 : one case per tool result row ([#1414](https://github.com/whoz-oss/coday/pull/1414))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- thomas.martin @thomas-martin-whoz
+
+## 3.29.0 (2026-10-09)
+
+### 🚀 Features
+
+- wz-35120 - add CREATED status ([#1435](https://github.com/whoz-oss/coday/pull/1435))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.28.0 (2026-10-08)
+
+### 🚀 Features
+
+- **agentos-service:** more resilient generate intent ([a77e7286](https://github.com/whoz-oss/coday/commit/a77e7286))
+- **agentos-service:** close balis ([90125107](https://github.com/whoz-oss/coday/commit/90125107))
+- **agentos-service:** more resilient generate intent ([#1424](https://github.com/whoz-oss/coday/pull/1424))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
 ## 3.27.0 (2026-10-07)
 
 ### 🚀 Features

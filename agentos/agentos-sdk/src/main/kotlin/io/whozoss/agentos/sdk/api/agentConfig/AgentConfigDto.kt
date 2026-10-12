@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.api.agentConfig
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.JsonNode
 import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
@@ -41,6 +42,24 @@ data class AgentConfigDto(
     val instructions: String? = null,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
+    /**
+     * Execution mode for this agent. Replaces the legacy [advancedExecution] boolean.
+     * On input: when both are present, [executionMode] takes precedence; when null,
+     * [advancedExecution] is used as a fallback for backward compatibility.
+     * On output: always the resolved mode.
+     */
+    @field:Schema(
+        description =
+            "Execution mode: SIMPLE, ADVANCED or LOOP (LOOP is experimental and may change or be removed " +
+                "without notice). Takes precedence over advancedExecution on input; always resolved on output.",
+    )
+    val executionMode: ExecutionMode? = null,
+    /**
+     * @deprecated Use [executionMode] instead. Kept for backward compatibility with existing configs.
+     * On input, when [executionMode] is null: `true` → ADVANCED, `false`/null → SIMPLE.
+     * On output, derived from the resolved [executionMode]: `true` when ADVANCED, omitted otherwise.
+     */
+    @Deprecated("Use executionMode instead")
     val advancedExecution: Boolean? = null,
     val externalMetadata: Map<String, Any?>? = null,
     val createdBy: String? = null,
@@ -63,7 +82,11 @@ data class AgentConfigDto(
     )
     val subAgents: List<String>? = null,
     @field:Positive
-    @field:Schema(description = "Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.", minimum = "1", nullable = true)
+    @field:Schema(
+        description = "Seconds allowed for each outgoing delegation, including nested work. Null or omitted inherits the server default; on PUT this clears an existing override.",
+        minimum = "1",
+        nullable = true,
+    )
     val delegationTimeoutSeconds: Int? = null,
     @ArraySchema(
         schema =
@@ -79,4 +102,22 @@ data class AgentConfigDto(
             ),
     )
     val skillSelectors: List<String>? = null,
+    /**
+     * Default payload for LOOP-mode agents, stored as a JSON object.
+     *
+     * When provided, it is used as the default [io.whozoss.agentos.workflow.AgentLoopPayload]
+     * when the triggering message carries no parseable payload. A payload present in the
+     * first user message always takes precedence (override).
+     *
+     * Only meaningful when [executionMode] is LOOP; ignored for SIMPLE and ADVANCED agents.
+     */
+    @field:Schema(
+        description =
+            "Default AgentLoopPayload for LOOP-mode agents. Used when the triggering message carries no " +
+                "parseable payload. A payload in the first user message always takes precedence. " +
+                "Ignored for SIMPLE and ADVANCED agents.",
+        type = "object",
+        nullable = true,
+    )
+    val loopConfig: JsonNode? = null,
 )
