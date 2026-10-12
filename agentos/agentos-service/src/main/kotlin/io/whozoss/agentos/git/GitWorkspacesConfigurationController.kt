@@ -2,7 +2,6 @@ package io.whozoss.agentos.git
 
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Schema
-import org.springframework.beans.factory.ObjectProvider
 import org.springframework.http.MediaType
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.GetMapping
@@ -22,11 +21,12 @@ data class GitWorkspacesConfiguration(
 @RestController
 @RequestMapping("/api/git-workspaces-configuration", produces = [MediaType.APPLICATION_JSON_VALUE])
 class GitWorkspacesConfigurationController(
-    private val workspaceRoutes: ObjectProvider<CaseWorkspaceController>,
+    /** Null without `agentos.git.workspaces.enabled`: the workspace routes are then not registered. */
+    private val workspaceRoutes: CaseWorkspaceController?,
 ) {
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     @Operation(operationId = "getGitWorkspacesConfiguration")
     fun getGitWorkspacesConfiguration(): GitWorkspacesConfiguration =
-        GitWorkspacesConfiguration(enabled = workspaceRoutes.getIfAvailable() != null)
+        GitWorkspacesConfiguration(enabled = workspaceRoutes != null)
 }
