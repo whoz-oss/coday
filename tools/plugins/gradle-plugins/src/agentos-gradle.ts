@@ -2,7 +2,11 @@ import { CreateNodesContext, CreateNodesResult, CreateNodes, createNodesFromFile
 import { existsSync } from 'fs'
 import { basename, dirname } from 'path'
 
-const GRADLE_INPUTS = [
+// ---------------------------------------------------------------------------
+// AgentOS (agentos/) Gradle plugin
+// ---------------------------------------------------------------------------
+
+const AGENTOS_GRADLE_INPUTS = [
   'default',
   '{projectRoot}/build.gradle.kts',
   '{workspaceRoot}/agentos/gradle.properties',
@@ -24,7 +28,7 @@ export const createNodesV2: CreateNodes = [
   'agentos/*/build.gradle.kts',
   async (configFiles, _options, context: CreateNodesContext) => {
     return await createNodesFromFiles(
-      (configFile) => createNodesInternal(configFile, context),
+      (configFile) => createAgentosNodesInternal(configFile, context),
       configFiles,
       _options,
       context
@@ -32,7 +36,7 @@ export const createNodesV2: CreateNodes = [
   },
 ]
 
-function createNodesInternal(configFilePath: string, context: CreateNodesContext): CreateNodesResult {
+function createAgentosNodesInternal(configFilePath: string, context: CreateNodesContext): CreateNodesResult {
   const projectDir = dirname(configFilePath)
   const projectName = basename(projectDir)
 
@@ -58,7 +62,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
           build: {
             executor: 'nx:run-commands',
             cache: true,
-            inputs: GRADLE_INPUTS,
+            inputs: AGENTOS_GRADLE_INPUTS,
             outputs: ['{projectRoot}/build'],
             options: {
               command: `./gradlew :${projectName}:build`,
@@ -69,7 +73,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
           assemble: {
             executor: 'nx:run-commands',
             cache: true,
-            inputs: GRADLE_INPUTS,
+            inputs: AGENTOS_GRADLE_INPUTS,
             outputs: ['{projectRoot}/build'],
             options: {
               command: `./gradlew :${projectName}:assemble`,
@@ -80,7 +84,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
           test: {
             executor: 'nx:run-commands',
             cache: true,
-            inputs: GRADLE_INPUTS,
+            inputs: AGENTOS_GRADLE_INPUTS,
             outputs: ['{projectRoot}/build/test-results', '{projectRoot}/build/reports'],
             options: {
               command: `./gradlew :${projectName}:test`,
@@ -99,7 +103,7 @@ export function buildProjectConfig(projectDir: string, projectName: string): Cre
           },
           'nx-release-publish': {
             executor: 'nx:run-commands',
-            // No-op: real publishing happens via the `publish` target below, called by publish-agentos-artifacts in validate.yml CI workflow.
+            // No-op: real publishing happens via the `publish` target below, called by publish-agentos-artifacts in CI.
             dependsOn: [],
             options: {
               command: `echo '${projectName} published via Gradle in CI'`,
