@@ -522,6 +522,69 @@ describe('FactoryStore', () => {
     expect(store.runs()[0]?.id).toBe('wf-1')
   })
 
+  it('preserves enrichment for surviving workflows across SSE refreshes (stable selection)', () => {
+    // First load: wf-1 gets enriched with attempts
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { workflowId: 'wf-1' },
+      { workflowId: 'wf-1', items: [] },
+      {
+        workflowId: 'wf-1',
+        data: [
+          {
+            attemptId: 'a-1',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'builder',
+            status: 'running',
+            caseId: 'case-1',
+          },
+        ],
+      }
+    )
+    expect(store.session('wf-1')?.phase.caseId).toBe('case-1')
+
+    // SSE invalidation triggers a reload
+    const source = FakeEventSource.instances[0]
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
+
+    // The reload returns the same workflow (wf-1 survived)
+    // Enrichment requests are fired again, but BEFORE they complete the session
+    // must still carry the previously enriched data (not wiped to projection-only).
+    const activeReq = http.expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
+    const removedReq = http.expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
+    activeReq.flush({ data: { namespaceId: '', state: 'active', items: [snapshot] } })
+    removedReq.flush({ data: { namespaceId: '', state: 'removed', items: [] } })
+    http.expectOne((r) => r.url === '/api/namespaces').flush({ data: [] })
+
+    // Immediately after the reload (before new enrichment arrives), the session
+    // must still reflect the previous enrichment (caseId from attempt preserved).
+    expect(store.session('wf-1')?.phase.caseId).toBe('case-1')
+
+    // Complete the new enrichment requests
+    flushEnrichment()
+  })
+
+  it('purges enrichment for workflows that disappear from the snapshot set', () => {
+    // Load two workflows
+    const snap2 = snapshotFor('wf-2', 'ns-1', 'Second workflow')
+    flushInitialWorkflows([snapshot, snap2])
+    flushEnrichment()
+    flushRunEnrichment('wf-2')
+
+    expect(store.runs()).toHaveLength(2)
+
+    // SSE reload: wf-2 has been removed (disappears from active AND removed)
+    const source = FakeEventSource.instances[0]
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
+
+    flushInitialWorkflows([snapshot]) // only wf-1 survives
+    flushEnrichment() // only wf-1 gets re-enriched
+
+    expect(store.runs()).toHaveLength(1)
+    expect(store.runs()[0]?.id).toBe('wf-1')
+  })
+
   it('degrades to an empty list (never the mock fleet) when the REST backend fails', () => {
     http
       .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')

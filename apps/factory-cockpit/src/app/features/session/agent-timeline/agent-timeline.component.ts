@@ -1,8 +1,8 @@
 import { ChangeDetectionStrategy, Component, computed, effect, input, output, signal } from '@angular/core'
 import { MatIconModule } from '@angular/material/icon'
 import { MatTooltipModule } from '@angular/material/tooltip'
-import { TimelineBlock, TimelineLane } from '../../core/models'
-import { DurationPipe } from '../../shared/pipes/format.pipes'
+import { TimelineBlock, TimelineLane } from '../../../core/models'
+import { DurationPipe } from '../../../shared/pipes/format.pipes'
 
 /** Agent timeline with one lane per actor (human, workspace, agents). */
 @Component({
@@ -131,5 +131,29 @@ export class AgentTimelineComponent {
       case 'cancelled':
         return 'cancelled'
     }
+  }
+
+  /**
+   * Rich tooltip for a timeline block, combining step/agent/attempt/case/failure
+   * metadata so operators can identify any block without opening the detail panel.
+   */
+  protected blockTooltip(block: TimelineBlock): string {
+    const parts: string[] = [block.label, this.statusLabel(block)]
+    if (block.stepId && block.stepId !== block.label) parts.push(`step: ${block.stepId}`)
+    if (block.agentName) parts.push(`agent: ${block.agentName}`)
+    if (block.attemptNumber !== undefined) parts.push(`attempt #${block.attemptNumber}`)
+    if (block.caseId) parts.push(`case: ${block.caseId}`)
+    if (block.failureCode) parts.push(`failure: ${block.failureCode}`)
+    return parts.join(' \u00b7 ')
+  }
+
+  /**
+   * Whether a block is currently selected. Selection is keyed on `stepId`
+   * (stable across SSE refreshes and attempt retries) with a fallback to label.
+   */
+  protected isSelected(block: TimelineBlock): boolean {
+    const key = this.selected()
+    if (!key) return false
+    return (block.stepId ?? block.label) === key
   }
 }

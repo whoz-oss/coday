@@ -1,17 +1,23 @@
 {
-  "/api/cases": {
+  "/api/case-events/**": {
     "changeOrigin": true,
     "logLevel": "debug",
     "secure": false,
     "target": "http://localhost:8124"
   },
-  "/api/factory": {
+  "/api/cases/**": {
+    "changeOrigin": true,
+    "logLevel": "debug",
+    "secure": false,
+    "target": "http://localhost:8124"
+  },
+  "/api/factory/**": {
     "changeOrigin": true,
     "logLevel": "debug",
     "secure": false,
     "target": "http://localhost:8141"
   },
-  "/api/namespaces": {
+  "/api/namespaces/**": {
     "changeOrigin": true,
     "logLevel": "debug",
     "secure": false,

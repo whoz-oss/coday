@@ -34,7 +34,9 @@
           <button
             type="button"
             class="block block--amber block--request"
+            [class.block--selected]="isSelected(r)"
             [attr.aria-label]="r.label + ', ' + statusLabel(r)"
+            [matTooltip]="blockTooltip(r)"
             (click)="blockSelect.emit(r)"
           >
             <span class="block-title">
@@ -64,10 +66,10 @@
             [class.block--pending]="b.status === 'pending' || b.status === 'ready'"
             [class.block--cancelled]="b.status === 'cancelled'"
             [class.block--compact]="compact"
-            [class.block--selected]="selected() === b.label"
+            [class.block--selected]="isSelected(b)"
             [style.left.%]="pct(b.startSec)"
             [style.width.%]="widthPct(b)"
-            [matTooltip]="compact ? b.label + ' · ' + statusLabel(b) : ''"
+            [matTooltip]="blockTooltip(b)"
             [attr.aria-label]="b.label + ', ' + statusLabel(b)"
             (click)="blockSelect.emit(b)"
           >
@@ -92,6 +94,18 @@
               @if (b.description) {
                 <span class="block-desc">{{ b.description }}</span>
               }
+              <!-- Attempt metadata badges (step/agent/case/failure) -->
+              <span class="block-meta">
+                @if (b.agentName) {
+                  <span class="block-meta-item">{{ b.agentName }}</span>
+                }
+                @if (b.attemptNumber !== undefined) {
+                  <span class="block-meta-item sf-mono">#{{ b.attemptNumber }}</span>
+                }
+                @if (b.failureCode) {
+                  <span class="block-meta-item block-meta-item--failure sf-mono">{{ b.failureCode }}</span>
+                }
+              </span>
               <span class="ticks" aria-hidden="true">
                 @for (t of b.ticksSec ?? []; track $index) {
                   <i [style.left.%]="((t - b.startSec) / (b.endSec - b.startSec)) * 100"></i>

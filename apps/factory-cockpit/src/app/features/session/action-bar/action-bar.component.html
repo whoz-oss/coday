@@ -1,7 +1,89 @@
 @if (hasBlockers()) {
   <section class="blockers" aria-label="Workflow blockers">
-    @for (blocker of blockers(); track $index) {
-      <div class="blocker" [class]="'blocker--' + blockerKind(blocker)">
+    <!-- Root failures: ATTEMPT_FAILED, VERIFICATION_FAILED (real execution errors) -->
+    @if (blockerGroups().failures.length > 0) {
+      <div class="blocker-group">
+        <span class="blocker-group-title blocker-group-title--failure">
+          <mat-icon aria-hidden="true">error</mat-icon>
+          {{ groupTitle('failure') }}
+        </span>
+        @for (blocker of blockerGroups().failures; track $index) {
+          <div class="blocker blocker--failure">
+            <mat-icon aria-hidden="true">{{ blockerIcon(blocker) }}</mat-icon>
+            <div class="blocker-body">
+              <span class="blocker-label">{{ blocker.label }}</span>
+              @if (blocker.stepId) {
+                <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+              }
+            </div>
+            <span class="blocker-code sf-mono">{{ blocker.code }}</span>
+          </div>
+        }
+      </div>
+    }
+    <!-- Downstream consequences: STEP_BLOCKED (grouped as mitigated) -->
+    @if (blockerGroups().consequences.length > 0) {
+      <div class="blocker-group">
+        <span class="blocker-group-title blocker-group-title--consequence">
+          <mat-icon aria-hidden="true">link_off</mat-icon>
+          {{ groupTitle('consequence') }}
+        </span>
+        @for (blocker of blockerGroups().consequences; track $index) {
+          <div class="blocker blocker--consequence">
+            <mat-icon aria-hidden="true">{{ blockerIcon(blocker) }}</mat-icon>
+            <div class="blocker-body">
+              <span class="blocker-label">{{ blocker.label }}</span>
+              @if (blocker.stepId) {
+                <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+              }
+            </div>
+            <span class="blocker-code sf-mono">{{ blocker.code }}</span>
+          </div>
+        }
+      </div>
+    }
+    <!-- Human gate -->
+    @for (blocker of blockerGroups().waiting; track $index) {
+      <div class="blocker blocker--waiting">
+        <mat-icon aria-hidden="true">{{ blockerIcon(blocker) }}</mat-icon>
+        <div class="blocker-body">
+          <span class="blocker-label">{{ blocker.label }}</span>
+          @if (blocker.stepId) {
+            <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+          }
+        </div>
+        <span class="blocker-code sf-mono">{{ blocker.code }}</span>
+      </div>
+    }
+    <!-- Budget pause -->
+    @for (blocker of blockerGroups().cost; track $index) {
+      <div class="blocker blocker--cost">
+        <mat-icon aria-hidden="true">{{ blockerIcon(blocker) }}</mat-icon>
+        <div class="blocker-body">
+          <span class="blocker-label">{{ blocker.label }}</span>
+          @if (blocker.stepId) {
+            <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+          }
+        </div>
+        <span class="blocker-code sf-mono">{{ blocker.code }}</span>
+      </div>
+    }
+    <!-- Indeterminate runtime -->
+    @for (blocker of blockerGroups().indeterminate; track $index) {
+      <div class="blocker blocker--indeterminate">
+        <mat-icon aria-hidden="true">{{ blockerIcon(blocker) }}</mat-icon>
+        <div class="blocker-body">
+          <span class="blocker-label">{{ blocker.label }}</span>
+          @if (blocker.stepId) {
+            <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+          }
+        </div>
+        <span class="blocker-code sf-mono">{{ blocker.code }}</span>
+      </div>
+    }
+    <!-- Other / unknown -->
+    @for (blocker of blockerGroups().unknown; track $index) {
+      <div class="blocker blocker--unknown">
         <mat-icon aria-hidden="true">{{ blockerIcon(blocker) }}</mat-icon>
         <div class="blocker-body">
           <span class="blocker-label">{{ blocker.label }}</span>

@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output, si
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 
-import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../core/models'
-import { AGENTOS_BASE_URL, buildAgentOsCaseUrl } from '../../core/factory.store'
+import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../../core/models'
+import { AGENTOS_BASE_URL, buildAgentOsCaseUrl } from '../../../core/factory.store'
 
 export interface ReplyIntent {
   interactionId: string
@@ -114,31 +114,93 @@ export class ActionBarComponent {
     return this.interactions().find((interaction) => interaction.interactionId === action.interactionId)
   }
 
-  protected blockerKind(blocker: WorkflowBlocker): 'waiting' | 'blocked' | 'cost' | 'unknown' {
+  /**
+   * Classify a blocker into a severity/kind bucket.
+   *
+   * - `failure`: real execution failures (ATTEMPT_FAILED, VERIFICATION_FAILED)
+   *   — the step actually failed; operator attention is required.
+   * - `consequence`: downstream blocks (STEP_BLOCKED) — a step is blocked as a
+   *   consequence of an upstream failure; they are grouped as mitigated.
+   * - `waiting`: human gate (WAITING_HUMAN_INTERACTION).
+   * - `cost`: budget pause (REAL_COST_PAUSED).
+   * - `indeterminate`: unknown runtime state (UNKNOWN_RUNTIME).
+   * - `unknown`: anything else.
+   */
+  protected blockerKind(
+    blocker: WorkflowBlocker
+  ): 'waiting' | 'failure' | 'consequence' | 'cost' | 'indeterminate' | 'unknown' {
     switch (blocker.code) {
       case 'WAITING_HUMAN_INTERACTION':
         return 'waiting'
-      case 'STEP_BLOCKED':
       case 'ATTEMPT_FAILED':
       case 'VERIFICATION_FAILED':
-        return 'blocked'
+        return 'failure'
+      case 'STEP_BLOCKED':
+        return 'consequence'
       case 'REAL_COST_PAUSED':
         return 'cost'
+      case 'UNKNOWN_RUNTIME':
+        return 'indeterminate'
       default:
         return 'unknown'
     }
   }
 
+  /**
+   * Computed grouping of blockers by kind, preserving ALL root failures (never
+   * arbitrarily picking a single first one).
+   */
+  protected readonly blockerGroups = computed(() => {
+    const blockers = this.blockers()
+    return {
+      failures: blockers.filter((b) => this.blockerKind(b) === 'failure'),
+      consequences: blockers.filter((b) => this.blockerKind(b) === 'consequence'),
+      waiting: blockers.filter((b) => this.blockerKind(b) === 'waiting'),
+      cost: blockers.filter((b) => this.blockerKind(b) === 'cost'),
+      indeterminate: blockers.filter((b) => this.blockerKind(b) === 'indeterminate'),
+      unknown: blockers.filter(
+        (b) =>
+          this.blockerKind(b) !== 'failure' &&
+          this.blockerKind(b) !== 'consequence' &&
+          this.blockerKind(b) !== 'waiting' &&
+          this.blockerKind(b) !== 'cost' &&
+          this.blockerKind(b) !== 'indeterminate'
+      ),
+    }
+  })
+
   protected blockerIcon(blocker: WorkflowBlocker): string {
     switch (this.blockerKind(blocker)) {
       case 'waiting':
         return 'person_alert'
-      case 'blocked':
-        return 'block'
+      case 'failure':
+        return 'error'
+      case 'consequence':
+        return 'link_off'
       case 'cost':
         return 'paid'
-      default:
+      case 'indeterminate':
         return 'help'
+      default:
+        return 'warning'
+    }
+  }
+
+  /** Title for a blocker group header. */
+  protected groupTitle(kind: 'failure' | 'consequence' | 'waiting' | 'cost' | 'indeterminate' | 'unknown'): string {
+    switch (kind) {
+      case 'failure':
+        return 'Root failures'
+      case 'consequence':
+        return 'Blocked steps (consequence)'
+      case 'waiting':
+        return 'Waiting for human'
+      case 'cost':
+        return 'Budget pause'
+      case 'indeterminate':
+        return 'Indeterminate state'
+      default:
+        return 'Other blockers'
     }
   }
 

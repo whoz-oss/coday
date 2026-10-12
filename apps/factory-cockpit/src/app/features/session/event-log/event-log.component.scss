@@ -1,0 +1,283 @@
+:host {
+  display: block;
+  min-height: 0;
+}
+
+.log {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.log-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid #1d2331;
+  mat-icon {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+    color: var(--sf-text-muted);
+  }
+  h2 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 800;
+  }
+  .count {
+    font-size: 13px;
+    color: var(--sf-text-muted);
+  }
+}
+
+.filters {
+  --mat-standard-button-toggle-height: 30px;
+  --mat-standard-button-toggle-shape: 8px;
+  --mat-standard-button-toggle-divider-color: var(--sf-outline);
+  --mat-standard-button-toggle-selected-state-background-color: #2a2145;
+  --mat-standard-button-toggle-selected-state-text-color: #e3d6ff;
+  font-family: var(--sf-mono);
+  .f-tool_call {
+    color: #7fd8c5;
+  }
+  .f-agent_message {
+    color: var(--sf-running);
+  }
+}
+
+.viewport {
+  flex: 1;
+  min-height: 360px;
+}
+
+.ev {
+  display: grid;
+  grid-template-columns: 80px 130px minmax(0, 1fr) 56px;
+  gap: 12px;
+  align-items: center;
+  height: 33px;
+  padding: 0 20px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #171c28;
+  font-family: var(--sf-mono);
+  font-size: 12.5px;
+}
+.ev--message {
+  padding: 0;
+  background: #121a2b;
+  .text {
+    color: var(--sf-text);
+  }
+}
+.ev-message-button {
+  // The button is the sole child of the row grid: occupy all its columns.
+  grid-column: 1 / -1;
+  min-width: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 80px 130px minmax(0, 1fr) 56px;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  height: 33px;
+  padding: 0 20px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--sf-secondary);
+    outline-offset: -2px;
+  }
+}
+.time {
+  color: var(--sf-text-faint);
+}
+.text {
+  color: var(--sf-text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.text b {
+  color: var(--sf-text);
+  margin-right: 6px;
+}
+.text b.write {
+  color: var(--sf-success);
+}
+.dur {
+  text-align: right;
+  color: var(--sf-text-faint);
+}
+.dur.slow {
+  color: var(--sf-tertiary);
+}
+
+.type {
+  color: var(--sf-text-muted);
+}
+.t-phase_start {
+  color: var(--sf-text);
+}
+.t-agent_start {
+  color: var(--sf-secondary);
+}
+.t-thinking {
+  color: #c9a8ff;
+}
+.t-tool_call {
+  color: #7fd8c5;
+}
+.t-agent_message {
+  color: var(--sf-running);
+}
+
+.context-label {
+  font-size: 11px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--sf-text-muted);
+}
+
+.source-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--sf-text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  &--agentos {
+    background: rgba(95, 212, 224, 0.1);
+    color: var(--sf-secondary);
+    border-color: rgba(95, 212, 224, 0.25);
+  }
+}
+
+// Attempt-level metrics chips (cost + duration) in the Events panel header.
+// Scope: attempt's AgentOS case cost (not workflow total) and attempt duration
+// (startedAt → completedAt, not total case duration).
+.metrics-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.metric-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--sf-mono);
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--sf-text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  cursor: default;
+  white-space: nowrap;
+
+  &--partial {
+    color: var(--sf-tertiary, #f59e0b);
+    border-color: rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.06);
+  }
+
+  &--duration {
+    color: var(--sf-text-2);
+  }
+
+  &--muted {
+    opacity: 0.5;
+  }
+}
+
+.metric-icon {
+  font-family: 'Material Icons';
+  font-size: 12px;
+  line-height: 1;
+  vertical-align: middle;
+  opacity: 0.7;
+}
+
+.state-placeholder--error {
+  color: var(--sf-error, #f87171);
+  mat-icon {
+    color: var(--sf-error, #f87171);
+    opacity: 0.7;
+  }
+  span:not(.sf-muted) {
+    font-weight: 600;
+  }
+}
+
+.state-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex: 1;
+  min-height: 160px;
+  color: var(--sf-text-muted);
+  mat-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 28px;
+    opacity: 0.5;
+  }
+  span {
+    font-size: 13px;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.activity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 38px;
+  padding: 0 20px;
+  color: var(--sf-secondary);
+  font-size: 13px;
+  font-weight: 600;
+}
+.pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sf-secondary);
+  box-shadow: 0 0 0 4px rgba(95, 212, 224, 0.15);
+}
