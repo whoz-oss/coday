@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.caseFlow.CaseRuntime
@@ -18,7 +19,12 @@ import io.whozoss.agentos.sdk.caseEvent.SubCaseOutcome
 import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import java.util.UUID
 
 class DelegationToolLifecycleUnitSpec : StringSpec({
@@ -101,5 +107,24 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
 
         manager.resumed shouldBe true
         (manager.parentEvents.first() as SubCaseStartedEvent).resumed shouldBe true
+    }
+
+    "cancelling the parent run while it waits for the sub-case unwinds instead of reporting a failed delegation" {
+        val subCaseId = UUID.randomUUID()
+        val running = mockk<CaseRuntime> {
+            every { this@mockk.id } returns subCaseId
+            every { statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+        }
+        val manager = RecordingManager(running)
+        val outcome = CompletableDeferred<Throwable?>()
+        val parentRun = launch {
+            outcome.complete(runCatching { tool(manager, emptyList()).execute(args(), context()) }.exceptionOrNull())
+        }
+        withTimeout(2_000) { while (manager.parentEvents.none { it is SubCaseStartedEvent }) delay(10) }
+
+        parentRun.cancel()
+
+        withTimeout(2_000) { outcome.await() }.shouldBeInstanceOf<CancellationException>()
+        (manager.parentEvents.last() as SubCaseFinishedEvent).errorType shouldBe "INTERRUPTED"
     }
 })

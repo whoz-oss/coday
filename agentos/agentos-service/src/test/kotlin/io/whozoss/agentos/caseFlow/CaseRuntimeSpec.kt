@@ -20,11 +20,8 @@ import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
-import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -538,111 +535,6 @@ class CaseRuntimeSpec : StringSpec() {
             fixture.savedEvents.filterIsInstance<MessageEvent>().none { it.content == listOf(MessageContent.Text("queued")) } shouldBe true
             fixture.runAgentCalls shouldBe 2
             fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
-        }
-
-        "a cancelled turn answers the tool calls it interrupted with a failed response" {
-            // Without it, the next turn would replay the call without an outcome, or as a success once summarized.
-            val runtimeId = UUID.randomUUID()
-            val savedEvents = CopyOnWriteArrayList<CaseEvent>()
-            val agentStarted = CompletableDeferred<Unit>()
-            fun request(requestId: String) =
-                ToolRequestEvent(namespaceId = namespaceId, caseId = runtimeId, toolRequestId = requestId, toolName = "tool", args = "{}")
-            lateinit var runtime: CaseRuntime
-            runtime =
-                CaseRuntime(
-                    id = runtimeId,
-                    namespaceId = namespaceId,
-                    caseCreatedAt = Instant.EPOCH,
-                    updateStatusCallback = { _, _ -> },
-                    storeEvent = { event -> event.also { savedEvents += it } },
-                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    runAgent = { _, _, _, _, _ ->
-                        runtime.pushEvents(
-                            listOf(
-                                request("answered"),
-                                ToolResponseEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = runtimeId,
-                                    toolRequestId = "answered",
-                                    toolName = "tool",
-                                    output = MessageContent.Text("done"),
-                                ),
-                                request("awaiting-confirmation"),
-                                PendingConfirmationEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = runtimeId,
-                                    toolRequestId = "awaiting-confirmation",
-                                    toolName = "tool",
-                                    inputJson = "{}",
-                                ),
-                                request("interrupted"),
-                            ),
-                        )
-                        agentStarted.complete(Unit)
-                        awaitCancellation()
-                    },
-                )
-            runtime.addUserMessage(userActor, userMessage)
-            val run = launch { runtime.run() }
-            withTimeout(2_000) { agentStarted.await() }
-
-            runtime.requestInterrupt()
-            runtime.cancelInterruptedTurn()
-            withTimeout(2_000) { run.join() }
-
-            val response = savedEvents.filterIsInstance<ToolResponseEvent>().single()
-            response.toolRequestId shouldBe "interrupted"
-            response.success shouldBe false
-            response.output shouldBe MessageContent.Text(CaseRuntime.INTERRUPTED_TOOL_OUTPUT)
-            // Answered before the turn is closed, so the history reads request → response → finished.
-            savedEvents.indexOf(response) shouldBe savedEvents.indexOfFirst { it is AgentFinishedEvent } - 1
-        }
-
-        "a tool call interrupted before a message sent during the turn still gets a failed response" {
-            // The message sent while the agent works becomes the last user message, after the tool call.
-            val runtimeId = UUID.randomUUID()
-            val savedEvents = CopyOnWriteArrayList<CaseEvent>()
-            val agentStarted = CompletableDeferred<Unit>()
-            lateinit var runtime: CaseRuntime
-            runtime =
-                CaseRuntime(
-                    id = runtimeId,
-                    namespaceId = namespaceId,
-                    caseCreatedAt = Instant.EPOCH,
-                    updateStatusCallback = { _, _ -> },
-                    storeEvent = { event -> event.also { savedEvents += it } },
-                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
-                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
-                    runAgent = { _, _, _, _, _ ->
-                        runtime.pushEvents(
-                            listOf(
-                                ToolRequestEvent(
-                                    namespaceId = namespaceId,
-                                    caseId = runtimeId,
-                                    toolRequestId = "interrupted",
-                                    toolName = "tool",
-                                    args = "{}",
-                                ),
-                            ),
-                        )
-                        runtime.addUserMessage(userActor, listOf(MessageContent.Text("and also this")))
-                        agentStarted.complete(Unit)
-                        awaitCancellation()
-                    },
-                )
-            runtime.addUserMessage(userActor, userMessage)
-            val run = launch { runtime.run() }
-            withTimeout(2_000) { agentStarted.await() }
-
-            runtime.requestInterrupt()
-            runtime.cancelInterruptedTurn()
-            withTimeout(2_000) { run.join() }
-
-            val response = savedEvents.filterIsInstance<ToolResponseEvent>().single()
-            response.toolRequestId shouldBe "interrupted"
-            response.success shouldBe false
-            runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
 
         "requestKill cancels a turn suspended in the agent and ends the case KILLED" {

@@ -12,11 +12,8 @@ import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
-import io.whozoss.agentos.sdk.caseEvent.PendingConfirmationEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
-import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
-import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import kotlinx.coroutines.CancellationException
@@ -451,8 +448,6 @@ class CaseRuntime(
      */
     private suspend fun executeTurn() {
         logger.info { "[CaseRuntime $id] run() started" }
-        // Bounds the events a cancellation must close: a message sent during the turn does not start a new one.
-        val startedAt = Instant.now()
         updateStatus(CaseStatus.RUNNING)
         iterationCount = 0
 
@@ -473,7 +468,7 @@ class CaseRuntime(
             if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
             updateStatus(finalStatus)
         } catch (e: CancellationException) {
-            withContext(NonCancellable) { closeCancelledTurn(startedAt) }
+            withContext(NonCancellable) { closeCancelledTurn() }
             throw e
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
@@ -486,75 +481,39 @@ class CaseRuntime(
     private fun stoppedStatus(): CaseStatus = if (killRequested.get()) CaseStatus.KILLED else CaseStatus.IDLE
 
     /**
-     * Close a cancelled turn: answer the tool calls the cancellation interrupted (otherwise the next
-     * turn would replay them without an outcome), emit the [AgentFinishedEvent] the agent could not
-     * emit (otherwise a rehydration would restart it from its [AgentRunningEvent]), then publish the
-     * final status. Each step is best-effort: a store failure must not replace the cancellation.
+     * Close a cancelled turn: emit the [AgentFinishedEvent] the agent could not emit (otherwise a
+     * rehydration would restart it from its [AgentRunningEvent]), then publish the final status.
+     * Each step is best-effort: a store failure must not replace the cancellation.
      */
-    private fun closeCancelledTurn(startedAt: Instant) {
+    private fun closeCancelledTurn() {
         commandQueue.clear()
         pendingQuestionResumptions.clear()
         val status = stoppedStatus()
         logger.info { "[CaseRuntime $id] Turn cancelled → $status" }
-        closingEventsOfCancelledTurn(startedAt).forEach { event ->
-            runCatching { storeAndEmitEvent(event) }
-                .onFailure { e -> logger.error(e) { "[CaseRuntime $id] Could not close the cancelled turn" } }
-        }
+        runCatching { openAgentOfCurrentTurn()?.let(::storeAndEmitEvent) }
+            .onFailure { e -> logger.error(e) { "[CaseRuntime $id] Could not close the cancelled turn" } }
         runCatching { updateStatus(status) }
             .onFailure { e -> logger.error(e) { "[CaseRuntime $id] Could not publish status $status" } }
     }
 
     /**
-     * Events closing a turn started at [startedAt], in order: a failed [ToolResponseEvent] for each tool
-     * call made since then and left without a response, then the [AgentFinishedEvent] of the agent still
-     * running, if the latest orchestration event since the last user message does not close it already.
-     * A tool call waiting for the user's confirmation is not interrupted: it keeps waiting for the decision.
-     *
-     * Tool calls are bounded by [startedAt], not by the last user message: a message sent while the agent
-     * works comes after the tool calls it may have interrupted. The orchestration events are bounded by
-     * the last user message, as [processNextStep] reads them: the selection of the agent is stored with
-     * that message, before the turn starts.
+     * The [AgentFinishedEvent] closing the agent still running in the current turn, or null when the
+     * latest orchestration event since the last user message already closes it.
      */
-    private fun closingEventsOfCancelledTurn(startedAt: Instant): List<CaseEvent> {
+    private fun openAgentOfCurrentTurn(): AgentFinishedEvent? {
         val events = eventList.getAll()
-        val answeredIds =
-            events.mapNotNullTo(mutableSetOf()) {
-                when (it) {
-                    is ToolResponseEvent -> it.toolRequestId
-                    is PendingConfirmationEvent -> it.toolRequestId
-                    else -> null
-                }
-            }
-        val interruptedToolCalls =
-            events
-                .filterIsInstance<ToolRequestEvent>()
-                .filter { !it.timestamp.isBefore(startedAt) && it.toolRequestId !in answeredIds }
-                .map { request ->
-                    ToolResponseEvent(
-                        namespaceId = namespaceId,
-                        caseId = id,
-                        toolRequestId = request.toolRequestId,
-                        toolName = request.toolName,
-                        output = MessageContent.Text(INTERRUPTED_TOOL_OUTPUT),
-                        success = false,
-                    )
-                }
         val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
         val lastOrchestration =
-            events.drop(lastUserMessageIndex + 1).lastOrNull {
-                it is AgentFinishedEvent || it is AgentRunningEvent || it is AgentSelectedEvent
-            }
-        val openAgent =
+            events
+                .drop(lastUserMessageIndex + 1)
+                .lastOrNull { it is AgentFinishedEvent || it is AgentRunningEvent || it is AgentSelectedEvent }
+        val (agentId, agentName) =
             when (lastOrchestration) {
                 is AgentRunningEvent -> lastOrchestration.agentId to lastOrchestration.agentName
                 is AgentSelectedEvent -> lastOrchestration.agentId to lastOrchestration.agentName
-                else -> null
+                else -> return null
             }
-        val agentFinished =
-            openAgent?.let { (agentId, agentName) ->
-                AgentFinishedEvent(namespaceId = namespaceId, caseId = id, agentId = agentId, agentName = agentName)
-            }
-        return interruptedToolCalls + listOfNotNull(agentFinished)
+        return AgentFinishedEvent(namespaceId = namespaceId, caseId = id, agentId = agentId, agentName = agentName)
     }
 
     /**
@@ -875,10 +834,6 @@ class CaseRuntime(
 
         /** Multiplier applied to [REDIRECT_SUSPICION_THRESHOLD] to derive the hard stop. */
         private const val REDIRECT_FORCE_STOP_FACTOR = 3
-
-        /** Output of a tool call interrupted by a stop: the next turn must not take it as done. */
-        internal const val INTERRUPTED_TOOL_OUTPUT =
-            "Interrupted: the case was stopped before this tool returned. Its effects may be partial."
 
         /**
          * Maximum number of times the same agent may be selected within a single user turn.
