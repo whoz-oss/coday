@@ -124,8 +124,6 @@ $redirectableAgents
 </AvailableAgentsForHandoff>
     *   **YES:** Proceed to the next check.
     
-Review carefully and analyze critically the data return by tools those are factual information but they may be not completely adapted, enough, too much to the user need.
-
 **Non-discrimination safeguard:**
 Do not plan steps that would discriminate based on gender, ethnicity, religion, age, physical appearance, or any other protected attribute. If the user's request implies such a step, your next action must be `Answer` — clarify with the user that this cannot be done.
 
