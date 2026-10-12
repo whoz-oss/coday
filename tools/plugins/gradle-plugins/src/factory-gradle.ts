@@ -5,12 +5,26 @@ import { basename, dirname } from 'path'
 // ---------------------------------------------------------------------------
 // Factory (factory/) Gradle plugin
 //
-// Sole purpose: set manifestRootsToUpdate: [] for every factory JVM project so
-// that the global nx.json "manifestRootsToUpdate": ["apps/{projectName}"] is
-// overridden. Factory projects have no package.json — they are published via
-// Gradle, not npm. Also infers a no-op nx-release-publish target so nx release
-// does not error when it tries to publish these projects.
+// Mirrors agentos-gradle.ts: infers build, assemble, test, clean, publish and
+// nx-release-publish targets for every factory JVM project that has a
+// project.json. Project-specific targets (bootJar, bootRun, deploy-plugin,
+// openapi) stay in each project's project.json.
 // ---------------------------------------------------------------------------
+
+const FACTORY_GRADLE_INPUTS = [
+  'default',
+  '{projectRoot}/build.gradle.kts',
+  '{workspaceRoot}/factory/gradle/libs.versions.toml',
+  '{workspaceRoot}/factory/settings.gradle.kts',
+]
+
+// For build/test targets: depend on factory-sdk:build to ensure the SDK is
+// fully verified before downstream compilation or testing.
+const SDK_BUILD_DEPENDENCY = { target: 'build', projects: ['factory-sdk'] }
+
+// For assemble/publish targets: depend on factory-sdk:assemble only.
+// SDK tests already ran in validate.yml on every PR.
+const SDK_ASSEMBLE_DEPENDENCY = { target: 'assemble', projects: ['factory-sdk'] }
 
 // Matches all build.gradle.kts files one level deep under factory/
 // e.g. factory/factory-sdk/build.gradle.kts
@@ -41,6 +55,11 @@ function createFactoryNodesInternal(configFilePath: string, context: CreateNodes
 }
 
 export function buildFactoryProjectConfig(projectDir: string, projectName: string): CreateNodesResult {
+  // factory-sdk is the root dependency — it has no SDK dependency of its own.
+  const isSdk = projectName === 'factory-sdk'
+  const buildDependsOn = isSdk ? [] : [SDK_BUILD_DEPENDENCY]
+  const assembleDependsOn = isSdk ? [] : [SDK_ASSEMBLE_DEPENDENCY]
+
   return {
     projects: {
       [projectDir]: {
@@ -52,17 +71,67 @@ export function buildFactoryProjectConfig(projectDir: string, projectName: strin
           },
         },
         targets: {
+          build: {
+            executor: 'nx:run-commands',
+            cache: true,
+            inputs: FACTORY_GRADLE_INPUTS,
+            outputs: ['{projectRoot}/build'],
+            options: {
+              command: `./gradlew :${projectName}:build`,
+              cwd: 'factory',
+            },
+            dependsOn: buildDependsOn,
+          },
+          assemble: {
+            executor: 'nx:run-commands',
+            cache: true,
+            inputs: FACTORY_GRADLE_INPUTS,
+            outputs: ['{projectRoot}/build'],
+            options: {
+              command: `./gradlew :${projectName}:assemble`,
+              cwd: 'factory',
+            },
+            dependsOn: assembleDependsOn,
+          },
+          test: {
+            executor: 'nx:run-commands',
+            cache: false,
+            inputs: FACTORY_GRADLE_INPUTS,
+            outputs: ['{projectRoot}/build/test-results', '{projectRoot}/build/reports'],
+            options: {
+              command: `./gradlew :${projectName}:test`,
+              cwd: 'factory',
+            },
+            dependsOn: isSdk ? ['build'] : ['build', SDK_BUILD_DEPENDENCY],
+          },
+          clean: {
+            executor: 'nx:run-commands',
+            cache: false,
+            options: {
+              command: `./gradlew :${projectName}:clean`,
+              cwd: 'factory',
+            },
+          },
           'nx-release-publish': {
             executor: 'nx:run-commands',
-            // No-op: real publishing happens via Gradle in the publish-factory-artifacts CI job.
+            // No-op: real publishing happens via the `publish` target below.
             dependsOn: [],
             options: {
               command: `echo '${projectName} published via Gradle in CI'`,
             },
           },
+          publish: {
+            executor: 'nx:run-commands',
+            cache: false,
+            options: {
+              command: `./gradlew :${projectName}:publish`,
+              cwd: 'factory',
+            },
+            // `assemble` (no tests) is sufficient — tests already ran in validate.yml on every PR.
+            // Gradle's own `publish` task already depends on `assemble` internally.
+            dependsOn: ['assemble'],
+          },
         },
-        // Note: build, test, clean, assemble targets are declared explicitly in each
-        // factory project's project.json (no inference needed — factory deps vary per project).
       },
     },
   }

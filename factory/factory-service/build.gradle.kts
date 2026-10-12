@@ -6,6 +6,7 @@ plugins {
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.springdoc.openapi)
+    `maven-publish`
 }
 
 group = "io.whozoss.factory"
@@ -172,6 +173,54 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
     workingDir = projectDir
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifact(tasks.named("bootJar"))
+
+            pom {
+                name.set("Factory Service")
+                description.set("Factory Service — autonomous Kotlin/Spring Boot backend for the Factory")
+                url.set("https://github.com/whoz-oss/coday")
+
+                licenses {
+                    license {
+                        name.set("Apache License 2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("whoz-oss")
+                        name.set("Whoz OSS")
+                        email.set("oss@whoz.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/whoz-oss/coday.git")
+                    developerConnection.set("scm:git:ssh://github.com/whoz-oss/coday.git")
+                    url.set("https://github.com/whoz-oss/coday")
+                }
+            }
+        }
+    }
+
+    repositories {
+        mavenLocal()
+
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/whoz-oss/coday")
+            credentials {
+                username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }
 
 // ========================================
