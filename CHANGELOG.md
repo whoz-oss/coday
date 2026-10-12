@@ -1,3 +1,14 @@
+## 3.33.0 (2026-10-12)
+
+### 🚀 Features
+
+- update anthropic and google models ([d0f41fb1](https://github.com/whoz-oss/coday/commit/d0f41fb1))
+- update anthropic and google models ([#1441](https://github.com/whoz-oss/coday/pull/1441))
+
+### ❤️ Thank You
+
+- David Palita
+
 ## 3.32.0 (2026-10-12)
 
 ### 🚀 Features
