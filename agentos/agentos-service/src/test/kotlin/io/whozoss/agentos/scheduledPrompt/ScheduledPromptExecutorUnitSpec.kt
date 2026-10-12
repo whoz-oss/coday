@@ -25,6 +25,7 @@ import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.User
@@ -169,7 +170,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         caseService: CaseService,
         permissionService: PermissionService,
         userService: UserService,
-        userContextProvider: UserContextProvider? = null,
+        userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
     ) = ScheduledPromptExecutor(
         scheduledPromptRepository = spRepo,
         runRepository = runRepo,
@@ -178,7 +179,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         promptService = promptService,
         agentConfigService = agentConfigService,
         permissionService = permissionService,
-        userContextProvider = userContextProvider,
+        userSessionContextResolver = userSessionContextResolver,
         caseService = caseService,
         properties = properties,
         clock = clock,
@@ -581,6 +582,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 permissionService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 caseService = caseService,
                 properties = shortTimeoutProperties,
                 clock = clock,
@@ -962,7 +964,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                userContextProvider = provider,
+                userSessionContextResolver = UserSessionContextResolver(provider),
             ).processUserRun(userRun)
 
             val sessionContextSlot = slot<Map<String, Any?>>()
@@ -1019,7 +1021,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                userContextProvider = provider,
+                userSessionContextResolver = UserSessionContextResolver(provider),
             ).processUserRun(userRun)
 
             val sessionContextSlot = slot<Map<String, Any?>>()
@@ -1067,7 +1069,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                userContextProvider = provider,
+                userSessionContextResolver = UserSessionContextResolver(provider),
             ).processUserRun(userRun)
 
             // UserRun stays RUNNING — transient failure, lease will expire and it will be reclaimed
@@ -1107,7 +1109,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                userContextProvider = provider,
+                userSessionContextResolver = UserSessionContextResolver(provider),
             ).processUserRun(userRun)
 
             val updated = userRunRepo.all().first { it.id == userRun.id }
@@ -1147,7 +1149,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                userContextProvider = provider,
+                userSessionContextResolver = UserSessionContextResolver(provider),
             ).processUserRun(userRun)
 
             // UserRun stays RUNNING — lease will expire and it will be reclaimed on next tick
@@ -1335,6 +1337,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 permissionService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 caseService = caseService,
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
@@ -1396,6 +1399,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 permissionService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 caseService = caseService,
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
@@ -1464,6 +1468,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = promptService,
                 agentConfigService = agentConfigService,
                 permissionService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 caseService = caseService,
                 properties = SchedulerProperties(batchSize = 10, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
@@ -1526,6 +1531,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 promptService = mockk(relaxed = true),
                 agentConfigService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
+                userSessionContextResolver = UserSessionContextResolver(),
                 caseService = mockk(relaxed = true),
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, pausedPollDelayMs = 10L),
                 clock = clock,
@@ -1590,7 +1596,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                userContextProvider = provider,
+                userSessionContextResolver = UserSessionContextResolver(provider),
             ).processUserRun(userRun)
 
             // Execution completes normally — UserRun is DONE

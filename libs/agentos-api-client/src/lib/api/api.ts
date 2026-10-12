@@ -1,5 +1,7 @@
 export * from './agent-config-controller.service'
 import { AgentConfigControllerService } from './agent-config-controller.service'
+export * from './agent-config-defaults-controller.service'
+import { AgentConfigDefaultsControllerService } from './agent-config-defaults-controller.service'
 export * from './ai-model-controller.service'
 import { AiModelControllerService } from './ai-model-controller.service'
 export * from './ai-provider-controller.service'
@@ -12,6 +14,8 @@ export * from './case-event-rest-controller.service'
 import { CaseEventRestControllerService } from './case-event-rest-controller.service'
 export * from './case-membership-controller.service'
 import { CaseMembershipControllerService } from './case-membership-controller.service'
+export * from './case-workspace-controller.service'
+import { CaseWorkspaceControllerService } from './case-workspace-controller.service'
 export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
@@ -42,6 +46,8 @@ export * from './skill-controller.service'
 import { SkillControllerService } from './skill-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
+export * from './tool-invoke-controller.service'
+import { ToolInvokeControllerService } from './tool-invoke-controller.service'
 export * from './usage-configuration-controller.service'
 import { UsageConfigurationControllerService } from './usage-configuration-controller.service'
 export * from './usage-record-controller.service'
@@ -52,12 +58,14 @@ export * from './user-group-controller.service'
 import { UserGroupControllerService } from './user-group-controller.service'
 export const APIS = [
   AgentConfigControllerService,
+  AgentConfigDefaultsControllerService,
   AiModelControllerService,
   AiProviderControllerService,
   AuthSettingControllerService,
   CaseControllerService,
   CaseEventRestControllerService,
   CaseMembershipControllerService,
+  CaseWorkspaceControllerService,
   ExchangeControllerService,
   FeedbackControllerService,
   IntegrationConfigControllerService,
@@ -73,6 +81,7 @@ export const APIS = [
   ScheduledPromptControllerService,
   SkillControllerService,
   SseService,
+  ToolInvokeControllerService,
   UsageConfigurationControllerService,
   UsageRecordControllerService,
   UserControllerService,

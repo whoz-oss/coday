@@ -2,7 +2,6 @@ package io.whozoss.agentos.prompt
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
-import org.springframework.beans.factory.annotation.Qualifier
 import io.whozoss.agentos.entity.EntityCrudDelegate
 import io.whozoss.agentos.entity.ExternalIdentifierResolver
 import io.whozoss.agentos.entity.GetByIdsRequest
@@ -13,6 +12,8 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.OverlayScopeAuthorizer
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.api.prompt.PromptApi
+import io.whozoss.agentos.sdk.api.prompt.PromptBatchTranslateRequest
+import io.whozoss.agentos.sdk.api.prompt.PromptBatchTranslationDto
 import io.whozoss.agentos.sdk.api.prompt.PromptDto
 import io.whozoss.agentos.sdk.api.prompt.PromptEffectiveRequest
 import io.whozoss.agentos.sdk.api.prompt.PromptParameterDto
@@ -24,6 +25,7 @@ import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
 import jakarta.validation.Valid
 import mu.KLogging
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -53,7 +55,7 @@ import io.whozoss.agentos.sdk.api.common.GetByIdsRequest as SdkGetByIdsRequest
  * - `(null, user)`   → user-global (authenticated only)
  * - `(ns, user)`     → user × namespace (READ on namespace)
  *
- * `body.userId` must equal the authenticated user’s id when supplied (mass-assignment guard).
+ * `body.userId` must equal the authenticated user's id when supplied (mass-assignment guard).
  *
  * **Mass-assignment guard on PUT**: [namespaceId], [userId] and [agentConfigId] are
  * immutable post-create — preserved from the persisted entity.
@@ -354,6 +356,43 @@ class PromptController(
                 callerNamespaceId = callerNamespaceId,
             )
         return PromptTranslationDto(title = translation.title, content = translation.content)
+    }
+
+    @Operation(
+        summary = "Batch-translate a list of prompts into a target language",
+        description =
+            "Translates each prompt in `ids` into `languageCode` using the same caching and " +
+                "LLM-fallback semantics as `POST /{id}/translations/{languageCode}`. " +
+                "The response list preserves the order of the input `ids`. " +
+                "Prompts for which the caller lacks READ permission are silently omitted from the result. " +
+                "For namespace-scoped prompts the namespace is inferred from each prompt itself. " +
+                "For platform-scoped prompts (namespaceId IS NULL on the prompt), " +
+                "at least one of `namespaceId` / `namespaceExternalId` is required in the request body.",
+    )
+    @PostMapping("/translations/{languageCode}", consumes = [MediaType.APPLICATION_JSON_VALUE])
+    @PreAuthorize("isAuthenticated()")
+    override fun translateBatch(
+        @PathVariable languageCode: String,
+        @Valid @RequestBody request: PromptBatchTranslateRequest,
+    ): List<PromptBatchTranslationDto> {
+        val callerNamespaceId =
+            if (request.namespaceId != null || request.namespaceExternalId != null) {
+                externalIdentifierResolver.resolveNamespaceId(
+                    id = request.namespaceId,
+                    externalId = request.namespaceExternalId,
+                )
+            } else {
+                null
+            }
+        val currentUserId = userService.getCurrentUser().id.toString()
+
+        return promptService
+            .translateBatch(
+                ids = request.ids,
+                targetLanguage = languageCode,
+                callerNamespaceId = callerNamespaceId,
+                currentUserId = currentUserId,
+            ).map { PromptBatchTranslationDto(id = it.id, title = it.title, content = it.content) }
     }
 
     private fun PromptParameterDto.toDomain(): PromptParameter =

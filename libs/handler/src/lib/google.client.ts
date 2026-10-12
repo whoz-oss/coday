@@ -18,13 +18,14 @@ export class GoogleClient extends OpenaiClient {
       },
     },
     {
-      name: 'gemini-3.6-flash',
+      name: 'gemini-3.8-flash',
       alias: 'BIG',
       contextWindow: 1000000,
       temperature: 0.8,
       maxOutputTokens: 65536,
       price: {
         inputMTokens: 1.5,
+        cacheWrite: 0.5,
         cacheRead: 0.15,
         outputMTokens: 7.5,
       },

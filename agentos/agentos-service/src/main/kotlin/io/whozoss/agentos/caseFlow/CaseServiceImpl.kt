@@ -30,9 +30,9 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -58,6 +58,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -86,6 +87,8 @@ class CaseServiceImpl(
      * `agentos.git.workspaces.enabled`). Null: every run starts immediately, as it always did.
      */
     private val caseLaunchGate: CaseLaunchGate? = null,
+    /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
+    private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -106,7 +109,15 @@ class CaseServiceImpl(
 
     /** Turns held back by [caseLaunchGate]; null without a gate. */
     private val gatedRuns =
-        caseLaunchGate?.let { GatedRunLauncher(it, scope, activeRuntimes::get, { id -> findById(id)?.status }, ::storeEvent) }
+        caseLaunchGate?.let {
+            GatedRunLauncher(
+                it,
+                scope,
+                activeRuntimes::get,
+                { id -> findById(id)?.status },
+                ::storeEvent,
+            )
+        }
 
     override fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean =
         caseIds.any { gatedRuns?.isAdmitted(it) == true || activeRuntimes[it]?.isRunning() == true }
@@ -129,7 +140,9 @@ class CaseServiceImpl(
     // ======================================================
 
     @Transactional
-    override fun create(entity: Case): Case {
+    override fun create(entity: Case): Case = caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
+
+    private fun createCase(entity: Case): Case {
         checkCaseCreationPreconditions(entity)
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
@@ -147,6 +160,7 @@ class CaseServiceImpl(
         // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
         // transaction, so a failed link rolls the case back instead of leaving an orphan.
         saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
+        caseWorkspaceProvisioning?.onCaseCreated(saved)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
         // Watcher is started inside buildRuntime via .also { startEvictionWatcher(...) }
@@ -490,8 +504,7 @@ class CaseServiceImpl(
                 .filterIsInstance<MessageContent.Text>()
                 .firstOrNull()
                 ?.content
-                ?.trim()
-                ?.let { MENTION_REGEX.find(it)?.groupValues?.get(1) }
+                ?.let { AgentMention.extractName(it) }
 
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
         val userId = pastEvents.lastUserIdOrNull()
@@ -1055,7 +1068,7 @@ class CaseServiceImpl(
                 .onFailure { killErr ->
                     logger.warn(killErr) { "Failed to kill orphaned sub-case ${subCase.id} after permission grant failure" }
                 }
-            throw IllegalStateException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
+            throw AccessDeniedException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
 
         val runtime = activeRuntimes[subCase.id]!!
@@ -1184,18 +1197,5 @@ class CaseServiceImpl(
 
         /** Maximum character length for a sub-case title derived from the task description. */
         private const val MAX_SUBCASE_TITLE_LENGTH = 50
-
-        /**
-         * Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`.
-         *
-         * Agent names may contain letters, digits, hyphens and underscores only.
-         * Using `\S+` was too broad: a message like `@inspector https://...` would
-         * capture the entire `inspector https://...` string when the separator is a
-         * non-breaking space (U+00A0) or any other non-ASCII whitespace character,
-         * because `\S` in Java/Kotlin regex only excludes ASCII whitespace by default.
-         * The tighter character class `[\w-]+` stops at the first space-like or
-         * special character, ensuring only the agent name token is captured.
-         */
-        private val MENTION_REGEX = """^@([\w-]+)""".toRegex()
     }
 }

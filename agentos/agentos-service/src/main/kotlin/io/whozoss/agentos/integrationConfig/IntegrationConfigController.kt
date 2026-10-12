@@ -194,7 +194,7 @@ class IntegrationConfigController(
                 "`body.userId` (when supplied) MUST equal the authenticated user's id. " +
                 "A `namespaceId` that does not exist returns 404. " +
                 "Integration types listed in `agentos.integrations.user-scope-denied-types` " +
-                "(default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`) cannot be created in either user scope (403).",
+                "(default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created in either user scope (403).",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")

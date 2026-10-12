@@ -64,4 +64,23 @@ interface PromptApi : EntityCrudApi<PromptDto> {
         languageCode: String,
         request: PromptTranslateRequest,
     ): PromptTranslationDto
+
+    /**
+     * POST /api/prompts/translations/{languageCode} — batch-translate a list of prompts.
+     *
+     * Translates each prompt in [request.ids] into [languageCode] using the same
+     * caching and LLM-fallback semantics as the single-prompt [translate] endpoint.
+     * The response list preserves the order of the input [ids].
+     *
+     * Prompts for which the caller lacks READ permission are silently omitted from
+     * the result (same `@HideOnAccessDenied` convention used elsewhere).
+     *
+     * For namespace-scoped prompts the namespace is inferred from each prompt itself.
+     * For platform-scoped prompts at least one of [namespaceId] / [namespaceExternalId]
+     * must be provided in the request body.
+     */
+    fun translateBatch(
+        languageCode: String,
+        request: PromptBatchTranslateRequest,
+    ): List<PromptBatchTranslationDto>
 }

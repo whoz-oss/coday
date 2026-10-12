@@ -33,7 +33,8 @@
     flex-direction: column;
     overflow: hidden;
 
-    > * {
+    > agentos-case-chat,
+    > agentos-case-home {
       flex: 1;
       min-height: 0;
     }

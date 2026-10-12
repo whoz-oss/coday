@@ -1,0 +1,79 @@
+package io.whozoss.agentos.git
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.exchange.ExchangeCapabilityService
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.security.declarative.HideOnAccessDenied
+import io.whozoss.agentos.user.UserService
+import org.springframework.http.MediaType
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.*
+import java.util.UUID
+
+@RestController
+@ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
+@RequestMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
+class CaseWorkspaceController(
+    private val roots: GitExchangeRootResolver,
+    private val status: GitWorkspaceStatusService,
+    private val lifecycle: GitWorkspaceLifecycleService,
+    private val workspaceChanges: GitWorkspaceChangesService,
+    private val bindings: CaseResourceBindingService,
+    private val users: UserService,
+    private val permissions: PermissionService,
+    private val capabilities: ExchangeCapabilityService,
+) {
+    @GetMapping("/api/cases/{caseId}/workspace")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    @HideOnAccessDenied
+    fun get(@PathVariable caseId: UUID): CaseWorkspaceView = status.view(authorizedRoot(caseId, Action.READ))
+
+    @GetMapping("/api/namespaces/{namespaceId}/workspaces")
+    @PreAuthorize("hasPermission(#namespaceId, 'Namespace', 'READ')")
+    fun list(@PathVariable namespaceId: UUID): List<CaseWorkspaceView> = bindings.findByParent(namespaceId)
+        .filter { canRead(it.rootCaseId) }.mapNotNull { viewUnlessVanished(it.rootCaseId) }
+
+    @GetMapping("/api/cases/{caseId}/workspace/changes")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    fun changes(@PathVariable caseId: UUID): ExchangeEnvironment = workspaceChanges.environment(authorizedRoot(caseId, Action.READ))
+
+    @GetMapping("/api/cases/{caseId}/workspace/diff")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'READ')")
+    fun diff(@PathVariable caseId: UUID, @RequestParam path: String): ExchangeFileDiff =
+        workspaceChanges.diff(authorizedRoot(caseId, Action.READ), path)
+
+    @PostMapping("/api/cases/{caseId}/workspace/refresh")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    fun refresh(@PathVariable caseId: UUID): CaseWorkspaceView {
+        val root = authorizedRoot(caseId, Action.WRITE)
+        root.binding?.let { status.refresh(it, root.repositoryPath.toAbsolutePath().normalize()) }
+        return get(caseId)
+    }
+
+    @PostMapping("/api/cases/{caseId}/workspace/retry")
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'WRITE')")
+    fun retry(@PathVariable caseId: UUID, @RequestBody(required = false) request: WorkspaceRetryRequest?): CaseWorkspaceView {
+        authorizedRoot(caseId, Action.WRITE)
+        if (request?.acknowledgeSetupReplay == true) lifecycle.acknowledgeSetup(caseId) else lifecycle.retry(caseId)
+        return get(caseId)
+    }
+
+    private fun authorizedRoot(caseId: UUID, action: Action): GitExchangeRoot = roots.resolveGit(caseId).also {
+        capabilities.requireCaseAccess(users.getCurrentUser().id.toString(), caseId, it.exchange, action)
+    }
+
+    /** A root case removed from the store must not hide every other workspace of the namespace. */
+    private fun viewUnlessVanished(rootCaseId: UUID): CaseWorkspaceView? =
+        try {
+            get(rootCaseId)
+        } catch (e: ResourceNotFoundException) {
+            null
+        }
+
+    private fun canRead(caseId: UUID): Boolean = permissions.hasPermission(
+        users.getCurrentUser().id.toString(), EntityType.CASE, caseId.toString(), Action.READ,
+    )
+}

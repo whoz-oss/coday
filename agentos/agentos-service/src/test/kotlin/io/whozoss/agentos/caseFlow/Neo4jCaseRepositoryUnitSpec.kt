@@ -45,7 +45,7 @@ class Neo4jCaseRepositoryUnitSpec :
             Case(
                 metadata = EntityMetadata(modified = modified),
                 namespaceId = namespaceId,
-                status = CaseStatus.PENDING,
+                status = CaseStatus.CREATED,
             )
 
         beforeTest {

@@ -28,7 +28,10 @@ class CaseResourceBindingSchemaInitializer(
         ensureIdConstraint()
         ensureRootCaseUniqueConstraint()
         ensureNamespaceIndex()
+        ensureStatusIndex()
+        ensureSweepCursorIndex()
         backfillVersion()
+        backfillSetupState()
     }
 
     private fun assertNoDuplicateRootCaseKeys() {
@@ -86,9 +89,52 @@ class CaseResourceBindingSchemaInitializer(
         logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_namespace_lookup' ensured" }
     }
 
+    /** Serves [CaseResourceBindingNodeNeo4jRepository.findActiveByStatusIn], the first page of the worker's sweeps. */
+    private fun ensureStatusIndex() {
+        neo4jClient
+            .query(
+                """
+                CREATE INDEX case_resource_binding_active_status IF NOT EXISTS
+                FOR (b:ActiveCaseResourceBinding) ON (b.status, b.created)
+                """.trimIndent(),
+            ).run()
+        logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_active_status' ensured" }
+    }
+
+    /**
+     * Serves [CaseResourceBindingNodeNeo4jRepository.findActiveByStatusInAfter]: the next pages of a
+     * sweep are read in `created, id` order, so a page stops after its limit without a sort.
+     */
+    private fun ensureSweepCursorIndex() {
+        neo4jClient
+            .query(
+                """
+                CREATE INDEX case_resource_binding_active_created_id IF NOT EXISTS
+                FOR (b:ActiveCaseResourceBinding) ON (b.created, b.id)
+                """.trimIndent(),
+            ).run()
+        logger.info { "[CaseResourceBindingSchema] index 'case_resource_binding_active_created_id' ensured" }
+    }
+
     /** Rows saved before [CaseResourceBindingNode.version] existed need one for optimistic locking. */
     private fun backfillVersion() {
         neo4jClient.query("MATCH (b:CaseResourceBinding) WHERE b.version IS NULL SET b.version = 0").run()
+    }
+
+    /** Rows saved before [CaseResourceBindingNode.setupState] kept the setup progress in two flags. */
+    private fun backfillSetupState() {
+        neo4jClient
+            .query(
+                """
+                MATCH (b:CaseResourceBinding) WHERE b.setupState IS NULL
+                SET b.setupState = CASE
+                    WHEN b.setupCompleted THEN 'COMPLETED'
+                    WHEN b.setupStarted THEN 'STARTED'
+                    ELSE 'NOT_STARTED'
+                END
+                REMOVE b.setupStarted, b.setupCompleted
+                """.trimIndent(),
+            ).run()
     }
 
     companion object : KLogging()

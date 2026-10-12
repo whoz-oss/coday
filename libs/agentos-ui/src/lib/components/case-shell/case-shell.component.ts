@@ -1,3 +1,5 @@
+import { CaseWorkspaceService } from '../../services/case-workspace.service'
+import { CaseWorkspaceComponent } from '../case-workspace/case-workspace.component'
 import {
   ChangeDetectionStrategy,
   Component,
@@ -41,6 +43,7 @@ import { ShellCaseSwitcherMobileComponent } from './shell-case-switcher-mobile/s
 @Component({
   selector: 'agentos-case-shell',
   imports: [
+    CaseWorkspaceComponent,
     CaseChatComponent,
     CaseHomeComponent,
     ShellSidebarComponent,
@@ -58,6 +61,7 @@ export class CaseShellComponent {
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
+  protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
   private readonly destroyRef = inject(DestroyRef)
 
@@ -152,7 +156,19 @@ export class CaseShellComponent {
 
   protected readonly selectedNamespace = signal<NamespaceListItem | null>(null)
 
+  protected readonly canWriteActiveCase = computed(() => {
+    const namespaceRole = this.namespaces().find((namespace) => namespace.id === this.namespaceId())?.role
+    const caseRole = this.cases().find((item) => item.id === this.activeCaseId())?.role
+    return this.isAdmin() || namespaceRole === 'ADMIN' || namespaceRole === 'SUPER-ADMIN' || caseRole === 'ADMIN'
+  })
+
   constructor() {
+    effect((cleanup) => {
+      const namespaceId = this.selectedNamespace()?.id
+      if (!namespaceId) return
+      const sub = this.workspaceService.watchNamespace(namespaceId).subscribe()
+      cleanup(() => sub.unsubscribe())
+    })
     // Load the current user eagerly so isAdmin() and userInitials() are available
     // as soon as the shell renders, without waiting for a /me navigation.
     if (!this.userState.currentUser()) {
@@ -228,6 +244,13 @@ export class CaseShellComponent {
   protected onCreateRequested(): void {
     this.router.navigate(['/agentos/home'], {
       queryParams: { ns: this.namespaceId() },
+    })
+  }
+
+  protected onSubCaseCreateRequested(parentCaseId: string): void {
+    this.mobileDrawerOpen.set(false)
+    this.router.navigate(['/agentos/home'], {
+      queryParams: { ns: this.namespaceId(), parentCase: parentCaseId },
     })
   }
 

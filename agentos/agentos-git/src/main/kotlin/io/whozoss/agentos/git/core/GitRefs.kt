@@ -18,6 +18,9 @@ object GitRefs {
     /** Last observed remote state of a family's branch, fetched without moving `refs/remotes/origin/`. */
     const val AGENTOS_OBSERVED: String = "refs/agentos/observed/"
 
+    /** Last commit of a removed worktree, kept reachable so local work is never garbage collected. */
+    const val AGENTOS_RETAINED: String = "refs/agentos/retained/"
+
     /** Scratch references advertised during a managed fetch negotiation. */
     const val AGENTOS_NEGOTIATION: String = "refs/agentos/negotiation"
 
