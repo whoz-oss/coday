@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http'
 import { provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideRouter } from '@angular/router'
-import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../core/models'
+import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../../core/models'
 import { ActionBarComponent, CancelIntent, ReplyIntent, RetryIntent } from './action-bar.component'
 
 const interaction: HumanInteraction = {
@@ -213,9 +213,63 @@ describe('ActionBarComponent', () => {
 
     const elements = Array.from(host.querySelectorAll('.blocker'))
     expect(elements).toHaveLength(4)
-    expect(elements[0]?.classList).toContain('blocker--waiting')
-    expect(elements[1]?.classList).toContain('blocker--blocked')
-    expect(elements[2]?.classList).toContain('blocker--cost')
-    expect(elements[3]?.classList).toContain('blocker--unknown')
+    expect(elements.some((el) => el.classList.contains('blocker--waiting'))).toBe(true)
+    expect(elements.some((el) => el.classList.contains('blocker--consequence'))).toBe(true)
+    expect(elements.some((el) => el.classList.contains('blocker--cost'))).toBe(true)
+    expect(elements.some((el) => el.classList.contains('blocker--unknown'))).toBe(true)
+  })
+
+  it('classifies ATTEMPT_FAILED and VERIFICATION_FAILED as real failures', () => {
+    const blockers: WorkflowBlocker[] = [
+      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
+      { code: 'VERIFICATION_FAILED', stepId: 'build', label: 'Verification failed' },
+    ]
+    const host = render([], blockers)
+
+    const elements = Array.from(host.querySelectorAll('.blocker--failure'))
+    expect(elements).toHaveLength(2)
+    // A group header for root failures should appear
+    expect(host.querySelector('.blocker-group-title--failure')).not.toBeNull()
+  })
+
+  it('groups STEP_BLOCKED as consequences, not root failures', () => {
+    const blockers: WorkflowBlocker[] = [
+      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Attempt failed' },
+      { code: 'STEP_BLOCKED', stepId: 'test', label: 'Test blocked' },
+      { code: 'STEP_BLOCKED', stepId: 'deploy', label: 'Deploy blocked' },
+    ]
+    const host = render([], blockers)
+
+    // Root failures: only the ATTEMPT_FAILED
+    expect(host.querySelectorAll('.blocker--failure')).toHaveLength(1)
+    // Consequences: both STEP_BLOCKED
+    expect(host.querySelectorAll('.blocker--consequence')).toHaveLength(2)
+    // Group header for consequences
+    expect(host.querySelector('.blocker-group-title--consequence')).not.toBeNull()
+  })
+
+  it('renders UNKNOWN_RUNTIME as indeterminate (distinct from failures)', () => {
+    const blockers: WorkflowBlocker[] = [{ code: 'UNKNOWN_RUNTIME', label: 'Unknown runtime state' }]
+    const host = render([], blockers)
+
+    expect(host.querySelector('.blocker--indeterminate')).not.toBeNull()
+    expect(host.querySelector('.blocker--failure')).toBeNull()
+    expect(host.querySelector('.blocker--consequence')).toBeNull()
+  })
+
+  it('supports multiple root failures simultaneously (does not pick only one)', () => {
+    const blockers: WorkflowBlocker[] = [
+      { code: 'ATTEMPT_FAILED', stepId: 'build', label: 'Build failed' },
+      { code: 'VERIFICATION_FAILED', stepId: 'test', label: 'Test failed' },
+    ]
+    const host = render([], blockers)
+
+    // Both must be rendered, not just the first
+    expect(host.querySelectorAll('.blocker--failure')).toHaveLength(2)
+    const failureTexts = Array.from(host.querySelectorAll('.blocker--failure .blocker-label')).map((el) =>
+      el.textContent?.trim()
+    )
+    expect(failureTexts).toContain('Build failed')
+    expect(failureTexts).toContain('Test failed')
   })
 })

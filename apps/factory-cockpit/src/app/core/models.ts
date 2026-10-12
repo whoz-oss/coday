@@ -2,12 +2,12 @@ export type SandboxStatus = 'working' | 'idle' | 'destroyed'
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'queued'
 export type Tone = 'violet' | 'cyan' | 'amber' | 'green' | 'blue' | 'red' | 'neutral'
 
-/** Segment de la barre de phases (request \u00b7 plan \u00b7 code \u00b7 build\u2026) */
+/** Segment de la barre de phases (request · plan · code · build…) */
 export interface PhaseSegment {
   key: string
   /** Nom lisible de la step (name du backend quand il diffère de l'id, ou libellé synthétique). */
   label?: string
-  ratio: number // part de la dur\u00e9e totale (0\u20131)
+  ratio: number // part de la durée totale (0–1)
   tone: Tone
   status: 'done' | 'failed' | 'cancelled' | 'indeterminate' | 'running' | 'waiting_human' | 'pending'
 }
@@ -84,7 +84,7 @@ export interface FactoryRun {
   /**
    * AgentOS case id of the workflow controller execution (snapshot
    * `controllerExecution.caseId`). This is the STARTING case created by the
-   * Factory controller to orchestrate the entire workflow run \u2014 not a
+   * Factory controller to orchestrate the entire workflow run — not a
    * question/attempt case. Absent when the backend exposes no controller case
    * (normal state when no agent step has executed yet).
    */
@@ -136,7 +136,7 @@ export interface CostSummary {
   unknownCostCount?: number
 }
 
-/* \u2500\u2500\u2500\u2500\u2500 Session \u2500\u2500\u2500\u2500\u2500 */
+/* ───── Session ───── */
 
 export interface SessionStep {
   key: string
@@ -157,23 +157,38 @@ export type TimelineStepStatus =
 
 export interface TimelineBlock {
   label: string
+  /**
+   * Stable step id (source step, not the attempt-suffixed composite id).
+   * Used as the selection key so clicking any attempt of the same step
+   * selects the same panel and the selection survives SSE refreshes.
+   */
   stepId?: string
   description?: string
   startSec: number
   endSec: number
   status: TimelineStepStatus
-  ticksSec?: number[] // instants d'\u00e9v\u00e9nements (petits traits)
+  ticksSec?: number[] // instants d'événements (petits traits)
   errorTicksSec?: number[]
+  /** Agent name of the attempt that produced this block, when known. */
+  agentName?: string
+  /** Attempt id of the attempt that produced this block, when known. */
+  attemptId?: string
+  /** Attempt number of the attempt that produced this block, when known. */
+  attemptNumber?: number
+  /** AgentOS case id of the attempt, when known. */
+  caseId?: string
+  /** Failure code of the attempt, when it failed. */
+  failureCode?: string
 }
 
 export interface TimelineLane {
   id: string
   label: string
-  subtitle: string // r\u00f4le ou mod\u00e8le
+  subtitle: string // rôle ou modèle
   kind: 'human' | 'workspace' | 'agent'
   tone: Tone
   contextPct?: number
-  request?: TimelineBlock // bloc plac\u00e9 dans la colonne \u00ab request \u00bb
+  request?: TimelineBlock // bloc placé dans la colonne « request »
   blocks: TimelineBlock[]
 }
 
@@ -182,8 +197,12 @@ export type RunEventType = 'phase_start' | 'log' | 'agent_start' | 'thinking' | 
 export interface RunEvent {
   time: string // HH:mm:ss
   type: RunEventType
-  tool?: string // read, write, bash, ls\u2026
+  tool?: string // read, write, bash, ls…
   text: string
+  /** Message body without the actor label, when the source exposes one. */
+  messageText?: string
+  /** Human-readable actor label for message detail views. */
+  actorLabel?: string
   durationSec?: number
 }
 
@@ -208,8 +227,30 @@ export interface AgentAttempt {
 }
 
 /**
+ * Stable selection key for a clicked timeline block.
+ *
+ * Carries the three identifiers needed to correlate the detail panel, the
+ * case link, AND the event log with the exact attempt that was clicked:
+ * - `stepId`  — stable across SSE refreshes (survives attempt retries)
+ * - `attemptId` — identifies the specific retry; absent for non-agent blocks
+ * - `caseId`  — AgentOS case of that attempt; absent when unknown
+ *
+ * Using only `stepId` as the selection key (the previous behaviour) caused
+ * the Events panel to always show the LAST attempt's events even when the
+ * user clicked an older retry bar.
+ */
+export interface BlockSelection {
+  /** Stable step id — used as the panel key and SSE-refresh anchor. */
+  stepId: string
+  /** Specific attempt id of the clicked block, when known. */
+  attemptId?: string
+  /** AgentOS case id of the clicked attempt, when known. */
+  caseId?: string
+}
+
+/**
  * One concrete entry rendered inside a {@link PhaseSection} (a gate, a real
- * output/evidence item, an agent configuration line\u2026). Only real fields are
+ * output/evidence item, an agent configuration line…). Only real fields are
  * carried; a missing field is left absent rather than fabricated.
  */
 export interface PhaseSectionItem {
@@ -315,7 +356,7 @@ export interface HumanInteraction {
   createdAt?: string
 }
 
-/* \u2500\u2500\u2500\u2500\u2500 Governed actions & blockers (backend authority) \u2500\u2500\u2500\u2500\u2500 */
+/* ───── Governed actions & blockers (backend authority) ───── */
 
 /** Stable `type` values of an {@link AllowedAction} (backend `WorkflowActionTypes`). */
 export type AllowedActionType = 'reply' | 'retry' | 'cancel_attempt' | 'continue_cost' | 'stop_cost'
@@ -440,4 +481,35 @@ export interface SessionDetail {
     workflowId?: string
     stepId?: string
   }
+  /**
+   * Per-step phase details indexed by stepId, built from the full steps list.
+   * Populated after enrichment so the UI can show the correct detail for the
+   * selected step instead of always showing the "active" phase.
+   */
+  phaseByStepId?: Map<string, PhaseDetail>
+
+  /**
+   * Events filtered by stepId, pre-computed from evidence + interactions.
+   *
+   * Keyed by stepId (same key used for panel selection). Each entry contains
+   * only the events that belong to that step (across all its attempts).
+   * Used by the Events panel when a step is selected but no specific attempt
+   * is targeted.
+   *
+   * Absent when no enrichment data is available (evidence not yet loaded).
+   */
+  eventsByStepId?: Map<string, RunEvent[]>
+
+  /**
+   * Events filtered by attemptId, pre-computed from evidence.
+   *
+   * Keyed by attemptId. Each entry contains only the events that can be
+   * correlated to that specific attempt (via `resultEvidenceId` or
+   * `attemptId` field on the evidence item).
+   *
+   * When an attempt has no correlated evidence the map entry is an empty
+   * array — this is distinct from the key being absent (which means the
+   * attempt was unknown at map-build time).
+   */
+  eventsByAttemptId?: Map<string, RunEvent[]>
 }

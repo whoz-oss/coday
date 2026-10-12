@@ -6,8 +6,10 @@ import {
   extractBlockers,
   extractInteractions,
   extractRealCost,
+  filterEventsForSelection,
   mapProjectionToFactoryRun,
   mapProjectionToLanes,
+  mapProjectionToPhaseByStepId,
   mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
   mapStepsToPhaseSegments,
@@ -422,14 +424,56 @@ describe('mappers', () => {
       expect(lanes).toHaveLength(1)
       expect(lanes[0]?.blocks).toEqual([
         expect.objectContaining({
-          label: 'Plan · attempt 1',
+          label: 'Plan \u00b7 attempt 1',
           stepId: 'plan',
           startSec: 0,
           endSec: 10,
           status: 'failed',
         }),
-        expect.objectContaining({ label: 'Plan · attempt 2', stepId: 'plan', startSec: 15, status: 'running' }),
+        expect.objectContaining({ label: 'Plan \u00b7 attempt 2', stepId: 'plan', startSec: 15, status: 'running' }),
       ])
+    })
+
+    it('propagates attempt metadata (agentName, attemptId, attemptNumber, caseId, failureCode) onto timeline blocks', () => {
+      const lanes = mapProjectionToLanes(
+        {
+          projection: {
+            steps: [
+              {
+                id: 'build',
+                name: 'Build',
+                status: 'failed',
+                responsibility: { kind: 'agent', name: 'builder' },
+              },
+            ],
+          },
+        },
+        { startedAt },
+        [
+          {
+            attemptId: 'a-1',
+            stepId: 'build',
+            attemptNumber: 1,
+            agentName: 'builder',
+            status: 'failed',
+            caseId: 'case-1',
+            failureCode: 'VERIFICATION_FAILED',
+            startedAt: isoOffset(0),
+            completedAt: isoOffset(30),
+          },
+        ]
+      )
+
+      const block = lanes[0]?.blocks[0]
+      expect(block).toMatchObject({
+        stepId: 'build',
+        agentName: 'builder',
+        attemptId: 'a-1',
+        attemptNumber: 1,
+        caseId: 'case-1',
+        failureCode: 'VERIFICATION_FAILED',
+        status: 'failed',
+      })
     })
 
     it('groups a code step into the workspace lane', () => {
@@ -983,6 +1027,390 @@ describe('mappers', () => {
       expect(extractBlockers(undefined)).toEqual([])
       expect(extractBlockers(null)).toEqual([])
       expect(extractBlockers({ foo: 'bar' })).toEqual([])
+    })
+  })
+
+  describe('mapProjectionToPhaseByStepId', () => {
+    it('builds a PhaseDetail for every known step id', () => {
+      const steps = projection.steps
+      const map = mapProjectionToPhaseByStepId(steps, 'running')
+      expect([...map.keys()].sort()).toEqual(['build', 'plan', 'request'].sort())
+    })
+
+    it('returns the correct detail for a specific step', () => {
+      const steps = projection.steps
+      const map = mapProjectionToPhaseByStepId(steps, 'running')
+      const buildDetail = map.get('build')
+      expect(buildDetail?.name).toBe('build')
+      expect(buildDetail?.stepId).toBe('build')
+      expect(buildDetail?.stepStatus).toBe('running')
+    })
+
+    it('populates attempt data for the correct step only', () => {
+      const steps = projection.steps
+      const attempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'builder',
+          status: 'running',
+          caseId: 'case-1',
+        },
+      ]
+      const map = mapProjectionToPhaseByStepId(steps, 'running', [], attempts)
+      const buildDetail = map.get('build')
+      expect(buildDetail?.agentName).toBe('builder')
+      expect(buildDetail?.caseId).toBe('case-1')
+      // plan step should have no attempt data
+      const planDetail = map.get('plan')
+      expect(planDetail?.caseId).toBeUndefined()
+    })
+
+    it('returns an empty map for an empty steps list', () => {
+      const map = mapProjectionToPhaseByStepId([], 'queued')
+      expect(map.size).toBe(0)
+    })
+  })
+
+  describe('mapProjectionToSessionDetail - phaseByStepId', () => {
+    it('exposes a phaseByStepId map with an entry for each step', () => {
+      const session = mapProjectionToSessionDetail(snapshot)
+      expect(session.phaseByStepId).toBeDefined()
+      expect([...(session.phaseByStepId?.keys() ?? [])].sort()).toEqual(['build', 'plan', 'request'].sort())
+    })
+
+    it('phaseByStepId entries reflect the correct step detail independently of the active phase', () => {
+      const attempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'plan',
+          attemptNumber: 1,
+          agentName: 'planner',
+          status: 'completed',
+          caseId: 'case-plan',
+        },
+        {
+          attemptId: 'a-2',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'builder',
+          status: 'running',
+          caseId: 'case-build',
+        },
+      ]
+      const session = mapProjectionToSessionDetail(snapshot, undefined, undefined, undefined, undefined, attempts)
+
+      // The active phase (build) is selected by default
+      expect(session.phase.stepId).toBe('build')
+      expect(session.phase.caseId).toBe('case-build')
+
+      // But phaseByStepId gives us the plan detail with its own attempt
+      const planPhase = session.phaseByStepId?.get('plan')
+      expect(planPhase?.stepId).toBe('plan')
+      expect(planPhase?.caseId).toBe('case-plan')
+      expect(planPhase?.agentName).toBe('planner')
+    })
+  })
+
+  describe('filterEventsForSelection', () => {
+    const startedAt = '2026-09-30T16:00:00.000Z'
+
+    const evidenceItems = [
+      {
+        evidenceId: 'ev-plan-1',
+        stepId: 'plan',
+        kind: 'tool',
+        createdAt: startedAt,
+        facts: { tool: 'read', text: 'plan.md' },
+      },
+      {
+        evidenceId: 'ev-build-1',
+        stepId: 'build',
+        kind: 'tool',
+        createdAt: startedAt,
+        facts: { tool: 'bash', text: 'npm test' },
+      },
+      {
+        evidenceId: 'ev-build-2',
+        stepId: 'build',
+        kind: 'tool',
+        createdAt: startedAt,
+        facts: { tool: 'write', text: 'output.txt' },
+      },
+    ]
+
+    const interactions = [
+      { interactionId: 'i-1', stepId: 'build', interactionType: 'approval', status: 'waiting', createdAt: startedAt },
+      { interactionId: 'i-2', stepId: 'plan', interactionType: 'notice', status: 'done', createdAt: startedAt },
+    ]
+
+    const attempts = [
+      {
+        attemptId: 'a-1',
+        stepId: 'build',
+        attemptNumber: 1,
+        agentName: 'builder',
+        status: 'failed',
+        caseId: 'case-1',
+        resultEvidenceId: 'ev-build-1',
+      },
+      {
+        attemptId: 'a-2',
+        stepId: 'build',
+        attemptNumber: 2,
+        agentName: 'builder',
+        status: 'running',
+        caseId: 'case-2',
+        resultEvidenceId: 'ev-build-2',
+      },
+    ]
+
+    it('returns all events when no stepId is provided (global view)', () => {
+      const allEvents = [
+        { time: '16:00:00', type: 'tool_call' as const, text: 'plan.md' },
+        { time: '16:00:01', type: 'tool_call' as const, text: 'npm test' },
+      ]
+      const result = filterEventsForSelection(allEvents, evidenceItems, [], [], undefined, undefined)
+      expect(result).toBe(allEvents)
+    })
+
+    it('filters events to only the selected step (step-scoped, no attemptId)', () => {
+      const result = filterEventsForSelection([], evidenceItems, interactions, attempts, 'build', undefined)
+      // Should include evidence from build step + interactions for build step
+      const texts = result.map((e) => e.text)
+      expect(texts).toContain('npm test')
+      expect(texts).toContain('output.txt')
+      // plan evidence must be excluded
+      expect(texts).not.toContain('plan.md')
+      // build interaction must be included
+      expect(result.some((e) => e.text.includes('approval'))).toBe(true)
+      // plan interaction must be excluded
+      expect(result.some((e) => e.text.includes('notice'))).toBe(false)
+    })
+
+    it('filters events to the specific attempt via resultEvidenceId (attempt-scoped)', () => {
+      const result = filterEventsForSelection([], evidenceItems, interactions, attempts, 'build', 'a-1')
+      const texts = result.map((e) => e.text)
+      // Only ev-build-1 is the resultEvidenceId of attempt a-1
+      expect(texts).toContain('npm test')
+      expect(texts).not.toContain('output.txt') // ev-build-2 belongs to a-2
+      expect(texts).not.toContain('plan.md')
+    })
+
+    it('returns only the second attempt evidence when a-2 is selected', () => {
+      const result = filterEventsForSelection([], evidenceItems, interactions, attempts, 'build', 'a-2')
+      const texts = result.map((e) => e.text)
+      expect(texts).toContain('output.txt') // ev-build-2 belongs to a-2
+      expect(texts).not.toContain('npm test') // ev-build-1 belongs to a-1
+    })
+
+    it('returns no evidence events but still includes step interactions when the attempt has no correlated evidence', () => {
+      // Interactions are step-scoped (not attempt-scoped): they are always relevant
+      // for the selected step regardless of which specific attempt is targeted.
+      const attemptsNoEvidence = [
+        { attemptId: 'a-99', stepId: 'build', attemptNumber: 1, agentName: 'x', status: 'running', caseId: 'c' },
+      ]
+      const result = filterEventsForSelection([], evidenceItems, interactions, attemptsNoEvidence, 'build', 'a-99')
+      // No evidence events (the attempt has no resultEvidenceId)
+      expect(result.some((e) => e.type === 'tool_call')).toBe(false)
+      // But the step's interaction event IS included (gates are step-scoped)
+      expect(result.some((e) => e.text.includes('approval'))).toBe(true)
+    })
+
+    it('two agents on the same step: each attempt returns only its own evidence', () => {
+      const twoAgentEvidenceItems = [
+        {
+          evidenceId: 'ev-a1',
+          stepId: 'build',
+          kind: 'tool',
+          createdAt: startedAt,
+          facts: { tool: 'read', text: 'agent-1-output' },
+        },
+        {
+          evidenceId: 'ev-a2',
+          stepId: 'build',
+          kind: 'tool',
+          createdAt: startedAt,
+          facts: { tool: 'write', text: 'agent-2-output' },
+        },
+      ]
+      const twoAgentAttempts = [
+        {
+          attemptId: 'a-agent1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'agent-1',
+          status: 'failed',
+          caseId: 'case-a1',
+          resultEvidenceId: 'ev-a1',
+        },
+        {
+          attemptId: 'a-agent2',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'agent-2',
+          status: 'running',
+          caseId: 'case-a2',
+          resultEvidenceId: 'ev-a2',
+        },
+      ]
+
+      const agent1Events = filterEventsForSelection(
+        [],
+        twoAgentEvidenceItems,
+        [],
+        twoAgentAttempts,
+        'build',
+        'a-agent1'
+      )
+      expect(agent1Events.map((e) => e.text)).toEqual(['agent-1-output'])
+
+      const agent2Events = filterEventsForSelection(
+        [],
+        twoAgentEvidenceItems,
+        [],
+        twoAgentAttempts,
+        'build',
+        'a-agent2'
+      )
+      expect(agent2Events.map((e) => e.text)).toEqual(['agent-2-output'])
+    })
+
+    it('out-of-order attempt evidence: selecting a-1 never returns a-2 events even if a-2 arrived first', () => {
+      // Simulates the scenario where SSE brings a-2 data before a-1 data
+      const outOfOrderEvidence = [
+        { evidenceId: 'ev-a2', stepId: 'build', kind: 'tool', createdAt: startedAt, facts: { text: 'a2-event' } },
+        { evidenceId: 'ev-a1', stepId: 'build', kind: 'tool', createdAt: startedAt, facts: { text: 'a1-event' } },
+      ]
+      const outOfOrderAttempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'x',
+          status: 'failed',
+          caseId: 'c1',
+          resultEvidenceId: 'ev-a1',
+        },
+        {
+          attemptId: 'a-2',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'x',
+          status: 'running',
+          caseId: 'c2',
+          resultEvidenceId: 'ev-a2',
+        },
+      ]
+
+      const a1Events = filterEventsForSelection([], outOfOrderEvidence, [], outOfOrderAttempts, 'build', 'a-1')
+      expect(a1Events.map((e) => e.text)).toEqual(['a1-event'])
+
+      const a2Events = filterEventsForSelection([], outOfOrderEvidence, [], outOfOrderAttempts, 'build', 'a-2')
+      expect(a2Events.map((e) => e.text)).toEqual(['a2-event'])
+    })
+  })
+
+  describe('mapProjectionToSessionDetail - eventsByStepId / eventsByAttemptId', () => {
+    const startedAt = '2026-09-30T16:00:00.000Z'
+    const baseSnapshot = {
+      workflowId: 'wf-ev',
+      namespaceId: 'ns-1',
+      projection: {
+        schemaVersion: '2',
+        title: 'Event filter test',
+        status: 'running',
+        steps: [
+          { id: 'plan', name: 'plan', status: 'completed', responsibility: { kind: 'agent', name: 'planner' } },
+          { id: 'build', name: 'build', status: 'running', responsibility: { kind: 'agent', name: 'builder' } },
+        ],
+      },
+    }
+
+    const evidence = {
+      items: [
+        { evidenceId: 'ev-plan', stepId: 'plan', kind: 'tool', createdAt: startedAt, facts: { text: 'plan-output' } },
+        {
+          evidenceId: 'ev-build-1',
+          stepId: 'build',
+          kind: 'tool',
+          createdAt: startedAt,
+          facts: { text: 'build-a1-output' },
+        },
+        {
+          evidenceId: 'ev-build-2',
+          stepId: 'build',
+          kind: 'tool',
+          createdAt: startedAt,
+          facts: { text: 'build-a2-output' },
+        },
+      ],
+    }
+
+    const attempts = [
+      {
+        attemptId: 'a-1',
+        stepId: 'build',
+        attemptNumber: 1,
+        agentName: 'builder',
+        status: 'failed',
+        caseId: 'case-1',
+        resultEvidenceId: 'ev-build-1',
+      },
+      {
+        attemptId: 'a-2',
+        stepId: 'build',
+        attemptNumber: 2,
+        agentName: 'builder',
+        status: 'running',
+        caseId: 'case-2',
+        resultEvidenceId: 'ev-build-2',
+      },
+    ]
+
+    it('populates eventsByStepId for each step', () => {
+      const session = mapProjectionToSessionDetail(baseSnapshot, undefined, evidence, undefined, undefined, attempts)
+      expect(session.eventsByStepId).toBeDefined()
+      const planEvents = session.eventsByStepId?.get('plan') ?? []
+      expect(planEvents.map((e) => e.text)).toContain('plan-output')
+      const buildEvents = session.eventsByStepId?.get('build') ?? []
+      // Both attempts' evidence should appear in the step-scoped view
+      expect(buildEvents.map((e) => e.text)).toContain('build-a1-output')
+      expect(buildEvents.map((e) => e.text)).toContain('build-a2-output')
+    })
+
+    it('populates eventsByAttemptId keyed by attemptId', () => {
+      const session = mapProjectionToSessionDetail(baseSnapshot, undefined, evidence, undefined, undefined, attempts)
+      expect(session.eventsByAttemptId).toBeDefined()
+
+      const a1Events = session.eventsByAttemptId?.get('a-1') ?? []
+      expect(a1Events.map((e) => e.text)).toContain('build-a1-output')
+      expect(a1Events.map((e) => e.text)).not.toContain('build-a2-output')
+
+      const a2Events = session.eventsByAttemptId?.get('a-2') ?? []
+      expect(a2Events.map((e) => e.text)).toContain('build-a2-output')
+      expect(a2Events.map((e) => e.text)).not.toContain('build-a1-output')
+    })
+
+    it('eventsByAttemptId returns only interaction events (no evidence events) for an attempt with no correlated evidence', () => {
+      // No evidence payload → no evidence items to correlate.
+      // Interactions are absent too in this scenario.
+      const noEvidenceAttempts = [
+        { attemptId: 'a-orphan', stepId: 'build', attemptNumber: 1, agentName: 'x', status: 'running', caseId: 'c' },
+      ]
+      const session = mapProjectionToSessionDetail(
+        baseSnapshot,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        noEvidenceAttempts
+      )
+      // The key must exist (attempt is known)
+      expect(session.eventsByAttemptId?.has('a-orphan')).toBe(true)
+      // No evidence and no interactions for this step → empty array
+      expect(session.eventsByAttemptId?.get('a-orphan')).toEqual([])
     })
   })
 

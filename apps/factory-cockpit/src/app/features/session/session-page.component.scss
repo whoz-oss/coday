@@ -39,82 +39,6 @@ h1 {
   font-size: 14px;
 }
 
-/* Étapes */
-.steps {
-  list-style: none;
-  margin: 0;
-  padding: 4px 0 0;
-  display: flex;
-  align-items: center;
-}
-.step {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.connector {
-  width: 60px;
-  height: 2px;
-  margin: 0 14px;
-  background: #3b4458;
-}
-.node {
-  width: 26px;
-  height: 26px;
-  border-radius: 50%;
-  border: 1px solid;
-  display: grid;
-  place-items: center;
-  mat-icon {
-    width: 15px;
-    height: 15px;
-    font-size: 15px;
-    font-weight: 700;
-  }
-}
-.step--amber .node {
-  background: #231d0c;
-  border-color: #6b5620;
-  color: var(--sf-tertiary);
-}
-.step--violet .node {
-  background: #1b1630;
-  border-color: #4b3d80;
-  color: var(--sf-primary);
-}
-.step--green .node {
-  background: #0f2226;
-  border-color: #2c5d63;
-  color: var(--sf-success);
-}
-.step--cyan .node {
-  background: #0e2127;
-  border-color: var(--sf-secondary);
-  color: var(--sf-secondary);
-}
-.step--running .node {
-  border-width: 2px;
-  box-shadow: 0 0 0 4px rgba(95, 212, 224, 0.14);
-}
-.core {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.step-name {
-  font-size: 14px;
-  font-weight: 700;
-}
-.step--running .step-name {
-  color: var(--sf-secondary);
-  font-weight: 800;
-}
-.step-dur {
-  font-size: 12px;
-  color: var(--sf-text-muted);
-}
-
 /* Bas de page */
 .bottom {
   display: grid;
@@ -164,6 +88,21 @@ h1 {
   b {
     color: var(--sf-text);
   }
+}
+.tag--failure {
+  border-color: #6b2a2e;
+  background: #1f1114;
+  color: #f58f8f;
+  b {
+    color: #f58f8f;
+  }
+}
+.phase-case-link {
+  margin-left: auto;
+  font-size: 12px;
+  height: 28px;
+  line-height: 28px;
+  padding: 0 10px;
 }
 .sections {
   padding: 6px 8px;

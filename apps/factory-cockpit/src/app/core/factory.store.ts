@@ -253,7 +253,15 @@ export class FactoryStore {
     const removed = Array.isArray(removedItems) ? removedItems : []
     const snapshots = [...active, ...removed]
     this.workflows.set(snapshots)
-    this.enrichment.clear()
+
+    // Targeted enrichment purge: only evict entries for workflows that no
+    // longer appear in the combined snapshot set. This preserves enrichment
+    // (timing, evidence, attempts…) for workflows that survived the refresh,
+    // so the selection and detail panel remain stable after an SSE reload.
+    const liveIds = new Set(snapshots.map((s) => workflowIdOf(s)).filter((id): id is string => !!id))
+    for (const id of [...this.enrichment.keys()]) {
+      if (!liveIds.has(id)) this.enrichment.delete(id)
+    }
 
     // Derive one FactoryRun per real workflow snapshot. Removed snapshots are
     // surfaced as destroyed runs; `showDestroyed`/`visibleRuns` remain the ONLY
@@ -262,9 +270,23 @@ export class FactoryStore {
     const destroyedRuns = removed.map((snapshot) => mapProjectionToFactoryRun(snapshot, 'destroyed'))
     this.runs.set([...activeRuns, ...destroyedRuns])
 
+    // Build the session map by merging fresh projection data with any already-
+    // loaded enrichment for each workflow (preserves stable detail on refresh).
     const sessionMap = new Map<string, SessionDetail>()
     for (const snapshot of snapshots) {
-      const detail = mapProjectionToSessionDetail(snapshot)
+      const id = workflowIdOf(snapshot)
+      const existing = id ? this.enrichment.get(id) : undefined
+      const detail = mapProjectionToSessionDetail(
+        snapshot,
+        existing?.timing,
+        existing?.evidence,
+        existing?.metrics,
+        existing?.interactions,
+        existing?.attempts,
+        existing?.actions,
+        existing?.agentQuestions
+      )
+      if (existing?.agentQuestionsError) detail.agentQuestionsError = existing.agentQuestionsError
       sessionMap.set(detail.id, detail)
     }
     this.sessions.set(sessionMap)

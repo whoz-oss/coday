@@ -55,6 +55,23 @@
     color: var(--sf-tertiary);
   }
 }
+/* Real execution failures — high severity */
+.blocker--failure {
+  border-color: #8b1a20;
+  background: #2a1418;
+  mat-icon {
+    color: #ff7070;
+  }
+}
+/* Downstream consequences — mitigated, lower severity */
+.blocker--consequence {
+  border-color: #4a3a20;
+  background: #1e1a10;
+  mat-icon {
+    color: var(--sf-tertiary);
+  }
+}
+/* Keep legacy blocked class for backwards-compat */
 .blocker--blocked {
   border-color: #6b2a2e;
   background: #1f1114;
@@ -69,12 +86,50 @@
     color: var(--sf-primary);
   }
 }
+/* Indeterminate: distinct from failures, shown as warning */
+.blocker--indeterminate {
+  border-color: #4a4020;
+  background: #1c1a10;
+  border-style: dashed;
+  mat-icon {
+    color: #c9b060;
+  }
+}
 .blocker--unknown {
   border-color: var(--sf-outline-strong);
   background: var(--sf-surface-2);
   mat-icon {
     color: var(--sf-text-muted);
   }
+}
+
+/* Blocker group header */
+.blocker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.blocker-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 0 2px 2px;
+
+  mat-icon {
+    width: 14px;
+    height: 14px;
+    font-size: 14px;
+  }
+}
+.blocker-group-title--failure {
+  color: #ff7070;
+}
+.blocker-group-title--consequence {
+  color: var(--sf-tertiary);
 }
 
 /* ───────────── Actions ───────────── */

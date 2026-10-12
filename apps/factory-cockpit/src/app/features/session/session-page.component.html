@@ -11,6 +11,7 @@
             [href]="caseLink(s.controllerCaseId)"
             target="_blank"
             rel="noopener"
+            title="Open the AgentOS controller conversation"
             >Conversation</a
           >
         } @else {
@@ -58,45 +59,6 @@
         <sf-metric icon="menu_book" label="Tokens read">{{ s.tokensRead | tokens }}</sf-metric>
         <sf-metric icon="edit" label="Tokens written">{{ s.tokensWritten | tokens }}</sf-metric>
       </div>
-
-      <!-- Steps -->
-      <ol class="steps" aria-label="Workflow steps">
-        @for (step of s.steps; track step.key; let last = $last) {
-          <li
-            class="step"
-            [class]="'step--' + step.tone"
-            [class.step--running]="step.status === 'running'"
-            [class.step--waiting]="step.status === 'waiting_human'"
-            [attr.aria-current]="step.status === 'running' || step.status === 'waiting_human' ? 'step' : null"
-          >
-            <span class="node">
-              @if (step.status === 'done') {
-                <mat-icon>check</mat-icon>
-              } @else if (step.status === 'waiting_human') {
-                <mat-icon>person_alert</mat-icon>
-              } @else {
-                <span class="core"></span>
-              }
-            </span>
-            <span class="step-name">{{ step.key }}</span>
-            @if (step.durationSec !== undefined) {
-              <span class="step-dur sf-mono">
-                {{ step.durationSec | duration
-                }}{{
-                  step.status === 'running'
-                    ? ' · running'
-                    : step.status === 'waiting_human'
-                      ? ' · waiting for human'
-                      : ''
-                }}
-              </span>
-            }
-          </li>
-          @if (!last) {
-            <li class="connector" aria-hidden="true"></li>
-          }
-        }
-      </ol>
     </section>
 
     <!-- Backend-governed actions (allowedActions / blockers) -->
@@ -130,86 +92,124 @@
 
     <!-- Phase detail + events -->
     <div class="bottom">
-      <section class="phase sf-panel" aria-labelledby="phase-title">
-        <header class="phase-head">
-          <h2 id="phase-title">{{ s.phase.name }}</h2>
-          @if (s.phase.stepStatus === 'waiting_human') {
-            <sf-status-chip tone="amber" size="sm" icon="person_alert">waiting for human</sf-status-chip>
-          } @else if (s.phase.stepStatus === 'running') {
-            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>running</sf-status-chip>
-          } @else {
-            <sf-status-chip tone="neutral" size="sm">{{ s.phase.status }}</sf-status-chip>
-          }
-          <span class="sf-mono">{{ s.phase.durationSec | duration }}</span>
-        </header>
-        <div class="phase-tags">
-          <span class="tag"
-            >owner <b>{{ s.phase.owner }}</b></span
-          >
-          <span class="tag"
-            >kind <b>{{ s.phase.kind }}</b></span
-          >
-          <span class="tag"
-            >attempt <b class="sf-mono">{{ s.phase.attempt }}</b></span
-          >
-        </div>
-        <mat-accordion multi displayMode="flat" class="sections">
-          @for (sec of s.phase.sections; track sec.label) {
-            <mat-expansion-panel>
-              <mat-expansion-panel-header>
-                <mat-panel-title>{{ sec.label }}</mat-panel-title>
-                @if (sec.notAvailable) {
-                  <mat-panel-description>
-                    <span class="badge badge--off">unavailable</span>
-                  </mat-panel-description>
-                } @else if (sec.count !== undefined) {
-                  <mat-panel-description>
-                    <span class="badge" [class.badge--on]="sec.count > 0">{{ sec.count }}</span>
-                  </mat-panel-description>
-                }
-              </mat-expansion-panel-header>
-              <div class="section-content">
-                @if (sec.items?.length) {
-                  <ul class="section-items">
-                    @for (item of sec.items; track $index) {
-                      <li class="section-item">
-                        <span class="item-title">{{ item.title }}</span>
-                        @if (item.status) {
-                          <span class="item-status">{{ item.status }}</span>
-                        }
-                        @if (item.subtitle) {
-                          @if (item.title === 'Case') {
-                            <a class="item-subtitle" [href]="caseLink(item.subtitle)">{{ item.subtitle }}</a>
-                          } @else {
-                            <span class="item-subtitle">{{ item.subtitle }}</span>
+      @if (selectedPhase(); as phase) {
+        <section class="phase sf-panel" aria-labelledby="phase-title">
+          <header class="phase-head">
+            <h2 id="phase-title">{{ phase.name }}</h2>
+            @if (phase.stepStatus === 'waiting_human') {
+              <sf-status-chip tone="amber" size="sm" icon="person_alert">waiting for human</sf-status-chip>
+            } @else if (phase.stepStatus === 'running') {
+              <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>running</sf-status-chip>
+            } @else if (phase.stepStatus === 'failed') {
+              <sf-status-chip tone="red" size="sm" icon="close">failed</sf-status-chip>
+            } @else if (phase.stepStatus === 'completed') {
+              <sf-status-chip tone="green" size="sm" icon="check">completed</sf-status-chip>
+            } @else {
+              <sf-status-chip tone="neutral" size="sm">{{ phase.status }}</sf-status-chip>
+            }
+            <span class="sf-mono">{{ phase.durationSec | duration }}</span>
+            <!-- Attempt-level case link (distinct from the controller Conversation link) -->
+            @if (selectedAttemptCaseId(); as attemptCaseId) {
+              <a
+                mat-stroked-button
+                class="sf-secondary phase-case-link"
+                [href]="caseLink(attemptCaseId)"
+                target="_blank"
+                rel="noopener"
+                title="Open the AgentOS case for this attempt"
+                >Case</a
+              >
+            }
+          </header>
+          <div class="phase-tags">
+            <span class="tag"
+              >step <b class="sf-mono">{{ phase.stepId ?? phase.name }}</b></span
+            >
+            @if (phase.agentName) {
+              <span class="tag"
+                >agent <b>{{ phase.agentName }}</b></span
+              >
+            }
+            <span class="tag"
+              >owner <b>{{ phase.owner }}</b></span
+            >
+            <span class="tag"
+              >kind <b>{{ phase.kind }}</b></span
+            >
+            <span class="tag"
+              >attempt <b class="sf-mono">{{ phase.attempt }}</b></span
+            >
+            @if (phase.failureCode) {
+              <span class="tag tag--failure"
+                >failure <b class="sf-mono">{{ phase.failureCode }}</b></span
+              >
+            }
+          </div>
+          <mat-accordion multi displayMode="flat" class="sections">
+            @for (sec of phase.sections; track sec.label) {
+              <mat-expansion-panel>
+                <mat-expansion-panel-header>
+                  <mat-panel-title>{{ sec.label }}</mat-panel-title>
+                  @if (sec.notAvailable) {
+                    <mat-panel-description>
+                      <span class="badge badge--off">unavailable</span>
+                    </mat-panel-description>
+                  } @else if (sec.count !== undefined) {
+                    <mat-panel-description>
+                      <span class="badge" [class.badge--on]="sec.count > 0">{{ sec.count }}</span>
+                    </mat-panel-description>
+                  }
+                </mat-expansion-panel-header>
+                <div class="section-content">
+                  @if (sec.items?.length) {
+                    <ul class="section-items">
+                      @for (item of sec.items; track $index) {
+                        <li class="section-item">
+                          <span class="item-title">{{ item.title }}</span>
+                          @if (item.status) {
+                            <span class="item-status">{{ item.status }}</span>
                           }
-                        }
-                        @if (item.actions?.length) {
-                          <span class="item-actions">
-                            @for (action of item.actions; track action.id) {
-                              <span class="item-action">{{ action.label }}</span>
+                          @if (item.subtitle) {
+                            @if (item.title === 'Case') {
+                              <a class="item-subtitle" [href]="caseLink(item.subtitle)">{{ item.subtitle }}</a>
+                            } @else {
+                              <span class="item-subtitle">{{ item.subtitle }}</span>
                             }
-                          </span>
-                        }
-                      </li>
-                    }
-                  </ul>
-                }
-                @if (sec.body) {
-                  <p class="sf-muted section-body">{{ sec.body }}</p>
-                } @else if (!sec.items?.length) {
-                  <p class="sf-muted section-body">No content yet.</p>
-                }
-              </div>
-            </mat-expansion-panel>
-          }
-        </mat-accordion>
-      </section>
+                          }
+                          @if (item.actions?.length) {
+                            <span class="item-actions">
+                              @for (action of item.actions; track action.id) {
+                                <span class="item-action">{{ action.label }}</span>
+                              }
+                            </span>
+                          }
+                        </li>
+                      }
+                    </ul>
+                  }
+                  @if (sec.body) {
+                    <p class="sf-muted section-body">{{ sec.body }}</p>
+                  } @else if (!sec.items?.length) {
+                    <p class="sf-muted section-body">No content yet.</p>
+                  }
+                </div>
+              </mat-expansion-panel>
+            }
+          </mat-accordion>
+        </section>
+      } @else {
+        <section class="phase sf-panel" aria-labelledby="phase-title">
+          <p class="sf-muted" style="padding: 20px">Select a step in the timeline to see its detail.</p>
+        </section>
+      }
 
       <sf-event-log
-        [events]="s.events"
+        [events]="selectedEvents()"
         [running]="s.activelyRunning"
-        [activityLabel]="(s.phase.agentName || s.phase.owner) + ' is working…'"
+        [selectionContext]="selection()"
+        [caseId]="selectedAttemptCaseId()"
+        [selectedAttempt]="selectedAttempt()"
+        [activityLabel]="(selectedPhase()?.agentName || selectedPhase()?.owner || 'agent') + ' is working…'"
       />
     </div>
   </div>
