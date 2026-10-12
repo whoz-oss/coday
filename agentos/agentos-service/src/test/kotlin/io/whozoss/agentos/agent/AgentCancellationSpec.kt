@@ -27,14 +27,13 @@ import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.prompt.Prompt
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
 
 /**
  * A stopped case run reaches the agent as a coroutine cancellation. These tests pin that the agents
@@ -121,32 +120,37 @@ class AgentCancellationSpec :
         }
 
         "stopping an AgentAdvanced run suspended in a tool unwinds instead of reporting a failed tool result" {
-            val toolStarted = CompletableDeferred<Unit>()
-            val waitingTool =
-                tool("Waiting") {
-                    toolStarted.complete(Unit)
-                    awaitCancellation()
-                }
-            val emitted = CopyOnWriteArrayList<CaseEvent>()
-            val agent = advancedAgent(parameterChatClient(), toolCallingGenerator("Waiting"), listOf(waitingTool))
+            runTest {
+                val toolStarted = CompletableDeferred<Unit>()
+                val waitingTool =
+                    tool("Waiting") {
+                        toolStarted.complete(Unit)
+                        awaitCancellation()
+                    }
+                val emitted = CopyOnWriteArrayList<CaseEvent>()
+                val agent = advancedAgent(parameterChatClient(), toolCallingGenerator("Waiting"), listOf(waitingTool))
 
-            val run = launch(Dispatchers.Default) { agent.run(userTurn()).collect { emitted += it } }
-            withTimeout(2_000) { toolStarted.await() }
-            run.cancel()
+                val run = launch { agent.run(userTurn()).collect { emitted += it } }
+                toolStarted.await()
+                run.cancel()
 
-            withTimeout(1_000) { run.join() }
-            run.isCancelled shouldBe true
-            emitted.filterIsInstance<ToolResponseEvent>().shouldBeEmpty()
-            emitted.filterIsInstance<WarnEvent>().shouldBeEmpty()
+                run.join()
+                run.isCancelled shouldBe true
+                emitted.filterIsInstance<ToolResponseEvent>().shouldBeEmpty()
+                emitted.filterIsInstance<WarnEvent>().shouldBeEmpty()
+            }
         }
 
         "stopping an AgentAdvanced run unwinds even when the interrupted tool fails with a wrapped exception" {
             // A blocking client interrupted by the stop rarely throws InterruptedException as is.
-            val toolStarted = CountDownLatch(1)
+            // Uses real threads (Dispatchers.IO + Thread.sleep) — runTest would not skip the sleep
+            // and join() without a timeout would block indefinitely if interruption fails.
+            // The spec-level timeout = 10_000 is the safety net here.
+            val toolStarted = CompletableDeferred<Unit>()
             val blockingTool =
                 tool("Blocking") {
-                    runInterruptible {
-                        toolStarted.countDown()
+                    runInterruptible(Dispatchers.IO) {
+                        toolStarted.complete(Unit)
                         try {
                             Thread.sleep(30_000)
                         } catch (e: InterruptedException) {
@@ -159,22 +163,24 @@ class AgentCancellationSpec :
             val agent = advancedAgent(parameterChatClient(), toolCallingGenerator("Blocking"), listOf(blockingTool))
 
             val run = launch(Dispatchers.Default) { agent.run(userTurn()).collect { emitted += it } }
-            toolStarted.await(2, TimeUnit.SECONDS) shouldBe true
+            withTimeout(2_000) { toolStarted.await() }
             run.cancel()
 
-            withTimeout(1_000) { run.join() }
+            withTimeout(2_000) { run.join() }
             run.isCancelled shouldBe true
             emitted.filterIsInstance<ToolResponseEvent>().shouldBeEmpty()
             emitted.filterIsInstance<WarnEvent>().shouldBeEmpty()
         }
 
         "a CancellationException raised by a tool while the run is still active is reported as a failed tool result" {
-            // Not a stop (e.g. a timeout leaking from the tool): it must not silently end the run.
-            val leakingTool = tool("Leaking") { throw CancellationException("not a stop") }
-            val agent = advancedAgent(parameterChatClient(), toolCallingGenerator("Leaking"), listOf(leakingTool))
+            runTest {
+                // Not a stop (e.g. a timeout leaking from the tool): it must not silently end the run.
+                val leakingTool = tool("Leaking") { throw CancellationException("not a stop") }
+                val agent = advancedAgent(parameterChatClient(), toolCallingGenerator("Leaking"), listOf(leakingTool))
 
-            val response = withTimeout(5_000) { agent.run(userTurn()).filterIsInstance<ToolResponseEvent>().first() }
+                val response = agent.run(userTurn()).filterIsInstance<ToolResponseEvent>().first()
 
-            response.success shouldBe false
+                response.success shouldBe false
+            }
         }
     })

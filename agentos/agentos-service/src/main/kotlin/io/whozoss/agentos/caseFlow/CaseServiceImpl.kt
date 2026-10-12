@@ -44,6 +44,7 @@ import io.whozoss.agentos.usage.UsageRecordService
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -89,6 +90,12 @@ class CaseServiceImpl(
     private val caseLaunchGate: CaseLaunchGate? = null,
     /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
     private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
+    /**
+     * Coroutine context used to build the service scope.
+     * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
+     * in tests so all coroutines run on the test scheduler and virtual time applies.
+     */
+    coroutineContext: CoroutineContext = Dispatchers.IO,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -96,7 +103,7 @@ class CaseServiceImpl(
      * post-processing tasks (e.g. automatic naming) in the background.
      * Each [run] call and naming trigger is launched here so HTTP threads are never blocked.
      */
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val scope = CoroutineScope(coroutineContext + SupervisorJob())
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
