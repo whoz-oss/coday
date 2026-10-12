@@ -80,5 +80,10 @@
       }
     }
   },
+  "release": {
+    "version": {
+      "manifestRootsToUpdate": []
+    }
+  },
   "tags": ["type:app", "platform:jvm-factory", "scope:service"]
 }

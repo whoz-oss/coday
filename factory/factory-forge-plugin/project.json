@@ -50,5 +50,10 @@
       }
     }
   },
+  "release": {
+    "version": {
+      "manifestRootsToUpdate": []
+    }
+  },
   "tags": ["type:lib", "platform:jvm-factory", "scope:plugin"]
 }
