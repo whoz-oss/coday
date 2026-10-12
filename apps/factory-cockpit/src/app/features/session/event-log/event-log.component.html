@@ -1,0 +1,143 @@
+<section class="log sf-panel" aria-labelledby="events-title">
+  <header class="log-head">
+    <mat-icon aria-hidden="true">monitoring</mat-icon>
+    <h2 id="events-title">Events</h2>
+    @if (contextLabel(); as label) {
+      <span class="context-label sf-mono" [title]="label">{{ label }}</span>
+    } @else {
+      <span class="context-label sf-muted">global</span>
+    }
+    <span class="source-badge" [class.source-badge--agentos]="isAgentOsMode()">
+      {{ sourceLabel() }}
+    </span>
+    <span class="count sf-mono">{{ isLoading() ? '...' : resolvedEvents().length }}</span>
+
+    <!-- Attempt-level metrics in the Events panel header -->
+    <!-- Scope is EXPLICIT: cost = this attempt's AgentOS case cost (not workflow total) -->
+    <!-- Duration = attempt.completedAt - attempt.startedAt (not total case duration) -->
+    @if (metricsState.hasMetrics() && metricsState.metrics(); as m) {
+      <span class="metrics-group">
+        @if (m.runCost !== null) {
+          <span
+            class="metric-chip"
+            [class.metric-chip--partial]="m.runCostPartial"
+            [title]="
+              m.runCostPartial
+                ? 'Partial cost (some models have no price data) — lower bound for attempt case ' + m.caseId
+                : 'Cost of the AgentOS case for this attempt (not the workflow total)'
+            "
+          >
+            <span class="metric-icon">paid</span>
+            {{ m.runCost | usd: 4 : (m.runCostPartial ? 1 : 0) }}
+          </span>
+        }
+        @if (m.attemptDurationSec !== null) {
+          <span
+            class="metric-chip metric-chip--duration"
+            [title]="'Attempt duration #' + m.attemptNumber + ' — not total case duration'"
+          >
+            <span class="metric-icon">timer</span>
+            {{ m.attemptDurationSec | duration }}
+          </span>
+        } @else if (m.runCost !== null) {
+          <span
+            class="metric-chip metric-chip--muted"
+            title="Attempt duration unavailable (attempt still running or no timestamp)"
+          >
+            <span class="metric-icon">timer</span>
+            &mdash;
+          </span>
+        }
+      </span>
+    } @else if (metricsState.isLoading()) {
+      <span class="metric-chip metric-chip--muted">...</span>
+    }
+
+    <span class="sf-spacer"></span>
+
+    @if (!isLoading() && !isAgentOsError()) {
+      <mat-button-toggle-group
+        class="filters"
+        aria-label="Filter by type"
+        [value]="filter()"
+        (change)="filter.set($event.value)"
+        hideSingleSelectionIndicator
+      >
+        @for (f of filters; track f.value) {
+          <mat-button-toggle [value]="f.value" [class]="'f-' + f.value">{{ f.label }}</mat-button-toggle>
+        }
+      </mat-button-toggle-group>
+
+      <mat-checkbox [checked]="follow()" (change)="follow.set($event.checked)">Follow live</mat-checkbox>
+    }
+  </header>
+
+  @if (isLoading()) {
+    <div class="state-placeholder">
+      <mat-icon class="spin" aria-hidden="true">progress_activity</mat-icon>
+      @if (isAgentOsMode()) {
+        <span class="sf-muted">Loading AgentOS case events&hellip;</span>
+      } @else {
+        <span class="sf-muted">Loading events for this attempt&hellip;</span>
+      }
+    </div>
+  } @else if (isAgentOsError()) {
+    <div class="state-placeholder state-placeholder--error">
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <span>Failed to load AgentOS events for this case.</span>
+      <span class="sf-muted">Factory evidence events are not shown when a case is selected.</span>
+    </div>
+  } @else if (visible().length === 0) {
+    <div class="state-placeholder">
+      <mat-icon aria-hidden="true">inbox</mat-icon>
+      @if (isAgentOsMode()) {
+        <span class="sf-muted">No events recorded in the AgentOS case yet.</span>
+      } @else if (selectionContext()) {
+        <span class="sf-muted">No events recorded for this selection.</span>
+      } @else {
+        <span class="sf-muted">No events yet.</span>
+      }
+    </div>
+  } @else {
+    <cdk-virtual-scroll-viewport itemSize="33" class="viewport" role="log" aria-live="polite">
+      <div *cdkVirtualFor="let e of visible()" class="ev" [class.ev--message]="e.type === 'agent_message'">
+        @if (e.type === 'agent_message') {
+          <button
+            type="button"
+            class="ev-message-button"
+            [attr.aria-label]="messageAriaLabel(e)"
+            (click)="openMessage(e)"
+          >
+            <span class="time">{{ e.time }}</span>
+            <span class="type" [class]="'t-' + e.type">{{ e.type }}</span>
+            <span class="text">
+              @if (e.actorLabel) {
+                <b>{{ e.actorLabel }}</b>
+              }
+              {{ e.messageText ?? e.text }}
+            </span>
+            <span class="dur"></span>
+          </button>
+        } @else {
+          <span class="time">{{ e.time }}</span>
+          <span class="type" [class]="'t-' + e.type">{{ e.type }}</span>
+          <span class="text">
+            @if (e.tool) {
+              <b [class.write]="e.tool === 'write'">{{ e.tool }}</b>
+            }
+            {{ e.text }}
+          </span>
+          <span class="dur" [class.slow]="(e.durationSec ?? 0) > 0.3">
+            @if (e.durationSec !== undefined) {
+              {{ e.durationSec.toFixed(2) }}s
+            }
+          </span>
+        }
+      </div>
+    </cdk-virtual-scroll-viewport>
+  }
+
+  @if (running()) {
+    <footer class="activity"><span class="pulse"></span>{{ activityLabel() }}</footer>
+  }
+</section>
