@@ -32,9 +32,10 @@ Both `agentos/` and `factory/` are independent Gradle multi-project builds integ
 
 `agentos-plugins-filesystem` is a legacy project — it has no `platform:jvm-agentos` tag and is not published.
 
-Nx integration is handled by a **local plugin** at `tools/plugins/agentos-gradle/src/agentos-gradle.ts`
-(not `@nx/gradle`). It globs `agentos/*/build.gradle.kts` and infers `build`, `test`, `clean`,
-`nx-release-publish`, `publish` targets only for projects that already have a `project.json`.
+Nx integration is handled by **local plugins** at `tools/plugins/gradle-plugins/`
+(not `@nx/gradle`). Two handlers are registered: `src/agentos-gradle.ts` globs
+`agentos/*/build.gradle.kts`; `src/factory-gradle.ts` globs `factory/*/build.gradle.kts`.
+Both only activate for projects that already have a `project.json`.
 
 Key patterns:
 - All Gradle targets set `"cwd": "agentos"` in options

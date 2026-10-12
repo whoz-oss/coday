@@ -43,7 +43,10 @@
   "useDaemonProcess": true,
   "plugins": [
     {
-      "plugin": "./tools/plugins/agentos-gradle/src/index.ts"
+      "plugin": "./tools/plugins/gradle-plugins/src/index.ts"
+    },
+    {
+      "plugin": "./tools/plugins/gradle-plugins/src/factory-gradle.ts"
     },
     {
       "plugin": "@nx/jest/plugin",
