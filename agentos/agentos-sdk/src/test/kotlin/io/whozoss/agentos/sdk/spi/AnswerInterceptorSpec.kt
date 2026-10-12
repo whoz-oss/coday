@@ -1,5 +1,6 @@
 package io.whozoss.agentos.sdk.spi
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -7,6 +8,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import kotlinx.coroutines.CancellationException
 import java.util.UUID
 
 /**
@@ -31,7 +33,7 @@ class AnswerInterceptorSpec : StringSpec({
 
     fun interceptor(decide: () -> AnswerInterceptResult) =
         object : AnswerInterceptor {
-            override fun interceptAnswer(
+            override suspend fun interceptAnswer(
                 caseId: UUID,
                 questionEvent: QuestionEvent,
                 answerText: String,
@@ -55,7 +57,7 @@ class AnswerInterceptorSpec : StringSpec({
     "an interceptor that throws rejects the answer" {
         val faulty =
             object : AnswerInterceptor {
-                override fun interceptAnswer(
+                override suspend fun interceptAnswer(
                     caseId: UUID,
                     questionEvent: QuestionEvent,
                     answerText: String,
@@ -71,11 +73,32 @@ class AnswerInterceptorSpec : StringSpec({
         captured!!.message shouldBe "validator unreachable"
     }
 
+    // Cancellation is the caller withdrawing the question, not a gate failing to answer:
+    // converting it into a rejection would both invent a verdict and swallow the signal
+    // that must unwind the case coroutine.
+    "a cancelled interceptor propagates the cancellation instead of rejecting" {
+        val cancelled =
+            object : AnswerInterceptor {
+                override suspend fun interceptAnswer(
+                    caseId: UUID,
+                    questionEvent: QuestionEvent,
+                    answerText: String,
+                    actor: Actor,
+                ): AnswerInterceptResult = throw CancellationException("case torn down")
+            }
+        var notified = false
+
+        shouldThrow<CancellationException> {
+            AnswerInterceptor.evaluate(listOf(cancelled), caseId, question, "yes", actor) { _, _ -> notified = true }
+        }
+        notified shouldBe false
+    }
+
     // The user must learn that validation failed, not that their answer was wrong.
     "the rejection reason distinguishes a failed check from an invalid answer" {
         val faulty =
             object : AnswerInterceptor {
-                override fun interceptAnswer(
+                override suspend fun interceptAnswer(
                     caseId: UUID,
                     questionEvent: QuestionEvent,
                     answerText: String,
@@ -93,7 +116,7 @@ class AnswerInterceptorSpec : StringSpec({
     "the internal cause is never surfaced to the user" {
         val faulty =
             object : AnswerInterceptor {
-                override fun interceptAnswer(
+                override suspend fun interceptAnswer(
                     caseId: UUID,
                     questionEvent: QuestionEvent,
                     answerText: String,

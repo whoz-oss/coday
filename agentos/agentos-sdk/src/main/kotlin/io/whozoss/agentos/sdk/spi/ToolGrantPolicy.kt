@@ -1,6 +1,7 @@
 package io.whozoss.agentos.sdk.spi
 
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.CancellationException
 import org.pf4j.ExtensionPoint
 
 /**
@@ -57,6 +58,15 @@ sealed interface ToolGrantDecision {
  * A policy must therefore never throw to express a refusal — it must return
  * [ToolGrantDecision.Deny]. Throwing is reserved for genuine faults, and is treated as
  * the safe answer rather than the convenient one.
+ *
+ * Cancellation is not a fault and is never converted into a denial: see [isGranted].
+ *
+ * ### Suspension
+ *
+ * [evaluateToolGrant] is a suspending function. Tool resolution happens on the agent run
+ * path, so a policy that consults a remote authority must be able to suspend rather than
+ * block the dispatcher, and must remain cancellable — a long evaluation should cooperate
+ * via `yield()` / `ensureActive()`.
  */
 interface ToolGrantPolicy : ExtensionPoint {
     /**
@@ -70,7 +80,7 @@ interface ToolGrantPolicy : ExtensionPoint {
      * @return the policy's decision for this tool; [ToolGrantDecision.Neutral] when the
      *   policy has no opinion.
      */
-    fun evaluateToolGrant(
+    suspend fun evaluateToolGrant(
         toolName: String,
         context: ToolContext,
     ): ToolGrantDecision = ToolGrantDecision.Neutral
@@ -93,10 +103,16 @@ interface ToolGrantPolicy : ExtensionPoint {
          * Evaluation short-circuits on the first denial: the verdict can no longer
          * change, and a policy already known to be faulty should not be consulted again.
          *
+         * [CancellationException] is deliberately excluded from the fail-closed rule and
+         * rethrown as-is. Cancellation is not a policy refusing a tool — it is the run
+         * being torn down. Reporting it as a denial would attribute a restriction to a
+         * policy that never expressed one, and would swallow the signal that must unwind
+         * the agent coroutine.
+         *
          * @param onDenied notified with a human-readable reason whenever the tool is
          *   denied, including the faulty-policy case; must never throw.
          */
-        fun isGranted(
+        suspend fun isGranted(
             policies: Iterable<ToolGrantPolicy>,
             toolName: String,
             context: ToolContext,
@@ -106,6 +122,8 @@ interface ToolGrantPolicy : ExtensionPoint {
                 val decision =
                     try {
                         policy.evaluateToolGrant(toolName, context)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         onDenied("policy threw while evaluating '$toolName'; denying (fail-closed)", policy, e)
                         return false

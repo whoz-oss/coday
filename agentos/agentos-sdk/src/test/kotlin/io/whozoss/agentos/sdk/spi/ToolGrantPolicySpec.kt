@@ -1,9 +1,11 @@
 package io.whozoss.agentos.sdk.spi
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.CancellationException
 import java.util.UUID
 
 /**
@@ -26,7 +28,7 @@ class ToolGrantPolicySpec : StringSpec({
 
     fun policy(decide: (String) -> ToolGrantDecision) =
         object : ToolGrantPolicy {
-            override fun evaluateToolGrant(toolName: String, context: ToolContext) =
+            override suspend fun evaluateToolGrant(toolName: String, context: ToolContext) =
                 decide(toolName)
         }
 
@@ -44,7 +46,7 @@ class ToolGrantPolicySpec : StringSpec({
     "a policy that throws denies the tool" {
         val faulty =
             object : ToolGrantPolicy {
-                override fun evaluateToolGrant(toolName: String, context: ToolContext) =
+                override suspend fun evaluateToolGrant(toolName: String, context: ToolContext): ToolGrantDecision =
                     throw IllegalStateException("policy backend unreachable")
             }
         var reason: String? = null
@@ -59,13 +61,29 @@ class ToolGrantPolicySpec : StringSpec({
     "a faulty policy denies even when another policy is neutral" {
         val faulty =
             object : ToolGrantPolicy {
-                override fun evaluateToolGrant(toolName: String, context: ToolContext) =
+                override suspend fun evaluateToolGrant(toolName: String, context: ToolContext): ToolGrantDecision =
                     throw RuntimeException("boom")
             }
         val permissive = policy { ToolGrantDecision.Neutral }
 
         ToolGrantPolicy.isGranted(listOf(faulty, permissive), "editFiles", context) shouldBe false
         ToolGrantPolicy.isGranted(listOf(permissive, faulty), "editFiles", context) shouldBe false
+    }
+
+    // Cancellation is the run being torn down, not a policy expressing a restriction:
+    // reporting it as a denial would attribute a decision to a policy that never made one.
+    "a cancelled policy propagates the cancellation instead of denying" {
+        val cancelled =
+            object : ToolGrantPolicy {
+                override suspend fun evaluateToolGrant(toolName: String, context: ToolContext): ToolGrantDecision =
+                    throw CancellationException("run torn down")
+            }
+        var notified = false
+
+        shouldThrow<CancellationException> {
+            ToolGrantPolicy.isGranted(listOf(cancelled), "editFiles", context) { _, _, _ -> notified = true }
+        }
+        notified shouldBe false
     }
 
     "AllowOnly denies a tool outside the allow-list and grants one inside it" {
@@ -108,7 +126,7 @@ class ToolGrantPolicySpec : StringSpec({
         val denying = policy { ToolGrantDecision.Deny(setOf("editFiles")) }
         val counting =
             object : ToolGrantPolicy {
-                override fun evaluateToolGrant(toolName: String, context: ToolContext): ToolGrantDecision {
+                override suspend fun evaluateToolGrant(toolName: String, context: ToolContext): ToolGrantDecision {
                     consulted++
                     return ToolGrantDecision.Neutral
                 }

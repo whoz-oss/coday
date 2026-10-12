@@ -2,6 +2,7 @@ package io.whozoss.agentos.sdk.spi
 
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import kotlinx.coroutines.CancellationException
 import org.pf4j.ExtensionPoint
 import java.util.UUID
 
@@ -56,6 +57,15 @@ sealed interface AnswerInterceptResult {
  * completed, not that the answer was invalid — the two are different facts and the
  * user is owed the right one. A rejection is recoverable: the question stands and the
  * user may retry.
+ *
+ * Cancellation is not a fault and is never converted into a rejection: see [evaluate].
+ *
+ * ### Suspension
+ *
+ * [interceptAnswer] is a suspending function. The answer path runs inside the case
+ * coroutine, so an interceptor that needs to reach a remote validator must be able to
+ * suspend rather than block the dispatcher, and must remain cancellable — a long check
+ * should cooperate via `yield()` / `ensureActive()`.
  */
 interface AnswerInterceptor : ExtensionPoint {
     /**
@@ -69,7 +79,7 @@ interface AnswerInterceptor : ExtensionPoint {
      *   [AnswerInterceptResult.ExternallyHandled] when no local answer or resumption must occur,
      *   or [AnswerInterceptResult.Reject] with a human-readable reason to stop.
      */
-    fun interceptAnswer(
+    suspend fun interceptAnswer(
         caseId: UUID,
         questionEvent: QuestionEvent,
         answerText: String,
@@ -96,10 +106,16 @@ interface AnswerInterceptor : ExtensionPoint {
          * outcome: the verdict can no longer change, and once an interceptor claims
          * ownership the remaining ones must not also act on the same answer.
          *
+         * [CancellationException] is deliberately excluded from the fail-closed rule and
+         * rethrown as-is. Cancellation is not an interceptor failing to answer — it is
+         * the caller withdrawing the question. Turning it into a rejection would both
+         * report a verdict nobody is waiting for and swallow the signal that must unwind
+         * the case coroutine.
+         *
          * @param onError notified when an interceptor throws, so the host can log the
          *   cause that the user-facing reason deliberately omits; must never throw.
          */
-        fun evaluate(
+        suspend fun evaluate(
             interceptors: Iterable<AnswerInterceptor>,
             caseId: UUID,
             questionEvent: QuestionEvent,
@@ -111,6 +127,8 @@ interface AnswerInterceptor : ExtensionPoint {
                 val result =
                     try {
                         interceptor.interceptAnswer(caseId, questionEvent, answerText, actor)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         onError(interceptor, e)
                         return AnswerInterceptResult.Reject(
