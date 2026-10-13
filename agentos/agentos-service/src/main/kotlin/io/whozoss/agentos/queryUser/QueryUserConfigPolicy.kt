@@ -5,6 +5,7 @@ import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigPolicy
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.util.stringList
 import org.springframework.stereotype.Component
 
 /**
@@ -55,8 +56,5 @@ class QueryUserConfigPolicy : IntegrationConfigPolicy {
 
     companion object {
         private val ACCEPTED_QUESTION_TYPES: Set<QuestionType> = QueryUserToolPlugin.DEFAULT_ALLOWED_QUESTION_TYPES
-
-        private fun JsonNode?.stringList(field: String): List<String> =
-            this?.get(field)?.takeIf { it.isArray }?.map { it.asText() }?.filter { it.isNotBlank() } ?: emptyList()
     }
 }

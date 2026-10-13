@@ -6,6 +6,7 @@ import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.util.stringList
 import org.springframework.stereotype.Component
 
 /**
@@ -84,8 +85,6 @@ class QueryUserToolPlugin : ToolPlugin {
             setOf(QuestionType.FREE_TEXT, QuestionType.SINGLE_CHOICE, QuestionType.OPEN_CHOICE)
 
         /** Returns the non-blank string values of a JSON array field, or an empty list when absent or not an array. */
-        private fun JsonNode?.stringList(field: String): List<String> =
-            this?.get(field)?.takeIf { it.isArray }?.map { it.asText() }?.filter { it.isNotBlank() } ?: emptyList()
 
         val CONFIG_SCHEMA: JsonNode =
             jacksonObjectMapper().readTree(
