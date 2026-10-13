@@ -190,6 +190,11 @@ agentos:
   # configs are unaffected. Setting the list replaces the default entirely.
   # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
   # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
+  # Comma-separated integration types that may set autoGrant, i.e. be handed to every agent within
+  # a config's scope without any agent naming it. At platform scope that is every agent of the
+  # environment at once, so the list starts closed and setting it replaces the default entirely.
+  # Override with env var: AGENTOS_INTEGRATIONS_AUTO_GRANTABLE_TYPES
+  # auto-grantable-types: QUERY_USER
   query-user:
     # Declare that a platform-scoped 'QUERY_USER' integration configuration should exist. When true
     # (shipped default), QueryUserConfigSeeder creates it at startup if absent, with autoGrant=true

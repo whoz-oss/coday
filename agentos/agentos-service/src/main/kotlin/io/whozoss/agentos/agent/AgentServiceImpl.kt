@@ -375,10 +375,6 @@ class AgentServiceImpl(
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
         // collision (e.g. a user FILE_ACCESS integration named "case-exchange") crashing downstream.
-        //
-        // queryUser needs no entry here: QUERY_USER is an ordinary declared integration resolved by
-        // resolveToolsForRun above, reaching agents that do not name it through
-        // IntegrationConfig.autoGrant rather than through a parallel grant path.
         val skillTools =
             if (skillToolGrantService.isGranted(resolvedSkills)) {
                 skillToolGrantService.grantTools(resolvedSkills, toolContext)

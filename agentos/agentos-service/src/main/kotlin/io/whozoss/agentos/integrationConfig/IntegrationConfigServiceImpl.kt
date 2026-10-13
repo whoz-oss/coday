@@ -34,6 +34,7 @@ class IntegrationConfigServiceImpl(
      * — and every unit test building this service directly — behaves as before.
      */
     private val policies: List<IntegrationConfigPolicy> = emptyList(),
+    private val integrationsProperties: IntegrationsProperties = IntegrationsProperties(),
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -281,7 +282,7 @@ class IntegrationConfigServiceImpl(
     }
 
     /**
-     * Only a type listed in [IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES] may set
+     * Only a type listed in [IntegrationsProperties.autoGrantableTypes] may set
      * [IntegrationConfig.autoGrant].
      *
      * `autoGrant` hands the integration to every agent in the config's scope without any agent
@@ -292,14 +293,14 @@ class IntegrationConfigServiceImpl(
      */
     private fun assertAutoGrantRules(entity: IntegrationConfig) {
         if (!entity.autoGrant) return
-        if (IntegrationTypeConstraints.isAutoGrantable(entity.integrationType)) return
+        if (integrationsProperties.isAutoGrantable(entity.integrationType)) return
 
         throw ResponseStatusException(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "An integration of type '${entity.integrationType}' cannot be auto-granted. Setting autoGrant hands " +
                 "this configuration to every agent within its scope without any agent declaring it \u2014 at platform " +
                 "scope, that is every agent of the environment. Only these types may be auto-granted: " +
-                "${IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES.joinToString(", ")}. Reference this " +
+                "${integrationsProperties.autoGrantableTypes.joinToString(", ")}. Reference this " +
                 "configuration explicitly from the agents that need it instead.",
         )
     }
