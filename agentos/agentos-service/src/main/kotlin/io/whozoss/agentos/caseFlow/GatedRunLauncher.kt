@@ -83,7 +83,7 @@ internal class GatedRunLauncher(
 
     /**
      * A launch can be admitted before run() starts: Stop cancels only that launch. An agent already
-     * running keeps the runtime's cooperative interruption.
+     * running is stopped by the runtime ([CaseRuntime.cancelInterruptedTurn]).
      *
      * The IDLE claim is atomic with deferredRuns removal under the admission lock.
      * Persistence via [publishStatus] runs outside the lock.
