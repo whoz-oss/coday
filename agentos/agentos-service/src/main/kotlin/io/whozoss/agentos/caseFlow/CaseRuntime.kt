@@ -122,19 +122,21 @@ class CaseRuntime(
      * [NOT_REQUESTED] is the state of a turn nobody asked to stop. It is also what a turn cancelled from
      * the outside (e.g. its caller was cancelled) finds: it ends [CaseStatus.IDLE].
      *
-     * @property stopsAgent whether the agent must stop between its steps ([agentMayContinue]). An
-     *   [INTERRUPT] only ends the run loop; it cancels the turn through [cancelInterruptedTurn].
+     * Any request other than [NOT_REQUESTED] tells the agent to stop between its steps ([agentMayContinue]), an
+     * [INTERRUPT] included, so an agent that does not suspend (a loop over blocking steps) still stops at its
+     * next step. Reaching an agent suspended in a tool or an LLM stream is a separate step: the cancellation of
+     * the turn ([cancelInterruptedTurn]), which a Stop does in a second pass.
+     *
      * @property finalStatus the status a stopped turn ends in: only a Kill is terminal. A shutdown stop
      *   ends [CaseStatus.IDLE], so a conversation kept open across a restart is not closed.
      */
     private enum class StopRequest(
-        val stopsAgent: Boolean,
         val finalStatus: CaseStatus,
     ) {
-        NOT_REQUESTED(stopsAgent = false, finalStatus = CaseStatus.IDLE),
-        INTERRUPT(stopsAgent = false, finalStatus = CaseStatus.IDLE),
-        SHUTDOWN(stopsAgent = true, finalStatus = CaseStatus.IDLE),
-        KILL(stopsAgent = true, finalStatus = CaseStatus.KILLED),
+        NOT_REQUESTED(CaseStatus.IDLE),
+        INTERRUPT(CaseStatus.IDLE),
+        SHUTDOWN(CaseStatus.IDLE),
+        KILL(CaseStatus.KILLED),
     }
 
     /**
@@ -199,6 +201,8 @@ class CaseRuntime(
 
     /**
      * Mark the current turn stopped and clear the command queue: the turn ends as [CaseStatus.IDLE].
+     * `shouldContinue` turns false at once, but an agent only reads it between two steps: on its own it does
+     * not interrupt a call in progress, that is the cancellation's job.
      *
      * Only marks the turn, it does not cancel it: [cancelInterruptedTurn] does, as a second step.
      * The split is deliberate, so as not to break the forge (Git workspaces) cases. A cancelled child
@@ -209,8 +213,9 @@ class CaseRuntime(
      * method, then cancel every turn with [cancelInterruptedTurn]. [requestKill] and
      * [requestShutdownStop] cancel directly because they act on a single runtime.
      *
-     * Without the second step, the turn ends after the current [processNextStep] returns. The runtime
-     * stays alive and the SSE flow stays open for the next user message.
+     * Without the second step, the agent stops at its next step and the turn ends once the current
+     * [processNextStep] returns: an agent suspended in a tool or an LLM stream is not interrupted by the
+     * mark alone. The runtime stays alive and the SSE flow stays open for the next user message.
      */
     fun requestInterrupt() {
         commandQueue.clear()
@@ -251,8 +256,8 @@ class CaseRuntime(
 
     private fun isStopRequested(): Boolean = stopRequest.get() != StopRequest.NOT_REQUESTED
 
-    /** What the agent checks between its steps: a Kill or a shutdown stop ends its turn. */
-    private fun agentMayContinue(): Boolean = !stopRequest.get().stopsAgent
+    /** What the agent checks between its steps: any stop request (Stop, Kill, shutdown) ends its turn. */
+    private fun agentMayContinue(): Boolean = !isStopRequested()
 
     /** Records the stop requested for the turn, never lowering a stronger request already recorded. */
     private fun raiseStopRequest(request: StopRequest) {

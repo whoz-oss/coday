@@ -378,10 +378,10 @@ class CaseRuntimeSpec : StringSpec() {
         // shouldContinue lambda contract
         // -------------------------------------------------------------------------
 
-        "shouldContinue lambda returns true after requestInterrupt (interrupt does not stop mid-stream LLM)" {
-            // requestInterrupt() stops the run loop after the current agent turn completes,
-            // but does NOT signal the LLM to stop mid-stream. Only requestKill() does that.
-            // shouldContinue is false only for a Kill or a shutdown stop, not for an interrupt.
+        "shouldContinue lambda returns false after requestInterrupt" {
+            // A Stop makes shouldContinue false, as a Kill or a shutdown stop does. An agent only reads it
+            // between two steps, so it only matters for an agent that never suspends (e.g. a loop over
+            // blocking steps). Reaching an agent suspended in a call is the cancellation, tested separately.
             val runtimeId = UUID.randomUUID()
             var capturedShouldContinue: (() -> Boolean)? = null
 
@@ -404,8 +404,7 @@ class CaseRuntimeSpec : StringSpec() {
 
             capturedShouldContinue shouldNotBe null
             runtime.requestInterrupt()
-            // interrupt does not affect shouldContinue — only kill does
-            capturedShouldContinue!!.invoke() shouldBe true
+            capturedShouldContinue!!.invoke() shouldBe false
         }
 
         "shouldContinue lambda returns false after requestShutdownStop is called" {
