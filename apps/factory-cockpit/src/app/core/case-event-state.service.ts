@@ -5,14 +5,14 @@ import { RunEvent } from './models'
 import { generateCorrelationId } from './factory-api.service'
 
 /**
- * Origin used to prefix AgentOS API calls (`/api/case-events/*`, `/api/cases/*`).
+ * Origin used to prefix AgentOS API calls (`/api/agentos/api/case-events*`, `/api/agentos/api/cases/*`).
  *
  * The factory-cockpit is deployed under `<base href="/factory/">`. Angular's
  * `HttpClient` uses the fetch API, which resolves relative URLs against
  * `document.baseURI` (i.e. `https://host/factory/`). A path like
- * `/api/case-events/…` is therefore resolved as
- * `https://host/factory/api/case-events/…`, which the gateway does NOT route
- * to the AgentOS backend (it only knows `/api/case-events/…` at the root).
+ * `/api/agentos/api/case-events…` is therefore resolved as
+ * `https://host/factory/api/agentos/api/case-events…`, which the gateway does NOT route
+ * to the AgentOS backend (it only knows `/api/agentos/api/case-events…` at the root).
  *
  * Prefixing every AgentOS API call with `window.location.origin` (injected via
  * this token) makes the URL absolute from the true server origin, bypassing the
@@ -20,10 +20,10 @@ import { generateCorrelationId } from './factory-api.service'
  *
  * - **Production / dev-server**: `window.location.origin` (e.g.
  *   `https://host` or `http://localhost:4300`).  The gateway and dev proxy both
- *   route `/api/case-events/*` and `/api/cases/*` from the root origin.
+ *   route `/api/agentos/api/case-events*` and `/api/agentos/api/cases/*` from the root origin.
  * - **Tests** (jsdom): the token is overridden with `''` so that
  *   `HttpTestingController` can match bare paths like
- *   `/api/case-events/by-parentId/{caseId}` without an origin prefix.
+ *   `/api/agentos/api/case-eventsby-parentId/{caseId}` without an origin prefix.
  */
 export const AGENTOS_API_ORIGIN = new InjectionToken<string>('AGENTOS_API_ORIGIN', {
   providedIn: 'root',
@@ -289,13 +289,13 @@ export class CaseEventStateService implements OnDestroy {
   private fetchHistory(caseId: string): Observable<AgentOsCaseEvent[]> {
     const headers = new HttpHeaders().set('X-Correlation-Id', generateCorrelationId())
     return this.http.get<AgentOsCaseEvent[]>(
-      this.agentOsUrl(`/api/case-events/by-parentId/${encodeURIComponent(caseId)}`),
+      this.agentOsUrl(`/api/agentos/api/case-eventsby-parentId/${encodeURIComponent(caseId)}`),
       { headers }
     )
   }
 
   private openSse(caseId: string): Observable<AgentOsCaseEvent> {
-    const url = this.agentOsUrl(`/api/cases/${encodeURIComponent(caseId)}/events`)
+    const url = this.agentOsUrl(`/api/agentos/api/cases/${encodeURIComponent(caseId)}/events`)
     return new Observable<AgentOsCaseEvent>((subscriber) => {
       const source = this.zone.runOutsideAngular(() => new EventSource(url))
 

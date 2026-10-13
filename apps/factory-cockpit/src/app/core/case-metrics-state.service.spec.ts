@@ -221,13 +221,13 @@ describe('CaseMetricsStateService', () => {
     service.activate('case-1', attempt())
     expect(service.state()).toBe('loading')
     expect(service.isLoading()).toBe(true)
-    httpMock.expectOne('/api/cases/case-1/run-cost').flush(runCostDto())
+    httpMock.expectOne('/api/agentos/api/cases/case-1/run-cost').flush(runCostDto())
   })
 
   it('sets metrics and state=ready after a successful fetch', fakeAsync(() => {
     const a = attempt({ startedAt: '2024-01-01T10:00:00Z', completedAt: '2024-01-01T10:01:30Z' })
     service.activate('case-1', a)
-    httpMock.expectOne('/api/cases/case-1/run-cost').flush(runCostDto({ cost: 0.042 }))
+    httpMock.expectOne('/api/agentos/api/cases/case-1/run-cost').flush(runCostDto({ cost: 0.042 }))
     tick()
     expect(service.state()).toBe('ready')
     expect(service.hasMetrics()).toBe(true)
@@ -238,7 +238,9 @@ describe('CaseMetricsStateService', () => {
   it('sets metrics with null runCost when API returns 500', fakeAsync(() => {
     const a = attempt()
     service.activate('case-1', a)
-    httpMock.expectOne('/api/cases/case-1/run-cost').flush('error', { status: 500, statusText: 'Server Error' })
+    httpMock
+      .expectOne('/api/agentos/api/cases/case-1/run-cost')
+      .flush('error', { status: 500, statusText: 'Server Error' })
     tick()
     // catchError maps to null — metrics still set (duration from attempt)
     expect(service.state()).toBe('ready')
@@ -255,7 +257,7 @@ describe('CaseMetricsStateService', () => {
     service.activate('case-2', attempt({ caseId: 'case-2' }))
 
     // Resolve case-2 — the active request.
-    httpMock.expectOne('/api/cases/case-2/run-cost').flush(runCostDto({ caseId: 'case-2', cost: 0.99 }))
+    httpMock.expectOne('/api/agentos/api/cases/case-2/run-cost').flush(runCostDto({ caseId: 'case-2', cost: 0.99 }))
     tick()
 
     // Only case-2 metrics must be present.
@@ -267,7 +269,7 @@ describe('CaseMetricsStateService', () => {
 
   it('resets to idle on clear()', fakeAsync(() => {
     service.activate('case-1', attempt())
-    httpMock.expectOne('/api/cases/case-1/run-cost').flush(runCostDto())
+    httpMock.expectOne('/api/agentos/api/cases/case-1/run-cost').flush(runCostDto())
     tick()
     expect(service.state()).toBe('ready')
 
@@ -296,7 +298,7 @@ describe('CaseMetricsStateService', () => {
 
   it('URL-encodes the caseId in the request path', fakeAsync(() => {
     service.activate('case/with/slashes', attempt())
-    httpMock.expectOne('/api/cases/case%2Fwith%2Fslashes/run-cost').flush(runCostDto())
+    httpMock.expectOne('/api/agentos/api/cases/case%2Fwith%2Fslashes/run-cost').flush(runCostDto())
     tick()
     expect(service.state()).toBe('ready')
   }))
@@ -304,7 +306,7 @@ describe('CaseMetricsStateService', () => {
   it('computes null attemptDurationSec when attempt has no completedAt', fakeAsync(() => {
     const running = attempt({ completedAt: undefined })
     service.activate('case-1', running)
-    httpMock.expectOne('/api/cases/case-1/run-cost').flush(runCostDto())
+    httpMock.expectOne('/api/agentos/api/cases/case-1/run-cost').flush(runCostDto())
     tick()
     // Running attempt: no fabricated elapsed duration from now
     expect(service.metrics()?.attemptDurationSec).toBeNull()
@@ -313,7 +315,7 @@ describe('CaseMetricsStateService', () => {
 
   it('sets runCostPartial=true when unknownCostCount > 0', fakeAsync(() => {
     service.activate('case-1', attempt())
-    httpMock.expectOne('/api/cases/case-1/run-cost').flush(runCostDto({ unknownCostCount: 2 }))
+    httpMock.expectOne('/api/agentos/api/cases/case-1/run-cost').flush(runCostDto({ unknownCostCount: 2 }))
     tick()
     expect(service.metrics()?.runCostPartial).toBe(true)
   }))

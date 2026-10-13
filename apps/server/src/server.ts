@@ -128,17 +128,23 @@ debugLog(
   `AgentOS proxy configured: /api/agentos → ${currentAgentosUrl} (${AGENTOS_URL_ENV ? 'external mode' : 'managed mode'})`
 )
 
-// Factory exposes its API with the /api/factory prefix already, so preserve
-// the complete request path when forwarding it to the configured backend.
+// Factory exposes its API with the /api/factory prefix already, so the complete
+// request path must be forwarded unchanged.
+//
+// Mounted at the root with `pathFilter`, NOT `app.use('/api/factory', …)`:
+// http-proxy-middleware v3 forwards `req.url` (v2 used `req.originalUrl`), and
+// Express strips the mount path from `req.url`. A path-mounted proxy would send
+// /api/factory/workflows upstream as /workflows → 404 from the Factory backend.
 app.use(
-  '/api/factory',
-  (req, _res, next) => {
-    debugLog('FACTORY', `[PROXY] ${req.method} ${req.originalUrl}`)
-    next()
-  },
   createProxyMiddleware({
     target: FACTORY_URL,
     changeOrigin: true,
+    pathFilter: (p) => p === '/api/factory' || p.startsWith('/api/factory/'),
+    on: {
+      proxyReq: (_proxyReq, req) => {
+        debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
+      },
+    },
   })
 )
 debugLog('INIT', `Factory proxy configured: /api/factory → ${FACTORY_URL}/api/factory`)
@@ -146,36 +152,49 @@ debugLog('INIT', `Factory proxy configured: /api/factory → ${FACTORY_URL}/api/
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
 
-// Development mode: proxy to Angular dev server
+// Development mode: proxy to the Angular dev servers, mirroring the production
+// split between the main client (/) and the factory cockpit (/factory).
+//
+// Both proxies are mounted at the root with a `pathFilter` rather than via
+// `app.use('/factory', …)`:
+//  - Express strips the mount prefix, but the factory dev server serves its
+//    bundles under /factory/ (baseHref), so the full path must be preserved.
+//    Stripping it makes the dev server answer its SPA fallback (index.html)
+//    for /main.js → "Expected a JavaScript module script… MIME type text/html".
+//  - With `ws: true` each proxy also subscribes to the server's WebSocket
+//    `upgrade` events, where only `pathFilter` applies. Disjoint filters keep
+//    each app's HMR socket routed to its own dev server.
 if (process.env.BUILD_ENV === 'development') {
-  const angularClientPort = process.env.ANGULAR_CLIENT_PORT ?? '4200'
-  const ANGULAR_DEV_SERVER = `http://localhost:${angularClientPort}`
-  debugLog('INIT', `Development mode: proxying to Angular dev server at ${ANGULAR_DEV_SERVER}`)
+  const ANGULAR_DEV_SERVER = `http://localhost:${process.env.ANGULAR_CLIENT_PORT ?? '4200'}`
+  const FACTORY_COCKPIT_DEV_SERVER = `http://localhost:${process.env.FACTORY_COCKPIT_PORT ?? '4300'}`
 
-  // Import http-proxy-middleware dynamically
-  import('http-proxy-middleware')
-    .then(({ createProxyMiddleware: devProxyMiddleware }) => {
-      // Proxy all non-API requests to Angular dev server
-      const proxyMiddleware = devProxyMiddleware({
-        target: ANGULAR_DEV_SERVER,
-        changeOrigin: true,
-        ws: true, // Enable WebSocket proxying for Angular HMR
-      })
+  const isFactoryPath = (p: string) => {
+    return p === '/factory' || p.startsWith('/factory/')
+  }
+  const isBackendPath = (p: string) => p.startsWith('/api') || p.startsWith('/events')
 
-      // Only proxy if not an API route
-      app.use('/', (req, res, next) => {
-        if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
-          next()
-        } else {
-          proxyMiddleware(req, res, next as any)
-        }
-      })
-
-      debugLog('INIT', 'Proxy middleware configured successfully')
+  app.use(
+    createProxyMiddleware({
+      target: FACTORY_COCKPIT_DEV_SERVER,
+      changeOrigin: true,
+      ws: true,
+      pathFilter: (p) => isFactoryPath(p),
     })
-    .catch((error) => {
-      console.error('Failed to load http-proxy-middleware:', error)
+  )
+
+  app.use(
+    createProxyMiddleware({
+      target: ANGULAR_DEV_SERVER,
+      changeOrigin: true,
+      ws: true,
+      pathFilter: (p) => !isBackendPath(p) && !isFactoryPath(p),
     })
+  )
+
+  debugLog(
+    'INIT',
+    `Development mode: /factory → ${FACTORY_COCKPIT_DEV_SERVER}, other non-API routes → ${ANGULAR_DEV_SERVER}`
+  )
 } else {
   // Production mode: serve static Angular app
   // Check for CODAY_CLIENT_PATH environment variable (set by web launcher)

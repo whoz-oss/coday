@@ -219,7 +219,7 @@ describe('mapAgentOsEventToRunEvent', () => {
  * Configure TestBed with optional AGENTOS_API_ORIGIN override.
  *
  * - `origin = ''`  (default) — simulates production or tests where
- *   HttpTestingController matches bare paths like `/api/case-events/…`.
+ *   HttpTestingController matches bare paths like `/api/agentos/api/case-events…`.
  * - `origin = 'http://localhost:4300'`  — simulates the factory-cockpit dev
  *   server origin, verifying that URLs are constructed as absolute.
  */
@@ -279,12 +279,12 @@ describe('CaseEventStateService', () => {
     const state = await firstValueFrom(service.state$)
     expect(state).toBe('loading')
     // Clean up pending request
-    http.expectOne((r) => r.url.includes('/api/case-events/by-parentId/case-1')).flush([])
+    http.expectOne((r) => r.url.includes('/api/agentos/api/case-eventsby-parentId/case-1')).flush([])
   })
 
-  it('fetches history from GET /api/case-events/by-parentId/{caseId}', () => {
+  it('fetches history from GET /api/agentos/api/case-eventsby-parentId/{caseId}', () => {
     service.activate('case-abc')
-    const req = http.expectOne((r) => r.url === '/api/case-events/by-parentId/case-abc')
+    const req = http.expectOne((r) => r.url === '/api/agentos/api/case-eventsby-parentId/case-abc')
     expect(req.request.method).toBe('GET')
     req.flush([])
   })
@@ -310,12 +310,12 @@ describe('CaseEventStateService', () => {
     expect(events[1]!.type).toBe('agent_message')
   })
 
-  it('opens SSE to GET /api/cases/{caseId}/events after history succeeds', () => {
+  it('opens SSE to GET /api/agentos/api/cases/{caseId}/events after history succeeds', () => {
     service.activate('case-1')
     http.expectOne((r) => r.url.includes('case-1')).flush([])
 
     expect(FakeEventSource.instances).toHaveLength(1)
-    expect(FakeEventSource.instances[0]!.url).toBe('/api/cases/case-1/events')
+    expect(FakeEventSource.instances[0]!.url).toBe('/api/agentos/api/cases/case-1/events')
   })
 
   it('appends live SSE events to the accumulated list', async () => {
@@ -537,8 +537,8 @@ describe('CaseEventStateService', () => {
 // CaseEventStateService — URL construction under base href /factory/
 //
 // These tests verify the fix for the bug where <base href="/factory/"> caused
-// Angular's fetch-based HttpClient to resolve /api/case-events/… as
-// /factory/api/case-events/…, which the gateway could not route to AgentOS.
+// Angular's fetch-based HttpClient to resolve /api/agentos/api/case-events… as
+// /factory/api/agentos/api/case-events…, which the gateway could not route to AgentOS.
 //
 // The fix: CaseEventStateService injects AGENTOS_API_ORIGIN and prefixes all
 // AgentOS API paths with it, producing absolute URLs that bypass <base href>.
@@ -570,8 +570,8 @@ describe('CaseEventStateService — URL construction (base href /factory/ scenar
   it('fetches history with an absolute URL that includes the origin (not /factory/ prefix)', () => {
     service.activate('test-case-id')
 
-    // The URL must be absolute from the origin, NOT /factory/api/case-events/…
-    const req = http.expectOne(`${SIMULATED_ORIGIN}/api/case-events/by-parentId/test-case-id`)
+    // The URL must be absolute from the origin, NOT /factory/api/agentos/api/case-events…
+    const req = http.expectOne(`${SIMULATED_ORIGIN}/api/agentos/api/case-eventsby-parentId/test-case-id`)
     expect(req.request.method).toBe('GET')
     // Crucially: no /factory/ in the path
     expect(req.request.url).not.toContain('/factory/')
@@ -580,13 +580,13 @@ describe('CaseEventStateService — URL construction (base href /factory/ scenar
 
   it('opens SSE with an absolute URL that includes the origin (not /factory/ prefix)', () => {
     service.activate('sse-case-id')
-    http.expectOne((r) => r.url.includes('/api/case-events/by-parentId/')).flush([])
+    http.expectOne((r) => r.url.includes('/api/agentos/api/case-eventsby-parentId/')).flush([])
 
     expect(FakeEventSource.instances).toHaveLength(1)
     const sseUrl = FakeEventSource.instances[0]!.url
 
     // The SSE URL must be absolute from the origin
-    expect(sseUrl).toBe(`${SIMULATED_ORIGIN}/api/cases/sse-case-id/events`)
+    expect(sseUrl).toBe(`${SIMULATED_ORIGIN}/api/agentos/api/cases/sse-case-id/events`)
     // Crucially: no /factory/ in the path
     expect(sseUrl).not.toContain('/factory/')
   })
@@ -595,34 +595,34 @@ describe('CaseEventStateService — URL construction (base href /factory/ scenar
     const caseIdWithSpecialChars = 'case/with spaces'
     service.activate(caseIdWithSpecialChars)
 
-    const req = http.expectOne(`${SIMULATED_ORIGIN}/api/case-events/by-parentId/case%2Fwith%20spaces`)
+    const req = http.expectOne(`${SIMULATED_ORIGIN}/api/agentos/api/case-eventsby-parentId/case%2Fwith%20spaces`)
     expect(req.request.method).toBe('GET')
     req.flush([])
 
     const sseUrl = FakeEventSource.instances[0]!.url
-    expect(sseUrl).toBe(`${SIMULATED_ORIGIN}/api/cases/case%2Fwith%20spaces/events`)
+    expect(sseUrl).toBe(`${SIMULATED_ORIGIN}/api/agentos/api/cases/case%2Fwith%20spaces/events`)
   })
 
   it('produces correct absolute URLs for a real UUID caseId', () => {
     const uuid = 'cfd97cc9-2590-3f0f-af0f-4fe045c56d49'
     service.activate(uuid)
 
-    // This is the exact URL the user observed as broken (/factory/api/case-events/…)
+    // This is the exact URL the user observed as broken (/factory/api/agentos/api/case-events…)
     // The fix must produce the absolute URL WITHOUT /factory/ in the path.
-    const req = http.expectOne(`${SIMULATED_ORIGIN}/api/case-events/by-parentId/${uuid}`)
-    expect(req.request.url).toBe(`${SIMULATED_ORIGIN}/api/case-events/by-parentId/${uuid}`)
+    const req = http.expectOne(`${SIMULATED_ORIGIN}/api/agentos/api/case-eventsby-parentId/${uuid}`)
+    expect(req.request.url).toBe(`${SIMULATED_ORIGIN}/api/agentos/api/case-eventsby-parentId/${uuid}`)
     expect(req.request.url).not.toContain('/factory/')
     req.flush([])
 
     const sseUrl = FakeEventSource.instances[0]!.url
-    expect(sseUrl).toBe(`${SIMULATED_ORIGIN}/api/cases/${uuid}/events`)
+    expect(sseUrl).toBe(`${SIMULATED_ORIGIN}/api/agentos/api/cases/${uuid}/events`)
     expect(sseUrl).not.toContain('/factory/')
   })
 
   it('still deduplicates and maps events correctly when using absolute URLs', async () => {
     service.activate('case-1')
     http
-      .expectOne((r) => r.url.includes('/api/case-events/by-parentId/case-1'))
+      .expectOne((r) => r.url.includes('/api/agentos/api/case-eventsby-parentId/case-1'))
       .flush([
         makeHistoryEvent('ev-1', 'ToolRequestEvent'),
         makeHistoryEvent('ev-2', 'TextChunkEvent'), // filtered

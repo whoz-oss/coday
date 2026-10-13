@@ -7,7 +7,7 @@ import { generateCorrelationId } from './factory-api.service'
 /**
  * Minimal DTO for AgentOS Case creation.
  *
- * Mirrors the subset of `CaseDto` used by `POST /api/cases`.
+ * Mirrors the subset of `CaseDto` used by `POST /api/agentos/api/cases`.
  * `namespaceId` is required and must be a valid UUID string — the AgentOS
  * controller validates it with `@NotNull UUID namespaceId`. If the Factory
  * namespace id is a slug rather than a UUID the request will be rejected with
@@ -41,11 +41,11 @@ export interface AgentOsApiError {
  *
  * Only the two operations needed by the "Demander au superviseur" flow are
  * exposed:
- *  1. `POST /api/cases` — create a new assistance case in a namespace.
- *  2. `POST /api/cases/{id}/messages` — send the initial message (with
+ *  1. `POST /api/agentos/api/cases` — create a new assistance case in a namespace.
+ *  2. `POST /api/agentos/api/cases/{id}/messages` — send the initial message (with
  *     the `@Heimdall` mention so AgentOS routes the turn to that agent).
  *
- * Both calls go through the dev proxy (`/api/cases → localhost:8124`) and
+ * Both calls go through the dev proxy (`/api/agentos/api/cases → localhost:8124`) and
  * the gateway in production. No authentication header is added here:
  * the gateway/proxy propagates the session cookie or auth header.
  */
@@ -54,7 +54,7 @@ export class AgentOsApiService {
   private readonly http = inject(HttpClient)
 
   /**
-   * POST `/api/cases` — create a new AgentOS case in the given namespace.
+   * POST `/api/agentos/api/cases` — create a new AgentOS case in the given namespace.
    *
    * Returns the created case DTO (HTTP 201). Throws an {@link AgentOsApiError}
    * on any HTTP or transport failure.
@@ -64,12 +64,12 @@ export class AgentOsApiService {
       .set('Content-Type', 'application/json')
       .set('X-Correlation-Id', generateCorrelationId())
     return this.http
-      .post<CreatedCase>('/api/cases', request, { headers })
+      .post<CreatedCase>('/api/agentos/api/cases', request, { headers })
       .pipe(catchError((error: unknown) => throwError(() => normalizeAgentOsError(error))))
   }
 
   /**
-   * POST `/api/cases/{caseId}/messages` — append a user message to the case.
+   * POST `/api/agentos/api/cases/{caseId}/messages` — append a user message to the case.
    *
    * Used immediately after {@link createCase} to send the supervisor context
    * message (which includes the `@Heimdall` mention so AgentOS selects the
@@ -83,7 +83,7 @@ export class AgentOsApiService {
       .set('Content-Type', 'application/json')
       .set('X-Correlation-Id', generateCorrelationId())
     return this.http
-      .post<void>(`/api/cases/${encodeURIComponent(caseId)}/messages`, { content }, { headers })
+      .post<void>(`/api/agentos/api/cases/${encodeURIComponent(caseId)}/messages`, { content }, { headers })
       .pipe(catchError((error: unknown) => throwError(() => normalizeAgentOsError(error))))
   }
 }
