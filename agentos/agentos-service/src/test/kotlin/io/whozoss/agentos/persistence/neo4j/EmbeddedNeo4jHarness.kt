@@ -50,10 +50,7 @@ object EmbeddedNeo4jHarness : KLogging() {
             deleteOnExit(storeDir)
             Neo4jBuilders
                 .newInProcessBuilder(storeDir)
-                // Bolt only: the HTTP server cannot start on this classpath (javax Jersey 2 vs Boot's Jersey 3).
-                // To look at the data, stop on a breakpoint that suspends only its thread and connect cypher-shell,
-                // or a Neo4j Browser served over http, to EmbeddedNeo4jHarness.instance.boltURI(), no auth.
-                .withDisabledServer()
+                .withDisabledServer() // no HTTP server — Bolt only; remove this line temporarily to enable Neo4j Browser for debugging
                 .build()
                 .also { logger.info { "[EmbeddedNeo4j-Test] Harness Bolt URI: ${it.boltURI()}" } }
         }
