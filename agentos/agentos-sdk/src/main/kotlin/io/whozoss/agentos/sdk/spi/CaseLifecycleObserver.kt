@@ -32,7 +32,7 @@ interface CaseLifecycleObserver : ExtensionPoint {
      * @param oldStatus the status before the transition.
      * @param newStatus the status after the transition.
      */
-    fun onStatusChanged(
+    suspend fun onStatusChanged(
         caseId: UUID,
         oldStatus: CaseStatus,
         newStatus: CaseStatus,
@@ -44,7 +44,7 @@ interface CaseLifecycleObserver : ExtensionPoint {
      * @param caseId the case the event belongs to.
      * @param event the stored event (with a stable id when it is durable).
      */
-    fun onEventStored(
+    suspend fun onEventStored(
         caseId: UUID,
         event: CaseEvent,
     ) {}

@@ -19,7 +19,7 @@ class FactoryToolGrantPolicy
     constructor(
         @Suppress("UNUSED_PARAMETER") services: () -> FactoryBridgeServices = { FactoryBridgePluginHolder.current },
     ) : ToolGrantPolicy {
-    override fun evaluateToolGrant(
+    override suspend fun evaluateToolGrant(
         toolName: String,
         context: ToolContext,
     ): ToolGrantDecision = ToolGrantDecision.Neutral

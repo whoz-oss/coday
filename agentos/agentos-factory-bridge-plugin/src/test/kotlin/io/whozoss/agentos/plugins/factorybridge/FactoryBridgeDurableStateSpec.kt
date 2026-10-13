@@ -14,7 +14,7 @@ import java.util.UUID
 class FactoryBridgeDurableStateSpec : StringSpec({
     val token = "secret-token-value-with-sufficient-length"
 
-    fun withDir(block: (String) -> Unit) {
+    suspend fun withDir(block: suspend (String) -> Unit) {
         val dir = Files.createTempDirectory("factory-bridge-services")
         try {
             block(dir.toAbsolutePath().toString())

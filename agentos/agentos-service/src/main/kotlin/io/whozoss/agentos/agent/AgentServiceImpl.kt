@@ -471,7 +471,7 @@ class AgentServiceImpl(
      * `runCatching { … }.getOrElse { Neutral }` would hand the agent the very tools a broken
      * policy was installed to withhold.
      */
-    private fun applyToolGrantPolicies(
+    private suspend fun applyToolGrantPolicies(
         tools: List<StandardTool<*>>,
         context: ToolContext,
         policies: List<ToolGrantPolicy>,

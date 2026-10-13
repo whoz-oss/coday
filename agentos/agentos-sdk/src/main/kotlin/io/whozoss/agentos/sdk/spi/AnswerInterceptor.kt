@@ -69,7 +69,7 @@ interface AnswerInterceptor : ExtensionPoint {
      *   [AnswerInterceptResult.ExternallyHandled] when no local answer or resumption must occur,
      *   or [AnswerInterceptResult.Reject] with a human-readable reason to stop.
      */
-    fun interceptAnswer(
+    suspend fun interceptAnswer(
         caseId: UUID,
         questionEvent: QuestionEvent,
         answerText: String,
@@ -99,7 +99,7 @@ interface AnswerInterceptor : ExtensionPoint {
          * @param onError notified when an interceptor throws, so the host can log the
          *   cause that the user-facing reason deliberately omits; must never throw.
          */
-        fun evaluate(
+        suspend fun evaluate(
             interceptors: Iterable<AnswerInterceptor>,
             caseId: UUID,
             questionEvent: QuestionEvent,

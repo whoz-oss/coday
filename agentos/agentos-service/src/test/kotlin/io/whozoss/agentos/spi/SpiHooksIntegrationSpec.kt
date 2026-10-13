@@ -149,7 +149,7 @@ class SpiHooksIntegrationSpec : StringSpec({
         val seen = mutableListOf<Triple<UUID, QuestionEvent, String>>()
         val interceptor =
             object : AnswerInterceptor {
-                override fun interceptAnswer(
+                override suspend fun interceptAnswer(
                     caseId: UUID,
                     questionEvent: QuestionEvent,
                     answerText: String,
@@ -177,7 +177,7 @@ class SpiHooksIntegrationSpec : StringSpec({
         var agentRuns = 0
         val interceptor =
             object : AnswerInterceptor {
-                override fun interceptAnswer(
+                override suspend fun interceptAnswer(
                     caseId: UUID,
                     questionEvent: QuestionEvent,
                     answerText: String,
@@ -213,7 +213,7 @@ class SpiHooksIntegrationSpec : StringSpec({
         val savedEvents = mutableListOf<CaseEvent>()
         val interceptor =
             object : AnswerInterceptor {
-                override fun interceptAnswer(
+                override suspend fun interceptAnswer(
                     caseId: UUID,
                     questionEvent: QuestionEvent,
                     answerText: String,
@@ -238,7 +238,7 @@ class SpiHooksIntegrationSpec : StringSpec({
         val savedEvents = mutableListOf<CaseEvent>()
         val interceptor =
             object : AnswerInterceptor {
-                override fun interceptAnswer(
+                override suspend fun interceptAnswer(
                     caseId: UUID,
                     questionEvent: QuestionEvent,
                     answerText: String,
@@ -269,7 +269,7 @@ class SpiHooksIntegrationSpec : StringSpec({
         val observed = mutableListOf<Pair<UUID, CaseEvent>>()
         val observer =
             object : CaseLifecycleObserver {
-                override fun onEventStored(caseId: UUID, event: CaseEvent) {
+                override suspend fun onEventStored(caseId: UUID, event: CaseEvent) {
                     observed += caseId to event
                 }
             }
@@ -288,7 +288,7 @@ class SpiHooksIntegrationSpec : StringSpec({
         val savedEvents = mutableListOf<CaseEvent>()
         val observer =
             object : CaseLifecycleObserver {
-                override fun onEventStored(caseId: UUID, event: CaseEvent): Unit = throw IllegalStateException("boom")
+                override suspend fun onEventStored(caseId: UUID, event: CaseEvent): Unit = throw IllegalStateException("boom")
             }
 
         val runtime = buildRuntime(caseId, savedEvents, lifecycleObservers = listOf(observer))

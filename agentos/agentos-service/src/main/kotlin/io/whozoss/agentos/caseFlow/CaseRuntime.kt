@@ -84,7 +84,7 @@ class CaseRuntime(
      * ([io.whozoss.agentos.exchange.ExchangeController.caseRootFor]); production supplies it via [buildRuntime].
      */
     val caseCreatedAt: Instant,
-    private val updateStatusCallback: (UUID, CaseStatus) -> Unit,
+    private val updateStatusCallback: suspend (UUID, CaseStatus) -> Unit,
     private val storeEvent: (CaseEvent) -> CaseEvent,
     private val selectAgent: (content: List<MessageContent>, pastEvents: List<CaseEvent>) -> List<CaseEvent>,
     private val isAgentAuthorized: (agentName: String, userId: UUID?) -> Boolean,
@@ -262,7 +262,7 @@ class CaseRuntime(
      * **Must be called outside the admission lock** — the callback reaches
      * [CaseServiceImpl.handleStatusChange] which performs blocking Neo4j round-trips.
      */
-    fun publishStatus(status: CaseStatus) = updateStatusCallback(id, status)
+    suspend fun publishStatus(status: CaseStatus) = updateStatusCallback(id, status)
 
     /** Number of active SSE subscribers. Useful as a synchronisation barrier in tests. */
     val subscriptionCount get() = emitter.subscriptionCount
@@ -282,7 +282,7 @@ class CaseRuntime(
      * Persist an event via the service callback, then add it to the local list and
      * emit it on the SSE flow. The runtime never passes itself to the service.
      */
-    private fun storeAndEmitEvent(event: CaseEvent) {
+    private suspend fun storeAndEmitEvent(event: CaseEvent) {
         val saved = storeEvent(event)
         eventList.add(saved)
         emit(saved)
@@ -293,7 +293,7 @@ class CaseRuntime(
      * Notify registered [CaseLifecycleObserver]s that [event] has been stored.
      * Observers are notifications only: a faulty hook is logged and never breaks execution.
      */
-    private fun notifyEventStored(event: CaseEvent) {
+    private suspend fun notifyEventStored(event: CaseEvent) {
         if (lifecycleObservers.isEmpty()) return
         lifecycleObservers.forEach { observer ->
             runCatching { observer.onEventStored(id, event) }
@@ -325,7 +325,7 @@ class CaseRuntime(
      * When [sessionContext] is non-null, it is embedded directly in the [MessageEvent]
      * as [io.whozoss.agentos.sdk.caseEvent.MessageEvent.sessionContext].
      */
-    fun addUserMessage(
+    suspend fun addUserMessage(
         actor: Actor,
         content: List<MessageContent>,
         answerToEventId: UUID? = null,
@@ -466,7 +466,7 @@ class CaseRuntime(
             // starts scanning backward.
             pendingQuestionResumptions.clear()
             findQuestionsToResume(eventList.getAll()).let { questions ->
-                questions.firstOrNull()?.let(::resumeQuestion)
+                questions.firstOrNull()?.let { resumeQuestion(it) }
                 questions.drop(1).forEach(pendingQuestionResumptions::addLast)
             }
 
@@ -532,7 +532,7 @@ class CaseRuntime(
         return CaseStatus.ERROR
     }
 
-    private fun updateStatus(caseStatus: CaseStatus) {
+    private suspend fun updateStatus(caseStatus: CaseStatus) {
         // _statusFlow is updated first so reactive watchers (e.g. eviction watcher)
         // see the new status immediately, before the persistence round-trip completes.
         _statusFlow.value = caseStatus
@@ -660,7 +660,7 @@ class CaseRuntime(
         return StepResult.AGENT_FINISHED
     }
 
-    private fun resumeQuestion(question: QuestionEvent) {
+    private suspend fun resumeQuestion(question: QuestionEvent) {
         logger.info { "[CaseRuntime $id] Resuming agent '${question.agentName}' after user answer" }
         // Persist the per-question correlation with the selection itself. On replay,
         // this prevents exactly this question (not merely this agent) from re-running.

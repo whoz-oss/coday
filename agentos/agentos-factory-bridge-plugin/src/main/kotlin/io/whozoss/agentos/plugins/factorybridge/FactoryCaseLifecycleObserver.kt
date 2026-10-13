@@ -23,7 +23,7 @@ class FactoryCaseLifecycleObserver
     constructor(
         private val services: () -> FactoryBridgeServices = { FactoryBridgePluginHolder.current },
     ) : CaseLifecycleObserver {
-        override fun onStatusChanged(
+        override suspend fun onStatusChanged(
             caseId: UUID,
             oldStatus: CaseStatus,
             newStatus: CaseStatus,
@@ -38,7 +38,7 @@ class FactoryCaseLifecycleObserver
             }
         }
 
-        override fun onEventStored(
+        override suspend fun onEventStored(
             caseId: UUID,
             event: CaseEvent,
         ) {

@@ -116,7 +116,7 @@ interface CaseService : EntityService<Case, UUID> {
      * and persisted with the message. Only the last user message's context is injected into
      * the LLM prompt; earlier turns' context is ignored during message conversion.
      */
-    fun addMessage(
+    suspend fun addMessage(
         caseId: UUID,
         actor: Actor,
         content: List<io.whozoss.agentos.sdk.caseEvent.MessageContent>,

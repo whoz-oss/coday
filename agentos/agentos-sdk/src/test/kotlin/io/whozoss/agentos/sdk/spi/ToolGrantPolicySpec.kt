@@ -24,9 +24,9 @@ class ToolGrantPolicySpec : StringSpec({
             agentName = "agent",
         )
 
-    fun policy(decide: (String) -> ToolGrantDecision) =
+    fun policy(decide: suspend (String) -> ToolGrantDecision) =
         object : ToolGrantPolicy {
-            override fun evaluateToolGrant(toolName: String, context: ToolContext) =
+            override suspend fun evaluateToolGrant(toolName: String, context: ToolContext) =
                 decide(toolName)
         }
 
@@ -108,7 +108,7 @@ class ToolGrantPolicySpec : StringSpec({
         val denying = policy { ToolGrantDecision.Deny(setOf("editFiles")) }
         val counting =
             object : ToolGrantPolicy {
-                override fun evaluateToolGrant(toolName: String, context: ToolContext): ToolGrantDecision {
+                override suspend fun evaluateToolGrant(toolName: String, context: ToolContext): ToolGrantDecision {
                     consulted++
                     return ToolGrantDecision.Neutral
                 }

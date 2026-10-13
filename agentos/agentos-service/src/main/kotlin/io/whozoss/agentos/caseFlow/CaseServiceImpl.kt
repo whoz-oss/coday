@@ -384,7 +384,7 @@ class CaseServiceImpl(
     // Message handling (called by controller)
     // ======================================================
 
-    override fun addMessage(
+    override suspend fun addMessage(
         caseId: UUID,
         actor: Actor,
         content: List<MessageContent>,
@@ -857,7 +857,7 @@ class CaseServiceImpl(
      * The runtime is evicted *after* the status event is emitted so SSE clients
      * always receive the final status before the stream closes.
      */
-    private fun handleStatusChange(
+    private suspend fun handleStatusChange(
         caseId: UUID,
         newStatus: CaseStatus,
         postProcess: Boolean = true,

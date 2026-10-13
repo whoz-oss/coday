@@ -29,9 +29,9 @@ class AnswerInterceptorSpec : StringSpec({
         )
     val actor = Actor(id = UUID.randomUUID().toString(), displayName = "User", role = ActorRole.USER)
 
-    fun interceptor(decide: () -> AnswerInterceptResult) =
+    fun interceptor(decide: suspend () -> AnswerInterceptResult) =
         object : AnswerInterceptor {
-            override fun interceptAnswer(
+            override suspend fun interceptAnswer(
                 caseId: UUID,
                 questionEvent: QuestionEvent,
                 answerText: String,

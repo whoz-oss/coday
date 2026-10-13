@@ -70,7 +70,7 @@ interface ToolGrantPolicy : ExtensionPoint {
      * @return the policy's decision for this tool; [ToolGrantDecision.Neutral] when the
      *   policy has no opinion.
      */
-    fun evaluateToolGrant(
+    suspend fun evaluateToolGrant(
         toolName: String,
         context: ToolContext,
     ): ToolGrantDecision = ToolGrantDecision.Neutral
@@ -96,7 +96,7 @@ interface ToolGrantPolicy : ExtensionPoint {
          * @param onDenied notified with a human-readable reason whenever the tool is
          *   denied, including the faulty-policy case; must never throw.
          */
-        fun isGranted(
+        suspend fun isGranted(
             policies: Iterable<ToolGrantPolicy>,
             toolName: String,
             context: ToolContext,

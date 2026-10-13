@@ -4,7 +4,6 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.spi.AnswerInterceptResult
 import io.whozoss.agentos.sdk.spi.AnswerInterceptor
-import kotlinx.coroutines.runBlocking
 import mu.KLogging
 import org.pf4j.Extension
 import java.util.UUID
@@ -21,9 +20,8 @@ import java.util.UUID
  * Factory rejection surfaces as [AnswerInterceptResult.Reject] so the runtime keeps the agent suspended
  * and the user can retry.
  *
- * The interface is synchronous, mirroring
- * `io.whozoss.agentos.caseFlow.CaseRuntime.addUserMessage`, so the suspend client call is
- * bridged with [runBlocking].
+ * The SDK interceptor contract is suspend-compatible, so the Factory HTTP call is
+ * awaited directly without blocking a coroutine thread.
  */
 @Extension
 class FactoryAnswerInterceptor
@@ -36,7 +34,7 @@ class FactoryAnswerInterceptor
             FactoryCheckpointClient(resolved.config.baseUrl, resolved.httpClient, resolved.objectMapper)
         }
 
-        override fun interceptAnswer(
+        override suspend fun interceptAnswer(
             caseId: UUID,
             questionEvent: QuestionEvent,
             answerText: String,
@@ -51,16 +49,14 @@ class FactoryAnswerInterceptor
             val checkpoint = resolved.pendingCheckpoints[caseId]
                 ?: return AnswerInterceptResult.Accept
             val result =
-                runBlocking {
-                    checkpointClient.submitDecision(
-                        ref = checkpoint,
-                        decision = answerText,
-                        caseId = caseId.toString(),
-                        actorId = actor.id,
-                        namespaceId = questionEvent.namespaceId.toString(),
-                        stepQuestion = false,
-                    )
-                }
+                checkpointClient.submitDecision(
+                    ref = checkpoint,
+                    decision = answerText,
+                    caseId = caseId.toString(),
+                    actorId = actor.id,
+                    namespaceId = questionEvent.namespaceId.toString(),
+                    stepQuestion = false,
+                )
             return result.fold(
                 onSuccess = {
                     resolved.pendingCheckpoints.remove(caseId, checkpoint)
