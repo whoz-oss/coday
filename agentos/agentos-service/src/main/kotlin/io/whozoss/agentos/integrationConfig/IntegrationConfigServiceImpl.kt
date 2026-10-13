@@ -1,5 +1,7 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
@@ -292,17 +294,19 @@ class IntegrationConfigServiceImpl(
      * surfacing it as a surprising tool in some unrelated agent's prompt weeks later.
      */
     private fun assertAutoGrantRules(entity: IntegrationConfig) {
-        if (!entity.autoGrant) return
-        if (integrationsProperties.isAutoGrantable(entity.integrationType)) return
-
-        throw ResponseStatusException(
-            HttpStatus.UNPROCESSABLE_ENTITY,
-            "An integration of type '${entity.integrationType}' cannot be auto-granted. Setting autoGrant hands " +
-                "this configuration to every agent within its scope without any agent declaring it \u2014 at platform " +
-                "scope, that is every agent of the environment. Only these types may be auto-granted: " +
-                "${integrationsProperties.autoGrantableTypes.joinToString(", ")}. Reference this " +
-                "configuration explicitly from the agents that need it instead.",
-        )
+        if (entity.autoGrant) {
+            if (integrationsProperties.isAutoGrantable(entity.integrationType)) {
+                logger.debug { "integration: ${entity.name} is allowed to be auto-granted" }
+            } else {
+                throw UnprocessableEntityException(
+                    "An integration of type '${entity.integrationType}' cannot be auto-granted. Setting autoGrant hands " +
+                            "this configuration to every agent within its scope without any agent declaring it \u2014 at platform " +
+                            "scope, that is every agent of the environment. Only these types may be auto-granted: " +
+                            "${integrationsProperties.autoGrantableTypes.joinToString(", ")}. Reference this " +
+                            "configuration explicitly from the agents that need it instead.",
+                )
+            }
+        }
     }
 
     /**
