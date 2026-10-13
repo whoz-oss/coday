@@ -40,4 +40,17 @@ data class IntegrationConfigDto(
     val description: String? = null,
     val parameters: JsonNode? = null,
     val authSettingName: String? = null,
+    /**
+     * When `true`, this configuration is granted to every agent within its scope without the agent
+     * having to name it in its `integrations` map. The reach of the grant is the scope of the
+     * config itself: platform = the whole environment, namespace-shared = every agent of that
+     * namespace, user-scoped = that user's runs.
+     *
+     * An agent keeps the last word: mapping this config's [name] to an empty list in its
+     * `integrations` opts out, and that opt-out beats `autoGrant`.
+     *
+     * Only a restricted set of integration types may set this flag; the others are rejected with
+     * HTTP 422. Defaults to `false`.
+     */
+    val autoGrant: Boolean = false,
 )

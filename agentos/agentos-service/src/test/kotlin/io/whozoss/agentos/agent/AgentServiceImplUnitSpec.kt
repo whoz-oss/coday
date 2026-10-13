@@ -49,7 +49,6 @@ import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
@@ -121,10 +120,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
     // Strict on purpose: a relaxed mock would return a non-null ExchangeGrant and silently grant the
     // exchange in every unrelated test. The defaults stubbed in init deny both scopes.
     private val exchangeToolGrantService: ExchangeToolGrantService = mockk()
-
-    // Relaxed: queryUser grant is a side concern for most tests in this spec; a relaxed mock returns
-    // false for isGranted() (Boolean default) which means no tools are added — a safe neutral state.
-    private val queryUserToolGrantService: QueryUserToolGrantService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
@@ -153,7 +148,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             idCompressorService = IdCompressorService(),
             agentConfigProperties = AgentConfigProperties(delegationTimeoutSeconds = 2),
             limitsConfig = LimitsConfigProperties(),
-            queryUserToolGrantService = queryUserToolGrantService,
             exchangeRootResolver = exchangeRootResolver,
             loopWorkflowRunnerService = mockk(relaxed = true),
         )
@@ -639,7 +633,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
-                    queryUserToolGrantService = queryUserToolGrantService,
                     exchangeRootResolver = exchangeRootResolver,
                     loopWorkflowRunnerService = mockk(relaxed = true),
                 )
@@ -988,7 +981,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
                     limitsConfig = LimitsConfigProperties(),
-                    queryUserToolGrantService = queryUserToolGrantService,
                     exchangeRootResolver = exchangeRootResolver,
                     loopWorkflowRunnerService = mockk(relaxed = true),
                 )

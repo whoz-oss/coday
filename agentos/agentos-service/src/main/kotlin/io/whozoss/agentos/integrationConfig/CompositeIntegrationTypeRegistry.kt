@@ -16,7 +16,9 @@ import java.util.concurrent.ConcurrentHashMap
  * during @PostConstruct) is safe even if a read arrives concurrently.
  */
 @Component
-class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
+class CompositeIntegrationTypeRegistry(
+    private val integrationsProperties: IntegrationsProperties = IntegrationsProperties(),
+) : IntegrationTypeRegistry {
 
     /** Descriptors contributed by loaded plugins, keyed by integrationType. */
     private val pluginDescriptors = ConcurrentHashMap<String, IntegrationTypeDescriptor>()
@@ -40,6 +42,9 @@ class CompositeIntegrationTypeRegistry : IntegrationTypeRegistry {
                 .replace('_', ' '),
             description = "Configuration for the ${plugin.integrationType} integration.",
             configSchema = schema,
+            // Derived from the single source of truth rather than restated here, so adding a type to
+            // autoGrantableTypes surfaces its toggle in the UI with no further change.
+            autoGrantable = integrationsProperties.isAutoGrantable(plugin.integrationType),
         )
         val previous = pluginDescriptors.put(plugin.integrationType, descriptor)
         if (previous != null) {
