@@ -1,0 +1,44 @@
+<section class="log sf-panel" aria-labelledby="events-title">
+  <header class="log-head">
+    <mat-icon aria-hidden="true">monitoring</mat-icon>
+    <h2 id="events-title">Events</h2>
+    <span class="count sf-mono">{{ events().length }}</span>
+    <span class="sf-spacer"></span>
+
+    <mat-button-toggle-group
+      class="filters"
+      aria-label="Filter by type"
+      [value]="filter()"
+      (change)="filter.set($event.value)"
+      hideSingleSelectionIndicator
+    >
+      @for (f of filters; track f.value) {
+        <mat-button-toggle [value]="f.value" [class]="'f-' + f.value">{{ f.label }}</mat-button-toggle>
+      }
+    </mat-button-toggle-group>
+
+    <mat-checkbox [checked]="follow()" (change)="follow.set($event.checked)">Follow live</mat-checkbox>
+  </header>
+
+  <cdk-virtual-scroll-viewport itemSize="33" class="viewport" role="log" aria-live="polite">
+    <div *cdkVirtualFor="let e of visible()" class="ev" [class.ev--message]="e.type === 'agent_message'">
+      <span class="time">{{ e.time }}</span>
+      <span class="type" [class]="'t-' + e.type">{{ e.type }}</span>
+      <span class="text">
+        @if (e.tool) {
+          <b [class.write]="e.tool === 'write'">{{ e.tool }}</b>
+        }
+        {{ e.text }}
+      </span>
+      <span class="dur" [class.slow]="(e.durationSec ?? 0) > 0.3">
+        @if (e.durationSec !== undefined) {
+          {{ e.durationSec.toFixed(2) }}s
+        }
+      </span>
+    </div>
+  </cdk-virtual-scroll-viewport>
+
+  @if (running()) {
+    <footer class="activity"><span class="pulse"></span>{{ activityLabel() }}</footer>
+  }
+</section>

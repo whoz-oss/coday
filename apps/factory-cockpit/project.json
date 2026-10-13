@@ -1,0 +1,118 @@
+{
+  "name": "factory-cockpit",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "prefix": "sf",
+  "sourceRoot": "apps/factory-cockpit/src",
+  "tags": ["platform:npm", "scope:factory-cockpit"],
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "dependsOn": [
+        {
+          "target": "build-angular"
+        }
+      ],
+      "outputs": ["{projectRoot}/dist"],
+      "options": {
+        "commands": ["cp apps/factory-cockpit/package.json apps/factory-cockpit/dist/package.json"],
+        "parallel": false
+      }
+    },
+    "build-angular": {
+      "executor": "@angular/build:application",
+      "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
+      "options": {
+        "outputPath": "{projectRoot}/dist",
+        "baseHref": "/factory/",
+        "browser": "apps/factory-cockpit/src/main.ts",
+        "polyfills": [],
+        "tsConfig": "apps/factory-cockpit/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/factory-cockpit/public"
+          }
+        ],
+        "styles": ["apps/factory-cockpit/src/styles.scss"],
+        "stylePreprocessorOptions": {
+          "includePaths": [".", "libs", "libs/design-system/src"]
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "1mb",
+              "maximumError": "1.5mb"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "12kb",
+              "maximumError": "50kb"
+            }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      }
+    },
+    "serve": {
+      "continuous": true,
+      "executor": "@angular/build:dev-server",
+      "defaultConfiguration": "development",
+      "options": {
+        "port": 4300,
+        "host": "localhost",
+        "proxyConfig": "apps/factory-cockpit/proxy.conf.json"
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "factory-cockpit:build-angular:production"
+        },
+        "development": {
+          "buildTarget": "factory-cockpit:build-angular:development"
+        }
+      }
+    },
+    "test": {
+      "inputs": [
+        "default",
+        "^default",
+        "{workspaceRoot}/jest.preset.cjs",
+        {
+          "externalDependencies": ["jest", "@nx/jest", "ts-jest", "jest-preset-angular"]
+        }
+      ],
+      "options": {
+        "passWithNoTests": true
+      },
+      "configurations": {
+        "ci": {
+          "ci": true,
+          "coverage": true
+        }
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/factory-cockpit",
+        "command": "eslint ."
+      }
+    },
+    "nx-release-publish": {
+      "dependsOn": ["build"],
+      "options": {
+        "packageRoot": "apps/factory-cockpit/dist"
+      }
+    }
+  }
+}

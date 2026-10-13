@@ -1,0 +1,162 @@
+@let r = run();
+<mat-card
+  appearance="outlined"
+  class="card"
+  role="region"
+  [attr.aria-label]="'Run ' + r.title"
+  [attr.data-run-id]="r.id"
+  [class.card--working]="r.status === 'working'"
+  [class.card--destroyed]="r.status === 'destroyed'"
+>
+  <!-- Header: title, status, workflow type -->
+  <header class="head">
+    <h3 class="name">
+      <a [routerLink]="['/sessions', r.id]">{{ r.title }}</a>
+    </h3>
+
+    @switch (r.status) {
+      @case ('working') {
+        <sf-status-chip tone="blue" icon="progress_activity" spin>working</sf-status-chip>
+      }
+      @case ('idle') {
+        <sf-status-chip tone="neutral" icon="pause">waiting</sf-status-chip>
+      }
+      @case ('destroyed') {
+        <sf-status-chip tone="neutral" dot>destroyed</sf-status-chip>
+      }
+    }
+
+    <span class="sf-spacer"></span>
+    @if (r.workflowType) {
+      <sf-status-chip tone="cyan" icon="polyline">{{ r.workflowType }}</sf-status-chip>
+    }
+  </header>
+
+  <!-- Meta: project › branch · ticket + service links -->
+  <div class="meta">
+    <mat-icon class="branch-icon" aria-hidden="true">account_tree</mat-icon>
+    <span class="sf-workflow">{{ r.project }}</span>
+    @if (r.branch) {
+      <span>›</span><span class="sf-workflow">{{ r.branch }}</span>
+    }
+    @if (r.ticket) {
+      <span>·</span>
+      <span
+        >ticket <span class="sf-workflow">{{ r.ticket }}</span></span
+      >
+    }
+    <span class="sf-spacer"></span>
+    <a class="service-link" [routerLink]="['/sessions', r.id]"><span class="dot"></span>Factory trace</a>
+  </div>
+
+  <!-- Creation date -->
+  @if (r.createdAt) {
+    <p class="created-at">
+      Created on
+      <time [dateTime]="r.createdAt">{{ r.createdAt | date: 'MMM d, yyyy' }} at {{ r.createdAt | date: 'HH:mm' }}</time>
+    </p>
+  }
+
+  <!-- Run summary -->
+  @if (r.run; as summary) {
+    <section class="run" aria-label="Run summary">
+      @if (summary.status === 'running') {
+        @if (summary.waitingHuman) {
+          <div class="run-notice">
+            <sf-status-chip tone="amber" size="sm" icon="person_alert">
+              Waiting for reply{{ summary.currentPhase ? ' · ' + summary.currentPhase : '' }}
+            </sf-status-chip>
+          </div>
+        } @else {
+          <div class="run-notice">
+            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>
+              running{{ summary.currentPhase ? ' · ' + summary.currentPhase : '' }}
+            </sf-status-chip>
+          </div>
+        }
+      }
+      <div class="run-details">
+        <div class="run-steps">
+          <sf-step-dots [phases]="summary.phases" />
+        </div>
+        <div class="run-metrics" aria-label="Run metrics">
+          <sf-metric icon="paid" label="Run cost" [unknownCostCount]="summary.unknownCostCount ?? 0">{{
+            summary.costUsd | usd: 4 : summary.unknownCostCount
+          }}</sf-metric>
+          <sf-metric icon="timer" label="Duration">{{ summary.durationSec | duration }}</sf-metric>
+          <sf-metric icon="link" label="Tokens">{{ summary.tokens | tokens }}</sf-metric>
+        </div>
+      </div>
+    </section>
+  } @else if (r.status === 'destroyed') {
+    <p class="final-cost">
+      Final cost · workflows <b>{{ r.finalCostUsd | usd }}</b>
+    </p>
+  }
+
+  <!-- Actions: always at the RUN level, targeted by run id -->
+  @if (r.status !== 'destroyed') {
+    <footer class="actions">
+      @if (supervisorState() === 'done' && supervisorCaseUrl()) {
+        <a
+          mat-flat-button
+          class="sf-primary"
+          [href]="supervisorCaseUrl()!"
+          target="_blank"
+          rel="noopener"
+          title="Open supervisor case"
+        >
+          <mat-icon>open_in_new</mat-icon>
+          View supervisor case
+        </a>
+      } @else if (r.namespaceId) {
+        <button
+          mat-flat-button
+          class="sf-primary supervisor-btn"
+          [disabled]="supervisorState() === 'loading'"
+          (click)="askSupervisor()"
+        >
+          @if (supervisorState() === 'loading') {
+            <mat-icon class="spin-icon">autorenew</mat-icon>
+          }
+          Ask supervisor
+        </button>
+      } @else {
+        <button mat-flat-button class="sf-primary" disabled title="Unknown namespace — cannot open a supervisor case">
+          Ask supervisor
+        </button>
+      }
+
+      @if (canStop) {
+        <button mat-stroked-button class="sf-secondary" (click)="action.emit('stop')">Stop</button>
+      }
+
+      @if (conversationLink) {
+        <a mat-button class="sf-ghost" [href]="conversationLink" target="_blank" rel="noopener">Conversation</a>
+      } @else {
+        <button
+          mat-button
+          class="sf-ghost"
+          disabled
+          title="AgentOS controller case unavailable (no agent step executed for this workflow yet)"
+        >
+          Conversation
+        </button>
+      }
+
+      <button mat-stroked-button class="sf-danger" (click)="action.emit('remove')">Remove</button>
+    </footer>
+
+    <!-- Supervisor error: inline message, not just a title attribute -->
+    @if (supervisorState() === 'error' && supervisorError()) {
+      <p class="supervisor-error" role="alert">
+        <mat-icon class="supervisor-error__icon">error_outline</mat-icon>
+        {{ supervisorError() }}
+      </p>
+    }
+  } @else {
+    <footer class="actions">
+      <button mat-stroked-button class="sf-secondary" (click)="action.emit('restore')">Restore</button>
+    </footer>
+  }
+</mat-card>

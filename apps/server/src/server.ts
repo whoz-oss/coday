@@ -92,11 +92,13 @@ let promptExecutionService: PromptExecutionService
 
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
 const AGENTOS_URL_ENV = process.env.AGENTOS_URL
+const FACTORY_URL = process.env.FACTORY_URL ?? 'http://localhost:8141'
 
-// Validate the env var if provided (fail fast on misconfiguration)
+// Validate proxy targets (fail fast on misconfiguration)
 if (AGENTOS_URL_ENV) {
   validateAgentOsUrl(AGENTOS_URL_ENV)
 }
+validateAgentOsUrl(FACTORY_URL)
 
 // Mutable proxy target — updated to the managed URL once AgentOS is running.
 // In external mode this is set once and never changes.
@@ -125,6 +127,21 @@ debugLog(
   'INIT',
   `AgentOS proxy configured: /api/agentos → ${currentAgentosUrl} (${AGENTOS_URL_ENV ? 'external mode' : 'managed mode'})`
 )
+
+// Factory exposes its API with the /api/factory prefix already, so preserve
+// the complete request path when forwarding it to the configured backend.
+app.use(
+  '/api/factory',
+  (req, _res, next) => {
+    debugLog('FACTORY', `[PROXY] ${req.method} ${req.originalUrl}`)
+    next()
+  },
+  createProxyMiddleware({
+    target: FACTORY_URL,
+    changeOrigin: true,
+  })
+)
+debugLog('INIT', `Factory proxy configured: /api/factory → ${FACTORY_URL}/api/factory`)
 
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
@@ -186,7 +203,29 @@ if (process.env.BUILD_ENV === 'development') {
     }
   }
 
-  // Serve static files from the Angular build output
+  // Serve the factory cockpit before the main client so /factory assets are not
+  // intercepted by the root static application.
+  const factoryCockpitPath = process.env.CODAY_FACTORY_COCKPIT_PATH
+    ? path.resolve(process.env.CODAY_FACTORY_COCKPIT_PATH)
+    : path.resolve(__dirname, '../coday-factory-cockpit/browser')
+
+  debugLog('INIT', `Production mode: serving factory cockpit static files from ${factoryCockpitPath}`)
+  if (!fs.existsSync(factoryCockpitPath)) {
+    console.error(`ERROR: Factory cockpit path does not exist: ${factoryCockpitPath}`)
+    console.error('Please build the factory cockpit first with: pnpm nx run factory-cockpit:build')
+  } else {
+    const factoryIndexPath = path.join(factoryCockpitPath, 'index.html')
+    if (!fs.existsSync(factoryIndexPath)) {
+      console.error(`ERROR: index.html not found at: ${factoryIndexPath}`)
+      console.error('Factory cockpit build may be incomplete. Try rebuilding with: pnpm nx run factory-cockpit:build')
+    } else {
+      debugLog('INIT', `Verified factory cockpit index.html exists at ${factoryIndexPath}`)
+    }
+  }
+
+  app.use('/factory', express.static(factoryCockpitPath))
+
+  // Serve static files from the main Angular build output.
   app.use(express.static(clientPath))
 }
 // Initialize project service for REST API endpoints
@@ -403,22 +442,30 @@ if (process.env.BUILD_ENV !== 'development') {
     : path.resolve(__dirname, '../coday-client/browser')
 
   const indexPath = path.resolve(clientPath, 'index.html')
+  const factoryCockpitPath = process.env.CODAY_FACTORY_COCKPIT_PATH
+    ? path.resolve(process.env.CODAY_FACTORY_COCKPIT_PATH)
+    : path.resolve(__dirname, '../coday-factory-cockpit/browser')
+  const factoryIndexPath = path.resolve(factoryCockpitPath, 'index.html')
   debugLog('INIT', `Catch-all route will serve: ${indexPath}`)
+  debugLog('INIT', `Factory cockpit catch-all route will serve: ${factoryIndexPath}`)
 
   // Use a middleware instead of route pattern to catch all remaining requests
   app.use((req, res, next) => {
-    // API routes should have been handled above, but double-check to avoid masking real 404s
+    // API routes should have been handled above, but double-check to avoid masking real 404s.
     if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
       res.status(404).send('Not found')
       return
     }
+
+    const requestedIndexPath =
+      req.path === '/factory' || req.path.startsWith('/factory/') ? factoryIndexPath : indexPath
     debugLog('ROUTER', `Serving index.html for client route: ${req.path}`)
 
     // Read and send the file manually to avoid Express sendFile issues in bundled code
-    fs.readFile(indexPath, 'utf8', (err, data) => {
+    fs.readFile(requestedIndexPath, 'utf8', (err, data) => {
       if (err) {
-        debugLog('ERROR', `Failed to read index.html from ${indexPath}:`, err)
-        debugLog('ERROR', `File exists check: ${fs.existsSync(indexPath)}`)
+        debugLog('ERROR', `Failed to read index.html from ${requestedIndexPath}:`, err)
+        debugLog('ERROR', `File exists check: ${fs.existsSync(requestedIndexPath)}`)
         next(err)
       } else {
         res.type('html').send(data)

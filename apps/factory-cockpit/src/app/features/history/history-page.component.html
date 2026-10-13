@@ -1,0 +1,150 @@
+<div class="page">
+  <header class="page-head">
+    <div class="titles">
+      <h1>Run history</h1>
+      <p class="sf-muted">Every Factory run with its cost, status, duration and phases</p>
+    </div>
+    <button mat-stroked-button class="sf-secondary" (click)="exportCsv()">
+      <mat-icon>download</mat-icon>Export CSV
+    </button>
+  </header>
+
+  <!-- Filters -->
+  <div class="filters">
+    <mat-form-field appearance="outline" class="search" subscriptSizing="dynamic">
+      <mat-icon matPrefix>search</mat-icon>
+      <input
+        matInput
+        placeholder="Search run, branch, workflow…"
+        aria-label="Search"
+        [value]="query()"
+        (input)="query.set($any($event.target).value)"
+      />
+    </mat-form-field>
+
+    <mat-chip-listbox aria-label="Filter by status" [value]="status()" (change)="status.set($event.value ?? 'all')">
+      <mat-chip-option value="all">All · {{ counts().all }}</mat-chip-option>
+      <mat-chip-option value="working">In progress · {{ counts().working }}</mat-chip-option>
+      <mat-chip-option value="destroyed">Completed / Stopped · {{ counts().destroyed }}</mat-chip-option>
+    </mat-chip-listbox>
+
+    <span class="sf-spacer"></span>
+
+    <mat-form-field appearance="outline" class="project" subscriptSizing="dynamic">
+      <mat-label>Namespace</mat-label>
+      <mat-select [value]="namespaceId()" (selectionChange)="namespaceId.set($event.value)">
+        <mat-option value="">All</mat-option>
+        @for (ns of namespaces(); track ns.id) {
+          <mat-option [value]="ns.id">{{ ns.name }}</mat-option>
+        }
+      </mat-select>
+      @if (namespacesLoading()) {
+        <mat-hint>Loading…</mat-hint>
+      }
+      @if (namespacesError()) {
+        <mat-hint class="hint--error">{{ namespacesError() }}</mat-hint>
+      }
+    </mat-form-field>
+  </div>
+
+  <!-- Table -->
+  <section class="table-wrap sf-panel">
+    <table mat-table [dataSource]="dataSource" matSort matSortActive="cost" matSortDirection="desc">
+      <ng-container matColumnDef="run">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Run</th>
+        <td mat-cell *matCellDef="let r">
+          <a class="name name--active" [routerLink]="['/sessions', r.id]">{{ r.title }}</a>
+          <span class="sf-id">{{ r.id }}</span>
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="namespace">
+        <th mat-header-cell *matHeaderCellDef>Namespace</th>
+        <td mat-cell *matCellDef="let r" class="mono-cell">{{ r.namespaceId ?? '—' }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="branch">
+        <th mat-header-cell *matHeaderCellDef>Project › branch</th>
+        <td mat-cell *matCellDef="let r" class="mono-cell" [class.cyan]="r.branch">
+          {{ r.project }}
+          @if (r.branch) {
+            › {{ r.branch }}
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="status">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header>Status</th>
+        <td mat-cell *matCellDef="let r">
+          @if (r.status === 'destroyed') {
+            <sf-status-chip tone="neutral" size="sm" dot>completed / stopped</sf-status-chip>
+          } @else {
+            <sf-status-chip tone="blue" size="sm" icon="progress_activity" spin>in progress</sf-status-chip>
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="phases">
+        <th mat-header-cell *matHeaderCellDef>Phases</th>
+        <td mat-cell *matCellDef="let r">
+          @if (r.phases.length) {
+            <sf-phase-bar [phases]="r.phases" [height]="6" [showLegend]="false" />
+          } @else {
+            <span class="sf-muted">—</span>
+          }
+        </td>
+      </ng-container>
+
+      <ng-container matColumnDef="cost">
+        <th mat-header-cell *matHeaderCellDef mat-sort-header arrowPosition="before" class="num">Cost</th>
+        <td mat-cell *matCellDef="let r" class="num mono-cell" [class.zero]="r.cost === 0">{{ r.cost | usd }}</td>
+      </ng-container>
+
+      <ng-container matColumnDef="actions">
+        <th mat-header-cell *matHeaderCellDef><span class="cdk-visually-hidden">Actions</span></th>
+        <td mat-cell *matCellDef="let r">
+          <button mat-icon-button [matMenuTriggerFor]="menu" aria-label="Actions">
+            <mat-icon>more_vert</mat-icon>
+          </button>
+          <mat-menu #menu="matMenu">
+            <a mat-menu-item [routerLink]="['/sessions', r.id]"><mat-icon>monitoring</mat-icon>Open session</a>
+            <button mat-menu-item><mat-icon>receipt_long</mat-icon>View log</button>
+          </mat-menu>
+        </td>
+      </ng-container>
+
+      <tr mat-header-row *matHeaderRowDef="columns"></tr>
+      <tr mat-row *matRowDef="let r; columns: columns" [class.row--active]="r.status !== 'destroyed'"></tr>
+      <tr class="mat-row" *matNoDataRow>
+        <td class="mat-cell empty" [attr.colspan]="columns.length">No run matches these filters.</td>
+      </tr>
+    </table>
+
+    <footer class="table-foot">
+      <span
+        >{{ filtered().length }} runs · cumulative cost <b class="sf-mono">{{ totalCost() | usd: 2 }}</b></span
+      >
+      <span class="sf-spacer"></span>
+      <mat-paginator [pageSize]="25" [pageSizeOptions]="[10, 25, 50]" aria-label="Pagination" />
+    </footer>
+  </section>
+
+  <!-- Cost per run -->
+  <section class="costs sf-panel" aria-labelledby="costs-title">
+    <header class="costs-head">
+      <h2 id="costs-title" class="sf-overline">Cost per run</h2>
+      <span class="sf-spacer"></span>
+      <span class="legend"><i class="sw sw--active"></i>active</span>
+      <span class="legend"><i class="sw"></i>destroyed</span>
+    </header>
+    <ul class="bars">
+      @for (b of costBars(); track b.name) {
+        <li class="bar-row" [class.active]="b.active">
+          <span class="bar-name sf-ellipsis">{{ b.name }}</span>
+          <span class="bar-track"><span class="bar-fill" [style.width.%]="b.pct"></span></span>
+          <span class="bar-val">{{ b.cost | usd: 2 }}</span>
+        </li>
+      }
+    </ul>
+  </section>
+</div>
