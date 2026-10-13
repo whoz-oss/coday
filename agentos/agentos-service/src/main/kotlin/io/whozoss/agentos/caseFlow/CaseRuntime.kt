@@ -43,7 +43,7 @@ private data class PendingCommand(
 /**
  * Runtime execution engine for a case.
  *
- * Owns only execution state: the event list, the SSE flow, and why the turn is stopped, if it is.
+ * Owns only execution state: the event list, the SSE flow, and the stop requested for the turn, if any.
  * All business logic is delegated back to [CaseService] through four callbacks:
  *
  * ## Admission lock
@@ -105,33 +105,33 @@ class CaseRuntime(
     private val eventList = InMemoryCaseEventList(inputEvents)
 
     /**
-     * Why the current turn is being stopped, [StopReason.NONE] while it is not. Raised by
+     * The stop requested for the current turn, [StopRequest.NOT_REQUESTED] while there is none. Raised by
      * [requestInterrupt], [requestKill] and [requestShutdownStop], reset when [run] claims the runtime.
-     * The run loop exits on any reason, [stoppedStatus] reads the final status from it, and
+     * The run loop exits on any request, [stoppedStatus] reads the final status from it, and
      * [agentMayContinue] tells the agent whether it must stop between its steps.
      */
-    private val stopReason = AtomicReference(StopReason.NONE)
+    private val stopRequest = AtomicReference(StopRequest.NOT_REQUESTED)
 
     /** What [processNextStep] signals back to the run loop. */
     private enum class StepResult { CONTINUE, AGENT_FINISHED, STOP }
 
     /**
-     * Why a turn is stopped, ordered from the weakest to the strongest: [raiseStopReason] never lowers
-     * the reason already set, so a Kill is not downgraded by a later Stop.
+     * The stop requested for a turn, ordered from the weakest to the strongest: [raiseStopRequest] never
+     * lowers the request already recorded, so a Kill is not downgraded by a later Stop.
      *
-     * [NONE] also covers a turn cancelled from the outside (e.g. its caller was cancelled): it ends
-     * [CaseStatus.IDLE].
+     * [NOT_REQUESTED] is the state of a turn nobody asked to stop. It is also what a turn cancelled from
+     * the outside (e.g. its caller was cancelled) finds: it ends [CaseStatus.IDLE].
      *
      * @property stopsAgent whether the agent must stop between its steps ([agentMayContinue]). An
      *   [INTERRUPT] only ends the run loop; it cancels the turn through [cancelInterruptedTurn].
      * @property finalStatus the status a stopped turn ends in: only a Kill is terminal. A shutdown stop
      *   ends [CaseStatus.IDLE], so a conversation kept open across a restart is not closed.
      */
-    private enum class StopReason(
+    private enum class StopRequest(
         val stopsAgent: Boolean,
         val finalStatus: CaseStatus,
     ) {
-        NONE(stopsAgent = false, finalStatus = CaseStatus.IDLE),
+        NOT_REQUESTED(stopsAgent = false, finalStatus = CaseStatus.IDLE),
         INTERRUPT(stopsAgent = false, finalStatus = CaseStatus.IDLE),
         SHUTDOWN(stopsAgent = true, finalStatus = CaseStatus.IDLE),
         KILL(stopsAgent = true, finalStatus = CaseStatus.KILLED),
@@ -154,7 +154,7 @@ class CaseRuntime(
      * Cancelling it is non-blocking: safe under the admission lock.
      *
      * Written by the thread running [run], read by the thread requesting the stop. A request always
-     * records its reason before reading this job, and [run] publishes it before re-reading [stopReason], so a
+     * records its stop request before reading this job, and [run] publishes it before re-reading [stopRequest], so a
      * request racing with the start of a turn is never lost. Only plain get/set are needed (no
      * compare-and-set), so `@Volatile` would suffice: it gives the same visibility and ordering.
      * AtomicReference is used to match the other shared fields of this class.
@@ -207,7 +207,7 @@ class CaseRuntime(
      */
     fun requestInterrupt() {
         commandQueue.clear()
-        raiseStopReason(StopReason.INTERRUPT)
+        raiseStopRequest(StopRequest.INTERRUPT)
     }
 
     /**
@@ -219,12 +219,12 @@ class CaseRuntime(
 
     /**
      * Request permanent termination of this runtime.
-     * Raises the stop reason to [StopReason.KILL] (so the run loop breaks and [run] transitions to
+     * Raises the stop request to [StopRequest.KILL] (so the run loop breaks and [run] transitions to
      * [CaseStatus.KILLED] rather than [CaseStatus.IDLE]), then cancels the running turn. Also clears
      * the command queue so no orphaned commands are left behind.
      */
     fun requestKill() {
-        raiseStopReason(StopReason.KILL)
+        raiseStopRequest(StopRequest.KILL)
         commandQueue.clear()
         cancelTurn()
     }
@@ -234,32 +234,32 @@ class CaseRuntime(
      * as with [requestKill], but ends as [CaseStatus.IDLE].
      */
     fun requestShutdownStop() {
-        raiseStopReason(StopReason.SHUTDOWN)
+        raiseStopRequest(StopRequest.SHUTDOWN)
         commandQueue.clear()
         cancelTurn()
     }
 
     /** Whether a Kill was requested since the current turn started. */
-    fun isKillRequested(): Boolean = stopReason.get() == StopReason.KILL
+    fun isKillRequested(): Boolean = stopRequest.get() == StopRequest.KILL
 
-    private fun isStopRequested(): Boolean = stopReason.get() != StopReason.NONE
+    private fun isStopRequested(): Boolean = stopRequest.get() != StopRequest.NOT_REQUESTED
 
     /** What the agent checks between its steps: a Kill or a shutdown stop ends its turn. */
-    private fun agentMayContinue(): Boolean = !stopReason.get().stopsAgent
+    private fun agentMayContinue(): Boolean = !stopRequest.get().stopsAgent
 
-    /** Records why the turn stops, never lowering a stronger reason already recorded. */
-    private fun raiseStopReason(reason: StopReason) {
-        stopReason.updateAndGet { maxOf(it, reason) }
+    /** Records the stop requested for the turn, never lowering a stronger request already recorded. */
+    private fun raiseStopRequest(request: StopRequest) {
+        stopRequest.updateAndGet { maxOf(it, request) }
     }
 
     /**
-     * Cancels the turn job, if it is published and a stop is pending. Non-blocking. Callers raise the
-     * reason first: a request racing with the publication of the job is caught by [run].
+     * Cancels the turn job, if it is published and a stop is requested. Non-blocking. Callers raise the
+     * stop request first: one racing with the publication of the job is caught by [run].
      */
     private fun cancelTurn() {
-        val reason = stopReason.get()
-        if (reason != StopReason.NONE) {
-            turnJob.get()?.cancel(CancellationException("Case $id stopped (${reason.name.lowercase()})"))
+        val request = stopRequest.get()
+        if (request != StopRequest.NOT_REQUESTED) {
+            turnJob.get()?.cancel(CancellationException("Case $id stopped (${request.name.lowercase()})"))
         }
     }
 
@@ -426,12 +426,12 @@ class CaseRuntime(
         val claimed =
             synchronized(this) {
                 // A launch admitted by a CaseLaunchGate can be cancelled by Stop or Kill before it
-                // starts. Claiming the runtime and resetting the stop reason must be atomic with that.
+                // starts. Claiming the runtime and resetting the stop request must be atomic with that.
                 context.ensureActive()
                 if (!runInFlight.compareAndSet(false, true)) {
                     false
                 } else {
-                    stopReason.set(StopReason.NONE)
+                    stopRequest.set(StopRequest.NOT_REQUESTED)
                     true
                 }
             }
@@ -494,7 +494,7 @@ class CaseRuntime(
     }
 
     /** Status a stopped turn ends in: only a Kill is terminal. */
-    private fun stoppedStatus(): CaseStatus = stopReason.get().finalStatus
+    private fun stoppedStatus(): CaseStatus = stopRequest.get().finalStatus
 
     /**
      * Close a cancelled turn: emit the [AgentFinishedEvent] the agent could not emit (otherwise a

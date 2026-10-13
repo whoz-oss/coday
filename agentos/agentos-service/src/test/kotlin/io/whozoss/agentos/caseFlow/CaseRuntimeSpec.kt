@@ -719,7 +719,7 @@ class CaseRuntimeSpec : StringSpec() {
             // Positive-path test: the lambda must return true while runAgent is executing
             // and no interrupt or kill has been signalled.
             //
-            // Note on lifecycle: run() resets the stop reason at the START of each invocation.
+            // Note on lifecycle: run() resets the stop request at the START of each invocation.
             // So the lambda returns true only while runAgent is executing and no stop has been
             // requested: that is the window we sample here.
             val runtimeId = UUID.randomUUID()
@@ -736,7 +736,7 @@ class CaseRuntimeSpec : StringSpec() {
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
-                        // Sample BEFORE any stop is requested: the stop reason is still NONE
+                        // Sample BEFORE any stop is requested: the stop request is still NOT_REQUESTED
                         // at this point, so shouldContinue() must return true.
                         lambdaResultDuringRun = shouldContinue()
                         // Now push AgentFinishedEvent so the loop exits cleanly.
@@ -791,7 +791,7 @@ class CaseRuntimeSpec : StringSpec() {
 
         "statusFlow reflects KILLED after requestKill during run" {
             // requestKill() must be called while run() is executing — run() resets
-            // the stop reason at startup, so calling it before run() has no effect.
+            // the stop request at startup, so calling it before run() has no effect.
             val runtimeId = UUID.randomUUID()
             lateinit var runtime: CaseRuntime
             runtime =
