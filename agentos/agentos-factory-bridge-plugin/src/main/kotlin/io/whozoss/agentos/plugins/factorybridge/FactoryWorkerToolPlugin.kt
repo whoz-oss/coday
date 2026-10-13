@@ -16,7 +16,15 @@ class FactoryWorkerToolPlugin @JvmOverloads constructor(
     override val configSchema: JsonNode = CONFIG_SCHEMA
     override fun provideTools(config: JsonNode?, configName: String?, context: ToolContext?): List<StandardTool<*>> {
         val current = services()
-        return listOf(FactorySubmitStepResultTool(current.config.baseUrl, current.httpClient, current.objectMapper, current.signer))
+        return listOf(
+            FactorySubmitStepResultTool(
+                current.config.baseUrl,
+                current.httpClient,
+                current.objectMapper,
+                current.signer,
+                resolvedAgentName = context?.agentName?.takeIf(String::isNotBlank),
+            ),
+        )
     }
 
     companion object {

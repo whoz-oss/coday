@@ -1,5 +1,6 @@
 package io.whozoss.agentos.plugins.factorybridge.tools
 
+import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.plugins.factorybridge.FactoryTrustedHeaderSigner
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -19,10 +20,15 @@ class FactorySubmitStepResultTool(
     private val http: OkHttpClient,
     private val mapper: ObjectMapper,
     private val signer: FactoryTrustedHeaderSigner,
+    // Supplied by AgentOS when resolving tools for this agent, never by model input.
+    private val resolvedAgentName: String? = null,
 ) : StandardTool<FactorySubmitStepResultTool.Input> {
     data class Artifact(val kind: String, val encoding: String = "markdown", val content: String)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     data class DeliveryAnalysis(val changeType: String, val ticket: String, val title: String, val baseBranch: String? = null)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     data class Claims(val modifiedFiles: List<String>, val deliveryAnalysis: DeliveryAnalysis? = null)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     data class Finding(val severity: String, val code: String, val summary: String, val file: String? = null, val line: Int? = null)
     data class Input(
         val status: String,
@@ -42,7 +48,11 @@ class FactorySubmitStepResultTool(
         if (input == null) return error("RESULT_SCHEMA_INVALID", "A structured result is required")
         val caseId = context.caseEvents.map { it.caseId }.distinct().singleOrNull()
             ?: return error("FACTORY_CASE_CONTEXT_INVALID", "Exactly one controlling case is required")
-        val agentName = context.agentName?.takeIf(String::isNotBlank)
+        val executionAgentName = context.agentName?.takeIf(String::isNotBlank)
+        if (executionAgentName != null && resolvedAgentName != null && executionAgentName != resolvedAgentName) {
+            return error("FACTORY_AGENT_CONTEXT_INVALID", "Execution agent does not match the agent owning this tool")
+        }
+        val agentName = executionAgentName ?: resolvedAgentName
             ?: return error("FACTORY_AGENT_CONTEXT_INVALID", "A trusted agent identity is required")
         val idempotencyKey = stableIdempotencyKey(caseId, context.toolRequestId)
             ?: return error("FACTORY_IDEMPOTENCY_CONTEXT_MISSING", "A trusted tool request id is required")
@@ -63,7 +73,7 @@ class FactorySubmitStepResultTool(
                     val code = root?.path("error")?.path("code")?.asText()?.takeIf(String::isNotBlank)
                         ?: "FACTORY_REQUEST_REJECTED"
                     if (response.isSuccessful) ToolExecutionResult.success(body)
-                    else error(code, "Factory rejected the result (HTTP ${response.code})")
+                    else error(code, "Factory rejected the result (HTTP ${response.code}, code=$code)")
                 }
             }
         } catch (error: CancellationException) {
