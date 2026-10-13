@@ -1726,6 +1726,18 @@ paths:
           description: OK
       tags:
       - feedback-controller
+  /api/git-workspaces-configuration:
+    get:
+      operationId: getGitWorkspacesConfiguration
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitWorkspacesConfiguration"
+          description: OK
+      tags:
+      - git-workspaces-configuration-controller
   /api/integration-configs:
     get:
       description: |-
@@ -4949,6 +4961,13 @@ components:
       required:
       - branchState
       - prState
+    GitWorkspacesConfiguration:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+      required:
+      - enabled
     GroupsByExternalIdsRequest:
       type: object
       properties:

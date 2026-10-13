@@ -6,11 +6,13 @@ import {
   catchError,
   combineLatest,
   exhaustMap,
+  filter,
   finalize,
   merge,
   of,
   Subject,
   Subscription,
+  switchMap,
   takeWhile,
   timer,
 } from 'rxjs'
@@ -64,8 +66,12 @@ export class ExchangeEnvironmentComponent {
         )
       )
       // Without Git workspaces on this instance there is no environment to show, nor to poll.
-      const subscription = combineLatest([environment, this.workspaces.watch(scope.id)])
-        .pipe(takeWhile(([env, workspace]) => env !== UNAVAILABLE && !workspacesUnavailable(workspace)))
+      const subscription = this.workspaces.enabled$
+        .pipe(
+          filter(Boolean),
+          switchMap(() => combineLatest([environment, this.workspaces.watch(scope.id)])),
+          takeWhile(([env, workspace]) => env !== UNAVAILABLE && !workspacesUnavailable(workspace))
+        )
         .subscribe(([environment, workspace]) => {
           const view =
             environment && environment !== UNAVAILABLE && workspace.view

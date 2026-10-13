@@ -1,7 +1,11 @@
 import { provideHttpClient } from '@angular/common/http'
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
-import { CaseWorkspaceViewStatusEnum, Configuration } from '@whoz-oss/agentos-api-client'
+import {
+  CaseWorkspaceViewStatusEnum,
+  Configuration,
+  GitWorkspacesConfigurationControllerService,
+} from '@whoz-oss/agentos-api-client'
 import { BehaviorSubject, of } from 'rxjs'
 import { CaseWorkspaceService, WorkspaceState } from '../../services/case-workspace.service'
 import { CaseStateService } from '../../services/case-state.service'
@@ -98,6 +102,11 @@ describe('workspace preparation retry and case files', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: Configuration, useValue: new Configuration({ basePath: '/agentos-api' }) },
+        // Git workspaces are on: these specs drive the workspace endpoints themselves.
+        {
+          provide: GitWorkspacesConfigurationControllerService,
+          useValue: { getGitWorkspacesConfiguration: () => of({ enabled: true }) },
+        },
       ],
     })
     http = TestBed.inject(HttpTestingController)

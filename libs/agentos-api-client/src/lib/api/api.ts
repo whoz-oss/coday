@@ -20,6 +20,8 @@ export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
 import { FeedbackControllerService } from './feedback-controller.service'
+export * from './git-workspaces-configuration-controller.service'
+import { GitWorkspacesConfigurationControllerService } from './git-workspaces-configuration-controller.service'
 export * from './integration-config-controller.service'
 import { IntegrationConfigControllerService } from './integration-config-controller.service'
 export * from './integration-type-controller.service'
@@ -68,6 +70,7 @@ export const APIS = [
   CaseWorkspaceControllerService,
   ExchangeControllerService,
   FeedbackControllerService,
+  GitWorkspacesConfigurationControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,

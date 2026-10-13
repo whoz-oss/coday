@@ -12,7 +12,10 @@ describe('ExchangeEnvironmentComponent', () => {
       imports: [ExchangeEnvironmentComponent],
       providers: [
         { provide: ExchangeEnvironmentService, useValue: { get } },
-        { provide: CaseWorkspaceService, useValue: { watch: () => of({ view: null, errorStatus: 404 }) } },
+        {
+          provide: CaseWorkspaceService,
+          useValue: { enabled$: of(true), watch: () => of({ view: null, errorStatus: 404 }) },
+        },
         { provide: MatDialog, useValue: { open: jest.fn() } },
       ],
     })
@@ -46,4 +49,27 @@ describe('ExchangeEnvironmentComponent', () => {
     expect(watch).not.toHaveBeenCalled()
     fixture.destroy()
   })
+
+  it('asks nothing when the configuration turns Git workspaces off', fakeAsync(() => {
+    const get = jest.fn()
+    const watch = jest.fn()
+    TestBed.configureTestingModule({
+      imports: [ExchangeEnvironmentComponent],
+      providers: [
+        { provide: ExchangeEnvironmentService, useValue: { get } },
+        { provide: CaseWorkspaceService, useValue: { enabled$: of(false), watch } },
+        { provide: MatDialog, useValue: { open: jest.fn() } },
+      ],
+    })
+    const fixture = TestBed.createComponent(ExchangeEnvironmentComponent)
+    fixture.componentRef.setInput('scope', { id: 'case-1' })
+    fixture.detectChanges()
+    tick(30_000)
+    fixture.detectChanges()
+
+    expect(get).not.toHaveBeenCalled()
+    expect(watch).not.toHaveBeenCalled()
+    expect(fixture.nativeElement.textContent).not.toContain('Environment unavailable')
+    fixture.destroy()
+  }))
 })
