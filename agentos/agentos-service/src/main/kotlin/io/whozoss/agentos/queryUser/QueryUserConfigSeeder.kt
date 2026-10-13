@@ -1,6 +1,7 @@
 package io.whozoss.agentos.queryUser
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -110,13 +111,9 @@ class QueryUserConfigSeeder(
                     "Every agent of this environment receives the queryUser tool; override it per namespace by " +
                     "creating a configuration with the same name."
             }
-        } catch (e: ResponseStatusException) {
-            if (e.statusCode == HttpStatus.CONFLICT) {
+        } catch (e: ConflictException) {
                 // Another instance won the startup race; the constraint did its job.
-                logger.info { "[QueryUserSeeder] Platform '$DEFAULT_CONFIG_NAME' configuration created concurrently, skipping." }
-            } else {
-                throw e
-            }
+                logger.info(e) { "[QueryUserSeeder] Platform '$DEFAULT_CONFIG_NAME' configuration created concurrently, skipping." }
         }
     }
 
