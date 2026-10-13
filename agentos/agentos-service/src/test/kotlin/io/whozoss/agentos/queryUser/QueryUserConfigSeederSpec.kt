@@ -8,6 +8,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -77,7 +78,7 @@ class QueryUserConfigSeederSpec : StringSpec({
         // constraint elects one winner and the others get a 409. Losing is the expected outcome.
         val service = mockk<IntegrationConfigService>()
         every { service.findByTriple(null, null, QueryUserConfigSeeder.DEFAULT_CONFIG_NAME) } returns null
-        every { service.create(any()) } throws ResponseStatusException(HttpStatus.CONFLICT, "already exists")
+        every { service.create(any()) } throws ConflictException("already exists")
 
         seeder(enabledByDefault = true, service = service).seed()
     }
