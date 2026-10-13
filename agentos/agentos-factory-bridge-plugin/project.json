@@ -1,0 +1,7 @@
+{
+  "name": "agentos-factory-bridge-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "agentos/agentos-factory-bridge-plugin/src",
+  "tags": ["scope:agentos", "type:plugin"]
+}
