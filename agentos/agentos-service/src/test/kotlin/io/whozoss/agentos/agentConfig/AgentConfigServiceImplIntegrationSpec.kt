@@ -1,7 +1,5 @@
 package io.whozoss.agentos.agentConfig
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -13,6 +11,7 @@ import io.whozoss.agentos.scheduledPrompt.Planning
 import io.whozoss.agentos.scheduledPrompt.Recurrence
 import io.whozoss.agentos.scheduledPrompt.ScheduledPrompt
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -40,8 +39,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class AgentConfigServiceImplIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class AgentConfigServiceImplIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var agentConfigService: AgentConfigService
     @Autowired lateinit var promptRepository: PromptRepository
