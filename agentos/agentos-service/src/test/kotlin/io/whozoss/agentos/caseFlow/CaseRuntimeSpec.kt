@@ -381,7 +381,7 @@ class CaseRuntimeSpec : StringSpec() {
         "shouldContinue lambda returns true after requestInterrupt (interrupt does not stop mid-stream LLM)" {
             // requestInterrupt() stops the run loop after the current agent turn completes,
             // but does NOT signal the LLM to stop mid-stream. Only requestKill() does that.
-            // shouldContinue reflects killRequested only.
+            // shouldContinue is false only for a Kill or a shutdown stop, not for an interrupt.
             val runtimeId = UUID.randomUUID()
             var capturedShouldContinue: (() -> Boolean)? = null
 
@@ -573,6 +573,37 @@ class CaseRuntimeSpec : StringSpec() {
             }
         }
 
+        "a Kill requested while a Stop is pending ends the case KILLED" {
+            runTest {
+                val fixture = hangingRuntime()
+                val run = launch { fixture.runtime.run() }
+                fixture.agentStarted.await()
+
+                fixture.runtime.requestInterrupt()
+                fixture.runtime.requestKill()
+
+                run.join()
+                fixture.runtime.statusFlow.value shouldBe CaseStatus.KILLED
+                fixture.statuses.last() shouldBe CaseStatus.KILLED
+            }
+        }
+
+        "a Stop requested after a Kill does not lower the final status: the case still ends KILLED" {
+            runTest {
+                val fixture = hangingRuntime()
+                val run = launch { fixture.runtime.run() }
+                fixture.agentStarted.await()
+
+                fixture.runtime.requestKill()
+                fixture.runtime.requestInterrupt()
+                fixture.runtime.cancelInterruptedTurn()
+
+                run.join()
+                fixture.runtime.statusFlow.value shouldBe CaseStatus.KILLED
+                fixture.statuses.last() shouldBe CaseStatus.KILLED
+            }
+        }
+
         "a cancelled turn is closed with an AgentFinishedEvent for the agent that was running" {
             runTest {
                 // Without it, the dangling AgentRunningEvent would restart the agent on rehydration.
@@ -688,11 +719,9 @@ class CaseRuntimeSpec : StringSpec() {
             // Positive-path test: the lambda must return true while runAgent is executing
             // and no interrupt or kill has been signalled.
             //
-            // Note on lifecycle: processNextStep sets interruptRequested=true when it finds
-            // AgentFinishedEvent (to break the while-loop). run() resets interruptRequested
-            // to false at the START of each invocation. So the lambda returns true only
-            // while runAgent is executing BEFORE AgentFinishedEvent is pushed — that is
-            // the window we sample here.
+            // Note on lifecycle: run() resets the stop reason at the START of each invocation.
+            // So the lambda returns true only while runAgent is executing and no stop has been
+            // requested: that is the window we sample here.
             val runtimeId = UUID.randomUUID()
             var lambdaResultDuringRun: Boolean? = null
 
@@ -707,8 +736,8 @@ class CaseRuntimeSpec : StringSpec() {
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
-                        // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
-                        // still false at this point, so shouldContinue() must return true.
+                        // Sample BEFORE any stop is requested: the stop reason is still NONE
+                        // at this point, so shouldContinue() must return true.
                         lambdaResultDuringRun = shouldContinue()
                         // Now push AgentFinishedEvent so the loop exits cleanly.
                         runtime.pushEvents(
@@ -762,7 +791,7 @@ class CaseRuntimeSpec : StringSpec() {
 
         "statusFlow reflects KILLED after requestKill during run" {
             // requestKill() must be called while run() is executing — run() resets
-            // the kill flag at startup, so calling it before run() has no effect.
+            // the stop reason at startup, so calling it before run() has no effect.
             val runtimeId = UUID.randomUUID()
             lateinit var runtime: CaseRuntime
             runtime =
