@@ -43,12 +43,14 @@ class ChatClientProviderUnitSpec :
             apiName: String = "claude-sonnet-4-5",
             temperature: Double? = 0.7,
             maxCompletionTokens: Int? = null,
+            reasoningEffort: String? = null,
         ) = AiModel(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             aiProviderId = aiProviderId,
             apiModelName = apiName,
             temperature = temperature,
             maxCompletionTokens = maxCompletionTokens,
+            reasoningEffort = reasoningEffort,
         )
 
         "getChatClient forwards model and provider fields to ChatModelFactory" {
@@ -101,6 +103,37 @@ class ChatClientProviderUnitSpec :
             chatClientProvider.getChatClient(m, p).shouldNotBeNull()
         }
 
+        "getChatClient forwards the model reasoning effort to ChatModelFactory" {
+            val m = model(apiName = "gpt-6-sol", temperature = null, reasoningEffort = "low")
+            val p = provider()
+            val chatModel = mockk<ChatModel>(relaxed = true)
+
+            every {
+                chatModelFactory.createChatModel(
+                    apiType = AiApiType.Anthropic,
+                    baseUrl = "https://api.anthropic.com",
+                    apiKey = "sk-test",
+                    modelName = "gpt-6-sol",
+                    temperature = null,
+                    maxCompletionTokens = null,
+                    reasoningEffort = "low",
+                )
+            } returns chatModel
+
+            chatClientProvider.getChatClient(m, p).shouldNotBeNull()
+            verify(exactly = 1) {
+                chatModelFactory.createChatModel(
+                    apiType = AiApiType.Anthropic,
+                    baseUrl = "https://api.anthropic.com",
+                    apiKey = "sk-test",
+                    modelName = "gpt-6-sol",
+                    temperature = null,
+                    maxCompletionTokens = null,
+                    reasoningEffort = "low",
+                )
+            }
+        }
+
         "enabled accounting still preserves native model behavior when no accumulator is supplied" {
             val nativeModel = mockk<ChatModel>()
             every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder()
@@ -111,7 +144,7 @@ class ChatClientProviderUnitSpec :
                 ChatResponse(listOf(Generation(AssistantMessage("Done"))))
             }
             val factory = mockk<ChatModelFactory> {
-                every { createChatModel(any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+                every { createChatModel(any(), any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
             }
             val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
             val client = clientProvider.getChatClient(model(), provider())

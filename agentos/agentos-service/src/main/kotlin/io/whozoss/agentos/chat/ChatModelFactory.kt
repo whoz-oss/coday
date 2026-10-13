@@ -61,6 +61,8 @@ class ChatModelFactory(
         temperature: Double? = null,
         /** Maximum tokens to generate in the completion. Does not affect the input context window. */
         maxCompletionTokens: Int? = null,
+        /** Reasoning effort for OpenAI models (e.g. `none`, `low`, `high`). Ignored by the other API types. */
+        reasoningEffort: String? = null,
         headers: Map<String, String> = emptyMap(),
     ): ChatModel {
         val resolvedApiKey = apiKey ?: ""
@@ -72,6 +74,7 @@ class ChatModelFactory(
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
                     maxCompletionTokens = maxCompletionTokens,
+                    reasoningEffort = reasoningEffort,
                 )
             }
 
@@ -122,6 +125,7 @@ class ChatModelFactory(
         model: String,
         temp: Double,
         maxCompletionTokens: Int?,
+        reasoningEffort: String?,
     ): ChatModel {
         val api =
             OpenAiApi
@@ -140,6 +144,9 @@ class ChatModelFactory(
         }
         if (maxCompletionTokens != null) {
             optionsBuilder.maxCompletionTokens(maxCompletionTokens)
+        }
+        if (reasoningEffort != null) {
+            optionsBuilder.reasoningEffort(reasoningEffort)
         }
         val options = optionsBuilder.build()
 

@@ -56,4 +56,9 @@ data class AiModelDto(
      * for field semantics.
      */
     val pricing: io.whozoss.agentos.sdk.aiProvider.ModelPricing? = null,
+    /**
+     * Reasoning effort sent to OpenAI providers, e.g. `none`, `low`, `medium`, `high`.
+     * Accepted values depend on the model. Null = provider default. Ignored by other API types.
+     */
+    val reasoningEffort: String? = null,
 )

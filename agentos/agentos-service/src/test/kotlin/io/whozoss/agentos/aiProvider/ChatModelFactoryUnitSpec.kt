@@ -109,6 +109,26 @@ class ChatModelFactoryUnitSpec : StringSpec({
         model.shouldNotBeNull()
         model.shouldBeInstanceOf<OpenAiChatModel>()
     }
+
+    "OpenAI chat model sends the configured reasoning effort and omits it by default" {
+        val withEffort = factory.createChatModel(
+            apiType = AiApiType.OpenAI,
+            baseUrl = "https://api.openai.com",
+            apiKey = "key",
+            modelName = "gpt-6-sol",
+            reasoningEffort = "none",
+        )
+        val withoutEffort = factory.createChatModel(
+            apiType = AiApiType.OpenAI,
+            baseUrl = "https://api.openai.com",
+            apiKey = "key",
+            modelName = "gpt-6-sol",
+        )
+
+        (withEffort.defaultOptions as OpenAiChatOptions).reasoningEffort shouldBe "none"
+        (withoutEffort.defaultOptions as OpenAiChatOptions).reasoningEffort shouldBe null
+    }
+
     listOf(AiApiType.OpenAI, AiApiType.vLLM).forEach { apiType ->
         "${apiType} requests stream usage only after explicit opt in" {
             val defaultModel = factory.createChatModel(apiType, "http://localhost:8000", "test", "test")

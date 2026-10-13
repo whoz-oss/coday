@@ -107,6 +107,27 @@ class AiModelControllerSpec : StringSpec({
         verify(exactly = 1) { service.update(any()) }
     }
 
+    "update stores the reasoning effort and returns it" {
+        val existing = model()
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers { firstArg() }
+
+        val updated = controller.update(existing.metadata.id, resource(id = existing.metadata.id).copy(reasoningEffort = "high"))
+
+        updated.reasoningEffort shouldBe "high"
+        verify(exactly = 1) { service.update(match { it.reasoningEffort == "high" }) }
+    }
+
+    "update clears a blank reasoning effort instead of sending an empty value to the provider" {
+        val existing = model().copy(reasoningEffort = "low")
+        every { service.findById(existing.metadata.id) } returns existing
+        every { service.update(any()) } answers { firstArg() }
+
+        val updated = controller.update(existing.metadata.id, resource(id = existing.metadata.id).copy(reasoningEffort = " "))
+
+        updated.reasoningEffort shouldBe null
+    }
+
     "update throws 404 when the AiModel does not exist" {
         val id = UUID.randomUUID()
         every { service.findById(id) } returns null
