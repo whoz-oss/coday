@@ -51,13 +51,16 @@ internal object ResponsesResponseMapper : KLogging() {
             event.isError() -> {
                 val error = event.asError()
                 logger.debug { "OpenAI Responses stream error event: ${error.message()}" }
-                throw providerError("OpenAI Responses stream error", error.code().orElse("unknown"))
+                throw streamError(error.code().orElse("unknown"))
             }
 
             else -> {
                 null
             }
         }
+
+    /** Error for a stream that reported a failure with [code]; transient for server-side failures. */
+    fun streamError(code: String): RuntimeException = providerError("OpenAI Responses stream error", code)
 
     private fun toChatResponse(
         response: Response,

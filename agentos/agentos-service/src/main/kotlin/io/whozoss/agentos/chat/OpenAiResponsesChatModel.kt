@@ -1,8 +1,10 @@
 package io.whozoss.agentos.chat
 
 import com.openai.client.OpenAIClient
+import com.openai.errors.OpenAIException
 import com.openai.errors.OpenAIIoException
 import com.openai.errors.OpenAIServiceException
+import com.openai.errors.SseException
 import io.micrometer.observation.ObservationRegistry
 import mu.KLogging
 import org.springframework.ai.chat.model.ChatModel
@@ -24,6 +26,7 @@ import org.springframework.ai.retry.NonTransientAiException
 import org.springframework.ai.retry.TransientAiException
 import org.springframework.http.HttpStatus
 import reactor.core.publisher.Flux
+import reactor.core.publisher.Mono
 import reactor.core.scheduler.Schedulers
 import java.util.function.Supplier
 
@@ -33,8 +36,9 @@ import java.util.function.Supplier
  * GPT-6 while they reason.
  *
  * Behaves like [org.springframework.ai.openai.OpenAiChatModel] for its callers: [OpenAiChatOptions]
- * as options, Spring AI tool calling (executed here when internal tool execution is enabled, left to
- * the caller otherwise, e.g. [UsageTrackingChatModel]) and the same chat model observation.
+ * as options, blocking and streaming calls, Spring AI tool calling (executed here when internal tool
+ * execution is enabled, left to the caller otherwise, e.g. [UsageTrackingChatModel]) and the same
+ * chat model observation.
  *
  * Provider HTTP errors become [NonTransientAiException] (4xx) or [TransientAiException] (5xx, I/O).
  * Their message names the status and the endpoint only; the error body goes to DEBUG logs because
@@ -54,9 +58,7 @@ class OpenAiResponsesChatModel(
 
     override fun call(prompt: Prompt): ChatResponse = internalCall(buildRequestPrompt(prompt))
 
-    /** Streaming arrives with the next change; until then the full response is emitted as one chunk. */
-    override fun stream(prompt: Prompt): Flux<ChatResponse> =
-        Flux.defer { Flux.just(call(prompt)) }.subscribeOn(Schedulers.boundedElastic())
+    override fun stream(prompt: Prompt): Flux<ChatResponse> = internalStream(buildRequestPrompt(prompt))
 
     private fun internalCall(prompt: Prompt): ChatResponse {
         val options = prompt.options as OpenAiChatOptions
@@ -80,6 +82,53 @@ class OpenAiResponsesChatModel(
         } else {
             internalCall(Prompt(result.conversationHistory(), options))
         }
+    }
+
+    /**
+     * Streams one request: text deltas as they arrive, then a final chunk with the tool calls, the
+     * usage and the finish reason. The SDK reads server-sent events from a blocking stream, so it
+     * runs on the bounded elastic scheduler; cancelling the Flux closes the HTTP response. Tool calls
+     * are executed after the final chunk and the follow-up request is streamed in turn.
+     */
+    private fun internalStream(prompt: Prompt): Flux<ChatResponse> =
+        Flux.defer {
+            val options = prompt.options as OpenAiChatOptions
+            val params = ResponsesRequestMapper.toParams(prompt.instructions, options, toolCallingManager.resolveToolDefinitions(options))
+            val context = ChatModelObservationContext.builder().prompt(prompt).provider(PROVIDER).build()
+            val observation =
+                ChatModelObservationDocumentation.CHAT_MODEL_OPERATION
+                    .observation(null, OBSERVATION_CONVENTION, { context }, observationRegistry)
+                    .start()
+            Flux
+                .using(
+                    { client.responses().createStreaming(params) },
+                    { events -> Flux.fromStream(events.stream()) },
+                    { events -> events.close() },
+                ).subscribeOn(Schedulers.boundedElastic())
+                .onErrorMap(::toProviderException)
+                .mapNotNull<ChatResponse> { event -> ResponsesResponseMapper.toChunk(event) }
+                .doOnNext { chunk -> if (chunk.metadata.usage.totalTokens > 0) context.setResponse(chunk) }
+                .doOnError(observation::error)
+                .doFinally { observation.stop() }
+                .concatMap { chunk -> continueWithTools(prompt, options, chunk) }
+        }
+
+    private fun continueWithTools(
+        prompt: Prompt,
+        options: OpenAiChatOptions,
+        chunk: ChatResponse,
+    ): Flux<ChatResponse> {
+        if (!toolExecutionEligibilityPredicate.isToolExecutionRequired(options, chunk)) return Flux.just(chunk)
+        return Mono
+            .fromCallable { toolCallingManager.executeToolCalls(prompt, chunk) }
+            .subscribeOn(Schedulers.boundedElastic())
+            .flatMapMany { result ->
+                if (result.returnDirect()) {
+                    Flux.just(ChatResponse.builder().from(chunk).generations(ToolExecutionResult.buildGenerations(result)).build())
+                } else {
+                    internalStream(Prompt(result.conversationHistory(), options))
+                }
+            }
     }
 
     /**
@@ -109,23 +158,41 @@ class OpenAiResponsesChatModel(
     private fun <T> send(request: () -> T): T =
         try {
             request()
-        } catch (e: OpenAIServiceException) {
-            throw providerException(e)
-        } catch (e: OpenAIIoException) {
-            logger.debug(e) { "I/O error calling $endpoint" }
-            throw TransientAiException("I/O error from POST $endpoint")
+        } catch (e: OpenAIException) {
+            throw toProviderException(e)
+        }
+
+    private fun toProviderException(error: Throwable): Throwable =
+        when (error) {
+            // The SDK raises SseException for an `error` event in the stream; it carries the 200 status of
+            // the stream, so it is classified by its error code instead.
+            is SseException -> {
+                logger.debug { "OpenAI Responses stream error from POST $endpoint: ${bounded(error.body().toString())}" }
+                ResponsesResponseMapper.streamError(error.code().orElse(null) ?: error.type().orElse(null) ?: "unknown")
+            }
+
+            is OpenAIServiceException -> {
+                providerException(error)
+            }
+
+            is OpenAIIoException -> {
+                logger.debug(error) { "I/O error calling $endpoint" }
+                TransientAiException("I/O error from POST $endpoint")
+            }
+
+            else -> {
+                error
+            }
         }
 
     private fun providerException(e: OpenAIServiceException): RuntimeException {
-        logger.debug {
-            val body = e.body().toString()
-            val bounded = if (body.length > MAX_BODY_CHARS) body.take(MAX_BODY_CHARS) + TRUNCATION_MARKER else body
-            "Provider error response body for ${e.statusCode()} from POST $endpoint: $bounded"
-        }
+        logger.debug { "Provider error response body for ${e.statusCode()} from POST $endpoint: ${bounded(e.body().toString())}" }
         val status = HttpStatus.resolve(e.statusCode())?.toString() ?: e.statusCode().toString()
         val message = "$status from POST $endpoint"
         return if (e.statusCode() in 400..499) NonTransientAiException(message) else TransientAiException(message)
     }
+
+    private fun bounded(body: String): String = if (body.length > MAX_BODY_CHARS) body.take(MAX_BODY_CHARS) + TRUNCATION_MARKER else body
 
     companion object : KLogging() {
         private const val PROVIDER = "openai"
