@@ -14,7 +14,7 @@
     "lint": "nx run-many --target=lint",
     "postinstall": "pnpm husky-setup",
     "regen": "nx run agentos-service:regenerate",
-    "server": "nx run server:serve",
+    "server": "nx run server:serve:production",
     "sync-deps": "tsx scripts/sync-project-dependencies.ts",
     "test": "nx run-many --target=test",
     "web": "npx --yes @whoz-oss/coday-web",

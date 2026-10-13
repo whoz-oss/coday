@@ -79,7 +79,7 @@ export class CaseMetricsStateService implements OnDestroy {
     this.state.set('loading')
     this.metrics.set(null)
 
-    const url = `${this.apiOrigin}/api/cases/${encodeURIComponent(caseId)}/run-cost`
+    const url = `${this.apiOrigin}/api/agentos/api/cases/${encodeURIComponent(caseId)}/run-cost`
     const headers = new HttpHeaders().set('X-Correlation-Id', generateCorrelationId())
 
     this.http

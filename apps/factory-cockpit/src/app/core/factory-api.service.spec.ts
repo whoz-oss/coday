@@ -760,12 +760,12 @@ describe('FactoryApiService', () => {
     it('getNamespaces unwraps a raw array and a { items } payload', () => {
       let raw: unknown[] | undefined
       service.getNamespaces().subscribe((items) => (raw = items))
-      http.expectOne((r) => r.url === '/api/namespaces').flush([{ namespaceId: 'ns-1' }])
+      http.expectOne((r) => r.url === '/api/agentos/api/namespaces').flush([{ namespaceId: 'ns-1' }])
       expect(raw).toEqual([{ namespaceId: 'ns-1' }])
 
       let wrapped: unknown[] | undefined
       service.getNamespaces().subscribe((items) => (wrapped = items))
-      http.expectOne((r) => r.url === '/api/namespaces').flush({ data: { items: [{ id: 'ns-2' }] } })
+      http.expectOne((r) => r.url === '/api/agentos/api/namespaces').flush({ data: { items: [{ id: 'ns-2' }] } })
       expect(wrapped).toEqual([{ id: 'ns-2' }])
     })
 
@@ -774,7 +774,7 @@ describe('FactoryApiService', () => {
       service.getNamespaces().subscribe((items) => (result = items))
 
       http
-        .expectOne((r) => r.url === '/api/namespaces')
+        .expectOne((r) => r.url === '/api/agentos/api/namespaces')
         .flush({ error: { code: 'NOT_FOUND' } }, { status: 404, statusText: 'Not Found' })
 
       expect(result).toEqual([])
