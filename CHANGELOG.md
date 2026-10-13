@@ -1,3 +1,13 @@
+## 3.34.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos-service:** stop now ends the agent's turn at once ([#1442](https://github.com/whoz-oss/coday/pull/1442))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.34.0 (2026-10-13)
 
 ### 🚀 Features
