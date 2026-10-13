@@ -200,10 +200,17 @@ class CaseRuntime(
     /**
      * Mark the current turn stopped and clear the command queue: the turn ends as [CaseStatus.IDLE].
      *
-     * Only marks the turn: [cancelInterruptedTurn] then cancels it, so a case family can be marked
-     * entirely before any turn is cancelled. Without it, the turn ends after the current
-     * [processNextStep] returns. The runtime stays alive and the SSE flow stays open for the next
-     * user message.
+     * Only marks the turn, it does not cancel it: [cancelInterruptedTurn] does, as a second step.
+     * The split is deliberate, so as not to break the forge (Git workspaces) cases. A cancelled child
+     * turn ends [CaseStatus.IDLE], which completes its parent's delegation, so the parent must already
+     * be marked by then. The same goes for a turn held back by the launch gate: releasing it sets it
+     * [CaseStatus.IDLE]. Stopping a case family is
+     * therefore done in two passes (see [CaseServiceImpl.interruptCase]): mark every runtime with this
+     * method, then cancel every turn with [cancelInterruptedTurn]. [requestKill] and
+     * [requestShutdownStop] cancel directly because they act on a single runtime.
+     *
+     * Without the second step, the turn ends after the current [processNextStep] returns. The runtime
+     * stays alive and the SSE flow stays open for the next user message.
      */
     fun requestInterrupt() {
         commandQueue.clear()
