@@ -23,7 +23,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runTest
 import java.util.UUID
 
 class DelegationToolLifecycleUnitSpec : StringSpec({
@@ -113,24 +112,22 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
     }
 
     "cancelling the parent run while it waits for the sub-case unwinds instead of reporting a failed delegation" {
-        runTest {
-            val subCaseId = UUID.randomUUID()
-            val running = mockk<CaseRuntime> {
-                every { this@mockk.id } returns subCaseId
-                every { statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
-            }
-            val manager = RecordingManager(running)
-            val outcome = CompletableDeferred<Throwable?>()
-            val parentRun = launch {
-                outcome.complete(runCatching { tool(manager, emptyList()).execute(args(), context()) }.exceptionOrNull())
-            }
-            // Resumes once the parent has announced the delegation: it is about to wait for the sub-case.
-            manager.startedEmitted.await()
-
-            parentRun.cancel()
-
-            outcome.await().shouldBeInstanceOf<CancellationException>()
-            (manager.parentEvents.last() as SubCaseFinishedEvent).errorType shouldBe "INTERRUPTED"
+        val subCaseId = UUID.randomUUID()
+        val running = mockk<CaseRuntime> {
+            every { this@mockk.id } returns subCaseId
+            every { statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
         }
+        val manager = RecordingManager(running)
+        val outcome = CompletableDeferred<Throwable?>()
+        val parentRun = launch {
+            outcome.complete(runCatching { tool(manager, emptyList()).execute(args(), context()) }.exceptionOrNull())
+        }
+        // Resumes once the parent has announced the delegation: it is about to wait for the sub-case.
+        manager.startedEmitted.await()
+
+        parentRun.cancel()
+
+        outcome.await().shouldBeInstanceOf<CancellationException>()
+        (manager.parentEvents.last() as SubCaseFinishedEvent).errorType shouldBe "INTERRUPTED"
     }
 })
