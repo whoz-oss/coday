@@ -71,49 +71,58 @@ class QueryUserConfigSeeder(
                 userId = null,
                 name = DEFAULT_CONFIG_NAME,
             )
+        val enabled = properties.enabledByDefault
 
-        if (!properties.enabledByDefault) {
-            if (existing != null) {
-                logger.warn {
-                    "[QueryUserSeeder] agentos.query-user.enabled-by-default is false but the platform " +
-                        "'$DEFAULT_CONFIG_NAME' configuration still exists and is " +
-                        "${if (existing.autoGrant) "still auto-granted to every agent" else "no longer auto-granted"}. " +
-                        "This seeder never deletes persisted data. To stop the grant, set autoGrant=false on that " +
-                        "configuration (or delete it) through the API."
-                }
-            }
-            return
+        when {
+            existing == null && enabled -> createDefault()
+            existing == null -> Unit // disabled and nothing persisted: nothing to reconcile
+            enabled -> logAlreadyExists(existing)
+            else -> warnDisabledButPresent(existing)
         }
+    }
 
-        if (existing != null) {
-            logger.info {
-                "[QueryUserSeeder] Platform '$DEFAULT_CONFIG_NAME' configuration already exists " +
-                    "(autoGrant=${existing.autoGrant}), leaving it untouched."
-            }
-            return
-        }
-
+    private fun createDefault() {
         try {
-            integrationConfigService.create(
-                IntegrationConfig(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    namespaceId = null,
-                    userId = null,
-                    name = DEFAULT_CONFIG_NAME,
-                    integrationType = QueryUserToolPlugin.INTEGRATION_TYPE,
-                    description = DEFAULT_DESCRIPTION,
-                    parameters = DEFAULT_PARAMETERS,
-                    autoGrant = true,
-                ),
-            )
+            integrationConfigService.create(defaultConfig())
             logger.info {
                 "[QueryUserSeeder] Created platform '$DEFAULT_CONFIG_NAME' configuration with autoGrant=true. " +
                     "Every agent of this environment receives the queryUser tool; override it per namespace by " +
                     "creating a configuration with the same name."
             }
         } catch (e: ConflictException) {
-                // Another instance won the startup race; the constraint did its job.
-                logger.info(e) { "[QueryUserSeeder] Platform '$DEFAULT_CONFIG_NAME' configuration created concurrently, skipping." }
+            // Another instance won the startup race; the constraint did its job.
+            logger.info(e) {
+                "[QueryUserSeeder] Platform '$DEFAULT_CONFIG_NAME' configuration created concurrently, skipping."
+            }
+        }
+    }
+
+    private fun defaultConfig() =
+        IntegrationConfig(
+            metadata = EntityMetadata(id = UUID.randomUUID()),
+            namespaceId = null,
+            userId = null,
+            name = DEFAULT_CONFIG_NAME,
+            integrationType = QueryUserToolPlugin.INTEGRATION_TYPE,
+            description = DEFAULT_DESCRIPTION,
+            parameters = DEFAULT_PARAMETERS,
+            autoGrant = true,
+        )
+
+    private fun logAlreadyExists(existing: IntegrationConfig) {
+        logger.info {
+            "[QueryUserSeeder] Platform '$DEFAULT_CONFIG_NAME' configuration already exists " +
+                "(autoGrant=${existing.autoGrant}), leaving it untouched."
+        }
+    }
+
+    private fun warnDisabledButPresent(existing: IntegrationConfig) {
+        logger.warn {
+            "[QueryUserSeeder] agentos.query-user.enabled-by-default is false but the platform " +
+                "'$DEFAULT_CONFIG_NAME' configuration still exists and is " +
+                "${if (existing.autoGrant) "still auto-granted to every agent" else "no longer auto-granted"}. " +
+                "This seeder never deletes persisted data. To stop the grant, set autoGrant=false on that " +
+                "configuration (or delete it) through the API."
         }
     }
 
