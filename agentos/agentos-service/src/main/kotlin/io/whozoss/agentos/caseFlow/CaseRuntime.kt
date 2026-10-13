@@ -484,7 +484,21 @@ class CaseRuntime(
             if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
             updateStatus(finalStatus)
         } catch (e: CancellationException) {
-            withContext(NonCancellable) { closeCancelledTurn() }
+            // Cancelled by a Stop, a Kill, a shutdown stop or a cancelled caller: close the turn before
+            // rethrowing, so the case is never left RUNNING with a dangling AgentRunningEvent.
+            withContext(NonCancellable) {
+                commandQueue.clear()
+                pendingQuestionResumptions.clear()
+                val status = stoppedStatus()
+                logger.info { "[CaseRuntime $id] Turn cancelled → $status" }
+                // Emit the AgentFinishedEvent the agent could not emit (otherwise a rehydration would
+                // restart it from its AgentRunningEvent). Each step is best-effort: a store failure
+                // must not replace the cancellation.
+                runCatching { openAgentOfCurrentTurn()?.let(::storeAndEmitEvent) }
+                    .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not close the cancelled turn" } }
+                runCatching { updateStatus(status) }
+                    .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not publish status $status" } }
+            }
             throw e
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
@@ -495,22 +509,6 @@ class CaseRuntime(
 
     /** Status a stopped turn ends in: only a Kill is terminal. */
     private fun stoppedStatus(): CaseStatus = stopRequest.get().finalStatus
-
-    /**
-     * Close a cancelled turn: emit the [AgentFinishedEvent] the agent could not emit (otherwise a
-     * rehydration would restart it from its [AgentRunningEvent]), then publish the final status.
-     * Each step is best-effort: a store failure must not replace the cancellation.
-     */
-    private fun closeCancelledTurn() {
-        commandQueue.clear()
-        pendingQuestionResumptions.clear()
-        val status = stoppedStatus()
-        logger.info { "[CaseRuntime $id] Turn cancelled → $status" }
-        runCatching { openAgentOfCurrentTurn()?.let(::storeAndEmitEvent) }
-            .onFailure { e -> logger.error(e) { "[CaseRuntime $id] Could not close the cancelled turn" } }
-        runCatching { updateStatus(status) }
-            .onFailure { e -> logger.error(e) { "[CaseRuntime $id] Could not publish status $status" } }
-    }
 
     /**
      * The [AgentFinishedEvent] closing the agent still running in the current turn, or null when the
