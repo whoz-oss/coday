@@ -1,3 +1,13 @@
+## 3.34.0 (2026-10-13)
+
+### 🚀 Features
+
+- #1425 #34871 add integration configuration on query user ([#1428](https://github.com/whoz-oss/coday/pull/1428), [#1425](https://github.com/whoz-oss/coday/issues/1425), [#34871](https://github.com/whoz-oss/coday/issues/34871))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
 ## 3.33.1 (2026-10-13)
 
 ### 🩹 Fixes
