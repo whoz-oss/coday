@@ -5,6 +5,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.skill.Skill
 import java.util.UUID
 
 /**
@@ -32,6 +33,12 @@ import java.util.UUID
  * @param resolvedModel The fully-resolved [AiModel], passed directly to the instantiation phase.
  * @param resolvedProvider The fully-resolved [AiProvider] (after overlay), passed directly to the instantiation phase.
  * @param tools The resolved tool set, filtered and scoped to this agent.
+ * @param skills The resolved skill catalogue for this agent, as produced by
+ *   [io.whozoss.agentos.skill.SkillService.findSkills] from [AgentConfig.skillSelectors]. This is
+ *   the exact list rendered into [instructions] by
+ *   [io.whozoss.agentos.skill.SkillCatalogRenderer] and bound to the granted
+ *   `readSkill` / `readSkillResource` tools — not a second resolution — so an inspection of this
+ *   field reports what the agent actually received. Empty when no selectors are configured.
  * @param executionMode The resolved execution mode for this agent (SIMPLE, ADVANCED, or LOOP).
  * @param namespaceId The namespace this agent is scoped to.
  * @param userId The user the agent is built for, or null for anonymous / system runs.
@@ -58,6 +65,7 @@ data class ResolvedAgentDefinition(
     val resolvedModel: AiModel,
     val resolvedProvider: AiProvider,
     val tools: Collection<StandardTool<*>>,
+    val skills: List<Skill> = emptyList(),
     val executionMode: ExecutionMode,
     val namespaceId: UUID,
     val userId: UUID?,

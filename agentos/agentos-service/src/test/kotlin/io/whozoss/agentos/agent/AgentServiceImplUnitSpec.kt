@@ -2141,6 +2141,42 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // redirectGuideline extraction — resolveDefinition seam
         // -------------------------------------------------------------------------
 
+        "resolveDefinition exposes the resolved skills, the same list that feeds the instructions" {
+            val skill =
+                Skill(
+                    metadata = EntityMetadata(),
+                    namespaceId = namespaceId,
+                    name = "Review",
+                    description = "Code review",
+                    body = "## Body",
+                )
+            val config =
+                agentConfig(name = "skills-definition-agent", modelName = "sonnet")
+                    .copy(skillSelectors = listOf("*"))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            coEvery { skillService.findSkills(any<UUID>(), eq(listOf("*"))) } returns listOf(skill)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.skills shouldBe listOf(skill)
+            // Same list, one resolution: it is also what the catalogue block was rendered from.
+            result.instructions shouldContain "- **Review**: Code review"
+        }
+
+        "resolveDefinition exposes no skills when the agent declares no selectors" {
+            val config = agentConfig(name = "no-skills-definition-agent", modelName = "sonnet")
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            coEvery { skillService.findSkills(any<UUID>(), null) } returns emptyList()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.skills.shouldBeEmpty()
+        }
+
         "resolveDefinition extracts redirectGuideline from a REDIRECT integration config referenced by the agent" {
             val redirectConfig =
                 IntegrationConfig(

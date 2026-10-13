@@ -430,6 +430,7 @@ class AgentServiceImpl(
             resolvedModel = modelConfig,
             resolvedProvider = providerConfig,
             tools = tools,
+            skills = resolvedSkills,
             executionMode = agentConfig.resolvedExecutionMode,
             namespaceId = context.namespaceId,
             userId = context.userId,
