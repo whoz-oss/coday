@@ -66,9 +66,9 @@ data class AiModel(
      */
     val pricing: ModelPricing? = null,
     /**
-     * Reasoning effort sent to OpenAI providers ([AiApiType.OpenAI]), e.g. `none`, `low`,
-     * `medium`, `high`. Accepted values depend on the model. Null means the provider default.
-     * Ignored by the other API types.
+     * Reasoning effort sent to OpenAI providers ([AiApiType.OpenAI], [AiApiType.OpenAIResponses]),
+     * e.g. `none`, `low`, `medium`, `high`. Accepted values depend on the model. Null means the
+     * provider default. Ignored by the other API types.
      */
     val reasoningEffort: String? = null,
 ) : Entity

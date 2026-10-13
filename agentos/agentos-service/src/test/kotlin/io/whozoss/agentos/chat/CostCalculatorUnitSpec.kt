@@ -287,6 +287,25 @@ class CostCalculatorUnitSpec :
             (usage.estimatedCostUsd!! - doubleCounted) shouldBe ((-300 / 1_000_000.0) * 2.5 plusOrMinus 1e-10)
         }
 
+        "OpenAIResponses: inputTokens excludes cachedTokens read from the native ResponseUsage" {
+            val native =
+                com.openai.core.jsonMapper().readValue(
+                    """{"input_tokens":1000,"input_tokens_details":{"cached_tokens":300},""" +
+                        """"output_tokens":200,"output_tokens_details":{"reasoning_tokens":50},"total_tokens":1200}""",
+                    com.openai.models.responses.ResponseUsage::class.java,
+                )
+            val response = makeChatResponse(promptTokens = 1000, completionTokens = 200, nativeUsage = native)
+            val model = modelWithPricing(inputRate = 2.0, outputRate = 10.0, cacheReadRate = 0.2)
+
+            val usage = CostCalculator.extract(response, AiApiType.OpenAIResponses, model)
+
+            usage.inputTokens shouldBe 700L
+            usage.cacheReadTokens shouldBe 300L
+            usage.outputTokens shouldBe 200L
+            val expectedCost = (700 * 2.0 + 200 * 10.0 + 300 * 0.2) / 1_000_000.0
+            usage.estimatedCostUsd.shouldNotBeNull() shouldBe (expectedCost plusOrMinus 1e-10)
+        }
+
         "OpenAI without cached tokens: inputTokens equals promptTokens" {
             val native = openAiNative(promptTokens = 500, completionTokens = 100)
             val response = makeChatResponse(promptTokens = 500, completionTokens = 100, nativeUsage = native)

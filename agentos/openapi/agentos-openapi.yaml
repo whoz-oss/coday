@@ -4170,6 +4170,7 @@ components:
           type: string
           enum:
           - OpenAI
+          - OpenAIResponses
           - Anthropic
           - Gemini
           - vLLM

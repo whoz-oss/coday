@@ -144,6 +144,9 @@ dependencies {
     // Spring AI
     implementation(libs.bundles.spring.ai)
 
+    // OpenAI Java SDK — Responses API client behind AiApiType.OpenAIResponses
+    implementation(libs.openai.java)
+
     // Neo4j persistence (Bolt-based, for server/container deployments)
     implementation(libs.spring.boot.starter.data.neo4j)
 

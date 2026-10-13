@@ -1,6 +1,8 @@
 package io.whozoss.agentos.chat
 
 import com.google.genai.Client
+import com.openai.client.OpenAIClient
+import com.openai.client.okhttp.OpenAIOkHttpClient
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
@@ -27,6 +29,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.bind.DefaultValue
 import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
+import java.security.MessageDigest
+import java.util.HexFormat
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Configuration for Anthropic-specific features.
@@ -53,6 +58,14 @@ class ChatModelFactory(
     private val anthropicProperties: AnthropicProperties,
     private val usageConfig: UsageConfigProperties = UsageConfigProperties(),
 ) {
+    /**
+     * OpenAI SDK clients for the Responses API, one per base URL and API key. Each client owns an
+     * OkHttp connection pool and dispatcher, so it is shared by every model built for the same
+     * provider instead of being created per agent run. The key holds a digest of the API key, never
+     * the key itself.
+     */
+    private val openAiResponsesClients = ConcurrentHashMap<String, OpenAIClient>()
+
     fun createChatModel(
         apiType: AiApiType,
         baseUrl: String?,
@@ -73,6 +86,17 @@ class ChatModelFactory(
                     apiKey = resolvedApiKey,
                     model = modelName,
                     temp = temperature ?: DEFAULT_TEMPERATURE,
+                    maxCompletionTokens = maxCompletionTokens,
+                    reasoningEffort = reasoningEffort,
+                )
+            }
+
+            AiApiType.OpenAIResponses -> {
+                createOpenAiResponsesModel(
+                    baseUrl = baseUrl ?: OPENAI_DEFAULT_BASE_URL,
+                    apiKey = resolvedApiKey,
+                    model = modelName,
+                    temperature = temperature,
                     maxCompletionTokens = maxCompletionTokens,
                     reasoningEffort = reasoningEffort,
                 )
@@ -157,6 +181,44 @@ class ChatModelFactory(
             RetryUtils.DEFAULT_RETRY_TEMPLATE,
             observationRegistry,
             DefaultToolExecutionEligibilityPredicate(),
+        )
+    }
+
+    /**
+     * Unlike the Chat Completions branch, temperature is sent only when configured, so the model
+     * default applies otherwise: reasoning models may reject sampling values other than their own.
+     */
+    private fun createOpenAiResponsesModel(
+        baseUrl: String,
+        apiKey: String,
+        model: String,
+        temperature: Double?,
+        maxCompletionTokens: Int?,
+        reasoningEffort: String?,
+    ): ChatModel {
+        val apiBaseUrl = responsesApiBaseUrl(baseUrl)
+        val client =
+            openAiResponsesClients.computeIfAbsent("$apiBaseUrl#${sha256(apiKey)}") {
+                OpenAIOkHttpClient
+                    .builder()
+                    .baseUrl(apiBaseUrl)
+                    .apiKey(apiKey)
+                    .build()
+            }
+        val options =
+            OpenAiChatOptions
+                .builder()
+                .model(model)
+                .apply {
+                    temperature?.let { temperature(it) }
+                    maxCompletionTokens?.let { maxCompletionTokens(it) }
+                    reasoningEffort?.let { reasoningEffort(it) }
+                }.build()
+        return OpenAiResponsesChatModel(
+            client = client,
+            defaultOptions = options,
+            endpoint = "$apiBaseUrl/responses",
+            observationRegistry = observationRegistry,
         )
     }
 
@@ -302,5 +364,17 @@ class ChatModelFactory(
         private const val OPENAI_DEFAULT_BASE_URL = "https://api.openai.com"
         private const val ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
         private const val OLLAMA_DEFAULT_BASE_URL = "http://localhost:11434"
+
+        /**
+         * Provider base URLs are stored without the API version (`https://api.openai.com`), which
+         * Spring AI appends itself. The OpenAI SDK expects it in the base URL.
+         */
+        internal fun responsesApiBaseUrl(baseUrl: String): String {
+            val trimmed = baseUrl.trimEnd('/')
+            return if (trimmed.endsWith("/v1")) trimmed else "$trimmed/v1"
+        }
+
+        private fun sha256(value: String): String =
+            HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.toByteArray()))
     }
 }
