@@ -1,3 +1,13 @@
+## 3.33.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos:** skip workspace requests when Git workspaces are disabled ([#1438](https://github.com/whoz-oss/coday/pull/1438))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 3.33.0 (2026-10-12)
 
 ### 🚀 Features
