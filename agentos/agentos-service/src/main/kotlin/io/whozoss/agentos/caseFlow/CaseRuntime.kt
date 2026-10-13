@@ -494,7 +494,7 @@ class CaseRuntime(
                 // Emit the AgentFinishedEvent the agent could not emit (otherwise a rehydration would
                 // restart it from its AgentRunningEvent). Each step is best-effort: a store failure
                 // must not replace the cancellation.
-                runCatching { openAgentOfCurrentTurn()?.let(::storeAndEmitEvent) }
+                runCatching { closeAgentLeftOpenByCurrentTurn() }
                     .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not close the cancelled turn" } }
                 runCatching { updateStatus(status) }
                     .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not publish status $status" } }
@@ -511,23 +511,34 @@ class CaseRuntime(
     private fun stoppedStatus(): CaseStatus = stopRequest.get().finalStatus
 
     /**
-     * The [AgentFinishedEvent] closing the agent still running in the current turn, or null when the
-     * latest orchestration event since the last user message already closes it.
+     * Emits the [AgentFinishedEvent] that an interrupted turn could not emit itself, so that the history
+     * is consistent and a rehydration does not restart the agent from its [AgentRunningEvent].
+     *
+     * The agent is left open when the latest orchestration event since the last user message is an
+     * [AgentRunningEvent] or an [AgentSelectedEvent] (selected, but not yet started or not yet finished).
+     * Otherwise there is nothing to close and no event is emitted: either the turn has no orchestration
+     * event at all, or its latest one is already an [AgentFinishedEvent]. Emitting that one again would
+     * duplicate it in the history and on the SSE flow.
      */
-    private fun openAgentOfCurrentTurn(): AgentFinishedEvent? {
+    private fun closeAgentLeftOpenByCurrentTurn() {
         val events = eventList.getAll()
         val lastUserMessageIndex = events.indexOfLast { it is MessageEvent && it.actor.role == ActorRole.USER }
         val lastOrchestration =
             events
                 .drop(lastUserMessageIndex + 1)
                 .lastOrNull { it is AgentFinishedEvent || it is AgentRunningEvent || it is AgentSelectedEvent }
-        val (agentId, agentName) =
-            when (lastOrchestration) {
-                is AgentRunningEvent -> lastOrchestration.agentId to lastOrchestration.agentName
-                is AgentSelectedEvent -> lastOrchestration.agentId to lastOrchestration.agentName
-                else -> return null
-            }
-        return AgentFinishedEvent(namespaceId = namespaceId, caseId = id, agentId = agentId, agentName = agentName)
+        when (lastOrchestration) {
+            is AgentRunningEvent -> closeAgent(lastOrchestration.agentId, lastOrchestration.agentName)
+            is AgentSelectedEvent -> closeAgent(lastOrchestration.agentId, lastOrchestration.agentName)
+            else -> Unit // no agent in this turn, or already closed by an AgentFinishedEvent
+        }
+    }
+
+    private fun closeAgent(
+        agentId: UUID,
+        agentName: String,
+    ) {
+        storeAndEmitEvent(AgentFinishedEvent(namespaceId = namespaceId, caseId = id, agentId = agentId, agentName = agentName))
     }
 
     /**
