@@ -73,27 +73,17 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
-// plugin.properties carries `plugin.version=${version}`; PF4J reads it before the manifest,
-// so it must follow the stamped project version instead of a hardcoded literal.
-// The version is captured as a plain String at configuration time: referencing `project`
-// inside the filesMatching lambda (executed at execution time) is unsupported by the
-// configuration cache.
-val pluginVersion: String = project.version.toString()
-tasks.processResources {
-    inputs.property("pluginVersion", pluginVersion)
-    filesMatching("plugin.properties") {
-        expand("version" to pluginVersion)
-    }
-}
-
+// plugin.properties deliberately carries no `plugin.version` (same as the AgentOS plugins):
+// the version is stamped in the JAR manifest below, which follows the project version.
+// No resource templating, hence nothing at execution time touching `project`.
 tasks.named<Jar>("jar") {
     archiveBaseName.set("factory-forge-plugin")
     manifest {
         attributes(
             "Plugin-Id" to "factory-forge-plugin",
-            "Plugin-Version" to project.version.toString(),
+            "Plugin-Version" to version,
             "Plugin-Provider" to "whoz-oss",
-            "Plugin-Class" to "whoz-oss.factory.forge.plugin.ForgePlugin",
+            "Plugin-Class" to "io.whozoss.factory.forge.plugin.ForgePlugin",
             "Plugin-Dependencies" to "",
         )
     }
