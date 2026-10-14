@@ -1,3 +1,18 @@
+## 3.35.0 (2026-10-14)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention generation tool name ([#1448](https://github.com/whoz-oss/coday/pull/1448))
+
+### 🔥 Performance
+
+- **agentos:** share one Neo4j test harness across Spring test contexts ([#1440](https://github.com/whoz-oss/coday/pull/1440))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- Yannick Bridé @yannick-bride-whoz
+
 ## 3.34.1 (2026-10-13)
 
 ### 🩹 Fixes
