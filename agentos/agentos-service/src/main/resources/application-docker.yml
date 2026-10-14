@@ -1,7 +1,7 @@
 spring:
   application:
     name: agentos
-  
+
   # Spring AI configuration (using environment variables)
   ai:
     anthropic:
@@ -41,6 +41,6 @@ agentos:
 logging:
   level:
     root: ${LOGGING_LEVEL_ROOT:INFO}
-    io.whozoss.agentos.service: ${LOGGING_LEVEL_IO_BIZNET_AGENTOS:INFO}
+    io.whozoss.agentos.service: ${LOGGING_LEVEL_IO_WHOZOSSAGENTOS:INFO}
     org.pf4j: INFO
     org.springframework.boot: INFO

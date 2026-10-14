@@ -86,7 +86,7 @@ function buildManifestUrl(version: string): string {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function extractHashFromManifest(manifestText: string, targetFilename: string): string | null {
+export function extractHashFromManifest(manifestText: string, targetFilename: string): string | null {
   for (const line of manifestText.split('\n')) {
     const trimmed = line.trim()
     if (!trimmed) continue
@@ -99,7 +99,7 @@ function extractHashFromManifest(manifestText: string, targetFilename: string): 
   return null
 }
 
-function sha256hex(data: Buffer): string {
+export function sha256hex(data: Buffer): string {
   return crypto.createHash('sha256').update(data).digest('hex')
 }
 
@@ -116,7 +116,7 @@ function jarDestPath(baseDir: string, artifactId: AgentosArtifactId, version: st
 /**
  * Remove any JAR/.tmp in dir that is NOT in allowedFilenames. Never throws.
  */
-function cleanDirectory(dir: string, allowedFilenames: Set<string>): number {
+export function cleanDirectory(dir: string, allowedFilenames: Set<string>): number {
   let removed = 0
   try {
     for (const filename of fs.readdirSync(dir).filter((f) => f.endsWith('.jar') || f.endsWith('.tmp'))) {
