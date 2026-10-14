@@ -55,6 +55,9 @@ factory:
   security:
     allow-loopback-dev: ${FACTORY_ALLOW_LOOPBACK_DEV:true}
     fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
+    # Comma-separated CIDRs (e.g. 172.16.0.0/12,10.0.0.0/8) treated like loopback by the
+    # loopback-dev trust path. Empty = only real loopback sockets.
+    trusted-cidrs: ${FACTORY_TRUSTED_CIDRS:}
   runs:
     dir: ${FACTORY_RUNS_DIR:factory/runs}
     agentos-url: ${AGENTOS_URL:http://localhost:8080}

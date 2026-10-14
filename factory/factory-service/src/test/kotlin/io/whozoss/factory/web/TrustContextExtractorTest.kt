@@ -9,12 +9,16 @@ class TrustContextExtractorTest {
 
     private val secret = "unit-test-secret"
 
-    private fun extractor(allowLoopbackDev: Boolean): TrustContextExtractor =
+    private fun extractor(
+        allowLoopbackDev: Boolean,
+        trustedCidrs: List<String> = emptyList(),
+    ): TrustContextExtractor =
         TrustContextExtractor(
             FactoryProperties(
                 security = FactoryProperties.Security(
                     allowLoopbackDev = allowLoopbackDev,
                     fakeIdpSecret = secret,
+                    trustedCidrs = trustedCidrs,
                 ),
             ),
             LocalDevMembershipResolver(),
@@ -65,6 +69,56 @@ class TrustContextExtractorTest {
         assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
         assertThat(context.principalId).isNull()
         assertThat(context.scopes).isEmpty()
+    }
+
+    @Test
+    fun `caller inside a trusted cidr gets the loopback-dev context`() {
+        val request = request().apply { remoteAddr = "172.18.0.3" }
+        val context = extractor(allowLoopbackDev = true, trustedCidrs = listOf("10.0.0.0/8", "172.16.0.0/12"))
+            .extract(request)
+
+        assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_LOOPBACK_DEV)
+        assertThat(context.principalId).isEqualTo(TrustContext.LOOPBACK_DEV_PRINCIPAL_ID)
+        assertThat(context.scopes).containsExactly("*")
+        assertThat(context.organizationId).isNotNull()
+        // The flag keeps reporting the real socket: this caller is trusted, not loopback.
+        assertThat(context.loopback).isFalse()
+    }
+
+    @Test
+    fun `caller outside every trusted cidr stays anonymous`() {
+        val request = request().apply { remoteAddr = "203.0.113.10" }
+        val context = extractor(allowLoopbackDev = true, trustedCidrs = listOf("172.16.0.0/12")).extract(request)
+
+        assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+        assertThat(context.scopes).isEmpty()
+    }
+
+    @Test
+    fun `trusted cidr does nothing without the loopback-dev opt-in`() {
+        val request = request().apply { remoteAddr = "172.18.0.3" }
+        val context = extractor(allowLoopbackDev = false, trustedCidrs = listOf("172.16.0.0/12")).extract(request)
+
+        assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+    }
+
+    @Test
+    fun `trusted cidr honours the cockpit namespace and case headers`() {
+        val request = request().apply {
+            remoteAddr = "172.18.0.3"
+            addHeader("x-factory-namespace-id", "ns-1")
+            addHeader("x-factory-case-id", "case-1")
+        }
+        val context = extractor(allowLoopbackDev = true, trustedCidrs = listOf("172.16.0.0/12")).extract(request)
+
+        assertThat(context.namespaceId).isEqualTo("ns-1")
+        assertThat(context.caseId).isEqualTo("case-1")
+    }
+
+    @Test
+    fun `a malformed trusted cidr fails fast at construction`() {
+        org.assertj.core.api.Assertions.assertThatThrownBy { extractor(allowLoopbackDev = true, trustedCidrs = listOf("172.16.0.0/99")) }
+            .isInstanceOf(IllegalArgumentException::class.java)
     }
 
     @Test
