@@ -37,7 +37,7 @@ factory:
     # Persistence mode: `embedded-neo4j` (default, in-process engine, no Docker)
     # or `neo4j` (standalone server, configure spring.neo4j.*).
     mode: ${FACTORY_PERSISTENCE_MODE:embedded-neo4j}
-    data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:build/neo4j-data}
+    data-dir: ${FACTORY_PERSISTENCE_DATA_DIR:data}
     embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
     embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:0}
   cockpit:
