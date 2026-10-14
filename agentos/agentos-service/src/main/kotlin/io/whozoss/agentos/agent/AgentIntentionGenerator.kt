@@ -135,7 +135,7 @@ You must respond with **exactly** this XML structure and **nothing else** — no
 <$INTENTION_TAG_NAME>$intentionDescription</$INTENTION_TAG_NAME>
 <$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>
 
-The tag names $INTENTION_TAG_NAME and $TOOL_TAG_NAME are fixed. The chosen tool’s name goes inside <$TOOL_TAG_NAME>, so when the goal is to call tool "xxx", <$TOOL_TAG_NAME>xxx</$TOOL_TAG_NAME>. Do not reorder them.
+The tag names $INTENTION_TAG_NAME and $TOOL_TAG_NAME are fixed. The chosen tool’s name as to be called like this <$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>. Do not reorder them.
 Do not wrap in code blocks. Do not add any text before or after the XML.
         """.trimIndent()
 
