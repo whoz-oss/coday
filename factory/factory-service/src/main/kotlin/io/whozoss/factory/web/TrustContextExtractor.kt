@@ -16,7 +16,8 @@ import java.util.Locale
  *   2. otherwise signed proxy headers (`x-proxy-signature`, ...) verified
  *      against the shared secret;
  *   3. otherwise a loopback-dev context — only when the socket is a loopback
- *      address AND `factory.security.allow-loopback-dev` is enabled;
+ *      address (or inside `factory.security.trusted-cidrs`) AND
+ *      `factory.security.allow-loopback-dev` is enabled;
  *   4. otherwise an anonymous context with strictly zero privilege.
  *
  * Memberships are resolved server-side from the authenticated principal and are
@@ -28,6 +29,9 @@ class TrustContextExtractor(
     private val membershipResolver: MembershipResolver,
 ) {
 
+    /** Parsed once at startup: a malformed CIDR fails the boot instead of being silently ignored. */
+    private val trustedNetworks: List<CidrBlock> = CidrBlock.parseAll(properties.security.trustedCidrs)
+
     fun extract(request: HttpServletRequest, correlationId: String? = null): TrustContext {
         val headers = headersOf(request)
         val header: (String) -> String? = { name ->
@@ -36,6 +40,7 @@ class TrustContextExtractor(
 
         val remoteAddress = request.remoteAddr
         val loopback = isLoopbackAddress(remoteAddress)
+        val trustedSource = loopback || trustedNetworks.any { it.contains(remoteAddress) }
         val allowLoopbackDev = properties.security.allowLoopbackDev
         val secret = properties.security.fakeIdpSecret.ifEmpty { FakeIdp.DEFAULT_SECRET }
 
@@ -77,10 +82,11 @@ class TrustContextExtractor(
         }
 
         // 3. Fallback — loopback development vs unauthenticated anonymous.
-        // Both a loopback socket AND an explicit opt-in are required; otherwise
-        // the caller stays anonymous with zero privilege (fail-closed).
+        // Both a trusted socket (loopback or a configured trusted CIDR) AND an explicit
+        // opt-in are required; otherwise the caller stays anonymous with zero privilege
+        // (fail-closed).
         if (authenticationMethod == TrustContext.AUTH_ANONYMOUS) {
-            if (loopback && allowLoopbackDev) {
+            if (trustedSource && allowLoopbackDev) {
                 authenticationMethod = TrustContext.AUTH_LOOPBACK_DEV
                 principalId = header("x-factory-actor-id") ?: TrustContext.LOOPBACK_DEV_PRINCIPAL_ID
                 principalType = TrustContext.PRINCIPAL_TYPE_HUMAN

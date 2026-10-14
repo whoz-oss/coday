@@ -31,5 +31,14 @@ data class FactoryProperties(
         // opts in to loopback-dev for developer convenience.
         val allowLoopbackDev: Boolean = false,
         val fakeIdpSecret: String = "coday-fake-idp-dev-secret",
+        /**
+         * Extra source networks (CIDR, e.g. `172.16.0.0/12`) treated like loopback by the
+         * loopback-dev trust path (which still requires [allowLoopbackDev]). Intended for a
+         * private container network where Factory only ever receives traffic from trusted
+         * components. Every caller from these networks gets the loopback-dev identity and
+         * wildcard scope, so never list a network that untrusted clients can reach.
+         * Env: `FACTORY_TRUSTED_CIDRS` (comma-separated). Empty by default.
+         */
+        val trustedCidrs: List<String> = emptyList(),
     )
 }
