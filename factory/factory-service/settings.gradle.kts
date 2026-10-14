@@ -12,7 +12,7 @@ rootProject.name = "factory-service"
 // compiled from source together.
 includeBuild("../factory-sdk") {
     dependencySubstitution {
-        substitute(module("io.whozoss.factory:factory-sdk")).using(project(":"))
+        substitute(module("whoz-oss.factory:factory-sdk")).using(project(":"))
     }
 }
 
@@ -21,7 +21,7 @@ includeBuild("../factory-sdk") {
 // together with the service, and never requires a prior mavenLocal publish.
 includeBuild("../factory-verification-core") {
     dependencySubstitution {
-        substitute(module("io.whozoss.factory:factory-verification-core")).using(project(":"))
+        substitute(module("whoz-oss.factory:factory-verification-core")).using(project(":"))
     }
 }
 
