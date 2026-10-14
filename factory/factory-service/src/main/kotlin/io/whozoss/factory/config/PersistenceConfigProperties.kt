@@ -22,7 +22,7 @@ data class PersistenceConfigProperties(
      * Only used when mode=embedded-neo4j. Relative paths are resolved against
      * the JVM working directory.
      */
-    val dataDir: String = "build/neo4j-data",
+    val dataDir: String = "data/",
     /**
      * Persistence mode:
      * - 'embedded-neo4j' (default) — in-process Neo4j engine, no Docker required
