@@ -5,8 +5,8 @@ plugins {
     `maven-publish`
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factorySdk.get()
 description = "Factory SDK — Spring-agnostic plugin extension points for factory-service"
 
 java {

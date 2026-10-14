@@ -28,8 +28,13 @@ neo4jEmbedded = "2026.02.2"
 netty = "4.2.9.Final"
 
 # Factory modules versions
-factorySdk = "0.0.1-SNAPSHOT"
-factoryService = "0.0.1-SNAPSHOT"
+# Same scheme as agentosSdk / agentosService: these hold the current release version and are
+# rewritten by scripts/release.ts (master) and by workstream-build.yml (workstream prereleases).
+# Never hardcode a version in a factory build.gradle.kts: read these keys instead.
+# factorySdk     -> factory-sdk
+# factoryService -> factory-service, factory-verification-core, factory-forge-plugin and the composite root
+factorySdk = "3.28.0"
+factoryService = "3.28.0"
 
 [libraries]
 # Kotlin

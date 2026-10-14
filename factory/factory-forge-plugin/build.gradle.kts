@@ -14,8 +14,8 @@ plugins {
     `maven-publish`
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factoryService.get()
 description = "Factory Forge plugin — PF4J plugin exposing the Forge/BMAD and Jira surfaces"
 
 java {
@@ -38,8 +38,8 @@ dependencies {
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.springBoot.get()}"))
 
     // Host + SDK are provided by the service classloader at runtime.
-    compileOnly("io.whozoss.factory:factory-service:0.0.1-SNAPSHOT")
-    compileOnly("io.whozoss.factory:factory-sdk:0.0.1-SNAPSHOT")
+    compileOnly("whoz-oss.factory:factory-service:${libs.versions.factoryService.get()}")
+    compileOnly("whoz-oss.factory:factory-sdk:${libs.versions.factorySdk.get()}")
 
     // Host-provided libraries: compileOnly so the plugin never bundles them, but
     // they must be visible to kapt/javac when generating the PF4J extensions.idx.
@@ -65,12 +65,20 @@ dependencies {
     // `FactoryForgePluginIntegrationTest` additionally boots the host
     // factory-service (H2-backed `openapi` profile) with the plugin deployed.
     // The host runtime plus the standard test stack is enough for both.
-    testImplementation("io.whozoss.factory:factory-service:0.0.1-SNAPSHOT")
+    testImplementation("whoz-oss.factory:factory-service:${libs.versions.factoryService.get()}")
     testImplementation(libs.spring.boot.starter.web)
     testImplementation(libs.jackson.module.kotlin)
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.kotlin.test.junit5)
     testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+// plugin.properties carries `plugin.version=${version}`; PF4J reads it before the manifest,
+// so it must follow the stamped project version instead of a hardcoded literal.
+tasks.processResources {
+    filesMatching("plugin.properties") {
+        expand("version" to project.version.toString())
+    }
 }
 
 tasks.named<Jar>("jar") {
@@ -80,7 +88,7 @@ tasks.named<Jar>("jar") {
             "Plugin-Id" to "factory-forge-plugin",
             "Plugin-Version" to project.version.toString(),
             "Plugin-Provider" to "whoz-oss",
-            "Plugin-Class" to "io.whozoss.factory.forge.plugin.ForgePlugin",
+            "Plugin-Class" to "whoz-oss.factory.forge.plugin.ForgePlugin",
             "Plugin-Dependencies" to "",
         )
     }

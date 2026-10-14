@@ -21,8 +21,8 @@ plugins {
     `maven-publish`
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factoryService.get()
 description = "Factory Verification Core — pure Kotlin deterministic verification primitives"
 
 java {

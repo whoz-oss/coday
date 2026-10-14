@@ -9,8 +9,8 @@ plugins {
     `maven-publish`
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factoryService.get()
 description = "Factory Service — autonomous Kotlin/Spring Boot backend for the Factory"
 
 java {
@@ -30,12 +30,12 @@ kotlin {
 dependencies {
     // Factory SDK — Spring-agnostic plugin extension points.
     // Coordinates substituted by the composite build (see settings.gradle.kts).
-    api("io.whozoss.factory:factory-sdk:0.0.1-SNAPSHOT")
+    api("whoz-oss.factory:factory-sdk:${libs.versions.factorySdk.get()}")
 
     // Factory Verification Core — pure Kotlin deterministic verification
     // primitives (target-repo `factory/verification.json` manifest + oracle
     // execution). Coordinates substituted by the composite build.
-    implementation("io.whozoss.factory:factory-verification-core:0.0.1-SNAPSHOT")
+    implementation("whoz-oss.factory:factory-verification-core:${libs.versions.factoryService.get()}")
 
     // PF4J plugin framework + Spring integration (service runtime only, never in the SDK).
     implementation(libs.pf4j) {
