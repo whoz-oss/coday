@@ -396,7 +396,7 @@ class AgentAdvanced(
         if (!shouldContinue()) return GateOutcome.ContinueLoop
 
         val tool = context.tools.firstOrNull { it.name == intention.toolName }
-        val toolCtx = tool?.let { buildToolContext(it.name, namespaceId, toolRequestId) }
+        val toolCtx = tool?.let { buildToolContext(it.name, namespaceId, caseId, toolRequestId) }
         val confirmationMode =
             tool?.getConfirmationMode(parameters.args, toolCtx) ?: ConfirmationMode.NONE
         return when {
@@ -793,7 +793,7 @@ class AgentAdvanced(
                                         tool = tool,
                                         confirmed = confirmed,
                                         pending = pending,
-                                        toolCtx = buildToolContext(pending.toolName, namespaceId, pending.toolRequestId),
+                                        toolCtx = buildToolContext(pending.toolName, namespaceId, caseId, pending.toolRequestId),
                                         namespaceId = namespaceId,
                                         caseId = caseId,
                                         emitEvent = emitEvent,
@@ -938,6 +938,7 @@ class AgentAdvanced(
     private fun buildToolContext(
         toolName: String,
         namespaceId: UUID,
+        caseId: UUID,
         toolRequestId: String? = null,
     ): ToolContext =
         ToolContext(
@@ -946,6 +947,7 @@ class AgentAdvanced(
             userExternalId = userExternalId,
             caseEvents = filterEventsByIntegration(toolName, caseEventsProvider()),
             toolRequestId = toolRequestId,
+            caseId = caseId,
         )
 
     private fun filterEventsByIntegration(
@@ -1504,7 +1506,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
 
         logger.debug { "[$name] enrichment phase $phaseIndex result for '${tool.name}': $phaseJson" }
 
-        val toolCtx = buildToolContext(tool.name, namespaceId)
+        val toolCtx = buildToolContext(tool.name, namespaceId, intentionEvent.caseId)
         val result = tool.enrich(phaseIndex, phaseJson, toolCtx)
 
         return EnrichmentPhaseTrace(
@@ -1566,6 +1568,7 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                                 userExternalId = userExternalId,
                                 caseEvents = filteredEvents,
                                 toolRequestId = toolRequest.toolRequestId,
+                                caseId = caseId,
                             ),
                         )
                     val durationMs =

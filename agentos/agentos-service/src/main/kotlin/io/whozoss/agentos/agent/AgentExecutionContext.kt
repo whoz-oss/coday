@@ -50,5 +50,6 @@ data class AgentExecutionContext(
             userExternalId = userExternalId,
             caseEvents = caseEventsProvider(),
             agentName = agentName,
+            caseId = caseId,
         )
 }

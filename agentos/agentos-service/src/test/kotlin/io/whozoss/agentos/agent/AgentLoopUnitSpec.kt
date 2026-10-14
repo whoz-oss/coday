@@ -26,7 +26,6 @@ import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.workflow.AgentLoopAct
 import io.whozoss.agentos.workflow.AgentLoopPayload
-import io.whozoss.agentos.workflow.CaseLauncherService
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
@@ -89,7 +88,6 @@ class AgentLoopUnitSpec :
             name: String = "loop-agent",
             resolvedTools: Collection<StandardTool<*>> = emptyList(),
             triggerUser: User? = null,
-            caseLauncherService: CaseLauncherService? = null,
             loopConfig: JsonNode? = validLoopConfig,
         ) = AgentLoop(
             metadata = EntityMetadata(id = UUID.randomUUID()),
@@ -142,11 +140,10 @@ class AgentLoopUnitSpec :
                     externalId = "ext-trigger",
                     email = "t@example.com",
                 )
-            val launcher = CaseLauncherService { _, _, _, _, _ -> UUID.randomUUID() }
             val payloadSlot = slot<AgentLoopPayload>()
             val contextSlot = slot<LoopRunContext>()
 
-            agent(runner = runner, name = "my-loop", triggerUser = user, caseLauncherService = launcher)
+            agent(runner = runner, name = "my-loop", triggerUser = user)
                 .run(listOf(userMessage()))
                 .toList()
 

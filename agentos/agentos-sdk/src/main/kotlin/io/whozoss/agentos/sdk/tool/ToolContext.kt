@@ -28,6 +28,9 @@ import java.util.UUID
  * @param credentialProvider Pre-scoped credential supplier for the integration this tool
  *   belongs to. Returns the user's stored credential (OAuth tokens, API keys, etc.) or
  *   null if not yet authenticated. Null when no AuthSetting is bound to the integration.
+ * @param caseId The case the tool runs in, or null outside of a case (e.g. tool-set resolution or
+ *   a direct invocation through the API). Tools that act on the current case read it here rather
+ *   than from [caseEvents], which may be filtered or empty.
  */
 data class ToolContext(
     val namespaceId: UUID,
@@ -38,4 +41,5 @@ data class ToolContext(
     val credentialProvider: CredentialProvider? = null,
     /** Identifier of the ToolRequestEvent that caused this invocation, when available. */
     val toolRequestId: String? = null,
+    val caseId: UUID? = null,
 )

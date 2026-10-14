@@ -13,10 +13,11 @@ class IntegrationConfigScopePolicyUnitSpec : StringSpec({
     val defaultPolicy = IntegrationConfigScopePolicy(IntegrationsProperties())
 
     "the default denied list covers every network-reaching integration type" {
-        IntegrationsProperties().userScopeDeniedTypes shouldContainExactly listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT")
+        IntegrationsProperties().userScopeDeniedTypes shouldContainExactly
+            listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "CASE_LAUNCHER")
     }
 
-    listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT").forEach { type ->
+    listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "CASE_LAUNCHER").forEach { type ->
         "a user-scoped $type config is denied with an AccessDeniedException naming the type" {
             val exception =
                 shouldThrow<AccessDeniedException> {

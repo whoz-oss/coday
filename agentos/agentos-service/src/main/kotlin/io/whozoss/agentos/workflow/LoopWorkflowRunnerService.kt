@@ -2,10 +2,14 @@ package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.casePlugin.CaseLaunchRefusal
+import io.whozoss.agentos.casePlugin.CreateCaseTool
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.tak
@@ -23,13 +27,27 @@ import java.util.UUID
  * ## Flow
  *
  * 1. Guard: the triggering user must be identified.
- *    Authorization (who can trigger a loop) is enforced at the trigger point, not here.
- * 2. SEARCH: call the Search tool with [AgentLoopSearch.params] (first page only) and
+ * 2. Guard: the `CreateCase` tool must be among the agent's tools, i.e. a `CASE_LAUNCHER` integration is bound
+ *    to the loop agent. Checked before searching, so a misconfigured loop fails at once instead of after a
+ *    search whose results it could not use. Whether `allowOtherUsers` is on is not checked: a loop whose end
+ *    users are all the triggering user does not need it. Without it, every other end user is refused by the
+ *    tool and counted as failed.
+ * 3. SEARCH: call the Search tool with [AgentLoopSearch.params] (first page only) and
  *    parse its structured output as [SearchResult].
- * 3. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
+ * 4. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
  *    a. resolve the end-user via [UserService.findByExternalId] — skip if unknown;
- *    b. check the end-user can access the target agent — refuse otherwise;
- *    c. launch one standalone case through [CaseLauncherService], fire-and-forget.
+ *    b. check the end-user can access the target agent — refuse otherwise. `CreateCase` checks it again; this
+ *       one only spares the context provider call, which may be an external request, for users who would be refused;
+ *    c. resolve the end-user's session context;
+ *    d. call the `CreateCase` tool, **as the triggering user**, naming the end-user as the target and handing the
+ *       session context over as its `context`. Fire-and-forget: the tool returns the new case id at once. The
+ *       new cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
+ *       iteration, the cases already started keep running on their own.
+ *
+ * ## Who is authorized
+ *
+ * The launches go through `CreateCase`, so its rules apply to the **triggering user**, not to the end-users: to
+ * start a case for someone else they must administer the namespace. The loop adds no authorization of its own.
  *
  * Errors that prevent the whole run return [LoopRunOutcome.Aborted]; per-entity problems are
  * counted in [LoopRunOutcome.Completed] and never stop the loop.
@@ -41,7 +59,6 @@ class LoopWorkflowRunnerService(
     private val agentConfigService: AgentConfigService,
     private val limitsConfig: LimitsConfigProperties,
     private val userSessionContextResolver: UserSessionContextResolver,
-    private val caseLauncherService: CaseLauncherService,
 ) {
     suspend fun run(
         payload: AgentLoopPayload,
@@ -51,6 +68,15 @@ class LoopWorkflowRunnerService(
         val triggerUser =
             context.triggerUser
                 ?: return LoopRunOutcome.Aborted("An AgentLoop must be launched by an identified user.")
+
+        val launchTool =
+            context.tools.find { CreateCaseTool.isCreateCaseTool(it.name) }
+                ?: return LoopRunOutcome.Aborted(
+                    "The '${CreateCaseTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
+                        "(available: ${context.tools.map { it.name }}). " +
+                        "Bind a CASE_LAUNCHER integration to the agent (with allowOtherUsers enabled to start " +
+                        "cases for users other than the one who triggers the loop).",
+                )
 
         val search =
             when (val searchOutcome = search(payload, context, triggerUser)) {
@@ -65,7 +91,7 @@ class LoopWorkflowRunnerService(
             buildList {
                 for (item in items) {
                     if (!shouldContinue()) break
-                    add(act(item, payload.act, context))
+                    add(act(item, payload.act, context, triggerUser, launchTool))
                 }
             }
 
@@ -109,14 +135,7 @@ class LoopWorkflowRunnerService(
                     "Search tool '$toolName' is not available to agent '${context.agentName}' " +
                         "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
                 )
-        val toolContext =
-            ToolContext(
-                namespaceId = context.namespaceId,
-                userId = triggerUser.metadata.id,
-                userExternalId = triggerUser.externalId,
-                caseEvents = context.caseEvents,
-                agentName = context.agentName,
-            )
+        val toolContext = toolContext(context, triggerUser)
         val paramsJson = objectMapper.writeValueAsString(payload.search.params)
         logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
         val result =
@@ -146,10 +165,28 @@ class LoopWorkflowRunnerService(
         }
     }
 
-    private fun act(
+    /**
+     * The context every tool of the loop is called with: the triggering user, in the loop's namespace, from the
+     * loop's own case, which `CreateCase` records as the origin of the cases it starts.
+     */
+    private fun toolContext(
+        context: LoopRunContext,
+        triggerUser: User,
+    ) = ToolContext(
+        namespaceId = context.namespaceId,
+        userId = triggerUser.metadata.id,
+        userExternalId = triggerUser.externalId,
+        caseEvents = context.caseEvents,
+        agentName = context.agentName,
+        caseId = context.caseId,
+    )
+
+    private suspend fun act(
         item: SearchResultItem,
         act: AgentLoopAct,
         context: LoopRunContext,
+        triggerUser: User,
+        launchTool: StandardTool<*>,
     ): ItemOutcome {
         val userTarget = item.targets?.firstOrNull { it.entityType.equals("User", ignoreCase = true) }
         if (userTarget == null) {
@@ -205,27 +242,71 @@ class LoopWorkflowRunnerService(
                 }
             }
 
-        val enrichedSessionContext: Map<String, Any?> = addActiveContext(sessionContext, item)
+        val input =
+            buildMap<String, Any?> {
+                put("agentName", act.agentName)
+                put("prompt", act.prompt)
+                // The triggering user is the default target: naming them would need the other-users
+                // switch of the integration for nothing.
+                if (endUserId != triggerUser.metadata.id) put("userId", endUserId.toString())
+                put("context", addActiveContext(sessionContext, item))
+            }
 
         return try {
-            val launchedCaseId =
-                caseLauncherService.launchCase(
-                    namespaceId = context.namespaceId,
-                    agentName = act.agentName,
-                    task = act.prompt,
-                    onBehalfOfUserId = endUserId,
-                    sessionContext = enrichedSessionContext,
-                )
-            logger.info {
-                "[LoopWorkflowRunner] Launched case $launchedCaseId for entity '${item.entityId}' " +
-                    "(user=$endUserId, agent=${act.agentName}, loopCase=${context.caseId})"
-            }
-            ItemOutcome.Launched(launchedCaseId)
+            launchOutcome(launchTool.executeWithJson(objectMapper.writeValueAsString(input), toolContext(context, triggerUser)), item, context)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logger.error(e) { "[LoopWorkflowRunner] Failed to launch case for entity '${item.entityId}'" }
+            logger.error(e) { "[LoopWorkflowRunner] '${CreateCaseTool.TOOL_NAME}' threw for entity '${item.entityId}'" }
             ItemOutcome.Failed
         }
     }
+
+    /**
+     * What a `CreateCase` result means for the loop. A refusal because the agent is not deployed to the end user
+     * is the same case as the loop's own check; anything else is a failure. A refusal that comes from the
+     * triggering user or from the integration (not an administrator, other users not allowed, agent outside the
+     * allowlist) hits every entity alike: it shows in the log with its reason, and in the summary as failures.
+     */
+    private fun launchOutcome(
+        result: ToolExecutionResult,
+        item: SearchResultItem,
+        context: LoopRunContext,
+    ): ItemOutcome =
+        when {
+            result.success ->
+                launchedCaseId(result)
+                    ?.also {
+                        logger.info {
+                            "[LoopWorkflowRunner] Launched case $it for entity '${item.entityId}' " +
+                                "(agent=${result.metadata["agentName"]}, loopCase=${context.caseId})"
+                        }
+                    }?.let { ItemOutcome.Launched(it) }
+                    ?: ItemOutcome.Failed.also {
+                        logger.error {
+                            "[LoopWorkflowRunner] '${CreateCaseTool.TOOL_NAME}' reported success without a case id " +
+                                "for entity '${item.entityId}': ${result.output}"
+                        }
+                    }
+
+            result.errorType == CaseLaunchRefusal.AGENT_NOT_AVAILABLE.name ->
+                ItemOutcome.NoAgentAccess.also {
+                    logger.warn { "[LoopWorkflowRunner] Agent not available for entity '${item.entityId}': ${result.output}" }
+                }
+
+            else ->
+                ItemOutcome.Failed.also {
+                    logger.error {
+                        "[LoopWorkflowRunner] '${CreateCaseTool.TOOL_NAME}' refused entity '${item.entityId}' " +
+                            "(${result.errorType}): ${result.output}"
+                    }
+                }
+        }
+
+    /** The new case id, from the structured output of the tool, else from its metadata. */
+    private fun launchedCaseId(result: ToolExecutionResult): UUID? =
+        (result.structuredOutput?.get("caseId")?.asText() ?: result.metadata["caseId"]?.toString())
+            ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     /**
      * [AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName] is a prefix match, so the
