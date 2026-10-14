@@ -36,9 +36,11 @@ import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
-import { getAgentosVersion } from './lib/version'
+import { getAgentosVersion, getFactoryVersion } from './lib/version'
 import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
+import { downloadFactoryJars, findMissingFactoryJars } from './lib/factory-download'
+import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
 
 const app = express()
@@ -92,20 +94,32 @@ let promptExecutionService: PromptExecutionService
 
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
 const AGENTOS_URL_ENV = process.env.AGENTOS_URL
-const FACTORY_URL = process.env.FACTORY_URL ?? 'http://localhost:8141'
+// Same two modes for the Factory, discriminated by FACTORY_URL:
+//   EXTERNAL (FACTORY_URL defined): proxy to it unchanged.
+//   MANAGED  (FACTORY_URL absent):  download the Factory JARs from the GitHub
+//   release, spawn the process (default port 8141, next free one otherwise),
+//   stop it at shutdown. The Factory is provisioned AFTER AgentOS because it
+//   needs AgentOS's URL.
+const FACTORY_URL_ENV = process.env.FACTORY_URL
 
 // Validate proxy targets (fail fast on misconfiguration)
 if (AGENTOS_URL_ENV) {
   validateAgentOsUrl(AGENTOS_URL_ENV)
 }
-validateAgentOsUrl(FACTORY_URL)
+if (FACTORY_URL_ENV) {
+  validateAgentOsUrl(FACTORY_URL_ENV)
+}
 
 // Mutable proxy target — updated to the managed URL once AgentOS is running.
 // In external mode this is set once and never changes.
 let currentAgentosUrl = AGENTOS_URL_ENV ?? `http://localhost:8124`
 
-// Track the managed AgentOS process handle (null in external mode or before startup)
+// Mutable Factory proxy target — updated to the managed URL once the Factory is running.
+let currentFactoryUrl = FACTORY_URL_ENV ?? 'http://localhost:8141'
+
+// Track the managed process handles (null in external mode or before startup)
 let agentosProcess: AgentosProcess | null = null
+let factoryProcess: FactoryProcess | null = null
 
 app.use(
   '/api/agentos',
@@ -137,7 +151,8 @@ debugLog(
 // /api/factory/workflows upstream as /workflows → 404 from the Factory backend.
 app.use(
   createProxyMiddleware({
-    target: FACTORY_URL,
+    // router callback reads currentFactoryUrl at request time, not at setup time
+    router: () => currentFactoryUrl,
     changeOrigin: true,
     pathFilter: (p) => p === '/api/factory' || p.startsWith('/api/factory/'),
     on: {
@@ -147,7 +162,10 @@ app.use(
     },
   })
 )
-debugLog('INIT', `Factory proxy configured: /api/factory → ${FACTORY_URL}/api/factory`)
+debugLog(
+  'INIT',
+  `Factory proxy configured: /api/factory → ${currentFactoryUrl}/api/factory (${FACTORY_URL_ENV ? 'external mode' : 'managed mode'})`
+)
 
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
@@ -602,6 +620,53 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Factory provisioning entry point (managed mode only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Provision and start the Factory. Must run after provisionAgentos() so that
+ * `currentAgentosUrl` is the final AgentOS URL.
+ *
+ * EXTERNAL mode (FACTORY_URL defined): returns immediately.
+ * MANAGED mode: download missing JARs (blocking, no background pre-fetch) → spawn.
+ * With the 'dev' version sentinel nothing is downloaded: the Factory only starts if
+ * its JARs were placed by hand in <configDir>/factory/.
+ *
+ * Never throws.
+ */
+async function provisionFactory(): Promise<void> {
+  if (FACTORY_URL_ENV) {
+    debugLog('FACTORY', `[PROVISION] External mode — target: ${FACTORY_URL_ENV}. No provisioning performed.`)
+    return
+  }
+
+  debugLog('FACTORY', '[PROVISION] Managed mode — starting Factory provisioning...')
+  try {
+    const factoryVersion = getFactoryVersion()
+
+    if (findMissingFactoryJars(codayOptions.configDir, factoryVersion).length > 0) {
+      const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
+      debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
+      if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
+        debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
+        return
+      }
+    }
+
+    factoryProcess = await startFactory(codayOptions.configDir, factoryVersion, currentAgentosUrl)
+    if (!factoryProcess) {
+      debugLog('FACTORY', '[PROVISION] Factory did not start. The proxy will return errors until it is available.')
+      return
+    }
+
+    currentFactoryUrl = `http://localhost:${factoryProcess.port}`
+    debugLog('FACTORY', `[PROVISION] Factory is ready. Proxy target: ${currentFactoryUrl}`)
+  } catch (error) {
+    debugLog('FACTORY', '[PROVISION] Unexpected error during provisioning (non-fatal):', error)
+  }
+}
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
   debugLog('ERROR', `Request error on ${req.method} ${req.path}:`, err.message)
@@ -682,7 +747,11 @@ PORT_PROMISE.then(async (PORT) => {
   // AgentOS provisioning — fire-and-forget: runs in background so downloads
   // (up to ~230 MB) never block server startup or other services.
   // The proxy will return errors until AgentOS is ready, which is acceptable.
-  provisionAgentos(PORT).catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
+  // Factory is chained after AgentOS (it needs AgentOS's final URL). provisionAgentos never rejects.
+  provisionAgentos(PORT)
+    .catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
+    .then(() => provisionFactory())
+    .catch((err) => debugLog('FACTORY', '[PROVISION] Unhandled error:', err))
 
   // Auto-close stale threads — fire-and-forget, non-blocking
   autoCloseStaleThreads().catch((err) => console.error('autoCloseStaleThreads: unhandled error:', err))
@@ -750,7 +819,13 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
-    // Stop AgentOS first (only if we spawned it — not if adopted or external mode)
+    // Stop the Factory first (it depends on AgentOS); only set when we spawned it
+    if (factoryProcess) {
+      console.log('Stopping Factory...')
+      await factoryProcess.shutdown()
+    }
+
+    // Stop AgentOS (only if we spawned it — not if adopted or external mode)
     if (agentosProcess?.spawned) {
       console.log('Stopping AgentOS...')
       await agentosProcess.shutdown()
