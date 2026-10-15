@@ -3,6 +3,7 @@ package io.whozoss.agentos.scheduledPrompt
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import mu.KLogging
+import org.slf4j.MDC
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -289,9 +290,7 @@ class SchedulerScanner(
 
     private fun claim(scheduledPrompt: ScheduledPrompt) {
         val slot = scheduledPrompt.nextRunAt
-        val correlationId = "sp-${scheduledPrompt.id.toString().take(8)}-${slot.epochSecond}"
-
-        // Guard: disable the ScheduledPrompt if its AgentConfig is gone or disabled.
+        try {
         val agentConfig = agentConfigService.findById(scheduledPrompt.agentConfigId)
         if (agentConfig == null || !agentConfig.enabled) {
             logger.warn {
@@ -331,12 +330,14 @@ class SchedulerScanner(
             scheduledPromptId = scheduledPrompt.id,
             scheduledFor = slot,
             status = status,
-            correlationId = correlationId,
         )
 
         val insertedRun = try {
             runRepository.insert(run)
-                .also { logger.info { "[SchedulerScanner] Inserted run correlationId=$correlationId status=$status" } }
+                .also { inserted ->
+                    MDC.put(MDC_SCHEDULER_RUN_ID, inserted.id.toString())
+                    logger.info { "[SchedulerScanner] Inserted run=${inserted.id} status=$status" }
+                }
         } catch (e: DuplicateRunException) {
             logger.info { "[SchedulerScanner] Duplicate slot for sp=${scheduledPrompt.id} slot=$slot — another tick won the race" }
             null
@@ -374,6 +375,9 @@ class SchedulerScanner(
                         }
                     }
                 }
+        }
+        } finally {
+            MDC.remove(MDC_SCHEDULER_RUN_ID)
         }
     }
 
@@ -446,5 +450,8 @@ class SchedulerScanner(
     companion object : KLogging() {
         /** CLAIMED Runs older than this are presumed orphaned (crash between insert and materialize). */
         private val ORPHAN_THRESHOLD = Duration.ofMinutes(5)
+
+        /** MDC key for the UUID of the inserted [ScheduledPromptRun]. Set after insert in Phase A, re-set per worker in Phase B. */
+        const val MDC_SCHEDULER_RUN_ID = "schedulerRunId"
     }
 }
