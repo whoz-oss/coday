@@ -177,6 +177,7 @@ export class ThreadTools extends AssistantToolFactory {
                 threadId: targetId,
                 name: name,
                 summary: summary,
+                metadataPersisted: true,
               })
             )
 

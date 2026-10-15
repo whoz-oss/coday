@@ -142,6 +142,7 @@ export class ThreadStateService implements Killable {
           new ThreadUpdateEvent({
             threadId: thread.id,
             name: thread.name || undefined, // Include current name if it exists
+            metadataPersisted: true,
           })
         )
       }
