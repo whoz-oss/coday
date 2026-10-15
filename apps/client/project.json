@@ -42,6 +42,12 @@
       },
       "configurations": {
         "production": {
+          "fileReplacements": [
+            {
+              "replace": "apps/factory-cockpit/src/environments/environment.ts",
+              "with": "apps/factory-cockpit/src/environments/environment.prod.ts"
+            }
+          ],
           "budgets": [
             {
               "type": "initial",

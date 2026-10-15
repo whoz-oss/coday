@@ -1,0 +1,43 @@
+{
+  "name": "factory-verification-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "factory/factory-verification-core/src",
+  "targets": {
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew :factory-verification-core:build",
+        "cwd": "factory"
+      }
+    },
+    "assemble": {
+      "executor": "nx:run-commands",
+      "cache": true,
+      "outputs": ["{projectRoot}/build/libs"],
+      "options": {
+        "command": "./gradlew :factory-verification-core:assemble",
+        "cwd": "factory"
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-verification-core:test",
+        "cwd": "factory"
+      }
+    },
+    "clean": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-verification-core:clean",
+        "cwd": "factory"
+      }
+    }
+  },
+  "tags": ["type:lib", "platform:jvm", "scope:lib"]
+}

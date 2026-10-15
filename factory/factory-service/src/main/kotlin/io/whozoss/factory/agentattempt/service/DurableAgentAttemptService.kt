@@ -1,0 +1,307 @@
+package io.whozoss.factory.agentattempt.service
+
+import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttemptJournalEntry
+import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
+import io.whozoss.factory.agentattempt.persistence.DurableAgentAttemptRepository
+import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
+import io.whozoss.factory.persistence.TenantScope
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
+
+/**
+ * Transactional application service of the durable execution attempt lifecycle
+ * (Lot C durable-execution).
+ *
+ * Exposes the atomic claim, the owner-guarded intermediate transitions and the
+ * lease-fenced finalization on top of [DurableAgentAttemptRepository]. The
+ * intended caller is the SSE/execution adapter (built in parallel, out of scope
+ * here); this service is deliberately **not** wired into `SessionRunService`.
+ */
+@Service
+class DurableAgentAttemptService(
+    private val repository: DurableAgentAttemptRepository,
+) {
+
+    /**
+     * Idempotently register a bridge-supplied attempt. A re-submission with the
+     * same `attemptId` returns the existing record without altering its state.
+     */
+    @Transactional
+    fun register(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.register(scope, attempt, now)
+
+    /**
+     * The next attempt number of a workflow step (`MAX(attemptNumber) + 1`, or
+     * 1 when the step has no attempt yet). A retry registers a brand-new
+     * attempt with this number; a terminal attempt is never reactivated.
+     */
+    @Transactional(readOnly = true)
+    fun nextAttemptNumber(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): Int = repository.nextAttemptNumber(scope, namespaceId, workflowId, stepId)
+
+    /**
+     * Register the RETRY attempt of a step: a brand-new [DurableAgentAttempt]
+     * whose [DurableAgentAttempt.attemptNumber] is exactly
+     * [nextAttemptNumber] and whose [DurableAgentAttempt.attemptId] is
+     * genuinely new (see
+     * [io.whozoss.factory.capability.CapabilityExecutionService.retryAttemptId]).
+     * The prior attempt — terminal or not — is left strictly untouched: a
+     * terminal attempt is an immutable record of the earlier try and is never
+     * reactivated.
+     *
+     * Defensive guards: a mismatched [DurableAgentAttempt.attemptNumber] is an
+     * [IllegalArgumentException]; an [DurableAgentAttempt.attemptId] that
+     * already exists is an [IdempotencyKeyCollisionException] — a retry must
+     * never silently reuse (and thereby reactivate) a prior attempt.
+     */
+    @Transactional
+    fun registerRetry(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt {
+        val next = repository.nextAttemptNumber(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId)
+        require(attempt.attemptNumber == next) {
+            "Retry attempt number ${attempt.attemptNumber} is not the next attempt number $next " +
+                "of step '${attempt.stepId}' (a retry must increment, never reuse, a prior attempt number)"
+        }
+        repository.find(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId)?.let {
+            throw IdempotencyKeyCollisionException(
+                "Retry attempt '${attempt.attemptId}' already exists as '${it.status.dbValue}' — " +
+                    "a retry must register a brand-new attempt id",
+                details = mapOf(
+                    "attemptId" to attempt.attemptId,
+                    "workflowId" to attempt.workflowId,
+                    "stepId" to attempt.stepId,
+                    "existingStatus" to it.status.dbValue,
+                ),
+            )
+        }
+        return repository.register(scope, attempt, now)
+    }
+
+    /**
+     * Atomically claim the attempt for [ownerToken]. Exactly one concurrent
+     * claim wins; the losers are rejected with `ATTEMPT_CLAIM_CONFLICT`. A
+     * repeated claim by the same owner is idempotent.
+     */
+    @Transactional
+    fun claim(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        ownerToken: String,
+        leaseTtlMs: Long? = null,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.claim(
+        scope,
+        namespaceId,
+        workflowId,
+        stepId,
+        attemptId,
+        ownerToken,
+        leaseExpiresAt = leaseTtlMs?.let { now.plusMillis(it) },
+        now = now,
+    )
+
+    /** Owner-guarded intermediate transition (`starting`, `running`, `waiting_human`). */
+    @Transactional
+    fun transition(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        ownerToken: String,
+        target: AgentAttemptStatus,
+        lastObservedEventId: String? = null,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.transition(
+        scope,
+        namespaceId,
+        workflowId,
+        stepId,
+        attemptId,
+        ownerToken,
+        target,
+        lastObservedEventId,
+        now,
+    )
+
+    /**
+     * Finalize the attempt to a terminal [target], fenced on [ownerToken]: a
+     * worker whose lease token diverged (expired, revoked or preempted) is
+     * rejected with `ATTEMPT_LEASE_FENCED`. `succeeded` is reachable only from
+     * `running` / `waiting_human` — a timeout, incomplete or unknown outcome
+     * must be finalized as `indeterminate` (or `failed` / `interrupted`).
+     */
+    @Transactional
+    fun finalize(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        ownerToken: String,
+        target: AgentAttemptStatus,
+        failureCode: String? = null,
+        resultEvidenceId: String? = null,
+        lastObservedEventId: String? = null,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.finalize(
+        scope,
+        namespaceId,
+        workflowId,
+        stepId,
+        attemptId,
+        ownerToken,
+        target,
+        failureCode,
+        resultEvidenceId,
+        lastObservedEventId,
+        now,
+    )
+
+    @Transactional(readOnly = true)
+    fun find(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ): DurableAgentAttempt? = repository.find(scope, namespaceId, workflowId, stepId, attemptId)
+
+    /**
+     * Locate an attempt by its bridge `attemptId` within a workflow (any step).
+     * Used by the explicit cancellation route.
+     */
+    @Transactional(readOnly = true)
+    fun findByAttemptId(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        attemptId: String,
+    ): DurableAgentAttempt? = repository.findByAttemptId(scope, namespaceId, workflowId, attemptId)
+
+    /**
+     * Every attempt of a workflow, across all its steps. Used by the workflow
+     * real-cost aggregation to resolve the case ids the workflow produced.
+     */
+    @Transactional(readOnly = true)
+    fun findByWorkflow(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+    ): List<DurableAgentAttempt> = repository.findByWorkflow(scope, namespaceId, workflowId)
+
+    /**
+     * The authoritative execution attempt of a step. Question answers create a
+     * successor attempt, so callers must not remain anchored to the deterministic
+     * id of attempt #1.
+     */
+    @Transactional(readOnly = true)
+    fun findLatestForStep(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+    ): DurableAgentAttempt? = repository.findByWorkflow(scope, namespaceId, workflowId)
+        .asSequence()
+        .filter { it.stepId == stepId }
+        .maxByOrNull { it.attemptNumber }
+
+    /**
+     * The append-only transition journal of the attempt, oldest entry first.
+     * Every landed state change (registration, claim, transition, finalization,
+     * cancellation) is recorded with its monotone sequence; fenced/conflicted
+     * mutations and idempotent replays leave no trace.
+     */
+    @Transactional(readOnly = true)
+    fun journal(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+    ): List<DurableAgentAttemptJournalEntry> = repository.journal(scope, namespaceId, workflowId, stepId, attemptId)
+
+    /**
+     * Every non-terminal attempt of the whole graph, across all tenant scopes and
+     * namespaces. The startup recovery worker sweeps this list to reconcile or
+     * resume attempts orphaned by a crash.
+     */
+    @Transactional(readOnly = true)
+    fun findNonTerminal(limit: Int = DEFAULT_RECOVERY_LIMIT): List<ScopedDurableAgentAttempt> =
+        repository.findNonTerminal(limit)
+
+    /**
+     * Explicit business cancellation fenced on [expectedRevision]: the attempt is
+     * moved to `interrupted` and its lease owner token rotated. Idempotent when
+     * already interrupted; a divergent revision is a conflict; any other terminal
+     * status is an invalid transition.
+     */
+    /**
+     * Supersede a `waiting_human` attempt (Phase 4 ask-step-question), fenced on
+     * [expectedRevision]: the attempt is moved to the terminal `superseded`
+     * status and its lease owner token rotated. Idempotent when already
+     * superseded; a divergent revision is a conflict; any other status is an
+     * invalid transition. A superseded attempt is immutable — the step resumes
+     * exclusively as a brand-new attempt registered through [registerRetry].
+     */
+    @Transactional
+    fun supersede(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int? = null,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.supersede(
+        scope,
+        namespaceId,
+        workflowId,
+        stepId,
+        attemptId,
+        expectedRevision,
+        now,
+    )
+
+    @Transactional
+    fun requestCancel(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        attemptId: String,
+        expectedRevision: Int? = null,
+        failureCode: String? = "USER_CANCELLED",
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt = repository.cancel(
+        scope,
+        namespaceId,
+        workflowId,
+        stepId,
+        attemptId,
+        expectedRevision,
+        failureCode,
+        now,
+    )
+
+    companion object {
+        /** Default bound of the startup recovery sweep. */
+        const val DEFAULT_RECOVERY_LIMIT = 100
+    }
+}
