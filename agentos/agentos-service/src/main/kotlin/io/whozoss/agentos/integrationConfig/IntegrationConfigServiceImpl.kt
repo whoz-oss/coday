@@ -1,5 +1,7 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
@@ -34,6 +36,7 @@ class IntegrationConfigServiceImpl(
      * — and every unit test building this service directly — behaves as before.
      */
     private val policies: List<IntegrationConfigPolicy> = emptyList(),
+    private val integrationsProperties: IntegrationsProperties = IntegrationsProperties(),
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
@@ -43,6 +46,7 @@ class IntegrationConfigServiceImpl(
             )
         }
         assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
         assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         saveOrConflict(entity).also { saved ->
@@ -60,6 +64,7 @@ class IntegrationConfigServiceImpl(
                 )
             }
         assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
         assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         saveOrConflict(entity).also { saved ->
@@ -279,6 +284,32 @@ class IntegrationConfigServiceImpl(
     }
 
     /**
+     * Only a type listed in [IntegrationsProperties.autoGrantableTypes] may set
+     * [IntegrationConfig.autoGrant].
+     *
+     * `autoGrant` hands the integration to every agent in the config's scope without any agent
+     * naming it. At platform scope that is the whole environment at once, which is acceptable for
+     * a conversational primitive and not for a type that reaches the network with a shared
+     * credential. Rejecting here keeps the refusal where the mistake was made, rather than
+     * surfacing it as a surprising tool in some unrelated agent's prompt weeks later.
+     */
+    private fun assertAutoGrantRules(entity: IntegrationConfig) {
+        if (entity.autoGrant) {
+            if (integrationsProperties.isAutoGrantable(entity.integrationType)) {
+                logger.debug { "integration: ${entity.name} is allowed to be auto-granted" }
+            } else {
+                throw UnprocessableEntityException(
+                    "An integration of type '${entity.integrationType}' cannot be auto-granted. Setting autoGrant hands " +
+                            "this configuration to every agent within its scope without any agent declaring it \u2014 at platform " +
+                            "scope, that is every agent of the environment. Only these types may be auto-granted: " +
+                            "${integrationsProperties.autoGrantableTypes.joinToString(", ")}. Reference this " +
+                            "configuration explicitly from the agents that need it instead.",
+                )
+            }
+        }
+    }
+
+    /**
      * Apply the validation owned by this configuration's type.
      *
      * Without this, the generic CRUD accepts any JSON in `parameters` and a malformed association
@@ -320,7 +351,7 @@ class IntegrationConfigServiceImpl(
                 "[IntegrationConfigService] tripleKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
             }
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+            throw ConflictException(conflictMessage(entity), e)
         }
 
     /**

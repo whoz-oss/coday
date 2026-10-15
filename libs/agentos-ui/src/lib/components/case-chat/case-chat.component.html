@@ -218,20 +218,55 @@
                 }
               </details>
             } @else if (item.kind === 'question') {
+              <!-- An OAuth question is only shown while its popup flow is pending (or once answered). -->
               @if (
-                !item.answered &&
-                (item.event.questionType !== 'OAUTH_AUTHORIZE' || oauthPendingQuestion()?.id === item.event.id)
+                item.answer ||
+                item.event.questionType !== 'OAUTH_AUTHORIZE' ||
+                oauthPendingQuestion()?.id === item.event.id
               ) {
-                <agentos-question-panel
-                  [questionEvent]="item.event"
-                  (answered)="onQuestionAnswered(item.event, $event)"
-                  (cancelled)="onQuestionCancelled()"
-                />
-              } @else if (item.answered) {
-                <div class="case-chat__question-answered">
-                  <span class="case-chat__question-answered-label">✅ Question answered</span>
-                  <span class="case-chat__question-answered-text">{{ item.event.question }}</span>
+                <!-- The question is an agent turn (left), with its answer controls attached under the bubble. -->
+                <div class="case-chat__turn case-chat__turn--agent">
+                  <span class="case-chat__role-label">{{ item.event.agentName || 'Agent' }}</span>
+                  <div class="case-chat__bubble-wrapper">
+                    <div class="case-chat__bubble case-chat__bubble--plain" [id]="questionElementId(item.event)">
+                      {{ item.event.question }}
+                    </div>
+                    <ds-copy-button class="case-chat__bubble-copy" [text]="item.event.question" title="Copy message" />
+                    <time
+                      class="case-chat__message-time"
+                      [attr.datetime]="item.event.timestamp"
+                      [title]="formatMessageTimestampTitle(item.event.timestamp)"
+                      >{{ formatMessageTime(item.event.timestamp) }}</time
+                    >
+                  </div>
+                  @if (!item.answer) {
+                    <div [attr.data-question-controls]="item.event.id" class="case-chat__question-controls">
+                      <agentos-question-panel
+                        variant="inline"
+                        [questionEvent]="item.event"
+                        [disabled]="isRunning()"
+                        (answered)="onQuestionAnswered(item.event, $event)"
+                        (cancelled)="onQuestionCancelled()"
+                      />
+                    </div>
+                  }
                 </div>
+                @if (item.answer; as answer) {
+                  <!-- The answer is a user turn (right), like any other user message. -->
+                  <div class="case-chat__turn case-chat__turn--user">
+                    <span class="case-chat__role-label">{{ answerLabel(answer) }}</span>
+                    <div class="case-chat__bubble-wrapper">
+                      <div class="case-chat__bubble case-chat__bubble--plain">{{ answer.answer }}</div>
+                      <ds-copy-button class="case-chat__bubble-copy" [text]="answer.answer" title="Copy message" />
+                      <time
+                        class="case-chat__message-time"
+                        [attr.datetime]="answer.timestamp"
+                        [title]="formatMessageTimestampTitle(answer.timestamp)"
+                        >{{ formatMessageTime(answer.timestamp) }}</time
+                      >
+                    </div>
+                  </div>
+                }
               }
             } @else if (item.kind === 'delegation') {
               <agentos-delegation-card [delegation]="item.delegation" [namespaceId]="namespaceId" />

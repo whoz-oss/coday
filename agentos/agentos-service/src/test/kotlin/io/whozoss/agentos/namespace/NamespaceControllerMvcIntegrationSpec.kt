@@ -1,8 +1,7 @@
 package io.whozoss.agentos.namespace
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -33,8 +32,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class NamespaceControllerMvcIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class NamespaceControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService

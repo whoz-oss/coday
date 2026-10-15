@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.caseFlow.CaseRuntime
@@ -18,7 +19,10 @@ import io.whozoss.agentos.sdk.caseEvent.SubCaseOutcome
 import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.tool.ToolContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import java.util.UUID
 
 class DelegationToolLifecycleUnitSpec : StringSpec({
@@ -30,6 +34,7 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
 
     class RecordingManager(private val runtime: CaseRuntime, var startFailure: Throwable? = null) : SubCaseManager {
         val parentEvents = mutableListOf<CaseEvent>()
+        val startedEmitted = CompletableDeferred<Unit>()
         var resumed = false
         override fun startSubCase(parentCaseId: UUID, namespaceId: UUID, agentName: String, task: String, userId: UUID): CaseRuntime {
             startFailure?.let { throw it }
@@ -40,7 +45,10 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
             return runtime
         }
         override fun killCase(caseId: UUID) = Unit
-        override fun emitParentEvent(event: CaseEvent) { parentEvents += event }
+        override fun emitParentEvent(event: CaseEvent) {
+            parentEvents += event
+            if (event is SubCaseStartedEvent) startedEmitted.complete(Unit)
+        }
     }
 
     fun runtime(id: UUID): CaseRuntime = mockk<CaseRuntime> {
@@ -101,5 +109,25 @@ class DelegationToolLifecycleUnitSpec : StringSpec({
 
         manager.resumed shouldBe true
         (manager.parentEvents.first() as SubCaseStartedEvent).resumed shouldBe true
+    }
+
+    "cancelling the parent run while it waits for the sub-case unwinds instead of reporting a failed delegation" {
+        val subCaseId = UUID.randomUUID()
+        val running = mockk<CaseRuntime> {
+            every { this@mockk.id } returns subCaseId
+            every { statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+        }
+        val manager = RecordingManager(running)
+        val outcome = CompletableDeferred<Throwable?>()
+        val parentRun = launch {
+            outcome.complete(runCatching { tool(manager, emptyList()).execute(args(), context()) }.exceptionOrNull())
+        }
+        // Resumes once the parent has announced the delegation: it is about to wait for the sub-case.
+        manager.startedEmitted.await()
+
+        parentRun.cancel()
+
+        outcome.await().shouldBeInstanceOf<CancellationException>()
+        (manager.parentEvents.last() as SubCaseFinishedEvent).errorType shouldBe "INTERRUPTED"
     }
 })

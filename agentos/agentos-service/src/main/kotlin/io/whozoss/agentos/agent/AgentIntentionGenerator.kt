@@ -123,7 +123,7 @@ Before generating the output, analyze the situation using the following logic:
 $redirectableAgents
 </AvailableAgentsForHandoff>
     *   **YES:** Proceed to the next check.
-
+    
 **Non-discrimination safeguard:**
 Do not plan steps that would discriminate based on gender, ethnicity, religion, age, physical appearance, or any other protected attribute. If the user's request implies such a step, your next action must be `Answer` — clarify with the user that this cannot be done.
 
@@ -132,10 +132,10 @@ ${repetitionWarning ?: ""}
 ### Output Instructions
 You must respond with **exactly** this XML structure and **nothing else** — no prose, no markdown fences, no preamble (any deviation from the following expected xml would result in a error):
 
-<intention>$intentionDescription</intention>
-<toolName>[The exact name of the tool to be called]</toolName>
+<$INTENTION_TAG_NAME>$intentionDescription</$INTENTION_TAG_NAME>
+<$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>
 
-The tag names intention and toolName are fixed. The chosen tool’s name goes inside <toolName>, i.e. <toolName>Name of the tool</toolName>; it must not become an XML tag. Do not reorder them.
+The tag names $INTENTION_TAG_NAME and $TOOL_TAG_NAME are fixed. The chosen tool’s name as to be called like this <$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>. Do not reorder them.
 Do not wrap in code blocks. Do not add any text before or after the XML.
         """.trimIndent()
 
@@ -168,8 +168,8 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
                             append(
                                 """
                                 This does not match the expected XML output (${e.message}) that should correspond to the following:
-                                <intention>$intentionDescription</intention>
-                                <toolName>[The exact name of the tool to be called]</toolName>
+                                <$INTENTION_TAG_NAME>$intentionDescription</$INTENTION_TAG_NAME>
+                                <$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>
                                 """.trimIndent()
                             )
                         is AgentIntentionGenerationException.UnknownTool ->
@@ -214,12 +214,12 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
         }
 
         // Track intention boundaries so nested examples are preserved. A decision
-        // is complete only when its closing tag is followed by a toolName tag.
+        // is complete only when its closing tag is followed by the tool tag.
         // Keep the last complete decision, even inside an unfinished outer tag.
         val intentionStarts = java.util.ArrayDeque<Int>()
         var lastPair: Pair<String, String>? = null
         for (match in INTENTION_BOUNDARY.findAll(response)) {
-            if (match.value == "<intention>") {
+            if (match.value == "<$INTENTION_TAG_NAME>") {
                 intentionStarts.addLast(match.range.last + 1)
                 continue
             }
@@ -232,7 +232,7 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
 
         val pair = lastPair
             ?: throw AgentIntentionGenerationException.InvalidFormat(
-                "Expected <intention>...</intention> followed by <toolName>...</toolName>",
+                "Expected <$INTENTION_TAG_NAME>...</$INTENTION_TAG_NAME> followed by <$TOOL_TAG_NAME>...</$TOOL_TAG_NAME>",
                 response,
             )
 
@@ -251,11 +251,14 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
     companion object : KLogging() {
         const val ANSWER_TOOL = "Answer"
         private const val MAX_INTENTION_ATTEMPTS = 3
+        internal const val INTENTION_TAG_NAME = "intention"
+        internal const val TOOL_TAG_NAME = "tool"
 
-        // Attach an adjacent toolName to its closing intention boundary. Nesting
+        // Attach an adjacent tool tag to its closing intention boundary. Nesting
         // is handled by the stack, not the regex; other XML-like text is preserved.
         private val INTENTION_BOUNDARY = Regex(
-            """<intention>|</intention>(?:\s*<toolName>([^<>]*)</toolName>)?""",
+            "${Regex.escape("<$INTENTION_TAG_NAME>")}|${Regex.escape("</$INTENTION_TAG_NAME>")}" +
+                "(?:\\s*${Regex.escape("<$TOOL_TAG_NAME>")}([^<>]*)${Regex.escape("</$TOOL_TAG_NAME>")})?",
         )
     }
 }

@@ -168,6 +168,7 @@ class FilesystemIntegrationConfigRepository(
             description = integrationConfigYaml.description,
             parameters = substituteConfigPath(integrationConfigYaml.parameters, configPath),
             authSettingName = integrationConfigYaml.authSettingName,
+            autoGrant = integrationConfigYaml.autoGrant,
         )
     }
 
@@ -204,4 +205,14 @@ private data class IntegrationConfigYamlModel(
     val description: String? = null,
     val parameters: JsonNode? = null,
     val authSettingName: String? = null,
+    /**
+     * Grants this config to every agent of the namespace without any agent naming it. Omitted
+     * means `false`.
+     *
+     * Note that a filesystem config bypasses [IntegrationConfigServiceImpl]'s save-time checks,
+     * including the restriction of `autoGrant` to
+     * [IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES]: files under `configPath` are part of the
+     * deployment, trusted like the rest of it, and are never written through the API.
+     */
+    val autoGrant: Boolean = false,
 )

@@ -50,6 +50,7 @@ data class IntegrationConfigNode(
     val description: String? = null,
     val parametersJson: String? = null,
     val authSettingName: String? = null,
+    val autoGrant: Boolean = false,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -77,6 +78,7 @@ data class IntegrationConfigNode(
             description = description,
             parameters = parametersJson?.let { objectMapper.readTree(it) },
             authSettingName = authSettingName,
+            autoGrant = autoGrant,
         )
 
     companion object {
@@ -125,6 +127,7 @@ data class IntegrationConfigNode(
                 description = config.description,
                 parametersJson = config.parameters?.let { objectMapper.writeValueAsString(it) },
                 authSettingName = config.authSettingName,
+                autoGrant = config.autoGrant,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,

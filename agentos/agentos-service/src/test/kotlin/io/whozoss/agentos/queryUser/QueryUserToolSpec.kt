@@ -3,6 +3,8 @@ package io.whozoss.agentos.queryUser
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.whozoss.agentos.agent.AgentInterrupt
@@ -142,5 +144,86 @@ class QueryUserToolSpec : StringSpec({
 
     "name is prefixed when configName is provided" {
         QueryUserTool(configName = "QUERY_USER").name shouldBe "QUERY_USER__queryUser"
+    }
+
+    // -------------------------------------------------------------------------
+    // allowedQuestionTypes -- default (all three types allowed)
+    // -------------------------------------------------------------------------
+
+    "execute accepts FREE_TEXT, SINGLE_CHOICE and OPEN_CHOICE by default" {
+        val tool = QueryUserTool()
+
+        shouldThrow<AgentInterrupt.AwaitAnswer> {
+            tool.execute(QueryUserTool.Input(question = "q"), CONTEXT)
+        }.questionType shouldBe QuestionType.FREE_TEXT
+
+        shouldThrow<AgentInterrupt.AwaitAnswer> {
+            tool.execute(QueryUserTool.Input(question = "q", options = listOf("A", "B")), CONTEXT)
+        }.questionType shouldBe QuestionType.SINGLE_CHOICE
+
+        shouldThrow<AgentInterrupt.AwaitAnswer> {
+            tool.execute(QueryUserTool.Input(question = "q", options = listOf("A", "B"), allowCustomAnswer = true), CONTEXT)
+        }.questionType shouldBe QuestionType.OPEN_CHOICE
+    }
+
+    // -------------------------------------------------------------------------
+    // allowedQuestionTypes -- each forbidden type is rejected, not coerced
+    // -------------------------------------------------------------------------
+
+    "execute rejects FREE_TEXT with a readable error when it is not allowed" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.SINGLE_CHOICE, QuestionType.OPEN_CHOICE))
+        val result = tool.execute(QueryUserTool.Input(question = "q"), CONTEXT)
+        result.success shouldBe false
+        result.errorType shouldBe "QUESTION_TYPE_NOT_ALLOWED"
+        result.output shouldContain "FREE_TEXT"
+    }
+
+    "execute rejects SINGLE_CHOICE with a readable error when it is not allowed" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.FREE_TEXT, QuestionType.OPEN_CHOICE))
+        val result = tool.execute(QueryUserTool.Input(question = "q", options = listOf("A", "B")), CONTEXT)
+        result.success shouldBe false
+        result.errorType shouldBe "QUESTION_TYPE_NOT_ALLOWED"
+        result.output shouldContain "SINGLE_CHOICE"
+    }
+
+    "execute rejects OPEN_CHOICE with a readable error when it is not allowed, without coercing to SINGLE_CHOICE" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.FREE_TEXT, QuestionType.SINGLE_CHOICE))
+        val result = tool.execute(
+            QueryUserTool.Input(question = "q", options = listOf("A", "B"), allowCustomAnswer = true),
+            CONTEXT,
+        )
+        result.success shouldBe false
+        result.errorType shouldBe "QUESTION_TYPE_NOT_ALLOWED"
+        result.output shouldContain "OPEN_CHOICE"
+    }
+
+    // -------------------------------------------------------------------------
+    // Schema shaping (layer 1): forbidden forms are not even expressible
+    // -------------------------------------------------------------------------
+
+    "inputSchema omits allowCustomAnswer when OPEN_CHOICE is not allowed" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.FREE_TEXT, QuestionType.SINGLE_CHOICE))
+        tool.inputSchema shouldNotContain "allowCustomAnswer"
+    }
+
+    "inputSchema keeps allowCustomAnswer when OPEN_CHOICE is allowed" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.FREE_TEXT, QuestionType.SINGLE_CHOICE, QuestionType.OPEN_CHOICE))
+        tool.inputSchema shouldContain "allowCustomAnswer"
+    }
+
+    "inputSchema requires options when FREE_TEXT is not allowed" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.SINGLE_CHOICE, QuestionType.OPEN_CHOICE))
+        tool.inputSchema shouldContain "\"required\": [\"question\", \"options\"]"
+    }
+
+    "inputSchema does not require options when FREE_TEXT is allowed" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.FREE_TEXT, QuestionType.SINGLE_CHOICE, QuestionType.OPEN_CHOICE))
+        tool.inputSchema shouldContain "\"required\": [\"question\"]"
+    }
+
+    "inputSchema omits options entirely when only FREE_TEXT is allowed" {
+        val tool = QueryUserTool(allowedQuestionTypes = setOf(QuestionType.FREE_TEXT))
+        tool.inputSchema shouldNotContain "\"options\""
+        tool.inputSchema shouldNotContain "allowCustomAnswer"
     }
 })

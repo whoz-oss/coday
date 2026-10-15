@@ -95,6 +95,13 @@ class WorkspaceControllersMvcSpec : StringSpec() {
             every { gitAvailability.isAvailable() } returns true
         }
 
+        "the configuration route reports the workspace routes as available" {
+            mockMvc
+                .perform(get("/api/git-workspaces-configuration"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.enabled").value(true))
+        }
+
         "namespace Git settings do not exist while the GIT plugin is not loaded" {
             val namespaceId = UUID.randomUUID()
             allow(EntityType.NAMESPACE, namespaceId, Action.READ)

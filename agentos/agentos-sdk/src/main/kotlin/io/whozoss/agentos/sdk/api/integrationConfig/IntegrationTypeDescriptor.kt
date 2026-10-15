@@ -25,6 +25,11 @@ import io.swagger.v3.oas.annotations.media.Schema
  *   wins, in both directions; this only fills the gap. Clients render it so the "platform default"
  *   state of a toggle can say which way it resolves. Always false for non-[builtIn] types, which
  *   are never granted implicitly.
+ * @property autoGrantable Whether a configuration of this type may set `autoGrant`, handing itself
+ *   to every agent within its scope without the agent naming it. Carried here so a client can show
+ *   the toggle only where the server would accept it, instead of duplicating the eligible-type list
+ *   and drifting from it on the first addition. The server remains the authority: a configuration
+ *   that sets the flag on a non-eligible type is rejected with HTTP 422.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class IntegrationTypeDescriptor(
@@ -40,4 +45,11 @@ data class IntegrationTypeDescriptor(
                 "label the \"platform default\" state of a toggle. Always false for non-built-in types.",
     )
     val enabledByDefault: Boolean = false,
+    @field:Schema(
+        description =
+            "Whether a configuration of this type may set autoGrant, handing itself to every agent within its " +
+                "scope without the agent naming it. Clients should show the toggle only when this is true; the " +
+                "server rejects the flag on any other type with HTTP 422.",
+    )
+    val autoGrantable: Boolean = false,
 )
