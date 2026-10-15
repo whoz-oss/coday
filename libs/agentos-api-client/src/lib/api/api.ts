@@ -20,6 +20,8 @@ export * from './exchange-controller.service'
 import { ExchangeControllerService } from './exchange-controller.service'
 export * from './feedback-controller.service'
 import { FeedbackControllerService } from './feedback-controller.service'
+export * from './git-workspaces-configuration-controller.service'
+import { GitWorkspacesConfigurationControllerService } from './git-workspaces-configuration-controller.service'
 export * from './integration-config-controller.service'
 import { IntegrationConfigControllerService } from './integration-config-controller.service'
 export * from './integration-type-controller.service'
@@ -46,6 +48,8 @@ export * from './skill-controller.service'
 import { SkillControllerService } from './skill-controller.service'
 export * from './sse.service'
 import { SseService } from './sse.service'
+export * from './tool-invoke-controller.service'
+import { ToolInvokeControllerService } from './tool-invoke-controller.service'
 export * from './usage-configuration-controller.service'
 import { UsageConfigurationControllerService } from './usage-configuration-controller.service'
 export * from './usage-record-controller.service'
@@ -66,6 +70,7 @@ export const APIS = [
   CaseWorkspaceControllerService,
   ExchangeControllerService,
   FeedbackControllerService,
+  GitWorkspacesConfigurationControllerService,
   IntegrationConfigControllerService,
   IntegrationTypeControllerService,
   NamespaceControllerService,
@@ -79,6 +84,7 @@ export const APIS = [
   ScheduledPromptControllerService,
   SkillControllerService,
   SseService,
+  ToolInvokeControllerService,
   UsageConfigurationControllerService,
   UsageRecordControllerService,
   UserControllerService,

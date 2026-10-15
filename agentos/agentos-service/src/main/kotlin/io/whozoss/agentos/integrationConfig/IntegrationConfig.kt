@@ -42,5 +42,28 @@ data class IntegrationConfig(
     val description: String? = null,
     val parameters: JsonNode? = null,
     val authSettingName: String? = null,
+    /**
+     * When `true`, this configuration is granted to every agent within its scope without the agent
+     * having to name it in [io.whozoss.agentos.agentConfig.AgentConfig.integrations].
+     *
+     * The scope of the grant is exactly the scope of this config, so no new scope concept is
+     * introduced — the four-tier overlay above already carries it:
+     *
+     * | Scope            | Reach of the grant                  |
+     * |------------------|-------------------------------------|
+     * | Platform         | every agent of the environment      |
+     * | Namespace-shared | every agent of that namespace       |
+     * | User-scoped      | the runs of that user               |
+     *
+     * An agent always keeps the last word: mapping this config's [name] to an **empty list** in its
+     * `integrations` is a sovereign opt-out that beats `autoGrant`. That escape hatch is what
+     * protects an autonomous, webhook-triggered agent — one nobody is listening to — from being
+     * handed an interactive tool whose unanswered question would block the case indefinitely.
+     *
+     * Only the types listed in [IntegrationTypeConstraints.AUTO_GRANTABLE_TYPES] may set this flag;
+     * [IntegrationConfigServiceImpl] rejects the others. Defaults to `false`, so an existing
+     * deployment sees no change.
+     */
+    val autoGrant: Boolean = false,
 ) : Entity {
 }

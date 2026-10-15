@@ -2,6 +2,7 @@ import { inject, Injectable, signal } from '@angular/core'
 import {
   CaseWorkspaceControllerService,
   CaseWorkspaceView,
+  GitWorkspacesConfigurationControllerService,
   GitWorkspaceSummaryPrStateEnum,
   WorkspaceRetryRequest,
 } from '@whoz-oss/agentos-api-client'
@@ -21,6 +22,7 @@ import {
   switchMap,
   takeWhile,
   tap,
+  throwError,
   timer,
 } from 'rxjs'
 
@@ -34,7 +36,7 @@ export interface WorkspaceState {
 const POLL_INTERVAL = 10000
 const UNAVAILABLE: WorkspaceState = { view: null, errorStatus: 404 }
 
-/** The workspace endpoints answer 404 on an instance without Git workspaces: stop asking. */
+/** No Git workspaces on this instance (configuration off, or the workspace endpoints answered 404): stop asking. */
 export function workspacesUnavailable(state: WorkspaceState): boolean {
   return state.errorStatus === 404
 }
@@ -42,12 +44,29 @@ export function workspacesUnavailable(state: WorkspaceState): boolean {
 @Injectable({ providedIn: 'root' })
 export class CaseWorkspaceService {
   private readonly api = inject(CaseWorkspaceControllerService)
+  private readonly configuration = inject(GitWorkspacesConfigurationControllerService)
   readonly byRoot = signal<Record<string, WorkspaceView>>({})
   private readonly namespace = new BehaviorSubject<Observable<WorkspaceView[] | null> | null>(null)
   private readonly watchedCases = new Map<string, Observable<WorkspaceState>>()
   private readonly actions = new Subject<{ caseId: string; view: WorkspaceView }>()
-  /** Set when the namespace list answers 404: no Git workspaces here, so nothing asks again until reload. */
+  /** Set when the configuration or the namespace list says there are no Git workspaces: nothing asks until reload. */
   private noWorkspaces = false
+
+  /**
+   * Whether this instance serves Git workspaces, kept once answered: the switch only changes when AgentOS restarts.
+   * Without an answer the workspace endpoints are still asked, and their 404 stops the polling.
+   */
+  readonly enabled$: Observable<boolean> = defer(() => this.configuration.getGitWorkspacesConfiguration()).pipe(
+    map((configuration) => configuration?.enabled !== false),
+    // An AgentOS without this endpoint answers 404 for good: settle on asking the workspace endpoints.
+    catchError((error: { status?: number }) => (error.status === 404 ? of(true) : throwError(() => error))),
+    tap((enabled) => {
+      if (!enabled) this.noWorkspaces = true
+    }),
+    shareReplay({ bufferSize: 1, refCount: false }),
+    // Any other failure is not kept: shareReplay resets on error, so the next consumer asks again.
+    catchError(() => of(true))
+  )
 
   /** Whether this instance already answered that it has no Git workspaces. */
   get unavailable(): boolean {
@@ -75,20 +94,24 @@ export class CaseWorkspaceService {
       ),
       shareReplay({ bufferSize: 1, refCount: true })
     )
-    return defer(() => {
-      this.byRoot.set({})
-      if (this.noWorkspaces) return of([])
-      this.namespace.next(source)
-      return source.pipe(
-        filter((items): items is WorkspaceView[] => items !== null),
-        finalize(() => {
-          if (this.namespace.value === source) {
-            this.namespace.next(null)
-            this.byRoot.set({})
-          }
+    return this.enabled$.pipe(
+      switchMap((enabled) =>
+        defer(() => {
+          this.byRoot.set({})
+          if (!enabled || this.noWorkspaces) return of([])
+          this.namespace.next(source)
+          return source.pipe(
+            filter((items): items is WorkspaceView[] => items !== null),
+            finalize(() => {
+              if (this.namespace.value === source) {
+                this.namespace.next(null)
+                this.byRoot.set({})
+              }
+            })
+          )
         })
       )
-    })
+    )
   }
 
   /** Header, file preparation and the open panel share one stream, including permission failures. */
@@ -101,19 +124,25 @@ export class CaseWorkspaceService {
         map((view): WorkspaceState => ({ view })),
         catchError((error: { status?: number }) => of({ view: null, errorStatus: error.status ?? 0 }))
       )
-    const polling = this.namespace.pipe(
-      switchMap((namespace) =>
-        namespace
-          ? namespace.pipe(
-              exhaustMap((items) => {
-                // Only roots occur in this endpoint. A child still needs its own authorized READ result.
-                const root = items?.find((view) => view.rootCaseId === caseId)
-                return root ? of({ view: root }) : read()
-              })
-            )
-          : timer(0, POLL_INTERVAL).pipe(
-              exhaustMap(read),
-              takeWhile((state) => !workspacesUnavailable(state), true)
+    const polling = this.enabled$.pipe(
+      switchMap((enabled) =>
+        !enabled
+          ? of(UNAVAILABLE)
+          : this.namespace.pipe(
+              switchMap((namespace) =>
+                namespace
+                  ? namespace.pipe(
+                      exhaustMap((items) => {
+                        // Only roots occur in this endpoint. A child still needs its own authorized READ result.
+                        const root = items?.find((view) => view.rootCaseId === caseId)
+                        return root ? of({ view: root }) : read()
+                      })
+                    )
+                  : timer(0, POLL_INTERVAL).pipe(
+                      exhaustMap(read),
+                      takeWhile((state) => !workspacesUnavailable(state), true)
+                    )
+              )
             )
       )
     )

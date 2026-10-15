@@ -3,7 +3,9 @@ package io.whozoss.agentos.agentConfig
 import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.namespace.NamespaceNode
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import mu.KLogging
 import org.springframework.data.annotation.CreatedBy
 import org.springframework.data.annotation.CreatedDate
 import org.springframework.data.annotation.LastModifiedBy
@@ -41,10 +43,12 @@ data class AgentConfigNode(
     val integrationsJson: String? = null,
     val externalMetadataJson: String? = null,
     val advancedExecution: Boolean = false,
+    val executionMode: String? = null,
     val enabled: Boolean,
     val subAgentsJson: String? = null,
     val delegationTimeoutSeconds: Int? = null,
     val skillSelectorsJson: String? = null,
+    val loopConfigJson: String? = null,
     // EntityMetadata fields
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
@@ -73,15 +77,25 @@ data class AgentConfigNode(
             instructions = instructions,
             modelName = modelName,
             integrations = integrationsJson?.let { MAPPER.readValue(it, INTEGRATIONS_TYPE) },
+            executionMode =
+                executionMode?.let {
+                    runCatching { ExecutionMode.valueOf(it) }.getOrElse { _ ->
+                        logger.warn {
+                            "[AgentConfigNode] Unknown executionMode '$it' for agent '$name' (id=$id) — falling back to null (resolvedExecutionMode will apply default)"
+                        }
+                        null
+                    }
+                },
             advancedExecution = advancedExecution,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
             enabled = enabled,
             subAgents = subAgentsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
             delegationTimeoutSeconds = delegationTimeoutSeconds,
             skillSelectors = skillSelectorsJson?.let { MAPPER.readValue(it, STRING_LIST_TYPE) },
+            loopConfig = loopConfigJson?.let { MAPPER.readTree(it) },
         )
 
-    companion object {
+    companion object : KLogging() {
         private val MAPPER = jacksonObjectMapper()
         private val INTEGRATIONS_TYPE = object : TypeReference<Map<String, List<String>?>>() {}
         private val EXTERNAL_METADATA_TYPE = object : TypeReference<Map<String, Any?>>() {}
@@ -97,10 +111,12 @@ data class AgentConfigNode(
                 modelName = config.modelName,
                 integrationsJson = config.integrations?.let { MAPPER.writeValueAsString(it) },
                 externalMetadataJson = config.externalMetadata?.let { MAPPER.writeValueAsString(it) },
+                executionMode = config.executionMode?.name,
                 advancedExecution = config.advancedExecution,
                 subAgentsJson = config.subAgents?.let { MAPPER.writeValueAsString(it) },
                 delegationTimeoutSeconds = config.delegationTimeoutSeconds,
                 skillSelectorsJson = config.skillSelectors?.let { MAPPER.writeValueAsString(it) },
+                loopConfigJson = config.loopConfig?.let { MAPPER.writeValueAsString(it) },
                 version = config.metadata.version,
                 enabled = config.enabled,
                 created = config.metadata.created,

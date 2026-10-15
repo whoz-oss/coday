@@ -10,6 +10,7 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
@@ -135,6 +136,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             caseService = caseService,
             permissionService = mockk<PermissionService>(relaxed = true),
             userService = userService,
+            userSessionContextResolver = UserSessionContextResolver(),
             properties = properties,
             clock = clock,
         )
@@ -342,6 +344,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 caseService = eventuallyIdleCaseService(),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
+                userSessionContextResolver = UserSessionContextResolver(),
                 properties = smallBatchProperties,
                 clock = clock,
             )

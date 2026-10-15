@@ -32,9 +32,21 @@ describe('Workspace API consumers', () => {
     expect(received).toHaveBeenCalledWith(view)
   })
 
+  it('reads the Git workspaces configuration once, then asks nothing more when it is off', fakeAsync(() => {
+    const service = TestBed.inject(CaseWorkspaceService)
+    service.watchNamespace('namespace').subscribe()
+    service.watch('root').subscribe()
+    const request = http.expectOne('/agentos-api/api/git-workspaces-configuration')
+    expect(request.request.method).toBe('GET')
+    request.flush({ enabled: false })
+    tick(30_000)
+    expect(service.unavailable).toBe(true)
+  }))
+
   it('decodes namespace workspace lists before updating PR badges', fakeAsync(() => {
     const service = TestBed.inject(CaseWorkspaceService)
     const subscription = service.watchNamespace('namespace').subscribe()
+    http.expectOne('/agentos-api/api/git-workspaces-configuration').flush({ enabled: true })
     tick(0)
     const request = http.expectOne('/agentos-api/api/namespaces/namespace/workspaces')
     expect(request.request.responseType).toBe('json')

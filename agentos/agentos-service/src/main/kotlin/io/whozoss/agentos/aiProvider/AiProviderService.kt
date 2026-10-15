@@ -17,6 +17,25 @@ import java.util.UUID
 interface AiProviderService : EntityService<AiProvider, UUID>, ConfigLookup<AiProvider>, OwnershipAware {
     override val ownershipEntityType: EntityType get() = EntityType.AI_PROVIDER
     override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
+
+    /**
+     * Explicit override of [ConfigLookup.findByTriple] with a precise return type.
+     *
+     * [ConfigLookup]'s type parameter is erased on the JVM to its upper bound ([io.whozoss.agentos.sdk.entity.Entity]),
+     * so without this redeclaration the only bytecode signature available on this interface
+     * returns `Entity`, not [AiProvider]. A relaxed MockK mock of this interface would then
+     * auto-generate its stub answer from that erased signature and fail a checkcast at the
+     * call site — see the identical fix and full explanation on
+     * [io.whozoss.agentos.integrationConfig.IntegrationConfigService.findByTriple], which is
+     * where this class of bug first surfaced in [io.whozoss.agentos.queryUser.QueryUserConfigSeeder].
+     * Declared here pre-emptively, as this service is wired the same way.
+     */
+    override fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): AiProvider?
+
     /**
      * Find all [AiProvider] scoped to the given namespace.
      */

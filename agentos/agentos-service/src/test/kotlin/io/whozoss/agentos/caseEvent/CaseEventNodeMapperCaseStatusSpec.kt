@@ -17,6 +17,26 @@ class CaseEventNodeMapperCaseStatusSpec :
         val mapper: ObjectMapper = jacksonObjectMapper().registerKotlinModule()
         val nodeMapper = CaseEventNodeMapper(MessageContentSerializer(mapper))
 
+        "CaseStatusEvent(CREATED) survives the fromDomain/toDomain round-trip" {
+            val original =
+                CaseStatusEvent(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = UUID.randomUUID(),
+                    caseId = UUID.randomUUID(),
+                    timestamp = Instant.parse("2026-05-19T15:00:00Z"),
+                    status = CaseStatus.CREATED,
+                )
+
+            val node = nodeMapper.fromDomain(original)
+            val roundTripped = nodeMapper.toDomain(node) as CaseStatusEvent
+
+            roundTripped.metadata.id shouldBe original.metadata.id
+            roundTripped.namespaceId shouldBe original.namespaceId
+            roundTripped.caseId shouldBe original.caseId
+            roundTripped.timestamp shouldBe original.timestamp
+            roundTripped.status shouldBe CaseStatus.CREATED
+        }
+
         "CaseStatusEvent(PENDING) survives the fromDomain/toDomain round-trip" {
             val original =
                 CaseStatusEvent(
@@ -30,10 +50,6 @@ class CaseEventNodeMapperCaseStatusSpec :
             val node = nodeMapper.fromDomain(original)
             val roundTripped = nodeMapper.toDomain(node) as CaseStatusEvent
 
-            roundTripped.metadata.id shouldBe original.metadata.id
-            roundTripped.namespaceId shouldBe original.namespaceId
-            roundTripped.caseId shouldBe original.caseId
-            roundTripped.timestamp shouldBe original.timestamp
             roundTripped.status shouldBe CaseStatus.PENDING
         }
 
