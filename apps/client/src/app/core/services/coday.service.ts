@@ -386,22 +386,53 @@ export class CodayService implements OnDestroy {
   private handleDelegationEvent(event: DelegationEvent): void {
     console.log('[CODAY] DelegationEvent received:', event.subThreadId, event.agentName)
     const currentMessages = this.messagesSubject.value
-    const existingIndex = currentMessages.findIndex((m) => m.subThreadId === event.subThreadId)
 
-    // DelegationEvent is now an immutable branch marker — only add once
-    if (existingIndex === -1) {
-      const message: ChatMessage = {
-        id: event.timestamp,
-        role: 'system',
-        speaker: event.agentName,
-        content: [{ type: 'text', content: '' }],
-        timestamp: new Date(),
-        type: 'delegation',
-        subThreadId: event.subThreadId,
-        delegationAgentName: event.agentName,
-      }
-      this.addMessage(message)
+    // IDEMPOTENCE FIRST: a re-delivered event (same timestamp) must be a strict no-op.
+    // The history transits through two channels on thread open (REST + SSE replay, debt #343),
+    // so the same DelegationEvent can arrive twice. Any mutation that runs before the
+    // duplicate check — such as closing the previous block's window — would corrupt state:
+    // the second delivery would find the first block (same subThreadId) and set its
+    // windowEnd = its own windowStart, collapsing the window to [ts, ts) and hiding all content.
+    // Rule: an event re-delivered must never trigger recalculation of derived state.
+    if (currentMessages.some((m) => m.id === event.timestamp)) {
+      return
     }
+
+    // Find the last existing delegation block for this subThreadId (if any).
+    // When a sub-thread is resumed, a new DelegationEvent is emitted for the same subThreadId.
+    // We close the previous block's temporal window and create a new block at the current position.
+    const lastExistingIndex = currentMessages.reduce(
+      (lastIdx, m, i) => (m.subThreadId === event.subThreadId ? i : lastIdx),
+      -1
+    )
+
+    let updatedMessages = currentMessages
+    if (lastExistingIndex !== -1) {
+      // Close the previous block's window: its upper bound is this new event's timestamp
+      const previous = currentMessages[lastExistingIndex]
+      const closedPrevious: ChatMessage = { ...previous, windowEnd: event.timestamp } as ChatMessage
+      updatedMessages = [
+        ...currentMessages.slice(0, lastExistingIndex),
+        closedPrevious,
+        ...currentMessages.slice(lastExistingIndex + 1),
+      ]
+    }
+
+    // Create a new delegation block for this occurrence, with an open upper window
+    const message: ChatMessage = {
+      id: event.timestamp,
+      role: 'system',
+      speaker: event.agentName,
+      content: [{ type: 'text', content: '' }],
+      timestamp: new Date(),
+      type: 'delegation',
+      subThreadId: event.subThreadId,
+      delegationAgentName: event.agentName,
+      windowStart: event.timestamp,
+      windowEnd: undefined,
+    }
+
+    this.messagesSubject.next([...updatedMessages, message])
   }
 
   private handleThreadUpdateEvent(event: ThreadUpdateEvent): void {
