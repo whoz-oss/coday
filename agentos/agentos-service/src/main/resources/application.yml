@@ -214,6 +214,16 @@ agentos:
     # agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
     enabled-by-default: true
+  user-group-tool-config:
+    # Declare that a platform-scoped 'USER_GROUP' integration configuration should
+    # exist. When true (shipped default), ListUserGroupMembersConfigSeeder creates it at startup
+    # if absent, with autoGrant=true — so every agent of the environment receives the
+    # listMembers tool without declaring it.
+    #
+    # Same semantics as query-user.enabled-by-default: existence not content, create-only.
+    # An agent opts out by mapping 'USER_GROUP' to [] in its integrations map.
+    # Override with env var: AGENTOS_LIST_USER_GROUP_MEMBERS_ENABLED_BY_DEFAULT
+    enabled-by-default: true
   limits:
   # Maximum number of internal steps per user message in the CaseRuntime before the case
   # transitions to ERROR status. A "step" is one processNextStep() call covering agent
