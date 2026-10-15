@@ -91,7 +91,15 @@ class LoopWorkflowRunnerService(
             buildList {
                 for (item in items) {
                     if (!shouldContinue()) break
-                    add(act(item, payload.act, context, triggerUser, launchTool))
+                    add(
+                        act(
+                            item = item,
+                            act = payload.act,
+                            context = context,
+                            triggerUser = triggerUser,
+                            launchTool = launchTool,
+                        ),
+                    )
                 }
             }
 
@@ -135,7 +143,7 @@ class LoopWorkflowRunnerService(
                     "Search tool '$toolName' is not available to agent '${context.agentName}' " +
                         "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
                 )
-        val toolContext = toolContext(context, triggerUser)
+        val toolContext = toolContext(context = context, triggerUser = triggerUser)
         val paramsJson = objectMapper.writeValueAsString(payload.search.params)
         logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
         val result =
@@ -202,7 +210,7 @@ class LoopWorkflowRunnerService(
             return ItemOutcome.UnknownUser
         }
         val endUserId = endUser.metadata.id
-        if (!hasAgentAccess(endUserId, act.agentName, context.namespaceId)) {
+        if (!hasAgentAccess(userId = endUserId, agentName = act.agentName, namespaceId = context.namespaceId)) {
             logger.warn { "[LoopWorkflowRunner] User $endUserId cannot access agent '${act.agentName}' — refusing" }
             return ItemOutcome.NoAgentAccess
         }
@@ -245,14 +253,18 @@ class LoopWorkflowRunnerService(
             buildMap<String, Any?> {
                 put("agentName", act.agentName)
                 put("prompt", act.prompt)
-                // The triggering user is the default target: naming them would need the other-users
-                // switch of the integration for nothing.
+                // The triggering user is the tool's default target, so they are not named.
                 if (endUserId != triggerUser.metadata.id) put("userId", endUserId.toString())
                 put("context", addActiveContext(sessionContext, item))
             }
 
         return try {
-            launchOutcome(launchTool.executeWithJson(objectMapper.writeValueAsString(input), toolContext(context, triggerUser)), item, context)
+            val result =
+                launchTool.executeWithJson(
+                    objectMapper.writeValueAsString(input),
+                    toolContext(context = context, triggerUser = triggerUser),
+                )
+            launchOutcome(result = result, item = item, context = context)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -264,43 +276,39 @@ class LoopWorkflowRunnerService(
     /**
      * What a `CreateCase` result means for the loop. A refusal because the agent is not deployed to the end user
      * is the same case as the loop's own check; anything else is a failure. A refusal that comes from the
-     * integration (other users not allowed, agent outside the
-     * allowlist) hits every entity alike: it shows in the log with its reason, and in the summary as failures.
+     * integration (other users not allowed, agent outside the allowlist) hits every entity alike: it shows in
+     * the log with its reason, and in the summary as failures.
      */
     private fun launchOutcome(
         result: ToolExecutionResult,
         item: SearchResultItem,
         context: LoopRunContext,
-    ): ItemOutcome =
-        when {
-            result.success ->
-                launchedCaseId(result)
-                    ?.also {
-                        logger.info {
-                            "[LoopWorkflowRunner] Launched case $it for entity '${item.entityId}' " +
-                                "(agent=${result.metadata["agentName"]}, loopCase=${context.caseId})"
-                        }
-                    }?.let { ItemOutcome.Launched(it) }
-                    ?: ItemOutcome.Failed.also {
-                        logger.error {
-                            "[LoopWorkflowRunner] '${CreateCaseTool.TOOL_NAME}' reported success without a case id " +
-                                "for entity '${item.entityId}': ${result.output}"
-                        }
-                    }
-
-            result.errorType == CaseLaunchRefusal.AGENT_NOT_AVAILABLE.name ->
-                ItemOutcome.NoAgentAccess.also {
-                    logger.warn { "[LoopWorkflowRunner] Agent not available for entity '${item.entityId}': ${result.output}" }
-                }
-
-            else ->
-                ItemOutcome.Failed.also {
-                    logger.error {
-                        "[LoopWorkflowRunner] '${CreateCaseTool.TOOL_NAME}' refused entity '${item.entityId}' " +
-                            "(${result.errorType}): ${result.output}"
-                    }
-                }
+    ): ItemOutcome {
+        if (!result.success) {
+            if (result.errorType == CaseLaunchRefusal.AGENT_NOT_AVAILABLE.name) {
+                logger.warn { "[LoopWorkflowRunner] Agent not available for entity '${item.entityId}': ${result.output}" }
+                return ItemOutcome.NoAgentAccess
+            }
+            logger.error {
+                "[LoopWorkflowRunner] '${CreateCaseTool.TOOL_NAME}' refused entity '${item.entityId}' " +
+                    "(${result.errorType}): ${result.output}"
+            }
+            return ItemOutcome.Failed
         }
+        val caseId = launchedCaseId(result)
+        if (caseId == null) {
+            logger.error {
+                "[LoopWorkflowRunner] '${CreateCaseTool.TOOL_NAME}' reported success without a case id " +
+                    "for entity '${item.entityId}': ${result.output}"
+            }
+            return ItemOutcome.Failed
+        }
+        logger.info {
+            "[LoopWorkflowRunner] Launched case $caseId for entity '${item.entityId}' " +
+                "(agent=${result.metadata["agentName"]}, loopCase=${context.caseId})"
+        }
+        return ItemOutcome.Launched(caseId)
+    }
 
     /** The new case id, from the structured output of the tool, else from its metadata. */
     private fun launchedCaseId(result: ToolExecutionResult): UUID? =

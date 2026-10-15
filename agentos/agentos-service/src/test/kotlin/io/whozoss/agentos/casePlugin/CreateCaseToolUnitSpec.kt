@@ -37,7 +37,8 @@ class CreateCaseToolUnitSpec :
             events: List<CaseEvent> = caseEvents(),
         ) = ToolContext(namespaceId = namespaceId, userId = user, userExternalId = "ext", caseEvents = events)
 
-        fun launched(agentName: String = "Reporter") = CaseLaunchOutcome.Launched(newCaseId, namespaceId, userId, agentName)
+        fun launched(agentName: String = "Reporter") =
+            CaseLaunchOutcome.Launched(caseId = newCaseId, namespaceId = namespaceId, userId = userId, agentName = agentName)
 
         fun service(outcome: CaseLaunchOutcome = launched()) = mockk<CaseLaunchService> { every { launch(any()) } returns outcome }
 
@@ -47,7 +48,13 @@ class CreateCaseToolUnitSpec :
             allowedAgents: List<String> = listOf("*"),
             deniedAgents: Set<String> = emptySet(),
             allowOtherUsers: Boolean = false,
-        ) = CreateCaseTool(configName, launcher, allowedAgents, deniedAgents, allowOtherUsers)
+        ) = CreateCaseTool(
+            configName = configName,
+            caseLaunchService = launcher,
+            allowedAgents = allowedAgents,
+            deniedAgents = deniedAgents,
+            allowOtherUsers = allowOtherUsers,
+        )
 
         "is named CreateCase, prefixed by the integration config name when there is one" {
             tool().name shouldBe "CreateCase"
@@ -165,6 +172,24 @@ class CreateCaseToolUnitSpec :
             result.success shouldBe false
             result.errorType shouldBe "FORBIDDEN"
             verify(exactly = 0) { launcher.launch(any()) }
+        }
+
+        "the caller's own id is the current user, accepted even when other users are not allowed" {
+            val request = slot<CaseLaunchRequest>()
+            val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
+
+            val result =
+                tool(launcher, allowOtherUsers = false)
+                    .execute(CreateCaseTool.Input("Reporter", "prompt", userId = userId.toString()), context())
+
+            result.success shouldBe true
+            request.captured.targetUserId shouldBe null
+        }
+
+        "a userId that is not a UUID is INVALID_INPUT, whether or not other users are allowed" {
+            tool(allowOtherUsers = false)
+                .execute(CreateCaseTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
+                .errorType shouldBe "INVALID_INPUT"
         }
 
         "a userId that is not a UUID is INVALID_INPUT" {

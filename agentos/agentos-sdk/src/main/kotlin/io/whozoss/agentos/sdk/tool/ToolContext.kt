@@ -43,9 +43,9 @@ data class ToolContext(
      * The case the tool runs in: the case of the first of [caseEvents], or null when there are no events
      * (tool-set resolution, a direct invocation through the API).
      *
-     * Agents hand a tool the events of their own case only, and filtering them by integration removes
-     * tool request and response events, never messages. It is derived, not a constructor parameter: it
-     * is not part of [copy] or [equals], and a plugin built against an earlier SDK is unaffected.
+     * [caseEvents] are events of the case the tool runs in, so any of them names it. It is derived, not a
+     * constructor parameter: it is not part of [copy] or [equals], and a plugin built against an earlier
+     * SDK is unaffected.
      */
     val caseId: UUID? get() = caseEvents.firstOrNull()?.caseId
 }

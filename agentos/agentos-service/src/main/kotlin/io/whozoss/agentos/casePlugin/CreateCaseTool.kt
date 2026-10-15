@@ -27,22 +27,24 @@ import java.util.UUID
  *
  * The case runs in the **same namespace** as the calling run, and for the **same user** unless
  * [allowOtherUsers] lets the caller name another one. Who is calling, and from which case, comes
- * from [ToolContext], never from the input. The calling case is [ToolContext.caseId], and a call
- * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`. The calling case's session context is **not**
- * inherited: [Input.context] is the only thing that reaches the new case, so the caller hands over
- * just the relevant part, typically the output of an enrichment tool.
+ * from [ToolContext], never from the input: the calling case is [ToolContext.caseId], and a call
+ * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`.
+ * The calling case's session context is **not** inherited: [Input.context] is the only thing that
+ * reaches the new case, so the caller hands over just the relevant part, typically the output of an
+ * enrichment tool.
  *
- * The tool is thin: it parses the input, applies the agent allowlist and the [allowOtherUsers]
- * switch of its integration config, and hands the rest to [CaseLaunchService], which owns every
- * authorization rule (notably that the target user exists and can read the namespace). Another
- * caller (an AgentLoop step, say) can look the tool up by name and call [executeWithJson], reading
- * the case id from [outputSchema], or call [CaseLaunchService] directly.
+ * The tool parses the input and applies the two rules of its integration config: the agent
+ * allowlist, and [allowOtherUsers], the only check on who may name another user. [CaseLaunchService]
+ * then checks the target user (exists, reads the namespace, has the agent deployed) and starts the
+ * case; it applies no rule of its own to the caller. Another caller (an AgentLoop step, say)
+ * therefore goes through this tool, calling [executeWithJson] and reading the case id from its
+ * structured output, rather than calling [CaseLaunchService] directly.
  *
- * ## Two layers of constraint on `userId` -- same pattern as `queryUser`
+ * ## `userId`: the schema guides, [execute] enforces -- same pattern as `queryUser`
  *
  * `userId` only appears in [inputSchema] when [allowOtherUsers] is on. That *guides* the LLM; the
- * check in [execute] and the permission rule in [CaseLaunchService] are what *enforce*, because an
- * LLM can and does send fields its schema does not declare.
+ * check in [execute] is what *enforces*, because an LLM can and does send fields its schema does not
+ * declare. The caller's own id designates the current user, and is accepted either way.
  *
  * @param configName The integration config name, used as tool-name prefix.
  * @param allowedAgents Glob patterns (`*` wildcard, case-insensitive) of the agents this instance
@@ -155,69 +157,72 @@ class CreateCaseTool(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
-        val callerId = context.userId
-        val callerCaseId = context.caseId
-        val targetUserId = input?.userId?.takeIf { it.isNotBlank() }
-        val parsedTarget = targetUserId?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-        return when {
-            input == null || input.agentName.isBlank() || input.prompt.isBlank() ->
-                ToolExecutionResult.error("Both agentName and prompt are required.", errorType = "MISSING_INPUT")
-            callerId == null ->
-                ToolExecutionResult.error(
+        if (input == null || input.agentName.isBlank() || input.prompt.isBlank()) {
+            return ToolExecutionResult.error("Both agentName and prompt are required.", errorType = "MISSING_INPUT")
+        }
+        val callerId =
+            context.userId
+                ?: return ToolExecutionResult.error(
                     "Starting a case requires a user context (userId is null).",
                     errorType = "MISSING_USER_CONTEXT",
                 )
-            callerCaseId == null ->
-                ToolExecutionResult.error(
+        val callerCaseId =
+            context.caseId
+                ?: return ToolExecutionResult.error(
                     "Starting a case requires the calling case (the tool context has no case events).",
                     errorType = "MISSING_CASE_CONTEXT",
                 )
-            !isAgentAllowed(input.agentName) ->
-                ToolExecutionResult.error(
-                    "Agent '${input.agentName}' cannot be started by this tool.",
-                    errorType = "UNAUTHORIZED_AGENT",
-                )
-            targetUserId != null && !allowOtherUsers ->
-                ToolExecutionResult.error(
-                    "This tool may only start cases for the current user.",
-                    errorType = "FORBIDDEN",
-                )
-            targetUserId != null && parsedTarget == null ->
-                ToolExecutionResult.error("userId must be a valid UUID.", errorType = "INVALID_INPUT")
-            else ->
-                when (
-                    val outcome =
-                        caseLaunchService.launch(
-                            CaseLaunchRequest(
-                                callerUserId = callerId,
-                                callerNamespaceId = context.namespaceId,
-                                callerCaseId = callerCaseId,
-                                agentName = input.agentName,
-                                task = input.prompt,
-                                targetUserId = parsedTarget,
-                                title = input.title?.takeIf { it.isNotBlank() },
-                                context = input.context?.takeIf { it.isNotEmpty() },
-                            ),
-                        )
-                ) {
-                    is CaseLaunchOutcome.Refused ->
-                        ToolExecutionResult.error(outcome.message, errorType = outcome.reason.name)
-                    is CaseLaunchOutcome.Launched ->
-                        ToolExecutionResult.success(
-                            "Case ${outcome.caseId} started for agent '${outcome.agentName}'. " +
-                                "It runs in the background on its own; its result is not returned here.",
-                            metadata =
-                                mapOf(
-                                    "caseId" to outcome.caseId.toString(),
-                                    "namespaceId" to outcome.namespaceId.toString(),
-                                    "userId" to outcome.userId.toString(),
-                                    "agentName" to outcome.agentName,
-                                ),
-                            structuredOutput = objectMapper.createObjectNode().put("caseId", outcome.caseId.toString()),
-                        )
-                }
+        if (!isAgentAllowed(input.agentName)) {
+            return ToolExecutionResult.error(
+                "Agent '${input.agentName}' cannot be started by this tool.",
+                errorType = "UNAUTHORIZED_AGENT",
+            )
         }
+        val requestedUserId = input.userId?.takeIf { it.isNotBlank() }
+        val parsedUserId = requestedUserId?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        if (requestedUserId != null && parsedUserId == null) {
+            return ToolExecutionResult.error("userId must be a valid UUID.", errorType = "INVALID_INPUT")
+        }
+        // The caller's own id designates the current user, which needs no switch.
+        val targetUserId = parsedUserId?.takeIf { it != callerId }
+        if (targetUserId != null && !allowOtherUsers) {
+            return ToolExecutionResult.error(
+                "This tool may only start cases for the current user.",
+                errorType = "FORBIDDEN",
+            )
+        }
+        return caseLaunchService
+            .launch(
+                CaseLaunchRequest(
+                    callerUserId = callerId,
+                    callerNamespaceId = context.namespaceId,
+                    callerCaseId = callerCaseId,
+                    agentName = input.agentName,
+                    task = input.prompt,
+                    targetUserId = targetUserId,
+                    title = input.title?.takeIf { it.isNotBlank() },
+                    context = input.context?.takeIf { it.isNotEmpty() },
+                ),
+            ).toToolResult()
     }
+
+    private fun CaseLaunchOutcome.toToolResult(): ToolExecutionResult =
+        when (this) {
+            is CaseLaunchOutcome.Refused -> ToolExecutionResult.error(message, errorType = reason.name)
+            is CaseLaunchOutcome.Launched ->
+                ToolExecutionResult.success(
+                    "Case $caseId started for agent '$agentName'. " +
+                        "It runs in the background on its own; its result is not returned here.",
+                    metadata =
+                        mapOf(
+                            "caseId" to caseId.toString(),
+                            "namespaceId" to namespaceId.toString(),
+                            "userId" to userId.toString(),
+                            "agentName" to agentName,
+                        ),
+                    structuredOutput = objectMapper.createObjectNode().put("caseId", caseId.toString()),
+                )
+        }
 
     companion object {
         private val objectMapper = jacksonObjectMapper()

@@ -70,7 +70,7 @@ enum class CaseLaunchRefusal {
     /** The agent is unknown, disabled or not deployed to the target user: the three look the same. */
     AGENT_NOT_AVAILABLE,
 
-    /** Creating or starting the case failed. Nothing was left behind. */
+    /** Creating or starting the case failed. A case that was created is soft-deleted. */
     LAUNCH_FAILED,
 }
 
@@ -92,7 +92,8 @@ enum class CaseLaunchRefusal {
  *
  * Then it creates the case, gives the target user ADMIN on it (as `CaseController.create` does for
  * the creator) and sends the prompt, addressed to the agent with an `@mention`, as that user. If one
- * of those last two steps fails the case is deleted again, so no empty conversation is left behind.
+ * of those last two steps fails the case is soft-deleted, so no empty conversation shows up. An ADMIN
+ * grant already made is not revoked.
  *
  * The session context of the first message is exactly what the caller passed in
  * [CaseLaunchRequest.context], usually the output of an enrichment tool: the calling case's own
@@ -118,46 +119,57 @@ class CaseLaunchService(
             doLaunch(request)
         } catch (refusal: Refusal) {
             logger.info { "[CaseLaunch] refused (${refusal.reason}): ${refusal.explanation}" }
-            CaseLaunchOutcome.Refused(refusal.reason, refusal.explanation)
+            CaseLaunchOutcome.Refused(reason = refusal.reason, message = refusal.explanation)
         }
 
     private fun doLaunch(request: CaseLaunchRequest): CaseLaunchOutcome.Launched {
         val targetUser = resolveTargetUser(request)
-        val agentName = resolveAgentName(request.agentName, request.callerNamespaceId, targetUser.id)
+        val agentName =
+            resolveAgentName(
+                requested = request.agentName,
+                namespaceId = request.callerNamespaceId,
+                userId = targetUser.id,
+            )
 
         val case = createCase(request)
-        startConversation(case, targetUser, agentName, request)
+        startConversation(case = case, targetUser = targetUser, agentName = agentName, request = request)
 
         logger.info {
             "[CaseLaunch] case ${case.id} launched: agent='$agentName' user=${targetUser.id} " +
                 "namespace=${request.callerNamespaceId} origin=${request.callerCaseId} (by user ${request.callerUserId})"
         }
-        return CaseLaunchOutcome.Launched(case.id, case.namespaceId, targetUser.id, agentName)
+        return CaseLaunchOutcome.Launched(
+            caseId = case.id,
+            namespaceId = case.namespaceId,
+            userId = targetUser.id,
+            agentName = agentName,
+        )
     }
 
     private fun resolveTargetUser(request: CaseLaunchRequest): User {
-        val caller =
-            userService.findById(request.callerUserId)
-                ?: refuse(CaseLaunchRefusal.CALLER_NOT_FOUND, "The calling user no longer exists.")
         val targetId = request.targetUserId
-        return when {
-            targetId == null || targetId == caller.id -> caller
-            else -> {
-                val target = userService.findById(targetId) ?: refuse(CaseLaunchRefusal.USER_NOT_FOUND, "No such user.")
-                if (!hasNamespacePermission(target.id, request.callerNamespaceId, Action.READ)) {
-                    refuse(CaseLaunchRefusal.NO_ACCESS, "The target user has no access to this namespace.")
-                }
-                target
-            }
+        if (targetId == null || targetId == request.callerUserId) {
+            return userService.findById(request.callerUserId)
+                ?: refuse(CaseLaunchRefusal.CALLER_NOT_FOUND, "The calling user no longer exists.")
         }
+        val target = userService.findById(targetId) ?: refuse(CaseLaunchRefusal.USER_NOT_FOUND, "No such user.")
+        if (!canReadNamespace(userId = target.id, namespaceId = request.callerNamespaceId)) {
+            refuse(CaseLaunchRefusal.NO_ACCESS, "The target user has no access to this namespace.")
+        }
+        return target
     }
 
     /** Namespace READ is membership. */
-    private fun hasNamespacePermission(
+    private fun canReadNamespace(
         userId: UUID,
         namespaceId: UUID,
-        action: Action,
-    ): Boolean = permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), action)
+    ): Boolean =
+        permissionService.hasPermission(
+            userId = userId.toString(),
+            entityType = EntityType.NAMESPACE,
+            entityId = namespaceId.toString(),
+            action = Action.READ,
+        )
 
     /**
      * The agent as it is actually named (casing), if deployed to the user in the namespace.
@@ -170,7 +182,11 @@ class CaseLaunchService(
         userId: UUID,
     ): String =
         agentConfigService
-            .findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, requested.lowercase())
+            .findDeployedByNamespaceIdAndUserIdAndName(
+                namespaceId = namespaceId,
+                userId = userId,
+                agentName = requested.lowercase(),
+            )
             .firstOrNull { it.name.equals(requested, ignoreCase = true) }
             ?.name
             ?: refuse(
@@ -198,7 +214,8 @@ class CaseLaunchService(
 
     /**
      * Gives the target user ADMIN on [case] and sends the first message as them. The case exists by now, so
-     * a failure deletes it again rather than leaving an empty conversation nobody can open.
+     * a failure soft-deletes it rather than leaving an empty conversation. An ADMIN grant already made is
+     * not revoked.
      */
     private fun startConversation(
         case: Case,
@@ -208,10 +225,10 @@ class CaseLaunchService(
     ) {
         try {
             permissionService.grantPermission(
-                targetUser.id.toString(),
-                EntityType.CASE,
-                case.id.toString(),
-                PermissionRelation.ADMIN,
+                userId = targetUser.id.toString(),
+                entityType = EntityType.CASE,
+                entityId = case.id.toString(),
+                relation = PermissionRelation.ADMIN,
             )
             // The @mention routes the message to the agent through the normal agent selection.
             caseService.addMessage(
@@ -224,7 +241,7 @@ class CaseLaunchService(
             logger.error(e) { "[CaseLaunch] starting case ${case.id} for user ${targetUser.id} failed, deleting it" }
             runCatching { caseService.delete(case.id) }
                 .onFailure { logger.warn(it) { "[CaseLaunch] could not delete the half-started case ${case.id}" } }
-            refuse(CaseLaunchRefusal.LAUNCH_FAILED, "The case could not be started. Nothing was created.")
+            refuse(CaseLaunchRefusal.LAUNCH_FAILED, "The case could not be started.")
         }
     }
 
