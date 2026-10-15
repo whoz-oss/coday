@@ -1,6 +1,7 @@
 package io.whozoss.agentos.casePlugin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -38,7 +39,7 @@ class CreateCaseToolUnitSpec :
         ) = ToolContext(namespaceId = namespaceId, userId = user, userExternalId = "ext", caseEvents = events)
 
         fun launched(agentName: String = "Reporter") =
-            CaseLaunchOutcome.Launched(caseId = newCaseId, namespaceId = namespaceId, userId = userId, agentName = agentName)
+            CaseLaunchOutcome.Launched(caseId = newCaseId, userId = userId, agentName = agentName)
 
         fun service(outcome: CaseLaunchOutcome = launched()) = mockk<CaseLaunchService> { every { launch(any()) } returns outcome }
 
@@ -266,7 +267,6 @@ class CreateCaseToolUnitSpec :
             result.success shouldBe true
             result.output shouldContain newCaseId.toString()
             result.metadata["caseId"] shouldBe newCaseId.toString()
-            result.metadata["namespaceId"] shouldBe namespaceId.toString()
             result.metadata["userId"] shouldBe userId.toString()
             result.structuredOutput!!["caseId"].asText() shouldBe newCaseId.toString()
         }
@@ -281,14 +281,23 @@ class CreateCaseToolUnitSpec :
         }
 
         "a refusal becomes a tool error carrying its reason as errorType, and no structured output" {
-            val t = tool(service(CaseLaunchOutcome.Refused(CaseLaunchRefusal.NO_ACCESS, "No.")))
+            val t = tool(service(CaseLaunchOutcome.Refused(CaseLaunchRefusal.TARGET_NO_ACCESS, "No.")))
 
             val result = t.execute(CreateCaseTool.Input("Reporter", "prompt"), context())
 
             result.success shouldBe false
-            result.errorType shouldBe "NO_ACCESS"
+            result.errorType shouldBe "TARGET_NO_ACCESS"
             result.output shouldBe "No."
             result.structuredOutput shouldBe null
+        }
+
+        "a failure of the service is not caught by the tool: it is left to the agent layer" {
+            val launcher =
+                mockk<CaseLaunchService> { every { launch(any()) } throws IllegalStateException("Neo4j unavailable") }
+
+            shouldThrow<IllegalStateException> {
+                tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt"), context())
+            }
         }
 
         // -------------------------------------------------------------------------

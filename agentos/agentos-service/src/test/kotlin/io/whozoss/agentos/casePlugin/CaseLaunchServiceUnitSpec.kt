@@ -1,8 +1,8 @@
 package io.whozoss.agentos.casePlugin
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
@@ -141,7 +141,6 @@ class CaseLaunchServiceUnitSpec :
 
             val case = f.created.single()
             outcome.caseId shouldBe case.id
-            outcome.namespaceId shouldBe namespaceId
             outcome.userId shouldBe caller.id
             case.originCaseId shouldBe callerCaseId
             case.namespaceId shouldBe namespaceId
@@ -262,11 +261,11 @@ class CaseLaunchServiceUnitSpec :
             f.created shouldBe emptyList()
         }
 
-        "a calling user that no longer exists is refused" {
+        "a calling user that no longer exists is a bug, not a refusal: it is thrown" {
             val f = Fixture()
             every { f.userService.findById(caller.id) } returns null
 
-            f.service.launch(request()).refusal().reason shouldBe CaseLaunchRefusal.CALLER_NOT_FOUND
+            shouldThrow<IllegalStateException> { f.service.launch(request()) }
             f.created shouldBe emptyList()
         }
 
@@ -313,7 +312,7 @@ class CaseLaunchServiceUnitSpec :
             f.namespacePermission(other, Action.READ, false)
 
             f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)).refusal().reason shouldBe
-                CaseLaunchRefusal.NO_ACCESS
+                CaseLaunchRefusal.TARGET_NO_ACCESS
             f.created shouldBe emptyList()
         }
 
@@ -332,7 +331,7 @@ class CaseLaunchServiceUnitSpec :
             every { f.userService.findById(ghost) } returns null
 
             f.service.launch(request(targetUserId = ghost, allowOtherUsers = true)).refusal().reason shouldBe
-                CaseLaunchRefusal.USER_NOT_FOUND
+                CaseLaunchRefusal.TARGET_USER_NOT_FOUND
             f.created shouldBe emptyList()
         }
 
@@ -348,49 +347,48 @@ class CaseLaunchServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Failures
+        // Failures: thrown as is, never turned into refusals
         // -------------------------------------------------------------------------
 
-        "any other failure to create the case is reported without leaking its message, and nothing else happens" {
+        "a failure to look a user up is thrown as is, before anything is created" {
+            val f = Fixture()
+            every { f.userService.findById(caller.id) } throws IllegalStateException("Neo4j unavailable")
+
+            shouldThrow<IllegalStateException> { f.service.launch(request()) }.message shouldBe "Neo4j unavailable"
+            f.created shouldBe emptyList()
+        }
+
+        "a failure to create the case is thrown as is, and nothing else happens" {
             val f = Fixture()
             f.createFailure = IllegalStateException("boom")
 
-            val refusal = f.service.launch(request()).refusal()
-
-            refusal.reason shouldBe CaseLaunchRefusal.LAUNCH_FAILED
-            refusal.message shouldNotContain "boom"
+            shouldThrow<IllegalStateException> { f.service.launch(request()) }.message shouldBe "boom"
             f.sent shouldBe emptyList()
             verify(exactly = 0) { f.permissionService.grantPermission(any(), any(), any(), any()) }
         }
 
-        "when the ADMIN grant fails the case is deleted and no message is sent" {
+        "when the ADMIN grant fails the case is deleted, no message is sent, and the failure is thrown" {
             val f = Fixture()
             f.grantFailure = RuntimeException("Neo4j unavailable")
 
-            val refusal = f.service.launch(request()).refusal()
-
-            refusal.reason shouldBe CaseLaunchRefusal.LAUNCH_FAILED
-            refusal.message shouldNotContain "Neo4j"
+            shouldThrow<RuntimeException> { f.service.launch(request()) }.message shouldBe "Neo4j unavailable"
             f.deleted shouldBe listOf(f.created.single().id)
             f.sent shouldBe emptyList()
         }
 
-        "when the first message cannot be sent the case is deleted" {
+        "when the first message cannot be sent the case is deleted and the failure is thrown" {
             val f = Fixture()
             f.sendFailure = IllegalStateException("boom")
 
-            val refusal = f.service.launch(request()).refusal()
-
-            refusal.reason shouldBe CaseLaunchRefusal.LAUNCH_FAILED
-            refusal.message shouldNotContain "boom"
+            shouldThrow<IllegalStateException> { f.service.launch(request()) }.message shouldBe "boom"
             f.deleted shouldBe listOf(f.created.single().id)
         }
 
-        "it is still refused when deleting the half-started case fails too" {
+        "the original failure is thrown even when deleting the half-started case fails too" {
             val f = Fixture()
             f.grantFailure = RuntimeException("grant failed")
             f.deleteFailure = RuntimeException("delete also failed")
 
-            f.service.launch(request()).refusal().reason shouldBe CaseLaunchRefusal.LAUNCH_FAILED
+            shouldThrow<RuntimeException> { f.service.launch(request()) }.message shouldBe "grant failed"
         }
     })

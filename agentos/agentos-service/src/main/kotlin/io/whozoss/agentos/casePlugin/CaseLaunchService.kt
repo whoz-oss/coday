@@ -50,37 +50,36 @@ sealed interface CaseLaunchOutcome {
     /** The case exists and its first turn has been handed to the runtime; it runs in the background. */
     data class Launched(
         val caseId: UUID,
-        val namespaceId: UUID,
         val userId: UUID,
         val agentName: String,
     ) : CaseLaunchOutcome
 
-    /** Nothing was created. [message] is safe to show to the LLM. */
+    /**
+     * A business refusal, decided before anything is written: nothing was created. [message] is safe to
+     * show to the LLM.
+     */
     data class Refused(
         val reason: CaseLaunchRefusal,
         val message: String,
     ) : CaseLaunchOutcome
 }
 
-/** Why a launch was refused. The name is the stable `errorType` the `CreateCase` tool reports. */
+/**
+ * Why a launch was refused: a business rule, never a failure. The name is the stable `errorType` the
+ * `CreateCase` tool reports.
+ */
 enum class CaseLaunchRefusal {
-    /** The calling user no longer exists. */
-    CALLER_NOT_FOUND,
-
     /** The request names another user, which [CaseLaunchRequest.allowOtherUsers] does not allow. */
     OTHER_USERS_NOT_ALLOWED,
 
     /** The target user does not exist. */
-    USER_NOT_FOUND,
+    TARGET_USER_NOT_FOUND,
 
     /** The target user cannot read the namespace. */
-    NO_ACCESS,
+    TARGET_NO_ACCESS,
 
     /** The agent is unknown, disabled or not deployed to the target user: the three look the same. */
     AGENT_NOT_AVAILABLE,
-
-    /** Creating or starting the case failed. A case that was created is soft-deleted. */
-    LAUNCH_FAILED,
 }
 
 /**
@@ -102,16 +101,24 @@ enum class CaseLaunchRefusal {
  *
  * Then it creates the case, gives the target user ADMIN on it (as `CaseController.create` does for
  * the creator) and sends the prompt, addressed to the agent with an `@mention`, as that user. If one
- * of those last two steps fails the case is soft-deleted, so no empty conversation shows up. An ADMIN
- * grant already made is not revoked.
+ * of those last two steps fails the case is soft-deleted, so no empty conversation shows up, and the
+ * failure is rethrown. An ADMIN grant already made is not revoked.
+ *
+ * **Who checks what.** This service owns the rules that protect users: who the case runs for
+ * ([CaseLaunchRequest.allowOtherUsers], the target's access to the namespace) and which agent may work
+ * for them (deployed to the target). The `CreateCase` tool validates its input and scopes what its
+ * integration instance may launch (the agent allowlist); those checks are not repeated here.
  *
  * The session context of the first message is exactly what the caller passed in
  * [CaseLaunchRequest.context], usually the output of an enrichment tool: the calling case's own
  * context is never inherited, so the caller hands over only the relevant part. An empty context
  * counts as none.
  *
- * Refusals are thrown as a private exception and turned into [CaseLaunchOutcome.Refused] at the
- * single exit of [launch]; the exception never leaves this class.
+ * **Refusals and failures.** A [CaseLaunchOutcome.Refused] is a business decision, taken before anything
+ * is written. Anything else (an infrastructure failure, a bug, a calling user that vanished) is thrown as
+ * is, like any tool failure, to the caller's error boundary: for a tool call, the agent layer, which logs
+ * it and reports it to the LLM. Refusals travel as a private exception, turned into
+ * [CaseLaunchOutcome.Refused] at the single exit of [launch]; that exception never leaves this class.
  *
  * [caseService] is a `@Lazy` proxy: `CaseService` depends on `AgentService`, which depends on the
  * tool registry that collects the plugin using this class, so resolving it eagerly would close a
@@ -124,6 +131,7 @@ class CaseLaunchService(
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
 ) {
+    /** [CaseLaunchOutcome.Refused] for a business refusal; any other failure is thrown. */
     fun launch(request: CaseLaunchRequest): CaseLaunchOutcome =
         try {
             doLaunch(request)
@@ -148,12 +156,7 @@ class CaseLaunchService(
             "[CaseLaunch] case ${case.id} launched: agent='$agentName' user=${targetUser.id} " +
                 "namespace=${request.callerNamespaceId} origin=${request.callerCaseId} (by user ${request.callerUserId})"
         }
-        return CaseLaunchOutcome.Launched(
-            caseId = case.id,
-            namespaceId = case.namespaceId,
-            userId = targetUser.id,
-            agentName = agentName,
-        )
+        return CaseLaunchOutcome.Launched(caseId = case.id, userId = targetUser.id, agentName = agentName)
     }
 
     private fun resolveTargetUser(request: CaseLaunchRequest): User {
@@ -167,17 +170,17 @@ class CaseLaunchService(
         }
     }
 
+    /** The caller comes from the run, whose user was checked when it started: missing, it is a bug. */
     private fun resolveCaller(callerUserId: UUID): User =
-        userService.findById(callerUserId)
-            ?: refuse(CaseLaunchRefusal.CALLER_NOT_FOUND, "The calling user no longer exists.")
+        checkNotNull(userService.findById(callerUserId)) { "Calling user $callerUserId no longer exists" }
 
     private fun resolveOtherUser(
         userId: UUID,
         namespaceId: UUID,
     ): User {
-        val user = userService.findById(userId) ?: refuse(CaseLaunchRefusal.USER_NOT_FOUND, "No such user.")
+        val user = userService.findById(userId) ?: refuse(CaseLaunchRefusal.TARGET_USER_NOT_FOUND, "No such user.")
         if (!canReadNamespace(userId = user.id, namespaceId = namespaceId)) {
-            refuse(CaseLaunchRefusal.NO_ACCESS, "The target user has no access to this namespace.")
+            refuse(CaseLaunchRefusal.TARGET_NO_ACCESS, "The target user has no access to this namespace.")
         }
         return user
     }
@@ -217,28 +220,20 @@ class CaseLaunchService(
                 "Agent '$requested' is not available to the target user in this namespace.",
             )
 
-    /**
-     * Creates the case, tracing the calling one as its origin. A failure of `create` is not detailed:
-     * the message could leak details the LLM has no use for.
-     */
+    /** Creates the case, tracing the calling one as its origin. */
     private fun createCase(request: CaseLaunchRequest): Case =
-        try {
-            caseService.create(
-                Case(
-                    namespaceId = request.callerNamespaceId,
-                    title = (request.title?.takeIf { it.isNotBlank() } ?: request.task).take(MAX_TITLE_LENGTH),
-                    originCaseId = request.callerCaseId,
-                ),
-            )
-        } catch (e: Exception) {
-            logger.error(e) { "[CaseLaunch] creating a case from ${request.callerCaseId} failed" }
-            refuse(CaseLaunchRefusal.LAUNCH_FAILED, "The case could not be started. Nothing was created.")
-        }
+        caseService.create(
+            Case(
+                namespaceId = request.callerNamespaceId,
+                title = (request.title?.takeIf { it.isNotBlank() } ?: request.task).take(MAX_TITLE_LENGTH),
+                originCaseId = request.callerCaseId,
+            ),
+        )
 
     /**
      * Gives the target user ADMIN on [case] and sends the first message as them. The case exists by now, so
-     * a failure soft-deletes it rather than leaving an empty conversation. An ADMIN grant already made is
-     * not revoked.
+     * a failure soft-deletes it rather than leaving an empty conversation, then is rethrown for the caller
+     * to report. An ADMIN grant already made is not revoked.
      */
     private fun startConversation(
         case: Case,
@@ -261,10 +256,11 @@ class CaseLaunchService(
                 sessionContext = request.context?.takeIf { it.isNotEmpty() },
             )
         } catch (e: Exception) {
-            logger.error(e) { "[CaseLaunch] starting case ${case.id} for user ${targetUser.id} failed, deleting it" }
+            // The failure itself is logged by whoever handles it; this only records the compensation.
+            logger.warn { "[CaseLaunch] starting case ${case.id} for user ${targetUser.id} failed, deleting it" }
             runCatching { caseService.delete(case.id) }
                 .onFailure { logger.warn(it) { "[CaseLaunch] could not delete the half-started case ${case.id}" } }
-            refuse(CaseLaunchRefusal.LAUNCH_FAILED, "The case could not be started.")
+            throw e
         }
     }
 

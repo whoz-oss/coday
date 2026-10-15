@@ -36,9 +36,10 @@ import java.util.UUID
  * The tool parses the input, applies the agent allowlist of its integration config, and hands the
  * rest to [CaseLaunchService] along with the [allowOtherUsers] switch of that config. The service owns
  * every rule on users: whether another user may be named at all, and whether that user exists, reads
- * the namespace and has the agent deployed. Another caller (an AgentLoop step, say) can look the tool
- * up by name and call [executeWithJson], reading the case id from its structured output, so that the
- * integration's config applies to it too.
+ * the namespace and has the agent deployed. A failure of the service other than a refusal is not caught
+ * here: like any tool failure, it reaches the agent layer, which logs it and reports it to the LLM.
+ * Another caller (an AgentLoop step, say) can look the tool up by name and call [executeWithJson],
+ * reading the case id from its structured output, so that the integration's config applies to it too.
  *
  * ## `userId`: the schema guides, the service enforces -- same pattern as `queryUser`
  *
@@ -210,7 +211,6 @@ class CreateCaseTool(
                     metadata =
                         mapOf(
                             "caseId" to caseId.toString(),
-                            "namespaceId" to namespaceId.toString(),
                             "userId" to userId.toString(),
                             "agentName" to agentName,
                         ),
