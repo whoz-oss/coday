@@ -83,6 +83,7 @@ export class AiModelFormComponent implements OnInit {
     temperature: new FormControl<number | null>(null),
     contextWindow: new FormControl<number | null>(null),
     maxCompletionTokens: new FormControl<number | null>(null),
+    reasoningEffort: new FormControl<string>('', { nonNullable: true }),
     pricing: new FormGroup({
       inputMTokens: new FormControl<number | null>(null),
       outputMTokens: new FormControl<number | null>(null),
@@ -122,6 +123,13 @@ export class AiModelFormComponent implements OnInit {
   protected get maxCompletionTokensControl() {
     return this.form.controls.maxCompletionTokens
   }
+
+  protected get reasoningEffortControl() {
+    return this.form.controls.reasoningEffort
+  }
+
+  /** Values accepted by OpenAI models; each model supports a subset. Empty = provider default. */
+  protected readonly reasoningEffortOptions = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
   protected get pricingGroup() {
     return this.form.controls.pricing
@@ -171,6 +179,7 @@ export class AiModelFormComponent implements OnInit {
           this.temperatureControl.setValue(model.temperature ?? null)
           this.contextWindowControl.setValue(model.contextWindow ?? null)
           this.maxCompletionTokensControl.setValue(model.maxCompletionTokens ?? null)
+          this.reasoningEffortControl.setValue(model.reasoningEffort ?? '')
           this.pricingGroup.setValue({
             inputMTokens: model.pricing?.inputMTokens ?? null,
             outputMTokens: model.pricing?.outputMTokens ?? null,
@@ -224,6 +233,7 @@ export class AiModelFormComponent implements OnInit {
       temperature: raw.temperature ?? undefined,
       contextWindow: raw.contextWindow ?? undefined,
       maxCompletionTokens: raw.maxCompletionTokens ?? undefined,
+      reasoningEffort: raw.reasoningEffort || undefined,
       pricing,
     }
 

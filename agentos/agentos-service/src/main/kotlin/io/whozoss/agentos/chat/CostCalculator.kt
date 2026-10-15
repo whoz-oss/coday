@@ -67,6 +67,13 @@ object CostCalculator : KLogging() {
                     val cached = details?.let { count(it, "cachedTokens") } ?: 0L
                     Input((prompt - cached).coerceAtLeast(0), cached, 0)
                 }
+                // Responses API usage: inputTokens includes the cached part, as promptTokens does.
+                AiApiType.OpenAIResponses -> {
+                    val input = count(native, "inputTokens")
+                    val details = native.javaClass.getMethod("inputTokensDetails").invoke(native)
+                    val cached = details?.let { count(it, "cachedTokens") } ?: 0L
+                    Input((input - cached).coerceAtLeast(0), cached, 0)
+                }
                 else -> null // Counts cannot be reliably normalised for these providers yet.
             }
         }.getOrElse {

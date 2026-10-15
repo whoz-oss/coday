@@ -56,6 +56,10 @@ okhttp = "4.12.0"
 # jolokia-support-spring is the Spring Boot 3.x (Jakarta EE) native artifact.
 jolokia = "2.6.1"
 
+# Official OpenAI Java SDK — client for the OpenAI Responses API, which Spring AI 1.1.x does not cover.
+# Built on Jackson 2 (requires >= 2.13.4, rejects only 2.18.1) and OkHttp 4.12, both already on the classpath.
+openaiJava = "4.80.0"
+
 # MCP Java SDK 2.0 — uses mcp-core + mcp-json-jackson2 for Jackson 2.x compatibility.
 # The parent artifact 'mcp' pulls mcp-json-jackson3 by default — use mcp-core + mcp-json-jackson2 instead.
 mcpSdk = "2.0.0"
@@ -138,6 +142,9 @@ spring-ai-ollama = { module = "org.springframework.ai:spring-ai-starter-model-ol
 spring-ai-openai = { module = "org.springframework.ai:spring-ai-starter-model-openai" }
 spring-ai-mcp-client = { module = "org.springframework.ai:spring-ai-starter-mcp-client" }
 spring-ai-bom = { module = "org.springframework.ai:spring-ai-bom", version.ref = "springAi" }
+
+# OpenAI Java SDK (core + OkHttp client) — backs the OpenAIResponses provider type
+openai-java = { module = "com.openai:openai-java", version.ref = "openaiJava" }
 
 # Jackson
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson" }

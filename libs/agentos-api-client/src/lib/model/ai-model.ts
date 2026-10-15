@@ -20,6 +20,7 @@ export interface AiModel {
   namespaceId?: string
   pricing?: ModelPricing
   priority: number
+  reasoningEffort?: string
   temperature?: number
   userId?: string
 }

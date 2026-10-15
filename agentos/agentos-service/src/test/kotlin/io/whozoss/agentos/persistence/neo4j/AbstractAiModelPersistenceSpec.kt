@@ -125,6 +125,17 @@ abstract class AbstractAiModelPersistenceSpec : StringSpec() {
             found.first().alias shouldBe "small"
         }
 
+        "save and findByIds round-trips reasoningEffort, absent by default" {
+            val provider = providerRepo.save(aiProvider())
+            val withEffort = repo.save(aiModel(aiProviderId = provider.id, apiName = "gpt-6-sol").copy(reasoningEffort = "none"))
+            val withoutEffort = repo.save(aiModel(aiProviderId = provider.id, apiName = "gpt-6-astra"))
+
+            val found = repo.findByIds(listOf(withEffort.id, withoutEffort.id)).associateBy { it.id }
+
+            found.getValue(withEffort.id).reasoningEffort shouldBe "none"
+            found.getValue(withoutEffort.id).reasoningEffort shouldBe null
+        }
+
         // -------------------------------------------------------------------------
         // findByParent
         // -------------------------------------------------------------------------

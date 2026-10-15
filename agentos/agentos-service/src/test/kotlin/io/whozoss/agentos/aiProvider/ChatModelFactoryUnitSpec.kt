@@ -7,6 +7,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.chat.OpenAiResponsesChatModel
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import org.springframework.ai.anthropic.AnthropicChatModel
@@ -109,6 +110,62 @@ class ChatModelFactoryUnitSpec : StringSpec({
         model.shouldNotBeNull()
         model.shouldBeInstanceOf<OpenAiChatModel>()
     }
+
+    "OpenAI chat model sends the configured reasoning effort and omits it by default" {
+        val withEffort = factory.createChatModel(
+            apiType = AiApiType.OpenAI,
+            baseUrl = "https://api.openai.com",
+            apiKey = "key",
+            modelName = "gpt-6-sol",
+            reasoningEffort = "none",
+        )
+        val withoutEffort = factory.createChatModel(
+            apiType = AiApiType.OpenAI,
+            baseUrl = "https://api.openai.com",
+            apiKey = "key",
+            modelName = "gpt-6-sol",
+        )
+
+        (withEffort.defaultOptions as OpenAiChatOptions).reasoningEffort shouldBe "none"
+        (withoutEffort.defaultOptions as OpenAiChatOptions).reasoningEffort shouldBe null
+    }
+
+    "OpenAIResponses builds a Responses API model that sends temperature only when configured" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.OpenAIResponses,
+            baseUrl = "https://api.openai.com",
+            apiKey = "key",
+            modelName = "gpt-6-astra",
+            maxCompletionTokens = 8000,
+            reasoningEffort = "high",
+        )
+
+        model.shouldBeInstanceOf<OpenAiResponsesChatModel>()
+        val options = model.defaultOptions as OpenAiChatOptions
+        options.model shouldBe "gpt-6-astra"
+        options.temperature shouldBe null
+        options.maxCompletionTokens shouldBe 8000
+        options.reasoningEffort shouldBe "high"
+    }
+
+    "OpenAIResponses accepts a null apiKey and a null baseUrl" {
+        val model = factory.createChatModel(
+            apiType = AiApiType.OpenAIResponses,
+            baseUrl = null,
+            apiKey = null,
+            modelName = "gpt-6-sol",
+        )
+
+        model.shouldBeInstanceOf<OpenAiResponsesChatModel>()
+    }
+
+    "Responses API base URL gets the version segment the OpenAI SDK expects, once" {
+        ChatModelFactory.responsesApiBaseUrl("https://api.openai.com") shouldBe "https://api.openai.com/v1"
+        ChatModelFactory.responsesApiBaseUrl("https://api.openai.com/") shouldBe "https://api.openai.com/v1"
+        ChatModelFactory.responsesApiBaseUrl("https://api.openai.com/v1") shouldBe "https://api.openai.com/v1"
+        ChatModelFactory.responsesApiBaseUrl("https://router.eu.requesty.ai/v1/") shouldBe "https://router.eu.requesty.ai/v1"
+    }
+
     listOf(AiApiType.OpenAI, AiApiType.vLLM).forEach { apiType ->
         "${apiType} requests stream usage only after explicit opt in" {
             val defaultModel = factory.createChatModel(apiType, "http://localhost:8000", "test", "test")

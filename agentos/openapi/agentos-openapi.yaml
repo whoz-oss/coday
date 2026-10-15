@@ -4149,6 +4149,8 @@ components:
         priority:
           type: integer
           format: int32
+        reasoningEffort:
+          type: string
         temperature:
           type: number
           format: double
@@ -4168,6 +4170,7 @@ components:
           type: string
           enum:
           - OpenAI
+          - OpenAIResponses
           - Anthropic
           - Gemini
           - vLLM

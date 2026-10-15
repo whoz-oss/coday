@@ -21,6 +21,7 @@ export interface AiProvider {
 }
 export enum AiProviderApiTypeEnum {
   OpenAI = 'OpenAI',
+  OpenAIResponses = 'OpenAIResponses',
   Anthropic = 'Anthropic',
   Gemini = 'Gemini',
   vLLM = 'vLLM',

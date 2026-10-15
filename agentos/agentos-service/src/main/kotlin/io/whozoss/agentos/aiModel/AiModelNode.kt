@@ -47,6 +47,7 @@ data class AiModelNode(
     val pricingOutputMTokens: Double? = null,
     val pricingCacheRead: Double? = null,
     val pricingCacheWrite: Double? = null,
+    val reasoningEffort: String? = null,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -91,6 +92,7 @@ data class AiModelNode(
             maxCompletionTokens = maxCompletionTokens,
             contextWindow = contextWindow,
             pricing = pricing,
+            reasoningEffort = reasoningEffort,
         )
     }
 
@@ -112,6 +114,7 @@ data class AiModelNode(
                 pricingOutputMTokens = model.pricing?.outputMTokens,
                 pricingCacheRead = model.pricing?.cacheRead,
                 pricingCacheWrite = model.pricing?.cacheWrite,
+                reasoningEffort = model.reasoningEffort,
                 created = model.metadata.created,
                 createdBy = model.metadata.createdBy,
                 modified = model.metadata.modified,
