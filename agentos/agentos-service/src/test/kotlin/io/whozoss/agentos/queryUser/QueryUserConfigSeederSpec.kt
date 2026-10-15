@@ -9,11 +9,10 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -86,9 +85,9 @@ class QueryUserConfigSeederSpec : StringSpec({
     "a non-conflict failure still propagates" {
         val service = mockk<IntegrationConfigService>()
         every { service.findByTriple(null, null, QueryUserConfigSeeder.DEFAULT_CONFIG_NAME) } returns null
-        every { service.create(any()) } throws ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, "bad")
+        every { service.create(any()) } throws UnprocessableEntityException("bad")
 
-        shouldThrow<ResponseStatusException> {
+        shouldThrow<UnprocessableEntityException> {
             seeder(enabledByDefault = true, service = service).seed()
         }
     }
