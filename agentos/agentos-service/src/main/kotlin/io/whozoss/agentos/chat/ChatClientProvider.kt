@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
  *
  * When usage is enabled, tracking is applied to the model so every call/stream terminal and internal tool
- * round goes through accounting and the cost gate. Clients outside agent execution
+ * round goes through accounting and the cost gate. A cost reported by the provider (e.g. Requesty
+ * `usage.cost`) replaces the estimate computed from [AiModel.pricing] for that request. Clients outside agent execution
  * (no accumulator) retain their existing behaviour.
  */
 @Service
@@ -34,6 +35,8 @@ class ChatClientProvider(
         caseId: String? = null,
         accumulator: UsageAccumulator? = null,
     ): ChatClient {
+        val tracked = usageConfig.enabled && accumulator != null
+        val providerCost = if (tracked) ProviderReportedCost() else null
         val chatModel =
             chatModelFactory.createChatModel(
                 apiType = providerConfig.apiType,
@@ -43,15 +46,17 @@ class ChatClientProvider(
                 temperature = modelConfig.temperature,
                 maxCompletionTokens = modelConfig.maxCompletionTokens,
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
+                providerCost = providerCost,
             )
         val trackedModel =
-            if (usageConfig.enabled && accumulator != null) {
+            if (tracked) {
                 UsageTrackingChatModel(
                     chatModel,
-                    accumulator,
+                    accumulator!!,
                     providerConfig.apiType,
                     modelConfig,
                     maxToolRounds = limits.agentMaxIterations,
+                    providerCost = providerCost,
                 )
             } else {
                 chatModel

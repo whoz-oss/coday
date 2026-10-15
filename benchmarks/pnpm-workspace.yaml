@@ -1,0 +1,10 @@
+# Standalone pnpm root: promptfoo's dependency tree stays out of the main workspace lockfile,
+# so installing it cannot re-resolve peers of the Coday/AgentOS packages.
+packages: []
+# Not needed by the CLI or the AgentOS providers (browser download, local ONNX models, …).
+ignoredBuiltDependencies:
+  - '@playwright/browser-chromium'
+  - '@swc/core'
+  - esbuild
+  - onnxruntime-node
+  - protobufjs
