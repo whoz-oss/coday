@@ -33,24 +33,25 @@ import java.util.UUID
  * reaches the new case, so the caller hands over just the relevant part, typically the output of an
  * enrichment tool.
  *
- * The tool parses the input and applies the two rules of its integration config: the agent
- * allowlist, and [allowOtherUsers], the only check on who may name another user. [CaseLaunchService]
- * then checks the target user (exists, reads the namespace, has the agent deployed) and starts the
- * case; it applies no rule of its own to the caller. Another caller (an AgentLoop step, say)
- * therefore goes through this tool, calling [executeWithJson] and reading the case id from its
- * structured output, rather than calling [CaseLaunchService] directly.
+ * The tool parses the input, applies the agent allowlist of its integration config, and hands the
+ * rest to [CaseLaunchService] along with the [allowOtherUsers] switch of that config. The service owns
+ * every rule on users: whether another user may be named at all, and whether that user exists, reads
+ * the namespace and has the agent deployed. Another caller (an AgentLoop step, say) can look the tool
+ * up by name and call [executeWithJson], reading the case id from its structured output, so that the
+ * integration's config applies to it too.
  *
- * ## `userId`: the schema guides, [execute] enforces -- same pattern as `queryUser`
+ * ## `userId`: the schema guides, the service enforces -- same pattern as `queryUser`
  *
  * `userId` only appears in [inputSchema] when [allowOtherUsers] is on. That *guides* the LLM; the
- * check in [execute] is what *enforces*, because an LLM can and does send fields its schema does not
- * declare. The caller's own id designates the current user, and is accepted either way.
+ * service, given the switch, is what *enforces*, because an LLM can and does send fields its schema
+ * does not declare. The caller's own id designates the current user, and is accepted either way.
  *
  * @param configName The integration config name, used as tool-name prefix.
  * @param allowedAgents Glob patterns (`*` wildcard, case-insensitive) of the agents this instance
  *   may start. An agent must match one of them and none of [deniedAgents].
  * @param deniedAgents Exact agent names (case-insensitive) that are never started.
- * @param allowOtherUsers Whether the caller may start the case for a user other than itself.
+ * @param allowOtherUsers Whether the caller may start the case for a user other than itself. Handed
+ *   to [CaseLaunchService], which enforces it.
  */
 class CreateCaseTool(
     configName: String?,
@@ -179,17 +180,9 @@ class CreateCaseTool(
             )
         }
         val requestedUserId = input.userId?.takeIf { it.isNotBlank() }
-        val parsedUserId = requestedUserId?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-        if (requestedUserId != null && parsedUserId == null) {
+        val targetUserId = requestedUserId?.let { runCatching { UUID.fromString(it) }.getOrNull() }
+        if (requestedUserId != null && targetUserId == null) {
             return ToolExecutionResult.error("userId must be a valid UUID.", errorType = "INVALID_INPUT")
-        }
-        // The caller's own id designates the current user, which needs no switch.
-        val targetUserId = parsedUserId?.takeIf { it != callerId }
-        if (targetUserId != null && !allowOtherUsers) {
-            return ToolExecutionResult.error(
-                "This tool may only start cases for the current user.",
-                errorType = "FORBIDDEN",
-            )
         }
         return caseLaunchService
             .launch(
@@ -202,6 +195,7 @@ class CreateCaseTool(
                     targetUserId = targetUserId,
                     title = input.title?.takeIf { it.isNotBlank() },
                     context = input.context?.takeIf { it.isNotEmpty() },
+                    allowOtherUsers = allowOtherUsers,
                 ),
             ).toToolResult()
     }

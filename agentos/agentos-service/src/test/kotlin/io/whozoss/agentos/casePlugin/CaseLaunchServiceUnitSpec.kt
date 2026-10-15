@@ -115,7 +115,18 @@ class CaseLaunchServiceUnitSpec :
             targetUserId: UUID? = null,
             title: String? = null,
             context: Map<String, Any?>? = null,
-        ) = CaseLaunchRequest(caller.id, namespaceId, callerCaseId, agentName, task, targetUserId, title, context)
+            allowOtherUsers: Boolean = false,
+        ) = CaseLaunchRequest(
+            callerUserId = caller.id,
+            callerNamespaceId = namespaceId,
+            callerCaseId = callerCaseId,
+            agentName = agentName,
+            task = task,
+            targetUserId = targetUserId,
+            title = title,
+            context = context,
+            allowOtherUsers = allowOtherUsers,
+        )
 
         fun CaseLaunchOutcome.refusal() = shouldBeInstanceOf<CaseLaunchOutcome.Refused>()
 
@@ -260,13 +271,25 @@ class CaseLaunchServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Another user: no administration right required
+        // Another user: allowed by the switch, no administration right required
         // -------------------------------------------------------------------------
+
+        "another user is refused unless the request allows other users, before the target is even looked up" {
+            val f = Fixture()
+
+            f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe
+                CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
+            f.created shouldBe emptyList()
+            verify(exactly = 0) { f.userService.findById(other.id) }
+        }
 
         "a plain member can start a case for another user, who is the one given ADMIN on it" {
             val f = Fixture()
 
-            val outcome = f.service.launch(request(targetUserId = other.id)).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
+            val outcome =
+                f.service
+                    .launch(request(targetUserId = other.id, allowOtherUsers = true))
+                    .shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
 
             outcome.userId shouldBe other.id
             f.sent.single().actor.id shouldBe other.id.toString()
@@ -289,7 +312,8 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.namespacePermission(other, Action.READ, false)
 
-            f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe CaseLaunchRefusal.NO_ACCESS
+            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)).refusal().reason shouldBe
+                CaseLaunchRefusal.NO_ACCESS
             f.created shouldBe emptyList()
         }
 
@@ -297,7 +321,8 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.deployAgent(other, "SomethingElse")
 
-            f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)).refusal().reason shouldBe
+                CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
 
@@ -306,11 +331,12 @@ class CaseLaunchServiceUnitSpec :
             val ghost = UUID.randomUUID()
             every { f.userService.findById(ghost) } returns null
 
-            f.service.launch(request(targetUserId = ghost)).refusal().reason shouldBe CaseLaunchRefusal.USER_NOT_FOUND
+            f.service.launch(request(targetUserId = ghost, allowOtherUsers = true)).refusal().reason shouldBe
+                CaseLaunchRefusal.USER_NOT_FOUND
             f.created shouldBe emptyList()
         }
 
-        "naming the caller itself is not 'another user' and needs no namespace permission check" {
+        "naming the caller itself is not 'another user': it needs neither the switch nor a namespace check" {
             val f = Fixture()
 
             f.service.launch(request(targetUserId = caller.id)).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()

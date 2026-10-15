@@ -20,11 +20,12 @@ import java.util.UUID
 /**
  * What a caller (today the `CreateCase` tool) asks for: start [agentName] on [task].
  *
- * The `caller*` fields describe the running case and come from it, never from LLM input.
+ * The `caller*` fields describe the running case and come from it, never from LLM input; so does
+ * [allowOtherUsers].
  *
  * @param callerCaseId The case that launches: it becomes the origin ([Case.originCaseId]) of the new one.
  * @param targetUserId The user the new case runs for. Null, or the caller itself: the caller. Any
- *   other user must exist and be able to read the namespace.
+ *   other user requires [allowOtherUsers], must exist and must be able to read the namespace.
  * @param title Name of the new conversation. Null: derived from the start of [task].
  * @param context What the caller hands to the new case, and nothing else: it becomes the session
  *   context of the first message as is. The calling case's own context is never inherited.
@@ -38,6 +39,11 @@ data class CaseLaunchRequest(
     val targetUserId: UUID? = null,
     val title: String? = null,
     val context: Map<String, Any?>? = null,
+    /**
+     * Whether [targetUserId] may name a user other than the caller. Set from the caller's own
+     * configuration (the `allowOtherUsers` switch of a `CASE_LAUNCHER` integration), never from LLM input.
+     */
+    val allowOtherUsers: Boolean = false,
 )
 
 sealed interface CaseLaunchOutcome {
@@ -60,6 +66,9 @@ sealed interface CaseLaunchOutcome {
 enum class CaseLaunchRefusal {
     /** The calling user no longer exists. */
     CALLER_NOT_FOUND,
+
+    /** The request names another user, which [CaseLaunchRequest.allowOtherUsers] does not allow. */
+    OTHER_USERS_NOT_ALLOWED,
 
     /** The target user does not exist. */
     USER_NOT_FOUND,
@@ -85,8 +94,9 @@ enum class CaseLaunchRefusal {
  * What this adds, in the order it is applied:
  *
  * 1. **Target user.** The caller, unless [CaseLaunchRequest.targetUserId] names someone else. Then
- *    the target must exist and read the namespace. No administration right is required of the caller:
- *    who may name another user is decided by the `allowOtherUsers` switch of the integration.
+ *    [CaseLaunchRequest.allowOtherUsers] must be set, and the target must exist and read the namespace.
+ *    No administration right is required of the caller: the switch, set by whoever configured the
+ *    caller, is what decides.
  * 2. **Agent access.** The agent must be deployed to the target user in the namespace: the same
  *    condition as addressing it with an `@mention`.
  *
@@ -147,16 +157,29 @@ class CaseLaunchService(
     }
 
     private fun resolveTargetUser(request: CaseLaunchRequest): User {
-        val targetId = request.targetUserId
-        if (targetId == null || targetId == request.callerUserId) {
-            return userService.findById(request.callerUserId)
-                ?: refuse(CaseLaunchRefusal.CALLER_NOT_FOUND, "The calling user no longer exists.")
+        // Null when the case runs for the caller: no userId, or the caller's own.
+        val otherUserId = request.targetUserId?.takeIf { it != request.callerUserId }
+        return when {
+            otherUserId == null -> resolveCaller(request.callerUserId)
+            !request.allowOtherUsers ->
+                refuse(CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED, "Cases can only be started for the current user.")
+            else -> resolveOtherUser(userId = otherUserId, namespaceId = request.callerNamespaceId)
         }
-        val target = userService.findById(targetId) ?: refuse(CaseLaunchRefusal.USER_NOT_FOUND, "No such user.")
-        if (!canReadNamespace(userId = target.id, namespaceId = request.callerNamespaceId)) {
+    }
+
+    private fun resolveCaller(callerUserId: UUID): User =
+        userService.findById(callerUserId)
+            ?: refuse(CaseLaunchRefusal.CALLER_NOT_FOUND, "The calling user no longer exists.")
+
+    private fun resolveOtherUser(
+        userId: UUID,
+        namespaceId: UUID,
+    ): User {
+        val user = userService.findById(userId) ?: refuse(CaseLaunchRefusal.USER_NOT_FOUND, "No such user.")
+        if (!canReadNamespace(userId = user.id, namespaceId = namespaceId)) {
             refuse(CaseLaunchRefusal.NO_ACCESS, "The target user has no access to this namespace.")
         }
-        return target
+        return user
     }
 
     /** Namespace READ is membership. */

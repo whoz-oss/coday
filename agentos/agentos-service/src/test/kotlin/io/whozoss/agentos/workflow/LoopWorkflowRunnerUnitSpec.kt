@@ -465,7 +465,10 @@ class LoopWorkflowRunnerUnitSpec :
             f.answer = {
                 if (first) {
                     first = false
-                    ToolExecutionResult.error("This tool may only start cases for the current user.", errorType = "FORBIDDEN")
+                    ToolExecutionResult.error(
+                        "Cases can only be started for the current user.",
+                        errorType = "OTHER_USERS_NOT_ALLOWED",
+                    )
                 } else {
                     f.success(UUID.randomUUID().also { f.launchedIds += it })
                 }

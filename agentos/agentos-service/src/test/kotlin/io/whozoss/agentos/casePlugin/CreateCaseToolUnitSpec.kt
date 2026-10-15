@@ -162,28 +162,29 @@ class CreateCaseToolUnitSpec :
         // Another user
         // -------------------------------------------------------------------------
 
-        "a userId is refused when the integration does not allow other users, even if the LLM sends it anyway" {
-            val launcher = service()
+        "the integration's allowOtherUsers switch is handed to the service, which enforces it" {
+            listOf(false, true).forEach { allowed ->
+                val request = slot<CaseLaunchRequest>()
+                val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
+
+                tool(launcher, allowOtherUsers = allowed)
+                    .execute(CreateCaseTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
+
+                request.captured.allowOtherUsers shouldBe allowed
+                request.captured.targetUserId shouldBe targetId
+            }
+        }
+
+        "a userId the service refuses because other users are not allowed comes back as its refusal" {
+            val refused =
+                CaseLaunchOutcome.Refused(reason = CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED, message = "No.")
 
             val result =
-                tool(launcher, allowOtherUsers = false)
+                tool(service(refused), allowOtherUsers = false)
                     .execute(CreateCaseTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
 
             result.success shouldBe false
-            result.errorType shouldBe "FORBIDDEN"
-            verify(exactly = 0) { launcher.launch(any()) }
-        }
-
-        "the caller's own id is the current user, accepted even when other users are not allowed" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
-
-            val result =
-                tool(launcher, allowOtherUsers = false)
-                    .execute(CreateCaseTool.Input("Reporter", "prompt", userId = userId.toString()), context())
-
-            result.success shouldBe true
-            request.captured.targetUserId shouldBe null
+            result.errorType shouldBe "OTHER_USERS_NOT_ALLOWED"
         }
 
         "a userId that is not a UUID is INVALID_INPUT, whether or not other users are allowed" {
