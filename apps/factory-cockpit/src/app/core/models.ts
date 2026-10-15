@@ -1,0 +1,534 @@
+export type SandboxStatus = 'working' | 'idle' | 'failed' | 'blocked' | 'waiting_human' | 'destroyed'
+export type RunStatus = 'running' | 'succeeded' | 'failed' | 'queued'
+export type Tone = 'violet' | 'cyan' | 'amber' | 'green' | 'blue' | 'red' | 'neutral'
+
+/** Segment de la barre de phases (request · plan · code · build…) */
+export interface PhaseSegment {
+  key: string
+  /** Nom lisible de la step (name du backend quand il diffère de l'id, ou libellé synthétique). */
+  label?: string
+  ratio: number // part de la durée totale (0–1)
+  tone: Tone
+  status: 'done' | 'failed' | 'blocked' | 'cancelled' | 'indeterminate' | 'running' | 'waiting_human' | 'pending'
+}
+
+export type RunCardState = 'pending' | 'running' | 'waiting_human' | 'blocked' | 'succeeded' | 'failed'
+
+export interface RunSummary {
+  id: string
+  workflow: string
+  status: RunStatus
+  /** Detailed card state derived from the same enriched data as SessionDetail. */
+  cardState?: RunCardState
+  currentPhase?: string
+  /**
+   * True when at least one step is in `waiting_human` state.
+   * Kept separate from `status` (which stays `'running'`) so the global
+   * sandbox badge is not affected — only the run detail chip changes.
+   */
+  waitingHuman?: boolean
+  goal: string
+  costUsd: number
+  /**
+   * Number of cost-incurring units whose price is unknown. When > 0 the
+   * displayed `costUsd` is only a LOWER BOUND: it must never be shown as an
+   * exact figure. Absent/0 means the cost is considered complete.
+   */
+  unknownCostCount?: number
+  durationSec: number
+  tokens: number
+  phases: PhaseSegment[]
+}
+
+/**
+ * One Factory run, DERIVED from a real workflow snapshot.
+ *
+ * The container fleet itself has no backend API; the available truth is the
+ * list of workflows, so every real field below is mapped from a
+ * `/api/factory/workflows` item.
+ *
+ * `id` (the workflow id) is the unique run identity: it is the ONLY key the UI
+ * may use to target an action. `namespaceId` is the workstream attribution and
+ * is carried strictly in projections/mappings.
+ */
+export interface FactoryRun {
+  /** Unique run identity (workflow id). */
+  id: string
+  /** Workflow type (e.g. `adw_simple_sdlc`), when known. */
+  workflowType?: string
+  /** Lifecycle status of the run. */
+  status: SandboxStatus
+  /**
+   * Workstream attribution of the underlying workflow, when known. Runs without
+   * one are regrouped into an explicit `unassigned` workstream.
+   */
+  namespaceId?: string
+  /** Human-readable title of the run. */
+  title: string
+  /** Project the run belongs to (namespace id when known). */
+  project: string
+  /** Jira/issue ticket carried through the workflow relations, when known. */
+  ticket?: string
+  branch?: string
+  /**
+   * ISO-8601 creation timestamp of the workflow: when the `WorkflowProjection`
+   * node was first written to Neo4j, preserved across all subsequent updates.
+   * Absent when the backend did not return the field (e.g. non-governed
+   * declarative projections). An unparseable value is dropped at mapping time.
+   */
+  createdAt?: string
+  /** Real cost of the run (USD). */
+  costUsd: number
+  /** Total run duration in seconds. */
+  durationSec: number
+  /** Total tokens consumed by the run. */
+  tokens: number
+  /** Phase-bar segments of the run. */
+  phases: PhaseSegment[]
+  /**
+   * AgentOS case id of the workflow controller execution (snapshot
+   * `controllerExecution.caseId`). This is the STARTING case created by the
+   * Factory controller to orchestrate the entire workflow run — not a
+   * question/attempt case. Absent when the backend exposes no controller case
+   * (normal state when no agent step has executed yet).
+   */
+  controllerCaseId?: string
+  finalCostUsd?: number // destroyed runs (only set when a real teardown exists)
+  /** Full run summary (status, current phase, goal…). */
+  run?: RunSummary
+}
+
+/**
+ * Visible workstream: every run grouped by its `namespaceId`.
+ *
+ * Grouping is done STRICTLY on `namespaceId` (never on the human title), so two
+ * namespaces sharing the same display name remain distinct groups (homonyms).
+ */
+export interface WorkstreamView {
+  namespaceId: string
+  title: string
+  runs: FactoryRun[]
+}
+
+/** Fallback workstream id for runs whose `namespaceId` is unknown. */
+export const UNASSIGNED_NAMESPACE_ID = 'unassigned'
+
+/** @deprecated Use {@link FactoryRun}. Kept as an alias for compatibility. */
+export type Sandbox = FactoryRun
+
+export interface RecentTask {
+  title: string
+  log: string
+  costUsd: number
+}
+
+export interface CostSummary {
+  /** Number of active workflows (= number of derived sandbox cards). */
+  active: number
+  /** Sum of the real workflow costs (`RunSummary.costUsd`). */
+  workflowsUsd: number
+  /** Real total: currently equal to `workflowsUsd` (no other real source). */
+  totalUsd: number
+  /** @deprecated no real source: was a mocked Archay orchestrator cost. */
+  archayUsd?: number
+  /** @deprecated no real source: was a mocked destroyed-sandbox total. */
+  destroyedUsd?: number
+  /**
+   * Sum of the {@link RunSummary.unknownCostCount} of the active runs. When
+   * > 0 the aggregated `workflowsUsd`/`totalUsd` are lower bounds.
+   */
+  unknownCostCount?: number
+}
+
+/* ───── Session ───── */
+
+export interface SessionStep {
+  key: string
+  tone: Tone
+  status: 'done' | 'running' | 'failed' | 'blocked' | 'waiting_human' | 'pending'
+  durationSec?: number
+}
+
+export type TimelineStepStatus =
+  | 'pending'
+  | 'ready'
+  | 'running'
+  | 'waiting_human'
+  | 'completed'
+  | 'failed'
+  | 'indeterminate'
+  | 'cancelled'
+
+export interface TimelineBlock {
+  label: string
+  /**
+   * Stable step id (source step, not the attempt-suffixed composite id).
+   * Used as the selection key so clicking any attempt of the same step
+   * selects the same panel and the selection survives SSE refreshes.
+   */
+  stepId?: string
+  description?: string
+  startSec: number
+  endSec: number
+  status: TimelineStepStatus
+  ticksSec?: number[] // instants d'événements (petits traits)
+  errorTicksSec?: number[]
+  /** Agent name of the attempt that produced this block, when known. */
+  agentName?: string
+  /** Attempt id of the attempt that produced this block, when known. */
+  attemptId?: string
+  /** Attempt number of the attempt that produced this block, when known. */
+  attemptNumber?: number
+  /** AgentOS case id of the attempt, when known. */
+  caseId?: string
+  /** Failure code of the attempt, when it failed. */
+  failureCode?: string
+}
+
+export interface TimelineLane {
+  id: string
+  label: string
+  subtitle: string // rôle ou modèle
+  kind: 'human' | 'workspace' | 'agent'
+  tone: Tone
+  contextPct?: number
+  request?: TimelineBlock // bloc placé dans la colonne « request »
+  blocks: TimelineBlock[]
+}
+
+export type RunEventType = 'phase_start' | 'log' | 'agent_start' | 'thinking' | 'tool_call' | 'agent_message'
+
+export interface RunEvent {
+  time: string // HH:mm:ss
+  type: RunEventType
+  tool?: string // read, write, bash, ls…
+  text: string
+  /** Message body without the actor label, when the source exposes one. */
+  messageText?: string
+  /** Human-readable actor label for message detail views. */
+  actorLabel?: string
+  durationSec?: number
+  /** Bounded structured diagnostics for Factory-owned code execution. */
+  codeDiagnostic?: {
+    verification?: string
+    state: 'running' | 'passed' | 'failed' | 'timed_out' | 'refused'
+    command?: string
+    code?: string
+    message?: string
+    exitCode?: number
+    stdout?: { excerpt: string; truncated: boolean; sha256?: string }
+    stderr?: { excerpt: string; truncated: boolean; sha256?: string }
+    failedTasks?: string[]
+    technical?: Record<string, string | number | boolean>
+  }
+}
+
+/**
+ * A single real agent execution attempt, mapped from the backend
+ * `DurableAgentAttemptDto` exposed by
+ * `GET /api/factory/workflows/:id/attempts`.
+ */
+export interface AgentAttempt {
+  attemptId: string
+  stepId: string
+  attemptNumber: number
+  agentName: string
+  status: string
+  caseId: string
+  failureCode?: string
+  resultEvidenceId?: string
+  revision?: number
+  createdAt?: string
+  startedAt?: string
+  completedAt?: string
+}
+
+/**
+ * Stable selection key for a clicked timeline block.
+ *
+ * Carries the three identifiers needed to correlate the detail panel, the
+ * case link, AND the event log with the exact attempt that was clicked:
+ * - `stepId`  — stable across SSE refreshes (survives attempt retries)
+ * - `attemptId` — identifies the specific retry; absent for non-agent blocks
+ * - `caseId`  — AgentOS case of that attempt; absent when unknown
+ *
+ * Using only `stepId` as the selection key (the previous behaviour) caused
+ * the Events panel to always show the LAST attempt's events even when the
+ * user clicked an older retry bar.
+ */
+export interface BlockSelection {
+  /** Stable step id — used as the panel key and SSE-refresh anchor. */
+  stepId: string
+  /** Specific attempt id of the clicked block, when known. */
+  attemptId?: string
+  /** AgentOS case id of the clicked attempt, when known. */
+  caseId?: string
+}
+
+/**
+ * One concrete entry rendered inside a {@link PhaseSection} (a gate, a real
+ * output/evidence item, an agent configuration line…). Only real fields are
+ * carried; a missing field is left absent rather than fabricated.
+ */
+export interface PhaseSectionItem {
+  title: string
+  subtitle?: string
+  status?: string
+  details?: string
+  actions?: Array<{ id: string; label: string }>
+}
+
+/**
+ * One accordion section of the phase detail panel.
+ *
+ * `count` is only meaningful when the underlying collection is actually known.
+ * `notAvailable` marks a section whose backend data does not exist yet: the UI
+ * must show an explicit "unavailable" message and never a misleading `count: 0`.
+ */
+export interface PhaseSection {
+  label: string
+  count?: number
+  body?: string
+  items?: PhaseSectionItem[]
+  notAvailable?: boolean
+}
+
+export interface PhaseDetail {
+  name: string
+  stepId?: string
+  status: RunStatus
+  stepStatus: TimelineStepStatus
+  durationSec: number
+  owner: string
+  kind: string
+  attempt: string
+  /** Highest `attemptNumber` observed for the active step (real attempts only). */
+  currentAttemptNumber?: number
+  /** Number of real attempts recorded for the active step. */
+  totalAttempts?: number
+  /** Real attempts recorded for the active step. */
+  attempts?: AgentAttempt[]
+  /** Agent name of the current attempt, when known. */
+  agentName?: string
+  /** Status of the current attempt (e.g. running, completed, failed). */
+  attemptStatus?: string
+  /** Case id of the current attempt, when known. */
+  caseId?: string
+  /** Failure code of the current attempt, when it failed. */
+  failureCode?: string
+  sections: PhaseSection[]
+}
+
+export type AgentQuestionType = 'FREE_TEXT' | 'SINGLE_CHOICE' | 'OPEN_CHOICE' | string
+
+export interface AgentQuestion {
+  questionEventId: string
+  caseId: string
+  attemptId: string
+  stepId: string
+  question: string
+  questionType: AgentQuestionType
+  options?: string[]
+  answered: boolean
+  case?: {
+    id: string
+    namespaceId: string
+    workflowId: string
+    stepId: string
+  }
+}
+
+/**
+ * Result of a successful supervisor case creation, returned by
+ * {@link FactoryStore.openSupervisorCase}.
+ */
+export interface SupervisorCaseResult {
+  /** The newly created AgentOS case id. */
+  caseId: string
+  /** The namespace id the case was created in. */
+  namespaceId: string
+  /**
+   * The relative AgentOS UI URL (`/agentos/home?ns=...&case=...`).
+   * The caller uses this to navigate an already-open window, avoiding
+   * popup-blocker rejection (the window must be opened synchronously before
+   * the async case-creation call).
+   */
+  agentOsUrl: string
+}
+
+export interface HumanInteraction {
+  interactionId: string
+  workflowId?: string
+  stepId: string
+  interactionType: string
+  status: string
+  revision?: number
+  prompt?: string
+  questionType?: AgentQuestionType
+  options?: string[]
+  actions?: Array<{ id: string; label: string }>
+  recipient?: string
+  recipientRole?: string
+  namespaceId?: string
+  createdAt?: string
+}
+
+/* ───── Governed actions & blockers (backend authority) ───── */
+
+/** Stable `type` values of an {@link AllowedAction} (backend `WorkflowActionTypes`). */
+export type AllowedActionType = 'reply' | 'retry' | 'cancel_attempt' | 'continue_cost' | 'stop_cost'
+
+/**
+ * One action the backend explicitly authorizes from the workflow's current
+ * state. The cockpit may ONLY display/trigger actions present in
+ * `allowedActions`; it never derives one itself and never fabricates the target
+ * identity or the expected revision it must be fenced on.
+ */
+export interface AllowedAction {
+  type: AllowedActionType
+  label?: string
+  interactionId?: string
+  stepId?: string
+  attemptId?: string
+  caseId?: string
+  questionEventId?: string
+  /** Revision the executing command must carry (interaction/attempt/workflow). */
+  expectedRevision?: number
+}
+
+/** Stable `code` values of a {@link WorkflowBlocker} (backend `WorkflowBlockerCodes`). */
+export type BlockerCode =
+  | 'WAITING_HUMAN_INTERACTION'
+  | 'STEP_BLOCKED'
+  | 'ATTEMPT_FAILED'
+  | 'REAL_COST_PAUSED'
+  | 'VERIFICATION_FAILED'
+  | 'UNKNOWN_RUNTIME'
+
+/** One active blocker preventing a workflow from progressing unattended. */
+export interface WorkflowBlocker {
+  code: BlockerCode
+  /** Human-readable label (backend `message`, falling back to the code). */
+  label: string
+  stepId?: string
+  message?: string
+  details?: string
+}
+
+/** Normalized payload of `GET /api/factory/workflows/:id/actions`. */
+export interface GetActionsResponse {
+  allowedActions: AllowedAction[]
+  blockers: WorkflowBlocker[]
+}
+
+export interface SessionDetail {
+  id: string
+  sandbox: string
+  goal: string
+  /**
+   * AgentOS case id of the workflow controller execution (snapshot
+   * `controllerExecution.caseId`). Same source as {@link Sandbox.controllerCaseId}.
+   * Absent when the backend exposes no controller case.
+   */
+  controllerCaseId?: string
+  status: RunStatus
+  /** Authoritative execution state, kept separate from the coarse run status. */
+  executionState: TimelineStepStatus
+  /** True only while execution is actively progressing (never while waiting for a human). */
+  activelyRunning: boolean
+  startedAt: string // ISO
+  /** Canonical absolute origin used for every relative timeline coordinate. */
+  timelineOriginAt?: string
+  workflow: string
+  costUsd: number
+  /**
+   * Number of cost-incurring units whose price is unknown (see
+   * {@link RunSummary.unknownCostCount}). When > 0 `costUsd` is a lower bound.
+   */
+  unknownCostCount?: number
+  durationSec: number
+  tokens: number
+  tokensRead: number
+  tokensWritten: number
+  steps: SessionStep[]
+  lanes: TimelineLane[]
+  nowSec: number
+  events: RunEvent[]
+  phase: PhaseDetail
+  /**
+   * Human interactions (gates/approvals/checkpoints) attached to the workflow,
+   * surfaced read-only. Absent when the backend exposes none (or when the
+   * enrichment call failed and degraded gracefully).
+   */
+  interactions?: HumanInteraction[]
+  /**
+   * Real agent execution attempts attached to the workflow, surfaced read-only.
+   * Absent when the backend exposes none (or when the enrichment failed).
+   */
+  attempts?: AgentAttempt[]
+  /**
+   * Attempt id the cockpit may cancel right now, resolved from real state
+   * (a `cancel_attempt` allowed action, else a running attempt). Absent when no
+   * active attempt is resolvable: the stop action is then unavailable and the
+   * cockpit must never fabricate an id.
+   */
+  activeAttemptId?: string
+  /**
+   * Revision the cancel command must be fenced on for {@link activeAttemptId},
+   * taken verbatim from the backend. Undefined when the backend exposes none.
+   */
+  activeAttemptRevision?: number
+  /**
+   * Actions the backend explicitly authorizes from the current state (see
+   * `GET /api/factory/workflows/:id/actions`). The cockpit renders an action
+   * button ONLY when it is present here. Absent/empty means nothing is allowed.
+   */
+  allowedActions?: AllowedAction[]
+  /**
+   * Active blockers that prevent the workflow from progressing unattended.
+   * Empty when none are active or when the fetch degraded gracefully.
+   */
+  blockers?: WorkflowBlocker[]
+  /** Active durable AgentOS queryUser questions projected for this workflow. */
+  agentQuestions?: AgentQuestion[]
+  /** Read failure of the question projection; case metadata enables a safe fallback link. */
+  agentQuestionsError?: {
+    code: string
+    message: string
+    caseId?: string
+    namespaceId?: string
+    workflowId?: string
+    stepId?: string
+  }
+  /**
+   * Per-step phase details indexed by stepId, built from the full steps list.
+   * Populated after enrichment so the UI can show the correct detail for the
+   * selected step instead of always showing the "active" phase.
+   */
+  phaseByStepId?: Map<string, PhaseDetail>
+
+  /**
+   * Events filtered by stepId, pre-computed from evidence + interactions.
+   *
+   * Keyed by stepId (same key used for panel selection). Each entry contains
+   * only the events that belong to that step (across all its attempts).
+   * Used by the Events panel when a step is selected but no specific attempt
+   * is targeted.
+   *
+   * Absent when no enrichment data is available (evidence not yet loaded).
+   */
+  eventsByStepId?: Map<string, RunEvent[]>
+
+  /**
+   * Events filtered by attemptId, pre-computed from evidence.
+   *
+   * Keyed by attemptId. Each entry contains only the events that can be
+   * correlated to that specific attempt (via `resultEvidenceId` or
+   * `attemptId` field on the evidence item).
+   *
+   * When an attempt has no correlated evidence the map entry is an empty
+   * array — this is distinct from the key being absent (which means the
+   * attempt was unknown at map-build time).
+   */
+  eventsByAttemptId?: Map<string, RunEvent[]>
+}

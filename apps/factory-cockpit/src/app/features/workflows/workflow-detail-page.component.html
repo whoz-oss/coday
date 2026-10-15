@@ -1,0 +1,28 @@
+<div class="page">
+  <header class="page-head">
+    <a mat-stroked-button class="sf-secondary back-btn" [routerLink]="backLink" data-workflow-back>
+      <mat-icon>arrow_back</mat-icon>
+      Back
+    </a>
+    <div class="titles">
+      <h1 class="sf-mono" data-workflow-detail-type>{{ workflowType }}&#64;{{ version }}</h1>
+      @if (definition()?.title; as title) {
+        <p class="sf-muted" data-workflow-detail-title>{{ title }}</p>
+      }
+    </div>
+  </header>
+
+  @if (loading()) {
+    <div class="state" data-workflow-detail-loading>
+      <mat-progress-spinner diameter="32" mode="indeterminate" />
+      <span class="sf-muted">Loading definition…</span>
+    </div>
+  } @else if (error(); as message) {
+    <div class="banner banner--warn" role="alert" data-workflow-detail-error>
+      <mat-icon aria-hidden="true">cloud_off</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  } @else if (definition(); as def) {
+    <pre class="json-block" data-workflow-detail-json><code>{{ formatJson(def) }}</code></pre>
+  }
+</div>

@@ -1,0 +1,12 @@
+# Activates the embedded Neo4j persistence mode explicitly.
+#
+# `factory.persistence.mode=embedded-neo4j` is already the default in
+# application.yml; this profile file makes the mode and dynamic Bolt port explicit.
+# EmbeddedNeo4jConfiguration resolves the port assigned by the OS and constructs
+# the Driver directly.
+#
+# Activate with: --spring.profiles.active=embedded-neo4j
+factory:
+  persistence:
+    mode: embedded-neo4j
+    embedded-bolt-port: 0

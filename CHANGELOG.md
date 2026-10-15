@@ -1,13 +1,3 @@
-## 3.35.2 (2026-10-15)
-
-### 🩹 Fixes
-
-- **agentos-service:** #35451 transform ResponseStatusException to AgentOs <Status>Exception ([#1449](https://github.com/whoz-oss/coday/pull/1449), [#35451](https://github.com/whoz-oss/coday/issues/35451))
-
-### ❤️ Thank You
-
-- Vincent Couturier - Whoz @vincent-couturier-whoz
-
 ## 3.35.1 (2026-10-15)
 
 ### 🩹 Fixes
@@ -7016,4 +7006,3 @@ This was a version bump only, there were no code changes.
 ### ❤️ Thank You
 
 - vincent.audibert
-
