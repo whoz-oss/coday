@@ -137,12 +137,10 @@ class ToolResolverService(
                 }
                 emptyList()
             }
-        logger.trace {
-            "[ToolResolver] Plugin ${config.integrationType} provided ${tools.size} tools " +
+        logger.info {
+            "[ToolResolver] Plugin ${config.integrationType} provided ${tools.size} tool(s) " +
                 "for integration '${config.name}': ${
-                    tools.joinToString(
-                        ", ",
-                    ) { it.name }
+                    tools.joinToString(", ") { it.name }
                 }"
         }
         return tools
