@@ -1,10 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, signal } from '@angular/core'
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  OnDestroy,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core'
 import { DatePipe } from '@angular/common'
-import { toSignal } from '@angular/core/rxjs-interop'
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { MatButtonModule } from '@angular/material/button'
 import { MatExpansionModule } from '@angular/material/expansion'
 import { ActivatedRoute } from '@angular/router'
-import { map } from 'rxjs'
+import { distinctUntilChanged, map, tap } from 'rxjs'
 import { AGENTOS_BASE_URL, FactoryStore, buildAgentOsCaseUrl } from '../../core/factory.store'
 import { BlockSelection, TimelineBlock } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
@@ -40,7 +50,7 @@ import { EventLogComponent } from './event-log/event-log.component'
   styleUrl: './session-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class SessionPageComponent {
+export class SessionPageComponent implements OnDestroy {
   /** Paramètre de route :runId, éventuellement lié via withComponentInputBinding. */
   readonly runId = input<string>('')
 
@@ -48,10 +58,20 @@ export class SessionPageComponent {
   protected readonly store = inject(FactoryStore)
   private readonly shell = inject(ShellState)
   private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
+  private readonly destroyRef = inject(DestroyRef)
 
-  private readonly routeRunId = toSignal(this.route.paramMap.pipe(map((p) => p.get('runId') ?? '')), {
-    initialValue: '',
-  })
+  private readonly routeRunId = toSignal(
+    this.route.paramMap.pipe(
+      map((p) => p.get('runId') ?? ''),
+      distinctUntilChanged(),
+      tap((runId) => {
+        this.selection.set(null)
+        if (runId) this.store.selectSession(runId)
+      }),
+      takeUntilDestroyed(this.destroyRef)
+    ),
+    { initialValue: '' }
+  )
 
   protected readonly effectiveRunId = computed(() => this.runId() || this.routeRunId())
   protected readonly session = computed(() => this.store.session(this.effectiveRunId()))
@@ -161,6 +181,11 @@ export class SessionPageComponent {
 
   constructor() {
     effect(() => {
+      // Component input binding may supply the id without a paramMap emission.
+      const boundRunId = this.runId()
+      if (boundRunId) this.store.selectSession(boundRunId)
+    })
+    effect(() => {
       const s = this.session()
       // Auto-select the active step on first load only (when nothing is selected).
       // After that, the user's selection is preserved through SSE refreshes.
@@ -182,6 +207,10 @@ export class SessionPageComponent {
         { label: run?.title || this.effectiveRunId(), mono: !run?.title },
       ])
     })
+  }
+
+  ngOnDestroy(): void {
+    this.store.clearSessionSelection(this.effectiveRunId())
   }
 
   protected selectBlock(b: TimelineBlock): void {

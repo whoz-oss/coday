@@ -157,6 +157,49 @@ class AgentStepResultValidationTest {
     }
 
     @Test
+    fun `accepts and parses user shaped delivery analysis with run brief and empty modified files`() {
+        val node = json(
+            """{"status":"PASS","summary":"done","claims":{"modifiedFiles":[],"deliveryAnalysis":{"baseBranch":"sprint","changeType":"bugfix","ticket":"WZ-33157","title":"Complete RAWeb 5.4 accessible table names"}},"artifacts":[{"kind":"run-brief","encoding":"markdown","content":"# Run brief"}],"findings":[{"severity":"blocking","code":"A11Y","summary":"Needs verification"}]}""",
+        )
+
+        assertThat(AgentStepResultValidation.validateBusiness(node)).isTrue()
+        val parsed = AgentStepResultValidation.parseBusiness(node)
+        assertThat(parsed.claims.modifiedFiles).isEmpty()
+        assertThat(parsed.claims.deliveryAnalysis?.baseBranch).isEqualTo("sprint")
+        assertThat(parsed.claims.deliveryAnalysis?.changeType).isEqualTo("bugfix")
+        assertThat(parsed.claims.deliveryAnalysis?.ticket).isEqualTo("WZ-33157")
+        assertThat(parsed.claims.deliveryAnalysis?.title).isEqualTo("Complete RAWeb 5.4 accessible table names")
+    }
+
+    @Test
+    fun `rejects invalid delivery analysis fields types bounds and unknown keys`() {
+        val invalid = listOf(
+            """{"changeType":"chore","ticket":"WZ-33157","title":"title"}""",
+            """{"changeType":"bugfix","ticket":"ABC-1","title":"title"}""",
+            """{"changeType":"bugfix","ticket":33157,"title":"title"}""",
+            """{"changeType":"bugfix","ticket":"WZ-33157","title":""}""",
+            """{"changeType":"bugfix","ticket":"WZ-33157","title":"${"x".repeat(201)}"}""",
+            """{"changeType":"bugfix","ticket":"WZ-33157","title":"title","baseBranch":""}""",
+            """{"changeType":"bugfix","ticket":"WZ-33157","title":"title","baseBranch":"${"x".repeat(256)}"}""",
+            """{"changeType":"bugfix","ticket":"WZ-33157","title":"title","extra":true}""",
+        )
+        invalid.forEach { delivery ->
+            val node = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[],"deliveryAnalysis":$delivery}}""")
+            assertThat(AgentStepResultValidation.validateBusiness(node)).withFailMessage(delivery).isFalse()
+        }
+    }
+
+    @Test
+    fun `rejects null delivery analysis while absence remains valid`() {
+        assertThat(AgentStepResultValidation.validateBusiness(json(
+            """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[],"deliveryAnalysis":null}}""",
+        ))).isFalse()
+        assertThat(AgentStepResultValidation.validateBusiness(json(
+            """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]}}""",
+        ))).isTrue()
+    }
+
+    @Test
     fun `rejects artifacts with the wrong encoding, empty content or unknown keys`() {
         val wrongEncoding = json(
             """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},

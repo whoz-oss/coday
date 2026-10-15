@@ -1,4 +1,4 @@
-export type SandboxStatus = 'working' | 'idle' | 'destroyed'
+export type SandboxStatus = 'working' | 'idle' | 'failed' | 'blocked' | 'waiting_human' | 'destroyed'
 export type RunStatus = 'running' | 'succeeded' | 'failed' | 'queued'
 export type Tone = 'violet' | 'cyan' | 'amber' | 'green' | 'blue' | 'red' | 'neutral'
 
@@ -9,13 +9,17 @@ export interface PhaseSegment {
   label?: string
   ratio: number // part de la durée totale (0–1)
   tone: Tone
-  status: 'done' | 'failed' | 'cancelled' | 'indeterminate' | 'running' | 'waiting_human' | 'pending'
+  status: 'done' | 'failed' | 'blocked' | 'cancelled' | 'indeterminate' | 'running' | 'waiting_human' | 'pending'
 }
+
+export type RunCardState = 'pending' | 'running' | 'waiting_human' | 'blocked' | 'succeeded' | 'failed'
 
 export interface RunSummary {
   id: string
   workflow: string
   status: RunStatus
+  /** Detailed card state derived from the same enriched data as SessionDetail. */
+  cardState?: RunCardState
   currentPhase?: string
   /**
    * True when at least one step is in `waiting_human` state.
@@ -141,7 +145,7 @@ export interface CostSummary {
 export interface SessionStep {
   key: string
   tone: Tone
-  status: 'done' | 'running' | 'waiting_human' | 'pending'
+  status: 'done' | 'running' | 'failed' | 'blocked' | 'waiting_human' | 'pending'
   durationSec?: number
 }
 
@@ -204,6 +208,19 @@ export interface RunEvent {
   /** Human-readable actor label for message detail views. */
   actorLabel?: string
   durationSec?: number
+  /** Bounded structured diagnostics for Factory-owned code execution. */
+  codeDiagnostic?: {
+    verification?: string
+    state: 'running' | 'passed' | 'failed' | 'timed_out' | 'refused'
+    command?: string
+    code?: string
+    message?: string
+    exitCode?: number
+    stdout?: { excerpt: string; truncated: boolean; sha256?: string }
+    stderr?: { excerpt: string; truncated: boolean; sha256?: string }
+    failedTasks?: string[]
+    technical?: Record<string, string | number | boolean>
+  }
 }
 
 /**
@@ -420,6 +437,8 @@ export interface SessionDetail {
   /** True only while execution is actively progressing (never while waiting for a human). */
   activelyRunning: boolean
   startedAt: string // ISO
+  /** Canonical absolute origin used for every relative timeline coordinate. */
+  timelineOriginAt?: string
   workflow: string
   costUsd: number
   /**

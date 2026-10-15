@@ -80,7 +80,7 @@ class WorkflowActionsHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `actions expose a retry action and a blocker for a blocked step`() {
+    fun `actions expose a blocker but no retry for a consequence-blocked step`() {
         publish("wf-actions-blocked", stepStatus = "blocked")
 
         val response = restTemplate.exchange(
@@ -92,9 +92,7 @@ class WorkflowActionsHttpTest : Neo4jDomainIntegrationTest() {
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
         val payload = data(response.body)
-        val retry = actions(payload).single { it["type"] == "retry" }
-        assertThat(retry["stepId"]).isEqualTo("gate")
-        assertThat(retry["expectedRevision"]).isEqualTo(1)
+        assertThat(actions(payload).none { it["type"] == "retry" }).isTrue()
         assertThat(blockers(payload).map { it["code"] }).contains("STEP_BLOCKED")
     }
 

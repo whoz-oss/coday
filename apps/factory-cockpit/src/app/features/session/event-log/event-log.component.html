@@ -118,6 +118,28 @@
             </span>
             <span class="dur"></span>
           </button>
+        } @else if (e.codeDiagnostic) {
+          <button
+            type="button"
+            class="ev-diagnostic-button"
+            [attr.aria-label]="diagnosticAriaLabel(e)"
+            (click)="openCodeDiagnostic(e)"
+          >
+            <span class="time">{{ e.time }}</span>
+            <span class="type" [class]="'t-' + e.type">{{ e.type }}</span>
+            <span class="text">
+              @if (e.tool) {
+                <b [class.write]="e.tool === 'write'">{{ e.tool }}</b>
+              }
+              {{ e.text }}
+              <span class="diagnostic-hint" aria-hidden="true">diagnostics</span>
+            </span>
+            <span class="dur" [class.slow]="(e.durationSec ?? 0) > 0.3">
+              @if (e.durationSec !== undefined) {
+                {{ e.durationSec.toFixed(2) }}s
+              }
+            </span>
+          </button>
         } @else {
           <span class="time">{{ e.time }}</span>
           <span class="type" [class]="'t-' + e.type">{{ e.type }}</span>

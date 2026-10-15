@@ -1,12 +1,12 @@
 import { Injectable, InjectionToken, computed, inject, signal } from '@angular/core'
-import { Observable, Subscription, catchError, forkJoin, of, switchMap, tap } from 'rxjs'
+import { Observable, Subscription, catchError, finalize, forkJoin, of, switchMap, tap } from 'rxjs'
 import { FactoryApiError, FactoryApiService, NamespaceItem, extractNamespaceOptions } from './factory-api.service'
 import { AgentOsApiService } from './agentos-api.service'
 import { SupervisorCaseStoreService } from './supervisor-case-store.service'
 import {
   mapProjectionToFactoryRun,
-  mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
+  mapSessionDetailToRunSummary,
   namespaceOf,
   workflowIdOf,
 } from './mappers'
@@ -160,8 +160,7 @@ export class FactoryStore {
 
   readonly costs = computed<CostSummary>(() => {
     const active = this.activeRuns()
-    // REAL: the active workflows' costs, mapped from each run's `/metrics`
-    // payload (0 when the backend exposes no run-cost).
+    // Best-known real costs from the same bounded enrichment used by cards and detail.
     const workflowsUsd = active.reduce((sum, run) => sum + (run.run?.costUsd ?? run.costUsd ?? 0), 0)
     // Uncertainty is propagated verbatim: sum of the runs' unknownCostCount.
     const unknownCostCount = active.reduce((sum, run) => sum + (run.run?.unknownCostCount ?? 0), 0)
@@ -191,54 +190,109 @@ export class FactoryStore {
     }
   >()
   private readonly subscriptions = new Subscription()
+  private overviewRequest: Subscription | null = null
+  private overviewRefreshPending = false
+  private detailRequest: Subscription | null = null
+  private detailRefreshPending = false
+  private selectedWorkflowId: string | null = null
+  /** One coalesced enrichment request per overview run; avoids duplicate N+1 bursts. */
+  private readonly overviewEnrichmentRequests = new Map<string, Subscription>()
+  private readonly overviewEnrichmentPending = new Set<string>()
 
   constructor() {
     this.load()
-    // SSE carries invalidations only: (re)fetch the authoritative REST state.
-    this.subscriptions.add(this.sse.invalidations$.subscribe(() => this.load()))
-    this.subscriptions.add(this.sse.reconnected$.subscribe(() => this.load()))
+    // SSE carries invalidations only. Refresh the overview, and only refresh
+    // expensive detail data when the invalidation targets the visible run.
+    this.subscriptions.add(
+      this.sse.invalidations$.subscribe((invalidation) => {
+        this.load()
+        if (invalidation.workflowId) this.queueOverviewEnrichment(invalidation.workflowId)
+        else this.queueAllOverviewEnrichment()
+        if (!invalidation.workflowId || invalidation.workflowId === this.selectedWorkflowId) {
+          this.refreshSelectedSession()
+        }
+      })
+    )
+    this.subscriptions.add(
+      this.sse.reconnected$.subscribe(() => {
+        this.load()
+        this.queueAllOverviewEnrichment()
+        this.refreshSelectedSession()
+      })
+    )
     this.sse.connect()
   }
 
   session(runId: string): SessionDetail | undefined {
     const real = this.sessions().get(runId)
     if (real) return real
-    // Graceful fallback to the demo session when the backend has no such run.
-    return runId === SESSION_872641A8.id ? SESSION_872641A8 : { ...SESSION_872641A8, id: runId }
+    // Keep the intentional built-in demo only; never fabricate an arbitrary
+    // real run when a scoped fetch has not found it.
+    return runId === SESSION_872641A8.id ? SESSION_872641A8 : undefined
   }
 
-  /** Public handle letting a component re-fetch the active workflow projections. */
+  /** Select the only workflow whose expensive detail endpoints may be loaded. */
+  selectSession(workflowId: string): void {
+    const id = workflowId.trim()
+    if (!id) {
+      this.clearSessionSelection()
+      return
+    }
+    if (id === this.selectedWorkflowId) {
+      this.queueDetailRefresh(id)
+      return
+    }
+    this.selectedWorkflowId = id
+    this.cancelDetailRequest()
+    this.startDetailRequest(id)
+  }
+
+  /** Leave the detail view and cancel its in-flight HTTP requests. */
+  clearSessionSelection(workflowId?: string): void {
+    if (workflowId && workflowId !== this.selectedWorkflowId) return
+    this.selectedWorkflowId = null
+    this.cancelDetailRequest()
+  }
+
+  /** Public refresh of projections plus the currently visible detail. */
   refresh(): void {
     this.load()
+    this.queueAllOverviewEnrichment()
+    this.refreshSelectedSession()
   }
 
-  /** Re-fetch the active workflow projections and re-derive the state. */
+  /** Coalesce overview invalidations, retaining one trailing refresh while active. */
   private load(): void {
-    // Fetch active AND removed workflow snapshots concurrently, plus the
-    // namespace catalogue used to title workstreams. Inner `catchError`s mean a
-    // partial backend failure (e.g. the removed endpoint unavailable) still
-    // yields the other half instead of breaking the load. `getNamespaces()`
-    // already degrades to `[]`, so a namespace failure never blocks the run
-    // projection (workstream titles simply fall back to their ids).
-    forkJoin({
+    if (this.overviewRequest) {
+      this.overviewRefreshPending = true
+      return
+    }
+    this.overviewRequest = this.loadOverview()
+      .pipe(
+        finalize(() => {
+          this.overviewRequest = null
+          if (this.overviewRefreshPending) {
+            this.overviewRefreshPending = false
+            this.load()
+          }
+        })
+      )
+      .subscribe()
+  }
+
+  /** Re-fetch projections without aborting an active same-scope request. */
+  private loadOverview(): Observable<void> {
+    return forkJoin({
       active: this.api.getWorkflows('active').pipe(catchError(() => of([] as unknown[]))),
       removed: this.api.getWorkflows('removed').pipe(catchError(() => of([] as unknown[]))),
       namespaces: this.api.getNamespaces(),
-    }).subscribe({
-      next: ({ active, removed, namespaces }) => {
+    }).pipe(
+      tap(({ active, removed, namespaces }) => {
         this.applyNamespaces(namespaces)
         this.applyWorkflows(active, removed)
-      },
-      error: () => {
-        // Graceful degradation: the backend is unavailable, so there is no real
-        // workflow to show. Clear everything instead of crashing or falling
-        // back onto fabricated mock data.
-        this.workflows.set([])
-        this.runs.set([])
-        this.sessions.set(new Map())
-        this.enrichment.clear()
-      },
-    })
+      }),
+      switchMap(() => of(undefined))
+    )
   }
 
   /** Populate the namespace id→name map; a failed payload leaves it empty. */
@@ -252,13 +306,38 @@ export class FactoryStore {
     const active = Array.isArray(activeItems) ? activeItems : []
     const removed = Array.isArray(removedItems) ? removedItems : []
     const snapshots = [...active, ...removed]
-    this.workflows.set(snapshots)
+    // Preserve a selected snapshot only when it is newer than the overview
+    // response. Otherwise accepting the fresh list is required for terminal
+    // SSE transitions (running → failed/completed) to reach both card/detail.
+    const selectedId = this.selectedWorkflowId
+    const candidateSelected = selectedId ? this.workflowSnapshot(selectedId) : undefined
+    const incomingSelected = selectedId ? snapshots.find((item) => workflowIdOf(item) === selectedId) : undefined
+    const selectedSnapshot =
+      candidateSelected && snapshotRevision(candidateSelected) > snapshotRevision(incomingSelected)
+        ? candidateSelected
+        : undefined
+    const effectiveSnapshots = selectedSnapshot
+      ? snapshots.some((item) => workflowIdOf(item) === selectedId)
+        ? snapshots.map((item) => (workflowIdOf(item) === selectedId ? selectedSnapshot : item))
+        : [...snapshots, selectedSnapshot]
+      : snapshots
+    const effectiveActive = selectedSnapshot
+      ? active.some((item) => workflowIdOf(item) === selectedId)
+        ? active.map((item) => (workflowIdOf(item) === selectedId ? selectedSnapshot : item))
+        : removed.some((item) => workflowIdOf(item) === selectedId)
+          ? active
+          : [...active, selectedSnapshot]
+      : active
+    const effectiveRemoved = selectedSnapshot
+      ? removed.map((item) => (workflowIdOf(item) === selectedId ? selectedSnapshot : item))
+      : removed
+    this.workflows.set(effectiveSnapshots)
 
     // Targeted enrichment purge: only evict entries for workflows that no
     // longer appear in the combined snapshot set. This preserves enrichment
     // (timing, evidence, attempts…) for workflows that survived the refresh,
     // so the selection and detail panel remain stable after an SSE reload.
-    const liveIds = new Set(snapshots.map((s) => workflowIdOf(s)).filter((id): id is string => !!id))
+    const liveIds = new Set(effectiveSnapshots.map((s) => workflowIdOf(s)).filter((id): id is string => !!id))
     for (const id of [...this.enrichment.keys()]) {
       if (!liveIds.has(id)) this.enrichment.delete(id)
     }
@@ -266,14 +345,14 @@ export class FactoryStore {
     // Derive one FactoryRun per real workflow snapshot. Removed snapshots are
     // surfaced as destroyed runs; `showDestroyed`/`visibleRuns` remain the ONLY
     // visibility filter.
-    const activeRuns = active.map((snapshot) => mapProjectionToFactoryRun(snapshot))
-    const destroyedRuns = removed.map((snapshot) => mapProjectionToFactoryRun(snapshot, 'destroyed'))
+    const activeRuns = effectiveActive.map((snapshot) => mapProjectionToFactoryRun(snapshot))
+    const destroyedRuns = effectiveRemoved.map((snapshot) => mapProjectionToFactoryRun(snapshot, 'destroyed'))
     this.runs.set([...activeRuns, ...destroyedRuns])
 
     // Build the session map by merging fresh projection data with any already-
     // loaded enrichment for each workflow (preserves stable detail on refresh).
     const sessionMap = new Map<string, SessionDetail>()
-    for (const snapshot of snapshots) {
+    for (const snapshot of effectiveSnapshots) {
       const id = workflowIdOf(snapshot)
       const existing = id ? this.enrichment.get(id) : undefined
       const detail = mapProjectionToSessionDetail(
@@ -291,14 +370,94 @@ export class FactoryStore {
     }
     this.sessions.set(sessionMap)
 
-    // Enrich active runs only: removed workflows have no live backend surface to
-    // enrich (and their session keeps the projection-only detail).
-    for (const snapshot of active) this.enrichSession(snapshot)
+    // Cards and details share the same enrichment path. Initial load/reload
+    // enriches each active visible run once; per-run requests are coalesced.
+    for (const snapshot of effectiveActive) {
+      const id = workflowIdOf(snapshot)
+      if (id && id !== this.selectedWorkflowId) this.queueOverviewEnrichment(id)
+    }
+
+    // If a deep link selected a run before this
+    // initial list arrived, start its detail load now.
+    if (
+      this.selectedWorkflowId &&
+      effectiveActive.some((snapshot) => workflowIdOf(snapshot) === this.selectedWorkflowId) &&
+      !this.enrichment.has(this.selectedWorkflowId)
+    ) {
+      this.refreshSelectedSession()
+    }
   }
 
-  private enrichSession(snapshot: unknown): void {
+  private workflowSnapshot(workflowId: string): unknown | undefined {
+    return this.workflows().find((item) => workflowIdOf(item) === workflowId)
+  }
+
+  private refreshSelectedSession(): void {
+    if (this.selectedWorkflowId) this.queueDetailRefresh(this.selectedWorkflowId)
+  }
+
+  private queueDetailRefresh(workflowId: string): void {
+    if (workflowId !== this.selectedWorkflowId) return
+    if (this.detailRequest) {
+      this.detailRefreshPending = true
+      return
+    }
+    this.startDetailRequest(workflowId)
+  }
+
+  private startDetailRequest(workflowId: string): void {
+    if (workflowId !== this.selectedWorkflowId) return
+    const snapshot = this.workflowSnapshot(workflowId)
+    let request: Subscription | null = null
+    request = (snapshot ? this.enrichSession(snapshot) : this.loadSelectedWorkflow(workflowId))
+      .pipe(
+        finalize(() => {
+          if (this.detailRequest !== request) return
+          this.detailRequest = null
+          if (this.detailRefreshPending) {
+            this.detailRefreshPending = false
+            const selectedId = this.selectedWorkflowId
+            if (selectedId === workflowId) this.startDetailRequest(selectedId)
+          }
+        })
+      )
+      .subscribe()
+    this.detailRequest = request
+  }
+
+  private cancelDetailRequest(): void {
+    this.detailRefreshPending = false
+    const request = this.detailRequest
+    request?.unsubscribe()
+    this.detailRequest = null
+  }
+
+  private refreshAfterAction(workflowId: string): void {
+    this.load()
+    if (workflowId === this.selectedWorkflowId) this.queueDetailRefresh(workflowId)
+    else this.queueOverviewEnrichment(workflowId)
+  }
+
+  private loadSelectedWorkflow(workflowId: string): Observable<void> {
+    return this.api.getWorkflow(workflowId).pipe(
+      switchMap((snapshot) => {
+        if (workflowIdOf(snapshot) !== workflowId) return of(undefined)
+        const current = this.workflows()
+        if (!current.some((item) => workflowIdOf(item) === workflowId)) {
+          this.workflows.set([...current, snapshot])
+          this.runs.update((runs) => [...runs, mapProjectionToFactoryRun(snapshot)])
+          const detail = mapProjectionToSessionDetail(snapshot)
+          this.sessions.update((sessions) => new Map(sessions).set(detail.id, detail))
+        }
+        return this.enrichSession(snapshot)
+      }),
+      catchError(() => of(undefined))
+    )
+  }
+
+  private enrichSession(snapshot: unknown): Observable<void> {
     const id = workflowIdOf(snapshot)
-    if (!id) return
+    if (!id) return of(undefined)
     const namespaceId = namespaceOf(snapshot)
     const merge = (partial: {
       timing?: unknown
@@ -328,36 +487,67 @@ export class FactoryStore {
         updated.set(detail.id, detail)
         return updated
       })
-      // The metrics payload carries the additive `realCost` block: once it is
-      // known, re-map the run attached to its sandbox so the fleet reflects the
-      // real cost (and its uncertainty) instead of the projection-only fallback.
-      if (partial.metrics !== undefined) {
-        this.updateRun(mapProjectionToRunSummary(snapshot, partial.metrics))
-      }
+      // Cards consume exactly the same enriched detail as the detail page.
+      this.updateRun(mapSessionDetailToRunSummary(snapshot, detail))
     }
 
-    this.api.getTiming(id, namespaceId).subscribe({ next: (timing) => merge({ timing }), error: () => undefined })
-    this.api.getEvidence(id, namespaceId).subscribe({ next: (evidence) => merge({ evidence }), error: () => undefined })
-    this.api.getMetrics(id, namespaceId).subscribe({ next: (metrics) => merge({ metrics }), error: () => undefined })
-    // Read-only human interactions: a failed fetch degrades silently (the session
-    // keeps its projection/evidence/metrics data and simply has no interactions).
-    this.api
-      .getInteractions(id, namespaceId)
-      .subscribe({ next: (interactions) => merge({ interactions }), error: () => undefined })
-    // Read-only real agent attempts: a failed fetch degrades silently (the
-    // session keeps its projection and other enrichments).
-    this.api.getAttempts(id, namespaceId).subscribe({ next: (attempts) => merge({ attempts }), error: () => undefined })
-    // Governed actions/blockers: the backend is the single authority, so a
-    // failed fetch degrades to an empty action set (never crashes the store and
-    // never lets the UI decide an action on its own).
-    this.api.getActions(id, namespaceId).subscribe({ next: (actions) => merge({ actions }), error: () => undefined })
-    this.api.getAgentQuestions(id, namespaceId).subscribe({
-      next: (agentQuestions) => merge({ agentQuestions, agentQuestionsError: undefined }),
-      error: (error: FactoryApiError) => {
-        if (error.code !== 'AGENT_QUESTIONS_UNAVAILABLE') return
-        merge({ agentQuestions: [], agentQuestionsError: agentQuestionError(error, id, namespaceId) })
-      },
-    })
+    const optional = <T>(request: Observable<T>): Observable<T | undefined> =>
+      request.pipe(catchError(() => of(undefined)))
+
+    return forkJoin({
+      timing: optional(this.api.getTiming(id, namespaceId)),
+      evidence: optional(this.api.getEvidence(id, namespaceId)),
+      metrics: optional(this.api.getMetrics(id, namespaceId)),
+      interactions: optional(this.api.getInteractions(id, namespaceId)),
+      attempts: optional(this.api.getAttempts(id, namespaceId)),
+      actions: optional(this.api.getActions(id, namespaceId)),
+      agentQuestions: this.api.getAgentQuestions(id, namespaceId).pipe(
+        catchError((error: FactoryApiError) => {
+          if (error.code === 'AGENT_QUESTIONS_UNAVAILABLE') {
+            merge({ agentQuestions: [], agentQuestionsError: agentQuestionError(error, id, namespaceId) })
+          }
+          return of(undefined)
+        })
+      ),
+    }).pipe(
+      tap((result) => {
+        // One atomic merge prevents partial/late response combinations and the
+        // outer switchMap guarantees an obsolete A request cannot overwrite B.
+        const partial = Object.fromEntries(
+          Object.entries(result).filter(([, value]) => value !== undefined)
+        ) as Parameters<typeof merge>[0]
+        merge(partial)
+      }),
+      switchMap(() => of(undefined))
+    )
+  }
+
+  private queueAllOverviewEnrichment(): void {
+    for (const snapshot of this.workflows()) {
+      const id = workflowIdOf(snapshot)
+      if (id) this.queueOverviewEnrichment(id)
+    }
+  }
+
+  private queueOverviewEnrichment(workflowId: string): void {
+    if (workflowId === this.selectedWorkflowId) return
+    if (this.overviewEnrichmentRequests.has(workflowId)) {
+      this.overviewEnrichmentPending.add(workflowId)
+      return
+    }
+    const snapshot = this.workflowSnapshot(workflowId)
+    if (!snapshot || this.runs().find((run) => run.id === workflowId)?.status === 'destroyed') return
+    let request: Subscription | null = null
+    request = this.enrichSession(snapshot)
+      .pipe(
+        finalize(() => {
+          if (this.overviewEnrichmentRequests.get(workflowId) !== request) return
+          this.overviewEnrichmentRequests.delete(workflowId)
+          if (this.overviewEnrichmentPending.delete(workflowId)) this.queueOverviewEnrichment(workflowId)
+        })
+      )
+      .subscribe()
+    this.overviewEnrichmentRequests.set(workflowId, request)
   }
 
   // ---------------------------------------------------------------------------
@@ -379,7 +569,7 @@ export class FactoryStore {
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
     this.api.replyInteraction(workflowId, interactionId, payload, ns).subscribe({
-      next: () => this.load(),
+      next: () => this.refreshAfterAction(workflowId),
       error: () => undefined,
     })
   }
@@ -395,7 +585,7 @@ export class FactoryStore {
       .subscribe({
         next: () => {
           this.answeringQuestionId.set(null)
-          this.load()
+          this.refreshAfterAction(workflowId)
         },
         error: (error: FactoryApiError) => {
           this.answeringQuestionId.set(null)
@@ -407,7 +597,7 @@ export class FactoryStore {
               ? 'The question has changed. The allowed state has been updated; please review your answer.'
               : error.message,
           })
-          if (conflict) this.load()
+          if (conflict) this.refreshAfterAction(workflowId)
         },
       })
   }
@@ -419,7 +609,9 @@ export class FactoryStore {
     namespaceId?: string
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
-    this.api.openRetry(workflowId, payload, ns).subscribe({ next: () => this.load(), error: () => undefined })
+    this.api
+      .openRetry(workflowId, payload, ns)
+      .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
   }
 
   /** Cancel a durable agent attempt, then re-fetch the authoritative state. */
@@ -431,7 +623,7 @@ export class FactoryStore {
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
     this.api.cancelAttempt(workflowId, attemptId, payload, ns).subscribe({
-      next: () => this.load(),
+      next: () => this.refreshAfterAction(workflowId),
       error: () => undefined,
     })
   }
@@ -439,13 +631,17 @@ export class FactoryStore {
   /** Continue a paused run cost, then re-fetch the authoritative state. */
   continueCost(workflowId: string, payload?: { expectedThreshold?: number }, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
-    this.api.continueCost(workflowId, payload, ns).subscribe({ next: () => this.load(), error: () => undefined })
+    this.api
+      .continueCost(workflowId, payload, ns)
+      .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
   }
 
   /** Stop a paused run cost, then re-fetch the authoritative state. */
   stopCost(workflowId: string, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
-    this.api.stopCost(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
+    this.api
+      .stopCost(workflowId, ns)
+      .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
   }
 
   /**
@@ -468,13 +664,17 @@ export class FactoryStore {
   /** Soft-remove a workflow, then re-fetch the authoritative state. */
   remove(workflowId: string, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
-    this.api.removeWorkflow(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
+    this.api
+      .removeWorkflow(workflowId, ns)
+      .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
   }
 
   /** Restore a removed workflow, then re-fetch the authoritative state. */
   restore(workflowId: string, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
-    this.api.restoreWorkflow(workflowId, ns).subscribe({ next: () => this.load(), error: () => undefined })
+    this.api
+      .restoreWorkflow(workflowId, ns)
+      .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
   }
 
   /**
@@ -561,6 +761,18 @@ export class FactoryStore {
         run.id === summary.id
           ? {
               ...run,
+              status:
+                run.status === 'destroyed'
+                  ? 'destroyed'
+                  : summary.cardState === 'failed'
+                    ? 'failed'
+                    : summary.cardState === 'blocked'
+                      ? 'blocked'
+                      : summary.cardState === 'waiting_human'
+                        ? 'waiting_human'
+                        : summary.cardState === 'running'
+                          ? 'working'
+                          : 'idle',
               run: summary,
               costUsd: summary.costUsd,
               durationSec: summary.durationSec,
@@ -571,6 +783,12 @@ export class FactoryStore {
       )
     )
   }
+}
+
+function snapshotRevision(snapshot: unknown): number {
+  if (typeof snapshot !== 'object' || snapshot === null) return -1
+  const value = (snapshot as Record<string, unknown>)['revision']
+  return typeof value === 'number' && Number.isFinite(value) ? value : -1
 }
 
 function agentQuestionError(

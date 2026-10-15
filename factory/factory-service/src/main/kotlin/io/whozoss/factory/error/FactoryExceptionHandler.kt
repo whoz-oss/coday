@@ -5,7 +5,9 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException
 import org.springframework.web.servlet.resource.NoResourceFoundException
+import org.springframework.web.util.DisconnectedClientHelper
 
 /**
  * Translates exceptions into the canonical Factory error envelope.
@@ -59,6 +61,21 @@ class FactoryExceptionHandler {
             )
     }
 
+    /**
+     * The response is already unusable when this exception reaches the advice.
+     * For a positively identified remote disconnect, do not attempt a second
+     * response write; Spring's helper emits one concise DEBUG line (and the full
+     * stack only at TRACE). Any other async response failure remains a normal
+     * server error. It is logged as such, but this handler still returns no body
+     * because Spring has declared the response unusable.
+     */
+    @ExceptionHandler(AsyncRequestNotUsableException::class)
+    fun handleAsyncRequestNotUsable(exception: AsyncRequestNotUsableException) {
+        if (!disconnectedClientHelper.checkAndLogClientDisconnectedException(exception)) {
+            logger.error(exception) { "Async response became unusable for a reason other than client disconnect" }
+        }
+    }
+
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgumentException(exception: IllegalArgumentException): ResponseEntity<ErrorResponse> =
         ResponseEntity
@@ -89,5 +106,10 @@ class FactoryExceptionHandler {
                     ),
                 ),
             )
+    }
+
+    companion object {
+        private val disconnectedClientHelper =
+            DisconnectedClientHelper("io.whozoss.factory.error.FactoryExceptionHandler.disconnectedClient")
     }
 }

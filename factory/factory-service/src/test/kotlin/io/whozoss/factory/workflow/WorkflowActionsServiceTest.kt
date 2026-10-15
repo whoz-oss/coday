@@ -148,16 +148,24 @@ class WorkflowActionsServiceTest {
     }
 
     @Test
-    fun `a blocked step yields a retry action fenced on the workflow revision`() {
-        stubBaseline(revision = 4, steps = listOf(mapOf("id" to "gate", "status" to "blocked")))
+    fun `retry targets root failure and not blocked descendants`() {
+        stubBaseline(
+            revision = 4,
+            steps = listOf(
+                mapOf("id" to "frontend-build", "status" to "failed"),
+                mapOf("id" to "frontend-tests", "status" to "blocked", "dependsOn" to listOf("frontend-build")),
+                mapOf("id" to "a11y-audit", "status" to "blocked", "dependsOn" to listOf("frontend-tests")),
+            ),
+        )
 
         val result = service.workflowActions(scope, namespace, workflowId, canReply = true)
 
         val retry = result.allowedActions.single { it.type == WorkflowActionTypes.RETRY }
-        assertThat(retry.stepId).isEqualTo("gate")
+        assertThat(retry.stepId).isEqualTo("frontend-build")
         assertThat(retry.expectedRevision).isEqualTo(4)
-        assertThat(result.blockers.map { it.code }).contains(WorkflowBlockerCodes.STEP_BLOCKED)
-        assertThat(result.blockers.single { it.code == WorkflowBlockerCodes.STEP_BLOCKED }.stepId).isEqualTo("gate")
+        assertThat(result.allowedActions.none { it.type == WorkflowActionTypes.RETRY && it.stepId != "frontend-build" }).isTrue()
+        assertThat(result.blockers.filter { it.code == WorkflowBlockerCodes.STEP_BLOCKED }.map { it.stepId })
+            .containsExactlyInAnyOrder("frontend-tests", "a11y-audit")
     }
 
     @Test

@@ -60,6 +60,9 @@ class NeedsResearchRouterTest {
         stepId = "A",
         attemptNumber = 1,
         agentName = "architect",
+        brief = "frozen brief",
+        contextEnvelope = "{\"schemaVersion\":1,\"briefHash\":\"frozen\"}",
+        expectedAmendmentSeq = 4L,
         rootCaseId = "root-case",
         parentCaseId = "root-case",
         status = AgentAttemptStatus.INDETERMINATE,
@@ -112,6 +115,9 @@ class NeedsResearchRouterTest {
         assertThat(successor.caseId).isEqualTo("case-A")
         assertThat(successor.rootCaseId).isEqualTo("root-case")
         assertThat(successor.parentCaseId).isEqualTo("root-case")
+        assertThat(successor.brief).isEqualTo(predecessor.brief)
+        assertThat(successor.contextEnvelope).isEqualTo(predecessor.contextEnvelope)
+        assertThat(successor.expectedAmendmentSeq).isEqualTo(4L)
         assertThat(successor.resumptionContext).contains("NEEDS_RESEARCH")
     }
 

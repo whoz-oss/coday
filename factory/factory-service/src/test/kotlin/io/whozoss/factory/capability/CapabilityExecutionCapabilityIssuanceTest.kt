@@ -54,6 +54,13 @@ class CapabilityExecutionCapabilityIssuanceTest {
         dependsOn = emptyList(),
     )
 
+    private val a11yStep = WorkflowStepDefinition(
+        id = "a11y-audit",
+        name = "Accessibility review",
+        responsibility = WorkflowStepResponsibility(ResponsibilityKind.AGENT, "A11yReviewer"),
+        dependsOn = listOf("frontend-tests"),
+    )
+
     @Test
     fun `brief always carries step identity scope and the structured execution contract`() {
         val turns = mutableListOf<AgentTurnRequest>()
@@ -71,6 +78,21 @@ class CapabilityExecutionCapabilityIssuanceTest {
         assertThat(brief).contains("Do not return free-form JSON")
         assertThat(brief).contains("correct the tool payload and retry")
         assertThat(brief).contains("Once Factory accepts the result, stop working")
+    }
+
+    @Test
+    fun `A11yReviewer fails closed when no authoritative current PR scope is available`() {
+        val turns = mutableListOf<AgentTurnRequest>()
+        val service = service(turns)
+
+        service.resolveAndRecord(scope, namespaceId, workflowId, a11yStep, repoRoot)
+
+        val brief = turns.single().brief.orEmpty()
+        assertThat(brief).contains("Accessibility review scope")
+        assertThat(brief).contains("Factory PR scope resolver is unavailable")
+        assertThat(brief).contains("Fail closed")
+        assertThat(brief).contains("do not run an app-wide or repository-wide audit")
+        assertThat(brief).contains("A11Y_SCOPE_UNAVAILABLE")
     }
 
     @Test

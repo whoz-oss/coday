@@ -17,44 +17,33 @@ export class AgentTimelineComponent {
   readonly nowSec = input.required<number>()
   /** True only while execution is actively progressing, never while waiting for a human. */
   readonly activelyRunning = input(false)
-  /** ISO instant the run started from, used to derive the live elapsed time. */
-  readonly startedAt = input<string>()
+  /** Canonical ISO origin shared with the lane mapper. */
+  readonly timelineOriginAt = input<string>()
   readonly tickEverySec = input(120)
   readonly selected = input<string>()
   readonly blockSelect = output<TimelineBlock>()
 
-  /** Local display clock. Its accumulated delta excludes every suspended interval. */
-  private readonly liveNowMs = signal(Date.now())
-  private readonly activeDeltaSec = signal(0)
+  /** Local wall clock; read by effectiveNowSec so signal writes refresh OnPush views. */
+  private readonly clockMs = signal(Date.now())
 
   constructor() {
-    // The projection supplies the last known active position. We only add local
-    // deltas while execution is active, so human wait time is never invented as
-    // active duration. A refresh/resume resets the local anchor to the new base.
     effect((onCleanup) => {
-      this.nowSec()
-      this.activeDeltaSec.set(0)
       if (!this.activelyRunning()) return
-      let previous = Date.now()
-      const handle = setInterval(() => {
-        const current = Date.now()
-        this.activeDeltaSec.update((elapsed) => elapsed + Math.max(current - previous, 0) / 1000)
-        previous = current
-        this.liveNowMs.set(current)
-      }, 1000)
+      this.clockMs.set(Date.now())
+      const handle = setInterval(() => this.clockMs.set(Date.now()), 1000)
       onCleanup(() => clearInterval(handle))
     })
   }
 
-  /**
-   * Effective "now" in seconds.
-   *
-   * The value advances from the persisted projection position only during
-   * active execution. `startedAt` remains available for wall-clock metadata but
-   * is deliberately not used as active duration while timing aggregates are
-   * incomplete.
-   */
-  protected readonly effectiveNowSec = computed(() => this.nowSec() + this.activeDeltaSec())
+  /** Active runs never regress behind their persisted snapshot; terminal runs freeze on it. */
+  protected readonly effectiveNowSec = computed(() => {
+    const snapshotNow = Math.max(this.nowSec(), 0)
+    if (!this.activelyRunning()) return snapshotNow
+    const originMs = Date.parse(this.timelineOriginAt() ?? '')
+    if (!Number.isFinite(originMs)) return snapshotNow
+    const wallNow = Math.max((this.clockMs() - originMs) / 1000, 0)
+    return Math.max(snapshotNow, wallNow)
+  })
 
   /** Visible execution lanes, with any running block stretched to the effective now. */
   protected readonly effectiveLanes = computed(() => {
@@ -71,13 +60,14 @@ export class AgentTimelineComponent {
 
   /** Axis end: now + ~5%, rounded up to the next tick */
   protected readonly axisEnd = computed(() => {
-    const step = this.tickEverySec()
-    return Math.ceil((this.effectiveNowSec() * 1.04) / step) * step
+    const step = Math.max(this.tickEverySec(), 1)
+    return Math.max(Math.ceil((this.effectiveNowSec() * 1.04) / step) * step, step)
   })
 
   protected readonly ticks = computed(() => {
     const out: { sec: number; label: string }[] = []
-    for (let s = 0; s < this.axisEnd(); s += this.tickEverySec()) {
+    const step = Math.max(this.tickEverySec(), 1)
+    for (let s = 0; s < this.axisEnd(); s += step) {
       out.push({ sec: s, label: s === 0 ? '0s' : `${s / 60}m` })
     }
     return out
@@ -89,6 +79,10 @@ export class AgentTimelineComponent {
 
   protected widthPct(b: TimelineBlock): number {
     return Math.max(this.pct(b.endSec - b.startSec), 3.5)
+  }
+
+  protected trackBlock(block: TimelineBlock): string {
+    return block.attemptId ?? block.stepId ?? block.label
   }
 
   protected iconFor(lane: TimelineLane): string {

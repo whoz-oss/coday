@@ -18,8 +18,12 @@ object AgentStepResultValidation {
     private val BUSINESS_FIELDS =
         setOf("status", "summary", "artifacts", "claims", "findings", "expected_amendment_seq", "expectedAmendmentSeq")
     private val ARTIFACT_FIELDS = setOf("kind", "encoding", "content")
+    private val CLAIM_FIELDS = setOf("modifiedFiles", "deliveryAnalysis")
+    private val DELIVERY_ANALYSIS_FIELDS = setOf("changeType", "ticket", "title", "baseBranch")
     private val FINDING_FIELDS = setOf("severity", "code", "summary", "file", "line")
     private val STATUSES = setOf("PASS", "FAIL", "NEEDS_RESEARCH")
+    private val CHANGE_TYPES = setOf("feature", "bugfix")
+    private val TICKET = Regex("^WZ-[0-9]+$")
 
     /** True when [value] is a structurally valid business result. */
     fun validateBusiness(value: JsonNode?): Boolean {
@@ -34,7 +38,7 @@ object AgentStepResultValidation {
 
         val claims = value.get("claims") ?: return false
         if (!claims.isObject) return false
-        if (claims.fieldNames().asSequence().any { it != "modifiedFiles" }) return false
+        if (claims.fieldNames().asSequence().any { it !in CLAIM_FIELDS }) return false
         val modifiedFiles = claims.get("modifiedFiles")
         if (modifiedFiles == null || !modifiedFiles.isArray) return false
         if (modifiedFiles.size() > AgentStepResultLimits.MODIFIED_FILES) return false
@@ -46,6 +50,8 @@ object AgentStepResultValidation {
         ) {
             return false
         }
+        val deliveryAnalysis = claims.get("deliveryAnalysis")
+        if (deliveryAnalysis != null && !isValidDeliveryAnalysis(deliveryAnalysis)) return false
 
         val artifacts = value.get("artifacts")
         if (artifacts != null && !isValidArtifacts(artifacts)) return false
@@ -75,6 +81,21 @@ object AgentStepResultValidation {
 
     private fun isValidAmendmentSeqValue(value: JsonNode): Boolean =
         value.isIntegralNumber && value.asLong() >= 0L
+
+    private fun isValidDeliveryAnalysis(value: JsonNode): Boolean {
+        if (!value.isObject || value.fieldNames().asSequence().any { it !in DELIVERY_ANALYSIS_FIELDS }) return false
+        val changeType = value.get("changeType")?.takeIf { it.isTextual }?.asText()
+        if (changeType !in CHANGE_TYPES) return false
+        val ticket = value.get("ticket")?.takeIf { it.isTextual }?.asText() ?: return false
+        if (!TICKET.matches(ticket)) return false
+        val title = value.get("title")?.takeIf { it.isTextual }?.asText() ?: return false
+        if (title.isEmpty() || title.length > AgentStepResultLimits.DELIVERY_ANALYSIS_TITLE) return false
+        val baseBranch = value.get("baseBranch")
+        if (baseBranch != null && (!baseBranch.isTextual || baseBranch.asText().isEmpty() ||
+                baseBranch.asText().length > AgentStepResultLimits.DELIVERY_ANALYSIS_BASE_BRANCH)
+        ) return false
+        return true
+    }
 
     private fun isValidArtifacts(artifacts: JsonNode): Boolean {
         if (!artifacts.isArray || artifacts.size() > AgentStepResultLimits.ARTIFACTS) return false
@@ -147,6 +168,14 @@ object AgentStepResultValidation {
             summary = value.get("summary").asText(),
             claims = AgentStepResultClaim(
                 modifiedFiles = value.get("claims").get("modifiedFiles").map { it.asText() },
+                deliveryAnalysis = value.get("claims").get("deliveryAnalysis")?.let { delivery ->
+                    AgentStepResultDeliveryAnalysis(
+                        changeType = delivery.get("changeType").asText(),
+                        ticket = delivery.get("ticket").asText(),
+                        title = delivery.get("title").asText(),
+                        baseBranch = delivery.get("baseBranch")?.asText(),
+                    )
+                },
             ),
             artifacts = artifacts,
             findings = findings,

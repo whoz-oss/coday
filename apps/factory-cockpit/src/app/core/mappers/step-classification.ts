@@ -60,16 +60,19 @@ export function resolveStepState(step: unknown): StepState {
     : 'pending'
 }
 
-/** Duration of a step in seconds, or `null` when the projection does not provide it. */
+/**
+ * Duration of a step in seconds, or `null` when the projection does not provide it.
+ * Absolute bounds are authoritative: finishedAt → completedAt → endedAt.
+ * durationMs is only a fallback when a complete, valid interval is unavailable.
+ */
 export function stepDurationSec(step: unknown): number | null {
   const obj = asObject(step)
-  const raw = obj?.['durationMs']
-  const durationMs = typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
-  if (durationMs !== undefined) return durationMs / 1000
   const start = toEpochMs(obj?.['startedAt'])
-  const end = toEpochMs(obj?.['completedAt'] ?? obj?.['endedAt'])
-  if (start !== null && end !== null) return Math.max(end - start, 0) / 1000
-  return null
+  const end = toEpochMs(obj?.['finishedAt'] ?? obj?.['completedAt'] ?? obj?.['endedAt'])
+  if (start !== null && end !== null && end >= start) return (end - start) / 1000
+  const raw = obj?.['durationMs']
+  const durationMs = typeof raw === 'number' && Number.isFinite(raw) && raw >= 0 ? raw : undefined
+  return durationMs !== undefined ? durationMs / 1000 : null
 }
 
 export function toneForActor(kind: ActorKind): Tone {

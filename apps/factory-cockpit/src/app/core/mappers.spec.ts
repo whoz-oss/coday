@@ -476,6 +476,91 @@ describe('mappers', () => {
       })
     })
 
+    it('uses terminal timestamps in finishedAt, completedAt, endedAt priority order', () => {
+      const lanes = mapProjectionToLanes({
+        projection: {
+          steps: [
+            {
+              id: 'finished',
+              status: 'completed',
+              startedAt,
+              finishedAt: isoOffset(40),
+              completedAt: isoOffset(30),
+              endedAt: isoOffset(20),
+              durationMs: 10_000,
+              responsibility: { kind: 'code' },
+            },
+            {
+              id: 'completed',
+              status: 'completed',
+              startedAt: isoOffset(50),
+              completedAt: isoOffset(80),
+              endedAt: isoOffset(70),
+              responsibility: { kind: 'code' },
+            },
+            {
+              id: 'ended',
+              status: 'completed',
+              startedAt: isoOffset(90),
+              endedAt: isoOffset(110),
+              responsibility: { kind: 'code' },
+            },
+          ],
+        },
+      })
+      expect(lanes[0]?.blocks.map((block) => block.endSec - block.startSec)).toEqual([40, 30, 20])
+    })
+
+    it('falls back to durationMs for invalid or reversed absolute bounds', () => {
+      const lanes = mapProjectionToLanes({
+        projection: {
+          steps: [
+            {
+              id: 'invalid',
+              status: 'completed',
+              startedAt,
+              completedAt: 'invalid',
+              durationMs: 7_000,
+              responsibility: { kind: 'code' },
+            },
+            {
+              id: 'reversed',
+              status: 'completed',
+              startedAt: isoOffset(20),
+              completedAt: isoOffset(10),
+              durationMs: 9_000,
+              responsibility: { kind: 'code' },
+            },
+          ],
+        },
+      })
+      expect(lanes[0]?.blocks.map((block) => block.endSec - block.startSec)).toEqual([7, 9])
+    })
+
+    it('reconstructs running wall time but keeps waiting-human frozen', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(100)))
+      try {
+        const lanes = mapProjectionToLanes({
+          projection: {
+            steps: [
+              { id: 'running', status: 'running', startedAt, responsibility: { kind: 'code' } },
+              {
+                id: 'waiting',
+                status: 'waiting_human',
+                startedAt: isoOffset(20),
+                durationMs: 5_000,
+                responsibility: { kind: 'agent', name: 'reviewer' },
+              },
+            ],
+          },
+        })
+        expect(lanes.find((lane) => lane.id === 'code')?.blocks[0]?.endSec).toBe(100)
+        expect(lanes.find((lane) => lane.id === 'agent:reviewer')?.blocks[0]?.endSec).toBe(25)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
     it('groups a code step into the workspace lane', () => {
       const lanes = mapProjectionToLanes({
         projection: { steps: [{ id: 'build', name: 'build', status: 'running', responsibility: { kind: 'code' } }] },
@@ -662,6 +747,31 @@ describe('mappers', () => {
       expect(session.events[0]).toMatchObject({ type: 'tool_call', tool: 'read', durationSec: 0.5 })
       expect(session.phase.kind).toBe('code')
       expect(session.nowSec).toBeGreaterThan(0)
+      expect(session.timelineOriginAt).toBe(startedAt)
+    })
+
+    it('freezes terminal session nowSec on the persisted end instead of wall time', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(1_000)))
+      try {
+        const session = mapProjectionToSessionDetail({
+          workflowId: 'done',
+          projection: {
+            status: 'completed',
+            steps: [
+              {
+                id: 'done',
+                status: 'completed',
+                startedAt,
+                completedAt: isoOffset(25),
+                responsibility: { kind: 'code' },
+              },
+            ],
+          },
+        })
+        expect(session.nowSec).toBe(25)
+      } finally {
+        jest.useRealTimers()
+      }
     })
 
     it('marks waiting-human separately from the coarse running run status', () => {

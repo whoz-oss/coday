@@ -8,6 +8,7 @@ import { PhaseSegment } from '../../core/models'
  * Colours by status:
  * - done           → green  (--sf-success)
  * - failed         → red   (--sf-error)
+ * - blocked        → amber outline
  * - indeterminate  → muted red (opacity 0.6, distinct from failed)
  * - cancelled      → neutral grey (--sf-outline-strong)
  * - running        → animated cyan pulse (1.8s)
@@ -71,6 +72,11 @@ import { PhaseSegment } from '../../core/models'
     .dot--failed {
       background: var(--sf-error);
     }
+    .dot--blocked {
+      box-sizing: border-box;
+      border: 2px solid var(--sf-tertiary);
+      background: transparent;
+    }
     /* indeterminate: same red but muted to distinguish from failed */
     .dot--indeterminate {
       background: var(--sf-error);
@@ -123,6 +129,8 @@ export class StepDotsComponent {
         return 'dot--done'
       case 'failed':
         return 'dot--failed'
+      case 'blocked':
+        return 'dot--blocked'
       case 'indeterminate':
         return 'dot--indeterminate'
       case 'cancelled':
@@ -140,6 +148,7 @@ export class StepDotsComponent {
     const labels: Record<PhaseSegment['status'], string> = {
       done: 'completed',
       failed: 'failed',
+      blocked: 'blocked',
       indeterminate: 'indeterminate',
       cancelled: 'cancelled',
       running: 'running',

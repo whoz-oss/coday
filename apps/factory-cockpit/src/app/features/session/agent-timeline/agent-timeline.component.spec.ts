@@ -5,6 +5,7 @@ import { AgentTimelineComponent } from './agent-timeline.component'
 /** Structural view over the component's protected signals for assertions. */
 interface TimelineInternals {
   effectiveNowSec: () => number
+  axisEnd: () => number
   effectiveLanes: () => TimelineLane[]
   blockTooltip: (block: TimelineBlock) => string
   isSelected: (block: TimelineBlock) => boolean
@@ -27,8 +28,7 @@ describe('AgentTimelineComponent', () => {
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({ imports: [AgentTimelineComponent] }).compileComponents()
-    // The clock is frozen before the component is created so its internal
-    // `liveNowMs` anchor starts from the fake instant.
+    // Freeze wall time before creating the component clock signal.
     jest.useFakeTimers()
     jest.setSystemTime(new Date('2026-10-03T10:00:00.000Z'))
     fixture = TestBed.createComponent(AgentTimelineComponent)
@@ -42,28 +42,28 @@ describe('AgentTimelineComponent', () => {
     lanes: TimelineLane[]
     nowSec: number
     activelyRunning: boolean
-    startedAt?: string
+    timelineOriginAt?: string
     selected?: string
   }): TimelineInternals {
     fixture.componentRef.setInput('lanes', inputs.lanes)
     fixture.componentRef.setInput('nowSec', inputs.nowSec)
     fixture.componentRef.setInput('activelyRunning', inputs.activelyRunning)
-    if (inputs.startedAt) fixture.componentRef.setInput('startedAt', inputs.startedAt)
+    if (inputs.timelineOriginAt) fixture.componentRef.setInput('timelineOriginAt', inputs.timelineOriginAt)
     if (inputs.selected !== undefined) fixture.componentRef.setInput('selected', inputs.selected)
     fixture.detectChanges()
     return fixture.componentInstance as unknown as TimelineInternals
   }
 
   it('advances the effective now while running and freezes once terminal', () => {
-    const startedAt = new Date('2026-10-03T09:59:30.000Z').toISOString() // 30s ago
+    const timelineOriginAt = new Date('2026-10-03T09:59:30.000Z').toISOString() // 30s ago
 
-    const component = render({ lanes: [lane()], nowSec: 5, activelyRunning: true, startedAt })
-    expect(component.effectiveNowSec()).toBe(5)
+    const component = render({ lanes: [lane()], nowSec: 5, activelyRunning: true, timelineOriginAt })
+    expect(component.effectiveNowSec()).toBe(30)
 
     jest.advanceTimersByTime(4000)
     fixture.detectChanges()
     const running = component.effectiveNowSec()
-    expect(running).toBeGreaterThanOrEqual(9)
+    expect(running).toBeGreaterThanOrEqual(34)
 
     // Suspended status: the local active clock stops and stays frozen.
     fixture.componentRef.setInput('activelyRunning', false)
@@ -75,10 +75,25 @@ describe('AgentTimelineComponent', () => {
     expect(component.effectiveNowSec()).toBe(frozen)
   })
 
-  it('does not advance the effective now for a terminal run', () => {
-    const startedAt = new Date('2026-10-03T09:59:30.000Z').toISOString()
+  it('does not regress when an older running snapshot arrives over SSE', () => {
+    const timelineOriginAt = new Date('2026-10-03T09:59:30.000Z').toISOString()
+    const component = render({ lanes: [lane()], nowSec: 28, activelyRunning: true, timelineOriginAt })
+    expect(component.effectiveNowSec()).toBe(30)
 
-    const component = render({ lanes: [lane()], nowSec: 42, activelyRunning: false, startedAt })
+    fixture.componentRef.setInput('nowSec', 20)
+    fixture.detectChanges()
+    expect(component.effectiveNowSec()).toBe(30)
+  })
+
+  it('keeps a non-zero axis for an empty snapshot', () => {
+    const component = render({ lanes: [lane()], nowSec: 0, activelyRunning: false })
+    expect(component.axisEnd()).toBeGreaterThan(0)
+  })
+
+  it('does not advance the effective now for a terminal run', () => {
+    const timelineOriginAt = new Date('2026-10-03T09:59:30.000Z').toISOString()
+
+    const component = render({ lanes: [lane()], nowSec: 42, activelyRunning: false, timelineOriginAt })
     // Any elapsed-based value would be ~30s; the input now wins as base.
     expect(component.effectiveNowSec()).toBe(42)
 
@@ -88,7 +103,7 @@ describe('AgentTimelineComponent', () => {
   })
 
   it('extends running blocks up to the effective now and leaves terminal blocks untouched', () => {
-    const startedAt = new Date('2026-10-03T09:59:00.000Z').toISOString() // 60s ago
+    const timelineOriginAt = new Date('2026-10-03T09:59:00.000Z').toISOString() // 60s ago
 
     const running = lane({ blocks: [{ label: 'build', startSec: 0, endSec: 10, status: 'running' }] })
     const done = lane({
@@ -96,7 +111,7 @@ describe('AgentTimelineComponent', () => {
       blocks: [{ label: 'plan', startSec: 0, endSec: 5, status: 'completed' }],
     })
 
-    const component = render({ lanes: [running, done], nowSec: 12, activelyRunning: true, startedAt })
+    const component = render({ lanes: [running, done], nowSec: 12, activelyRunning: true, timelineOriginAt })
     const effective = component.effectiveLanes()
 
     expect(effective[0]?.blocks[0]?.endSec).toBeGreaterThanOrEqual(12)

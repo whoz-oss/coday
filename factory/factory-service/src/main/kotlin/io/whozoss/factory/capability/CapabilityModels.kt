@@ -27,6 +27,24 @@ data class CapabilityStepContext(
 /** Result of resolving (and, for `code`, executing) one step. */
 sealed interface CapabilityOutcome {
 
+    /** Factory prepared the work branch in the run's existing worktree. */
+    data class BranchPrepared(
+        val stepId: String,
+        val branch: String,
+        val startingHead: String,
+        val environmentRoot: String,
+        val rootIdentity: String,
+        val baselineHash: String,
+        val baselinePathCount: Int,
+        val inheritedDirty: Boolean,
+        val baselinePaths: List<String>,
+        val previousBranch: String?,
+        val mutationApplied: Boolean,
+        val providerId: String,
+        val environmentId: String,
+        val environmentRevision: Int,
+    ) : CapabilityOutcome
+
     /** A declared code verification ran; the verdict is `exitCode == 0` and not timed out. */
     data class CodeExecuted(
         val stepId: String,
@@ -38,6 +56,12 @@ sealed interface CapabilityOutcome {
         val durationMs: Long,
         val stdout: String,
         val stderr: String,
+        /** Canonical execution root observed by Factory, never supplied by the worker/model. */
+        val cwd: String? = null,
+        /** Git HEAD observed immediately before execution, when the root is a Git worktree. */
+        val observedHead: String? = null,
+        /** Stable hash of the canonical root path for cross-log correlation. */
+        val rootIdentity: String? = null,
     ) : CapabilityOutcome {
         val verdict: Boolean get() = exitCode == 0 && !timedOut
     }
@@ -52,6 +76,13 @@ sealed interface CapabilityOutcome {
         val verificationName: String?,
         val code: String,
         val message: String,
+        val branch: String? = null,
+        val previousBranch: String? = null,
+        val mutationApplied: Boolean = false,
+        val failureStage: String? = null,
+        val providerId: String? = null,
+        val environmentId: String? = null,
+        val environmentRevision: Int? = null,
     ) : CapabilityOutcome
 
     /** The agent-turn capability is not implemented in W8.2 (see W8.3). */

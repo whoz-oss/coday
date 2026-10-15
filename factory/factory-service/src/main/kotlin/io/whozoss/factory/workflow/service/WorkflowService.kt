@@ -1406,21 +1406,13 @@ class WorkflowService(
             }
         }
 
-        // Projection steps -> blocked steps are retryable, waiting steps are blockers.
+        // A blocked descendant is consequence, not a retry target. Retry belongs
+        // only to authoritative root failures; blocked descendants stay blockers.
         steps.forEach { step ->
             val stepId = step["id"] as? String ?: return@forEach
             when (step["status"] as? String) {
-                WorkflowStatuses.BLOCKED -> {
-                    blocker(WorkflowBlockerCodes.STEP_BLOCKED, stepId, "Step '$stepId' is blocked.")
-                    actions.add(
-                        AllowedActionDto(
-                            type = WorkflowActionTypes.RETRY,
-                            stepId = stepId,
-                            expectedRevision = revision,
-                            label = "Retry step '$stepId'",
-                        ),
-                    )
-                }
+                WorkflowStatuses.BLOCKED ->
+                    blocker(WorkflowBlockerCodes.STEP_BLOCKED, stepId, "Step '$stepId' is blocked by a dependency.")
 
                 WorkflowStatuses.WAITING_HUMAN -> blocker(
                     WorkflowBlockerCodes.WAITING_HUMAN_INTERACTION,
@@ -1428,11 +1420,17 @@ class WorkflowService(
                     "Waiting for a human decision on step '$stepId'.",
                 )
 
-                WorkflowStatuses.FAILED -> blocker(
-                    WorkflowBlockerCodes.ATTEMPT_FAILED,
-                    stepId,
-                    "Step '$stepId' failed.",
-                )
+                WorkflowStatuses.FAILED -> {
+                    blocker(WorkflowBlockerCodes.ATTEMPT_FAILED, stepId, "Step '$stepId' failed.")
+                    actions.add(
+                        AllowedActionDto(
+                            type = WorkflowActionTypes.RETRY,
+                            stepId = stepId,
+                            expectedRevision = revision,
+                            label = "Retry failed step '$stepId'",
+                        ),
+                    )
+                }
 
                 else -> Unit
             }

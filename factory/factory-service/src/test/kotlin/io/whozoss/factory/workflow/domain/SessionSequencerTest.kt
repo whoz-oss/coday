@@ -130,7 +130,7 @@ class SessionSequencerTest {
     }
 
     @Test
-    fun `a needs_research step keeps its dependants pending, not launched`() {
+    fun `a needs_research step blocks its dependants and never launches them`() {
         val steps = listOf(step("a"), step("b", "a"))
 
         val evaluation = SessionSequencer.evaluate(
@@ -139,7 +139,17 @@ class SessionSequencerTest {
         )
 
         assertThat(evaluation.ready).isEmpty()
-        assertThat(evaluation.blocked).isEmpty()
+        assertThat(evaluation.blocked).containsExactly("b")
+    }
+
+    @Test
+    fun `ready state is revalidated against authoritative dependencies before execution`() {
+        val steps = listOf(step("prepare"), step("frontend", "prepare"))
+        val ready = SessionSequencer.readySteps(
+            steps,
+            statuses("prepare" to WorkflowStatuses.FAILED, "frontend" to WorkflowStatuses.READY),
+        )
+        assertThat(ready).isEmpty()
     }
 
     @Test

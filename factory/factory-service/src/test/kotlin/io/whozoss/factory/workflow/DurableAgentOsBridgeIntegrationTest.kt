@@ -537,6 +537,54 @@ class DurableAgentOsBridgeIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(bBrief).doesNotContain("Run brief handoff")
     }
 
+    @Test
+    fun `Gitay receives a Factory-derived branch and a closed Git mission`() {
+        val workflowId = isolatedWorkflowId("wf-gitay-brief")
+        startSession(
+            "gitay-brief",
+            workflowId,
+            listOf(
+                stepJson("A", "agent", "Architect", emptyList()),
+                stepJson("G", "agent", "Gitay", listOf("A")),
+            ),
+        )
+        val adapter = FakeAdapter(caseSteps(workflowId, "A", "G")) { AgentOsExecutionVerdict.Succeeded(emptyMap()) }
+
+        val result = sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot, ticket = "WZ-35278")
+
+        assertThat(result.status).isEqualTo(WorkflowStatuses.COMPLETED)
+        val brief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "G") }.brief
+        assertThat(brief)
+            .contains("Expected branch (authoritative, selected by Factory): factory/WZ-35278")
+            .contains("GIT__git_status and GIT__git_create_branch")
+            .contains("An initially detached HEAD is normal")
+            .contains("create the expected branch from that commit")
+            .contains("final HEAD equals initial HEAD")
+            .contains("final HEAD is attached to that branch")
+            .contains("A final detached HEAD")
+            .contains("structured FAIL")
+            .contains("Do not infer success from prose")
+            .contains("Forbidden: file edits, add, commit, push, fetch, stash, reset, merge, branch deletion")
+            .doesNotContain("choose a branch")
+            .doesNotContain("Inputs:")
+    }
+
+    @Test
+    fun `Gitay branch fallback is deterministic and not model-selected`() {
+        val workflowId = isolatedWorkflowId("wf-gitay-fallback")
+        startSession(
+            "gitay-fallback",
+            workflowId,
+            listOf(stepJson("A", "agent", "Architect", emptyList()), stepJson("G", "agent", "Gitay", listOf("A"))),
+        )
+        val adapter = FakeAdapter(caseSteps(workflowId, "A", "G")) { AgentOsExecutionVerdict.Succeeded(emptyMap()) }
+
+        sessionRunner(adapter).runSession(scope, namespace, workflowId, repoRoot)
+
+        val brief = adapter.startTurns.single { it.caseId == CapabilityExecutionService.stableCaseId(workflowId, "G") }.brief
+        assertThat(brief).contains("Expected branch (authoritative, selected by Factory): factory/$workflowId")
+    }
+
     // ----- 3b. Reservation BEFORE case creation; caseId BEFORE the turn ----
 
     /**

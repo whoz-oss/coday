@@ -120,6 +120,7 @@ describe('FactoryStore', () => {
     attempts: unknown = { workflowId: 'wf-1', data: [] },
     actions: unknown = { allowedActions: [], blockers: [] }
   ): void {
+    store.selectSession('wf-1')
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: metrics })
@@ -130,7 +131,8 @@ describe('FactoryStore', () => {
   }
 
   /** Flush the 7 enrichment requests issued for an arbitrary active run. */
-  function flushRunEnrichment(wfId: string): void {
+  function flushRunEnrichment(wfId: string, select = true): void {
+    if (select) store.selectSession(wfId)
     http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
     http.expectOne((r) => r.url.endsWith(`/${wfId}/evidence`)).flush({ data: { workflowId: wfId, items: [] } })
     http.expectOne((r) => r.url.endsWith(`/${wfId}/metrics`)).flush({ data: { workflowId: wfId } })
@@ -151,6 +153,153 @@ describe('FactoryStore', () => {
     expect(store.activeRuns()).toEqual([])
     expect(store.workstreams()).toEqual([])
     expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
+  })
+
+  it('loads bounded enrichment for every visible run so cards and detail share truth', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+
+    expect(store.runs()).toHaveLength(2)
+    flushRunEnrichment('wf-1', false)
+    flushRunEnrichment('wf-2', false)
+  })
+
+  it('reconstructs the same enriched card state after a fresh store reload', () => {
+    flushInitialWorkflows([snapshot])
+    flushRunEnrichment('wf-1', false)
+    const first = store.runs()[0]?.run
+
+    // Simulate authoritative reload through the public refresh path.
+    store.refresh()
+    flushInitialWorkflows([snapshot])
+    flushRunEnrichment('wf-1', false)
+    const reloaded = store.runs()[0]?.run
+
+    expect(reloaded?.status).toBe(first?.status)
+    expect(reloaded?.phases.map((phase) => phase.status)).toEqual(first?.phases.map((phase) => phase.status))
+    expect(reloaded?.costUsd).toBe(first?.costUsd)
+  })
+
+  it('fetches detail only for the selected visible session', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+
+    flushEnrichment()
+    http.expectNone((request) => request.url.includes('/wf-2/'))
+
+    expect(store.session('wf-1')?.id).toBe('wf-1')
+  })
+
+  it('coalesces overview enrichment bursts per workflow with one trailing refresh', () => {
+    flushInitialWorkflows([snapshot])
+    const first = http.match((request) => request.url.includes('/wf-1/'))
+    const source = FakeEventSource.instances[0]
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 3 }))
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 4 }))
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(1)
+    first.forEach((request) => request.flush({ data: [] }))
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(1)
+  })
+
+  it('coalesces same-run SSE bursts without cancelling the active detail and runs one trailing refresh', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    const firstRequests = http.match((request) => request.url.includes('/wf-1/'))
+    const firstEvidence = firstRequests.find((request) => request.request.url.endsWith('/evidence'))
+    const source = FakeEventSource.instances[0]
+
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 3 }))
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 4 }))
+    source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 5 }))
+
+    expect(firstEvidence?.cancelled).toBe(false)
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(1)
+    firstRequests.forEach((request) => request.flush({ data: [] }))
+
+    const trailingRequests = http.match((request) => request.url.includes('/wf-1/'))
+    expect(trailingRequests.filter((request) => request.request.url.endsWith('/evidence'))).toHaveLength(1)
+    trailingRequests.forEach((request) => request.flush({ data: [] }))
+
+    flushInitialWorkflows([snapshot])
+    flushInitialWorkflows([snapshot])
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
+  })
+
+  it('cancels A detail when switching to B and prevents late A overwrite', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+
+    store.selectSession('wf-1')
+    const oldEvidence = http.expectOne((request) => request.url.endsWith('/wf-1/evidence'))
+    store.selectSession('wf-2')
+
+    expect(oldEvidence.cancelled).toBe(true)
+    http.expectOne((r) => r.url.endsWith('/wf-2/timing')).flush({ data: { workflowId: 'wf-2', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/evidence')).flush({ data: { workflowId: 'wf-2', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/metrics')).flush({ data: { workflowId: 'wf-2' } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-2/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-2/agent-questions')).flush({ data: [] })
+    expect(store.session('wf-2')?.id).toBe('wf-2')
+  })
+
+  it('cancels selected detail requests when leaving the session', () => {
+    flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
+    const requests = http.match((request) => request.url.includes('/wf-1/'))
+    const evidence = requests.find((request) => request.request.url.endsWith('/evidence'))
+
+    store.clearSessionSelection('wf-1')
+
+    expect(evidence?.cancelled).toBe(true)
+    expect(requests.every((request) => request.cancelled)).toBe(true)
+  })
+
+  it('updates the affected card from enriched SSE state without corrupting another run', () => {
+    const second = snapshotFor('wf-2', 'ns-2', 'Second')
+    flushInitialWorkflows([snapshot, second])
+    flushRunEnrichment('wf-1', false)
+    flushRunEnrichment('wf-2', false)
+
+    FakeEventSource.instances[0]?.emit(
+      'workflow-projection-updated',
+      JSON.stringify({ workflowId: 'wf-1', namespaceId: 'ns-1' })
+    )
+    const failed = {
+      ...snapshot,
+      projection: {
+        ...snapshot.projection,
+        status: 'failed',
+        steps: [
+          { ...snapshot.projection.steps[0], status: 'completed' },
+          { ...snapshot.projection.steps[1], status: 'failed' },
+          { id: 'deploy', status: 'pending', responsibility: { kind: 'code' } },
+        ],
+      },
+    }
+    flushInitialWorkflows([failed, second])
+    flushRunEnrichment('wf-1', false)
+
+    expect(store.runs().find((run) => run.id === 'wf-1')?.run?.cardState).toBe('failed')
+    expect(
+      store
+        .runs()
+        .find((run) => run.id === 'wf-1')
+        ?.run?.phases.map((phase) => phase.status)
+    ).toEqual(['done', 'failed', 'pending'])
+    expect(store.runs().find((run) => run.id === 'wf-2')?.title).toBe('Second')
+  })
+
+  it('does not refresh selected detail for an unrelated targeted SSE event', () => {
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+    flushEnrichment()
+
+    FakeEventSource.instances[0]?.emit(
+      'workflow-projection-updated',
+      JSON.stringify({ workflowId: 'wf-2', namespaceId: 'ns-2' })
+    )
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+
+    http.expectNone((request) => request.url.includes('/wf-1/evidence'))
+    flushRunEnrichment('wf-2', false)
   })
 
   it('derives one FactoryRun per active workflow, from the real snapshot fields', () => {
@@ -215,15 +364,6 @@ describe('FactoryStore', () => {
       projection: { ...snapshot.projection, title: 'No date workflow', workflowId: 'wf-nodate' },
     }
     flushInitialWorkflows([older, newer, noDate])
-    ;['wf-older', 'wf-newer', 'wf-nodate'].forEach((wfId) => {
-      http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
-      http.expectOne((r) => r.url.endsWith(`/${wfId}/evidence`)).flush({ data: { workflowId: wfId, items: [] } })
-      http.expectOne((r) => r.url.endsWith(`/${wfId}/metrics`)).flush({ data: { workflowId: wfId } })
-      http.expectOne((r) => r.url.endsWith(`/${wfId}/interactions`)).flush({ data: { workflowId: wfId, items: [] } })
-      http.expectOne((r) => r.url.endsWith(`/${wfId}/attempts`)).flush({ data: [] })
-      http.expectOne((r) => r.url.endsWith(`/${wfId}/actions`)).flush({ data: { allowedActions: [], blockers: [] } })
-      http.expectOne((r) => r.url.endsWith(`/${wfId}/agent-questions`)).flush({ data: [] })
-    })
 
     const titles = store.visibleRuns().map((run) => run.title)
     expect(titles).toEqual(['Newer workflow', 'Older workflow', 'No date workflow'])
@@ -335,6 +475,20 @@ describe('FactoryStore', () => {
   // Real cost aggregation
   // ---------------------------------------------------------------------------
 
+  it('maps blockers and real metrics into the same card summary as detail', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment(
+      { realCost: { cost: 2.5, unknownCostCount: 0, liveTokens: 321 } },
+      { items: [] },
+      { data: [] },
+      { allowedActions: [], blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'blocked' }] }
+    )
+    const summary = store.runs()[0]?.run
+    expect(summary?.cardState).toBe('blocked')
+    expect(summary?.costUsd).toBe(2.5)
+    expect(summary?.tokens).toBe(321)
+  })
+
   it('aggregates the real workflow costs and uncertainty into CostSummary', () => {
     flushInitialWorkflows([snapshot])
     flushEnrichment({
@@ -432,6 +586,7 @@ describe('FactoryStore', () => {
 
   it('degrades gracefully when the interactions fetch fails', () => {
     flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
@@ -487,6 +642,7 @@ describe('FactoryStore', () => {
 
   it('degrades gracefully when the attempts fetch fails', () => {
     flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
@@ -561,8 +717,14 @@ describe('FactoryStore', () => {
     // must still reflect the previous enrichment (caseId from attempt preserved).
     expect(store.session('wf-1')?.phase.caseId).toBe('case-1')
 
-    // Complete the new enrichment requests
-    flushEnrichment()
+    // Complete the new enrichment requests without starting another cycle.
+    http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: { items: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush({ data: [] })
+    http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: { allowedActions: [], blockers: [] } })
+    http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
   })
 
   it('purges enrichment for workflows that disappear from the snapshot set', () => {
@@ -570,7 +732,7 @@ describe('FactoryStore', () => {
     const snap2 = snapshotFor('wf-2', 'ns-1', 'Second workflow')
     flushInitialWorkflows([snapshot, snap2])
     flushEnrichment()
-    flushRunEnrichment('wf-2')
+    store.clearSessionSelection('wf-1')
 
     expect(store.runs()).toHaveLength(2)
 
@@ -579,7 +741,6 @@ describe('FactoryStore', () => {
     source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1' }))
 
     flushInitialWorkflows([snapshot]) // only wf-1 survives
-    flushEnrichment() // only wf-1 gets re-enriched
 
     expect(store.runs()).toHaveLength(1)
     expect(store.runs()[0]?.id).toBe('wf-1')
@@ -601,10 +762,9 @@ describe('FactoryStore', () => {
     expect(store.session('872641a8').id).toBe('872641a8')
   })
 
-  it('falls back to the demo session for an unknown run id', () => {
+  it('does not fabricate a demo session for an unknown real run id', () => {
     flushInitialWorkflows()
-    const session = store.session('unknown-run')
-    expect(session?.id).toBe('unknown-run')
+    expect(store.session('unknown-run')).toBeUndefined()
   })
 
   // ---------------------------------------------------------------------------
@@ -613,6 +773,7 @@ describe('FactoryStore', () => {
 
   it('preserves agent questions when later enrichment responses merge', () => {
     flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
 
     http
       .expectOne((r) => r.url.endsWith('/wf-1/agent-questions'))
@@ -642,6 +803,7 @@ describe('FactoryStore', () => {
 
   it('keeps Case metadata when question projection is unavailable', () => {
     flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: {} })
@@ -693,6 +855,7 @@ describe('FactoryStore', () => {
 
   it('degrades gracefully when the actions fetch fails', () => {
     flushInitialWorkflows([snapshot])
+    store.selectSession('wf-1')
     http.expectOne((r) => r.url.endsWith('/wf-1/timing')).flush({ data: { workflowId: 'wf-1', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: { workflowId: 'wf-1' } })
@@ -722,6 +885,7 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -737,6 +901,7 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -751,6 +916,7 @@ describe('FactoryStore', () => {
     expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator' })
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -766,6 +932,7 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -780,6 +947,7 @@ describe('FactoryStore', () => {
     expect(request.request.body).toEqual({})
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -843,6 +1011,7 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -874,6 +1043,7 @@ describe('FactoryStore', () => {
     expect(request.request.body).toEqual({ expectedRevision: 3, reason: 'stop' })
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -898,6 +1068,7 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { status: 'removed' } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 
@@ -926,6 +1097,7 @@ describe('FactoryStore', () => {
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { status: 'active' } })
 
+    flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
 

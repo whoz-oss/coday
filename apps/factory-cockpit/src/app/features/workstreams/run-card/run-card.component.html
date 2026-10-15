@@ -14,15 +14,28 @@
       <a [routerLink]="['/sessions', r.id]">{{ r.title }}</a>
     </h3>
 
-    @switch (r.status) {
-      @case ('working') {
-        <sf-status-chip tone="blue" icon="progress_activity" spin>working</sf-status-chip>
-      }
-      @case ('idle') {
-        <sf-status-chip tone="neutral" icon="pause">waiting</sf-status-chip>
-      }
-      @case ('destroyed') {
-        <sf-status-chip tone="neutral" dot>destroyed</sf-status-chip>
+    @if (r.status === 'destroyed') {
+      <sf-status-chip tone="neutral" dot>destroyed</sf-status-chip>
+    } @else {
+      @switch (r.run?.cardState) {
+        @case ('failed') {
+          <sf-status-chip tone="red" icon="close">failed</sf-status-chip>
+        }
+        @case ('blocked') {
+          <sf-status-chip tone="amber" icon="block">blocked</sf-status-chip>
+        }
+        @case ('waiting_human') {
+          <sf-status-chip tone="amber" icon="person_alert">waiting for human</sf-status-chip>
+        }
+        @case ('running') {
+          <sf-status-chip tone="blue" icon="progress_activity" spin>running</sf-status-chip>
+        }
+        @case ('succeeded') {
+          <sf-status-chip tone="green" icon="check">completed</sf-status-chip>
+        }
+        @default {
+          <sf-status-chip tone="neutral" icon="pause">waiting</sf-status-chip>
+        }
       }
     }
 

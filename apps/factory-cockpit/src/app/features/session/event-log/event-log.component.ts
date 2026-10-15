@@ -10,6 +10,7 @@ import { CaseEventStateService } from '../../../core/case-event-state.service'
 import { CaseMetricsStateService } from '../../../core/case-metrics-state.service'
 import { BlockSelection, AgentAttempt, RunEvent, RunEventType } from '../../../core/models'
 import { MessageDetailDialogComponent, MessageDetailDialogData } from './message-detail-dialog.component'
+import { CodeDiagnosticDialogComponent, CodeDiagnosticDialogData } from './code-diagnostic-dialog.component'
 
 type Filter = 'all' | RunEventType
 
@@ -161,6 +162,21 @@ export class EventLogComponent {
       maxWidth: '92vw',
       autoFocus: 'dialog',
     })
+  }
+
+  protected openCodeDiagnostic(event: RunEvent): void {
+    if (!event.codeDiagnostic) return
+    this.dialog.open<CodeDiagnosticDialogComponent, CodeDiagnosticDialogData>(CodeDiagnosticDialogComponent, {
+      data: event.codeDiagnostic,
+      width: 'min(680px, 92vw)',
+      maxWidth: '92vw',
+      autoFocus: 'dialog',
+      ariaLabel: `${event.codeDiagnostic.verification || 'Code verification'} diagnostics`,
+    })
+  }
+
+  protected diagnosticAriaLabel(event: RunEvent): string {
+    return `Open ${event.codeDiagnostic?.verification || 'code verification'} diagnostics`
   }
 
   protected messageAriaLabel(event: RunEvent): string {

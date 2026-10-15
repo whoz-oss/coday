@@ -176,6 +176,11 @@ class NeedsResearchRouter(
                 environmentRef = predecessor?.environmentRef,
                 expectedEnvironmentRevision = predecessor?.expectedEnvironmentRevision,
                 resumptionContext = resumptionContext,
+                // Preserve the predecessor's frozen pair verbatim. In
+                // particular, never create an envelope without its pinned brief
+                // and never replace a legacy null with current workflow state.
+                contextEnvelope = predecessor?.contextEnvelope,
+                expectedAmendmentSeq = predecessor?.expectedAmendmentSeq,
                 rootCaseId = predecessor?.rootCaseId,
                 parentCaseId = predecessor?.parentCaseId,
             ),

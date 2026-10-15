@@ -54,6 +54,7 @@ export {
 // Workflow / session
 export {
   mapProjectionToSessionDetail,
+  mapSessionDetailToRunSummary,
   mapProjectionToFactoryRun,
   workflowIdOf,
   namespaceOf,

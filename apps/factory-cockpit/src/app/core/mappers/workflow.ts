@@ -13,7 +13,12 @@ import {
   extractInteractions,
   extractRealCost,
 } from './actions'
-import { mapProjectionToLanes, mapProjectionToRunSummary, mapWorkflowStateToRunStatus } from './timeline'
+import {
+  mapProjectionToLanes,
+  mapProjectionToRunSummary,
+  mapWorkflowStateToRunStatus,
+  resolveTimelineOriginMs,
+} from './timeline'
 import {
   buildPhaseDetail,
   filterEventsForSelection,
@@ -72,21 +77,24 @@ function phaseToneForStep(step: unknown): import('../models').Tone {
   return ['failed', 'indeterminate'].includes(resolveStepState(step)) ? 'red' : toneForActor(classifyActorKind(step))
 }
 
-function mapStepsToSessionSteps(steps: unknown[]): SessionStep[] {
+function mapStepsToSessionSteps(steps: unknown[], blockedStepIds: ReadonlySet<string> = new Set()): SessionStep[] {
   return steps.map((step, index) => {
     const obj = asObject(step) ?? {}
     const state = resolveStepState(obj)
     const result: SessionStep = {
       key: getString(obj, 'id') ?? getString(obj, 'name') ?? `step-${index + 1}`,
       tone: phaseToneForStep(obj),
-      status:
-        state === 'waiting_human'
+      status: blockedStepIds.has(getString(obj, 'id') ?? getString(obj, 'name') ?? `step-${index + 1}`)
+        ? 'blocked'
+        : state === 'waiting_human'
           ? 'waiting_human'
           : state === 'running'
             ? 'running'
-            : state === 'pending' || state === 'ready'
-              ? 'pending'
-              : 'done',
+            : state === 'failed'
+              ? 'failed'
+              : state === 'pending' || state === 'ready'
+                ? 'pending'
+                : 'done',
     }
     const duration = stepDurationSec(obj)
     if (duration !== null) result.durationSec = Math.round(duration)
@@ -110,16 +118,18 @@ export function mapProjectionToSessionDetail(
 ): SessionDetail {
   const snapshot = asObject(workflow) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
-  const steps = asArray(projection['steps'])
+  const projectedSteps = asArray(projection['steps'])
+  const evidenceItems = asArray(asObject(evidence)?.['items'])
+  const steps = mergeCodeEvidenceIntoSteps(projectedSteps, evidenceItems)
   const controller = asObject(snapshot['controllerExecution'])
   const timingObj = asObject(timing)
   const metricsObj = asObject(metrics)
   const realCost = extractRealCost(metricsObj)
-  const evidenceItems = asArray(asObject(evidence)?.['items'])
   const mappedInteractions = extractInteractions(interactions)
   const mappedAttempts = extractAttempts(attempts)
   const mappedAllowedActions = extractAllowedActions(actions)
   const mappedBlockers = extractBlockers(actions)
+  const blockedStepIds = new Set(mappedBlockers.map((blocker) => blocker.stepId).filter((id): id is string => !!id))
 
   const cancelAttemptAction = mappedAllowedActions.find(
     (action) => action.type === 'cancel_attempt' && action.attemptId !== undefined
@@ -130,7 +140,9 @@ export function mapProjectionToSessionDetail(
 
   const id = getString(snapshot, 'workflowId') ?? getString(projection, 'workflowId') ?? 'unknown'
   const controllerCaseId = controllerCaseIdOf(snapshot)
-  const status = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
+  const projectedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
+  const derivedStatus = mapWorkflowStateToRunStatus(undefined, steps)
+  const status = derivedStatus === 'failed' ? 'failed' : projectedStatus
   const stepStates = steps.map(resolveStepState)
   const waitingHuman =
     stepStates.includes('waiting_human') || mappedAttempts.some((attempt) => attempt.status === 'waiting_human')
@@ -145,7 +157,10 @@ export function mapProjectionToSessionDetail(
           ? 'failed'
           : 'pending'
 
-  const lanes = mapProjectionToLanes(snapshot, timing, mappedAttempts)
+  const enrichedSnapshot = { ...snapshot, projection: { ...projection, steps } }
+  const timelineOriginMs = resolveTimelineOriginMs(enrichedSnapshot, timing, mappedAttempts)
+  const timelineOriginAt = new Date(timelineOriginMs).toISOString()
+  const lanes = mapProjectionToLanes(enrichedSnapshot, timing, mappedAttempts)
   const laneEnd = lanes.reduce((max, lane) => {
     const requestEnd = lane.request?.endSec ?? 0
     const blocksEnd = lane.blocks.reduce((end, block) => Math.max(end, block.endSec), 0)
@@ -200,6 +215,7 @@ export function mapProjectionToSessionDetail(
       getString(projection, 'startedAt') ??
       firstStartedAt(steps) ??
       new Date().toISOString(),
+    timelineOriginAt,
     workflow: getString(projection, 'title') ?? id,
     costUsd:
       realCost?.cost ??
@@ -212,9 +228,11 @@ export function mapProjectionToSessionDetail(
     tokens,
     tokensRead,
     tokensWritten,
-    steps: mapStepsToSessionSteps(steps),
+    steps: mapStepsToSessionSteps(steps, blockedStepIds),
     lanes,
-    nowSec: Math.round(laneEnd),
+    nowSec: Math.round(
+      activelyRunning ? Math.max(laneEnd, Math.max((Date.now() - timelineOriginMs) / 1000, 0)) : laneEnd
+    ),
     events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
     phase: buildPhaseDetail(steps, status, mappedInteractions, mappedAttempts, evidenceItems),
     phaseByStepId,
@@ -230,6 +248,48 @@ export function mapProjectionToSessionDetail(
     eventsByAttemptId,
   }
   return result
+}
+
+function mergeCodeEvidenceIntoSteps(steps: unknown[], evidenceItems: unknown[]): unknown[] {
+  const latestByStep = new Map<string, Record<string, unknown>>()
+  for (const raw of evidenceItems) {
+    const item = asObject(raw)
+    const kind = getString(item, 'kind')
+    if (kind !== 'code-verification' && kind !== 'session-step') continue
+    const stepId = getString(item, 'stepId') ?? getString(asObject(item?.['facts']), 'stepId')
+    if (!stepId) continue
+    const facts = asObject(item?.['facts'])
+    if (!facts) continue
+    const status = getString(facts, 'status') ?? getString(item, 'outcome')
+    const temporal = getNumber(facts, 'durationMs') !== undefined || getString(facts, 'startedAt') !== undefined
+    if (!temporal && status !== 'running') continue
+    latestByStep.set(stepId, { ...facts, evidenceStatus: status })
+  }
+  return steps.map((raw) => {
+    const step = asObject(raw)
+    const stepId = getString(step, 'id')
+    if (!step || !stepId) return raw
+    const facts = latestByStep.get(stepId)
+    if (!facts) return raw
+    const durationMs = getNumber(step, 'durationMs') ?? getNumber(facts, 'durationMs')
+    const startedAt = getString(step, 'startedAt') ?? getString(facts, 'startedAt')
+    const completedAt = getString(step, 'completedAt') ?? getString(facts, 'completedAt')
+    const status = resolveStepState(step)
+    const recordedStatus = getString(facts, 'evidenceStatus')
+    const evidenceStatus =
+      recordedStatus === 'running'
+        ? 'running'
+        : getNumber(facts, 'exitCode') === 0 && facts['timedOut'] !== true
+          ? 'completed'
+          : 'failed'
+    return {
+      ...step,
+      ...(durationMs !== undefined ? { durationMs } : {}),
+      ...(startedAt ? { startedAt } : {}),
+      ...(completedAt ? { completedAt } : {}),
+      status: status === 'pending' || status === 'ready' ? evidenceStatus : status,
+    }
+  })
 }
 
 function firstStartedAt(steps: unknown[]): string | undefined {
@@ -262,7 +322,7 @@ export function mapProjectionToFactoryRun(snapshot: unknown, forcedStatus?: Sand
     id: run.id,
     title: name,
     project: namespaceId ?? ticket ?? 'coday',
-    status: forcedStatus ?? deriveRunStatus(state, run.status),
+    status: forcedStatus ?? (run.status === 'failed' ? 'failed' : deriveRunStatus(state, run.status)),
     costUsd: run.costUsd,
     durationSec: run.durationSec,
     tokens: run.tokens,
@@ -282,3 +342,47 @@ export function mapProjectionToFactoryRun(snapshot: unknown, forcedStatus?: Sand
 
 // Re-export for backward compat via facade
 export { mapProjectionToRunSummary, mapWorkflowStateToRunStatus, mapProjectionToLanes, mapProjectionToPhaseByStepId }
+
+/** Build the card summary from the already-enriched SessionDetail truth. */
+export function mapSessionDetailToRunSummary(snapshot: unknown, detail: SessionDetail): import('../models').RunSummary {
+  const blockedStepIds = new Set(
+    (detail.blockers ?? []).map((blocker) => blocker.stepId).filter((id): id is string => !!id)
+  )
+  const summary = mapProjectionToRunSummary(
+    snapshot,
+    {
+      realCost: {
+        cost: detail.costUsd,
+        unknownCostCount: detail.unknownCostCount ?? 0,
+        liveTokens: detail.tokens,
+      },
+    },
+    undefined,
+    blockedStepIds
+  )
+  summary.status = detail.status
+  summary.durationSec = detail.durationSec
+  summary.tokens = detail.tokens
+  summary.costUsd = detail.costUsd
+  summary.unknownCostCount = detail.unknownCostCount ?? 0
+  summary.waitingHuman = detail.executionState === 'waiting_human'
+  summary.cardState =
+    detail.status === 'failed'
+      ? 'failed'
+      : detail.executionState === 'waiting_human'
+        ? 'waiting_human'
+        : blockedStepIds.size > 0
+          ? 'blocked'
+          : detail.activelyRunning
+            ? 'running'
+            : detail.status === 'succeeded'
+              ? 'succeeded'
+              : 'pending'
+  summary.phases = detail.steps.map((step) => ({
+    key: step.key,
+    ratio: detail.durationSec > 0 ? (step.durationSec ?? 0) / detail.durationSec : 1 / Math.max(detail.steps.length, 1),
+    tone: step.tone,
+    status: step.status,
+  }))
+  return summary
+}

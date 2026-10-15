@@ -71,7 +71,7 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
     private fun agentStep(id: String, dependsOn: List<String> = emptyList()): WorkflowStepDefinition =
         WorkflowStepDefinition(id, "Step $id", WorkflowStepResponsibility(ResponsibilityKind.AGENT, "architect"), dependsOn)
 
-    private fun startSession(workflowType: String, workflowId: String) {
+    private fun startSession(workflowType: String, workflowId: String, amendmentSeq: Long = 0L) {
         val raw = linkedMapOf<String, Any?>(
             "schemaVersion" to "1",
             "workflowType" to workflowType,
@@ -102,6 +102,9 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
             WorkflowStartCommand(workflowId = workflowId, workflowType = workflowType, title = "Session $workflowType"),
             ControllerExecutionInput(runtimeId = "test-runtime", kind = "agentos", agentId = "runner", namespaceId = namespace),
         )
+        repeat(amendmentSeq.toInt()) {
+            workflowRepository.incrementAmendmentSeq(scope, namespace, workflowId)
+        }
     }
 
     private fun service(adapter: AgentOsExecutionAdapter): CapabilityExecutionService =
@@ -156,7 +159,7 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `a fresh attempt freezes its context envelope and the brief it pins`() {
         val workflowId = "wf-envelope-fresh-${UUID.randomUUID()}"
-        startSession("ctx-envelope-fresh", workflowId)
+        startSession("ctx-envelope-fresh", workflowId, amendmentSeq = 3L)
         val adapter = BriefCapturingAdapter()
 
         val result = service(adapter).resolveAndRecord(scope, namespace, workflowId, agentStep("A"), repoRoot)
@@ -171,6 +174,8 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
         assertThat(envelope.workflowId).isEqualTo(workflowId)
         assertThat(envelope.stepId).isEqualTo("A")
         assertThat(envelope.agentName).isEqualTo("architect")
+        assertThat(envelope.expectedAmendmentSeq).isEqualTo(3L)
+        assertThat(persisted.expectedAmendmentSeq).isEqualTo(3L)
         // The frozen envelope pins exactly the brief handed to the turn.
         assertThat(adapter.startTurnBriefs).hasSize(1)
         assertThat(envelope.briefHash).isEqualTo(CanonicalJsonHash.sha256(adapter.startTurnBriefs.single()))
@@ -191,6 +196,7 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
             attemptNumber = 1,
             agentName = "architect",
             briefHash = CanonicalJsonHash.sha256(frozenBrief),
+            expectedAmendmentSeq = 7L,
         )
         val frozenJson = frozenEnvelope.toJson()
         durableAgentAttemptService.register(
@@ -205,6 +211,7 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
                 agentName = "architect",
                 brief = frozenBrief,
                 contextEnvelope = frozenJson,
+                expectedAmendmentSeq = 7L,
             ),
         )
 
@@ -218,5 +225,6 @@ class CapabilityExecutionContextReplayTest : Neo4jDomainIntegrationTest() {
         assertThat(persisted.status).isEqualTo(AgentAttemptStatus.SUCCEEDED)
         assertThat(persisted.brief).isEqualTo(frozenBrief)
         assertThat(persisted.contextEnvelope).isEqualTo(frozenJson)
+        assertThat(persisted.expectedAmendmentSeq).isEqualTo(7L)
     }
 }

@@ -1,10 +1,15 @@
 package io.whozoss.factory.agentattempt
 
 import io.whozoss.factory.Neo4jDomainIntegrationTest
+import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.config.FactoryProperties
+import io.whozoss.factory.web.TestJwt
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -39,6 +44,12 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Autowired
     private lateinit var attempts: AgentStepAttemptRepository
 
+    @Autowired
+    private lateinit var durableAttempts: DurableAgentAttemptService
+
+    @Autowired
+    private lateinit var properties: FactoryProperties
+
     private val namespace = "ns-http-a7"
     private val workflow = "wf-http-a7"
     private val step = "step-http-a7"
@@ -61,6 +72,113 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
                 payload = "{}",
             ),
         )
+    }
+
+    @Test
+    fun `signed AgentOS service submission resolves the active attempt from namespace and case`() {
+        val token = issueToken("attempt-http-1")
+        durableAttempts.register(
+            scope,
+            DurableAgentAttempt(
+                attemptId = "attempt-http-1",
+                caseId = caseId,
+                namespaceId = namespace,
+                workflowId = workflow,
+                stepId = step,
+                attemptNumber = 1,
+                agentName = agentName,
+                capabilityToken = token,
+                status = AgentAttemptStatus.RUNNING,
+            ),
+        )
+        val signed = TestJwt.signProxyHeaders(
+            principalId = "agentos-worker",
+            principalType = "service",
+            serviceIdentityId = "agentos-factory-bridge",
+            scopes = listOf("workflow:write"),
+            namespaceId = namespace,
+            caseId = caseId,
+            secret = properties.security.fakeIdpSecret,
+        )
+        val headers = HttpHeaders().apply {
+            contentType = MediaType.APPLICATION_JSON
+            signed.forEach(::set)
+            set("X-AgentOS-Agent-Name", agentName)
+            set("Idempotency-Key", "agentos:$caseId:request-1")
+        }
+
+        val response = restTemplate.exchange(
+            "/api/factory/agent-step-results",
+            HttpMethod.POST,
+            HttpEntity("""{"result":{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]}}}""", headers),
+            jsonType(),
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(response.body)!!["idempotent"]).isEqualTo(false)
+    }
+
+    @Test
+    fun `signed AgentOS submission persists and round trips delivery analysis`() {
+        val token = issueToken("attempt-http-1")
+        durableAttempts.register(
+            scope,
+            DurableAgentAttempt(
+                attemptId = "attempt-http-1", caseId = caseId, namespaceId = namespace,
+                workflowId = workflow, stepId = step, attemptNumber = 1, agentName = agentName,
+                capabilityToken = token, status = AgentAttemptStatus.RUNNING,
+            ),
+        )
+        val signed = TestJwt.signProxyHeaders(
+            principalId = "agentos-worker", principalType = "service",
+            namespaceId = namespace, caseId = caseId, secret = properties.security.fakeIdpSecret,
+        )
+        val headers = HttpHeaders().apply {
+            contentType = MediaType.APPLICATION_JSON
+            signed.forEach(::set)
+            set("X-AgentOS-Agent-Name", agentName)
+            set("Idempotency-Key", "agentos:$caseId:delivery")
+        }
+        val payload = """{"result":{"status":"PASS","summary":"done","claims":{"modifiedFiles":[],"deliveryAnalysis":{"baseBranch":"sprint","changeType":"bugfix","ticket":"WZ-33157","title":"Complete RAWeb 5.4 accessible table names"}},"artifacts":[{"kind":"run-brief","encoding":"markdown","content":"# Run brief"}],"findings":[{"severity":"blocking","code":"A11Y","summary":"Needs verification"}]}}"""
+
+        val response = restTemplate.exchange(
+            "/api/factory/agent-step-results", HttpMethod.POST, HttpEntity(payload, headers), jsonType(),
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        val stored = service.acceptedResult(scope, namespace, workflow, step, "attempt-http-1")!!
+        assertThat(stored.claims.modifiedFiles).isEmpty()
+        assertThat(stored.claims.deliveryAnalysis?.baseBranch).isEqualTo("sprint")
+        assertThat(stored.claims.deliveryAnalysis?.changeType).isEqualTo("bugfix")
+        assertThat(stored.claims.deliveryAnalysis?.ticket).isEqualTo("WZ-33157")
+        assertThat(stored.claims.deliveryAnalysis?.title).isEqualTo("Complete RAWeb 5.4 accessible table names")
+        assertThat(stored.artifacts.single().kind).isEqualTo("run-brief")
+    }
+
+    @Test
+    fun `signed AgentOS service submission rejects a body attempt id`() {
+        val signed = TestJwt.signProxyHeaders(
+            principalId = "agentos-worker",
+            principalType = "service",
+            namespaceId = namespace,
+            caseId = caseId,
+            secret = properties.security.fakeIdpSecret,
+        )
+        val headers = HttpHeaders().apply {
+            contentType = MediaType.APPLICATION_JSON
+            signed.forEach(::set)
+            set("Idempotency-Key", "agentos:$caseId:request-2")
+        }
+
+        val response = restTemplate.exchange(
+            "/api/factory/agent-step-results",
+            HttpMethod.POST,
+            HttpEntity(body("attempt-http-1"), headers),
+            jsonType(),
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("INVALID_RESULT_REQUEST")
     }
 
     @Test

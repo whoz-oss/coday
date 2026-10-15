@@ -192,17 +192,147 @@ function eventTypeFor(kind: string): RunEventType {
   return 'log'
 }
 
+const MAX_EVENT_TEXT = 2_000
+const MAX_COMMAND = 2_048
+const MAX_STREAM = 8_192
+const MAX_TASKS = 20
+const ANSI =
+  /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[-a-zA-Z\d/#&.:=?%@~_]+)*)?\u0007)|(?:(?:\d{1,4}(?:[;:]\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g
+
+function clean(value: unknown, limit: number): string | undefined {
+  if (typeof value !== 'string') return undefined
+  return value
+    .replace(ANSI, '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+    .slice(0, limit)
+}
+
+function streamFact(value: unknown): { excerpt: string; truncated: boolean; sha256?: string } | undefined {
+  if (typeof value === 'string')
+    return { excerpt: clean(value, MAX_STREAM) ?? '', truncated: value.length > MAX_STREAM }
+  const obj = asObject(value)
+  if (!obj) return undefined
+  const source = typeof obj['excerpt'] === 'string' ? obj['excerpt'] : ''
+  const excerpt = clean(source, MAX_STREAM) ?? ''
+  const result: { excerpt: string; truncated: boolean; sha256?: string } = {
+    excerpt,
+    truncated: obj['truncated'] === true || source.length > MAX_STREAM,
+  }
+  const hash = clean(obj['sha256'], 128)
+  if (hash) result.sha256 = hash
+  return result
+}
+
+function failedNxTasks(...streams: Array<{ excerpt: string } | undefined>): string[] {
+  const output = streams.map((stream) => stream?.excerpt ?? '').join('\n')
+  const found = new Set<string>()
+  const patterns = [/Running target \S+ for project ([A-Za-z0-9._-]+) failed/gi, /Failed tasks?:\s*([^\n]+)/gi]
+  for (const pattern of patterns) {
+    for (const match of output.matchAll(pattern)) {
+      clean(match[1], 256)
+        ?.split(/[,\s]+/)
+        .filter(Boolean)
+        .forEach((task) => found.add(task))
+      if (found.size >= MAX_TASKS) break
+    }
+  }
+  return [...found].slice(0, MAX_TASKS)
+}
+
+function codeDiagnostic(
+  obj: Record<string, unknown>,
+  facts: Record<string, unknown>
+): RunEvent['codeDiagnostic'] | undefined {
+  const kind = getString(obj, 'kind')
+  const verification = clean(facts['verification'], 256)
+  const hasCodeFacts =
+    kind === 'code-verification' || (kind === 'session-step' && (verification || facts['executed'] !== undefined))
+  if (!hasCodeFacts) return undefined
+  const timedOut = facts['timedOut'] === true
+  const executed = facts['executed']
+  const exitCode =
+    typeof facts['exitCode'] === 'number' && Number.isFinite(facts['exitCode']) ? facts['exitCode'] : undefined
+  const outcome = getString(obj, 'outcome')
+  const status = clean(facts['status'], 64)
+  const state =
+    status === 'running' || outcome === 'running'
+      ? 'running'
+      : executed === false
+        ? 'refused'
+        : timedOut
+          ? 'timed_out'
+          : exitCode === 0 && outcome !== 'fail' && outcome !== 'failed'
+            ? 'passed'
+            : 'failed'
+  const stdout = streamFact(facts['stdout'])
+  const stderr = streamFact(facts['stderr'])
+  const technical: Record<string, string | number | boolean> = {}
+  for (const key of ['cwd', 'observedHead', 'rootIdentity', 'timeoutMs']) {
+    const value = facts[key]
+    if (typeof value === 'string') technical[key] = clean(value, 512) ?? ''
+    else if (typeof value === 'number' && Number.isFinite(value)) technical[key] = value
+  }
+  if (stdout?.sha256) technical['stdoutSha256'] = stdout.sha256
+  if (stderr?.sha256) technical['stderrSha256'] = stderr.sha256
+  return {
+    verification,
+    state,
+    command: clean(facts['command'], MAX_COMMAND),
+    code: clean(facts['code'], 256),
+    message: clean(facts['message'], MAX_EVENT_TEXT),
+    exitCode,
+    stdout,
+    stderr,
+    failedTasks: failedNxTasks(stdout, stderr),
+    technical,
+  }
+}
+
 export function mapEvidenceToEvents(items: unknown[], steps: unknown[]): RunEvent[] {
   const events: RunEvent[] = []
+  const verificationsById = new Map<string, Record<string, unknown>>()
+  for (const item of items) {
+    const obj = asObject(item)
+    if (getString(obj, 'kind') !== 'code-verification') continue
+    const id = getString(obj, 'evidenceId') ?? getString(obj, 'id')
+    if (id) verificationsById.set(id, obj ?? {})
+  }
+
+  const consumedVerificationIds = new Set<string>()
   for (const item of items) {
     const obj = asObject(item) ?? {}
-    const facts = asObject(obj['facts']) ?? {}
+    const ownFacts = asObject(obj['facts']) ?? {}
     const kind = getString(obj, 'kind') ?? 'log'
-    const event: RunEvent = {
-      time: formatClock(getString(obj, 'createdAt')),
-      type: eventTypeFor(kind),
-      text: getString(facts, 'message') ?? getString(facts, 'text') ?? getString(obj, 'outcome') ?? kind,
+    const linkedEvidenceId = kind === 'session-step' ? getString(ownFacts, 'evidenceId') : undefined
+    const linkedVerification = linkedEvidenceId ? verificationsById.get(linkedEvidenceId) : undefined
+    const linkedFacts = asObject(linkedVerification?.['facts'])
+    if (linkedVerification && linkedFacts) consumedVerificationIds.add(linkedEvidenceId as string)
+    if (kind === 'code-verification') {
+      const evidenceId = getString(obj, 'evidenceId') ?? getString(obj, 'id')
+      if (evidenceId && consumedVerificationIds.has(evidenceId)) continue
+      const hasLinkedTerminal = items.some((candidate) => {
+        const candidateObj = asObject(candidate)
+        const candidateFacts = asObject(candidateObj?.['facts'])
+        return (
+          getString(candidateObj, 'kind') === 'session-step' && getString(candidateFacts, 'evidenceId') === evidenceId
+        )
+      })
+      if (hasLinkedTerminal) continue
     }
+    // The capability evidence owns the verdict; the session evidence owns the
+    // richer, redacted diagnostics and timing. Merge only through the explicit
+    // evidence id so retries and running records from the same step stay distinct.
+    const facts = linkedFacts ? { ...linkedFacts, ...ownFacts } : ownFacts
+    const diagnosticSource = linkedVerification ? { ...linkedVerification, ...obj, kind: 'code-verification' } : obj
+    const diagnostic = codeDiagnostic(diagnosticSource, facts)
+    const event: RunEvent = {
+      time: formatClock(getString(obj, 'createdAt') ?? getString(facts, 'startedAt')),
+      type: eventTypeFor(kind),
+      text:
+        clean(diagnostic?.message ?? facts['message'] ?? facts['text'] ?? obj['outcome'] ?? kind, MAX_EVENT_TEXT) ??
+        kind,
+    }
+    if (diagnostic) event.codeDiagnostic = diagnostic
     const tool = getString(facts, 'tool')
     if (tool) event.tool = tool
     const durationMs =

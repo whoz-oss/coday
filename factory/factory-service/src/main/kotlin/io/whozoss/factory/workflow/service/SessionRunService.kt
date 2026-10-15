@@ -279,6 +279,7 @@ class SessionRunService(
         var iterations = 0
         run {
             while (iterations++ < guard) {
+                reloadAuthoritativeProgress(scope, namespaceId, workflowId, steps, statuses)
                 applyEvaluation(scope, namespaceId, workflowId, steps, statuses)
                 if (statuses.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN }) {
                     if (!resolveWaitingHuman(scope, namespaceId, workflowId, steps, statuses, expectedRevision)) {
@@ -295,7 +296,21 @@ class SessionRunService(
                 // inside a transaction; the waiter either proves the exact
                 // worktree or throws — it never silently uses another directory.
                 if (step.responsibility.kind == ResponsibilityKind.CODE) {
-                    runWorktreeResolver?.resolve(scope, workflowId, effectiveRepoRoot)?.let { effectiveRepoRoot = it }
+                    val resolvedRoot = try {
+                        runWorktreeResolver?.resolve(scope, workflowId, effectiveRepoRoot) ?: effectiveRepoRoot
+                    } catch (error: Exception) {
+                        // Root resolution is part of the code step, not runner infrastructure.
+                        // Claim first so the failure has one authoritative owner, then persist the
+                        // same diagnostic shape as any other pre-execution failure. No command ran.
+                        if (claimStep(scope, namespaceId, workflowId, step.id, statuses)) {
+                            recordCodePreparationFailure(
+                                scope, namespaceId, workflowId, step, effectiveRepoRoot,
+                                error, expectedRevision, statuses,
+                            )
+                        }
+                        continue
+                    }
+                    effectiveRepoRoot = resolvedRoot
                 }
                 executeStep(
                     scope,
@@ -395,6 +410,22 @@ class SessionRunService(
         return progress
     }
 
+    private fun reloadAuthoritativeProgress(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        steps: List<WorkflowStepDefinition>,
+        progress: SessionProgress,
+    ) {
+        val durable = repository.findStepStates(scope, namespaceId, workflowId).associateBy { it.stepId }
+        for (step in steps) {
+            val state = durable[step.id] ?: continue
+            progress.statuses[step.id] = state.status
+            (state.payload["startedAt"] as? String)?.let { progress.startedAt[step.id] = it }
+            (state.payload["completedAt"] as? String)?.let { progress.completedAt[step.id] = it }
+        }
+    }
+
     private fun applyEvaluation(
         scope: TenantScope,
         namespaceId: String,
@@ -403,8 +434,53 @@ class SessionRunService(
         progress: SessionProgress,
     ) {
         val evaluation = SessionSequencer.evaluate(steps, progress.statuses)
-        for (stepId in evaluation.blocked) setStatus(scope, namespaceId, workflowId, stepId, WorkflowStatuses.BLOCKED, progress)
+        for (stepId in evaluation.blocked) {
+            val rootStepId = blockingRootStepId(steps, progress.statuses, stepId)
+            setBlockedStatus(scope, namespaceId, workflowId, stepId, rootStepId, progress)
+        }
         for (stepId in evaluation.ready) setStatus(scope, namespaceId, workflowId, stepId, WorkflowStatuses.READY, progress)
+    }
+
+    private fun blockingRootStepId(
+        steps: List<WorkflowStepDefinition>, statuses: Map<String, String>, stepId: String,
+    ): String {
+        val byId = steps.associateBy { it.id }
+        val visited = mutableSetOf<String>()
+        fun root(id: String): String {
+            if (!visited.add(id)) return id
+            val step = byId[id] ?: return id
+            val directFailure = step.dependsOn.firstOrNull { statuses[it] in setOf(WorkflowStatuses.FAILED, WorkflowStatuses.CANCELLED, WorkflowStatuses.NEEDS_RESEARCH) }
+            if (directFailure != null) return directFailure
+            val blocked = step.dependsOn.firstOrNull { statuses[it] == WorkflowStatuses.BLOCKED }
+            return if (blocked == null) id else root(blocked)
+        }
+        return root(stepId)
+    }
+
+    private fun setBlockedStatus(
+        scope: TenantScope, namespaceId: String, workflowId: String, stepId: String, rootStepId: String,
+        progress: SessionProgress,
+    ) {
+        if (progress.statuses[stepId] == WorkflowStatuses.BLOCKED) return
+        progress.statuses[stepId] = WorkflowStatuses.BLOCKED
+        repository.upsertStepState(
+            scope,
+            WorkflowStepStateRecord(
+                namespaceId, workflowId, stepId, 1, WorkflowStatuses.BLOCKED,
+                progress.payload(stepId) + mapOf("cause" to "dependency_non_success", "rootStepId" to rootStepId, "executed" to false),
+            ),
+        )
+        evidenceRepository.append(
+            scope, namespaceId, workflowId,
+            WorkflowEvidenceItem(
+                UUID.randomUUID().toString(), namespaceId, workflowId, stepId, "session-step", WorkflowStatuses.BLOCKED,
+                mapOf("kind" to "factory-session-sequencer"),
+                mapOf("stepId" to stepId, "status" to WorkflowStatuses.BLOCKED, "cause" to "dependency_non_success", "rootStepId" to rootStepId, "executed" to false),
+                "session-step-blocked:$workflowId:$stepId:$rootStepId", null,
+            ),
+        )
+        persistProgressProjection(scope, namespaceId, workflowId, progress)
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId))
     }
 
     /** Executes one ready step; returns its terminal status, or null on an unexpected failure path. */
@@ -461,7 +537,7 @@ class SessionRunService(
             transition(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, expectedRevision)
             val resultingStatus = if (reArmed) WorkflowStatuses.READY else WorkflowStatuses.NEEDS_RESEARCH
             setStatus(scope, namespaceId, workflowId, step.id, resultingStatus, statuses)
-            recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution)
+            recordStepEvidence(scope, namespaceId, workflowId, step, WorkflowStatuses.NEEDS_RESEARCH, execution, statuses)
             return resultingStatus
         }
         // Auto-oracles: once the step's own capability has succeeded, run every
@@ -478,7 +554,7 @@ class SessionRunService(
         }
         transition(scope, namespaceId, workflowId, step, terminal, expectedRevision, oracleEvidenceIds)
         setStatus(scope, namespaceId, workflowId, step.id, terminal, statuses)
-        recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution)
+        recordStepEvidence(scope, namespaceId, workflowId, step, terminal, execution, statuses)
         return terminal
     }
 
@@ -542,6 +618,7 @@ class SessionRunService(
     }
 
     private fun classify(outcome: CapabilityOutcome): String = when (outcome) {
+        is CapabilityOutcome.BranchPrepared -> WorkflowStatuses.COMPLETED
         is CapabilityOutcome.CodeExecuted -> if (outcome.verdict) WorkflowStatuses.COMPLETED else WorkflowStatuses.FAILED
         is CapabilityOutcome.CodeRefused -> WorkflowStatuses.FAILED
         is CapabilityOutcome.AgentCompleted -> WorkflowStatuses.COMPLETED
@@ -686,6 +763,7 @@ class SessionRunService(
         progress.statuses[stepId] = WorkflowStatuses.RUNNING
         progress.startedAt[stepId] = startedAt
         progress.waitingQuestions.remove(stepId)
+        recordRunningStepEvidence(scope, namespaceId, workflowId, stepId, startedAt)
         // The successful CAS owns execution; publish the authoritative RUNNING
         // projection before any remote case creation/message dispatch occurs.
         persistProgressProjection(scope, namespaceId, workflowId, progress)
@@ -794,6 +872,30 @@ class SessionRunService(
         )
     }
 
+    private fun recordRunningStepEvidence(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        startedAt: String,
+    ) {
+        evidenceRepository.append(
+            scope, namespaceId, workflowId,
+            WorkflowEvidenceItem(
+                evidenceId = UUID.randomUUID().toString(),
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = stepId,
+                kind = "session-step",
+                outcome = WorkflowStatuses.RUNNING,
+                source = mapOf("kind" to "factory-session-sequencer", "clock" to "factory"),
+                facts = mapOf("stepId" to stepId, "status" to WorkflowStatuses.RUNNING, "startedAt" to startedAt),
+                idempotencyKey = "session-step-running:$workflowId:$stepId:$startedAt",
+                createdAt = null,
+            ),
+        )
+    }
+
     private fun recordStepEvidence(
         scope: TenantScope,
         namespaceId: String,
@@ -801,7 +903,10 @@ class SessionRunService(
         step: WorkflowStepDefinition,
         status: String,
         execution: CapabilityExecution,
+        progress: SessionProgress,
     ) {
+        val startedAt = progress.startedAt[step.id]
+        val completedAt = progress.completedAt[step.id]
         evidenceRepository.append(
             scope,
             namespaceId,
@@ -823,11 +928,70 @@ class SessionRunService(
                     "status" to status,
                     "attemptId" to execution.attemptId,
                     "evidenceId" to execution.evidenceId,
-                ),
+                    "startedAt" to startedAt,
+                    "completedAt" to completedAt,
+                    "durationMs" to elapsedMs(startedAt, completedAt),
+                ).filterValues { it != null } + codeVerificationFacts(execution.outcome),
                 idempotencyKey = null,
                 createdAt = null,
             ),
         )
+    }
+
+    private fun recordCodePreparationFailure(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        repoRoot: Path,
+        error: Exception,
+        expectedRevision: Int,
+        statuses: SessionProgress,
+    ) {
+        logger.warn(error) { "Code step '${step.id}' could not resolve its execution root." }
+        runCatching {
+            newTransaction {
+                evidenceRepository.append(
+                    scope,
+                    namespaceId,
+                    workflowId,
+                    WorkflowEvidenceItem(
+                        evidenceId = UUID.randomUUID().toString(),
+                        namespaceId = namespaceId,
+                        workflowId = workflowId,
+                        stepId = step.id,
+                        kind = "session-step",
+                        outcome = WorkflowStatuses.FAILED,
+                        source = mapOf("kind" to "factory-session-sequencer"),
+                        facts = mapOf(
+                            "stepId" to step.id,
+                            "status" to WorkflowStatuses.FAILED,
+                            "verification" to step.responsibility.name,
+                            "executed" to false,
+                            "code" to "CODE_WORKTREE_RESOLUTION_FAILED",
+                            "message" to safeDiagnostic(error),
+                            "cwd" to "target-repository-root",
+                        ),
+                        idempotencyKey = null,
+                        createdAt = null,
+                    ),
+                )
+                transition(scope, namespaceId, workflowId, step, WorkflowStatuses.FAILED, expectedRevision)
+                setStatus(scope, namespaceId, workflowId, step.id, WorkflowStatuses.FAILED, statuses)
+            }
+        }.onFailure { recoveryError ->
+            logger.error(recoveryError) { "Could not persist code preparation failure for step '${step.id}'." }
+            statuses.statuses[step.id] = WorkflowStatuses.FAILED
+            statuses.completedAt.putIfAbsent(step.id, nowIso())
+        }
+    }
+
+    private fun safeDiagnostic(error: Exception): String {
+        val raw = error.message ?: error.javaClass.simpleName
+        return raw
+            .replace(Regex("(?i)\\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY))\\s*=\\s*[^\\s]+"), "$1=<redacted>")
+            .replace(Regex("(?i)\\b(bearer)\\s+[^\\s]+"), "$1 <redacted>")
+            .take(4_096)
     }
 
     private fun recordFailureEvidence(
@@ -910,9 +1074,11 @@ class SessionRunService(
         } ?: return
         projection["steps"] = projectedSteps
         projection["status"] = when {
+            progress.statuses.values.any { it == WorkflowStatuses.FAILED || it == WorkflowStatuses.BLOCKED } -> WorkflowStatuses.FAILED
             progress.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN } -> WorkflowStatuses.WAITING_HUMAN
             progress.statuses.values.any { it == WorkflowStatuses.RUNNING } -> WorkflowStatuses.RUNNING
-            else -> projection["status"] ?: WorkflowStatuses.PENDING
+            progress.statuses.values.all { it == WorkflowStatuses.COMPLETED } -> WorkflowStatuses.COMPLETED
+            else -> WorkflowStatuses.PENDING
         }
         val nextInstance = instance.instance.toMutableMap()
         nextInstance["steps"] = projectedSteps.map { mapOf("id" to it["id"], "status" to it["status"]) }

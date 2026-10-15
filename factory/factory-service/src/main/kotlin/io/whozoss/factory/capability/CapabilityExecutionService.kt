@@ -147,6 +147,8 @@ class CapabilityExecutionService(
      * [agentStepResultService]).
      */
     private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
+    /** Factory-authoritative PR file scope used by scoped review agents. */
+    private val pullRequestReviewScopeResolver: PullRequestReviewScopeResolver? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -195,11 +197,62 @@ class CapabilityExecutionService(
         step: WorkflowStepDefinition,
         repoRoot: Path,
     ): CapabilityExecution {
-        val outcome = resolver.resolve(step, repoRoot, namespaceId, workflowId)
+        val modifiedFiles = acceptedFrontendModifiedFiles(scope, namespaceId, workflowId, step)
+        val outcome = resolver.resolve(
+            step = step,
+            repoRoot = repoRoot,
+            namespaceId = namespaceId,
+            workflowId = workflowId,
+            modifiedFiles = modifiedFiles,
+            trustedTicket = trustedWorkflowTicket(scope, namespaceId, workflowId),
+            tenantScope = scope,
+        )
         return when (outcome) {
             is CapabilityOutcome.CodeExecuted -> newTransaction { recordCode(scope, namespaceId, workflowId, step, outcome) }
+            is CapabilityOutcome.BranchPrepared -> newTransaction { recordBranchPreparation(scope, namespaceId, workflowId, step, outcome) }
             else -> CapabilityExecution(outcome)
         }
+    }
+
+    /**
+     * Reads changed-file claims only from accepted, passing durable agent-result evidence.
+     * Code-to-code dependencies (tests after build) walk ancestors to the frontend agent.
+     */
+    private fun acceptedFrontendModifiedFiles(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+    ): List<String> {
+        val steps = projectedSteps(scope, namespaceId, workflowId).associateBy { it.id }
+        val eligibleIds = LinkedHashSet<String>()
+        val queue = ArrayDeque(step.dependsOn)
+        while (queue.isNotEmpty()) {
+            val id = queue.removeFirst()
+            if (!eligibleIds.add(id)) continue
+            steps[id]?.dependsOn?.forEach(queue::addLast)
+        }
+        return evidenceRepository.list(scope, namespaceId, workflowId)
+            .asReversed()
+            .firstNotNullOfOrNull { evidence ->
+                if (evidence.stepId !in eligibleIds || evidence.kind != AGENT_RESULT_EVIDENCE_KIND || evidence.outcome != "pass") {
+                    return@firstNotNullOfOrNull null
+                }
+                val outputs = evidence.facts["outputs"] as? Map<*, *> ?: return@firstNotNullOfOrNull null
+                when (val claims = outputs["claims"]) {
+                    is io.whozoss.factory.agentattempt.domain.AgentStepResultClaim -> claims.modifiedFiles
+                    is Map<*, *> -> (claims["modifiedFiles"] as? List<*>)?.filterIsInstance<String>()
+                    else -> null
+                }
+            }.orEmpty()
+    }
+
+    /** Ticket comes only from Factory-persisted workflow relations/instance, never caller/model input. */
+    private fun trustedWorkflowTicket(scope: TenantScope, namespaceId: String, workflowId: String): String? {
+        val instance = workflowRepository.findInstance(scope, namespaceId, workflowId) ?: return null
+        val relations = instance.instance["relations"] as? Map<*, *>
+        return (relations?.get("ticket") as? String)
+            ?: (instance.instance["ticket"] as? String)
     }
 
     /** Human checkpoint: no external execution; the checkpoint is recorded in a short transaction. */
@@ -221,6 +274,13 @@ class CapabilityExecutionService(
     /** The optional ticket reaches the agent persona through the turn brief. */
     private fun briefFromTicket(ticket: String?): String? =
         ticket?.takeIf { it.isNotBlank() }?.let { "Execute this Factory session step for ticket $it." }
+
+    /** Branch identity is derived exclusively from Factory-persisted trusted data. */
+    private fun expectedFactoryBranch(ticket: String?, workflowId: String): String {
+        val trustedComponent = ticket?.takeIf { TRUSTED_TICKET.matches(it) } ?: workflowId
+        val sanitized = trustedComponent.replace(Regex("[^A-Za-z0-9._-]"), "-").trim('-', '.').take(100)
+        return "factory/$sanitized"
+    }
 
     /**
      * Builds the brief handed to the agent persona. It is assembled by Factory
@@ -256,6 +316,8 @@ class CapabilityExecutionService(
         val inputs: Map<String, Any?>,
         val runBrief: Map<String, Any?>?,
         val controllerRequest: String?,
+        val a11yReviewScope: PullRequestReviewScope? = null,
+        val a11yScopeFailure: String? = null,
     )
 
     private fun assembleBrief(
@@ -325,7 +387,25 @@ class CapabilityExecutionService(
             .let { it as? String }
             ?.takeIf { it.isNotBlank() }
 
-        return BriefAssembly(ticketInstruction, entryStep, inputs, runBrief, controllerRequest)
+        val (a11yReviewScope, a11yScopeFailure) = if (step.responsibility.name == A11Y_REVIEWER_AGENT) {
+            when (val resolved = pullRequestReviewScopeResolver?.resolve(scope, workflowId)) {
+                is PullRequestReviewScopeResult.Resolved -> resolved.scope to null
+                is PullRequestReviewScopeResult.Unavailable -> null to resolved.reason
+                null -> null to "The Factory PR scope resolver is unavailable."
+            }
+        } else {
+            null to null
+        }
+
+        return BriefAssembly(
+            ticketInstruction,
+            entryStep,
+            inputs,
+            runBrief,
+            controllerRequest,
+            a11yReviewScope,
+            a11yScopeFailure,
+        )
     }
 
     private fun renderBrief(step: WorkflowStepDefinition, assembly: BriefAssembly): String {
@@ -360,6 +440,31 @@ class CapabilityExecutionService(
                 appendLine("- Consume the structured dependency inputs and the run-brief handoff above while following this step's own instructions; the original user request remains the governing intention.")
                 appendLine("- Preserve every run-brief artifact received from direct dependencies unchanged in this step's artifacts so later steps can relay the correct branch framing. Add separate artifacts for this step's own work; never rewrite or merge independent framings.")
             }
+            if (step.responsibility.name == A11Y_REVIEWER_AGENT) {
+                appendLine()
+                appendLine("## Accessibility review scope")
+                val reviewScope = assembly.a11yReviewScope
+                if (reviewScope != null && (reviewScope.createdFiles.isNotEmpty() || reviewScope.modifiedFiles.isNotEmpty())) {
+                    appendLine("Factory-authoritative current PR scope (frozen workflow base to current worktree):")
+                    appendLine("Created files — review each entire file:")
+                    reviewScope.createdFiles.forEach { appendLine("- $it") }
+                    appendLine("Modified or renamed files — review only changed ranges and directly affected behavior:")
+                    reviewScope.modifiedFiles.forEach { file ->
+                        val ranges = reviewScope.changedLines.getValue(file).joinToString { "${it.first}-${it.last}" }
+                        appendLine("- $file (changed lines: $ranges)")
+                    }
+                    appendLine("- Review only the files and modified ranges listed above; do not trust file claims from frontend output.")
+                    appendLine("- This is not an app-wide or repository-wide audit. Pre-existing issues outside changed ranges are not blocking findings.")
+                    appendLine("- Read limited surrounding context only when strictly necessary; do not audit it.")
+                } else if (reviewScope != null) {
+                    appendLine("Factory found no created or modified files in the current PR scope.")
+                    appendLine("- Submit PASS with 'No UI file in the review scope'; do not broaden the audit.")
+                } else {
+                    appendLine("Scope unavailable: ${assembly.a11yScopeFailure ?: "No authoritative current-PR scope is available."}")
+                    appendLine("- Fail closed: do not run an app-wide or repository-wide audit and do not trust frontend file claims.")
+                    appendLine("- Submit FAIL with A11Y_SCOPE_UNAVAILABLE.")
+                }
+            }
             appendLine("- Choose deliverables from the work actually requested when the definition has no explicit deliverable metadata:")
             appendLine("  - Analysis or design: provide reasoned findings, decisions/options, constraints, open questions, and a durable Markdown artifact; do not implement unless requested.")
             appendLine("  - Implementation: provide the scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.")
@@ -379,7 +484,44 @@ class CapabilityExecutionService(
         workflowId: String,
         step: WorkflowStepDefinition,
         ticket: String?,
-    ): String = renderBrief(step, assembleBrief(scope, namespaceId, workflowId, step, ticket))
+    ): String {
+        val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
+        return if (step.responsibility.name == GITAY_AGENT) {
+            renderGitayBrief(step, assembly, expectedFactoryBranch(trustedWorkflowTicket(scope, namespaceId, workflowId), workflowId))
+        } else {
+            renderBrief(step, assembly)
+        }
+    }
+
+    private fun renderGitayBrief(
+        step: WorkflowStepDefinition,
+        assembly: BriefAssembly,
+        expectedBranch: String,
+    ): String = buildString {
+        assembly.controllerRequest?.let {
+            appendLine("## User request")
+            appendLine(it)
+            appendLine()
+        }
+        appendLine("## Current step")
+        appendLine("Id: ${step.id}")
+        appendLine("Name: ${step.name}")
+        appendLine("Role: Gitay")
+        appendLine("Scope: Prepare only the required branch in the existing AgentOS case-family workspace.")
+        appendLine()
+        appendLine("## Git contract")
+        appendLine("Expected branch (authoritative, selected by Factory): $expectedBranch")
+        appendLine("- Use only the configured AgentOS GIT integration tools GIT__git_status and GIT__git_create_branch, plus FACTORY_WORKER__submit_step_result.")
+        appendLine("- Inspect GIT__git_status first and retain the initial HEAD.")
+        appendLine("- An initially detached HEAD is normal for an AgentOS workspace when its commit is readable; create the expected branch from that commit.")
+        appendLine("- If already on $expectedBranch at that HEAD, make no mutation and submit structured PASS.")
+        appendLine("- Otherwise call GIT__git_create_branch with exactly '$expectedBranch', then call GIT__git_status again.")
+        appendLine("- Submit PASS only if final branch is exactly $expectedBranch, final HEAD equals initial HEAD, and final HEAD is attached to that branch.")
+        appendLine("- A final detached HEAD, existing/divergent branch, another unexpected state, changed or unreadable HEAD, tool refusal, or unverifiable state requires structured FAIL.")
+        appendLine("- Do not infer success from prose. Factory accepts success only through FACTORY_WORKER__submit_step_result.")
+        appendLine("- Forbidden: file edits, add, commit, push, fetch, stash, reset, merge, branch deletion, and worktree creation/removal.")
+        appendLine("- Once Factory accepts the structured result, stop.")
+    }
 
     /**
      * Builds the frozen context envelope (Lot D) of an attempt together with
@@ -398,7 +540,11 @@ class CapabilityExecutionService(
         expectedAmendmentSeq: Long? = null,
     ): Pair<String, AttemptContextEnvelope> {
         val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
-        val brief = renderBrief(step, assembly)
+        val brief = if (step.responsibility.name == GITAY_AGENT) {
+            renderGitayBrief(step, assembly, expectedFactoryBranch(trustedWorkflowTicket(scope, namespaceId, workflowId), workflowId))
+        } else {
+            renderBrief(step, assembly)
+        }
         val envelope = AttemptContextEnvelope(
             organizationId = scope.organizationId,
             workstreamId = scope.workstreamId,
@@ -454,6 +600,48 @@ class CapabilityExecutionService(
         else -> "\"$value\""
     }
 
+    private fun recordBranchPreparation(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        step: WorkflowStepDefinition,
+        outcome: CapabilityOutcome.BranchPrepared,
+    ): CapabilityExecution {
+        val evidenceId = UUID.randomUUID().toString()
+        evidenceRepository.append(
+            scope, namespaceId, workflowId,
+            WorkflowEvidenceItem(
+                evidenceId = evidenceId,
+                namespaceId = namespaceId,
+                workflowId = workflowId,
+                stepId = step.id,
+                kind = "branch-preparation",
+                outcome = "pass",
+                source = mapOf("kind" to "factory-control-plane"),
+                facts = mapOf(
+                    "branch" to outcome.branch,
+                    "startingHead" to outcome.startingHead,
+                    "environmentRoot" to outcome.environmentRoot,
+                    "rootIdentity" to outcome.rootIdentity,
+                    "baselineHash" to outcome.baselineHash,
+                    "baselinePathCount" to outcome.baselinePathCount,
+                    "baselinePaths" to outcome.baselinePaths,
+                    "inheritedDirty" to outcome.inheritedDirty,
+                    "previousBranch" to outcome.previousBranch,
+                    "mutationApplied" to outcome.mutationApplied,
+                    "failureStage" to "branch_created_or_switched",
+                    "provider" to outcome.providerId,
+                    "environmentId" to outcome.environmentId,
+                    "environmentRevision" to outcome.environmentRevision,
+                    "reusedWorktree" to true,
+                ),
+                idempotencyKey = "branch-preparation:$workflowId:${outcome.branch}:${outcome.startingHead}",
+                createdAt = null,
+            ),
+        )
+        return CapabilityExecution(outcome, evidenceId = evidenceId)
+    }
+
     private fun recordCode(
         scope: TenantScope,
         namespaceId: String,
@@ -496,15 +684,11 @@ class CapabilityExecutionService(
                 kind = "code-verification",
                 outcome = outcomeLabel,
                 source = mapOf("kind" to "factory-verification", "name" to outcome.verificationName),
-                facts = mapOf(
-                    "stepId" to step.id,
-                    "verification" to outcome.verificationName,
-                    "command" to outcome.command,
-                    "exitCode" to outcome.exitCode,
-                    "timedOut" to outcome.timedOut,
-                    "durationMs" to outcome.durationMs,
-                    "verdict" to outcome.verdict,
-                ),
+                // Reuse the same bounded/redacted representation as the terminal
+                // session evidence. This improves new runs while the cockpit still
+                // correlates legacy rich session evidence through evidenceId.
+                facts = mapOf("stepId" to step.id, "verdict" to outcome.verdict) +
+                    io.whozoss.factory.workflow.service.codeVerificationFacts(outcome),
                 idempotencyKey = null,
                 createdAt = null,
             ),
@@ -632,10 +816,20 @@ class CapabilityExecutionService(
         // verbatim; only a brand-new attempt assembles a fresh envelope from the
         // current durable inputs and persists it at registration.
         val context = frozenContextOf(latestAttempt) ?: run {
+            // Freeze the authoritative workflow amendment counter only for a
+            // brand-new attempt. A legacy replay without frozen context must
+            // remain legacy/null rather than being retroactively pinned to the
+            // workflow's current sequence.
+            val expectedAmendmentSeq = if (latestAttempt == null) {
+                workflowRepository.findInstance(scope, namespaceId, workflowId)?.amendmentSeq
+            } else {
+                latestAttempt.expectedAmendmentSeq
+            }
             val (brief, envelope) = buildContextEnvelope(
                 scope, namespaceId, workflowId, step, ticket,
                 attemptNumber = latestAttempt?.attemptNumber ?: 1,
                 agentName = agentId,
+                expectedAmendmentSeq = expectedAmendmentSeq,
             )
             FrozenContext(brief, envelope.toJson())
         }
@@ -650,6 +844,11 @@ class CapabilityExecutionService(
             reserveAgentAttempt(
                 attempts, scope, namespaceId, workflowId, step, attemptId, ownerToken, agentId, brief,
                 context.envelopeJson, entryAgentStepId,
+                expectedAmendmentSeq = if (latestAttempt == null) {
+                    AttemptContextEnvelope.fromJson(context.envelopeJson).expectedAmendmentSeq
+                } else {
+                    latestAttempt.expectedAmendmentSeq
+                },
             )
         }
         reservation.terminalStatus?.let {
@@ -803,6 +1002,7 @@ class CapabilityExecutionService(
         brief: String,
         contextEnvelope: String,
         entryAgentStepId: String,
+        expectedAmendmentSeq: Long?,
     ): AgentReservation {
         val existing = attempts.find(scope, namespaceId, workflowId, step.id, attemptId)
         if (existing != null && existing.status.terminal) {
@@ -853,6 +1053,7 @@ class CapabilityExecutionService(
                     capabilityToken = capabilityToken,
                     brief = brief,
                     contextEnvelope = contextEnvelope,
+                    expectedAmendmentSeq = expectedAmendmentSeq,
                     environmentRef = environment?.environmentId,
                     expectedEnvironmentRevision = environment?.revision,
                     rootCaseId = family.rootCaseId,
@@ -912,6 +1113,9 @@ class CapabilityExecutionService(
         brief: String,
         onAgentObservation: (AgentObservationUpdate) -> Unit,
     ): AgentOsExecutionVerdict {
+        val persistedAttempt = attempts.find(
+            scope, namespaceId, workflowId, step.id, reservation.attemptId,
+        ) ?: error("Durable attempt '${reservation.attemptId}' vanished before AgentOS execution")
         val binding = TrustedCaseBinding(
             caseId = reservation.caseId,
             namespaceId = namespaceId,
@@ -919,6 +1123,8 @@ class CapabilityExecutionService(
             attemptId = reservation.attemptId,
             capabilityToken = reservation.capabilityToken,
             agentName = agentId,
+            environmentRef = persistedAttempt.environmentRef,
+            environmentRevision = persistedAttempt.expectedEnvironmentRevision,
         )
         val handle = try {
             adapter.createOrRecoverExecution(binding, workflowId, step.id)
@@ -1494,6 +1700,9 @@ class CapabilityExecutionService(
         /** Evidence kind carrying the durable, structured outputs of an agent step. */
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
         private const val RUN_BRIEF_KIND = "run-brief"
+        private const val GITAY_AGENT = "Gitay"
+        private const val A11Y_REVIEWER_AGENT = "A11yReviewer"
+        private val TRUSTED_TICKET = Regex("^[A-Z][A-Z0-9]{1,15}-[0-9]{1,12}$")
 
         /** Evidence marker of an authoritative NEEDS_RESEARCH verdict (blocked, not failed). */
         const val NEEDS_RESEARCH_MARKER = "NEEDS_RESEARCH"

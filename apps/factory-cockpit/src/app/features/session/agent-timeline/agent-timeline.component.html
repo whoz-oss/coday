@@ -53,7 +53,7 @@
       </div>
 
       <div class="track grid-lines" [style.background-size]="100 / ticks().length + '% 100%'">
-        @for (b of lane.blocks; track b.label) {
+        @for (b of lane.blocks; track trackBlock(b)) {
           @let compact = 30 > b.endSec - b.startSec;
           <button
             type="button"

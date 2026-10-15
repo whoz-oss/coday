@@ -247,6 +247,24 @@ class DurableAgentAttemptService(
         repository.findNonTerminal(limit)
 
     /**
+     * Resolve the unique live attempt controlled by one trusted AgentOS case.
+     * The graph-wide repository sweep is narrowed immediately to the caller's
+     * tenant scope, namespace and case; ambiguity is preserved for the HTTP
+     * boundary to reject rather than choosing an arbitrary attempt.
+     */
+    @Transactional(readOnly = true)
+    fun findActiveByCase(
+        scope: TenantScope,
+        namespaceId: String,
+        caseId: String,
+    ): List<DurableAgentAttempt> = repository.findNonTerminal(ACTIVE_CASE_LOOKUP_LIMIT)
+        .asSequence()
+        .filter { it.scope == scope }
+        .map { it.attempt }
+        .filter { it.namespaceId == namespaceId && it.caseId == caseId && !it.status.terminal }
+        .toList()
+
+    /**
      * Explicit business cancellation fenced on [expectedRevision]: the attempt is
      * moved to `interrupted` and its lease owner token rotated. Idempotent when
      * already interrupted; a divergent revision is a conflict; any other terminal
@@ -303,5 +321,6 @@ class DurableAgentAttemptService(
     companion object {
         /** Default bound of the startup recovery sweep. */
         const val DEFAULT_RECOVERY_LIMIT = 100
+        const val ACTIVE_CASE_LOOKUP_LIMIT = 1_000
     }
 }

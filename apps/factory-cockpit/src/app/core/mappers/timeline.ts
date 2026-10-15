@@ -242,6 +242,26 @@ export function currentPhaseName(steps: unknown[]): string | undefined {
 // Timeline lanes
 // ---------------------------------------------------------------------------
 
+export function resolveTimelineOriginMs(input: unknown, timing?: unknown, attempts?: unknown): number {
+  const snapshot = asObject(input) ?? {}
+  const projection = asObject(snapshot['projection']) ?? snapshot
+  const rawSteps = asArray(projection['steps'])
+  const steps = timelineSteps(rawSteps, extractAttempts(attempts))
+  const controllerRequest = readControllerRequest(snapshot, projection)
+  const starts = [...rawSteps, ...steps]
+    .map((step) => toEpochMs(asObject(step)?.['startedAt']))
+    .filter((value): value is number => value !== null)
+  const requestStartMs = toEpochMs(controllerRequest?.observedAt)
+  if (requestStartMs !== null) starts.push(requestStartMs)
+  if (starts.length > 0) return Math.min(...starts)
+  return toEpochMs(asObject(timing)?.['startedAt']) ?? Date.now()
+}
+
+/** Persisted terminal end priority: finishedAt → completedAt → endedAt. */
+function terminalEndMs(step: Record<string, unknown>): number | null {
+  return toEpochMs(step['finishedAt'] ?? step['completedAt'] ?? step['endedAt'])
+}
+
 function normalizeTicks(values: unknown, t0: number, startSec: number, endSec: number): number[] | undefined {
   const ticks: number[] = []
   for (const value of asArray(values)) {
@@ -266,18 +286,31 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
   const controllerRequest = readControllerRequest(snapshot, projection)
   if (steps.length === 0 && !controllerRequest) return []
 
-  const timingObj = asObject(timing)
   const stepStarts = steps
     .map((step) => toEpochMs(asObject(step)?.['startedAt']))
     .filter((value): value is number => value !== null)
   const requestStartMs = toEpochMs(controllerRequest?.observedAt)
-  const starts = requestStartMs !== null ? [...stepStarts, requestStartMs] : stepStarts
-  const t0 = starts.length > 0 ? Math.min(...starts) : (toEpochMs(timingObj?.['startedAt']) ?? Date.now())
+  const t0 = resolveTimelineOriginMs(input, timing, attempts)
+
+  const syntheticEnds = new Map<string, number>()
+  const dependencyEnd = (obj: Record<string, unknown>): number => {
+    const dependencies: unknown[] = asArray(obj['dependsOn'])
+    return dependencies.reduce<number>((end, dependency) => {
+      if (typeof dependency !== 'string') return end
+      return Math.max(end, syntheticEnds.get(dependency) ?? 0)
+    }, 0)
+  }
 
   const ordered = steps
     .map((step, index) => {
       const obj = asObject(step) ?? {}
-      return { obj, index, start: toEpochMs(obj['startedAt']), duration: stepDurationSec(step) }
+      return {
+        obj,
+        index,
+        start: toEpochMs(obj['startedAt']),
+        terminalEnd: terminalEndMs(obj),
+        duration: stepDurationSec(step),
+      }
     })
     .sort((a, b) => {
       const aStart = a.start ?? Number.POSITIVE_INFINITY
@@ -319,10 +352,23 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
       (status === 'waiting_human' && entry.start !== null)
     if (!isVisibleExecution) continue
 
-    const startSec = entry.start !== null ? Math.max((entry.start - t0) / 1000, 0) : cursorSec
-    const rawDuration = entry.duration ?? 0
-    const endSec = Math.max(startSec + Math.max(rawDuration, MIN_BLOCK_SEC), startSec + MIN_BLOCK_SEC)
+    const stepIdForWindow = getString(entry.obj, 'sourceStepId') ?? getString(entry.obj, 'id')
+    // Historical evidence may know only duration. Place that bounded window after
+    // its dependencies; this is deterministic ordering, not a fabricated wall clock.
+    const syntheticStart = Math.max(dependencyEnd(entry.obj), cursorSec)
+    const startSec = entry.start !== null ? Math.max((entry.start - t0) / 1000, 0) : syntheticStart
+    const persistedEndSec =
+      entry.start !== null && entry.terminalEnd !== null && entry.terminalEnd >= entry.start
+        ? Math.max((entry.terminalEnd - t0) / 1000, startSec)
+        : null
+    const fallbackEndSec = startSec + Math.max(entry.duration ?? 0, MIN_BLOCK_SEC)
+    // Running uses reconstructible wall time immediately after refresh. Waiting-human
+    // and terminal states remain frozen on persisted/fallback geometry.
+    const runningEndSec =
+      status === 'running' && entry.start !== null ? Math.max((Date.now() - t0) / 1000, startSec) : null
+    const endSec = Math.max(runningEndSec ?? persistedEndSec ?? fallbackEndSec, startSec)
     cursorSec = Math.max(cursorSec, endSec)
+    if (stepIdForWindow) syntheticEnds.set(stepIdForWindow, endSec)
 
     const block: TimelineBlock = {
       label: getString(entry.obj, 'name') ?? getString(entry.obj, 'id') ?? 'step',
@@ -396,11 +442,16 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
 // Run summary
 // ---------------------------------------------------------------------------
 
-export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): RunSummary {
+export function mapProjectionToRunSummary(
+  item: unknown,
+  metrics?: unknown,
+  enrichedSteps?: unknown[],
+  blockedStepIds: ReadonlySet<string> = new Set()
+): RunSummary {
   const snapshot = asObject(item) ?? {}
   const projection = asObject(snapshot['projection']) ?? snapshot
   const relations = asObject(snapshot['relations'])
-  const steps = asArray(projection['steps'])
+  const steps = enrichedSteps ?? asArray(projection['steps'])
   const realCost = extractRealCost(metrics)
 
   const durations = steps.map((step) => stepDurationSec(step)).filter((value): value is number => value !== null)
@@ -415,7 +466,9 @@ export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): Run
 
   const stepStates = steps.map(resolveStepState)
   const waitingHuman = stepStates.some((state) => state === 'waiting_human')
-  const phases = mapStepsToPhaseSegments(steps, durationSec)
+  const phases = mapStepsToPhaseSegments(steps, durationSec).map((phase) =>
+    blockedStepIds.has(phase.key) && phase.status === 'pending' ? { ...phase, status: 'blocked' as const } : phase
+  )
 
   const controllerRequest = readControllerRequest(snapshot, projection)
   const hasRequestStep = phases.some((segment) => segment.key === 'request' || segment.label === 'request')
@@ -433,10 +486,24 @@ export function mapProjectionToRunSummary(item: unknown, metrics?: unknown): Run
     phases.splice(0, phases.length, requestSegment, ...adjusted)
   }
 
+  const mappedStatus = mapWorkflowStateToRunStatus(getString(projection, 'status'), steps)
+  const cardState: RunSummary['cardState'] =
+    mappedStatus === 'failed'
+      ? 'failed'
+      : waitingHuman
+        ? 'waiting_human'
+        : blockedStepIds.size > 0
+          ? 'blocked'
+          : mappedStatus === 'running'
+            ? 'running'
+            : mappedStatus === 'succeeded'
+              ? 'succeeded'
+              : 'pending'
   const summary: RunSummary = {
     id,
     workflow: getString(projection, 'title') ?? id,
-    status: mapWorkflowStateToRunStatus(getString(projection, 'status'), steps),
+    status: mappedStatus,
+    cardState,
     currentPhase: currentPhaseName(steps),
     goal,
     costUsd: realCost?.cost ?? getNumber(projection, 'costUsd') ?? getNumber(snapshot, 'costUsd') ?? 0,

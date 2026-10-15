@@ -106,6 +106,39 @@ class AgentStepResultService(
     ): IssuedCapability = results.refresh(scope, observed, runtimeId, refreshKey, now, ttlSeconds)
 
     /**
+     * Trusted service submission used by the AgentOS Factory bridge. The clear
+     * capability remains server-side on the durable attempt; callers identify
+     * the execution only through signed namespace/case attribution.
+     */
+    @Transactional
+    fun submitTrusted(
+        scope: TenantScope,
+        attempt: io.whozoss.factory.agentattempt.domain.DurableAgentAttempt,
+        business: JsonNode?,
+        agentName: String?,
+        idempotencyKey: String?,
+        now: Instant = Instant.now(),
+    ): AgentStepResultSubmission {
+        val token = attempt.capabilityToken?.takeIf { it.isNotBlank() }
+            ?: throw io.whozoss.factory.agentattempt.domain.ResultCapabilityInvalidException(
+                "The active attempt has no result submission capability",
+            )
+        return submit(
+            scope = scope,
+            token = token,
+            business = business,
+            observed = AgentStepResultObservedIdentity(
+                attemptId = attempt.attemptId,
+                caseId = attempt.caseId,
+                agentName = agentName ?: attempt.agentName,
+                namespaceId = attempt.namespaceId,
+            ),
+            idempotencyKey = idempotencyKey,
+            now = now,
+        )
+    }
+
+    /**
      * Redeem a capability with a structured business result.
      *
      * The optional [idempotencyKey] (typically `X-Idempotency-Key`) makes the

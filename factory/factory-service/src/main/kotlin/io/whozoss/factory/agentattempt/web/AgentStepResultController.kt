@@ -14,6 +14,7 @@ import io.whozoss.factory.agentattempt.domain.InvalidResultRequestException
 import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.TrustContextUnavailableException
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.error.ErrorResponse
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.web.TrustContext
@@ -46,6 +47,7 @@ import org.springframework.web.bind.annotation.RestController
 class AgentStepResultController(
     private val service: AgentStepResultService,
     private val tenantScopeProvider: TenantScopeProvider,
+    private val durableAttempts: DurableAgentAttemptService,
 ) {
 
     @PostMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -82,14 +84,20 @@ class AgentStepResultController(
         @RequestHeader(name = "Authorization", required = false) authorization: String?,
         @RequestHeader(name = "X-AgentOS-Case-Id", required = false) caseHeader: String?,
         @RequestHeader(name = "X-AgentOS-Agent-Name", required = false) agentHeader: String?,
-        @RequestHeader(name = "X-Idempotency-Key", required = false) idempotencyHeader: String?,
+        @RequestHeader(name = "X-Idempotency-Key", required = false) legacyIdempotencyHeader: String?,
+        @RequestHeader(name = "Idempotency-Key", required = false) idempotencyHeader: String?,
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): ResponseEntity<AgentStepResultEnvelope<AgentStepResultData>> {
         val scope = tenantScopeProvider.scopeOf(trustContext) ?: throw TrustContextUnavailableException()
+        val body = request ?: throw InvalidResultRequestException("A JSON body is required")
+        val signedServiceRoute = authorization.isNullOrBlank() &&
+            trustContext?.authenticationMethod == TrustContext.AUTH_PROXY_SIGNATURE &&
+            trustContext.principalType == TrustContext.PRINCIPAL_TYPE_SERVICE
+        if (signedServiceRoute) {
+            return submitTrustedService(body, agentHeader, idempotencyHeader, trustContext, scope)
+        }
         val token = bearerToken(authorization)
             ?: throw TrustContextUnavailableException("A bearer capability token is required")
-
-        val body = request ?: throw InvalidResultRequestException("A JSON body is required")
         val business = foldAmendmentSeq(
             body.result ?: body.business,
             body.expected_amendment_seq ?: body.expectedAmendmentSeq,
@@ -117,7 +125,8 @@ class AgentStepResultController(
             )
         }
         val caseId = trustedCaseId ?: declaredCaseId
-        val idempotencyKey = idempotencyHeader?.takeIf { it.isNotBlank() }
+        val idempotencyKey = legacyIdempotencyHeader?.takeIf { it.isNotBlank() }
+            ?: idempotencyHeader?.takeIf { it.isNotBlank() }
             ?: body.idempotencyKey?.takeIf { it.isNotBlank() }
         if (idempotencyKey != null && idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
             throw InvalidResultRequestException(
@@ -145,6 +154,50 @@ class AgentStepResultController(
                     idempotent = submission.idempotent,
                     resultHash = submission.resultHash,
                 ),
+            ),
+        )
+    }
+
+    private fun submitTrustedService(
+        body: AgentStepResultRequest,
+        agentHeader: String?,
+        idempotencyHeader: String?,
+        trustContext: TrustContext,
+        scope: io.whozoss.factory.persistence.TenantScope,
+    ): ResponseEntity<AgentStepResultEnvelope<AgentStepResultData>> {
+        if (body.attemptId != null || body.observed != null || body.caseId != null ||
+            body.agentName != null || body.business != null || body.idempotencyKey != null ||
+            body.expectedAmendmentSeq != null || body.expected_amendment_seq != null
+        ) {
+            throw InvalidResultRequestException("The signed service route accepts only the 'result' field")
+        }
+        val result = body.result ?: throw InvalidResultRequestException("'result' is required")
+        val namespaceId = trustContext.namespaceId?.takeIf { it.isNotBlank() }
+            ?: throw TrustContextUnavailableException("A signed namespace is required")
+        val caseId = trustContext.caseId?.takeIf { it.isNotBlank() }
+            ?: throw TrustContextUnavailableException("A signed case is required")
+        val idempotencyKey = idempotencyHeader?.takeIf { it.isNotBlank() }
+            ?: throw InvalidResultRequestException("Idempotency-Key is required")
+        if (idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw InvalidResultRequestException("'Idempotency-Key' must be at most $MAX_IDEMPOTENCY_KEY_LENGTH characters")
+        }
+        val matches = durableAttempts.findActiveByCase(scope, namespaceId, caseId)
+        if (matches.size != 1) {
+            throw InvalidResultRequestException(
+                if (matches.isEmpty()) "No active durable attempt matches the signed namespace and case"
+                else "The signed namespace and case resolve to multiple active durable attempts",
+            )
+        }
+        val attempt = matches.single()
+        val suppliedAgent = agentHeader?.takeIf { it.isNotBlank() }
+        if (suppliedAgent != null && suppliedAgent != attempt.agentName) {
+            throw ResultIdentityMismatchException("X-AgentOS-Agent-Name does not match the durable attempt")
+        }
+        val submission = service.submitTrusted(scope, attempt, result, suppliedAgent, idempotencyKey)
+        val status = if (submission.created) HttpStatus.CREATED else HttpStatus.OK
+        return ResponseEntity.status(status).body(
+            AgentStepResultEnvelope(
+                AgentStepResultData(submission.resultId, submission.idempotent, submission.resultHash),
             ),
         )
     }

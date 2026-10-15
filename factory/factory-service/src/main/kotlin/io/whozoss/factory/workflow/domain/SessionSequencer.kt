@@ -25,7 +25,12 @@ object SessionSequencer {
     private val TERMINAL = setOf(WorkflowStatuses.COMPLETED, WorkflowStatuses.FAILED, WorkflowStatuses.CANCELLED)
 
     /** A dependency in one of these states can never satisfy a dependent. */
-    private val BLOCKING = setOf(WorkflowStatuses.FAILED, WorkflowStatuses.BLOCKED, WorkflowStatuses.CANCELLED)
+    private val BLOCKING = setOf(
+        WorkflowStatuses.FAILED,
+        WorkflowStatuses.BLOCKED,
+        WorkflowStatuses.CANCELLED,
+        WorkflowStatuses.NEEDS_RESEARCH,
+    )
 
     /** The `pending -> ready | blocked` transitions an evaluation produces. */
     data class Evaluation(
@@ -68,7 +73,10 @@ object SessionSequencer {
 
     /** Ids of the steps currently `ready` to execute, in definition order. */
     fun readySteps(steps: List<WorkflowStepDefinition>, statuses: Map<String, String>): List<String> =
-        steps.map { it.id }.filter { statuses[it] == WorkflowStatuses.READY }
+        steps.filter { step ->
+            statuses[step.id] == WorkflowStatuses.READY &&
+                step.dependsOn.all { dependency -> statuses[dependency] == WorkflowStatuses.COMPLETED }
+        }.map { it.id }
 
     /**
      * The overall session status once no step is `ready`/`running` any more.

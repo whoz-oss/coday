@@ -32,7 +32,17 @@ data class DurableAgentAttempt(
     val agentName: String,
     val capabilityToken: String? = null,
     val ownerToken: String? = null,
+    /**
+     * Legacy optional bridge correlation metadata. Current Factory execution is
+     * correlated by [attemptId] and does not synthesize this value. It remains
+     * nullable so older records that supplied it still round-trip unchanged.
+     */
     val turnCorrelation: String? = null,
+    /**
+     * Legacy optional dispatch-command identity. Current Factory dispatch uses
+     * [attemptId] as its idempotency key and deliberately does not fabricate a
+     * second identifier. Preserved for compatibility with older records.
+     */
     val commandId: String? = null,
     /**
      * The durable turn brief (the `@persona brief` message body) captured when

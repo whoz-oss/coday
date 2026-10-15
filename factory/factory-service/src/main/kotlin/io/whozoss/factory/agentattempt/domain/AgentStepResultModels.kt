@@ -48,6 +48,8 @@ object AgentStepResultLimits {
     const val FINDING_CODE = 128
     const val FINDING_SUMMARY = 1000
     const val FINDING_FILE = 1024
+    const val DELIVERY_ANALYSIS_TITLE = 200
+    const val DELIVERY_ANALYSIS_BASE_BRANCH = 255
 
     /** Default capability lifetime: the Node `DEFAULT_TTL_MS` (15 minutes). */
     const val CAPABILITY_TTL_SECONDS = 15L * 60L
@@ -76,6 +78,14 @@ data class AgentStepResultArtifact(
     val content: String,
 )
 
+/** Optional delivery metadata declared by the worker for downstream handoff. */
+data class AgentStepResultDeliveryAnalysis(
+    val changeType: String,
+    val ticket: String,
+    val title: String,
+    val baseBranch: String? = null,
+)
+
 /** The `claims` sub-object of a business result. */
 data class AgentStepResultClaim(
     /**
@@ -85,6 +95,7 @@ data class AgentStepResultClaim(
      * stay distinguishable in the durable record.
      */
     val modifiedFiles: List<String>,
+    val deliveryAnalysis: AgentStepResultDeliveryAnalysis? = null,
 )
 
 /** One structured finding attached to a business result. */

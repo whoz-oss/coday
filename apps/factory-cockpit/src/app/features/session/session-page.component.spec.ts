@@ -1,7 +1,7 @@
 import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
-import { of } from 'rxjs'
+import { BehaviorSubject, of } from 'rxjs'
 import { AGENTOS_BASE_URL, FactoryStore } from '../../core/factory.store'
 import { AgentQuestion, FactoryRun, SessionDetail } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
@@ -72,6 +72,8 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
     namespaces: ReturnType<typeof signal<Map<string, string>>>
     answeringQuestionId: ReturnType<typeof signal<string | null>>
     questionFeedback: ReturnType<typeof signal<null>>
+    selectSession: jest.Mock
+    clearSessionSelection: jest.Mock
   } {
     return {
       session: jest.fn().mockReturnValue(session),
@@ -79,6 +81,8 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
       namespaces: signal(new Map()),
       answeringQuestionId: signal(null),
       questionFeedback: signal(null),
+      selectSession: jest.fn(),
+      clearSessionSelection: jest.fn(),
     }
   }
 
@@ -185,5 +189,29 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
 
     const link = component['caseLink']('case-xyz')
     expect(link).toBe('/agentos/home?case=case-xyz')
+  })
+
+  it('switches scoped store selection from route A to B and clears on destroy', () => {
+    const routeIds = new BehaviorSubject(new Map([['runId', 'wf-a']]))
+    const store = makeStore([], undefined)
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: FactoryStore, useValue: store },
+        { provide: AGENTOS_BASE_URL, useValue: '' },
+        { provide: ActivatedRoute, useValue: { paramMap: routeIds.asObservable() } },
+        { provide: ShellState, useValue: { crumbs: signal([]) } },
+      ],
+    })
+    const fixture = TestBed.createComponent(SessionPageComponent)
+    fixture.componentRef.setInput('runId', '')
+    fixture.detectChanges()
+    expect(store.selectSession).toHaveBeenLastCalledWith('wf-a')
+
+    routeIds.next(new Map([['runId', 'wf-b']]))
+    fixture.detectChanges()
+    expect(store.selectSession).toHaveBeenLastCalledWith('wf-b')
+
+    fixture.destroy()
+    expect(store.clearSessionSelection).toHaveBeenCalledWith('wf-b')
   })
 })

@@ -72,7 +72,8 @@
     color: var(--sf-text);
   }
 }
-.ev-message-button {
+.ev-message-button,
+.ev-diagnostic-button {
   // The button is the sole child of the row grid: occupy all its columns.
   grid-column: 1 / -1;
   min-width: 0;
@@ -99,6 +100,12 @@
     outline: 2px solid var(--sf-secondary);
     outline-offset: -2px;
   }
+}
+.diagnostic-hint {
+  margin-left: 8px;
+  color: var(--sf-secondary);
+  font-size: 10px;
+  opacity: 0.8;
 }
 .time {
   color: var(--sf-text-faint);
