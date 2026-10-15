@@ -26,6 +26,8 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
@@ -85,6 +87,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
+import org.springframework.dao.OptimisticLockingFailureException
 import java.nio.file.Path
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -369,7 +372,7 @@ class CaseServiceImplSpec :
                         )
                     try {
                         if (withWorkspace) {
-                            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                            shouldThrow<ConflictException> {
                                 service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do more work")))
                             }
                             events.findByParent(case.id) shouldBe emptyList()
@@ -2515,14 +2518,14 @@ class CaseServiceImplSpec :
             verify(exactly = 1) { repository.countAncestorDepth(parent.id) }
         }
 
-        "create refuses the id of a soft-deleted case" {
-            val service = buildService()
-            val deleted = service.create(Case(namespaceId = namespaceId))
-            service.delete(deleted.id)
+        "create reports an id the storage refuses as a conflict" {
+            // Neo4j refuses a versioned node whose id exists, soft-deleted cases included
+            // (EmbeddedNeo4jCaseVersionSpec): the service only translates that refusal.
+            val repository = spyk(InMemoryCaseRepository())
+            every { repository.save(any()) } throws OptimisticLockingFailureException("id taken")
+            val service = buildService(caseRepository = repository)
 
-            shouldThrow<IllegalArgumentException> {
-                service.create(Case(metadata = EntityMetadata(id = deleted.id), namespaceId = namespaceId))
-            }
+            shouldThrow<ConflictException> { service.create(Case(namespaceId = namespaceId)) }
         }
 
         "create refuses a soft-deleted parent as if it did not exist" {
@@ -3121,8 +3124,7 @@ class CaseServiceImplSpec :
             val throwingPromptService =
                 mockk<PromptService>(relaxed = true) {
                     every { findEffective(any(), any()) } throws
-                        io.whozoss.agentos.exception
-                            .PromptResolutionException("cycle detected")
+                            PromptResolutionException("cycle detected")
                 }
 
             val namespace =
@@ -3443,7 +3445,7 @@ class CaseServiceImplSpec :
             // We inject LLM usage so hasData=true, then make the service throw.
             val llmUsage = LlmUsage(totalTokens = 50L, estimatedCostUsd = 0.001)
             val failingUsageRecordService =
-                mockk<io.whozoss.agentos.usage.UsageRecordService> {
+                mockk<UsageRecordService> {
                     every { create(any()) } throws RuntimeException("Neo4j unavailable")
                 }
             val namespace =
