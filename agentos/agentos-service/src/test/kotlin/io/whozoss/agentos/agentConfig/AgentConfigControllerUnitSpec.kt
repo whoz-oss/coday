@@ -52,7 +52,8 @@ class AgentConfigControllerUnitSpec :
         val agentService = mockk<AgentService>()
         val userService = mockk<UserService>()
         val permissionService = mockk<PermissionService>()
-        val controller = AgentConfigController(service, agentService, userService, permissionService, yamlExportMapper())
+        val loopConfigGenerationService = mockk<io.whozoss.agentos.workflow.LoopConfigGenerationService>(relaxed = true)
+        val controller = AgentConfigController(service, agentService, userService, permissionService, yamlExportMapper(), loopConfigGenerationService)
 
         val namespaceId = UUID.randomUUID()
         val callerId = UUID.randomUUID()
