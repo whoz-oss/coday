@@ -1,14 +1,13 @@
 package io.whozoss.agentos.skill
 
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 @Service
@@ -29,10 +28,7 @@ class SkillServiceImpl(
     override fun update(entity: Skill): Skill {
         val existing = getById(entity.metadata.id)
         if (isFilesystemBacked(existing)) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Filesystem-backed skill '${existing.name}' is read-only through the API.",
-            )
+            throw BadRequestException("Filesystem-backed skill '${existing.name}' is read-only through the API.")
         }
         validateSkillName(entity.name)
         requireUniqueName(entity.namespaceId, entity.name, excludeId = entity.metadata.id)
@@ -49,10 +45,7 @@ class SkillServiceImpl(
     override fun delete(id: UUID): Boolean {
         val existing = findById(id) ?: return false
         if (isFilesystemBacked(existing)) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Filesystem-backed skill '${existing.name}' is read-only through the API.",
-            )
+            throw BadRequestException("Filesystem-backed skill '${existing.name}' is read-only through the API.")
         }
         return skillRepository.delete(id)
     }
@@ -134,8 +127,7 @@ class SkillServiceImpl(
 
     private fun validateSkillName(name: String) {
         if (!SkillFileParser.isValidSkillName(name)) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
+            throw BadRequestException(
                 "Skill name '$name' is invalid. It must be non-blank, at most ${SkillFileParser.MAX_SKILL_NAME_CHARS} characters, and contain only letters, numbers, spaces, dots, dashes, and underscores.",
             )
         }
@@ -168,8 +160,7 @@ class SkillServiceImpl(
         val conflict = skillRepository.findByNameInNamespace(namespaceId, name)
         if (conflict != null && conflict.metadata.id != excludeId) {
             val scope = namespaceId?.toString() ?: "platform"
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
+            throw ConflictException(
                 "A skill named '$name' already exists at scope '$scope' (id=${conflict.metadata.id}).",
             )
         }
@@ -183,11 +174,7 @@ class SkillServiceImpl(
                 "[SkillService] doubleKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, name='${entity.name}')"
             }
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                "A skill named '${entity.name}' already exists in this scope.",
-                e,
-            )
+            throw ConflictException("A skill named '${entity.name}' already exists in this scope.", e)
         }
 
     companion object : KLogging()
