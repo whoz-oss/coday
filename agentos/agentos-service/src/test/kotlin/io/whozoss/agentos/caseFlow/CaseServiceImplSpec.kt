@@ -26,6 +26,8 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
@@ -370,7 +372,7 @@ class CaseServiceImplSpec :
                         )
                     try {
                         if (withWorkspace) {
-                            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                            shouldThrow<ConflictException> {
                                 service.addMessage(case.id, userActor, listOf(MessageContent.Text("Do more work")))
                             }
                             events.findByParent(case.id) shouldBe emptyList()
@@ -3122,8 +3124,7 @@ class CaseServiceImplSpec :
             val throwingPromptService =
                 mockk<PromptService>(relaxed = true) {
                     every { findEffective(any(), any()) } throws
-                        io.whozoss.agentos.exception
-                            .PromptResolutionException("cycle detected")
+                            PromptResolutionException("cycle detected")
                 }
 
             val namespace =
@@ -3444,7 +3445,7 @@ class CaseServiceImplSpec :
             // We inject LLM usage so hasData=true, then make the service throw.
             val llmUsage = LlmUsage(totalTokens = 50L, estimatedCostUsd = 0.001)
             val failingUsageRecordService =
-                mockk<io.whozoss.agentos.usage.UsageRecordService> {
+                mockk<UsageRecordService> {
                     every { create(any()) } throws RuntimeException("Neo4j unavailable")
                 }
             val namespace =
