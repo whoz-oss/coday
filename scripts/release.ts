@@ -1,9 +1,10 @@
-import { releaseChangelog, releasePublish, releaseVersion } from 'nx/release'
+import { releaseChangelog, releaseVersion } from 'nx/release'
 import { appendFileSync, readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { updateTomlVersions } from './utils/update-toml-version'
+import { publishPackages } from './utils/release-steps'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 
@@ -70,7 +71,9 @@ async function main(): Promise<void> {
     execSync(`git add ${tomlRelativePath}`, { stdio: 'inherit' })
   }
 
-  // Step 3: Generate changelog, commit all staged changes (including toml), tag, and push
+  // Step 3: Generate changelog, commit all staged changes (including toml), tag, and push.
+  // releaseChangelog is NEVER shared with the workstream path — it commits, tags, and pushes,
+  // all of which are wrong on an integration branch.
   await releaseChangelog({
     dryRun,
     releaseGraph,
@@ -79,14 +82,10 @@ async function main(): Promise<void> {
     versionData: projectsVersionData,
   })
 
-  // Step 4: Publish packages — JVM projects are skipped via no-op nx-release-publish targets (published via Gradle in CI)
-  const publishResults = await releasePublish({
-    dryRun,
-    releaseGraph,
-    verbose: false,
-  })
-
-  process.exit(Object.values(publishResults).every((result) => result.code === 0) ? 0 : 1)
+  // Step 4: Publish packages — JVM projects are skipped via no-op nx-release-publish targets
+  // (published via Gradle in CI). Publishing to the 'latest' dist-tag is the standard
+  // master release behaviour; workstream builds use 'workstream-<slug>' instead.
+  await publishPackages(releaseGraph, projectsVersionData, 'latest', dryRun)
 }
 
 try {
