@@ -22,6 +22,8 @@ function createRun(overrides: Partial<FactoryRun> = {}): FactoryRun {
       id,
       workflow: `wf-${id}`,
       status: 'running',
+      // The run-card status chip is driven by `cardState` (as the real mappers set it).
+      cardState: overrides.status === 'working' || overrides.status === undefined ? 'running' : 'pending',
       goal: 'Do the real thing',
       costUsd,
       unknownCostCount: 0,
@@ -89,11 +91,14 @@ describe('WorkstreamCardComponent', () => {
       ],
     })
 
-    // Statuses live on the run cards only.
-    expect(host.querySelectorAll('sf-run-card')).toHaveLength(3)
-    expect(host.textContent).toContain('working')
-    expect(host.textContent).toContain('waiting')
-    expect(host.textContent).toContain('destroyed')
+    // Statuses live on the run cards only: one chip per card, driven by cardState.
+    const chips = Array.from(host.querySelectorAll('sf-run-card')).map(
+      (card) => card.querySelector('.head sf-status-chip')?.textContent?.trim() ?? ''
+    )
+    expect(chips).toHaveLength(3)
+    expect(chips[0]).toContain('running')
+    expect(chips[1]).toContain('waiting')
+    expect(chips[2]).toContain('destroyed')
   })
 
   it('exposes accessible aria-labels for the workstream and its runs', async () => {
