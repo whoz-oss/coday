@@ -60,19 +60,6 @@ export class SessionPageComponent implements OnDestroy {
   private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
   private readonly destroyRef = inject(DestroyRef)
 
-  private readonly routeRunId = toSignal(
-    this.route.paramMap.pipe(
-      map((p) => p.get('runId') ?? ''),
-      distinctUntilChanged(),
-      tap((runId) => {
-        this.selection.set(null)
-        if (runId) this.store.selectSession(runId)
-      }),
-      takeUntilDestroyed(this.destroyRef)
-    ),
-    { initialValue: '' }
-  )
-
   protected readonly effectiveRunId = computed(() => this.runId() || this.routeRunId())
   protected readonly session = computed(() => this.store.session(this.effectiveRunId()))
   private readonly run = computed(() => this.store.runs().find((candidate) => candidate.id === this.effectiveRunId()))
@@ -88,6 +75,21 @@ export class SessionPageComponent implements OnDestroy {
    *   latest case's events.
    */
   protected readonly selection = signal<BlockSelection | null>(null)
+
+  // Declared AFTER `selection`: toSignal subscribes synchronously and the `tap`
+  // below writes to it, so it must already be initialised (field order matters).
+  private readonly routeRunId = toSignal(
+    this.route.paramMap.pipe(
+      map((p) => p.get('runId') ?? ''),
+      distinctUntilChanged(),
+      tap((runId) => {
+        this.selection.set(null)
+        if (runId) this.store.selectSession(runId)
+      }),
+      takeUntilDestroyed(this.destroyRef)
+    ),
+    { initialValue: '' }
+  )
 
   /**
    * Stable step id from the current selection. Forwarded to the timeline
