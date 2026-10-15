@@ -1,3 +1,120 @@
+## 3.35.2 (2026-10-15)
+
+### 🩹 Fixes
+
+- **agentos-service:** #35451 transform ResponseStatusException to AgentOs <Status>Exception ([#1449](https://github.com/whoz-oss/coday/pull/1449), [#35451](https://github.com/whoz-oss/coday/issues/35451))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.1 (2026-10-15)
+
+### 🩹 Fixes
+
+- #1405 display the user's answer to a queryUser question in the case chat ([#1406](https://github.com/whoz-oss/coday/pull/1406), [#1405](https://github.com/whoz-oss/coday/issues/1405))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.0 (2026-10-14)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention generation tool name ([#1448](https://github.com/whoz-oss/coday/pull/1448))
+
+### 🔥 Performance
+
+- **agentos:** share one Neo4j test harness across Spring test contexts ([#1440](https://github.com/whoz-oss/coday/pull/1440))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.34.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos-service:** stop now ends the agent's turn at once ([#1442](https://github.com/whoz-oss/coday/pull/1442))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.34.0 (2026-10-13)
+
+### 🚀 Features
+
+- #1425 #34871 add integration configuration on query user ([#1428](https://github.com/whoz-oss/coday/pull/1428), [#1425](https://github.com/whoz-oss/coday/issues/1425), [#34871](https://github.com/whoz-oss/coday/issues/34871))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.33.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos:** skip workspace requests when Git workspaces are disabled ([#1438](https://github.com/whoz-oss/coday/pull/1438))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.33.0 (2026-10-12)
+
+### 🚀 Features
+
+- update anthropic and google models ([d0f41fb1](https://github.com/whoz-oss/coday/commit/d0f41fb1))
+- update anthropic and google models ([#1441](https://github.com/whoz-oss/coday/pull/1441))
+
+### ❤️ Thank You
+
+- David Palita
+
+## 3.32.0 (2026-10-12)
+
+### 🚀 Features
+
+- **agentos-service:** try to change tool balis to have more consiste… ([#1439](https://github.com/whoz-oss/coday/pull/1439))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.31.0 (2026-10-12)
+
+### 🚀 Features
+
+- wz-35120 - CREATED status ([#1434](https://github.com/whoz-oss/coday/pull/1434))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.30.0 (2026-10-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-35090 AgentLoop V0 : one case per tool result row ([#1414](https://github.com/whoz-oss/coday/pull/1414))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- thomas.martin @thomas-martin-whoz
+
+## 3.29.0 (2026-10-09)
+
+### 🚀 Features
+
+- wz-35120 - add CREATED status ([#1435](https://github.com/whoz-oss/coday/pull/1435))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.28.0 (2026-10-08)
 
 ### 🚀 Features

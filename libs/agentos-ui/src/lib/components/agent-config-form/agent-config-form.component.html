@@ -126,15 +126,43 @@
           }
         </fieldset>
       }
+
+      <!-- Execution mode — replaces the old advancedExecution checkbox -->
       <div class="agent-config-form__field">
-        <label class="agent-config-form__toggle-label">
-          <input class="agent-config-form__toggle-checkbox" type="checkbox" [formControl]="advancedExecutionControl" />
-          <span class="agent-config-form__toggle-text">Advanced mode</span>
-        </label>
-        <p class="agent-config-form__toggle-hint">
-          When enabled, this agent uses a multi-step reasoning loop instead of a single LLM call.
+        <label class="agent-config-form__label" for="agent-config-execution-mode">Execution mode</label>
+        <select id="agent-config-execution-mode" class="agent-config-form__select" [formControl]="executionModeControl">
+          <option [value]="ExecutionMode.SIMPLE">SIMPLE — Standard agent (single LLM call)</option>
+          <option [value]="ExecutionMode.ADVANCED">ADVANCED — Multi-step reasoning loop</option>
+          <option [value]="ExecutionMode.LOOP">LOOP — Bulk loop agent (no LLM, experimental)</option>
+        </select>
+        <p class="agent-config-form__field-hint">
+          SIMPLE runs a single LLM pass. ADVANCED uses an intention loop for complex tasks. LOOP (experimental) starts
+          one case per result of a tool, without an LLM — run it with "Launch loop" in the agent list menu.
         </p>
       </div>
+
+      @if (isLoopMode()) {
+        <div class="agent-config-form__field">
+          <label class="agent-config-form__label" for="agent-config-loop-config">Loop configuration (JSON)</label>
+          <textarea
+            id="agent-config-loop-config"
+            class="agent-config-form__textarea agent-config-form__textarea--mono"
+            rows="10"
+            [placeholder]="loopConfigPlaceholder"
+            [formControl]="loopConfigControl"
+            spellcheck="false"
+            autocomplete="off"
+          ></textarea>
+          @if (loopConfigControl.invalid && loopConfigControl.touched) {
+            <p class="agent-config-form__field-error" role="alert">Invalid JSON — please fix the syntax.</p>
+          }
+          <p class="agent-config-form__field-hint">
+            Default payload for this loop agent. Overridden at launch time if the first message contains a valid
+            <code class="agent-config-form__code">AgentLoopPayload</code>. Leave empty if you always provide the payload
+            at launch.
+          </p>
+        </div>
+      }
 
       <div class="agent-config-form__field">
         <label class="agent-config-form__toggle-label">
@@ -148,7 +176,7 @@
         <span class="agent-config-form__label">Sub-agents</span>
         <p class="agent-config-form__field-hint">
           Glob patterns for agents this agent may delegate to. <code class="agent-config-form__code">*</code> matches
-          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
+          any sequence of characters (e.g. <code class="agent-config-form__code">*Fixer</code>,
           <code class="agent-config-form__code">*</code> for all). Leave empty to disable delegation.
         </p>
 

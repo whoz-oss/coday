@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
 import mu.KLogging
@@ -170,6 +171,7 @@ class FilesystemAgentConfigRepository(
             logger.warn { "[FilesystemAgentConfigRepository] Skipping $file: 'name' is blank" }
             return null
         }
+        @Suppress("DEPRECATION")
         return AgentConfig(
             // Stable UUID derived from the name so identity survives restarts.
             // namespaceId is null here; it is overwritten in findByParent.
@@ -180,6 +182,7 @@ class FilesystemAgentConfigRepository(
             instructions = model.instructions,
             modelName = model.modelName,
             integrations = model.integrations,
+            executionMode = model.executionMode,
             advancedExecution = model.advancedExecution,
             subAgents = model.subAgents.nullOrNotBlankItems(),
             delegationTimeoutSeconds = model.delegationTimeoutSeconds,
@@ -234,6 +237,7 @@ private data class AgentConfigYamlModel(
     val name: String = "",
     val description: String? = null,
     val instructions: String? = null,
+    val executionMode: ExecutionMode? = null,
     val advancedExecution: Boolean = false,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,

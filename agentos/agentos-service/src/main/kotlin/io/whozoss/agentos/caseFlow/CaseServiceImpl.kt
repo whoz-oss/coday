@@ -30,9 +30,9 @@ import io.whozoss.agentos.sdk.caseEvent.AgentSelectedEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseStatusEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.SubCaseFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.SubCaseStartedEvent
-import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.TransientCaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
@@ -44,17 +44,22 @@ import io.whozoss.agentos.usage.UsageRecordService
 import io.whozoss.agentos.user.UserService
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.CoroutineScope
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -85,6 +90,12 @@ class CaseServiceImpl(
     private val caseLaunchGate: CaseLaunchGate? = null,
     /** Installed only with Git workspaces: decides at creation whether a root case gets one. */
     private val caseWorkspaceProvisioning: CaseWorkspaceProvisioning? = null,
+    /**
+     * Coroutine context used to build the service scope.
+     * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
+     * in tests so all coroutines run on the test scheduler and virtual time applies.
+     */
+    coroutineContext: CoroutineContext = Dispatchers.IO,
 ) : CaseService,
     SubCaseManager {
     /**
@@ -92,7 +103,7 @@ class CaseServiceImpl(
      * post-processing tasks (e.g. automatic naming) in the background.
      * Each [run] call and naming trigger is launched here so HTTP threads are never blocked.
      */
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val scope = CoroutineScope(coroutineContext + SupervisorJob())
     private val idleEvictionGraceMs get() = caseConfig.idleEvictionGraceMs
 
     private val activeRuntimes = ConcurrentHashMap<UUID, CaseRuntime>()
@@ -105,7 +116,15 @@ class CaseServiceImpl(
 
     /** Turns held back by [caseLaunchGate]; null without a gate. */
     private val gatedRuns =
-        caseLaunchGate?.let { GatedRunLauncher(it, scope, activeRuntimes::get, { id -> findById(id)?.status }, ::storeEvent) }
+        caseLaunchGate?.let {
+            GatedRunLauncher(
+                it,
+                scope,
+                activeRuntimes::get,
+                { id -> findById(id)?.status },
+                ::storeEvent,
+            )
+        }
 
     override fun hasRunningExecutions(caseIds: Collection<UUID>): Boolean =
         caseIds.any { gatedRuns?.isAdmitted(it) == true || activeRuntimes[it]?.isRunning() == true }
@@ -128,8 +147,7 @@ class CaseServiceImpl(
     // ======================================================
 
     @Transactional
-    override fun create(entity: Case): Case =
-        caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
+    override fun create(entity: Case): Case = caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
 
     private fun createCase(entity: Case): Case {
         checkCaseCreationPreconditions(entity)
@@ -493,8 +511,7 @@ class CaseServiceImpl(
                 .filterIsInstance<MessageContent.Text>()
                 .firstOrNull()
                 ?.content
-                ?.trim()
-                ?.let { MENTION_REGEX.find(it)?.groupValues?.get(1) }
+                ?.let { AgentMention.extractName(it) }
 
         val lastUserMessageIndex = pastEvents.indexOfLast { it is MessageEvent }
         val userId = pastEvents.lastUserIdOrNull()
@@ -763,7 +780,9 @@ class CaseServiceImpl(
                 outcome = UsageOutcome.INTERRUPTED
             }
         } catch (e: Exception) {
-            outcome = UsageOutcome.FAILED
+            // A stopped turn is interrupted, not failed: let the cancellation unwind the runtime.
+            outcome = if (currentCoroutineContext().isActive) UsageOutcome.FAILED else UsageOutcome.INTERRUPTED
+            currentCoroutineContext().ensureActive()
             throw e
         } finally {
             if (usageAccumulator?.failed == true) {
@@ -899,12 +918,16 @@ class CaseServiceImpl(
         // launch admitted but not running yet is cancelled in the same pass.
         family.forEach { if (gatedRuns != null) gatedRuns.cancelAdmitted(it) else it.requestInterrupt() }
         if (usageConfig.enabled) runCostService?.stop(caseId)
+        // Cancel the running turns, so an agent waiting in a tool or an LLM stream stops now. Only once
+        // every runtime is marked: a cancelled child ends IDLE, which completes its parent's delegation.
+        family.forEach(CaseRuntime::cancelInterruptedTurn)
         // Releasing a held turn sets it IDLE, which completes a parent's delegation: only once everything
         // above is stopped. Interrupting again covers a turn a resume started in between.
         gatedRuns?.let { gated ->
             family.forEach {
                 gated.interrupt(it)
                 it.requestInterrupt()
+                it.cancelInterruptedTurn()
             }
         }
     }
@@ -1052,7 +1075,7 @@ class CaseServiceImpl(
                 .onFailure { killErr ->
                     logger.warn(killErr) { "Failed to kill orphaned sub-case ${subCase.id} after permission grant failure" }
                 }
-            throw IllegalStateException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
+            throw AccessDeniedException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
 
         val runtime = activeRuntimes[subCase.id]!!
@@ -1181,18 +1204,5 @@ class CaseServiceImpl(
 
         /** Maximum character length for a sub-case title derived from the task description. */
         private const val MAX_SUBCASE_TITLE_LENGTH = 50
-
-        /**
-         * Matches an `@mention` at the start of a trimmed message, e.g. `@my-agent`.
-         *
-         * Agent names may contain letters, digits, hyphens and underscores only.
-         * Using `\S+` was too broad: a message like `@inspector https://...` would
-         * capture the entire `inspector https://...` string when the separator is a
-         * non-breaking space (U+00A0) or any other non-ASCII whitespace character,
-         * because `\S` in Java/Kotlin regex only excludes ASCII whitespace by default.
-         * The tighter character class `[\w-]+` stops at the first space-like or
-         * special character, ensuring only the agent name token is captured.
-         */
-        private val MENTION_REGEX = """^@([\w-]+)""".toRegex()
     }
 }

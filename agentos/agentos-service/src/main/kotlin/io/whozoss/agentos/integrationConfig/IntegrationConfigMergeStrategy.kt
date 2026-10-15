@@ -26,6 +26,13 @@ import org.springframework.stereotype.Component
  * - `description`: `override.description` wins when non-null; otherwise inherited from `base`.
  * - `authSettingName`: `override.authSettingName` wins when non-null; otherwise inherited from `base`.
  *   A higher-precedence layer can redirect authentication to a different [io.whozoss.agentos.authSetting.AuthSetting].
+ * - `autoGrant`: `override.autoGrant` wins unconditionally. Unlike the nullable fields above, a
+ *   `Boolean` has no "unset" value to distinguish "inherit" from "deliberately false", so the
+ *   highest-precedence layer always decides. That asymmetry is the intended behaviour, not an
+ *   oversight: it is what lets a namespace-shared layer switch OFF an `autoGrant` inherited from
+ *   the platform layer. With inherit-when-false semantics a platform-wide auto-grant could never
+ *   be revoked for a single namespace, only ever widened — the wrong default for a flag whose
+ *   whole purpose is to hand a tool to every agent in scope.
  * - `integrationType`: `override.integrationType` wins for symmetry. In normal usage all
  *   layers carry the same `integrationType` because the service create/update path
  *   rejects an override whose `integrationType` differs from a matching `name` in any
@@ -45,6 +52,7 @@ class IntegrationConfigMergeStrategy : MergeStrategy<IntegrationConfig> {
             description = override.description ?: base.description,
             parameters = mergeParameters(base.parameters, override.parameters),
             authSettingName = override.authSettingName ?: base.authSettingName,
+            autoGrant = override.autoGrant,
         )
 
     private fun mergeParameters(

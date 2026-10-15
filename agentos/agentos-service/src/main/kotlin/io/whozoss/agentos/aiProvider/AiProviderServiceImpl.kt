@@ -1,6 +1,7 @@
 package io.whozoss.agentos.aiProvider
 
 import io.whozoss.agentos.exception.ConfigNotFoundException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionService
@@ -8,9 +9,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -39,7 +38,7 @@ class AiProviderServiceImpl(
 ) : AiProviderService {
     override fun create(entity: AiProvider): AiProvider {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
+            throw ConflictException(conflictMessage(entity))
         }
         assertConsistentApiTypeAcrossLayers(entity)
         return saveOrConflict(entity)
@@ -49,7 +48,7 @@ class AiProviderServiceImpl(
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
-                throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity))
+                throw ConflictException(conflictMessage(entity))
             }
         assertConsistentApiTypeAcrossLayers(entity)
         return saveOrConflict(entity)
@@ -162,8 +161,7 @@ class AiProviderServiceImpl(
         val entityId = entity.metadata.id
 
         fun reject(other: AiProvider): Nothing =
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
+            throw ConflictException(
                 "An AiProvider named '$name' already exists in another layer with " +
                     "apiType='${other.apiType}' (this entity wants apiType='$type'). Overlay " +
                     "layers for the same name must share the same apiType to merge correctly at " +
@@ -210,13 +208,13 @@ class AiProviderServiceImpl(
             }
             // Do NOT chain `e` to the logger: the Neo4j driver's exception message can echo
             // property values (incl. `apiKey` for AiProvider, NFR-SEC-4). The exception is
-            // preserved as the cause of the rethrown ResponseStatusException for stack-trace
+            // preserved as the cause of the rethrown ConflictException for stack-trace
             // continuity at the framework boundary.
             logger.warn {
                 "[AiProviderService] tripleKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
             }
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+            throw ConflictException(conflictMessage(entity), e)
         }
 
     private fun isTripleKeyConflict(e: DataIntegrityViolationException): Boolean {

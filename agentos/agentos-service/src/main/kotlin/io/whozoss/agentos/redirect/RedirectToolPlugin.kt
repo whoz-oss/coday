@@ -6,6 +6,7 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.util.stringList
 import mu.KLogging
 import java.util.UUID
 
@@ -118,10 +119,6 @@ class RedirectToolPlugin(
     }
 
     companion object : KLogging() {
-        /** Returns the non-blank string values of a JSON array field, or an empty list when absent or not an array. */
-        private fun JsonNode?.stringList(field: String): List<String> =
-            this?.get(field)?.takeIf { it.isArray }?.map { it.asText() }?.filter { it.isNotBlank() } ?: emptyList()
-
         const val INTEGRATION_TYPE = "REDIRECT"
         const val GUIDELINE_PARAM = "guideline"
 

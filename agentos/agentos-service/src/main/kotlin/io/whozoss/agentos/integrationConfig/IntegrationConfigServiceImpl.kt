@@ -1,10 +1,10 @@
 package io.whozoss.agentos.integrationConfig
 
+import io.whozoss.agentos.exception.ConflictException
+import io.whozoss.agentos.exception.UnprocessableEntityException
 import mu.KLogging
 import org.springframework.dao.DataIntegrityViolationException
-import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -34,15 +34,14 @@ class IntegrationConfigServiceImpl(
      * — and every unit test building this service directly — behaves as before.
      */
     private val policies: List<IntegrationConfigPolicy> = emptyList(),
+    private val integrationsProperties: IntegrationsProperties = IntegrationsProperties(),
 ) : IntegrationConfigService {
     override fun create(entity: IntegrationConfig): IntegrationConfig = withSavePolicies(entity) {
         findByTriple(entity.namespaceId, entity.userId, entity.name)?.let {
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
-                conflictMessage(entity),
-            )
+            throw ConflictException(conflictMessage(entity))
         }
         assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
         assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         saveOrConflict(entity).also { saved ->
@@ -54,12 +53,10 @@ class IntegrationConfigServiceImpl(
         findByTriple(entity.namespaceId, entity.userId, entity.name)
             ?.takeIf { it.id != entity.id }
             ?.let {
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
-                    conflictMessage(entity),
-                )
+                throw ConflictException(conflictMessage(entity))
             }
         assertNamespaceSingletonRules(entity)
+        assertAutoGrantRules(entity)
         assertTypeSpecificRules(entity)
         assertConsistentIntegrationTypeAcrossLayers(entity)
         saveOrConflict(entity).also { saved ->
@@ -197,8 +194,7 @@ class IntegrationConfigServiceImpl(
         val entityId = entity.id
 
         fun reject(other: IntegrationConfig): Nothing =
-            throw ResponseStatusException(
-                HttpStatus.CONFLICT,
+            throw ConflictException(
                 "An IntegrationConfig named '$name' already exists in another layer with " +
                     "integrationType='${other.integrationType}' (this entity wants " +
                     "integrationType='$type'). Overlay layers for the same name must share the " +
@@ -256,8 +252,7 @@ class IntegrationConfigServiceImpl(
 
         val namespaceId = entity.namespaceId
         if (namespaceId == null || entity.userId != null) {
-            throw ResponseStatusException(
-                HttpStatus.UNPROCESSABLE_ENTITY,
+            throw UnprocessableEntityException(
                 "An integration of type '${entity.integrationType}' configures the namespace itself, so it must " +
                     "be namespace-shared (namespaceId set, userId null). It was requested with " +
                     "namespaceId=${entity.namespaceId}, userId=${entity.userId}. A personal or platform-level " +
@@ -270,12 +265,37 @@ class IntegrationConfigServiceImpl(
             .findActiveNamespaceSingleton(namespaceId, entity.integrationType)
             ?.takeIf { it.id != entity.id }
             ?.let { existing ->
-                throw ResponseStatusException(
-                    HttpStatus.CONFLICT,
+                throw ConflictException(
                     "Namespace $namespaceId already has an active '${entity.integrationType}' configuration " +
                         "('${existing.name}'). Update that one, or remove it first.",
                 )
             }
+    }
+
+    /**
+     * Only a type listed in [IntegrationsProperties.autoGrantableTypes] may set
+     * [IntegrationConfig.autoGrant].
+     *
+     * `autoGrant` hands the integration to every agent in the config's scope without any agent
+     * naming it. At platform scope that is the whole environment at once, which is acceptable for
+     * a conversational primitive and not for a type that reaches the network with a shared
+     * credential. Rejecting here keeps the refusal where the mistake was made, rather than
+     * surfacing it as a surprising tool in some unrelated agent's prompt weeks later.
+     */
+    private fun assertAutoGrantRules(entity: IntegrationConfig) {
+        if (entity.autoGrant) {
+            if (integrationsProperties.isAutoGrantable(entity.integrationType)) {
+                logger.debug { "integration: ${entity.name} is allowed to be auto-granted" }
+            } else {
+                throw UnprocessableEntityException(
+                    "An integration of type '${entity.integrationType}' cannot be auto-granted. Setting autoGrant hands " +
+                            "this configuration to every agent within its scope without any agent declaring it \u2014 at platform " +
+                            "scope, that is every agent of the environment. Only these types may be auto-granted: " +
+                            "${integrationsProperties.autoGrantableTypes.joinToString(", ")}. Reference this " +
+                            "configuration explicitly from the agents that need it instead.",
+                )
+            }
+        }
     }
 
     /**
@@ -300,7 +320,7 @@ class IntegrationConfigServiceImpl(
                     "[IntegrationConfigService] singletonKey unique-constraint violation on save " +
                         "(namespaceId=${entity.namespaceId}, integrationType='${entity.integrationType}')"
                 }
-                throw ResponseStatusException(HttpStatus.CONFLICT, singletonConflictMessage(entity), e)
+                throw ConflictException(singletonConflictMessage(entity), e)
             }
             // Catches the race window: two concurrent creates pass the applicative pre-check,
             // both reach `save`, the DB unique constraint on `tripleKey` rejects one of them.
@@ -314,13 +334,13 @@ class IntegrationConfigServiceImpl(
             // Do NOT chain `e` to the logger: the Neo4j driver's `DataIntegrityViolationException`
             // message can echo property values (incl. the offending row's `parameters` JSON which
             // may contain credentials, cf. NFR-SEC-4). The exception is preserved as the cause of
-            // the rethrown `ResponseStatusException` for stack-trace continuity at the framework
+            // the rethrown `ConflictException` for stack-trace continuity at the framework
             // boundary.
             logger.warn {
                 "[IntegrationConfigService] tripleKey unique-constraint violation on save " +
                     "(namespaceId=${entity.namespaceId}, userId=${entity.userId}, name='${entity.name}')"
             }
-            throw ResponseStatusException(HttpStatus.CONFLICT, conflictMessage(entity), e)
+            throw ConflictException(conflictMessage(entity), e)
         }
 
     /**

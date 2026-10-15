@@ -27,4 +27,7 @@ object IntegrationTypeConstraints {
 
     fun isNamespaceSingleton(integrationType: String?): Boolean =
         integrationType?.uppercase() in NAMESPACE_SINGLETON_TYPES
+
+    /** The conversational `queryUser` tool. See `io.whozoss.agentos.queryUser.QueryUserToolPlugin`. */
+    const val QUERY_USER_TYPE: String = "QUERY_USER"
 }
