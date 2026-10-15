@@ -46,8 +46,8 @@ import java.util.UUID
  *
  * ## Who is authorized
  *
- * The launches go through `CreateCase`, so its rules apply to the **triggering user**, not to the end-users: to
- * start a case for someone else they must administer the namespace. The loop adds no authorization of its own.
+ * The launches go through `CreateCase`, so its rules apply: the integration must allow other users, and each
+ * end-user must read the namespace and have the agent deployed. The loop adds no authorization of its own.
  *
  * Errors that prevent the whole run return [LoopRunOutcome.Aborted]; per-entity problems are
  * counted in [LoopRunOutcome.Completed] and never stop the loop.
@@ -265,7 +265,7 @@ class LoopWorkflowRunnerService(
     /**
      * What a `CreateCase` result means for the loop. A refusal because the agent is not deployed to the end user
      * is the same case as the loop's own check; anything else is a failure. A refusal that comes from the
-     * triggering user or from the integration (not an administrator, other users not allowed, agent outside the
+     * integration (other users not allowed, agent outside the
      * allowlist) hits every entity alike: it shows in the log with its reason, and in the summary as failures.
      */
     private fun launchOutcome(

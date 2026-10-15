@@ -24,7 +24,7 @@ import java.util.UUID
  *
  * @param callerCaseId The case that launches: it becomes the origin ([Case.originCaseId]) of the new one.
  * @param targetUserId The user the new case runs for. Null, or the caller itself: the caller. Any
- *   other user requires the caller to administer the namespace.
+ *   other user must exist and be able to read the namespace.
  * @param title Name of the new conversation. Null: derived from the start of [task].
  * @param context What the caller hands to the new case, and nothing else: it becomes the session
  *   context of the first message as is. The calling case's own context is never inherited.
@@ -61,9 +61,6 @@ enum class CaseLaunchRefusal {
     /** The calling user no longer exists. */
     CALLER_NOT_FOUND,
 
-    /** Only an administrator of the namespace can start a case for another user. */
-    FORBIDDEN,
-
     /** The target user does not exist. */
     USER_NOT_FOUND,
 
@@ -88,8 +85,8 @@ enum class CaseLaunchRefusal {
  * What this adds, in the order it is applied:
  *
  * 1. **Target user.** The caller, unless [CaseLaunchRequest.targetUserId] names someone else. Then
- *    the caller must administer the namespace (Namespace WRITE), the target must exist and read the
- *    namespace: the same conditions as creating the case for them by hand.
+ *    the target must exist and read the namespace. No administration right is required of the caller:
+ *    who may name another user is decided by the `allowOtherUsers` switch of the integration.
  * 2. **Agent access.** The agent must be deployed to the target user in the namespace: the same
  *    condition as addressing it with an `@mention`.
  *
@@ -145,11 +142,6 @@ class CaseLaunchService(
         val targetId = request.targetUserId
         return when {
             targetId == null || targetId == caller.id -> caller
-            !hasNamespacePermission(caller.id, request.callerNamespaceId, Action.WRITE) ->
-                refuse(
-                    CaseLaunchRefusal.FORBIDDEN,
-                    "Only an administrator of the namespace can start a case for another user.",
-                )
             else -> {
                 val target = userService.findById(targetId) ?: refuse(CaseLaunchRefusal.USER_NOT_FOUND, "No such user.")
                 if (!hasNamespacePermission(target.id, request.callerNamespaceId, Action.READ)) {
@@ -160,7 +152,7 @@ class CaseLaunchService(
         }
     }
 
-    /** Namespace WRITE is namespace administration (super-admins pass through the evaluator); READ is membership. */
+    /** Namespace READ is membership. */
     private fun hasNamespacePermission(
         userId: UUID,
         namespaceId: UUID,

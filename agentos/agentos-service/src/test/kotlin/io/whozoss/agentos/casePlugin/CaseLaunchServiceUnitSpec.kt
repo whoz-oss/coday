@@ -25,7 +25,7 @@ import java.util.UUID
 
 /**
  * Unit tests for [CaseLaunchService]: the case it creates (parent link, title, first message, ADMIN
- * grant, context), the target user and the ADMIN rule, agent access, and cleanup on failure. A
+ * grant, context), the target user, agent access, and cleanup on failure. A
  * refusal must never create a case.
  */
 class CaseLaunchServiceUnitSpec :
@@ -82,11 +82,9 @@ class CaseLaunchServiceUnitSpec :
                     grantFailure?.let { throw it }
                     Unit
                 }
-                // Default world: both users read the namespace, nobody administers it, both have 'Reporter'.
+                // Default world: both users read the namespace, both have 'Reporter'.
                 namespacePermission(caller, Action.READ, true)
-                namespacePermission(caller, Action.WRITE, false)
                 namespacePermission(other, Action.READ, true)
-                namespacePermission(other, Action.WRITE, false)
                 deployAgent(caller, "Reporter")
                 deployAgent(other, "Reporter")
             }
@@ -262,19 +260,11 @@ class CaseLaunchServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Another user: ADMIN only
+        // Another user: no administration right required
         // -------------------------------------------------------------------------
 
-        "a plain member cannot start a case for another user, and no case is created" {
+        "a plain member can start a case for another user, who is the one given ADMIN on it" {
             val f = Fixture()
-
-            f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe CaseLaunchRefusal.FORBIDDEN
-            f.created shouldBe emptyList()
-        }
-
-        "a namespace administrator can start a case for another user, who is the one given ADMIN on it" {
-            val f = Fixture()
-            f.namespacePermission(caller, Action.WRITE, true)
 
             val outcome = f.service.launch(request(targetUserId = other.id)).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
 
@@ -297,7 +287,6 @@ class CaseLaunchServiceUnitSpec :
 
         "the target user must still read the namespace" {
             val f = Fixture()
-            f.namespacePermission(caller, Action.WRITE, true)
             f.namespacePermission(other, Action.READ, false)
 
             f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe CaseLaunchRefusal.NO_ACCESS
@@ -306,7 +295,6 @@ class CaseLaunchServiceUnitSpec :
 
         "the target user must still have the agent deployed to them" {
             val f = Fixture()
-            f.namespacePermission(caller, Action.WRITE, true)
             f.deployAgent(other, "SomethingElse")
 
             f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
@@ -315,7 +303,6 @@ class CaseLaunchServiceUnitSpec :
 
         "an unknown target user is refused" {
             val f = Fixture()
-            f.namespacePermission(caller, Action.WRITE, true)
             val ghost = UUID.randomUUID()
             every { f.userService.findById(ghost) } returns null
 
@@ -323,14 +310,14 @@ class CaseLaunchServiceUnitSpec :
             f.created shouldBe emptyList()
         }
 
-        "naming the caller itself is not 'another user' and asks for no administration right" {
+        "naming the caller itself is not 'another user' and needs no namespace permission check" {
             val f = Fixture()
 
             f.service.launch(request(targetUserId = caller.id)).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
 
             f.sent.single().actor.id shouldBe caller.id.toString()
             verify(exactly = 0) {
-                f.permissionService.hasPermission(caller.id.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.WRITE)
+                f.permissionService.hasPermission(any(), EntityType.NAMESPACE, any(), any())
             }
         }
 

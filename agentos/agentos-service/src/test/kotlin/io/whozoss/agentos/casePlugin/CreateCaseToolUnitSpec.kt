@@ -16,7 +16,7 @@ import java.util.UUID
 
 /**
  * Unit tests for [CreateCaseTool]: input and output contract, the agent allowlist, the `userId`
- * switch, schema and the hand-off to [CaseLaunchService]. The ADMIN rule and agent access are in
+ * switch, schema and the hand-off to [CaseLaunchService]. The target user rules and agent access are in
  * [CaseLaunchServiceUnitSpec].
  */
 class CreateCaseToolUnitSpec :
@@ -173,7 +173,7 @@ class CreateCaseToolUnitSpec :
             verify(exactly = 0) { launcher.launch(any()) }
         }
 
-        "when allowed, the userId is handed to the service, which owns the ADMIN rule" {
+        "when allowed, the userId is handed to the service, which owns the target user checks" {
             val request = slot<CaseLaunchRequest>()
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
 
@@ -260,12 +260,12 @@ class CreateCaseToolUnitSpec :
         }
 
         "a refusal becomes a tool error carrying its reason as errorType, and no structured output" {
-            val t = tool(service(CaseLaunchOutcome.Refused(CaseLaunchRefusal.FORBIDDEN, "No.")))
+            val t = tool(service(CaseLaunchOutcome.Refused(CaseLaunchRefusal.NO_ACCESS, "No.")))
 
             val result = t.execute(CreateCaseTool.Input("Reporter", "prompt"), context())
 
             result.success shouldBe false
-            result.errorType shouldBe "FORBIDDEN"
+            result.errorType shouldBe "NO_ACCESS"
             result.output shouldBe "No."
             result.structuredOutput shouldBe null
         }
@@ -316,7 +316,6 @@ class CreateCaseToolUnitSpec :
         "the description mentions userId only when other users are allowed" {
             tool().description shouldNotContain "userId"
             tool(allowOtherUsers = true).description shouldContain "userId"
-            tool(allowOtherUsers = true).description shouldContain "administrator"
         }
 
         "the description lists the allowed agents only when they are restricted" {

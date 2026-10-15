@@ -33,7 +33,7 @@ import java.util.UUID
  *
  * The tool is thin: it parses the input, applies the agent allowlist and the [allowOtherUsers]
  * switch of its integration config, and hands the rest to [CaseLaunchService], which owns every
- * authorization rule (notably that another user requires a namespace administrator). Another
+ * authorization rule (notably that the target user exists and can read the namespace). Another
  * caller (an AgentLoop step, say) can look the tool up by name and call [executeWithJson], reading
  * the case id from [outputSchema], or call [CaseLaunchService] directly.
  *
@@ -62,7 +62,7 @@ class CreateCaseTool(
      *   self-contained: the new case does not see the conversation it was started from.
      * @param title Name of the new conversation. Omit to derive it from the prompt.
      * @param userId Internal id of the user the case runs for. Only honoured when the integration
-     *   allows it, and only for an administrator of the namespace. Omit for the current user.
+     *   allows it. Omit for the current user.
      * @param context Key/value context the new case starts with, for example the entity the prompt
      *   is about. Only these entries are passed on, never the calling case's own context.
      */
@@ -99,7 +99,7 @@ class CreateCaseTool(
             append(
                 if (allowOtherUsers) {
                     "The case runs in the current namespace, for the current user unless you pass userId " +
-                        "(allowed only for an administrator of the namespace)."
+                        "(the user must have access to the namespace and the agent)."
                 } else {
                     "The case runs for the current user, in the current namespace."
                 },

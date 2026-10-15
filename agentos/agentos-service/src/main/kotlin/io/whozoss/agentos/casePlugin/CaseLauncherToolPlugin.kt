@@ -19,8 +19,8 @@ import org.springframework.stereotype.Component
  * `CaseService -> AgentService -> ToolRegistryService -> plugins` cycle.
  *
  * Parameters: `agents` (glob patterns, default `["*"]`) and `deniedAgents` (exact names) bound the
- * agents the tool may start; `allowOtherUsers` (default `false`) lets the LLM name another user,
- * which [CaseLaunchService] still reserves to administrators of the namespace.
+ * agents the tool may start; `allowOtherUsers` (default `false`) lets the LLM name another user
+ * (who must read the namespace and have the agent deployed).
  */
 @Component
 class CaseLauncherToolPlugin(
@@ -73,7 +73,7 @@ class CaseLauncherToolPlugin(
                     "allowOtherUsers": {
                       "type": "boolean",
                       "title": "Allow other users",
-                      "description": "Lets the agent start the case for a user other than the one it is running for (input field userId). Even then, only an administrator of the namespace can do it, and the target user must have the agent deployed.",
+                      "description": "Lets the agent start the case for a user other than the one it is running for (input field userId). The target user must have access to the namespace and the agent deployed.",
                       "default": false
                     }
                   },
