@@ -20,4 +20,6 @@ data class NamespaceGitRequest(
     val mainBranch: String? = null,
     @field:NotNull(message = "serviceAuthSettingId is required")
     val serviceAuthSettingId: UUID,
+    val autoWorktreeForRootCases: Boolean = false,
+    val setupCommand: String? = null,
 )

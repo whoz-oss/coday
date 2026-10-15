@@ -5,6 +5,8 @@
 
   <agentos-exchange-drawer
     class="exchange-shell__drawer"
+    [caseId]="environmentCaseId()"
+    [environmentActive]="active()"
     [caseFiles]="state.caseFiles()"
     [caseFolders]="state.caseFolders()"
     [caseBreadcrumb]="state.caseBreadcrumb()"

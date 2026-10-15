@@ -12,4 +12,11 @@ import java.util.UUID
 interface CaseResourceBindingRepository : EntityRepository<CaseResourceBinding, UUID> {
     /** The active binding owned by [rootCaseId], or null when that family is not equipped. */
     fun findByRootCaseId(rootCaseId: UUID): CaseResourceBinding?
+
+    /** Active bindings ordered by creation time and ID, strictly after [after], capped by [limit]. */
+    fun findByStatusIn(
+        statuses: Collection<CaseResourceStatus>,
+        limit: Int,
+        after: CaseResourceBindingCursor? = null,
+    ): List<CaseResourceBinding>
 }

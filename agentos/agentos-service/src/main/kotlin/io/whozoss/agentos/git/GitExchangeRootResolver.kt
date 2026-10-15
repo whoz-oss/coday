@@ -129,6 +129,35 @@ class GitExchangeRootResolver(
         return parent
     }
 
+    /**
+     * The cases among [candidates] that belong to [rootCase]'s family, following parent ids through
+     * removed ancestors too: older cases need not have a PARENT_OF edge. A lineage that cannot be
+     * read counts as a member, so cleanup never concludes that a family is gone by mistake.
+     */
+    fun familyAmong(
+        rootCase: Case,
+        candidates: Collection<Case>,
+    ): List<Case> {
+        // Parents already read, including those that could not be: each is read at most once.
+        val known: MutableMap<UUID, Case?> = candidates.associateByTo(mutableMapOf()) { it.id }
+        fun parent(id: UUID): Case? =
+            if (id in known) {
+                known[id]
+            } else {
+                caseRepository.findByIds(listOf(id), withRemoved = true).firstOrNull().also { known[id] = it }
+            }
+        fun belongs(case: Case): Boolean {
+            val lineage =
+                generateSequence(case) { current -> current.takeIf { it.id != rootCase.id }?.parentCaseId?.let(::parent) }
+                    .take(MAX_ANCESTOR_HOPS + 1)
+                    .toList()
+            // Reaching the root makes a member. Stopping short of a top-level case, because a parent
+            // cannot be read or the lineage is too deep, makes one too.
+            return lineage.any { it.id == rootCase.id } || lineage.last().parentCaseId != null
+        }
+        return candidates.filter { it.namespaceId == rootCase.namespaceId && belongs(it) }
+    }
+
     private fun requireCase(caseId: UUID): Case =
         caseRepository.findByIds(listOf(caseId), withRemoved = true).firstOrNull()
             ?: throw ResourceNotFoundException("Case not found: $caseId")

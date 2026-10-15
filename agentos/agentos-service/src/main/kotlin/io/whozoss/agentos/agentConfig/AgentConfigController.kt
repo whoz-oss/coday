@@ -14,6 +14,7 @@ import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigDto
 import io.whozoss.agentos.sdk.api.agentConfig.AgentConfigSearchRequest
 import io.whozoss.agentos.sdk.api.agentConfig.AgentDefinitionDto
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -75,22 +76,7 @@ class AgentConfigController(
             permissions = permissionService,
             entityType = EntityType.AGENT_CONFIG,
             toResource = { toDto(it as AgentConfig) },
-            toDomain = { resource ->
-                AgentConfig(
-                    metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID()),
-                    namespaceId = resource.namespaceId,
-                    name = resource.name,
-                    description = resource.description,
-                    instructions = resource.instructions,
-                    modelName = resource.modelName,
-                    integrations = resource.integrations,
-                    advancedExecution = resource.advancedExecution ?: false,
-                    externalMetadata = resource.externalMetadata,
-                    enabled = resource.enabled ?: false,
-                    subAgents = resource.subAgents.nullOrNotBlankItems(),
-                    skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
-                )
-            },
+            toDomain = { resource -> toDomain(resource) },
         )
 
     @GetMapping("/{id}")
@@ -135,6 +121,8 @@ class AgentConfigController(
         val existing =
             agentConfigService.findById(id)
                 ?: throw ResourceNotFoundException("AgentConfig not found: $id")
+        val executionMode = resource.requestedExecutionMode()
+        @Suppress("DEPRECATION")
         return toDto(
             agentConfigService.update(
                 existing.copy(
@@ -143,11 +131,14 @@ class AgentConfigController(
                     instructions = resource.instructions,
                     modelName = resource.modelName,
                     integrations = resource.integrations,
-                    advancedExecution = resource.advancedExecution ?: false,
+                    executionMode = executionMode,
+                    advancedExecution = executionMode == ExecutionMode.ADVANCED,
                     externalMetadata = resource.externalMetadata,
                     enabled = resource.enabled ?: existing.enabled,
                     subAgents = resource.subAgents.nullOrNotBlankItems(),
+                    delegationTimeoutSeconds = resource.delegationTimeoutSeconds,
                     skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
+                    loopConfig = resource.loopConfig,
                 ),
             ),
         )
@@ -251,7 +242,8 @@ class AgentConfigController(
                         inputSchema = tool.inputSchema,
                     )
                 },
-            advancedExecution = definition.advancedExecution,
+            executionMode = definition.executionMode,
+            advancedExecution = definition.executionMode == ExecutionMode.ADVANCED,
             namespaceId = definition.namespaceId,
             userId = definition.userId,
         )
@@ -260,8 +252,21 @@ class AgentConfigController(
     companion object : KLogging()
 }
 
+/**
+ * Execution mode requested by a client: [AgentConfigDto.executionMode] when present, otherwise the
+ * deprecated [AgentConfigDto.advancedExecution] flag (`true` → ADVANCED, absent/`false` → SIMPLE).
+ *
+ * Both persisted fields are derived from this single value so the deprecated flag stays consistent
+ * for legacy readers, whichever field the client sent.
+ */
+@Suppress("DEPRECATION")
+private fun AgentConfigDto.requestedExecutionMode(): ExecutionMode =
+    executionMode ?: if (advancedExecution == true) ExecutionMode.ADVANCED else ExecutionMode.SIMPLE
+
+@Suppress("DEPRECATION")
 internal fun toDomain(resource: AgentConfigDto): AgentConfig {
     val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+    val executionMode = resource.requestedExecutionMode()
     return AgentConfig(
         metadata = metadata,
         namespaceId = resource.namespaceId,
@@ -270,14 +275,18 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         instructions = resource.instructions,
         modelName = resource.modelName,
         integrations = resource.integrations,
-        advancedExecution = resource.advancedExecution ?: false,
+        executionMode = executionMode,
+        advancedExecution = executionMode == ExecutionMode.ADVANCED,
         externalMetadata = resource.externalMetadata,
         enabled = resource.enabled ?: false,
         subAgents = resource.subAgents.nullOrNotBlankItems(),
+        delegationTimeoutSeconds = resource.delegationTimeoutSeconds,
         skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
+        loopConfig = resource.loopConfig,
     )
 }
 
+@Suppress("DEPRECATION")
 internal fun toDto(entity: AgentConfig) =
     AgentConfigDto(
         id = entity.metadata.id,
@@ -287,7 +296,10 @@ internal fun toDto(entity: AgentConfig) =
         instructions = entity.instructions,
         modelName = entity.modelName,
         integrations = entity.integrations,
-        advancedExecution = entity.advancedExecution.takeIf { it },
+        // Both derived from the resolved mode: legacy configs (executionMode = null) expose their mode,
+        // and the deprecated flag never contradicts executionMode.
+        executionMode = entity.resolvedExecutionMode,
+        advancedExecution = (entity.resolvedExecutionMode == ExecutionMode.ADVANCED).takeIf { it },
         externalMetadata = entity.externalMetadata,
         createdBy = entity.metadata.createdBy,
         createdOn = entity.metadata.created,
@@ -295,7 +307,9 @@ internal fun toDto(entity: AgentConfig) =
         updatedOn = entity.metadata.modified,
         enabled = entity.enabled,
         subAgents = entity.subAgents,
+        delegationTimeoutSeconds = entity.delegationTimeoutSeconds,
         skillSelectors = entity.skillSelectors,
+        loopConfig = entity.loopConfig,
     )
 
 /**
@@ -320,6 +334,7 @@ private fun toExportModel(entity: AgentConfig): Map<String, Any?> =
         entity.modelName?.takeIf { it.isNotBlank() }?.let { put("modelName", it) }
         entity.integrations?.takeIf { it.isNotEmpty() }?.let { put("integrations", it) }
         entity.subAgents?.takeIf { it.isNotEmpty() }?.let { put("subAgents", it) }
+        entity.delegationTimeoutSeconds?.let { put("delegationTimeoutSeconds", it) }
         entity.docs?.takeIf { it.isNotEmpty() }?.let { put("docs", it) }
         entity.skillSelectors?.takeIf { it.isNotEmpty() }?.let { put("skillSelectors", it) }
     }

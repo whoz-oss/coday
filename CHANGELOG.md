@@ -1,3 +1,179 @@
+## 3.35.1 (2026-10-15)
+
+### 🩹 Fixes
+
+- #1405 display the user's answer to a queryUser question in the case chat ([#1406](https://github.com/whoz-oss/coday/pull/1406), [#1405](https://github.com/whoz-oss/coday/issues/1405))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.0 (2026-10-14)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention generation tool name ([#1448](https://github.com/whoz-oss/coday/pull/1448))
+
+### 🔥 Performance
+
+- **agentos:** share one Neo4j test harness across Spring test contexts ([#1440](https://github.com/whoz-oss/coday/pull/1440))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.34.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos-service:** stop now ends the agent's turn at once ([#1442](https://github.com/whoz-oss/coday/pull/1442))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.34.0 (2026-10-13)
+
+### 🚀 Features
+
+- #1425 #34871 add integration configuration on query user ([#1428](https://github.com/whoz-oss/coday/pull/1428), [#1425](https://github.com/whoz-oss/coday/issues/1425), [#34871](https://github.com/whoz-oss/coday/issues/34871))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.33.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos:** skip workspace requests when Git workspaces are disabled ([#1438](https://github.com/whoz-oss/coday/pull/1438))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.33.0 (2026-10-12)
+
+### 🚀 Features
+
+- update anthropic and google models ([d0f41fb1](https://github.com/whoz-oss/coday/commit/d0f41fb1))
+- update anthropic and google models ([#1441](https://github.com/whoz-oss/coday/pull/1441))
+
+### ❤️ Thank You
+
+- David Palita
+
+## 3.32.0 (2026-10-12)
+
+### 🚀 Features
+
+- **agentos-service:** try to change tool balis to have more consiste… ([#1439](https://github.com/whoz-oss/coday/pull/1439))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.31.0 (2026-10-12)
+
+### 🚀 Features
+
+- wz-35120 - CREATED status ([#1434](https://github.com/whoz-oss/coday/pull/1434))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.30.0 (2026-10-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-35090 AgentLoop V0 : one case per tool result row ([#1414](https://github.com/whoz-oss/coday/pull/1414))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- thomas.martin @thomas-martin-whoz
+
+## 3.29.0 (2026-10-09)
+
+### 🚀 Features
+
+- wz-35120 - add CREATED status ([#1435](https://github.com/whoz-oss/coday/pull/1435))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.28.0 (2026-10-08)
+
+### 🚀 Features
+
+- **agentos-service:** more resilient generate intent ([a77e7286](https://github.com/whoz-oss/coday/commit/a77e7286))
+- **agentos-service:** close balis ([90125107](https://github.com/whoz-oss/coday/commit/90125107))
+- **agentos-service:** more resilient generate intent ([#1424](https://github.com/whoz-oss/coday/pull/1424))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 3.27.0 (2026-10-07)
+
+### 🚀 Features
+
+- wz-35270 - batch translate API ([#1422](https://github.com/whoz-oss/coday/pull/1422))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.26.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** inspect workspace changes and participating agents ([#1370](https://github.com/whoz-oss/coday/pull/1370))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.25.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** observe workspace branches and pull requests ([#1369](https://github.com/whoz-oss/coday/pull/1369))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.24.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** activate optional case-family worktrees ([#1368](https://github.com/whoz-oss/coday/pull/1368))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.23.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** configure global and per-agent delegation timeouts ([#1338](https://github.com/whoz-oss/coday/pull/1338))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 3.22.0 (2026-10-06)
 
 ### 🚀 Features

@@ -9,3 +9,7 @@ fun JsonNode.trimmedTextOrNull(field: String): String? =
         ?.asText()
         ?.trim()
         ?.takeIf { it.isNotEmpty() }
+
+/** Returns the non-blank string values of a JSON array field, or an empty list when absent or not an array. */
+fun JsonNode?.stringList(field: String): List<String> =
+    this?.get(field)?.takeIf { it.isArray }?.map { it.asText() }?.filter { it.isNotBlank() } ?: emptyList()

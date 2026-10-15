@@ -1,7 +1,8 @@
+import { CaseWorkspaceService } from '../../services/case-workspace.service'
 import { ElementRef, signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute, Router } from '@angular/router'
-import { Case, NamespaceControllerService } from '@whoz-oss/agentos-api-client'
+import { Case, CaseRoleEnum, NamespaceControllerService, NamespaceListItemRoleEnum } from '@whoz-oss/agentos-api-client'
 import { EMPTY, of, Subject, throwError } from 'rxjs'
 import { CaseShellComponent } from './case-shell.component'
 import { CaseStateService } from '../../services/case-state.service'
@@ -27,7 +28,11 @@ describe('CaseShellComponent', () => {
   let namespaceControllerMock: { listAllNamespace: jest.Mock }
   let themeMock: { theme: jest.Mock; setTheme: jest.Mock }
 
-  function makeComponent(queryParams: Record<string, string> = {}, cases: Case[] = []): CaseShellComponent {
+  function makeComponent(
+    queryParams: Record<string, string> = {},
+    cases: Case[] = [],
+    access: { isAdmin?: boolean; namespaceRole?: NamespaceListItemRoleEnum } = {}
+  ): CaseShellComponent {
     queryParams$ = new Subject()
     routerMock = { navigate: jest.fn(), events: EMPTY }
     casesMock = signal(cases)
@@ -39,11 +44,15 @@ describe('CaseShellComponent', () => {
       renameCase: jest.fn().mockReturnValue(of(undefined)),
     }
     userStateMock = {
-      currentUser: jest.fn().mockReturnValue(null),
+      currentUser: jest.fn().mockReturnValue(access.isAdmin ? { isAdmin: true } : null),
       loadMe: jest.fn().mockReturnValue(EMPTY),
     }
     namespaceControllerMock = {
-      listAllNamespace: jest.fn().mockReturnValue(of([])),
+      listAllNamespace: jest
+        .fn()
+        .mockReturnValue(
+          of(access.namespaceRole ? [{ id: NS_ID, name: 'Namespace', role: access.namespaceRole }] : [])
+        ),
     }
     themeMock = {
       theme: jest.fn().mockReturnValue('light'),
@@ -52,6 +61,10 @@ describe('CaseShellComponent', () => {
 
     TestBed.configureTestingModule({
       providers: [
+        {
+          provide: CaseWorkspaceService,
+          useValue: { byRoot: signal({}), watchNamespace: () => EMPTY },
+        },
         { provide: Router, useValue: routerMock },
         {
           provide: ActivatedRoute,
@@ -78,6 +91,40 @@ describe('CaseShellComponent', () => {
   afterEach(() => {
     jest.restoreAllMocks()
     TestBed.resetTestingModule()
+  })
+
+  it('opens the sub-case composer for the chosen parent and closes the mobile drawer', () => {
+    const component = makeComponent({ ns: NS_ID, case: 'root' })
+    component['mobileDrawerOpen'].set(true)
+
+    component['onSubCaseCreateRequested']('root')
+
+    expect(routerMock.navigate).toHaveBeenCalledWith(['/agentos/home'], {
+      queryParams: { ns: NS_ID, parentCase: 'root' },
+    })
+    expect(component['mobileDrawerOpen']()).toBe(false)
+  })
+
+  it.each([
+    { caseRole: CaseRoleEnum.MEMBER, namespaceRole: NamespaceListItemRoleEnum.MEMBER, expected: false },
+    { caseRole: CaseRoleEnum.ADMIN, namespaceRole: NamespaceListItemRoleEnum.MEMBER, expected: true },
+    { caseRole: CaseRoleEnum.MEMBER, namespaceRole: NamespaceListItemRoleEnum.ADMIN, expected: true },
+    { caseRole: undefined, namespaceRole: NamespaceListItemRoleEnum.SUPER_ADMIN, expected: true },
+  ])('derives workspace WRITE access from case and namespace roles: %j', ({ caseRole, namespaceRole, expected }) => {
+    const component = makeComponent({ ns: NS_ID, case: 'root' }, [{ ...caseWith('root'), role: caseRole }], {
+      namespaceRole,
+    })
+    expect(component['canWriteActiveCase']()).toBe(expected)
+  })
+
+  it('keeps workspace actions unavailable without a known permission', () => {
+    const component = makeComponent({ ns: NS_ID, case: 'root' })
+    expect(component['canWriteActiveCase']()).toBe(false)
+  })
+
+  it('allows platform admins to manage workspaces', () => {
+    const component = makeComponent({ ns: NS_ID, case: 'root' }, [], { isAdmin: true })
+    expect(component['canWriteActiveCase']()).toBe(true)
   })
 
   describe('soft-delete', () => {

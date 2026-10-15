@@ -4,6 +4,7 @@ README.md
 api.base.service.ts
 api.module.ts
 api/agent-config-controller.service.ts
+api/agent-config-defaults-controller.service.ts
 api/ai-model-controller.service.ts
 api/ai-provider-controller.service.ts
 api/api.ts
@@ -11,8 +12,10 @@ api/auth-setting-controller.service.ts
 api/case-controller.service.ts
 api/case-event-rest-controller.service.ts
 api/case-membership-controller.service.ts
+api/case-workspace-controller.service.ts
 api/exchange-controller.service.ts
 api/feedback-controller.service.ts
+api/git-workspaces-configuration-controller.service.ts
 api/integration-config-controller.service.ts
 api/integration-type-controller.service.ts
 api/namespace-controller.service.ts
@@ -26,6 +29,7 @@ api/run-cost-controller.service.ts
 api/scheduled-prompt-controller.service.ts
 api/skill-controller.service.ts
 api/sse.service.ts
+api/tool-invoke-controller.service.ts
 api/usage-configuration-controller.service.ts
 api/usage-record-controller.service.ts
 api/user-controller.service.ts
@@ -36,6 +40,7 @@ git_push.sh
 index.ts
 model/actor.ts
 model/add-message-request.ts
+model/agent-config-defaults-dto.ts
 model/agent-config-search-request.ts
 model/agent-config.ts
 model/agent-definition-tool-summary.ts
@@ -53,6 +58,7 @@ model/bearer-token-auth-setting.ts
 model/case-event.ts
 model/case-status-event.ts
 model/case-updated-event.ts
+model/case-workspace-view.ts
 model/case.ts
 model/confirmation-resolved-event.ts
 model/continue-cost-request.ts
@@ -60,15 +66,21 @@ model/enrichment-phase-trace.ts
 model/entity-metadata.ts
 model/error-event.ts
 model/exchange-delete-response.ts
+model/exchange-diff-file.ts
 model/exchange-directory-entry.ts
 model/exchange-directory-listing.ts
+model/exchange-environment.ts
 model/exchange-file-content.ts
+model/exchange-file-diff.ts
 model/exchange-file-entry.ts
+model/exchange-git-changes.ts
 model/exchange-manifest.ts
 model/feedback-input.ts
 model/feedback.ts
 model/get-by-ids-case-event-rest200-response-inner.ts
 model/get-by-ids-request.ts
+model/git-workspace-summary.ts
+model/git-workspaces-configuration.ts
 model/groups-by-external-ids-request.ts
 model/image.ts
 model/integration-config.ts
@@ -119,10 +131,13 @@ model/sync-user-roles-request.ts
 model/text-chunk-event.ts
 model/text.ts
 model/thinking-event.ts
+model/tool-invoke-request.ts
+model/tool-invoke-response.ts
 model/tool-request-event.ts
 model/tool-response-event-all-of-output.ts
 model/tool-response-event.ts
 model/tool-selected-event.ts
+model/tool-summary.ts
 model/unread-count-response.ts
 model/usage-aggregate-by-key.ts
 model/usage-aggregate.ts
@@ -136,6 +151,7 @@ model/user-group-update-request.ts
 model/user-membership-role.ts
 model/user.ts
 model/warn-event.ts
+model/workspace-retry-request.ts
 param.ts
 provide-api.ts
 variables.ts

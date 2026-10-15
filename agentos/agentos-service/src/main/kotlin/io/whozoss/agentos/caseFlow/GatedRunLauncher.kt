@@ -12,11 +12,16 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Agent turns held back by a [CaseLaunchGate]: marked PENDING, then started once the gate admits them.
+ * Agent turns held back by a [CaseLaunchGate]: marked [io.whozoss.agentos.sdk.caseFlow.CaseStatus.PENDING],
+ * then started once the gate admits them.
  *
  * [CaseServiceImpl] creates one only when a gate is installed; without a gate every run starts
  * immediately, as it always did. `synchronized(runtime)` is the admission lock: Stop and Kill cannot
  * fall between taking a turn and publishing its launch.
+ *
+ * Note: [io.whozoss.agentos.sdk.caseFlow.CaseStatus.PENDING] here means "a turn is held back by the
+ * gate" — it is distinct from [io.whozoss.agentos.sdk.caseFlow.CaseStatus.CREATED], which is the
+ * initial status of a freshly created case that has received no message yet.
  */
 internal class GatedRunLauncher(
     private val gate: CaseLaunchGate,
@@ -38,8 +43,9 @@ internal class GatedRunLauncher(
     fun isAdmitted(caseId: UUID): Boolean = executionJobs[caseId]?.isCompleted == false
 
     /**
-     * Mark the turn PENDING and start it once the gate admits it. The user's message is already
-     * persisted, and [resumeIfPending] picks the turn up when the obstacle clears.
+     * Mark the turn [io.whozoss.agentos.sdk.caseFlow.CaseStatus.PENDING] and start it once
+     * the gate admits it. The user's message is already persisted, and [resumeIfPending] picks
+     * the turn up when the obstacle clears.
      *
      * The claim (in-memory status + deferredRuns) is atomic with the admission lock so a
      * concurrent Stop or Kill cannot fall between the two. Persistence via [publishStatus]
@@ -77,7 +83,7 @@ internal class GatedRunLauncher(
 
     /**
      * A launch can be admitted before run() starts: Stop cancels only that launch. An agent already
-     * running keeps the runtime's cooperative interruption.
+     * running is stopped by the runtime ([CaseRuntime.cancelInterruptedTurn]).
      *
      * The IDLE claim is atomic with deferredRuns removal under the admission lock.
      * Persistence via [publishStatus] runs outside the lock.

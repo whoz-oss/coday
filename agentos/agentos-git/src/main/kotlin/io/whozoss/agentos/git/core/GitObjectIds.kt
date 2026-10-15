@@ -10,6 +10,9 @@ object GitObjectIds {
 
     const val SHA256_FORMAT: String = "sha256"
 
+    /** A full object id in either format. */
+    val FULL_ID: Regex = Regex("[a-f0-9]{$SHA1_LENGTH}|[a-f0-9]{$SHA256_LENGTH}")
+
     fun length(format: String): Int = if (format == SHA256_FORMAT) SHA256_LENGTH else SHA1_LENGTH
 
     /** The all-zero id Git uses for "no object", in [format]. */

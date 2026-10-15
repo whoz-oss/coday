@@ -30,6 +30,9 @@ import io.whozoss.agentos.util.AttemptResult
 import io.whozoss.agentos.util.AttemptSuccess
 import io.whozoss.agentos.util.mapWhile
 import io.whozoss.agentos.util.retryWithFallback
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
@@ -255,7 +258,13 @@ class AgentAdvanced(
                         message = "Unknown tool referenced: ${e.message}",
                     ),
                 )
+            } catch (e: CancellationException) {
+                // The run was stopped or its collector stopped collecting: emitting from here is forbidden.
+                throw e
             } catch (e: Exception) {
+                // If the case was stopped, this exception is a side effect of the stop, not a real failure:
+                // ensureActive() then throws a CancellationException so the run ends without reporting an error.
+                currentCoroutineContext().ensureActive()
                 handleGenericAgentException(this@AgentAdvanced, e, namespaceId, caseId, logger)
             }
         }
@@ -607,6 +616,9 @@ class AgentAdvanced(
                     structuredOutput = result.structuredOutput,
                 )
             } catch (e: Exception) {
+                // If the case was stopped, this exception is a side effect of the stop, not a real failure:
+                // ensureActive() then throws a CancellationException so the run ends without reporting an error.
+                currentCoroutineContext().ensureActive()
                 logger.warn(e) {
                     "[AgentAdvanced] implicit-consent tool execution failed for ${tool.name}"
                 }
@@ -846,6 +858,9 @@ class AgentAdvanced(
                     )
                     result.output
                 } catch (e: Exception) {
+                    // If the case was stopped, this exception is a side effect of the stop, not a real failure:
+                    // ensureActive() then throws a CancellationException so the run ends without reporting an error.
+                    currentCoroutineContext().ensureActive()
                     logger.warn(e) {
                         "[AgentAdvanced] tool execution failed during confirmation resolution for ${pending.toolName}"
                     }
@@ -1601,6 +1616,9 @@ Generate ONLY the JSON object matching the input schema above, Output requiremen
                     )
                     throw e
                 } catch (e: Exception) {
+                    // If the case was stopped, this exception is a side effect of the stop, not a real failure:
+                    // ensureActive() then throws a CancellationException so the run ends without reporting an error.
+                    currentCoroutineContext().ensureActive()
                     logger.warn(e) {
                         "[AgentAdvanced] error during tool execution for ${tool.name}"
                     }

@@ -23,17 +23,17 @@ import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
-import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
-import io.whozoss.agentos.queryUser.QueryUserToolGrantService
 import io.whozoss.agentos.redirect.RedirectToolPlugin
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -48,6 +48,7 @@ import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.IdCompressorService
+import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
@@ -87,8 +88,10 @@ class AgentServiceImpl(
     private val skillToolGrantService: SkillToolGrantService,
     private val agentConfigProperties: AgentConfigProperties,
     private val limitsConfig: LimitsConfigProperties,
-    private val queryUserToolGrantService: QueryUserToolGrantService,
     private val exchangeRootResolver: ExchangeRootResolver,
+    /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
+    private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
+    private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -234,7 +237,12 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 userId = context.userId,
             )
-        val effectiveIntegrationConfigs = integrationConfigService.findEffective(context.namespaceId, context.userId)
+        val effectiveIntegrationConfigs =
+            runIntegrationCustomizers.fold(
+                integrationConfigService.findEffective(context.namespaceId, context.userId),
+            ) { configs, customizer ->
+                customizer.customize(configs, context)
+            }
         val namespace = namespaceService.findById(context.namespaceId)
         val namespaceSystemPrompt =
             buildNamespaceSystemPrompt(
@@ -367,12 +375,6 @@ class AgentServiceImpl(
         // Delegation and exchange tools are appended after resolveToolsForRun's own de-dup, so
         // de-dup the combined set by tool name (shared with the resolver) to avoid a duplicate-name
         // collision (e.g. a user FILE_ACCESS integration named "case-exchange") crashing downstream.
-        val queryUserTools =
-            if (queryUserToolGrantService.isGranted(agentConfig.integrations)) {
-                queryUserToolGrantService.grantTools(toolContext)
-            } else {
-                emptyList()
-            }
         val skillTools =
             if (skillToolGrantService.isGranted(resolvedSkills)) {
                 skillToolGrantService.grantTools(resolvedSkills, toolContext)
@@ -392,7 +394,6 @@ class AgentServiceImpl(
                         },
                     ) +
                     buildExchangeTools(agentConfig, context, toolContext) +
-                    queryUserTools +
                     skillTools,
             )
 
@@ -410,10 +411,11 @@ class AgentServiceImpl(
             resolvedModel = modelConfig,
             resolvedProvider = providerConfig,
             tools = tools,
-            advancedExecution = agentConfig.advancedExecution,
+            executionMode = agentConfig.resolvedExecutionMode,
             namespaceId = context.namespaceId,
             userId = context.userId,
             redirectGuideline = redirectGuideline,
+            loopConfig = agentConfig.loopConfig,
         )
     }
 
@@ -443,8 +445,11 @@ class AgentServiceImpl(
         effectiveIntegrationConfigs: List<IntegrationConfig>,
     ): String? =
         effectiveIntegrationConfigs
-            .filter { it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(it.name) == true }
-            .sortedBy { it.name }
+            .filter {
+                it.integrationType == RedirectToolPlugin.INTEGRATION_TYPE && agentConfig.integrations?.containsKey(
+                    it.name,
+                ) == true
+            }.sortedBy { it.name }
             .mapNotNull {
                 it.parameters
                     ?.get(RedirectToolPlugin.GUIDELINE_PARAM)
@@ -473,13 +478,14 @@ class AgentServiceImpl(
             agentId = definition.agentConfigId,
             resolvedInstructions = definition.instructions,
             resolvedSystemPrompt = definition.systemPrompt,
-            advancedExecution = definition.advancedExecution,
+            executionMode = definition.executionMode,
             modelConfig = modelConfig,
             providerConfig = providerConfig,
             context = context,
             resolvedTools = definition.tools,
             resolvedUser = resolvedUser,
             redirectGuideline = definition.redirectGuideline,
+            loopConfig = definition.loopConfig,
         )
     }
 
@@ -539,66 +545,94 @@ class AgentServiceImpl(
         agentId: UUID,
         resolvedInstructions: String?,
         resolvedSystemPrompt: String?,
-        advancedExecution: Boolean,
+        executionMode: ExecutionMode,
         modelConfig: AiModel,
         providerConfig: AiProvider,
         context: AgentExecutionContext,
         resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
         redirectGuideline: String? = null,
+        loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
     ): Agent {
-        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId})" }
+        logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
         logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }
         logger.trace { "Tools detail for '$agentName':\n" + resolvedTools.joinToString("\n") { "  - ${it.name}: ${it.description}" } }
         logger.trace { "Final instructions for '$agentName':\n$resolvedInstructions" }
 
-        val chatClient = chatClientProvider.getChatClient(modelConfig, providerConfig, context.caseId?.toString(), context.usageAccumulator)
-
-        return if (advancedExecution) {
-            val compressingChatClient = CompressingChatClient(chatClient, idCompressorService)
-            val advancedContext =
-                AgentAdvancedContext(
-                    chatClient = compressingChatClient,
-                    tools = resolvedTools.toList(),
-                    instructions = resolvedInstructions,
-                    agentId = agentId,
-                    confirmationManager = confirmationManager,
-                    systemPrompt = resolvedSystemPrompt,
-                    imageCharCost = agentConfigProperties.imageCharCost,
-                    maxAttachedImages = agentConfigProperties.maxAttachedImages,
-                    redirectGuideline = redirectGuideline,
+        return when (executionMode) {
+            ExecutionMode.LOOP -> {
+                AgentLoop(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    objectMapper = objectMapper,
+                    runner = loopWorkflowRunnerService,
+                    resolvedTools = resolvedTools,
+                    triggerUser = resolvedUser,
+                    loopConfig = loopConfig,
                 )
-            AgentAdvanced(
-                metadata = EntityMetadata(id = agentId),
-                name = agentName,
-                context = advancedContext,
-                intentionGenerator = intentionGenerator,
-                objectMapper = objectMapper,
-                userId = resolvedUser?.metadata?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEventsProvider = context.caseEventsProvider,
-                maxIterations = limitsConfig.agentMaxIterations,
-                llmProvider = providerConfig.name,
-                llmModel = modelConfig.apiModelName,
-                toolMetricsService = toolMetricsService,
-            )
-        } else {
-            AgentSimple(
-                metadata = EntityMetadata(id = agentId),
-                name = agentName,
-                chatClient = chatClient,
-                tools = resolvedTools,
-                systemPrompt = resolvedSystemPrompt,
-                instructions = withRedirectGuideline(resolvedInstructions, redirectGuideline),
-                userId = resolvedUser?.metadata?.id,
-                userExternalId = resolvedUser?.externalId,
-                caseEventsProvider = context.caseEventsProvider,
-                llmProvider = providerConfig.name,
-                llmModel = modelConfig.apiModelName,
-                toolMetricsService = toolMetricsService,
-                maxAttachedImages = agentConfigProperties.maxAttachedImages,
-            )
+            }
+
+            ExecutionMode.ADVANCED -> {
+                val chatClient =
+                    chatClientProvider.getChatClient(
+                        modelConfig,
+                        providerConfig,
+                        context.caseId?.toString(),
+                        context.usageAccumulator,
+                    )
+                val advancedContext =
+                    AgentAdvancedContext(
+                        chatClient = CompressingChatClient(chatClient, idCompressorService),
+                        tools = resolvedTools.toList(),
+                        instructions = resolvedInstructions,
+                        agentId = agentId,
+                        confirmationManager = confirmationManager,
+                        systemPrompt = resolvedSystemPrompt,
+                        imageCharCost = agentConfigProperties.imageCharCost,
+                        maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                        redirectGuideline = redirectGuideline,
+                    )
+                AgentAdvanced(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    context = advancedContext,
+                    intentionGenerator = intentionGenerator,
+                    objectMapper = objectMapper,
+                    userId = resolvedUser?.metadata?.id,
+                    userExternalId = resolvedUser?.externalId,
+                    caseEventsProvider = context.caseEventsProvider,
+                    maxIterations = limitsConfig.agentMaxIterations,
+                    llmProvider = providerConfig.name,
+                    llmModel = modelConfig.apiModelName,
+                    toolMetricsService = toolMetricsService,
+                )
+            }
+
+            ExecutionMode.SIMPLE -> {
+                val chatClient =
+                    chatClientProvider.getChatClient(
+                        modelConfig,
+                        providerConfig,
+                        context.caseId?.toString(),
+                        context.usageAccumulator,
+                    )
+                AgentSimple(
+                    metadata = EntityMetadata(id = agentId),
+                    name = agentName,
+                    chatClient = chatClient,
+                    tools = resolvedTools,
+                    systemPrompt = resolvedSystemPrompt,
+                    instructions = withRedirectGuideline(resolvedInstructions, redirectGuideline),
+                    userId = resolvedUser?.metadata?.id,
+                    userExternalId = resolvedUser?.externalId,
+                    caseEventsProvider = context.caseEventsProvider,
+                    llmProvider = providerConfig.name,
+                    llmModel = modelConfig.apiModelName,
+                    toolMetricsService = toolMetricsService,
+                    maxAttachedImages = agentConfigProperties.maxAttachedImages,
+                )
+            }
         }
     }
 
@@ -622,8 +656,9 @@ class AgentServiceImpl(
         val integrationDescriptions =
             coroutineScope {
                 effectiveIntegrationConfigs
-                    .mapNotNull { config -> toolRegistryService.findPlugin(config.integrationType)?.let { config to it } }
-                    .map { (config, plugin) ->
+                    .mapNotNull { config ->
+                        toolRegistryService.findPlugin(config.integrationType)?.let { config to it }
+                    }.map { (config, plugin) ->
                         async {
                             plugin
                                 .runCatching { describeNamespace(config.parameters, config.name, toolContext) }
@@ -720,8 +755,13 @@ class AgentServiceImpl(
         val docsBlock = agentDocumentResolver.buildDocsBlock(docs)
         val skillsBlock = SkillCatalogRenderer.buildBlock(resolvedSkills)
 
-        return listOfNotNull(baseInstructions.takeUnless { it.isNullOrBlank() }, integrationsBlock, userBlock, docsBlock, skillsBlock)
-            .joinToString("\n")
+        return listOfNotNull(
+            baseInstructions.takeUnless { it.isNullOrBlank() },
+            integrationsBlock,
+            userBlock,
+            docsBlock,
+            skillsBlock,
+        ).joinToString("\n")
     }
 
     /**
@@ -801,6 +841,10 @@ class AgentServiceImpl(
             return null
         }
 
+        logger.info {
+            "Delegation timeout for ${config.name}: ${config.delegationTimeoutSeconds ?: agentConfigProperties.delegationTimeoutSeconds}s " +
+                "(source=${if (config.delegationTimeoutSeconds == null) "server" else "agent"})"
+        }
         logger.info { "Adding DelegationTool for agent '${config.name}' with allowedAgents=$allowedAgents" }
         return DelegationTool(
             subCaseManager = subCaseManager,
@@ -808,6 +852,11 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             allowedAgents = allowedAgents,
             loadCaseEvents = { caseId -> caseEventService.findByParent(caseId) },
+            timeoutMs =
+                (
+                    config.delegationTimeoutSeconds
+                        ?: agentConfigProperties.delegationTimeoutSeconds
+                ).toLong() * 1_000L,
         )
     }
 
@@ -876,9 +925,17 @@ class AgentServiceImpl(
             // invoking user's permission on that owner: delegation does not confer its rights.
             val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
             val userId = context.userId?.toString()
-            val canRead = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+            val canRead =
+                root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
             if (canRead) {
-                val canWrite = root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                val canWrite =
+                    root.ownerCaseId == caseId ||
+                        exchangeCapabilityService.canAccessCase(
+                            userId,
+                            caseId,
+                            root,
+                            Action.WRITE,
+                        )
                 tools +=
                     exchangeToolGrantService.grantTools(
                         root = root.requireUsable(),

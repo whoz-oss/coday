@@ -17,6 +17,9 @@ import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
+import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.scheduledPrompt.InMemoryScheduledPromptRepository
 import io.whozoss.agentos.scheduledPrompt.Planning
 import io.whozoss.agentos.scheduledPrompt.Recurrence
@@ -42,11 +45,18 @@ import java.util.UUID
 class PromptServiceImplSpec : StringSpec() {
     private val agentConfigService = mockk<AgentConfigService>(relaxed = true)
     private val translationService = mockk<PromptTranslationService>(relaxed = true)
+    private val permissionService = mockk<PermissionService>(relaxed = true)
+    private val batchTranslationProperties = PromptBatchTranslationProperties(parallelismLimit = 30)
 
-    private fun newService(
-        spRepo: InMemoryScheduledPromptRepository = InMemoryScheduledPromptRepository(),
-    ): PromptServiceImpl =
-        PromptServiceImpl(InMemoryPromptRepository(), agentConfigService, translationService, spRepo)
+    private fun newService(spRepo: InMemoryScheduledPromptRepository = InMemoryScheduledPromptRepository()): PromptServiceImpl =
+        PromptServiceImpl(
+            repository = InMemoryPromptRepository(),
+            agentConfigService = agentConfigService,
+            translationService = translationService,
+            scheduledPromptRepository = spRepo,
+            permissionService = permissionService,
+            batchTranslationProperties = batchTranslationProperties,
+        )
 
     /** Returns both the service and its backing repository, for tests that need to seed a
      *  filesystem-backed prompt (version == null) directly via [InMemoryPromptRepository.seedRaw]. */
@@ -61,21 +71,30 @@ class PromptServiceImplSpec : StringSpec() {
         val service = newService()
         val existingTitles = mapOf("fr" to "Revoir le profil")
         val existingContent = mapOf("fr" to listOf("Bonjour"))
-        val saved = service.create(
-            prompt(
-                title = "Review profile",
-                content = listOf("Hello"),
-                sourceLanguage = "en",
-                translatedTitles = existingTitles,
-                translatedContent = existingContent,
-            ),
-        )
+        val saved =
+            service.create(
+                prompt(
+                    title = "Review profile",
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                    translatedTitles = existingTitles,
+                    translatedContent = existingContent,
+                ),
+            )
         return StaleCaseFixture(service, saved, existingTitles, existingContent)
     }
 
     private fun newServiceWithRepo(): Pair<PromptServiceImpl, InMemoryPromptRepository> {
         val repo = InMemoryPromptRepository()
-        return PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository()) to repo
+        return PromptServiceImpl(
+            repository = repo,
+            agentConfigService = agentConfigService,
+            translationService = translationService,
+            scheduledPromptRepository = InMemoryScheduledPromptRepository(),
+            permissionService = permissionService,
+            batchTranslationProperties = batchTranslationProperties,
+        ) to
+            repo
     }
 
     private fun scheduledPrompt(
@@ -88,15 +107,17 @@ class PromptServiceImplSpec : StringSpec() {
         agentConfigId = agentConfigId,
         promptTemplateId = promptTemplateId,
         name = "sp-${UUID.randomUUID()}",
-        recurrence = Recurrence(
-            unit = SchedulerUnit.WEEK,
-            days = listOf(DayOfWeek.MONDAY),
-            timeUtc = LocalTime.of(8, 0),
-        ),
-        planning = Planning(
-            startDate = LocalDate.of(2026, 1, 1),
-            endType = SchedulerEndType.NEVER,
-        ),
+        recurrence =
+            Recurrence(
+                unit = SchedulerUnit.WEEK,
+                days = listOf(DayOfWeek.MONDAY),
+                timeUtc = LocalTime.of(8, 0),
+            ),
+        planning =
+            Planning(
+                startDate = LocalDate.of(2026, 1, 1),
+                endType = SchedulerEndType.NEVER,
+            ),
         enabled = true,
         nextRunAt = Instant.parse("2026-01-05T08:00:00Z"),
     )
@@ -200,15 +221,17 @@ class PromptServiceImplSpec : StringSpec() {
 
         "create rejects prompt with duplicate parameter names" {
             val service = newService()
-            val params = listOf(
-                PromptParameter(name = "name", defaultValue = ""),
-                PromptParameter(name = "language", defaultValue = "English"),
-                PromptParameter(name = "name", defaultValue = ""),
-            )
+            val params =
+                listOf(
+                    PromptParameter(name = "name", defaultValue = ""),
+                    PromptParameter(name = "language", defaultValue = "English"),
+                    PromptParameter(name = "name", defaultValue = ""),
+                )
 
-            val ex = shouldThrow<BadRequestException> {
-                service.create(prompt(parameters = params))
-            }
+            val ex =
+                shouldThrow<BadRequestException> {
+                    service.create(prompt(parameters = params))
+                }
             ex.message shouldContain "name"
         }
 
@@ -220,10 +243,11 @@ class PromptServiceImplSpec : StringSpec() {
 
         "create accepts prompt with unique parameter names" {
             val service = newService()
-            val params = listOf(
-                PromptParameter(name = "name", description = "The name", defaultValue = ""),
-                PromptParameter(name = "language", defaultValue = "English"),
-            )
+            val params =
+                listOf(
+                    PromptParameter(name = "name", description = "The name", defaultValue = ""),
+                    PromptParameter(name = "language", defaultValue = "English"),
+                )
             val saved = service.create(prompt(parameters = params))
             saved.parameters shouldHaveSize 2
         }
@@ -245,11 +269,12 @@ class PromptServiceImplSpec : StringSpec() {
         "create with existing agentConfigId succeeds" {
             val service = newService()
             val agentId = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = null,
-                name = "agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = null,
+                    name = "agent",
+                )
 
             val saved = service.create(prompt(agentConfigId = agentId))
             saved.agentConfigId shouldBe agentId
@@ -260,11 +285,12 @@ class PromptServiceImplSpec : StringSpec() {
             val agentId = UUID.randomUUID()
             val agentNs = UUID.randomUUID()
             val promptNs = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = agentNs,
-                name = "foreign-agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = agentNs,
+                    name = "foreign-agent",
+                )
 
             shouldThrow<BadRequestException> {
                 service.create(prompt(namespaceId = promptNs, agentConfigId = agentId))
@@ -275,11 +301,12 @@ class PromptServiceImplSpec : StringSpec() {
             val service = newService()
             val agentId = UUID.randomUUID()
             val ns = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = ns,
-                name = "same-ns-agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = ns,
+                    name = "same-ns-agent",
+                )
 
             val saved = service.create(prompt(namespaceId = ns, agentConfigId = agentId))
             saved.agentConfigId shouldBe agentId
@@ -288,11 +315,12 @@ class PromptServiceImplSpec : StringSpec() {
         "create with platform agentConfigId from namespace prompt succeeds" {
             val service = newService()
             val agentId = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = null,
-                name = "platform-agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = null,
+                    name = "platform-agent",
+                )
 
             val saved = service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
             saved.agentConfigId shouldBe agentId
@@ -305,11 +333,12 @@ class PromptServiceImplSpec : StringSpec() {
             // because they never go through SDN save.  Linking one would produce a
             // dangling BELONGS_TO edge in Neo4j and silently hide the prompt from
             // findEffective.  The service must reject such associations explicitly.
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = null),
-                namespaceId = UUID.randomUUID(),
-                name = "fs-agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = null),
+                    namespaceId = UUID.randomUUID(),
+                    name = "fs-agent",
+                )
 
             shouldThrow<UnprocessableEntityException> {
                 service.create(prompt(namespaceId = UUID.randomUUID(), agentConfigId = agentId))
@@ -319,11 +348,12 @@ class PromptServiceImplSpec : StringSpec() {
         "create platform prompt with namespace agentConfigId throws BadRequestException" {
             val service = newService()
             val agentId = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = UUID.randomUUID(),
-                name = "ns-agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = UUID.randomUUID(),
+                    name = "ns-agent",
+                )
 
             shouldThrow<BadRequestException> {
                 service.create(prompt(namespaceId = null, agentConfigId = agentId))
@@ -341,10 +371,11 @@ class PromptServiceImplSpec : StringSpec() {
             shouldThrow<BadRequestException> {
                 service.update(
                     saved.copy(
-                        parameters = listOf(
-                            PromptParameter(name = "city", defaultValue = ""),
-                            PromptParameter(name = "city", defaultValue = ""),
-                        ),
+                        parameters =
+                            listOf(
+                                PromptParameter(name = "city", defaultValue = ""),
+                                PromptParameter(name = "city", defaultValue = ""),
+                            ),
                     ),
                 )
             }
@@ -495,7 +526,8 @@ class PromptServiceImplSpec : StringSpec() {
             val user = UUID.randomUUID()
 
             service.create(prompt(namespaceId = null, userId = null, name = "deploy", content = listOf("platform")))
-            val nsPrompt = service.create(prompt(namespaceId = ns, userId = null, name = "deploy", content = listOf("namespace")))
+            val nsPrompt =
+                service.create(prompt(namespaceId = ns, userId = null, name = "deploy", content = listOf("namespace")))
 
             val effective = service.findEffective(ns, user)
             effective shouldHaveSize 1
@@ -512,7 +544,8 @@ class PromptServiceImplSpec : StringSpec() {
             service.create(prompt(namespaceId = null, userId = null, name = "deploy", content = listOf("platform")))
             service.create(prompt(namespaceId = null, userId = user, name = "deploy", content = listOf("user-global")))
             service.create(prompt(namespaceId = ns, userId = null, name = "deploy", content = listOf("namespace")))
-            val winner = service.create(prompt(namespaceId = ns, userId = user, name = "deploy", content = listOf("user-ns")))
+            val winner =
+                service.create(prompt(namespaceId = ns, userId = user, name = "deploy", content = listOf("user-ns")))
 
             val effective = service.findEffective(ns, user)
             effective shouldHaveSize 1
@@ -597,7 +630,14 @@ class PromptServiceImplSpec : StringSpec() {
 
             service.create(prompt(namespaceId = null, userId = null, name = "shared", content = listOf("platform")))
             service.create(prompt(namespaceId = null, userId = null, name = "only-platform", content = listOf("stays")))
-            service.create(prompt(namespaceId = ns, userId = user, name = "shared", content = listOf("user-ns override")))
+            service.create(
+                prompt(
+                    namespaceId = ns,
+                    userId = user,
+                    name = "shared",
+                    content = listOf("user-ns override"),
+                ),
+            )
 
             val effective = service.findEffective(ns, user)
             effective shouldHaveSize 2
@@ -615,11 +655,12 @@ class PromptServiceImplSpec : StringSpec() {
             val ns = UUID.randomUUID()
             val user = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = null,
-                name = "agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = null,
+                    name = "agent",
+                )
 
             service.create(prompt(namespaceId = ns, userId = null, name = "linked", agentConfigId = agentId))
             service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
@@ -634,11 +675,12 @@ class PromptServiceImplSpec : StringSpec() {
             val ns = UUID.randomUUID()
             val user = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = null,
-                name = "agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = null,
+                    name = "agent",
+                )
 
             service.create(prompt(namespaceId = ns, userId = null, name = "linked", agentConfigId = agentId))
             service.create(prompt(namespaceId = ns, userId = null, name = "autonomous", agentConfigId = null))
@@ -717,24 +759,26 @@ class PromptServiceImplSpec : StringSpec() {
 
         "update clears translatedContent when content changes" {
             val service = newService()
-            val saved = service.create(
-                prompt(
-                    content = listOf("Original"),
-                    translatedContent = mapOf("fr" to listOf("Original en français")),
-                ),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        content = listOf("Original"),
+                        translatedContent = mapOf("fr" to listOf("Original en français")),
+                    ),
+                )
             val updated = service.update(saved.copy(content = listOf("Updated")))
             updated.translatedContent shouldBe null
         }
 
         "update clears translatedContent when sourceLanguage changes" {
             val service = newService()
-            val saved = service.create(
-                prompt(
-                    sourceLanguage = "en",
-                    translatedContent = mapOf("fr" to listOf("Bonjour")),
-                ),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        sourceLanguage = "en",
+                        translatedContent = mapOf("fr" to listOf("Bonjour")),
+                    ),
+                )
             val updated = service.update(saved.copy(sourceLanguage = "de"))
             updated.translatedContent shouldBe null
         }
@@ -742,13 +786,14 @@ class PromptServiceImplSpec : StringSpec() {
         "update preserves translatedContent when content and sourceLanguage are unchanged" {
             val service = newService()
             val existingContent = mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
-            val saved = service.create(
-                prompt(
-                    content = listOf("Hello"),
-                    sourceLanguage = "en",
-                    translatedContent = existingContent,
-                ),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                        translatedContent = existingContent,
+                    ),
+                )
             val updated = service.update(saved.copy(description = "touched"))
             updated.translatedContent shouldBe existingContent
         }
@@ -766,25 +811,27 @@ class PromptServiceImplSpec : StringSpec() {
 
         "update clears translatedTitles when title changes" {
             val service = newService()
-            val saved = service.create(
-                prompt(
-                    title = "Review profile",
-                    translatedTitles = mapOf("fr" to "Revoir le profil"),
-                ),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        title = "Review profile",
+                        translatedTitles = mapOf("fr" to "Revoir le profil"),
+                    ),
+                )
             val updated = service.update(saved.copy(title = "Analyse profile"))
             updated.translatedTitles shouldBe null
         }
 
         "update clears translatedTitles when sourceLanguage changes" {
             val service = newService()
-            val saved = service.create(
-                prompt(
-                    title = "Review profile",
-                    sourceLanguage = "en",
-                    translatedTitles = mapOf("fr" to "Revoir le profil"),
-                ),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        title = "Review profile",
+                        sourceLanguage = "en",
+                        translatedTitles = mapOf("fr" to "Revoir le profil"),
+                    ),
+                )
             val updated = service.update(saved.copy(sourceLanguage = "de"))
             updated.translatedTitles shouldBe null
         }
@@ -792,13 +839,14 @@ class PromptServiceImplSpec : StringSpec() {
         "update preserves translatedTitles when title and sourceLanguage are unchanged" {
             val service = newService()
             val existingTitles = mapOf("fr" to "Revoir le profil", "de" to "Profil überprüfen")
-            val saved = service.create(
-                prompt(
-                    title = "Review profile",
-                    sourceLanguage = "en",
-                    translatedTitles = existingTitles,
-                ),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        title = "Review profile",
+                        sourceLanguage = "en",
+                        translatedTitles = existingTitles,
+                    ),
+                )
             val updated = service.update(saved.copy(description = "touched"))
             updated.translatedTitles shouldBe existingTitles
         }
@@ -841,9 +889,10 @@ class PromptServiceImplSpec : StringSpec() {
 
         "translate returns source fields unchanged when targetLanguage matches sourceLanguage" {
             val service = newService()
-            val saved = service.create(
-                prompt(title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
-            )
+            val saved =
+                service.create(
+                    prompt(title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
+                )
 
             val result = service.translate(saved.id, "en", callerNamespaceId = UUID.randomUUID())
 
@@ -868,9 +917,15 @@ class PromptServiceImplSpec : StringSpec() {
             val service = newService()
             val nsId = UUID.randomUUID()
             // Use the same nsId for the prompt so the service routes the LLM call to it
-            val saved = service.create(
-                prompt(namespaceId = nsId, title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        title = "Review profile",
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                    ),
+                )
             every {
                 translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
@@ -886,11 +941,25 @@ class PromptServiceImplSpec : StringSpec() {
 
         "translate persists new translations so subsequent calls are cache hits" {
             val repo = InMemoryPromptRepository()
-            val service = PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
+            val service =
+                PromptServiceImpl(
+                    repository = repo,
+                    agentConfigService = agentConfigService,
+                    translationService = translationService,
+                    scheduledPromptRepository = InMemoryScheduledPromptRepository(),
+                    permissionService = permissionService,
+                    batchTranslationProperties = batchTranslationProperties,
+                )
             val nsId = UUID.randomUUID()
-            val saved = service.create(
-                prompt(namespaceId = nsId, title = "Review profile", content = listOf("Hello"), sourceLanguage = "en"),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        title = "Review profile",
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                    ),
+                )
             every {
                 translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
@@ -914,7 +983,15 @@ class PromptServiceImplSpec : StringSpec() {
         "translate returns null title without calling translateTitle when prompt has no title" {
             val service = newService()
             val nsId = UUID.randomUUID()
-            val saved = service.create(prompt(namespaceId = nsId, title = null, content = listOf("Hello"), sourceLanguage = "en"))
+            val saved =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        title = null,
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                    ),
+                )
             every {
                 translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
@@ -928,19 +1005,28 @@ class PromptServiceImplSpec : StringSpec() {
 
         "translate uses cached content and only calls LLM for title when content is already cached" {
             val repo = InMemoryPromptRepository()
-            val service = PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
+            val service =
+                PromptServiceImpl(
+                    repository = repo,
+                    agentConfigService = agentConfigService,
+                    translationService = translationService,
+                    scheduledPromptRepository = InMemoryScheduledPromptRepository(),
+                    permissionService = permissionService,
+                    batchTranslationProperties = batchTranslationProperties,
+                )
             val nsId = UUID.randomUUID()
             val cachedContent = mapOf("fr" to listOf("Bonjour"))
-            val saved = service.create(
-                prompt(
-                    namespaceId = nsId,
-                    title = "Review profile",
-                    content = listOf("Hello"),
-                    sourceLanguage = "en",
-                    translatedContent = cachedContent,
-                    translatedTitles = null,
-                ),
-            )
+            val saved =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        title = "Review profile",
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                        translatedContent = cachedContent,
+                        translatedTitles = null,
+                    ),
+                )
             every {
                 translationService.translateTitle("Review profile", "en", "fr", nsId)
             } returns "Revoir le profil"
@@ -955,11 +1041,20 @@ class PromptServiceImplSpec : StringSpec() {
 
         "translate accumulates translations for multiple languages" {
             val repo = InMemoryPromptRepository()
-            val service = PromptServiceImpl(repo, agentConfigService, translationService, InMemoryScheduledPromptRepository())
+            val service =
+                PromptServiceImpl(
+                    repository = repo,
+                    agentConfigService = agentConfigService,
+                    translationService = translationService,
+                    scheduledPromptRepository = InMemoryScheduledPromptRepository(),
+                    permissionService = permissionService,
+                    batchTranslationProperties = batchTranslationProperties,
+                )
             val nsId = UUID.randomUUID()
-            val saved = service.create(
-                prompt(namespaceId = nsId, title = null, content = listOf("Hello"), sourceLanguage = "en"),
-            )
+            val saved =
+                service.create(
+                    prompt(namespaceId = nsId, title = null, content = listOf("Hello"), sourceLanguage = "en"),
+                )
             every {
                 translationService.translateContent(listOf("Hello"), "en", "fr", nsId)
             } returns listOf("Bonjour")
@@ -974,16 +1069,204 @@ class PromptServiceImplSpec : StringSpec() {
             persisted.translatedContent shouldBe mapOf("fr" to listOf("Bonjour"), "de" to listOf("Hallo"))
         }
 
+        // -------------------------------------------------------------------------
+        // translateBatch
+        // -------------------------------------------------------------------------
+
+        "translateBatch returns translations for prompts the caller can READ" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val p1 =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        name = "P1",
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                    ),
+                )
+            val p2 =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        name = "P2",
+                        content = listOf("World"),
+                        sourceLanguage = "en",
+                    ),
+                )
+
+            every {
+                permissionService.hasPermission(
+                    callerId,
+                    EntityType.PROMPT,
+                    p1.id.toString(),
+                    Action.READ,
+                )
+            } returns true
+            every {
+                permissionService.hasPermission(
+                    callerId,
+                    EntityType.PROMPT,
+                    p2.id.toString(),
+                    Action.READ,
+                )
+            } returns true
+
+            // Requesting source language — no LLM call needed
+            val results =
+                service.translateBatch(
+                    ids = listOf(p1.id, p2.id),
+                    targetLanguage = "en",
+                    callerNamespaceId = null,
+                    currentUserId = callerId,
+                )
+
+            results shouldHaveSize 2
+            results[0].id shouldBe p1.id
+            results[0].content shouldBe listOf("Hello")
+            results[1].id shouldBe p2.id
+            results[1].content shouldBe listOf("World")
+        }
+
+        "translateBatch silently omits prompts the caller cannot READ" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val readable =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        name = "Readable",
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                    ),
+                )
+            val hidden =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        name = "Hidden",
+                        content = listOf("Secret"),
+                        sourceLanguage = "en",
+                    ),
+                )
+
+            every {
+                permissionService.hasPermission(
+                    callerId,
+                    EntityType.PROMPT,
+                    readable.id.toString(),
+                    Action.READ,
+                )
+            } returns true
+            every {
+                permissionService.hasPermission(
+                    callerId,
+                    EntityType.PROMPT,
+                    hidden.id.toString(),
+                    Action.READ,
+                )
+            } returns false
+
+            val results =
+                service.translateBatch(
+                    ids = listOf(readable.id, hidden.id),
+                    targetLanguage = "en",
+                    callerNamespaceId = null,
+                    currentUserId = callerId,
+                )
+
+            results shouldHaveSize 1
+            results[0].id shouldBe readable.id
+        }
+
+        "translateBatch preserves input order in the response" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val first =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        name = "First",
+                        content = listOf("First"),
+                        sourceLanguage = "en",
+                    ),
+                )
+            val second =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        name = "Second",
+                        content = listOf("Second"),
+                        sourceLanguage = "en",
+                    ),
+                )
+
+            every { permissionService.hasPermission(callerId, EntityType.PROMPT, any(), Action.READ) } returns true
+
+            // Request in reverse order — response must preserve that order
+            val results =
+                service.translateBatch(
+                    ids = listOf(second.id, first.id),
+                    targetLanguage = "en",
+                    callerNamespaceId = null,
+                    currentUserId = callerId,
+                )
+
+            results shouldHaveSize 2
+            results[0].id shouldBe second.id
+            results[1].id shouldBe first.id
+        }
+
+        "translateBatch omits unknown IDs without failing" {
+            val service = newService()
+            val nsId = UUID.randomUUID()
+            val callerId = "user-1"
+            val known =
+                service.create(
+                    prompt(
+                        namespaceId = nsId,
+                        name = "Known",
+                        content = listOf("Hello"),
+                        sourceLanguage = "en",
+                    ),
+                )
+            val unknownId = UUID.randomUUID()
+
+            every {
+                permissionService.hasPermission(
+                    callerId,
+                    EntityType.PROMPT,
+                    known.id.toString(),
+                    Action.READ,
+                )
+            } returns true
+
+            val results =
+                service.translateBatch(
+                    ids = listOf(known.id, unknownId),
+                    targetLanguage = "en",
+                    callerNamespaceId = null,
+                    currentUserId = callerId,
+                )
+
+            results shouldHaveSize 1
+            results[0].id shouldBe known.id
+        }
+
         "findEffective agentConfigId filter is applied after the layer merge, not before" {
             val service = newService()
             val ns = UUID.randomUUID()
             val user = UUID.randomUUID()
             val agentId = UUID.randomUUID()
-            every { agentConfigService.findById(agentId) } returns AgentConfig(
-                metadata = EntityMetadata(id = agentId, version = 0L),
-                namespaceId = null,
-                name = "agent",
-            )
+            every { agentConfigService.findById(agentId) } returns
+                AgentConfig(
+                    metadata = EntityMetadata(id = agentId, version = 0L),
+                    namespaceId = null,
+                    name = "agent",
+                )
 
             // Platform layer is agent-linked, namespace layer (higher priority, same name) is autonomous.
             service.create(prompt(namespaceId = null, userId = null, name = "deploy", agentConfigId = agentId))

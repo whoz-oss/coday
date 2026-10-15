@@ -98,6 +98,7 @@ class IntegrationConfigController(
                     description = resource.description,
                     parameters = resource.parameters,
                     authSettingName = resource.authSettingName,
+                    autoGrant = resource.autoGrant,
                 )
             },
             crud =
@@ -194,7 +195,7 @@ class IntegrationConfigController(
                 "`body.userId` (when supplied) MUST equal the authenticated user's id. " +
                 "A `namespaceId` that does not exist returns 404. " +
                 "Integration types listed in `agentos.integrations.user-scope-denied-types` " +
-                "(default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`) cannot be created in either user scope (403).",
+                "(default `HTTP_API`, `MCP_STDIO`, `MCP_HTTP`, `GIT`) cannot be created in either user scope (403).",
     )
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     @PreAuthorize("isAuthenticated()")
@@ -216,6 +217,7 @@ class IntegrationConfigController(
                     description = resource.description,
                     parameters = resource.parameters,
                     authSettingName = resource.authSettingName,
+                    autoGrant = resource.autoGrant,
                 )
             return toDto(integrationConfigService.create(entity))
         }
@@ -247,6 +249,7 @@ class IntegrationConfigController(
                     description = resource.description,
                     parameters = resource.parameters,
                     authSettingName = resource.authSettingName,
+                    autoGrant = resource.autoGrant,
                 ),
             ),
         )
@@ -362,6 +365,7 @@ private fun toDto(entity: IntegrationConfig) =
         description = entity.description,
         parameters = entity.parameters,
         authSettingName = entity.authSettingName,
+        autoGrant = entity.autoGrant,
     )
 
 /**
@@ -379,4 +383,7 @@ private fun toExportModel(entity: IntegrationConfig): Map<String, Any?> =
         entity.description?.takeIf { it.isNotBlank() }?.let { put("description", it) }
         entity.parameters?.let { put("parameters", it) }
         entity.authSettingName?.takeIf { it.isNotBlank() }?.let { put("authSettingName", it) }
+        // Only emitted when set: `autoGrant: false` is the default, and writing it on every export
+        // would add noise to files whose point is to be read and diffed by humans.
+        if (entity.autoGrant) put("autoGrant", true)
     }
