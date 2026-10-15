@@ -12,7 +12,7 @@ rootProject.name = "factory-forge-plugin"
 // types (the host uses the APD class-loading strategy).
 includeBuild("../factory-service") {
     dependencySubstitution {
-        substitute(module("io.whozoss.factory:factory-service")).using(project(":"))
+        substitute(module("whoz-oss.factory:factory-service")).using(project(":"))
     }
 }
 

@@ -70,8 +70,7 @@
       "defaultConfiguration": "development",
       "options": {
         "port": 4300,
-        "host": "localhost",
-        "proxyConfig": "apps/factory-cockpit/proxy.conf.json"
+        "host": "localhost"
       },
       "configurations": {
         "production": {

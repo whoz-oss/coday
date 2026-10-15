@@ -14,8 +14,8 @@ plugins {
     `maven-publish`
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factoryService.get()
 description = "Factory Forge plugin — PF4J plugin exposing the Forge/BMAD and Jira surfaces"
 
 java {
@@ -38,8 +38,8 @@ dependencies {
     testImplementation(platform("org.springframework.boot:spring-boot-dependencies:${libs.versions.springBoot.get()}"))
 
     // Host + SDK are provided by the service classloader at runtime.
-    compileOnly("io.whozoss.factory:factory-service:0.0.1-SNAPSHOT")
-    compileOnly("io.whozoss.factory:factory-sdk:0.0.1-SNAPSHOT")
+    compileOnly("whoz-oss.factory:factory-service:${libs.versions.factoryService.get()}")
+    compileOnly("whoz-oss.factory:factory-sdk:${libs.versions.factorySdk.get()}")
 
     // Host-provided libraries: compileOnly so the plugin never bundles them, but
     // they must be visible to kapt/javac when generating the PF4J extensions.idx.
@@ -65,7 +65,7 @@ dependencies {
     // `FactoryForgePluginIntegrationTest` additionally boots the host
     // factory-service (H2-backed `openapi` profile) with the plugin deployed.
     // The host runtime plus the standard test stack is enough for both.
-    testImplementation("io.whozoss.factory:factory-service:0.0.1-SNAPSHOT")
+    testImplementation("whoz-oss.factory:factory-service:${libs.versions.factoryService.get()}")
     testImplementation(libs.spring.boot.starter.web)
     testImplementation(libs.jackson.module.kotlin)
     testImplementation(libs.spring.boot.starter.test)
@@ -73,12 +73,15 @@ dependencies {
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
+// plugin.properties deliberately carries no `plugin.version` (same as the AgentOS plugins):
+// the version is stamped in the JAR manifest below, which follows the project version.
+// No resource templating, hence nothing at execution time touching `project`.
 tasks.named<Jar>("jar") {
     archiveBaseName.set("factory-forge-plugin")
     manifest {
         attributes(
             "Plugin-Id" to "factory-forge-plugin",
-            "Plugin-Version" to project.version.toString(),
+            "Plugin-Version" to version,
             "Plugin-Provider" to "whoz-oss",
             "Plugin-Class" to "io.whozoss.factory.forge.plugin.ForgePlugin",
             "Plugin-Dependencies" to "",
@@ -125,4 +128,52 @@ tasks.register<Copy>("deployPlugin") {
     dependsOn(tasks.named("jar"))
     from(tasks.named<Jar>("jar").flatMap { it.archiveFile })
     into(pluginsDir)
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifact(tasks.named("jar"))
+
+            pom {
+                name.set("Factory Forge Plugin")
+                description.set("Factory Forge plugin — PF4J plugin exposing the Forge/BMAD and Jira surfaces")
+                url.set("https://github.com/whoz-oss/coday")
+
+                licenses {
+                    license {
+                        name.set("Apache License 2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("whoz-oss")
+                        name.set("Whoz OSS")
+                        email.set("oss@whoz.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/whoz-oss/coday.git")
+                    developerConnection.set("scm:git:ssh://github.com/whoz-oss/coday.git")
+                    url.set("https://github.com/whoz-oss/coday")
+                }
+            }
+        }
+    }
+
+    repositories {
+        mavenLocal()
+
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/whoz-oss/coday")
+            credentials {
+                username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }

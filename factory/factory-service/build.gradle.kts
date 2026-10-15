@@ -6,10 +6,11 @@ plugins {
     alias(libs.plugins.spring.boot)
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.springdoc.openapi)
+    `maven-publish`
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factoryService.get()
 description = "Factory Service — autonomous Kotlin/Spring Boot backend for the Factory"
 
 java {
@@ -29,12 +30,12 @@ kotlin {
 dependencies {
     // Factory SDK — Spring-agnostic plugin extension points.
     // Coordinates substituted by the composite build (see settings.gradle.kts).
-    api("io.whozoss.factory:factory-sdk:0.0.1-SNAPSHOT")
+    api("whoz-oss.factory:factory-sdk:${libs.versions.factorySdk.get()}")
 
     // Factory Verification Core — pure Kotlin deterministic verification
     // primitives (target-repo `factory/verification.json` manifest + oracle
     // execution). Coordinates substituted by the composite build.
-    implementation("io.whozoss.factory:factory-verification-core:0.0.1-SNAPSHOT")
+    implementation("whoz-oss.factory:factory-verification-core:${libs.versions.factoryService.get()}")
 
     // PF4J plugin framework + Spring integration (service runtime only, never in the SDK).
     implementation(libs.pf4j) {
@@ -172,6 +173,54 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
     workingDir = projectDir
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifact(tasks.named("bootJar"))
+
+            pom {
+                name.set("Factory Service")
+                description.set("Factory Service — autonomous Kotlin/Spring Boot backend for the Factory")
+                url.set("https://github.com/whoz-oss/coday")
+
+                licenses {
+                    license {
+                        name.set("Apache License 2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("whoz-oss")
+                        name.set("Whoz OSS")
+                        email.set("oss@whoz.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/whoz-oss/coday.git")
+                    developerConnection.set("scm:git:ssh://github.com/whoz-oss/coday.git")
+                    url.set("https://github.com/whoz-oss/coday")
+                }
+            }
+        }
+    }
+
+    repositories {
+        mavenLocal()
+
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/whoz-oss/coday")
+            credentials {
+                username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }
 
 // ========================================

@@ -18,10 +18,11 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
  */
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    `maven-publish`
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factoryService.get()
 description = "Factory Verification Core — pure Kotlin deterministic verification primitives"
 
 java {
@@ -29,6 +30,8 @@ java {
         languageVersion = JavaLanguageVersion.of(libs.versions.java.get().toInt())
     }
     targetCompatibility = JavaVersion.toVersion(libs.versions.kotlinJvmTarget.get())
+    withSourcesJar()
+    withJavadocJar()
 }
 
 kotlin {
@@ -53,4 +56,52 @@ dependencies {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            from(components["java"])
+
+            pom {
+                name.set("Factory Verification Core")
+                description.set("Factory Verification Core — pure Kotlin deterministic verification primitives")
+                url.set("https://github.com/whoz-oss/coday")
+
+                licenses {
+                    license {
+                        name.set("Apache License 2.0")
+                        url.set("https://www.apache.org/licenses/LICENSE-2.0")
+                    }
+                }
+
+                developers {
+                    developer {
+                        id.set("whoz-oss")
+                        name.set("Whoz OSS")
+                        email.set("oss@whoz.com")
+                    }
+                }
+
+                scm {
+                    connection.set("scm:git:git://github.com/whoz-oss/coday.git")
+                    developerConnection.set("scm:git:ssh://github.com/whoz-oss/coday.git")
+                    url.set("https://github.com/whoz-oss/coday")
+                }
+            }
+        }
+    }
+
+    repositories {
+        mavenLocal()
+
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/whoz-oss/coday")
+            credentials {
+                username = project.findProperty("gpr.user") as String? ?: System.getenv("GITHUB_ACTOR")
+                password = project.findProperty("gpr.key") as String? ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
 }

@@ -5,7 +5,7 @@
   "sourceRoot": "agentos/agentos-git/src",
   "tags": [
     "type:lib",
-    "platform:jvm",
+    "platform:jvm-agentos",
     "scope:git"
   ]
 }

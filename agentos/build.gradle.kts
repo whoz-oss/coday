@@ -11,7 +11,7 @@ plugins {
 }
 
 group = "whoz-oss.agentos"
-version = "0.0.1-SNAPSHOT"
+version = libs.versions.agentosSdk.get()
 
 tasks.named("clean") {
     dependsOn(gradle.includedBuilds.map { it.task(":clean") })
@@ -106,6 +106,17 @@ tasks.register("deployPlugins") {
             logger.lifecycle("Deployed: ${jar.name} → plugins/")
         }
     }
+}
+
+// Convenience entry point for local runs: deploy the plugin JARs into plugins/ *before*
+// booting the service, so the PF4J plugin manager picks up a freshly-built factory bridge.
+// `deployPlugins` is kept out of `build` on purpose: it cleans the included plugin builds,
+// which would race the included `build` tasks.
+tasks.register("bootRunWithPlugins") {
+    group = "plugins"
+    description = "Deploys all plugin JARs into plugins/ then boots agentos-service."
+    dependsOn("deployPlugins")
+    dependsOn(gradle.includedBuild("agentos-service").task(":bootRun"))
 }
 
 allprojects {

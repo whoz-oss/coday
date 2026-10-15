@@ -81,7 +81,7 @@ export interface FullWorkflowDefinition {
   [key: string]: unknown
 }
 
-/** One AgentOS namespace exposed by `GET /api/namespaces`. */
+/** One AgentOS namespace exposed by `GET /api/agentos/api/namespaces`. */
 export interface NamespaceItem {
   id?: string
   name?: string
@@ -465,12 +465,12 @@ export class FactoryApiService {
   }
 
   /**
-   * GET `/api/namespaces` → AgentOS namespaces. Unwraps a raw array or a
+   * GET `/api/agentos/api/namespaces` → AgentOS namespaces. Unwraps a raw array or a
    * `{ items: […] }` payload and degrades gracefully to `[]` when the endpoint
    * is missing, unavailable or returns an error.
    */
   getNamespaces(): Observable<NamespaceItem[]> {
-    return this.request<unknown>('/api/namespaces', {}).pipe(
+    return this.request<unknown>('/api/agentos/api/namespaces', {}).pipe(
       map((payload) => {
         if (Array.isArray(payload)) return payload as NamespaceItem[]
         const items = (payload as { items?: unknown } | null)?.items
