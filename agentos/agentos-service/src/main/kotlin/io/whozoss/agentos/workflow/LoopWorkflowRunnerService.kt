@@ -253,8 +253,7 @@ class LoopWorkflowRunnerService(
             buildMap<String, Any?> {
                 put("agentName", act.agentName)
                 put("prompt", act.prompt)
-                // The triggering user is the tool's default target, so they are not named.
-                if (endUserId != triggerUser.metadata.id) put("userId", endUserId.toString())
+                put("userId", endUserId.toString())
                 put("context", addActiveContext(sessionContext, item))
             }
 
@@ -310,9 +309,11 @@ class LoopWorkflowRunnerService(
         return ItemOutcome.Launched(caseId)
     }
 
-    /** The new case id, from the structured output of the tool, else from its metadata. */
+    /** The new case id, from the structured output of the tool, as its output schema describes it. */
     private fun launchedCaseId(result: ToolExecutionResult): UUID? =
-        (result.structuredOutput?.get("caseId")?.asText() ?: result.metadata["caseId"]?.toString())
+        result.structuredOutput
+            ?.get("caseId")
+            ?.asText()
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     /**

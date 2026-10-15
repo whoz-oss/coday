@@ -26,7 +26,7 @@ import java.util.UUID
  * @param callerCaseId The case that launches: it becomes the origin ([Case.originCaseId]) of the new one.
  * @param targetUserId The user the new case runs for. Null, or the caller itself: the caller. Any
  *   other user requires [allowOtherUsers], must exist and must be able to read the namespace.
- * @param title Name of the new conversation. Null: derived from the start of [task].
+ * @param title Name of the new conversation. Null or blank: derived from the start of [task].
  * @param context What the caller hands to the new case, and nothing else: it becomes the session
  *   context of the first message as is. The calling case's own context is never inherited.
  */

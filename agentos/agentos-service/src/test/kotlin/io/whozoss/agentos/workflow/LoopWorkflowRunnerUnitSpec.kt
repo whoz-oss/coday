@@ -344,14 +344,14 @@ class LoopWorkflowRunnerUnitSpec :
             }
         }
 
-        "when the end user is the triggering user, no userId is sent: that would need the other-users switch for nothing" {
+        "when the end user is the triggering user, they are sent as userId too: the service treats them as the caller" {
             val f = Fixture(objectMapper)
             every { f.userService.findByExternalId("ext-trigger") } returns triggerUser
             f.grantAgent(triggerUser, "ProfileCaretaker")
 
             f.run(searchTool(listOf("ext-trigger")))
 
-            f.calls.single().input.has("userId") shouldBe false
+            f.calls.single().input["userId"].asText() shouldBe triggerUser.metadata.id.toString()
         }
 
         "rows without entityType and with unknown fields are still processed" {
@@ -512,15 +512,15 @@ class LoopWorkflowRunnerUnitSpec :
             outcome.launched shouldBe 0
         }
 
-        "the case id is read from the metadata when there is no structured output" {
+        "the case id is read from the structured output only: one found in the metadata alone counts as failed" {
             val f = Fixture(objectMapper)
             f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            val id = UUID.randomUUID()
-            f.answer = { ToolExecutionResult.success("ok", metadata = mapOf("caseId" to id.toString())) }
+            f.answer = { ToolExecutionResult.success("ok", metadata = mapOf("caseId" to UUID.randomUUID().toString())) }
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launchedCaseIds shouldBe listOf(id)
+            outcome.launchedCaseIds shouldBe emptyList()
+            outcome.failed shouldBe 1
         }
 
         // -------------------------------------------------------------------------

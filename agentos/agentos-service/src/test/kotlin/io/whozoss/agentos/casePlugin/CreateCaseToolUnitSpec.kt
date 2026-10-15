@@ -256,16 +256,6 @@ class CreateCaseToolUnitSpec :
             request.captured.context shouldBe ctx
         }
 
-        "a blank title and an empty context are treated as absent" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
-
-            tool(launcher).execute(CreateCaseTool.Input("Reporter", "Summarise", title = "  ", context = emptyMap()), context())
-
-            request.captured.title shouldBe null
-            request.captured.context shouldBe null
-        }
-
         // -------------------------------------------------------------------------
         // Output
         // -------------------------------------------------------------------------

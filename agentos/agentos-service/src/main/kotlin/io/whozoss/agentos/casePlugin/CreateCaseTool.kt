@@ -193,8 +193,8 @@ class CreateCaseTool(
                     agentName = input.agentName,
                     task = input.prompt,
                     targetUserId = targetUserId,
-                    title = input.title?.takeIf { it.isNotBlank() },
-                    context = input.context?.takeIf { it.isNotEmpty() },
+                    title = input.title,
+                    context = input.context,
                     allowOtherUsers = allowOtherUsers,
                 ),
             ).toToolResult()
