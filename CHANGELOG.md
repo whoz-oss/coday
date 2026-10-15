@@ -1,3 +1,28 @@
+## 3.35.1 (2026-10-15)
+
+### 🩹 Fixes
+
+- #1405 display the user's answer to a queryUser question in the case chat ([#1406](https://github.com/whoz-oss/coday/pull/1406), [#1405](https://github.com/whoz-oss/coday/issues/1405))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.0 (2026-10-14)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention generation tool name ([#1448](https://github.com/whoz-oss/coday/pull/1448))
+
+### 🔥 Performance
+
+- **agentos:** share one Neo4j test harness across Spring test contexts ([#1440](https://github.com/whoz-oss/coday/pull/1440))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- Yannick Bridé @yannick-bride-whoz
+
 ## 3.34.1 (2026-10-13)
 
 ### 🩹 Fixes
@@ -6981,4 +7006,3 @@ This was a version bump only, there were no code changes.
 ### ❤️ Thank You
 
 - vincent.audibert
-

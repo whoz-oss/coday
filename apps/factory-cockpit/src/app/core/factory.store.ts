@@ -100,7 +100,7 @@ export class FactoryStore {
   private readonly supervisorCaseStore = inject(SupervisorCaseStoreService)
 
   /**
-   * Namespace id → human name, populated from `GET /api/namespaces`.
+   * Namespace id → human name, populated from `GET /api/agentos/api/namespaces`.
    * Used to title workstreams; a missing id falls back to the id itself.
    */
   readonly namespaces = signal<Map<string, string>>(new Map())

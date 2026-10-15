@@ -5,15 +5,16 @@
 // mirroring the agentos/build.gradle.kts layout.
 //
 // The dev.nx.gradle.project-graph plugin is declared with an explicit version
-// string — no alias(libs.*) is used here because the root composite has no
-// dependencyResolutionManagement block and therefore no `libs` catalog.
+// string. The `libs` catalog (factory/gradle/libs.versions.toml) is imported
+// automatically by Gradle for this root build, which is how `version` below
+// reads `factoryService`, exactly like agentos/build.gradle.kts reads its own.
 plugins {
     id("dev.nx.gradle.project-graph") version ("0.1.10")
     base
 }
 
-group = "io.whozoss.factory"
-version = "0.0.1-SNAPSHOT"
+group = "whoz-oss.factory"
+version = libs.versions.factoryService.get()
 
 tasks.named("clean") {
     dependsOn(gradle.includedBuilds.map { it.task(":clean") })

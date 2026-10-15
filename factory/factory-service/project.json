@@ -4,43 +4,6 @@
   "projectType": "application",
   "sourceRoot": "factory/factory-service/src",
   "targets": {
-    "build": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "outputs": ["{projectRoot}/build/libs"],
-      "dependsOn": [{ "target": "build", "projects": ["factory-sdk", "factory-verification-core"] }],
-      "options": {
-        "command": "./gradlew :factory-service:build",
-        "cwd": "factory"
-      }
-    },
-    "assemble": {
-      "executor": "nx:run-commands",
-      "cache": true,
-      "outputs": ["{projectRoot}/build/libs"],
-      "dependsOn": [{ "target": "assemble", "projects": ["factory-sdk", "factory-verification-core"] }],
-      "options": {
-        "command": "./gradlew :factory-service:assemble",
-        "cwd": "factory"
-      }
-    },
-    "test": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "dependsOn": [{ "target": "test", "projects": ["factory-sdk", "factory-verification-core"] }],
-      "options": {
-        "command": "./gradlew :factory-service:test",
-        "cwd": "factory"
-      }
-    },
-    "clean": {
-      "executor": "nx:run-commands",
-      "cache": false,
-      "options": {
-        "command": "./gradlew :factory-service:clean",
-        "cwd": "factory"
-      }
-    },
     "bootRun": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -56,7 +19,8 @@
       "options": {
         "command": "./gradlew :factory-service:bootJar",
         "cwd": "factory"
-      }
+      },
+      "dependsOn": ["assemble"]
     },
     "generate-openapi-spec": {
       "executor": "nx:run-commands",
@@ -80,5 +44,5 @@
       }
     }
   },
-  "tags": ["type:app", "platform:jvm", "scope:service"]
+  "tags": ["type:app", "platform:jvm-factory", "scope:service"]
 }

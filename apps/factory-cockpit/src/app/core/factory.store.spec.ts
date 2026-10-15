@@ -99,7 +99,7 @@ describe('FactoryStore', () => {
   afterEach(() => http.verify())
 
   function flushNamespaces(items: unknown = []): void {
-    http.expectOne((r) => r.url === '/api/namespaces').flush({ data: items })
+    http.expectOne((r) => r.url === '/api/agentos/api/namespaces').flush({ data: items })
   }
 
   function flushInitialWorkflows(items: unknown[] = [], removed: unknown[] = [], namespaces: unknown = []): void {
@@ -462,7 +462,7 @@ describe('FactoryStore', () => {
     activeRequest.flush({ data: { items: [snapshotFor('wf-a', 'ns-a', 'Run A')] } })
     removedRequest.flush({ data: { items: [] } })
     http
-      .expectOne((r) => r.url === '/api/namespaces')
+      .expectOne((r) => r.url === '/api/agentos/api/namespaces')
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
     flushRunEnrichment('wf-a')
 
@@ -711,7 +711,7 @@ describe('FactoryStore', () => {
     const removedReq = http.expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
     activeReq.flush({ data: { namespaceId: '', state: 'active', items: [snapshot] } })
     removedReq.flush({ data: { namespaceId: '', state: 'removed', items: [] } })
-    http.expectOne((r) => r.url === '/api/namespaces').flush({ data: [] })
+    http.expectOne((r) => r.url === '/api/agentos/api/namespaces').flush({ data: [] })
 
     // Immediately after the reload (before new enrichment arrives), the session
     // must still reflect the previous enrichment (caseId from attempt preserved).
