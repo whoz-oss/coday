@@ -27,7 +27,8 @@ import java.util.UUID
  *
  * The case runs in the **same namespace** as the calling run, and for the **same user** unless
  * [allowOtherUsers] lets the caller name another one. Who is calling, and from which case, comes
- * from [ToolContext], never from the input. The calling case's session context is **not**
+ * from [ToolContext], never from the input. The calling case is [ToolContext.caseId], and a call
+ * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`. The calling case's session context is **not**
  * inherited: [Input.context] is the only thing that reaches the new case, so the caller hands over
  * just the relevant part, typically the output of an enrichment tool.
  *
@@ -168,7 +169,7 @@ class CreateCaseTool(
                 )
             callerCaseId == null ->
                 ToolExecutionResult.error(
-                    "Starting a case requires the calling case (caseId is null).",
+                    "Starting a case requires the calling case (the tool context has no case events).",
                     errorType = "MISSING_CASE_CONTEXT",
                 )
             !isAgentAllowed(input.agentName) ->

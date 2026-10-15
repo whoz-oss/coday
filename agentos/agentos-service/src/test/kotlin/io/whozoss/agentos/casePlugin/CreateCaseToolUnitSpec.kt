@@ -29,11 +29,13 @@ class CreateCaseToolUnitSpec :
         val targetId: UUID = UUID.randomUUID()
         val newCaseId: UUID = UUID.randomUUID()
 
+        /** The events the calling case hands to the tool: its own, so the calling case is read from them. */
+        fun caseEvents(caseId: UUID = callerCaseId): List<CaseEvent> = listOf(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "x"))
+
         fun context(
             user: UUID? = userId,
-            caseId: UUID? = callerCaseId,
-            events: List<CaseEvent> = emptyList(),
-        ) = ToolContext(namespaceId = namespaceId, userId = user, userExternalId = "ext", caseEvents = events, caseId = caseId)
+            events: List<CaseEvent> = caseEvents(),
+        ) = ToolContext(namespaceId = namespaceId, userId = user, userExternalId = "ext", caseEvents = events)
 
         fun launched(agentName: String = "Reporter") = CaseLaunchOutcome.Launched(newCaseId, namespaceId, userId, agentName)
 
@@ -81,21 +83,24 @@ class CreateCaseToolUnitSpec :
             verify(exactly = 0) { launcher.launch(any()) }
         }
 
-        "a run whose case cannot be identified is refused: the origin would be unknown" {
+        "a run whose case cannot be identified, with no case events, is refused: the origin would be unknown" {
             val launcher = service()
 
-            val result = tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt"), context(caseId = null))
+            val result = tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt"), context(events = emptyList()))
 
             result.errorType shouldBe "MISSING_CASE_CONTEXT"
             verify(exactly = 0) { launcher.launch(any()) }
         }
 
-        "the calling case is the one of the ToolContext, never read from the events, which may be filtered" {
+        "the calling case is the one of the case events of the ToolContext, never an input of the LLM" {
             val request = slot<CaseLaunchRequest>()
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
-            val otherCaseEvent = WarnEvent(namespaceId = namespaceId, caseId = UUID.randomUUID(), message = "x")
+            val forged = UUID.randomUUID()
 
-            tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt"), context(events = listOf(otherCaseEvent)))
+            tool(launcher).executeWithJson(
+                """{"agentName": "Reporter", "prompt": "go", "callerCaseId": "$forged", "caseId": "$forged"}""",
+                context(),
+            )
 
             request.captured.callerCaseId shouldBe callerCaseId
         }

@@ -328,7 +328,7 @@ class LoopWorkflowRunnerUnitSpec :
             }
         }
 
-        "CreateCase is called as the triggering user, in the loop's namespace and from the loop's case" {
+        "CreateCase is called as the triggering user, in the loop's namespace and with the loop's case events" {
             val f = Fixture(objectMapper)
             f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
             val loopEvents = listOf<CaseEvent>(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "x"))
@@ -339,8 +339,7 @@ class LoopWorkflowRunnerUnitSpec :
                 it.userId shouldBe triggerUser.metadata.id
                 it.userExternalId shouldBe "ext-trigger"
                 it.namespaceId shouldBe namespaceId
-                // the tool records the loop's case as the origin of the new one
-                it.caseId shouldBe caseId
+                // the tool reads the loop's case from these events and records it as the origin of the new one
                 it.caseEvents shouldBe loopEvents
             }
         }

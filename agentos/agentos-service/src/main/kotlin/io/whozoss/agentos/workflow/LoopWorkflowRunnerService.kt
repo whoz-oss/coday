@@ -166,8 +166,8 @@ class LoopWorkflowRunnerService(
     }
 
     /**
-     * The context every tool of the loop is called with: the triggering user, in the loop's namespace, from the
-     * loop's own case, which `CreateCase` records as the origin of the cases it starts.
+     * The context every tool of the loop is called with: the triggering user, in the loop's namespace, with the
+     * loop's own case events, from which `CreateCase` reads the case to record as the origin of the cases it starts.
      */
     private fun toolContext(
         context: LoopRunContext,
@@ -178,7 +178,6 @@ class LoopWorkflowRunnerService(
         userExternalId = triggerUser.externalId,
         caseEvents = context.caseEvents,
         agentName = context.agentName,
-        caseId = context.caseId,
     )
 
     private suspend fun act(

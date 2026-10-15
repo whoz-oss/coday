@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
@@ -20,8 +21,7 @@ class CaseLauncherToolPluginUnitSpec :
                 namespaceId = namespaceId,
                 userId = UUID.randomUUID(),
                 userExternalId = null,
-                caseEvents = emptyList(),
-                caseId = UUID.randomUUID(),
+                caseEvents = listOf(WarnEvent(namespaceId = namespaceId, caseId = UUID.randomUUID(), message = "x")),
             )
 
         fun plugin() = CaseLauncherToolPlugin(launcher)

@@ -28,9 +28,6 @@ import java.util.UUID
  * @param credentialProvider Pre-scoped credential supplier for the integration this tool
  *   belongs to. Returns the user's stored credential (OAuth tokens, API keys, etc.) or
  *   null if not yet authenticated. Null when no AuthSetting is bound to the integration.
- * @param caseId The case the tool runs in, or null outside of a case (e.g. tool-set resolution or
- *   a direct invocation through the API). Tools that act on the current case read it here rather
- *   than from [caseEvents], which may be filtered or empty.
  */
 data class ToolContext(
     val namespaceId: UUID,
@@ -41,5 +38,14 @@ data class ToolContext(
     val credentialProvider: CredentialProvider? = null,
     /** Identifier of the ToolRequestEvent that caused this invocation, when available. */
     val toolRequestId: String? = null,
-    val caseId: UUID? = null,
-)
+) {
+    /**
+     * The case the tool runs in: the case of the first of [caseEvents], or null when there are no events
+     * (tool-set resolution, a direct invocation through the API).
+     *
+     * Agents hand a tool the events of their own case only, and filtering them by integration removes
+     * tool request and response events, never messages. It is derived, not a constructor parameter: it
+     * is not part of [copy] or [equals], and a plugin built against an earlier SDK is unaffected.
+     */
+    val caseId: UUID? get() = caseEvents.firstOrNull()?.caseId
+}
