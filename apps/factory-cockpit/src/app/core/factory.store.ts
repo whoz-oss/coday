@@ -341,6 +341,16 @@ export class FactoryStore {
     for (const id of [...this.enrichment.keys()]) {
       if (!liveIds.has(id)) this.enrichment.delete(id)
     }
+    // Also abort in-flight enrichment of vanished workflows: a late response would
+    // otherwise merge back into `enrichment`/`sessions` and resurrect a purged run.
+    // Map entries are dropped BEFORE unsubscribing so the finalize hook is a no-op.
+    for (const [id, request] of [...this.overviewEnrichmentRequests]) {
+      if (liveIds.has(id)) continue
+      this.overviewEnrichmentRequests.delete(id)
+      this.overviewEnrichmentPending.delete(id)
+      if (this.detailRequest === request) this.detailRequest = null
+      request.unsubscribe()
+    }
 
     // Derive one FactoryRun per real workflow snapshot. Removed snapshots are
     // surfaced as destroyed runs; `showDestroyed`/`visibleRuns` remain the ONLY
@@ -370,11 +380,16 @@ export class FactoryStore {
     }
     this.sessions.set(sessionMap)
 
-    // Cards and details share the same enrichment path. Initial load/reload
-    // enriches each active visible run once; per-run requests are coalesced.
+    // Cards and details share the same enrichment path. A run is enriched on
+    // first sight only: later refreshes are driven by the targeted triggers
+    // (SSE invalidation, reconnect, refresh(), governed actions). Re-enriching
+    // every run on each reload would turn each SSE burst into an N+1 storm and
+    // duplicate the requests those triggers already queued.
     for (const snapshot of effectiveActive) {
       const id = workflowIdOf(snapshot)
-      if (id && id !== this.selectedWorkflowId) this.queueOverviewEnrichment(id)
+      if (!id || id === this.selectedWorkflowId) continue
+      if (this.enrichment.has(id) || this.overviewEnrichmentRequests.has(id)) continue
+      this.queueOverviewEnrichment(id)
     }
 
     // If a deep link selected a run before this
@@ -407,6 +422,15 @@ export class FactoryStore {
 
   private startDetailRequest(workflowId: string): void {
     if (workflowId !== this.selectedWorkflowId) return
+    // The overview enrichment of this run is already in flight and fetches the
+    // very same endpoints: adopt it as the detail request instead of issuing a
+    // duplicate set. Cancelling the detail then cancels it (see
+    // queueOverviewEnrichment's finalize for the trailing-refresh hand-over).
+    const inFlight = this.overviewEnrichmentRequests.get(workflowId)
+    if (inFlight) {
+      this.detailRequest = inFlight
+      return
+    }
     const snapshot = this.workflowSnapshot(workflowId)
     let request: Subscription | null = null
     request = (snapshot ? this.enrichSession(snapshot) : this.loadSelectedWorkflow(workflowId))
@@ -459,6 +483,10 @@ export class FactoryStore {
     const id = workflowIdOf(snapshot)
     if (!id) return of(undefined)
     const namespaceId = namespaceOf(snapshot)
+    // The snapshot may be refreshed while the requests are in flight (an SSE
+    // reload lands before they complete): always merge onto the latest one so
+    // an obsolete snapshot can never overwrite a newer card/detail state.
+    const latestSnapshot = (): unknown => this.workflowSnapshot(id) ?? snapshot
     const merge = (partial: {
       timing?: unknown
       evidence?: unknown
@@ -471,8 +499,9 @@ export class FactoryStore {
     }): void => {
       const next = { ...(this.enrichment.get(id) ?? {}), ...partial }
       this.enrichment.set(id, next)
+      const current = latestSnapshot()
       const detail = mapProjectionToSessionDetail(
-        snapshot,
+        current,
         next.timing,
         next.evidence,
         next.metrics,
@@ -488,7 +517,7 @@ export class FactoryStore {
         return updated
       })
       // Cards consume exactly the same enriched detail as the detail page.
-      this.updateRun(mapSessionDetailToRunSummary(snapshot, detail))
+      this.updateRun(mapSessionDetailToRunSummary(current, detail))
     }
 
     const optional = <T>(request: Observable<T>): Observable<T | undefined> =>
@@ -543,7 +572,19 @@ export class FactoryStore {
         finalize(() => {
           if (this.overviewEnrichmentRequests.get(workflowId) !== request) return
           this.overviewEnrichmentRequests.delete(workflowId)
-          if (this.overviewEnrichmentPending.delete(workflowId)) this.queueOverviewEnrichment(workflowId)
+          // The selected run adopts its in-flight overview request as its detail
+          // request: release it and hand any trailing refresh over to the detail path.
+          const adopted = this.detailRequest === request
+          if (adopted) this.detailRequest = null
+          const trailing = this.overviewEnrichmentPending.delete(workflowId)
+          if (workflowId === this.selectedWorkflowId) {
+            if (adopted && (trailing || this.detailRefreshPending)) {
+              this.detailRefreshPending = false
+              this.startDetailRequest(workflowId)
+            }
+          } else if (trailing) {
+            this.queueOverviewEnrichment(workflowId)
+          }
         })
       )
       .subscribe()

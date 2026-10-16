@@ -142,7 +142,7 @@ describe('WorkstreamsPageComponent', () => {
 
     const header = host.querySelector<HTMLAnchorElement>('header [data-workstreams-launch]')
     expect(header).not.toBeNull()
-    expect(header?.getAttribute('href')).toBe('/lancer')
+    expect(header?.getAttribute('href')).toBe('/launch')
     expect(host.querySelector('[data-workstreams-launch-panel]')).toBeNull()
     expect(host.textContent).not.toContain('Recent tasks')
   })

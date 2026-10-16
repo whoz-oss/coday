@@ -44,7 +44,7 @@ export function formatLaunchError(error: FactoryApiError | null | undefined): st
 }
 
 /**
- * Dedicated `/lancer` screen using Factory's canonical create-and-submit use
+ * Dedicated `/launch` screen using Factory's canonical create-and-submit use
  * case. Factory owns workflow identity and execution attribution. The browser
  * selects one of the namespaces AgentOS exposes to the current user. Factory
  * resolves or initializes the organization-scoped workstream association.

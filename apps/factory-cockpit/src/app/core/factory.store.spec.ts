@@ -179,10 +179,16 @@ describe('FactoryStore', () => {
     expect(reloaded?.costUsd).toBe(first?.costUsd)
   })
 
-  it('fetches detail only for the selected visible session', () => {
+  it('does not duplicate fetches when selecting a run; other runs only get their bounded overview enrichment', () => {
     flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
 
+    // Selecting wf-1 adopts its in-flight overview enrichment: expectOne inside
+    // flushEnrichment proves a single set of requests, and nothing else follows.
     flushEnrichment()
+    http.expectNone((request) => request.url.includes('/wf-1/'))
+
+    // wf-2 only owns its single overview enrichment; selecting wf-1 added nothing.
+    flushRunEnrichment('wf-2', false)
     http.expectNone((request) => request.url.includes('/wf-2/'))
 
     expect(store.session('wf-1')?.id).toBe('wf-1')
@@ -194,9 +200,18 @@ describe('FactoryStore', () => {
     const source = FakeEventSource.instances[0]
     source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 3 }))
     source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 4 }))
-    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(1)
+    // While the first enrichment is in flight the burst must NOT start a duplicate.
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
     first.forEach((request) => request.flush({ data: [] }))
-    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(1)
+    // Once it completes, the whole burst collapses into exactly ONE trailing refresh.
+    const trailing = http.match((request) => request.url.includes('/wf-1/'))
+    expect(trailing.filter((request) => request.request.url.endsWith('/evidence'))).toHaveLength(1)
+    trailing.forEach((request) => request.flush({ data: [] }))
+
+    // Drain the overview reloads the burst triggered (one in flight + one trailing).
+    flushInitialWorkflows([snapshot])
+    flushInitialWorkflows([snapshot])
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
   })
 
   it('coalesces same-run SSE bursts without cancelling the active detail and runs one trailing refresh', () => {
@@ -210,8 +225,9 @@ describe('FactoryStore', () => {
     source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 4 }))
     source?.emit('workflow-projection-updated', JSON.stringify({ workflowId: 'wf-1', revision: 5 }))
 
+    // The burst must neither cancel the active detail nor start a duplicate while it is in flight.
     expect(firstEvidence?.cancelled).toBe(false)
-    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(1)
+    expect(http.match((request) => request.url.endsWith('/wf-1/evidence'))).toHaveLength(0)
     firstRequests.forEach((request) => request.flush({ data: [] }))
 
     const trailingRequests = http.match((request) => request.url.includes('/wf-1/'))
@@ -231,6 +247,10 @@ describe('FactoryStore', () => {
     store.selectSession('wf-2')
 
     expect(oldEvidence.cancelled).toBe(true)
+    // Every other wf-1 request is cancelled too (drained: verify() counts cancelled-but-unflushed ones).
+    const oldRequests = http.match((request) => request.url.includes('/wf-1/'))
+    expect(oldRequests.length).toBeGreaterThan(0)
+    expect(oldRequests.every((request) => request.cancelled)).toBe(true)
     http.expectOne((r) => r.url.endsWith('/wf-2/timing')).flush({ data: { workflowId: 'wf-2', startedAt } })
     http.expectOne((r) => r.url.endsWith('/wf-2/evidence')).flush({ data: { workflowId: 'wf-2', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-2/metrics')).flush({ data: { workflowId: 'wf-2' } })
@@ -299,7 +319,10 @@ describe('FactoryStore', () => {
     flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
 
     http.expectNone((request) => request.url.includes('/wf-1/evidence'))
+    // wf-2: its first overview enrichment, then the single trailing refresh the SSE queued meanwhile.
     flushRunEnrichment('wf-2', false)
+    flushRunEnrichment('wf-2', false)
+    http.expectNone((request) => request.url.includes('/wf-1/'))
   })
 
   it('derives one FactoryRun per active workflow, from the real snapshot fields', () => {
@@ -367,10 +390,27 @@ describe('FactoryStore', () => {
 
     const titles = store.visibleRuns().map((run) => run.title)
     expect(titles).toEqual(['Newer workflow', 'Older workflow', 'No date workflow'])
+
+    // Drain the bounded overview enrichment started for each visible run.
+    for (const id of ['wf-older', 'wf-newer', 'wf-nodate']) flushRunEnrichment(id, false)
   })
 
   it('maps an idle/pending workflow state onto an idle run', () => {
-    const idle = { ...snapshot, projection: { ...snapshot.projection, status: 'pending' } }
+    // A genuinely pending workflow: no step has started. A running step would, rightly,
+    // make the enriched card 'working' (cards share the detail's derived truth).
+    const idle = {
+      ...snapshot,
+      projection: {
+        ...snapshot.projection,
+        status: 'pending',
+        steps: snapshot.projection.steps.map((step) => ({
+          id: step.id,
+          name: step.name,
+          status: 'pending',
+          responsibility: step.responsibility,
+        })),
+      },
+    }
     flushInitialWorkflows([idle])
     flushEnrichment()
 
@@ -744,6 +784,16 @@ describe('FactoryStore', () => {
 
     expect(store.runs()).toHaveLength(1)
     expect(store.runs()[0]?.id).toBe('wf-1')
+    expect(store.session('wf-2')).toBeUndefined()
+
+    // The vanished run's in-flight enrichment (from the initial load) is aborted,
+    // so a late response can never resurrect it.
+    const abandoned = http.match((request) => request.url.includes('/wf-2/'))
+    expect(abandoned).toHaveLength(7)
+    expect(abandoned.every((request) => request.cancelled)).toBe(true)
+
+    // The survivor owns exactly one trailing refresh, queued by the SSE event.
+    flushRunEnrichment('wf-1', false)
   })
 
   it('degrades to an empty list (never the mock fleet) when the REST backend fails', () => {
@@ -836,7 +886,7 @@ describe('FactoryStore', () => {
       { workflowId: 'wf-1', data: [] },
       {
         allowedActions: [
-          { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relancer' },
+          { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relaunch' },
           { type: 'stop_cost', expectedRevision: 7 },
         ],
         blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Step build blocked' }],
@@ -845,7 +895,7 @@ describe('FactoryStore', () => {
 
     const session = store.session('wf-1')
     expect(session?.allowedActions).toEqual([
-      { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relancer' },
+      { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relaunch' },
       { type: 'stop_cost', expectedRevision: 7 },
     ])
     expect(session?.blockers).toEqual([
