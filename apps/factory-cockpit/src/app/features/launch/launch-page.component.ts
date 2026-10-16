@@ -43,7 +43,7 @@ export function formatLaunchError(error: FactoryApiError | null | undefined): st
 }
 
 /**
- * Dedicated `/lancer` screen using Factory's canonical create-and-submit use
+ * Dedicated `/launch` screen using Factory's canonical create-and-submit use
  * case. Factory owns workflow identity and execution attribution. The browser
  * supplies the selected namespace only through the trusted/local HTTP boundary.
  * A backend failure keeps the form visible and surfaces a readable banner.

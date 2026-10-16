@@ -16,7 +16,7 @@ export const routes: Routes = [
       import('./features/workstreams/workstreams-page.component').then((m) => m.WorkstreamsPageComponent),
   },
   {
-    path: 'lancer',
+    path: 'launch',
     loadComponent: () => import('./features/launch/launch-page.component').then((m) => m.LaunchPageComponent),
   },
   {
