@@ -33,6 +33,7 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 
 /** Holds a pending command to be executed sequentially after the current agent turn. */
@@ -146,6 +147,13 @@ class CaseRuntime(
      * the second invocation returns immediately without doing any work.
      */
     private val runInFlight = AtomicBoolean(false)
+
+    /**
+     * Monotonic start time of the latest user turn. It is recorded before persistence so the
+     * resulting duration includes the full locally observable path: message storage, scheduling,
+     * orchestration, LLM calls, tools, and final status publication.
+     */
+    private val userTurnStartedAtNanos = AtomicLong(0)
 
     /**
      * Job of the turn executing inside [run]: from the user's message until the agents hand back to
@@ -375,9 +383,12 @@ class CaseRuntime(
         answerToEventId: UUID? = null,
         sessionContext: Map<String, Any?>? = null,
     ) {
-        logger.info {
-            "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
-                "content: ${content.size} part(s), answerTo: $answerToEventId"
+        if (logger.isDebugEnabled) {
+            userTurnStartedAtNanos.set(System.nanoTime())
+            logger.debug {
+                "[CaseRuntime $id] addUserMessage - actor: ${actor.id}, " +
+                    "content: ${content.size} part(s), answerTo: $answerToEventId"
+            }
         }
 
         if (answerToEventId != null) {
@@ -476,7 +487,14 @@ class CaseRuntime(
      */
     private suspend fun executeTurn() {
         logger.info { "[CaseRuntime $id] run() started" }
+        val statusUpdateStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
         updateStatus(CaseStatus.RUNNING)
+        if (statusUpdateStartedAtNanos != 0L) {
+            logger.debug {
+                "[CaseRuntime $id] RUNNING status persistence and publication completed in " +
+                    "${(System.nanoTime() - statusUpdateStartedAtNanos) / 1_000_000}ms"
+            }
+        }
         iterationCount = 0
 
         try {
@@ -495,6 +513,7 @@ class CaseRuntime(
             logger.info { "[CaseRuntime $id] Exited loop → $finalStatus, iterations: $iterationCount" }
             if (finalStatus != CaseStatus.IDLE) commandQueue.clear()
             updateStatus(finalStatus)
+            logResponseFinished(finalStatus)
         } catch (e: CancellationException) {
             // Cancelled by a Stop, a Kill, a shutdown stop or a cancelled caller: close the turn before
             // rethrowing, so the case is never left RUNNING with a dangling AgentRunningEvent.
@@ -510,12 +529,24 @@ class CaseRuntime(
                     .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not close the cancelled turn" } }
                 runCatching { updateStatus(status) }
                     .onFailure { err -> logger.error(err) { "[CaseRuntime $id] Could not publish status $status" } }
+                logResponseFinished(status)
             }
             throw e
         } catch (e: Exception) {
             logger.error(e) { "[CaseRuntime $id] Unexpected error during execution" }
             commandQueue.clear()
             updateStatus(CaseStatus.ERROR)
+            logResponseFinished(CaseStatus.ERROR)
+        }
+    }
+
+    private fun logResponseFinished(status: CaseStatus) {
+        if (!logger.isDebugEnabled) return
+        val startedAtNanos = userTurnStartedAtNanos.getAndSet(0)
+        if (startedAtNanos == 0L) return
+        logger.debug {
+            "[CaseRuntime $id] response finished in " +
+                "${(System.nanoTime() - startedAtNanos) / 1_000_000}ms (status=$status)"
         }
     }
 
