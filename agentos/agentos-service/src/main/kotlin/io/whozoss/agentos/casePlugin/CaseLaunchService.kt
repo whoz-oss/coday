@@ -3,6 +3,7 @@ package io.whozoss.agentos.casePlugin
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -10,6 +11,7 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
@@ -27,8 +29,9 @@ import java.util.UUID
  * @param targetUserId The user the new case runs for. Null, or the caller itself: the caller. Any
  *   other user requires [allowOtherUsers], must exist and must be able to read the namespace.
  * @param title Name of the new conversation. Null or blank: derived from the start of [task].
- * @param context What the caller hands to the new case, and nothing else: it becomes the session
- *   context of the first message as is. The calling case's own context is never inherited.
+ * @param context What the caller hands to the new case: it is merged into the session context of the
+ *   first message, under the context resolved for the target user, which wins on a conflicting key (see
+ *   [CaseLaunchService]). The calling case's own context is never inherited.
  */
 data class CaseLaunchRequest(
     val callerUserId: UUID,
@@ -83,6 +86,15 @@ enum class CaseLaunchRefusal {
 }
 
 /**
+ * The context of the user a case was to be started for could not be resolved: the `UserContextProvider`
+ * failed, for good or for now. A failure, not a refusal: it is thrown before anything is written. [message]
+ * carries none of the provider's own reason, which may hold the body of an upstream error and is logged instead.
+ */
+class UserContextUnavailableException(
+    message: String,
+) : RuntimeException(message)
+
+/**
  * Starts a new case from inside an agent run.
  *
  * The new case is a top-level case: it has no [Case.parentCaseId], so nothing waits for it, stopping
@@ -98,6 +110,11 @@ enum class CaseLaunchRefusal {
  *    caller, is what decides.
  * 2. **Agent access.** The agent must be deployed to the target user in the namespace: the same
  *    condition as addressing it with an `@mention`.
+ * 3. **User context.** The context of the target user is resolved by [UserSessionContextResolver], as for a
+ *    scheduled prompt: what the `UserContextProvider` plugin returns, with the user's `preferredLanguage`
+ *    on top. It comes last because the provider may be an external request: a refused launch never makes one.
+ *    A provider failure, permanent or transient, is thrown ([UserContextUnavailableException]) before
+ *    anything is written.
  *
  * Then it creates the case, gives the target user ADMIN on it (as `CaseController.create` does for
  * the creator) and sends the prompt, addressed to the agent with an `@mention`, as that user. If one
@@ -109,10 +126,17 @@ enum class CaseLaunchRefusal {
  * for them (deployed to the target). The `CreateCase` tool validates its input and scopes what its
  * integration instance may launch (the agent allowlist); those checks are not repeated here.
  *
- * The session context of the first message is exactly what the caller passed in
- * [CaseLaunchRequest.context], usually the output of an enrichment tool: the calling case's own
- * context is never inherited, so the caller hands over only the relevant part. An empty context
- * counts as none.
+ * The session context of the first message is what the caller passed in [CaseLaunchRequest.context]
+ * (usually the entity the prompt is about) with the context resolved for the target user on top: on a
+ * conflicting key the resolved one wins. A key the resolution does not produce is passed on as the caller
+ * gave it: without a provider, or for a user without a preferred language, a `userContext` or a
+ * `preferredLanguage` from the caller reaches the new case. The calling case's own context is never
+ * inherited. Without either, there is no session context.
+ * It is resolved for the **target** user, not the caller: when a case runs for someone else, it carries
+ * that person's identity.
+ *
+ * The session context is resolved in every flow that starts a case through this service, so a caller such
+ * as the loop hands over the entity only and does not resolve the user's context itself.
  *
  * **Refusals and failures.** A [CaseLaunchOutcome.Refused] is a business decision, taken before anything
  * is written. Anything else (an infrastructure failure, a bug, a calling user that vanished) is thrown as
@@ -130,6 +154,7 @@ class CaseLaunchService(
     private val userService: UserService,
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
+    private val userSessionContextResolver: UserSessionContextResolver,
 ) {
     /** [CaseLaunchOutcome.Refused] for a business refusal; any other failure is thrown. */
     fun launch(request: CaseLaunchRequest): CaseLaunchOutcome =
@@ -149,8 +174,16 @@ class CaseLaunchService(
                 userId = targetUser.id,
             )
 
+        val sessionContext = resolveSessionContext(targetUser = targetUser, request = request)
+
         val case = createCase(request)
-        startConversation(case = case, targetUser = targetUser, agentName = agentName, request = request)
+        startConversation(
+            case = case,
+            targetUser = targetUser,
+            agentName = agentName,
+            sessionContext = sessionContext,
+            request = request,
+        )
 
         logger.info {
             "[CaseLaunch] case ${case.id} launched: agent='$agentName' user=${targetUser.id} " +
@@ -220,6 +253,51 @@ class CaseLaunchService(
                 "Agent '$requested' is not available to the target user in this namespace.",
             )
 
+    /**
+     * The session context of the first message: the caller's [CaseLaunchRequest.context] under the context
+     * resolved for [targetUser], which wins on a conflicting key. Null when both are empty.
+     *
+     * A failure of the provider is thrown, before anything is written. The reason the provider gives is
+     * logged but kept out of the exception, which reaches the LLM: it may carry the body of an upstream error.
+     */
+    private fun resolveSessionContext(
+        targetUser: User,
+        request: CaseLaunchRequest,
+    ): Map<String, Any?>? {
+        val resolved =
+            when (val result = userSessionContextResolver.resolve(targetUser.externalId, request.callerNamespaceId)) {
+                is UserContextResult.Success -> {
+                    if (result.sessionContext == null && userSessionContextResolver.hasProvider()) {
+                        logger.warn {
+                            "[CaseLaunch] UserContextProvider returned Success(null) for user ${targetUser.id}" +
+                                " — no provider context will be injected. Check provider configuration."
+                        }
+                    }
+                    userSessionContextResolver.mergePreferredLanguage(
+                        providerContext = result.sessionContext,
+                        preferredLanguage = targetUser.preferredLanguage?.takeIf { it.isNotBlank() },
+                    )
+                }
+
+                is UserContextResult.PermanentFailure -> {
+                    logger.error { "[CaseLaunch] permanent context failure for user ${targetUser.id}: ${result.reason}" }
+                    throw UserContextUnavailableException(
+                        "The context of the target user could not be resolved (permanent failure): " +
+                            "the case was not started.",
+                    )
+                }
+
+                is UserContextResult.TransientFailure -> {
+                    logger.warn { "[CaseLaunch] transient context failure for user ${targetUser.id}: ${result.reason}" }
+                    throw UserContextUnavailableException(
+                        "The context of the target user could not be resolved (temporary failure, may succeed later): " +
+                            "the case was not started.",
+                    )
+                }
+            }
+        return ((request.context ?: emptyMap()) + (resolved ?: emptyMap())).takeIf { it.isNotEmpty() }
+    }
+
     /** Creates the case, tracing the calling one as its origin. */
     private fun createCase(request: CaseLaunchRequest): Case =
         caseService.create(
@@ -239,6 +317,7 @@ class CaseLaunchService(
         case: Case,
         targetUser: User,
         agentName: String,
+        sessionContext: Map<String, Any?>?,
         request: CaseLaunchRequest,
     ) {
         try {
@@ -253,7 +332,7 @@ class CaseLaunchService(
                 caseId = case.id,
                 actor = Actor(id = targetUser.id.toString(), displayName = targetUser.displayName(), role = ActorRole.USER),
                 content = listOf(MessageContent.Text("@$agentName ${request.task}")),
-                sessionContext = request.context?.takeIf { it.isNotEmpty() },
+                sessionContext = sessionContext,
             )
         } catch (e: Exception) {
             // The failure itself is logged by whoever handles it; this only records the compensation.

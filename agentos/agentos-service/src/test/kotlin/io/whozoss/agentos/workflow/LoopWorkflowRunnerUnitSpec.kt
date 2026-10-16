@@ -13,16 +13,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.whozoss.agentos.agentConfig.AgentConfig
-import io.whozoss.agentos.agentConfig.AgentConfigService
-import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.config.LimitsConfigProperties
-import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
-import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -82,10 +76,8 @@ class LoopWorkflowRunnerUnitSpec :
         class Fixture(
             objectMapper: ObjectMapper,
             maxItems: Int = 50,
-            userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
         ) {
             val userService = mockk<UserService>()
-            val agentConfigService = mockk<AgentConfigService>()
             val calls = mutableListOf<Call>()
             val launchedIds = mutableListOf<UUID>()
 
@@ -107,9 +99,7 @@ class LoopWorkflowRunnerUnitSpec :
                 LoopWorkflowRunnerService(
                     objectMapper = objectMapper,
                     userService = userService,
-                    agentConfigService = agentConfigService,
                     limitsConfig = LimitsConfigProperties(agentLoopMaxItems = maxItems),
-                    userSessionContextResolver = userSessionContextResolver,
                 )
 
             fun success(id: UUID): ToolExecutionResult =
@@ -125,20 +115,6 @@ class LoopWorkflowRunnerUnitSpec :
                     externalId = externalId,
                     email = "$externalId@example.com",
                 ).also { every { userService.findByExternalId(externalId) } returns it }
-
-            fun grantAgent(
-                user: User,
-                vararg agentNames: String,
-            ) {
-                val configs = agentNames.map { n -> mockk<AgentConfig>().also { every { it.name } returns n } }
-                every {
-                    agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
-                        any(),
-                        user.metadata.id,
-                        any(),
-                    )
-                } returns configs
-            }
         }
 
         /**
@@ -236,7 +212,6 @@ class LoopWorkflowRunnerUnitSpec :
                 }
             // the end user is the triggering user, so no other-users switch is involved
             every { f.userService.findByExternalId("alice") } returns triggerUser
-            f.grantAgent(triggerUser, "ProfileCaretaker")
 
             val outcome =
                 f.runner
@@ -311,7 +286,7 @@ class LoopWorkflowRunnerUnitSpec :
 
         "starts one case per entity through CreateCase, for the end user, and reports its id" {
             val f = Fixture(objectMapper)
-            val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            val alice = f.knownUser("alice")
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -330,7 +305,7 @@ class LoopWorkflowRunnerUnitSpec :
 
         "CreateCase is called as the triggering user, in the loop's namespace and with the loop's case events" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
             val loopEvents = listOf<CaseEvent>(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "x"))
 
             f.runner.run(payload, context(listOf(searchTool(listOf("alice")), f.createCaseTool), caseEvents = loopEvents)) { true }
@@ -347,7 +322,6 @@ class LoopWorkflowRunnerUnitSpec :
         "when the end user is the triggering user, they are sent as userId too: the service treats them as the caller" {
             val f = Fixture(objectMapper)
             every { f.userService.findByExternalId("ext-trigger") } returns triggerUser
-            f.grantAgent(triggerUser, "ProfileCaretaker")
 
             f.run(searchTool(listOf("ext-trigger")))
 
@@ -356,7 +330,7 @@ class LoopWorkflowRunnerUnitSpec :
 
         "rows without entityType and with unknown fields are still processed" {
             val f = Fixture(objectMapper)
-            val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            val alice = f.knownUser("alice")
             // The spec's plain ObjectMapper fails on unknown properties by default: this also checks
             // that SearchResult types ignore them explicitly, independently of the mapper configuration.
             val node =
@@ -432,23 +406,13 @@ class LoopWorkflowRunnerUnitSpec :
             f.calls shouldBe emptyList()
         }
 
-        "refuses users who cannot access the target agent, including prefix-only matches, without calling CreateCase" {
-            val f = Fixture(objectMapper)
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker-v2") }
-
-            val outcome = f.run(searchTool(listOf("bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
-
-            outcome.noAgentAccess shouldBe 1
-            f.calls shouldBe emptyList()
-        }
-
         // -------------------------------------------------------------------------
         // Reading what CreateCase answers
         // -------------------------------------------------------------------------
 
         "a CreateCase refusal because the agent is not available counts as no agent access" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
             f.answer = { ToolExecutionResult.error("not deployed", errorType = "AGENT_NOT_AVAILABLE") }
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
@@ -459,8 +423,8 @@ class LoopWorkflowRunnerUnitSpec :
 
         "any other CreateCase refusal counts as failed, and does not stop the loop" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
+            f.knownUser("bob")
             var first = true
             f.answer = {
                 if (first) {
@@ -481,10 +445,10 @@ class LoopWorkflowRunnerUnitSpec :
             f.calls.size shouldBe 2
         }
 
-        "a CreateCase that throws is counted as failed and does not stop the loop" {
+        "a CreateCase that throws (say, its user's context is unavailable) counts as failed, and the loop goes on" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
+            f.knownUser("bob")
             var first = true
             f.answer = {
                 if (first) {
@@ -498,12 +462,14 @@ class LoopWorkflowRunnerUnitSpec :
             val outcome = f.run(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.failed shouldBe 1
+            outcome.noAgentAccess shouldBe 0
             outcome.launched shouldBe 1
+            f.calls.size shouldBe 2
         }
 
         "a success without a readable case id is counted as failed, not as launched" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
             f.answer = { ToolExecutionResult.success("started, apparently") }
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
@@ -514,7 +480,7 @@ class LoopWorkflowRunnerUnitSpec :
 
         "the case id is read from the structured output only: one found in the metadata alone counts as failed" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
             f.answer = { ToolExecutionResult.success("ok", metadata = mapOf("caseId" to UUID.randomUUID().toString())) }
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
@@ -529,7 +495,7 @@ class LoopWorkflowRunnerUnitSpec :
 
         "processes at most agentLoopMaxItems entities" {
             val f = Fixture(objectMapper, maxItems = 2)
-            listOf("a", "b", "c").forEach { f.knownUser(it).also { u -> f.grantAgent(u, "ProfileCaretaker") } }
+            listOf("a", "b", "c").forEach { f.knownUser(it) }
 
             val outcome = f.run(searchTool(listOf("a", "b", "c"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -550,7 +516,7 @@ class LoopWorkflowRunnerUnitSpec :
 
         "stops launching when interrupted" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
 
             val outcome = f.run(searchTool(listOf("alice"))) { false }.shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
@@ -563,7 +529,7 @@ class LoopWorkflowRunnerUnitSpec :
             val f = Fixture(objectMapper)
             // entityId root = "task-alice", targets[0].entityId = "alice"
             // The runner must call findByExternalId("alice"), NOT findByExternalId("task-alice")
-            val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            val alice = f.knownUser("alice")
             every { f.userService.findByExternalId("task-alice") } returns null // must NOT be called
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
@@ -578,76 +544,16 @@ class LoopWorkflowRunnerUnitSpec :
         // Context handed to CreateCase
         // -------------------------------------------------------------------------
 
-        "the provider context is handed over as the context of the new case" {
-            val providerContext = mapOf("talentId" to "t42", "score" to 9.5)
-            val provider =
-                mockk<UserContextProvider>().also {
-                    every { it.provideUserContext(any(), any()) } returns UserContextResult.Success(providerContext)
-                }
-            val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+        "only the entity is handed over as the context: the end user's own context is resolved by CreateCase" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.launched shouldBe 1
             val ctx = f.calls.single().context
-            ctx["talentId"].asText() shouldBe "t42"
-            ctx["score"].asDouble() shouldBe 9.5
+            ctx.fieldNames().asSequence().toList() shouldBe listOf("activeContext")
             ctx["activeContext"].single()["type"].asText() shouldBe "TALENT"
-        }
-
-        "the end user's preferred language is handed over in the context" {
-            val f = Fixture(objectMapper)
-            // User with preferredLanguage set, no provider
-            User(
-                metadata = EntityMetadata(id = UUID.randomUUID()),
-                externalId = "alice",
-                email = "alice@example.com",
-                preferredLanguage = "fr",
-            ).also {
-                every { f.userService.findByExternalId("alice") } returns it
-                f.grantAgent(it, "ProfileCaretaker")
-            }
-
-            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
-
-            outcome.launched shouldBe 1
-            f.calls.single().context[SessionContextKeys.PREFERRED_LANGUAGE].asText() shouldBe "fr"
-            f.calls.single().context["activeContext"].single()["type"].asText() shouldBe "TALENT"
-        }
-
-        "PermanentFailure from provider counts entity as failed, without calling CreateCase for it, and the loop continues" {
-            val provider =
-                mockk<UserContextProvider>().also {
-                    every { it.provideUserContext(eq("alice"), any()) } returns
-                        UserContextResult.PermanentFailure("user not in external system")
-                    every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
-                }
-            val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
-
-            val outcome = f.run(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
-
-            outcome.failed shouldBe 1
-            outcome.launched shouldBe 1
-            f.calls.single().prompt shouldBe prompt
-        }
-
-        "TransientFailure from provider counts entity as failed and loop continues" {
-            val provider =
-                mockk<UserContextProvider>().also {
-                    every { it.provideUserContext(eq("alice"), any()) } returns
-                        UserContextResult.TransientFailure("upstream timeout")
-                    every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
-                }
-            val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
-
-            val outcome = f.run(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
-
-            outcome.failed shouldBe 1
-            outcome.launched shouldBe 1
+            ctx["activeContext"].single()["data"]["id"].asText() shouldBe "task-alice"
         }
     })

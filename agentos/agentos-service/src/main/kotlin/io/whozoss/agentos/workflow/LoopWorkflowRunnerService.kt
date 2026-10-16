@@ -1,12 +1,9 @@
 package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.casePlugin.CaseLaunchRefusal
 import io.whozoss.agentos.casePlugin.CreateCaseTool
 import io.whozoss.agentos.config.LimitsConfigProperties
-import io.whozoss.agentos.context.UserSessionContextResolver
-import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -36,18 +33,19 @@ import java.util.UUID
  *    parse its structured output as [SearchResult].
  * 4. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
  *    a. resolve the end-user via [UserService.findByExternalId] — skip if unknown;
- *    b. check the end-user can access the target agent — refuse otherwise. `CreateCase` checks it again; this
- *       one only spares the context provider call, which may be an external request, for users who would be refused;
- *    c. resolve the end-user's session context;
- *    d. call the `CreateCase` tool, **as the triggering user**, naming the end-user as the target and handing the
- *       session context over as its `context`. Fire-and-forget: the tool returns the new case id at once. The
- *       new cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
+ *    b. call the `CreateCase` tool, **as the triggering user**, naming the end-user as the target and handing the
+ *       entity over as its `context` (`activeContext`). `CreateCase` checks that the end-user has the agent
+ *       deployed and resolves their own context (what the `UserContextProvider` returns, their preferred
+ *       language); the loop does neither. Fire-and-forget: the tool returns the new case id at once. The new
+ *       cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
  *       iteration, the cases already started keep running on their own.
  *
  * ## Who is authorized
  *
  * The launches go through `CreateCase`, so its rules apply: the integration must allow other users, and each
  * end-user must read the namespace and have the agent deployed. The loop adds no authorization of its own.
+ * An end-user without the agent is refused by `CreateCase` and counted as `noAgentAccess`. An end-user whose
+ * context cannot be resolved makes `CreateCase` fail, and is counted as failed.
  *
  * Errors that prevent the whole run return [LoopRunOutcome.Aborted]; per-entity problems are
  * counted in [LoopRunOutcome.Completed] and never stop the loop.
@@ -56,9 +54,7 @@ import java.util.UUID
 class LoopWorkflowRunnerService(
     private val objectMapper: ObjectMapper,
     private val userService: UserService,
-    private val agentConfigService: AgentConfigService,
     private val limitsConfig: LimitsConfigProperties,
-    private val userSessionContextResolver: UserSessionContextResolver,
 ) {
     suspend fun run(
         payload: AgentLoopPayload,
@@ -210,51 +206,15 @@ class LoopWorkflowRunnerService(
             return ItemOutcome.UnknownUser
         }
         val endUserId = endUser.metadata.id
-        if (!hasAgentAccess(userId = endUserId, agentName = act.agentName, namespaceId = context.namespaceId)) {
-            logger.warn { "[LoopWorkflowRunner] User $endUserId cannot access agent '${act.agentName}' — refusing" }
-            return ItemOutcome.NoAgentAccess
-        }
 
-        // Resolve user session context (business context + preferred language).
-        // PermanentFailure and TransientFailure are both treated as failures in v0 (no retry):
-        // the entity is counted as failed and the loop continues with the next one.
-        // Without a provider, resolve() returns Success(null) and execution continues without context.
-        val preferredLanguage = endUser.preferredLanguage?.takeIf { it.isNotBlank() }
-        val sessionContext: Map<String, Any?>? =
-            when (val result = userSessionContextResolver.resolve(userExternalId, context.namespaceId)) {
-                is UserContextResult.Success -> {
-                    if (result.sessionContext == null && userSessionContextResolver.hasProvider()) {
-                        logger.warn {
-                            "[LoopWorkflowRunner] UserContextProvider returned Success(null)" +
-                                " for entity='${item.entityId}' — no sessionContext will be injected"
-                        }
-                    }
-                    userSessionContextResolver.mergePreferredLanguage(result.sessionContext, preferredLanguage)
-                }
-
-                is UserContextResult.PermanentFailure -> {
-                    logger.error {
-                        "[LoopWorkflowRunner] Permanent context failure for entity='${item.entityId}'" +
-                            " user=$endUserId — counting as failed. Reason: ${result.reason}"
-                    }
-                    return ItemOutcome.Failed
-                }
-
-                is UserContextResult.TransientFailure -> {
-                    logger.warn {
-                        "[LoopWorkflowRunner] Transient context failure for entity='${item.entityId}'" +
-                            " user=$endUserId — counting as failed (no retry in v0). Reason: ${result.reason}"
-                    }
-                    return ItemOutcome.Failed
-                }
-            }
-
+        // Only the entity travels as the context of the new case: the end-user's own context (provider,
+        // preferred language) is resolved by CreateCase, which fails the launch if it cannot be.
         val input =
             buildMap<String, Any?> {
                 put("agentName", act.agentName)
                 put("prompt", act.prompt)
                 put("userId", endUserId.toString())
-                put("context", addActiveContext(sessionContext, item))
+                put("context", activeContextOf(item))
             }
 
         return try {
@@ -274,7 +234,7 @@ class LoopWorkflowRunnerService(
 
     /**
      * What a `CreateCase` result means for the loop. A refusal because the agent is not deployed to the end user
-     * is the same case as the loop's own check; anything else is a failure. A refusal that comes from the
+     * counts as no agent access; anything else is a failure. A refusal that comes from the
      * integration (other users not allowed, agent outside the allowlist) hits every entity alike: it shows in
      * the log with its reason, and in the summary as failures.
      */
@@ -316,22 +276,6 @@ class LoopWorkflowRunnerService(
             ?.asText()
             ?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
-    /**
-     * [AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName] is a prefix match, so the
-     * result is narrowed to an exact (case-insensitive) name — same as [io.whozoss.agentos.agent.AgentServiceImpl.findAgentByName].
-     */
-    private fun hasAgentAccess(
-        userId: UUID,
-        agentName: String,
-        namespaceId: UUID,
-    ): Boolean =
-        agentConfigService
-            .findDeployedByNamespaceIdAndUserIdAndName(
-                namespaceId = namespaceId,
-                userId = userId,
-                agentName = agentName.lowercase(),
-            ).any { it.name.equals(agentName, ignoreCase = true) }
-
     private sealed interface ItemOutcome {
         data class Launched(
             val caseId: UUID,
@@ -357,19 +301,14 @@ class LoopWorkflowRunnerService(
     companion object : KLogging()
 }
 
-private fun addActiveContext(
-    sessionContext: Map<String, Any?>?,
-    item: SearchResultItem,
-): Map<String, Any?> =
-    buildMap {
-        if (sessionContext != null) putAll(sessionContext)
-        put(
-            "activeContext",
+/** The context the loop hands to `CreateCase`: the entity of the search hit, as the UI would send it. */
+private fun activeContextOf(item: SearchResultItem): Map<String, Any?> =
+    mapOf(
+        "activeContext" to
             listOf(
                 mapOf(
                     "type" to item.entityType,
                     "data" to mapOf("id" to item.entityId),
                 ),
             ),
-        )
-    }
+    )

@@ -29,9 +29,11 @@ import java.util.UUID
  * [allowOtherUsers] lets the caller name another one. Who is calling, and from which case, comes
  * from [ToolContext], never from the input: the calling case is [ToolContext.caseId], and a call
  * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`.
- * The calling case's session context is **not** inherited: [Input.context] is the only thing that
- * reaches the new case, so the caller hands over just the relevant part, typically the output of an
- * enrichment tool.
+ * The calling case's session context is **not** inherited: [Input.context] is the only thing of the
+ * caller that reaches the new case, so the caller hands over just the relevant part, typically the entity
+ * the prompt is about. [CaseLaunchService] adds the context of the user the case runs for (what the
+ * `UserContextProvider` returns and the user's preferred language), which wins over the caller's on a
+ * conflicting key.
  *
  * The tool parses the input, applies the agent allowlist of its integration config, and hands the
  * rest to [CaseLaunchService] along with the [allowOtherUsers] switch of that config. The service owns
@@ -69,7 +71,8 @@ class CreateCaseTool(
      * @param userId Internal id of the user the case runs for. Only honoured when the integration
      *   allows it. Omit for the current user.
      * @param context Key/value context the new case starts with, for example the entity the prompt
-     *   is about. Only these entries are passed on, never the calling case's own context.
+     *   is about. Only these entries are passed on from the caller, never the calling case's own context.
+     *   The context resolved for the target user is added to them and wins on a conflicting key.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class Input(

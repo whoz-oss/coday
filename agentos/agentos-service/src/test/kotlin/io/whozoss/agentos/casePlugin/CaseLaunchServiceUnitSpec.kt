@@ -3,6 +3,8 @@ package io.whozoss.agentos.casePlugin
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
@@ -11,6 +13,8 @@ import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.caseFlow.SessionContextKeys
+import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -19,14 +23,16 @@ import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
+import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [CaseLaunchService]: the case it creates (parent link, title, first message, ADMIN
- * grant, context), the target user, agent access, and cleanup on failure. A
- * refusal must never create a case.
+ * Unit tests for [CaseLaunchService]: the case it creates (origin, title, first message, ADMIN grant), its
+ * session context (the caller's, under the one resolved for the target user), agent access, the target user,
+ * and failures. A refusal must never create a case, and a failure is thrown, never turned into a refusal.
  */
 class CaseLaunchServiceUnitSpec :
     StringSpec({
@@ -45,7 +51,9 @@ class CaseLaunchServiceUnitSpec :
             val sessionContext: Map<String, Any?>?,
         )
 
-        class Fixture {
+        class Fixture(
+            userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
+        ) {
             val created = mutableListOf<Case>()
             val sent = mutableListOf<Sent>()
             val deleted = mutableListOf<UUID>()
@@ -73,7 +81,14 @@ class CaseLaunchServiceUnitSpec :
                         true
                     }
                 }
-            val service = CaseLaunchService(caseService, userService, agentConfigService, permissionService)
+            val service =
+                CaseLaunchService(
+                    caseService = caseService,
+                    userService = userService,
+                    agentConfigService = agentConfigService,
+                    permissionService = permissionService,
+                    userSessionContextResolver = userSessionContextResolver,
+                )
 
             init {
                 every { userService.findById(caller.id) } returns caller
@@ -129,6 +144,21 @@ class CaseLaunchServiceUnitSpec :
         )
 
         fun CaseLaunchOutcome.refusal() = shouldBeInstanceOf<CaseLaunchOutcome.Refused>()
+
+        /** A provider answering [answer] for any user; the calls it received are recorded in [asked]. */
+        fun provider(
+            asked: MutableList<Pair<String, UUID>> = mutableListOf(),
+            answer: (String) -> UserContextResult,
+        ): UserContextProvider =
+            mockk {
+                every { provideUserContext(any(), any()) } answers {
+                    asked += firstArg<String>() to secondArg<UUID>()
+                    answer(firstArg())
+                }
+            }
+
+        /** A resolver whose provider answers [result] for any user. */
+        fun resolverAnswering(result: UserContextResult) = UserSessionContextResolver(provider { result })
 
         // -------------------------------------------------------------------------
         // The case it creates
@@ -221,7 +251,7 @@ class CaseLaunchServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Context
+        // Session context: the caller's, under the one resolved for the target user
         // -------------------------------------------------------------------------
 
         "without a context the first message carries no session context" {
@@ -240,13 +270,89 @@ class CaseLaunchServiceUnitSpec :
             f.sent.single().sessionContext shouldBe null
         }
 
-        "the context handed over is the session context of the first message, exactly as given" {
+        "when nothing is resolved, the context handed over is the session context of the first message, as given" {
             val f = Fixture()
             val context = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
             f.service.launch(request(context = context))
 
             f.sent.single().sessionContext shouldBe context
+        }
+
+        "the target user's context is resolved from the provider, in the namespace of the calling case" {
+            val asked = mutableListOf<Pair<String, UUID>>()
+            val providerContext = mapOf("userContext" to mapOf("talentId" to "t1"), "description" to "d")
+            val f = Fixture(UserSessionContextResolver(provider(asked) { UserContextResult.Success(providerContext) }))
+
+            f.service.launch(request())
+
+            asked shouldBe listOf(caller.externalId to namespaceId)
+            f.sent.single().sessionContext shouldBe providerContext
+        }
+
+        "for another user it is the target's context that is resolved, not the caller's" {
+            val asked = mutableListOf<Pair<String, UUID>>()
+            val f =
+                Fixture(
+                    UserSessionContextResolver(
+                        provider(asked) { externalId -> UserContextResult.Success(mapOf("who" to externalId)) },
+                    ),
+                )
+
+            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
+
+            asked shouldBe listOf(other.externalId to namespaceId)
+            f.sent.single().sessionContext shouldBe mapOf("who" to other.externalId)
+        }
+
+        "the preferred language of the user the case runs for is added to the context, without any provider" {
+            val f = Fixture()
+            every { f.userService.findById(other.id) } returns other.copy(preferredLanguage = "fr")
+
+            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
+
+            f.sent.single().sessionContext shouldBe mapOf(SessionContextKeys.PREFERRED_LANGUAGE to "fr")
+        }
+
+        "the caller's context is kept next to the resolved one" {
+            val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("userContext" to "u"))))
+            val entity = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
+
+            f.service.launch(request(context = entity))
+
+            f.sent.single().sessionContext shouldBe entity + mapOf("userContext" to "u")
+        }
+
+        "the resolved context wins over a key the caller forged: userContext and preferredLanguage" {
+            val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("userContext" to "real"))))
+            every { f.userService.findById(caller.id) } returns caller.copy(preferredLanguage = "fr")
+
+            val forged = mapOf("userContext" to "forged", SessionContextKeys.PREFERRED_LANGUAGE to "de", "kept" to 1)
+
+            f.service.launch(request(context = forged))
+
+            f.sent.single().sessionContext shouldBe
+                mapOf("userContext" to "real", SessionContextKeys.PREFERRED_LANGUAGE to "fr", "kept" to 1)
+        }
+
+        "a provider with nothing to say and no preferred language leaves no session context" {
+            val f = Fixture(resolverAnswering(UserContextResult.Success(null)))
+
+            f.service.launch(request())
+
+            f.sent.single().sessionContext shouldBe null
+        }
+
+        "the provider is never called for a launch refused before it: it may be an external request" {
+            val asked = mutableListOf<Pair<String, UUID>>()
+            val f = Fixture(UserSessionContextResolver(provider(asked) { UserContextResult.Success(null) }))
+            f.deployAgent(caller, "SomethingElse")
+
+            f.service.launch(request()).refusal().reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe
+                CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
+
+            asked shouldBe emptyList()
         }
 
         // -------------------------------------------------------------------------
@@ -347,7 +453,7 @@ class CaseLaunchServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Failures: thrown as is, never turned into refusals
+        // Failures: thrown, never turned into refusals
         // -------------------------------------------------------------------------
 
         "a failure to look a user up is thrown as is, before anything is created" {
@@ -390,5 +496,36 @@ class CaseLaunchServiceUnitSpec :
             f.deleteFailure = RuntimeException("delete also failed")
 
             shouldThrow<RuntimeException> { f.service.launch(request()) }.message shouldBe "grant failed"
+        }
+
+        "a permanent failure to resolve the target user's context is thrown, before anything is created" {
+            val f = Fixture(resolverAnswering(UserContextResult.PermanentFailure("404 secret upstream body")))
+
+            val failure = shouldThrow<UserContextUnavailableException> { f.service.launch(request()) }
+
+            // the upstream reason is for the logs, not for the LLM, which sees the exception's message
+            failure.message shouldNotContain "secret"
+            f.created shouldBe emptyList()
+            f.sent shouldBe emptyList()
+            verify(exactly = 0) { f.permissionService.grantPermission(any(), any(), any(), any()) }
+        }
+
+        "a transient failure to resolve it is thrown too, and says it may succeed later" {
+            val f = Fixture(resolverAnswering(UserContextResult.TransientFailure("503")))
+
+            shouldThrow<UserContextUnavailableException> { f.service.launch(request()) }.message shouldContain
+                "may succeed later"
+            f.created shouldBe emptyList()
+        }
+
+        "a provider that throws fails the launch the same way: the resolver turns it into a transient failure" {
+            val throwing =
+                mockk<UserContextProvider> {
+                    every { provideUserContext(any(), any()) } throws RuntimeException("connection reset")
+                }
+            val f = Fixture(UserSessionContextResolver(throwing))
+
+            shouldThrow<UserContextUnavailableException> { f.service.launch(request()) }
+            f.created shouldBe emptyList()
         }
     })
