@@ -76,7 +76,14 @@ describe('LaunchPageComponent namespace launch', () => {
     })
     const host = await setup(service)
     expect(form().controls['namespaceId'].value).toBe(NS1)
-    expect(host.textContent).toContain('Never launched')
+    // Material options render in the overlay only when the select is opened;
+    // assert the loaded option through component state and the selected id hint.
+    const loaded = (
+      fixture.componentInstance as unknown as { namespaces: () => Array<{ id: string; name: string }> }
+    ).namespaces()
+    expect(loaded).toEqual([{ id: NS1, name: 'Never launched' }])
+    const namespaceField = host.querySelector('[data-launch-namespace="true"]')?.closest('mat-form-field')
+    expect(namespaceField?.querySelector('mat-hint')?.textContent).toContain(`Namespace id: ${NS1}`)
     expect((service as unknown as { getWorkstreams?: jest.Mock }).getWorkstreams).toBeUndefined()
   })
 
