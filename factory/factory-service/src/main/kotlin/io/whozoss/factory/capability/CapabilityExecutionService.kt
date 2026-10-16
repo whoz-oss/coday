@@ -1180,9 +1180,10 @@ class CapabilityExecutionService(
             caseId = reservation.caseId,
             namespaceId = namespaceId,
             parentCaseId = reservation.parentCaseId,
-            // Only the unique entry-agent/root case receives Factory's exact
-            // persisted run title. Child cases keep their generated title, and
-            // a missing/blank persisted title lets the adapter use its fallback.
+            // The unique entry-agent/root case uses Factory's exact persisted
+            // run title. Every other agent-step case uses its configured agent
+            // name. Missing/blank values let the adapter keep its historical
+            // generated fallback; recovered cases are never updated.
             title = if (reservation.parentCaseId == null && step.id == requireSingleEntryAgentStep(
                     scope, namespaceId, workflowId,
                 ).id
@@ -1193,7 +1194,7 @@ class CapabilityExecutionService(
                     .let { it as? String }
                     ?.takeIf { it.isNotBlank() }
             } else {
-                null
+                step.responsibility.name?.takeIf { it.isNotBlank() }
             },
             attemptId = reservation.attemptId,
             capabilityToken = reservation.capabilityToken,

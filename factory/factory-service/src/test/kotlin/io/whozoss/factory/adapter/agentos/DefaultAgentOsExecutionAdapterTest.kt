@@ -115,6 +115,31 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
+    fun `a following agent case uses the configured agent name as title`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-2")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(jsonPath("$.title").value("Reviewer"))
+            .andExpect(jsonPath("$.parentCaseId").value("case-1"))
+            .andRespond(withSuccess("""{"id":"case-2","namespaceId":"ns-1","parentCaseId":"case-1"}""", MediaType.APPLICATION_JSON))
+
+        adapter.createOrRecoverExecution(
+            TrustedCaseBinding(
+                caseId = "case-2",
+                attemptId = "attempt-2",
+                namespaceId = "ns-1",
+                parentCaseId = "case-1",
+                agentName = "Reviewer",
+                title = "Reviewer",
+            ),
+            workflowId = "wf-1",
+            stepId = "review",
+        )
+
+        server.verify()
+    }
+
+    @Test
     fun `without an explicit title the existing generated title is preserved`() {
         val (adapter, server) = build()
         server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
@@ -145,6 +170,31 @@ class DefaultAgentOsExecutionAdapterTest {
             stepId = "step-1",
         )
 
+        server.verify()
+    }
+
+    @Test
+    fun `cold cache recovery never posts a title update`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(
+            withSuccess(
+                """{"id":"case-1","namespaceId":"ns-1","title":"Existing title"}""",
+                MediaType.APPLICATION_JSON,
+            ),
+        )
+
+        val handle = adapter.createOrRecoverExecution(
+            TrustedCaseBinding(
+                caseId = "case-1",
+                attemptId = "attempt-1",
+                namespaceId = "ns-1",
+                title = "New Factory title",
+            ),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        assertThat(handle.recovered).isTrue()
         server.verify()
     }
 
