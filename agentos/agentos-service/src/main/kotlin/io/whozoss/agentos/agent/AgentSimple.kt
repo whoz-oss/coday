@@ -120,7 +120,7 @@ class AgentSimple(
                     }
 
                 logger.debug {
-                    "[$name] sending ${allMessages.size} messages to LLM" +
+                    "[AgentSimple] agent=$name sending ${allMessages.size} messages to LLM" +
                         (if (instructions != null) ", instructions length=${instructions.length} chars" else ", no instructions")
                 }
 
@@ -143,11 +143,14 @@ class AgentSimple(
 
                 emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
 
-                // Shared timer: reset to markNow() each time the LLM hands back control
-                // (prompt sent, or tool response returned). Measures pure LLM thinking time
-                // per turn, including both tool-calling turns and the final text turn.
-                val llmTurnMark = AtomicReference(TimeSource.Monotonic.markNow())
-                val llmTurnIndex = AtomicInteger(1)
+                // Timing is diagnostic-only: do not even take a monotonic-clock reading unless
+                // DEBUG is enabled. When enabled, the mark is reset each time the LLM hands back
+                // control (prompt sent, or tool response returned), so it measures pure LLM
+                // thinking time per turn, including tool-calling and final-text turns.
+                val latencyLoggingEnabled = logger.isDebugEnabled
+                val llmTurnMark =
+                    if (latencyLoggingEnabled) AtomicReference(TimeSource.Monotonic.markNow()) else null
+                val llmTurnIndex = if (latencyLoggingEnabled) AtomicInteger(1) else null
 
                 // Convert StandardTool to ToolCallback with event emission
                 val toolCallbacks =
@@ -230,12 +233,11 @@ class AgentSimple(
                                     streamCompleted = true
                                 } else {
                                     // Log LLM thinking time once per turn on its first text chunk.
-                                    if (!currentTurnLogged) {
+                                    if (latencyLoggingEnabled && !currentTurnLogged) {
                                         currentTurnLogged = true
-                                        logger.info {
-                                            "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${
-                                                llmTurnMark.get().elapsedNow()
-                                            }"
+                                        logger.debug {
+                                            "[AgentSimple] agent=$name case=$caseId LLM turn=${llmTurnIndex!!.get()} " +
+                                                "first response after ${llmTurnMark!!.get().elapsedNow()}"
                                         }
                                     }
 
@@ -491,8 +493,8 @@ class AgentSimple(
         namespaceId: UUID,
         caseId: UUID,
         eventChannel: Channel<CaseEvent>,
-        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>,
-        llmTurnIndex: AtomicInteger,
+        llmTurnMark: AtomicReference<TimeSource.Monotonic.ValueTimeMark>?,
+        llmTurnIndex: AtomicInteger?,
     ): ToolCallback =
         object : ToolCallback {
             // Expose the tool's own schema verbatim — no reflection-based generation.
@@ -513,12 +515,16 @@ class AgentSimple(
             override fun call(toolInput: String): String {
                 val toolRequestId = UUID.randomUUID().toString()
 
-                // The LLM decided to call this tool: log how long it thought since
-                // the prompt was sent (or since the previous tool response was returned).
-                val turn = llmTurnIndex.get()
-                logger.info { "$name LLM turn $turn answered in ${llmTurnMark.get().elapsedNow()}" }
+                // The LLM decided to call this tool: in DEBUG, log how long it thought
+                // since the prompt was sent (or since the previous tool response was returned).
+                if (llmTurnMark != null && llmTurnIndex != null) {
+                    logger.debug {
+                        "[AgentSimple] agent=$name case=$caseId LLM turn=${llmTurnIndex.get()} " +
+                            "requested tool=${tool.name} after ${llmTurnMark.get().elapsedNow()}"
+                    }
+                }
 
-                logger.trace { "[$name] tool '${tool.name}' called with args: $toolInput" }
+                logger.trace { "[AgentSimple] agent=$name tool '${tool.name}' called with args: $toolInput" }
 
                 sendEvent(
                     ToolRequestEvent(
@@ -610,7 +616,11 @@ class AgentSimple(
                                 )
                             }
                     }
-                logger.info { "tool '${tool.name}' executed in $toolDuration" }
+                if (llmTurnMark != null) {
+                    logger.debug {
+                        "[AgentSimple] agent=$name case=$caseId tool=${tool.name} completed in $toolDuration"
+                    }
+                }
                 // Success and tool-error paths stop the timer here. AgentInterrupt stops it before
                 // rethrowing; cancellation/interruption rethrow without recording a metric.
                 toolMetricsService?.stopTimerAndSendMetrics(
@@ -623,8 +633,10 @@ class AgentSimple(
 
                 // Reset the turn mark so the next measurement starts from when
                 // we hand the tool result back to the LLM.
-                llmTurnMark.set(TimeSource.Monotonic.markNow())
-                llmTurnIndex.incrementAndGet()
+                if (llmTurnMark != null && llmTurnIndex != null) {
+                    llmTurnMark.set(TimeSource.Monotonic.markNow())
+                    llmTurnIndex.incrementAndGet()
+                }
 
                 sendEvent(
                     ToolResponseEvent(
