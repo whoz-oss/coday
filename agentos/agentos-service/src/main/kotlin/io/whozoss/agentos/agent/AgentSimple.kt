@@ -22,11 +22,14 @@ import io.whozoss.agentos.usage.CostRunStopped
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.takeWhile
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.reactive.asFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.selects.select
 import mu.KLogging
 import org.springframework.ai.chat.client.ChatClient
 import org.springframework.ai.chat.messages.AssistantMessage
@@ -173,45 +176,82 @@ class AgentSimple(
                 // Use stream() for progressive text display
                 val streamSpec = promptWithTools.stream()
 
-                // Collect streamed chunks
+                // Collect tool events and streamed chunks concurrently. Spring AI executes a
+                // tool callback while its content stream is still open; draining the callback
+                // channel only when a text chunk arrives used to hide a long-running tool (and
+                // the following LLM round) from the UI until the model eventually produced text.
+                // Keeping those two sources separate makes the live activity timeline truthful.
                 val contentBuilder = StringBuilder()
                 var currentTurnLogged = false
 
-                // Convert stream to Flow.
-                // takeWhile cancels the upstream reactive stream as soon as shouldContinue()
-                // returns false, so we stop consuming the LLM HTTP stream immediately
-                // rather than merely skipping chunks with return@collect.
-                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
-                    // Emit any pending tool events and reset the text-turn log flag so the
-                    // next text chunk after a tool call is correctly recognised as a new turn.
-                    var toolEvent = toolEventChannel.tryReceive().getOrNull()
-                    while (toolEvent != null) {
-                        emit(toolEvent)
-                        if (toolEvent is ToolResponseEvent) {
-                            currentTurnLogged = false
+                coroutineScope {
+                    // Keep the producer/consumer bridge bounded: unlike tool callbacks,
+                    // streamed text can safely suspend until the event flow catches up.
+                    // This preserves streaming back-pressure instead of accumulating an
+                    // arbitrarily large response in memory.
+                    val textChunkChannel = Channel<String>(Channel.BUFFERED)
+                    val streamJob =
+                        launch {
+                            try {
+                                // takeWhile cancels the upstream reactive stream as soon as
+                                // shouldContinue() returns false, rather than merely skipping chunks.
+                                streamSpec.content().asFlow().takeWhile { shouldContinue() }.collect { chunk ->
+                                    textChunkChannel.send(chunk)
+                                }
+                                textChunkChannel.close()
+                            } catch (e: Throwable) {
+                                textChunkChannel.close(e)
+                                // Cancellation is control flow, not a stream failure. Let it
+                                // propagate through the structured scope so the HTTP stream and
+                                // every child coroutine are cancelled promptly.
+                                if (e is CancellationException) throw e
+                            }
                         }
-                        toolEvent = toolEventChannel.tryReceive().getOrNull()
-                    }
 
-                    // Log LLM thinking time once per turn on the first text chunk of that turn
-                    if (!currentTurnLogged) {
-                        currentTurnLogged = true
-                        logger.info {
-                            "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${
-                                llmTurnMark.get().elapsedNow()
-                            }"
+                    var streamCompleted = false
+                    while (!streamCompleted) {
+                        select<Unit> {
+                            toolEventChannel.onReceiveCatching { received ->
+                                received.exceptionOrNull()?.let { throw it }
+                                received.getOrNull()?.let { toolEvent ->
+                                    emit(toolEvent)
+                                    if (toolEvent is ToolResponseEvent) {
+                                        currentTurnLogged = false
+                                        // The tool response has been handed back to Spring AI.
+                                        // Tell live consumers that the next LLM turn is underway.
+                                        emit(ThinkingEvent(namespaceId = namespaceId, caseId = caseId))
+                                    }
+                                }
+                            }
+                            textChunkChannel.onReceiveCatching { received ->
+                                received.exceptionOrNull()?.let { throw it }
+                                val chunk = received.getOrNull()
+                                if (chunk == null) {
+                                    streamCompleted = true
+                                } else {
+                                    // Log LLM thinking time once per turn on its first text chunk.
+                                    if (!currentTurnLogged) {
+                                        currentTurnLogged = true
+                                        logger.info {
+                                            "[AgentSimple] $name LLM turn ${llmTurnIndex.get()} answered in ${
+                                                llmTurnMark.get().elapsedNow()
+                                            }"
+                                        }
+                                    }
+
+                                    contentBuilder.append(chunk)
+                                    emit(
+                                        TextChunkEvent(
+                                            namespaceId = namespaceId,
+                                            caseId = caseId,
+                                            chunk = chunk,
+                                        ),
+                                    )
+                                }
+                            }
                         }
                     }
-
-                    contentBuilder.append(chunk)
-                    // Emit text chunk for progressive display
-                    emit(
-                        TextChunkEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            chunk = chunk,
-                        ),
-                    )
+                    streamJob.join()
                 }
 
                 // Strip any conversation tags the LLM may have hallucinated in its response.
