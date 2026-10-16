@@ -43,6 +43,35 @@ class WorkstreamService(
     /** The domain registry entry of [slug], or `null` when absent in [scope]. */
     fun findDomain(scope: TenantScope, slug: String): Workstream? = repository.findDomain(scope, slug)
 
+    /**
+     * Resolve the unique mapping in an organization, or initialize it for a first
+     * launch. The deterministic UUID-derived slug plus Neo4j node id makes two
+     * concurrent first launches converge without resetting an existing entry.
+     */
+    @Synchronized
+    fun findOrInitializeForNamespace(organizationId: String, namespaceId: String): Workstream {
+        val matches = repository.findDomainsByNamespace(organizationId, namespaceId)
+        if (matches.size > 1) throw ConflictException(
+            "Multiple workstreams map to namespace '$namespaceId'",
+            mapOf("code" to "AMBIGUOUS_WORKSTREAM_NAMESPACE"),
+        )
+        matches.singleOrNull()?.let { return it }
+        val slug = "namespace-${namespaceId.lowercase()}"
+        val initialized = repository.mergeInitialNamespaceMapping(
+            organizationId,
+            slug,
+            namespaceId,
+            "Namespace $namespaceId",
+        )
+        if (initialized.organizationId != organizationId || initialized.namespaceId != namespaceId) {
+            throw ConflictException(
+                "The initial workstream id is already assigned",
+                mapOf("code" to "WORKSTREAM_NAMESPACE_CONFLICT"),
+            )
+        }
+        return initialized
+    }
+
     fun create(scope: TenantScope, slug: String?, name: String?, status: String?): Map<String, Any?> =
         create(scope, CreateWorkstreamRequest(slug = slug, name = name, status = status))
 
@@ -155,6 +184,21 @@ class WorkstreamService(
             ?: DEFAULT_NAMESPACE_ID
 
     /**
+     * Resolve the single namespace configured for the caller's workstream.
+     * This strict service boundary never accepts a caller-selected namespace
+     * and never falls back to the historical `default` namespace.
+     */
+    fun requireConfiguredNamespace(scope: TenantScope): String {
+        val workstream = findDomain(scope, scope.workstreamId)
+            ?: factoryError(403, "WORKSTREAM_NAMESPACE_MAPPING_INVALID", "The workstream namespace mapping is unavailable.")
+        val namespace = workstream.namespaceId?.trim()?.takeIf { it.isNotEmpty() }
+        if (workstream.status != WorkstreamStatus.ACTIVE || namespace == null || !NAMESPACE_ID.matches(namespace)) {
+            factoryError(403, "WORKSTREAM_NAMESPACE_MAPPING_INVALID", "The workstream namespace mapping is unavailable.")
+        }
+        return namespace
+    }
+
+    /**
      * The namespace declared by [workstreamId] in the registry (defaulting to
      * the caller's workstream), or `null` when the workstream declares none.
      */
@@ -181,5 +225,6 @@ class WorkstreamService(
     companion object {
         /** Namespace used when neither the request nor the workstream declares one. */
         const val DEFAULT_NAMESPACE_ID = "default"
+        private val NAMESPACE_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
     }
 }

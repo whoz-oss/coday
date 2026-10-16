@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core'
+import { toSignal } from '@angular/core/rxjs-interop'
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms'
 import { Router, RouterLink } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
@@ -45,7 +46,8 @@ export function formatLaunchError(error: FactoryApiError | null | undefined): st
 /**
  * Dedicated `/lancer` screen using Factory's canonical create-and-submit use
  * case. Factory owns workflow identity and execution attribution. The browser
- * supplies the selected namespace only through the trusted/local HTTP boundary.
+ * selects one of the namespaces AgentOS exposes to the current user. Factory
+ * resolves or initializes the organization-scoped workstream association.
  * A backend failure keeps the form visible and surfaces a readable banner.
  */
 @Component({
@@ -75,6 +77,8 @@ export class LaunchPageComponent {
   protected readonly errorMessage = signal<string | null>(null)
   protected readonly definitionsLoading = signal(false)
   protected readonly definitionsError = signal<string | null>(null)
+  protected readonly launchTargetsLoading = signal(false)
+  protected readonly launchTargetsError = signal<string | null>(null)
 
   protected readonly form = inject(NonNullableFormBuilder).group({
     workflowType: ['', Validators.required],
@@ -84,10 +88,17 @@ export class LaunchPageComponent {
     initialRequest: ['', Validators.maxLength(4000)],
   })
 
+  private readonly selectedNamespaceId = toSignal(this.form.controls.namespaceId.valueChanges, {
+    initialValue: this.form.controls.namespaceId.value,
+  })
+  protected readonly selectedNamespace = computed(
+    () => this.namespaces().find((item) => item.id === this.selectedNamespaceId()) ?? null
+  )
+
   constructor() {
     inject(ShellState).crumbs.set([{ label: 'Sandboxes', link: '/sandboxes' }, { label: 'Launch a run' }])
     this.loadDefinitions()
-    this.loadNamespaces()
+    this.loadLaunchTargets()
   }
 
   /** Fetch the registered workflow definitions and expose their types. */
@@ -111,15 +122,23 @@ export class LaunchPageComponent {
     })
   }
 
-  /** Fetch the AgentOS namespaces (the API degrades to `[]` on failure). */
-  private loadNamespaces(): void {
-    this.api.getNamespaces().subscribe((payload) => {
-      const options = extractNamespaceOptions(payload)
-      this.namespaces.set(options)
-      const [firstNamespace] = options
-      if (firstNamespace && !this.form.controls.namespaceId.value) {
-        this.form.controls.namespaceId.setValue(firstNamespace.id)
-      }
+  /** AgentOS' list is a launch UX aid, not an individual backend authorization. */
+  private loadLaunchTargets(): void {
+    this.launchTargetsLoading.set(true)
+    this.launchTargetsError.set(null)
+    this.api.getNamespaces().subscribe({
+      next: (payload) => {
+        const options = extractNamespaceOptions(payload)
+        this.namespaces.set(options)
+        this.form.controls.namespaceId.setValue(options.length === 1 ? (options[0]?.id ?? '') : '')
+        this.launchTargetsLoading.set(false)
+      },
+      error: (error: FactoryApiError) => {
+        this.namespaces.set([])
+        this.form.controls.namespaceId.setValue('')
+        this.launchTargetsError.set(error?.message ?? 'Namespaces unavailable.')
+        this.launchTargetsLoading.set(false)
+      },
     })
   }
 
@@ -132,6 +151,14 @@ export class LaunchPageComponent {
     }
 
     const { workflowType, namespaceId, title, ticket, initialRequest } = this.form.getRawValue()
+    if (
+      this.launchTargetsLoading() ||
+      this.launchTargetsError() ||
+      !this.namespaces().some((item) => item.id === namespaceId)
+    ) {
+      this.errorMessage.set('Select an available namespace before launching.')
+      return
+    }
     const trimmedTitle = title.trim()
     const trimmedTicket = ticket.trim()
     const trimmedInitialRequest = initialRequest.trim()
@@ -144,12 +171,12 @@ export class LaunchPageComponent {
     this.api
       .createWorkflowRun(
         {
+          namespaceId,
           workflowType,
           ...(trimmedTitle ? { title: trimmedTitle } : {}),
           ...(trimmedInitialRequest ? { initialRequest: trimmedInitialRequest } : {}),
           ...(trimmedTicket ? { parameters: { ticket: trimmedTicket } } : {}),
         },
-        namespaceId,
         idempotencyKey
       )
       .subscribe({

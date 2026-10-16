@@ -1,0 +1,81 @@
+openapi: 3.0.3
+info:
+  title: Factory worker result submission
+  version: 0.1.0
+servers:
+  - url: https://factory.example.invalid
+paths:
+  /api/factory/agent-step-results:
+    post:
+      operationId: submitStepResult
+      summary: Submit the structured result of one Factory attempt
+      description: >-
+        Submit only after completing the current Factory step. Use the Factory-issued
+        attemptId and Idempotency-Key from the execution brief. Neither value is a secret.
+        The deployment service credential authenticates the integration, not a case or
+        agent. Authorization is limited to attempts durably entrusted to that service
+        identity; one credential may therefore access multiple explicitly bound attempts
+        across namespaces, but provides no runtime isolation per attempt and authorizes
+        no other Factory endpoint.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: Factory-issued submission identifier from the execution brief.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [attemptId, result]
+              properties:
+                attemptId:
+                  type: string
+                  minLength: 1
+                  description: Factory-issued public attempt identifier from the execution brief.
+                result:
+                  type: object
+                  additionalProperties: false
+                  required: [status, summary]
+                  properties:
+                    status:
+                      type: string
+                      enum: [PASS, FAIL, NEEDS_RESEARCH]
+                    summary:
+                      type: string
+                      minLength: 1
+                    claims:
+                      type: object
+                      additionalProperties: true
+                    artifacts:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                    findings:
+                      type: array
+                      items:
+                        type: object
+                        additionalProperties: true
+                    expected_amendment_seq:
+                      type: integer
+                      format: int64
+      responses:
+        '200':
+          description: Identical idempotent replay accepted
+        '201':
+          description: Result accepted
+        '400':
+          description: Invalid schema or inconsistent authorized attempt data
+        '401':
+          description: Missing or invalid service bearer
+        '403':
+          description: The verified service identity is not bound to this attempt
+        '409':
+          description: Idempotency or semantic collision

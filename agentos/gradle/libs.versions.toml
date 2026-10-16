@@ -103,8 +103,6 @@ pf4j-spring = { module = "org.pf4j:pf4j-spring", version.ref = "pf4jSpring" }
 spring-boot-starter-web = { module = "org.springframework.boot:spring-boot-starter-web" }
 spring-boot-starter-actuator = { module = "org.springframework.boot:spring-boot-starter-actuator" }
 spring-boot-starter-security = { module = "org.springframework.boot:spring-boot-starter-security" }
-# Spring Security Crypto — AES-256-GCM text encryptor (Encryptors.text), used by the
-# service's FieldEncryptor and, compileOnly, by agentos-factory-bridge-plugin.
 #
 # agentos-service does NOT declare it: it arrives transitively through
 # spring-boot-starter-security (-> spring-security-config / -web) with its version imposed

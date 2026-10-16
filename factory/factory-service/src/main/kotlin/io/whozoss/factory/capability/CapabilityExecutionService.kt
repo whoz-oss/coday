@@ -12,11 +12,14 @@ import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.DurableAttemptIntegrationBinding
+import io.whozoss.factory.agentattempt.persistence.DurableAttemptIntegrationBindingRepository
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
+import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -149,6 +152,14 @@ class CapabilityExecutionService(
     private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
     /** Factory-authoritative PR file scope used by scoped review agents. */
     private val pullRequestReviewScopeResolver: PullRequestReviewScopeResolver? = null,
+    /**
+     * Experimental, opt-in HTTP_API callback contract. The service bearer stays
+     * in AgentOS Auth Settings; only Factory-owned public identifiers enter the
+     * brief. Existing bridge tools remain the default when disabled.
+     */
+    private val factoryProperties: FactoryProperties = FactoryProperties(),
+    /** Durable per-attempt authorization for the opt-in HTTP_API result channel. */
+    private val integrationBindingRepository: DurableAttemptIntegrationBindingRepository? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -276,8 +287,16 @@ class CapabilityExecutionService(
         ticket?.takeIf { it.isNotBlank() }?.let { "Execute this Factory session step for ticket $it." }
 
     /** Branch identity is derived exclusively from Factory-persisted trusted data. */
-    private fun expectedFactoryBranch(ticket: String?, workflowId: String): String {
-        val trustedComponent = ticket?.takeIf { TRUSTED_TICKET.matches(it) } ?: workflowId
+    private fun expectedFactoryBranch(
+        scope: TenantScope,
+        namespaceId: String,
+        ticket: String?,
+        workflowId: String,
+    ): String {
+        val trustedComponent = trustedWorkflowTicket(scope, namespaceId, workflowId)
+            ?.takeIf { TRUSTED_TICKET.matches(it) }
+            ?: ticket?.takeIf { TRUSTED_TICKET.matches(it) }
+            ?: workflowId
         val sanitized = trustedComponent.replace(Regex("[^A-Za-z0-9._-]"), "-").trim('-', '.').take(100)
         return "factory/$sanitized"
     }
@@ -470,7 +489,7 @@ class CapabilityExecutionService(
             appendLine("  - Implementation: provide the scoped changes and concrete verification evidence available under the run policy; do not claim checks that were not run.")
             appendLine("  - Review: provide prioritized findings with locations/evidence and residual risks; do not modify code unless requested.")
             appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If that tool is unavailable, do not guess or bypass the clarification requirement.")
-            appendLine("- Call FACTORY_WORKER__submit_step_result only when the analysis, editing, or review work is complete, or when a justified terminal failure prevents completion.")
+            appendLine(resultSubmissionInstruction())
             appendLine("- Use PASS or FAIL according to this step's criteria. Do not invent criteria.")
             appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
             appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
@@ -487,7 +506,7 @@ class CapabilityExecutionService(
     ): String {
         val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
         return if (step.responsibility.name == GITAY_AGENT) {
-            renderGitayBrief(step, assembly, expectedFactoryBranch(trustedWorkflowTicket(scope, namespaceId, workflowId), workflowId))
+            renderGitayBrief(step, assembly, expectedFactoryBranch(scope, namespaceId, ticket, workflowId))
         } else {
             renderBrief(step, assembly)
         }
@@ -511,16 +530,31 @@ class CapabilityExecutionService(
         appendLine()
         appendLine("## Git contract")
         appendLine("Expected branch (authoritative, selected by Factory): $expectedBranch")
-        appendLine("- Use only the configured AgentOS GIT integration tools GIT__git_status and GIT__git_create_branch, plus FACTORY_WORKER__submit_step_result.")
+        appendLine("- Use only the configured AgentOS GIT integration tools GIT__git_status and GIT__git_create_branch, plus the configured Factory result submission tool.")
         appendLine("- Inspect GIT__git_status first and retain the initial HEAD.")
         appendLine("- An initially detached HEAD is normal for an AgentOS workspace when its commit is readable; create the expected branch from that commit.")
         appendLine("- If already on $expectedBranch at that HEAD, make no mutation and submit structured PASS.")
         appendLine("- Otherwise call GIT__git_create_branch with exactly '$expectedBranch', then call GIT__git_status again.")
         appendLine("- Submit PASS only if final branch is exactly $expectedBranch, final HEAD equals initial HEAD, and final HEAD is attached to that branch.")
         appendLine("- A final detached HEAD, existing/divergent branch, another unexpected state, changed or unreadable HEAD, tool refusal, or unverifiable state requires structured FAIL.")
-        appendLine("- Do not infer success from prose. Factory accepts success only through FACTORY_WORKER__submit_step_result.")
+        appendLine("- Do not infer success from prose. Factory accepts success only through its configured structured result tool.")
         appendLine("- Forbidden: file edits, add, commit, push, fetch, stash, reset, merge, branch deletion, and worktree creation/removal.")
         appendLine("- Once Factory accepts the structured result, stop.")
+    }
+
+    private fun renderSubmissionIdentifiers(brief: String, attemptId: String): String = brief
+        .replace("{{FACTORY_ATTEMPT_ID}}", attemptId)
+        .replace("{{FACTORY_SUBMISSION_ID}}", "factory:$attemptId:result")
+
+    private fun resultSubmissionInstruction(): String {
+        val enabled = factoryProperties.security.httpApiSubmission.enabled
+        return if (enabled) {
+            "- Call FACTORY_WORKER__submitStepResult only when the work is complete. " +
+                "Use Factory attemptId '{{FACTORY_ATTEMPT_ID}}' and Idempotency-Key '{{FACTORY_SUBMISSION_ID}}'."
+        } else {
+            "- Call FACTORY_WORKER__submit_step_result only when the analysis, editing, or review work is complete, " +
+                "or when a justified terminal failure prevents completion."
+        }
     }
 
     /**
@@ -541,7 +575,7 @@ class CapabilityExecutionService(
     ): Pair<String, AttemptContextEnvelope> {
         val assembly = assembleBrief(scope, namespaceId, workflowId, step, ticket)
         val brief = if (step.responsibility.name == GITAY_AGENT) {
-            renderGitayBrief(step, assembly, expectedFactoryBranch(trustedWorkflowTicket(scope, namespaceId, workflowId), workflowId))
+            renderGitayBrief(step, assembly, expectedFactoryBranch(scope, namespaceId, ticket, workflowId))
         } else {
             renderBrief(step, assembly)
         }
@@ -815,7 +849,7 @@ class CapabilityExecutionService(
         // Lot D - replay integrity: an existing attempt replays its FROZEN context
         // verbatim; only a brand-new attempt assembles a fresh envelope from the
         // current durable inputs and persists it at registration.
-        val context = frozenContextOf(latestAttempt) ?: run {
+        val contextTemplate = frozenContextOf(latestAttempt) ?: run {
             // Freeze the authoritative workflow amendment counter only for a
             // brand-new attempt. A legacy replay without frozen context must
             // remain legacy/null rather than being retroactively pinned to the
@@ -832,6 +866,15 @@ class CapabilityExecutionService(
                 expectedAmendmentSeq = expectedAmendmentSeq,
             )
             FrozenContext(brief, envelope.toJson())
+        }
+        val context = if (latestAttempt == null) {
+            val renderedBrief = renderSubmissionIdentifiers(contextTemplate.brief, attemptId)
+            val renderedEnvelope = AttemptContextEnvelope.fromJson(contextTemplate.envelopeJson)
+                .copy(briefHash = CanonicalJsonHash.sha256(renderedBrief))
+                .toJson()
+            FrozenContext(renderedBrief, renderedEnvelope)
+        } else {
+            contextTemplate
         }
         val brief = context.brief
 
@@ -1040,7 +1083,7 @@ class CapabilityExecutionService(
             val capabilityToken = issueDurableCapability(
                 scope, namespaceId, workflowId, step, attemptId, family.caseId, agentId, brief,
             )
-            attempts.register(
+            val persisted = attempts.register(
                 scope,
                 DurableAgentAttempt(
                     attemptId = attemptId,
@@ -1060,6 +1103,23 @@ class CapabilityExecutionService(
                     parentCaseId = family.parentCaseId,
                 ),
             )
+            if (factoryProperties.security.httpApiSubmission.enabled) {
+                val serviceIdentityId = factoryProperties.security.httpApiSubmission.serviceIdentityId.takeIf { it.isNotBlank() }
+                    ?: error("HTTP_API submission requires a non-blank service identity id")
+                val bindings = integrationBindingRepository
+                    ?: error("HTTP_API submission is enabled without a durable integration binding repository")
+                bindings.bind(
+                    scope,
+                    DurableAttemptIntegrationBinding(
+                        attemptId = persisted.attemptId,
+                        serviceIdentityId = serviceIdentityId,
+                        namespaceId = persisted.namespaceId,
+                        workflowId = persisted.workflowId,
+                        stepId = persisted.stepId,
+                        briefHash = CanonicalJsonHash.sha256(persisted.brief ?: error("Frozen brief is required")),
+                    ),
+                )
+            }
         }
         val turnStarted = existing?.status in setOf(
             AgentAttemptStatus.STARTING,
@@ -1120,6 +1180,21 @@ class CapabilityExecutionService(
             caseId = reservation.caseId,
             namespaceId = namespaceId,
             parentCaseId = reservation.parentCaseId,
+            // Only the unique entry-agent/root case receives Factory's exact
+            // persisted run title. Child cases keep their generated title, and
+            // a missing/blank persisted title lets the adapter use its fallback.
+            title = if (reservation.parentCaseId == null && step.id == requireSingleEntryAgentStep(
+                    scope, namespaceId, workflowId,
+                ).id
+            ) {
+                workflowRepository.findInstance(scope, namespaceId, workflowId)
+                    ?.instance
+                    ?.get("title")
+                    .let { it as? String }
+                    ?.takeIf { it.isNotBlank() }
+            } else {
+                null
+            },
             attemptId = reservation.attemptId,
             capabilityToken = reservation.capabilityToken,
             agentName = agentId,
@@ -1493,13 +1568,14 @@ class CapabilityExecutionService(
         ticket: String?,
     ): CapabilityExecution {
         val agentId = step.responsibility.name ?: "agent"
-        val brief = buildBrief(scope, namespaceId, workflowId, step, ticket)
+        val briefTemplate = buildBrief(scope, namespaceId, workflowId, step, ticket)
         // The Factory chooses the AgentOS case id so the submission capability
         // it mints can be bound to the exact case that will submit the result.
         val caseId = UUID.randomUUID().toString()
 
         // Phase 1 — short transaction: reserve the attempt and mint the token.
         val attemptId = UUID.randomUUID().toString()
+        val brief = renderSubmissionIdentifiers(briefTemplate, attemptId)
         publishActiveAgentCase(scope, namespaceId, workflowId, step.id, attemptId, agentId, caseId)
         val claim = newTransaction {
             attemptRepository.insert(

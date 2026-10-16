@@ -175,6 +175,19 @@ tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
     workingDir = projectDir
 }
 
+// The two narrow HTTP_API contracts are versioned under openapi/ and remain the
+// source of truth. Package them into the application classpath so serving them
+// does not depend on the process working directory.
+tasks.named<ProcessResources>("processResources") {
+    from("openapi") {
+        include(
+            "factory-worker-http-api-submit-step-result.yaml",
+            "factory-workstream-http-api.yaml",
+        )
+        into("openapi")
+    }
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {

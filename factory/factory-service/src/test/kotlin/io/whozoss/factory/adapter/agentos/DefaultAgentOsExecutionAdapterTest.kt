@@ -97,6 +97,58 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
+    fun `a supplied persisted run title is sent unchanged to AgentOS`() {
+        val (adapter, server) = build()
+        val runTitle = "WZ-35278 — Corriger le renouvellement silencieux des jetons"
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(jsonPath("$.title").value(runTitle))
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
+
+        adapter.createOrRecoverExecution(
+            TrustedCaseBinding(caseId = "case-1", attemptId = "attempt-1", namespaceId = "ns-1", title = runTitle),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        server.verify()
+    }
+
+    @Test
+    fun `without an explicit title the existing generated title is preserved`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(jsonPath("$.title").value("Factory session wf-1 · step step-1"))
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
+
+        adapter.createOrRecoverExecution(
+            TrustedCaseBinding(caseId = "case-1", attemptId = "attempt-1", namespaceId = "ns-1"),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        server.verify()
+    }
+
+    @Test
+    fun `a blank explicit title also preserves the existing generated fallback`() {
+        val (adapter, server) = build()
+        server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(jsonPath("$.title").value("Factory session wf-1 · step step-1"))
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
+
+        adapter.createOrRecoverExecution(
+            TrustedCaseBinding(caseId = "case-1", attemptId = "attempt-1", namespaceId = "ns-1", title = "   "),
+            workflowId = "wf-1",
+            stepId = "step-1",
+        )
+
+        server.verify()
+    }
+
+    @Test
     fun `parentCaseId is sent in the POST body when present`() {
         val (adapter, server) = build()
         server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))

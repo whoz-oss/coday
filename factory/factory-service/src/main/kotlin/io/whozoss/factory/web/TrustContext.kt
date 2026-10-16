@@ -31,6 +31,8 @@ data class TrustContext(
 
     companion object {
         const val AUTH_JWT = "jwt"
+        const val AUTH_STATIC_SERVICE_BEARER = "static-service-bearer"
+        const val AUTH_STATIC_WORKSTREAM_BEARER = "static-workstream-bearer"
         const val AUTH_PROXY_SIGNATURE = "proxy-signature"
         const val AUTH_LOOPBACK_DEV = "loopback-dev"
         const val AUTH_ANONYMOUS = "anonymous"

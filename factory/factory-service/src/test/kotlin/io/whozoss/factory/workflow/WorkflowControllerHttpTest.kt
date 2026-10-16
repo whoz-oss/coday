@@ -10,6 +10,9 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
 import io.whozoss.factory.workflow.service.WorkflowService
+import io.whozoss.factory.workstream.domain.Workstream
+import io.whozoss.factory.workstream.domain.WorkstreamStatus
+import io.whozoss.factory.workstream.persistence.Neo4jWorkstreamRepository
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -42,6 +45,9 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Autowired
     private lateinit var durableAgentAttemptService: DurableAgentAttemptService
 
+    @Autowired
+    private lateinit var workstreamRepository: Neo4jWorkstreamRepository
+
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
     private val secondNamespace = "1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
 
@@ -51,6 +57,18 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     private fun headers(withForward: Boolean = false): HttpHeaders = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
         if (withForward) add("X-Forwarded-For", "203.0.113.9")
+    }
+
+    private fun registerWorkstream(
+        workstreamId: String = scope.workstreamId,
+        namespaceId: String? = namespace,
+        status: WorkstreamStatus = WorkstreamStatus.ACTIVE,
+        organizationId: String = scope.organizationId,
+    ) {
+        workstreamRepository.create(
+            TenantScope(organizationId, workstreamId),
+            Workstream(organizationId, workstreamId, namespaceId, "Launch workstream", status),
+        )
     }
 
     private fun registerDefinition() {
@@ -262,13 +280,14 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `create run accepts an optional initial request and persists it as controller request text`() {
         registerDefinition()
+        registerWorkstream()
         val request = mapOf(
+            "namespaceId" to namespace,
             "workflowType" to "wf-http",
             "initialRequest" to "Analyse the incident and identify the unresolved questions.",
         )
         val requestHeaders = headers().apply {
             set("Idempotency-Key", "create-run-initial-request")
-            set("x-factory-namespace-id", namespace)
         }
 
         val created = restTemplate.exchange(
@@ -288,21 +307,87 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `create run keeps title ticket and initial request optional`() {
         registerDefinition()
+        registerWorkstream()
         val requestHeaders = headers().apply {
             set("Idempotency-Key", "create-run-minimal")
-            set("x-factory-namespace-id", namespace)
         }
 
         val created = restTemplate.exchange(
             "/api/factory/workflows",
             HttpMethod.POST,
-            HttpEntity(mapOf("workflowType" to "wf-http"), requestHeaders),
+            HttpEntity(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), requestHeaders),
             jsonType(),
         )
 
         assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(data(created.body)["controllerRequest"]).isNull()
         assertThat(data(created.body)["title"]).isEqualTo("Wf http")
+    }
+
+    @Test
+    fun `first run initializes namespace mapping and next run reuses it`() {
+        registerDefinition()
+        val first = createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "first")
+        val second = createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "second")
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(second.statusCode).isEqualTo(HttpStatus.CREATED)
+        val mappings = workstreamRepository.findDomainsByNamespace(scope.organizationId, namespace)
+        assertThat(mappings).hasSize(1)
+        assertThat(mappings.single().workstreamId).isEqualTo("namespace-$namespace")
+        assertThat(mappings.single().name).isEqualTo("Namespace $namespace")
+    }
+
+    @Test
+    fun `create run rejects inactive and ambiguous namespace mappings`() {
+        registerDefinition()
+        registerWorkstream(workstreamId = "inactive", status = WorkstreamStatus.PAUSED)
+        assertInvalidStart(createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "inactive"))
+        registerWorkstream(workstreamId = "ambiguous", namespaceId = namespace)
+        assertThat(createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "ambiguous").statusCode)
+            .isEqualTo(HttpStatus.CONFLICT)
+    }
+
+    @Test
+    fun `create run validates namespace UUID`() {
+        registerDefinition()
+        assertThat(createRun(mapOf("namespaceId" to "not-a-uuid", "workflowType" to "wf-http"), "invalid").statusCode)
+            .isEqualTo(HttpStatus.BAD_REQUEST)
+    }
+
+    @Test
+    fun `namespace mapping is isolated by authenticated organization`() {
+        registerDefinition()
+        registerWorkstream(workstreamId = "other", namespaceId = namespace, organizationId = "org-other")
+        val created = createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "isolated")
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, namespace)).hasSize(1)
+        assertThat(workstreamRepository.findDomainsByNamespace("org-other", namespace)).hasSize(1)
+    }
+
+    @Test
+    fun `create run requires the authenticated human boundary`() {
+        val requestHeaders = headers(withForward = true).apply { set("Idempotency-Key", "anonymous-create") }
+        val response = restTemplate.exchange(
+            "/api/factory/workflows",
+            HttpMethod.POST,
+            HttpEntity(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), requestHeaders),
+            jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("TRUST_CONTEXT_UNAVAILABLE")
+    }
+
+    private fun createRun(body: Map<String, Any?>, key: String): ResponseEntity<Map<String, Any?>> =
+        restTemplate.exchange(
+            "/api/factory/workflows",
+            HttpMethod.POST,
+            HttpEntity(body, headers().apply { set("Idempotency-Key", key) }),
+            jsonType(),
+        )
+
+    private fun assertInvalidStart(response: ResponseEntity<Map<String, Any?>>) {
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("INVALID_START_REQUEST")
     }
 
     @Test

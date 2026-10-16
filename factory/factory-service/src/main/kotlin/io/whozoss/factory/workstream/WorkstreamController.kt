@@ -51,11 +51,12 @@ class WorkstreamController(
     @GetMapping
     @Operation(summary = "List workstreams for the caller's tenant.")
     fun list(
-        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): List<Map<String, Any?>> {
         val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
-        requireNamespaceQuery(namespaceId)
+        // Transitional organization-wide registry view. The Cockpit intersects
+        // this with AgentOS' user-filtered namespaces; this list is not itself
+        // a Factory-native human membership authorization.
         return service.list(caller.scope)
     }
 

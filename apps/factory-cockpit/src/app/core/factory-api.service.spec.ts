@@ -669,22 +669,28 @@ describe('FactoryApiService', () => {
     it('creates and durably submits through the canonical collection endpoint', () => {
       service
         .createWorkflowRun(
-          { workflowType: 'delivery', title: 'Readable', parameters: { ticket: 'ABC-1' } },
-          '  ns-1  ',
+          {
+            namespaceId: '0d4bd471-df37-43d8-a8f7-c989f95e71d7',
+            workflowType: 'delivery',
+            title: 'Readable',
+            parameters: { ticket: 'ABC-1' },
+          },
           'request-1'
         )
         .subscribe()
       const request = http.expectOne((r) => r.url === '/api/factory/workflows' && r.method === 'POST')
       expect(request.request.body).toEqual({
+        namespaceId: '0d4bd471-df37-43d8-a8f7-c989f95e71d7',
         workflowType: 'delivery',
         title: 'Readable',
         parameters: { ticket: 'ABC-1' },
       })
       expect(request.request.headers.get('Idempotency-Key')).toBe('request-1')
-      expect(request.request.params.get('namespaceId')).toBe('ns-1')
-      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.params.has('namespaceId')).toBe(false)
+      expect(request.request.headers.has('X-Namespace-Id')).toBe(false)
       expect(request.request.body.workflowId).toBeUndefined()
-      expect(request.request.body.namespaceId).toBeUndefined()
+      expect(request.request.body.namespaceId).toBe('0d4bd471-df37-43d8-a8f7-c989f95e71d7')
+      expect(Object.keys(request.request.body).sort()).toEqual(['namespaceId', 'parameters', 'title', 'workflowType'])
       request.flush({
         data: {
           workflowId: 'generated',
@@ -769,15 +775,20 @@ describe('FactoryApiService', () => {
       expect(wrapped).toEqual([{ id: 'ns-2' }])
     })
 
-    it('getNamespaces degrades gracefully to an empty array on error', () => {
-      let result: unknown[] | undefined
-      service.getNamespaces().subscribe((items) => (result = items))
+    it('getNamespaces exposes a normalized loading error', () => {
+      let error: FactoryApiError | undefined
+      service.getNamespaces().subscribe({ error: (value: FactoryApiError) => (error = value) })
 
       http
         .expectOne((r) => r.url === '/api/agentos/api/namespaces')
-        .flush({ error: { code: 'NOT_FOUND' } }, { status: 404, statusText: 'Not Found' })
+        .flush(
+          { error: { code: 'NOT_FOUND', message: 'Namespaces unavailable' } },
+          { status: 404, statusText: 'Not Found' }
+        )
 
-      expect(result).toEqual([])
+      expect(error).toEqual(
+        expect.objectContaining({ code: 'NOT_FOUND', message: 'Namespaces unavailable', status: 404 })
+      )
     })
   })
 })

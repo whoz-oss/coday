@@ -22,4 +22,32 @@ interface SpringDataNeo4jWorkstreamRepository : Neo4jRepository<WorkstreamNode, 
         """,
     )
     fun findAllByOrganization(organizationId: String): List<WorkstreamNode>
+
+    @Query(
+        """
+        MATCH (w:Workstream)
+        WHERE w.organizationId = ${'$'}organizationId AND w.namespaceId = ${'$'}namespaceId
+        RETURN w
+        ORDER BY w.workstreamId ASC
+        """,
+    )
+    fun findAllByOrganizationAndNamespace(organizationId: String, namespaceId: String): List<WorkstreamNode>
+
+    /** Atomically initializes the deterministic node and never mutates an existing mapping. */
+    @Query(
+        """
+        MERGE (w:Workstream {id: ${'$'}id})
+        ON CREATE SET w.organizationId = ${'$'}organizationId,
+                      w.workstreamId = ${'$'}workstreamId,
+                      w.namespaceId = ${'$'}namespaceId,
+                      w.name = ${'$'}name,
+                      w.status = 'active',
+                      w.allowedWorkflowTypes = [],
+                      w.revision = 1,
+                      w.createdAt = datetime(),
+                      w.updatedAt = datetime()
+        RETURN w
+        """,
+    )
+    fun mergeInitialMapping(id: String, organizationId: String, workstreamId: String, namespaceId: String, name: String): WorkstreamNode
 }

@@ -272,7 +272,7 @@ class HttpApiConfigParserUnitSpec : StringSpec({
             """{ "spec": { "inline": "openapi: 3.0.0" }, "baseUrl": "https://127.0.0.1:8443" }""",
         )
         shouldThrow<IllegalArgumentException> { HttpApiConfigParser.parse(json) }
-        val lenient = HttpApiConfigParser.parse(json, OutboundUrlPolicy(allowLoopbackForTests = true))
+        val lenient = HttpApiConfigParser.parse(json, OutboundUrlPolicy(allowLoopbackHttp = true))
         lenient.baseUrl shouldBe "https://127.0.0.1:8443"
     }
 

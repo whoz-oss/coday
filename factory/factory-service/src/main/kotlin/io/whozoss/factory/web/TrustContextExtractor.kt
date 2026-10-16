@@ -4,6 +4,7 @@ import io.whozoss.factory.config.FactoryProperties
 import jakarta.servlet.http.HttpServletRequest
 import org.springframework.stereotype.Component
 import java.net.InetAddress
+import java.security.MessageDigest
 import java.util.Locale
 
 /**
@@ -47,10 +48,35 @@ class TrustContextExtractor(
         var namespaceId: String? = null
         var caseId: String? = null
 
-        // 1. JWT — `Authorization: Bearer <token>` verified against the Fake IdP.
-        val jwt = bearerToken(header("authorization"))
-        if (!jwt.isNullOrEmpty()) {
-            val verification = FakeIdp.verifyJwt(jwt, secret)
+        // 1. Bearer credential. The opt-in HTTP_API service token is checked
+        // first with constant-time comparison; otherwise the value is treated
+        // as a Fake IdP JWT. The static service identity never inherits
+        // namespace, case or scopes from caller-controlled headers.
+        val bearer = bearerToken(header("authorization"))
+        val httpApiSubmission = properties.security.httpApiSubmission
+        val workstreamAccess = properties.security.workstreamService
+        if (!bearer.isNullOrEmpty() && WorkstreamServiceAccessRules.isUsable(properties.security) &&
+            secureEquals(bearer, workstreamAccess.bearerToken)
+        ) {
+            // Conversational FACTORY_WORKSTREAM service identity. Its tenant and
+            // permissions come exclusively from server configuration; nothing is
+            // read from caller-controlled headers, body or arguments.
+            authenticationMethod = TrustContext.AUTH_STATIC_WORKSTREAM_BEARER
+            principalId = workstreamAccess.serviceIdentityId
+            principalType = TrustContext.PRINCIPAL_TYPE_SERVICE
+            serviceIdentityId = workstreamAccess.serviceIdentityId
+            scopes = workstreamAccess.permissions.mapNotNull(WorkstreamServicePermissions::scopeFor).sorted()
+        } else if (!bearer.isNullOrEmpty() && httpApiSubmission.enabled &&
+            httpApiSubmission.bearerToken.isNotBlank() &&
+            secureEquals(bearer, httpApiSubmission.bearerToken)
+        ) {
+            authenticationMethod = TrustContext.AUTH_STATIC_SERVICE_BEARER
+            principalId = httpApiSubmission.serviceIdentityId
+            principalType = TrustContext.PRINCIPAL_TYPE_SERVICE
+            serviceIdentityId = httpApiSubmission.serviceIdentityId
+            scopes = listOf(HTTP_API_SUBMISSION_SCOPE)
+        } else if (!bearer.isNullOrEmpty()) {
+            val verification = FakeIdp.verifyJwt(bearer, secret)
             if (verification.valid) {
                 authenticationMethod = TrustContext.AUTH_JWT
                 principalId = pickPrincipalId(verification.claims)
@@ -102,10 +128,17 @@ class TrustContextExtractor(
 
         // 4. Memberships are resolved server-side from the authenticated principal.
         // An anonymous caller is forced to a strictly empty membership.
-        val membership = if (authenticationMethod == TrustContext.AUTH_ANONYMOUS) {
-            MembershipInfo.EMPTY
-        } else {
-            membershipResolver.resolveMembership(principalId, principalType)
+        val membership = when (authenticationMethod) {
+            TrustContext.AUTH_ANONYMOUS -> MembershipInfo.EMPTY
+            // The workstream service identity is bound to the single tenant it was
+            // configured for: no directory lookup, no implicit role.
+            TrustContext.AUTH_STATIC_WORKSTREAM_BEARER -> MembershipInfo(
+                organizationId = workstreamAccess.organizationId,
+                workstreamId = workstreamAccess.workstreamId,
+                squadId = null,
+                roles = emptyList(),
+            )
+            else -> membershipResolver.resolveMembership(principalId, principalType)
         }
 
         return TrustContext(
@@ -142,6 +175,12 @@ class TrustContextExtractor(
         return match.groupValues[1].trim().ifEmpty { null }
     }
 
+    private fun secureEquals(actual: String, expected: String): Boolean =
+        MessageDigest.isEqual(
+            actual.toByteArray(Charsets.UTF_8),
+            expected.toByteArray(Charsets.UTF_8),
+        )
+
     private fun pickPrincipalId(claims: Map<String, Any?>): String? =
         stringClaim(claims["principalId"]) ?: stringClaim(claims["sub"])
 
@@ -160,6 +199,8 @@ class TrustContextExtractor(
         (raw as? List<*>)?.filterIsInstance<String>() ?: emptyList()
 
     companion object {
+        const val HTTP_API_SUBMISSION_SCOPE = "factory:agent-step-result:submit"
+
         private val BEARER_PATTERN = Regex("^Bearer\\s+(.+)$", RegexOption.IGNORE_CASE)
 
         private val LOOPBACK_ADDRESSES = setOf("127.0.0.1", "::1", "::ffff:127.0.0.1")

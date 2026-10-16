@@ -12,6 +12,7 @@ import io.whozoss.factory.agentattempt.domain.IssuedCapability
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
@@ -78,6 +79,32 @@ class CapabilityExecutionCapabilityIssuanceTest {
         assertThat(brief).contains("Do not return free-form JSON")
         assertThat(brief).contains("correct the tool payload and retry")
         assertThat(brief).contains("Once Factory accepts the result, stop working")
+    }
+
+    @Test
+    fun `HTTP API opt in puts only public Factory identifiers in the brief`() {
+        val turns = mutableListOf<AgentTurnRequest>()
+        val markerSecret = "must-never-enter-the-brief"
+        val service = service(
+            turns,
+            FactoryProperties(
+                security = FactoryProperties.Security(
+                    httpApiSubmission = FactoryProperties.HttpApiSubmission(
+                        enabled = true,
+                        bearerToken = markerSecret,
+                    ),
+                ),
+            ),
+        )
+
+        val execution = service.resolveAndRecord(scope, namespaceId, workflowId, agentStep, repoRoot)
+
+        val brief = turns.single().brief.orEmpty()
+        assertThat(brief).contains("FACTORY_WORKER__submitStepResult")
+        assertThat(brief).contains(execution.attemptId)
+        assertThat(brief).contains("factory:${execution.attemptId}:result")
+        assertThat(brief).doesNotContain(markerSecret)
+        assertThat(brief).doesNotContain("clear-token")
     }
 
     @Test
@@ -153,7 +180,10 @@ class CapabilityExecutionCapabilityIssuanceTest {
         assertThat(turns.single().caseId).isNotBlank()
     }
 
-    private fun service(turns: MutableList<AgentTurnRequest>): CapabilityExecutionService =
+    private fun service(
+        turns: MutableList<AgentTurnRequest>,
+        factoryProperties: FactoryProperties = FactoryProperties(),
+    ): CapabilityExecutionService =
         CapabilityExecutionService(
             CapabilityResolver(
                 object : AgentTurnCapability {
@@ -171,5 +201,6 @@ class CapabilityExecutionCapabilityIssuanceTest {
             agentOsExecutionAdapter = adapter,
             agentStepResultService = issuer,
             agentOsAdapterProperties = pollingProperties,
+            factoryProperties = factoryProperties,
         )
 }

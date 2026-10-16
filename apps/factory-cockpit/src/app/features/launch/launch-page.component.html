@@ -26,6 +26,12 @@
       <span>{{ message }}</span>
     </div>
   }
+  @if (launchTargetsError(); as message) {
+    <div class="banner banner--error" role="alert" data-launch-targets-error="true">
+      <mat-icon aria-hidden="true">error</mat-icon>
+      <span>{{ message }}</span>
+    </div>
+  }
 
   <form class="sf-panel launch-form" [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
     <mat-form-field appearance="outline" class="field">
@@ -52,24 +58,21 @@
     </mat-form-field>
 
     <mat-form-field appearance="outline" class="field">
-      <mat-label>Namespace</mat-label>
-      @if (namespaces().length > 0) {
-        <mat-select formControlName="namespaceId" data-launch-namespace="true">
-          @for (namespace of namespaces(); track namespace.id) {
-            <mat-option [value]="namespace.id">{{ namespace.name }}</mat-option>
-          }
-        </mat-select>
-      } @else {
-        <input
-          matInput
-          class="sf-mono"
-          formControlName="namespaceId"
-          placeholder="default"
-          data-launch-namespace="true"
-        />
-      }
+      <mat-label>AgentOS namespace</mat-label>
+      <mat-select formControlName="namespaceId" [disabled]="launchTargetsLoading()" data-launch-namespace="true">
+        @for (namespace of namespaces(); track namespace.id) {
+          <mat-option [value]="namespace.id">{{ namespace.name }}</mat-option>
+        }
+      </mat-select>
       @if (form.controls.namespaceId.hasError('required')) {
-        <mat-error>Namespace is required.</mat-error>
+        <mat-error>An accessible namespace is required.</mat-error>
+      }
+      @if (selectedNamespace(); as namespace) {
+        <mat-hint>Namespace id: {{ namespace.id }}</mat-hint>
+      } @else if (launchTargetsLoading()) {
+        <mat-hint data-launch-targets-loading="true">Loading namespaces…</mat-hint>
+      } @else if (!launchTargetsError() && namespaces().length === 0) {
+        <mat-hint data-launch-targets-empty="true">No AgentOS namespace is available.</mat-hint>
       }
     </mat-form-field>
 
@@ -110,7 +113,13 @@
     </mat-form-field>
 
     <div class="form-actions">
-      <button mat-flat-button class="sf-primary" type="submit" [disabled]="submitting()" data-launch-submit="true">
+      <button
+        mat-flat-button
+        class="sf-primary"
+        type="submit"
+        [disabled]="submitting() || launchTargetsLoading() || !!launchTargetsError() || namespaces().length === 0"
+        data-launch-submit="true"
+      >
         <mat-icon>{{ submitting() ? 'hourglass_top' : 'play_arrow' }}</mat-icon>
         {{ submitting() ? 'Launching…' : 'Launch run' }}
       </button>

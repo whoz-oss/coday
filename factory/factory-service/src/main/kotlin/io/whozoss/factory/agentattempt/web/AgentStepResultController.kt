@@ -14,10 +14,14 @@ import io.whozoss.factory.agentattempt.domain.InvalidResultRequestException
 import io.whozoss.factory.agentattempt.domain.ResultIdentityMismatchException
 import io.whozoss.factory.agentattempt.domain.TrustContextUnavailableException
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.agentattempt.service.AgentStepResultSubmission
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.agentattempt.persistence.DurableAttemptIntegrationBindingRepository
 import io.whozoss.factory.error.ErrorResponse
+import io.whozoss.factory.error.ForbiddenException
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.TrustContextExtractor
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -48,6 +52,7 @@ class AgentStepResultController(
     private val service: AgentStepResultService,
     private val tenantScopeProvider: TenantScopeProvider,
     private val durableAttempts: DurableAgentAttemptService,
+    private val integrationBindings: DurableAttemptIntegrationBindingRepository,
 ) {
 
     @PostMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -95,6 +100,9 @@ class AgentStepResultController(
             trustContext.principalType == TrustContext.PRINCIPAL_TYPE_SERVICE
         if (signedServiceRoute) {
             return submitTrustedService(body, agentHeader, idempotencyHeader, trustContext, scope)
+        }
+        if (trustContext?.authenticationMethod == TrustContext.AUTH_STATIC_SERVICE_BEARER) {
+            return submitHttpApiService(body, idempotencyHeader, trustContext, scope)
         }
         val token = bearerToken(authorization)
             ?: throw TrustContextUnavailableException("A bearer capability token is required")
@@ -158,6 +166,49 @@ class AgentStepResultController(
         )
     }
 
+    private fun submitHttpApiService(
+        body: AgentStepResultRequest,
+        idempotencyHeader: String?,
+        trustContext: TrustContext,
+        scope: io.whozoss.factory.persistence.TenantScope,
+    ): ResponseEntity<AgentStepResultEnvelope<AgentStepResultData>> {
+        if (TrustContextExtractor.HTTP_API_SUBMISSION_SCOPE !in trustContext.scopes) {
+            throw ForbiddenException("The service credential cannot submit Factory step results")
+        }
+        if (body.observed != null || body.caseId != null || body.agentName != null ||
+            body.business != null || body.idempotencyKey != null
+        ) {
+            throw InvalidResultRequestException(
+                "The HTTP_API service route accepts only 'attemptId', 'result', and an Idempotency-Key header",
+            )
+        }
+        val attemptId = body.attemptId?.takeIf { it.isNotBlank() }
+            ?: throw InvalidResultRequestException("'attemptId' is required")
+        val result = foldAmendmentSeq(
+            body.result ?: throw InvalidResultRequestException("'result' is required"),
+            body.expected_amendment_seq ?: body.expectedAmendmentSeq,
+        ) ?: throw InvalidResultRequestException("'result' is required")
+        val idempotencyKey = idempotencyHeader?.takeIf { it.isNotBlank() }
+            ?: throw InvalidResultRequestException("Idempotency-Key is required")
+        if (idempotencyKey.length > MAX_IDEMPOTENCY_KEY_LENGTH) {
+            throw InvalidResultRequestException("'Idempotency-Key' must be at most $MAX_IDEMPOTENCY_KEY_LENGTH characters")
+        }
+        val serviceIdentityId = trustContext.serviceIdentityId?.takeIf { it.isNotBlank() }
+            ?: throw ForbiddenException("The verified service identity is unavailable")
+        val binding = integrationBindings.find(scope, attemptId, serviceIdentityId)
+            ?: throw ForbiddenException("The service identity is not authorized for this Factory attempt")
+        val attempt = durableAttempts.find(
+            scope, binding.namespaceId, binding.workflowId, binding.stepId, binding.attemptId,
+        ) ?: throw InvalidResultRequestException("The authorized durable attempt no longer exists")
+        val persistedBriefHash = attempt.brief?.let(io.whozoss.factory.agentattempt.domain.CanonicalJsonHash::sha256)
+        if (persistedBriefHash == null || persistedBriefHash != binding.briefHash) {
+            throw ForbiddenException("The Factory attempt authorization no longer matches its frozen context")
+        }
+        val effectiveKey = "${attempt.attemptId}:$idempotencyKey"
+        val submission = service.submitTrusted(scope, attempt, result, null, effectiveKey)
+        return submissionResponse(submission)
+    }
+
     private fun submitTrustedService(
         body: AgentStepResultRequest,
         agentHeader: String?,
@@ -194,6 +245,12 @@ class AgentStepResultController(
             throw ResultIdentityMismatchException("X-AgentOS-Agent-Name does not match the durable attempt")
         }
         val submission = service.submitTrusted(scope, attempt, result, suppliedAgent, idempotencyKey)
+        return submissionResponse(submission)
+    }
+
+    private fun submissionResponse(
+        submission: AgentStepResultSubmission,
+    ): ResponseEntity<AgentStepResultEnvelope<AgentStepResultData>> {
         val status = if (submission.created) HttpStatus.CREATED else HttpStatus.OK
         return ResponseEntity.status(status).body(
             AgentStepResultEnvelope(
