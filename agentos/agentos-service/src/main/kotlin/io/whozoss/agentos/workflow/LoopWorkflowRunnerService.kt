@@ -1,6 +1,7 @@
 package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.casePlugin.CaseLaunchRefusal
 import io.whozoss.agentos.casePlugin.CreateCaseTool
 import io.whozoss.agentos.config.LimitsConfigProperties
@@ -34,7 +35,7 @@ import java.util.UUID
  * 4. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
  *    a. resolve the end-user via [UserService.findByExternalId] — skip if unknown;
  *    b. call the `CreateCase` tool, **as the triggering user**, naming the end-user as the target and handing the
- *       entity over as its `context` (`activeContext`). `CreateCase` checks that the end-user has the agent
+ *       entity over as its `sessionContext` (`activeContext`). `CreateCase` checks that the end-user has the agent
  *       deployed and resolves their own context (what the `UserContextProvider` returns, their preferred
  *       language); the loop does neither. Fire-and-forget: the tool returns the new case id at once. The new
  *       cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
@@ -214,7 +215,7 @@ class LoopWorkflowRunnerService(
                 put("agentName", act.agentName)
                 put("prompt", act.prompt)
                 put("userId", endUserId.toString())
-                put("context", activeContextOf(item))
+                put("sessionContext", activeContextOf(item))
             }
 
         return try {
@@ -304,11 +305,11 @@ class LoopWorkflowRunnerService(
 /** The context the loop hands to `CreateCase`: the entity of the search hit, as the UI would send it. */
 private fun activeContextOf(item: SearchResultItem): Map<String, Any?> =
     mapOf(
-        "activeContext" to
+        SessionContextKeys.ACTIVE_CONTEXT to
             listOf(
                 mapOf(
-                    "type" to item.entityType,
-                    "data" to mapOf("id" to item.entityId),
+                    SessionContextKeys.ITEM_TYPE to item.entityType,
+                    SessionContextKeys.ITEM_DATA to mapOf(SessionContextKeys.ITEM_ID to item.entityId),
                 ),
             ),
     )

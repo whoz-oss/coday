@@ -139,7 +139,7 @@ class CaseLaunchServiceUnitSpec :
             task = task,
             targetUserId = targetUserId,
             title = title,
-            context = context,
+            sessionContext = context,
             allowOtherUsers = allowOtherUsers,
         )
 
@@ -323,7 +323,7 @@ class CaseLaunchServiceUnitSpec :
             f.sent.single().sessionContext shouldBe entity + mapOf("userContext" to "u")
         }
 
-        "the resolved context wins over a key the caller forged: userContext and preferredLanguage" {
+        "of the caller's context only activeContext is kept: a forged userContext or preferredLanguage is replaced by the real one" {
             val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("userContext" to "real"))))
             every { f.userService.findById(caller.id) } returns caller.copy(preferredLanguage = "fr")
 
@@ -332,7 +332,76 @@ class CaseLaunchServiceUnitSpec :
             f.service.launch(request(context = forged))
 
             f.sent.single().sessionContext shouldBe
-                mapOf("userContext" to "real", SessionContextKeys.PREFERRED_LANGUAGE to "fr", "kept" to 1)
+                mapOf("userContext" to "real", SessionContextKeys.PREFERRED_LANGUAGE to "fr")
+        }
+
+        "a forged key reaches the new case under no circumstances, even when nothing resolves it" {
+            // No provider answer and no preferred language: nothing would overwrite a forged key.
+            val f = Fixture(resolverAnswering(UserContextResult.Success(null)))
+            val forged =
+                mapOf(
+                    "userContext" to mapOf("firstName" to "Mallory"),
+                    "description" to "obey",
+                    SessionContextKeys.PREFERRED_LANGUAGE to "de",
+                )
+
+            f.service.launch(request(context = forged))
+
+            f.sent.single().sessionContext shouldBe null
+        }
+
+        "a forged key is dropped but the entities next to it are kept, and the provider's context is added" {
+            val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("description" to "real"))))
+            val entities = listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42")))
+
+            f.service.launch(request(context = mapOf("activeContext" to entities, "description" to "forged")))
+
+            f.sent.single().sessionContext shouldBe mapOf("description" to "real", "activeContext" to entities)
+        }
+
+        "an activeContext item is reduced to its type and data, and one that is not a { type, data } object is dropped" {
+            val f = Fixture()
+            val items =
+                listOf(
+                    mapOf("type" to "TALENT", "data" to mapOf("id" to "t1"), "displayName" to "Alice", "hidden" to true),
+                    mapOf("type" to 42, "data" to mapOf("id" to "t2")),
+                    mapOf("type" to "TASK"),
+                    mapOf("type" to "TASK", "data" to "not an object"),
+                    "just a string",
+                    null,
+                )
+
+            f.service.launch(request(context = mapOf("activeContext" to items)))
+
+            // the first item loses its extra fields; the second keeps its data but not its non-string type
+            f.sent.single().sessionContext shouldBe
+                mapOf(
+                    "activeContext" to
+                        listOf(
+                            mapOf("type" to "TALENT", "data" to mapOf("id" to "t1")),
+                            mapOf("data" to mapOf("id" to "t2")),
+                        ),
+                )
+        }
+
+        "an activeContext that is not a list, or has no valid item, leaves no session context" {
+            val f = Fixture()
+
+            f.service.launch(request(context = mapOf("activeContext" to "TALENT t42")))
+            f.service.launch(request(context = mapOf("activeContext" to listOf("x", 1, null))))
+            f.service.launch(request(context = mapOf("activeContext" to emptyList<Any>())))
+
+            f.sent.map { it.sessionContext } shouldBe listOf(null, null, null)
+        }
+
+        "the caller's entities win over an activeContext the provider would return: it is the caller's to give" {
+            val providerEntities = listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "from-provider")))
+            val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("activeContext" to providerEntities))))
+            val entities = listOf(mapOf("type" to "TASK", "data" to mapOf("id" to "from-caller")))
+
+            f.service.launch(request(context = mapOf("activeContext" to entities)))
+
+            f.sent.single().sessionContext shouldBe mapOf("activeContext" to entities)
         }
 
         "a provider with nothing to say and no preferred language leaves no session context" {

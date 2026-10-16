@@ -2,7 +2,8 @@ package io.whozoss.agentos.agent
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agent.AgentIntentionGenerator.Companion.ANSWER_TOOL
-import io.whozoss.agentos.caseFlow.SessionContextKeys
+import io.whozoss.agentos.caseFlow.preferredLanguage
+import io.whozoss.agentos.caseFlow.userDisplayName
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -979,13 +980,7 @@ class AgentAdvanced(
                 .filterIsInstance<MessageEvent>()
                 .lastOrNull()
                 ?.sessionContext
-                ?.get("userContext")
-                ?.let { it as? Map<String, String> }
-                ?.let { ctx ->
-                    listOfNotNull(ctx["firstName"], ctx["lastName"])
-                        .joinToString(" ")
-                        .ifBlank { null }
-                }
+                ?.userDisplayName()
 
         val alreadyGreeted = accumulatedEvents.count { it is MessageEvent } > 2
 
@@ -1083,9 +1078,7 @@ class AgentAdvanced(
             .filterIsInstance<MessageEvent>()
             .firstOrNull { it.actor.role == ActorRole.USER }
             ?.sessionContext
-            ?.get(SessionContextKeys.PREFERRED_LANGUAGE)
-            ?.let { it as? String }
-            ?.takeIf { it.isNotBlank() }
+            ?.preferredLanguage()
 
     /**
      * Assembles the user-facing communication guidelines shared across any LLM-generated

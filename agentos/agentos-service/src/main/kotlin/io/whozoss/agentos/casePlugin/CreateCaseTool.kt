@@ -13,8 +13,8 @@ import java.util.UUID
  * Tool that starts a new case and returns its id.
  *
  * Input: the agent (by name), the prompt (first message, sent on behalf of the user), an optional
- * title (name of the conversation), an optional context (what the new case is shown with its first
- * message), and, when the integration allows it, the user the case runs for. Output: the case id.
+ * title (name of the conversation), an optional session context (what the new case is shown with its first
+ * message, in the shape every case has: see [io.whozoss.agentos.caseFlow.SessionContextKeys]), and, when the integration allows it, the user the case runs for. Output: the case id.
  *
  * The target agent runs in the background with its own conversation and the tool returns at once.
  * It does not wait for a result: that is what separates it from `DELEGATE__delegate`, which awaits
@@ -29,11 +29,11 @@ import java.util.UUID
  * [allowOtherUsers] lets the caller name another one. Who is calling, and from which case, comes
  * from [ToolContext], never from the input: the calling case is [ToolContext.caseId], and a call
  * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`.
- * The calling case's session context is **not** inherited: [Input.context] is the only thing of the
+ * The calling case's session context is **not** inherited: [Input.sessionContext] is the only thing of the
  * caller that reaches the new case, so the caller hands over just the relevant part, typically the entity
  * the prompt is about. [CaseLaunchService] adds the context of the user the case runs for (what the
- * `UserContextProvider` returns and the user's preferred language), which wins over the caller's on a
- * conflicting key.
+ * `UserContextProvider` returns and the user's preferred language). Of the caller's, only `activeContext` is
+ * kept: the rest, a forged `userContext` for one, is dropped.
  *
  * The tool parses the input, applies the agent allowlist of its integration config, and hands the
  * rest to [CaseLaunchService] along with the [allowOtherUsers] switch of that config. The service owns
@@ -70,9 +70,10 @@ class CreateCaseTool(
      * @param title Name of the new conversation. Omit to derive it from the prompt.
      * @param userId Internal id of the user the case runs for. Only honoured when the integration
      *   allows it. Omit for the current user.
-     * @param context Key/value context the new case starts with, for example the entity the prompt
-     *   is about. Only these entries are passed on from the caller, never the calling case's own context.
-     *   The context resolved for the target user is added to them and wins on a conflicting key.
+     * @param sessionContext Session context the new case starts with, in the shape every case has
+     *   ([io.whozoss.agentos.caseFlow.SessionContextKeys]): typically `activeContext`, the entities the
+     *   prompt is about. Only `activeContext` is kept, any other key is dropped by [CaseLaunchService], and the
+     *   calling case's own session context is never passed on. The context of the target user is added by the system.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class Input(
@@ -80,7 +81,7 @@ class CreateCaseTool(
         val prompt: String,
         val title: String? = null,
         val userId: String? = null,
-        val context: Map<String, Any?>? = null,
+        val sessionContext: Map<String, Any?>? = null,
     )
 
     private val allowedRegexes = allowedAgents.map { globToRegex(it) }
@@ -102,7 +103,7 @@ class CreateCaseTool(
                     "The new case lives on its own: stopping the current case does not stop it. Unlike " +
                     "delegation, nothing waits for it and its result is never returned here. The prompt must be " +
                     "self-contained, the new case cannot see this conversation, and it does not inherit its " +
-                    "context: pass in `context` only the part the agent needs. ",
+                    "context: pass in `sessionContext` only the part the agent needs. ",
             )
             append(
                 if (allowOtherUsers) {
@@ -141,12 +142,14 @@ class CreateCaseTool(
                                     "Omit for the current user.",
                             )
                     }
-                    putObject("context").apply {
+                    putObject("sessionContext").apply {
                         put("type", "object")
                         put(
                             "description",
-                            "Optional key/value context the new case starts with, for example the entity the prompt " +
-                                "is about. Pass only what the agent needs: nothing of the current context is carried over.",
+                            "Optional session context the new case starts with. To say which entities the prompt is about, " +
+                                "pass `activeContext`: a list of { type, data: { id, ... } } as returned by the tools. Pass only " +
+                                "what the agent needs: nothing of the current session context is carried over, and the " +
+                                "user's own context (identity, language) is added by the system.",
                         )
                         put("additionalProperties", true)
                     }
@@ -198,7 +201,7 @@ class CreateCaseTool(
                     task = input.prompt,
                     targetUserId = targetUserId,
                     title = input.title,
-                    context = input.context,
+                    sessionContext = input.sessionContext,
                     allowOtherUsers = allowOtherUsers,
                 ),
             ).toToolResult()

@@ -242,19 +242,22 @@ class CreateCaseToolUnitSpec :
                 it.task shouldBe "Summarise"
                 it.targetUserId shouldBe null
                 it.title shouldBe null
-                it.context shouldBe null
+                it.sessionContext shouldBe null
             }
         }
 
-        "the title and the context are handed over" {
+        "the title and the session context are handed over" {
             val request = slot<CaseLaunchRequest>()
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
-            val ctx = mapOf("entityType" to "TALENT", "entityId" to "t42")
+            val ctx = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
-            tool(launcher).execute(CreateCaseTool.Input("Reporter", "Summarise", title = "Weekly review", context = ctx), context())
+            tool(launcher).execute(
+                CreateCaseTool.Input("Reporter", "Summarise", title = "Weekly review", sessionContext = ctx),
+                context(),
+            )
 
             request.captured.title shouldBe "Weekly review"
-            request.captured.context shouldBe ctx
+            request.captured.sessionContext shouldBe ctx
         }
 
         // -------------------------------------------------------------------------
@@ -304,10 +307,10 @@ class CreateCaseToolUnitSpec :
         // Schema and description
         // -------------------------------------------------------------------------
 
-        "by default the schema takes agentName, prompt, title and context, and nothing else" {
+        "by default the schema takes agentName, prompt, title and sessionContext, and nothing else" {
             val schema = mapper.readTree(tool().inputSchema)
 
-            schema["properties"].fieldNames().asSequence().toList() shouldBe listOf("agentName", "prompt", "title", "context")
+            schema["properties"].fieldNames().asSequence().toList() shouldBe listOf("agentName", "prompt", "title", "sessionContext")
             schema["required"].map { it.asText() } shouldBe listOf("agentName", "prompt")
             schema["additionalProperties"].asBoolean() shouldBe false
         }

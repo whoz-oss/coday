@@ -66,7 +66,7 @@ class LoopWorkflowRunnerUnitSpec :
             val agentName: String get() = input["agentName"].asText()
             val prompt: String get() = input["prompt"].asText()
             val userId: UUID? get() = input["userId"]?.asText()?.let(UUID::fromString)
-            val context: JsonNode get() = input["context"]
+            val context: JsonNode get() = input["sessionContext"]
         }
 
         // -------------------------------------------------------------------------
