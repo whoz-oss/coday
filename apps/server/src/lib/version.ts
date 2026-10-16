@@ -96,7 +96,7 @@ export function getCodayVersion(): string {
  * Override with AGENTOS_VERSION env var for local dev or testing:
  *   AGENTOS_VERSION=0.244.1 pnpm web
  */
-const AGENTOS_BUNDLED_VERSION = '1.3.6'
+const AGENTOS_BUNDLED_VERSION = '0.0.0-workstream-forge.28'
 
 /**
  * Hardcoded Factory version — the release whose `factory-service-<version>.jar`
@@ -109,7 +109,7 @@ const AGENTOS_BUNDLED_VERSION = '1.3.6'
  *
  * Override with FACTORY_VERSION env var for local dev or testing.
  */
-const FACTORY_BUNDLED_VERSION = 'dev'
+const FACTORY_BUNDLED_VERSION = '0.0.0-workstream-forge.28'
 
 export function getFactoryVersion(): string {
   const override = process.env.FACTORY_VERSION
