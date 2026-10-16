@@ -22,12 +22,12 @@ import java.net.URISyntaxException
  * A [UrlCheck.Rejected] reason never echoes the URL itself: userinfo or a query string may carry
  * credentials and the reason ends up in exception messages and logs.
  *
- * @param allowLoopbackForTests accepts loopback addresses and `localhost`, over plain `http` as well,
- *   so that tests can target a local mock server without TLS. Never enable it in production.
+ * @param allowLoopbackHttp accepts loopback addresses and `localhost`, over plain `http` as well.
+ *   This runtime opt-in remains limited to the AgentOS machine's loopback interfaces.
  */
-class OutboundUrlPolicy(private val allowLoopbackForTests: Boolean = false) {
+open class OutboundUrlPolicy(private val allowLoopbackHttp: Boolean = false) {
 
-    fun validate(url: String): UrlCheck {
+    open fun validate(url: String): UrlCheck {
         val uri = parse(url) ?: return UrlCheck.Rejected("is not a valid URL")
         if (!uri.isAbsolute) return UrlCheck.Rejected("must be an absolute URL")
         if (uri.rawUserInfo != null) return UrlCheck.Rejected("must not contain userinfo (credentials)")
@@ -53,9 +53,9 @@ class OutboundUrlPolicy(private val allowLoopbackForTests: Boolean = false) {
             UrlCheck.Rejected("is not a URL the HTTP client accepts (${e.message})")
         }
 
-    /** Plain `http` is only ever accepted by the test seam, and only towards loopback. */
+    /** Plain `http` is only ever accepted by the explicit runtime opt-in, and only towards loopback. */
     private fun isPlainHttpAllowed(scheme: String, host: String): Boolean =
-        allowLoopbackForTests && scheme.equals(HTTP, ignoreCase = true) && isLoopbackHost(host)
+        allowLoopbackHttp && scheme.equals(HTTP, ignoreCase = true) && isLoopbackHost(host)
 
     private fun isLoopbackHost(host: String): Boolean =
         host.equals(LOCALHOST, ignoreCase = true) ||
@@ -65,9 +65,9 @@ class OutboundUrlPolicy(private val allowLoopbackForTests: Boolean = false) {
      * Returns true when [address] belongs to a range the plugin must never connect to.
      * Reused by the DNS hook so that a public host name resolving to an internal address is refused.
      */
-    fun isDisallowedAddress(address: InetAddress): Boolean {
+    open fun isDisallowedAddress(address: InetAddress): Boolean {
         val effective = unmapIpv4(address)
-        if (effective.isLoopbackAddress) return !allowLoopbackForTests
+        if (effective.isLoopbackAddress) return !allowLoopbackHttp
         return effective.isAnyLocalAddress ||
             isThisNetwork(effective) ||
             effective.isLinkLocalAddress ||
@@ -78,7 +78,7 @@ class OutboundUrlPolicy(private val allowLoopbackForTests: Boolean = false) {
 
     private fun checkHost(uri: URI, host: String): UrlCheck {
         if (host.equals(LOCALHOST, ignoreCase = true)) {
-            return if (allowLoopbackForTests) UrlCheck.Ok(uri) else UrlCheck.Rejected("'localhost' is not allowed")
+            return if (allowLoopbackHttp) UrlCheck.Ok(uri) else UrlCheck.Rejected("'localhost' is not allowed")
         }
         return when (val literal = classifyLiteral(host)) {
             HostLiteral.NotLiteral -> UrlCheck.Ok(uri)

@@ -96,7 +96,30 @@ export function getCodayVersion(): string {
  * Override with AGENTOS_VERSION env var for local dev or testing:
  *   AGENTOS_VERSION=0.244.1 pnpm web
  */
-const AGENTOS_BUNDLED_VERSION = '1.3.6'
+const AGENTOS_BUNDLED_VERSION = '0.0.0-workstream-forge.28'
+
+/**
+ * Hardcoded Factory version — the release whose `factory-service-<version>.jar`
+ * and `factory-forge-plugin-<version>.jar` assets are downloaded in managed mode.
+ * Bump it only when the Factory itself changes (same decoupling as AgentOS).
+ *
+ * 'dev' sentinel = no release to download from: managed mode is inert unless the
+ * JARs were placed by hand in <configDir>/factory/. Replace it with the first
+ * release/<version> that ships the Factory JARs.
+ *
+ * Override with FACTORY_VERSION env var for local dev or testing.
+ */
+const FACTORY_BUNDLED_VERSION = '0.0.0-workstream-forge.28'
+
+export function getFactoryVersion(): string {
+  const override = process.env.FACTORY_VERSION
+  if (override) {
+    debugLog('VERSION', `Factory version from FACTORY_VERSION env var: ${override}`)
+    return override
+  }
+  debugLog('VERSION', `Factory version (bundled): ${FACTORY_BUNDLED_VERSION}`)
+  return FACTORY_BUNDLED_VERSION
+}
 
 export function getAgentosVersion(): string {
   const override = process.env.AGENTOS_VERSION

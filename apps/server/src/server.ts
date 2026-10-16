@@ -36,9 +36,11 @@ import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
-import { getAgentosVersion } from './lib/version'
+import { getAgentosVersion, getFactoryVersion } from './lib/version'
 import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
+import { downloadFactoryJars, findMissingFactoryJars } from './lib/factory-download'
+import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
 
 const app = express()
@@ -92,18 +94,32 @@ let promptExecutionService: PromptExecutionService
 
 const AGENTOS_EXTERNAL_USERID = process.env.AGENTOS_EXTERNAL_USERID
 const AGENTOS_URL_ENV = process.env.AGENTOS_URL
+// Same two modes for the Factory, discriminated by FACTORY_URL:
+//   EXTERNAL (FACTORY_URL defined): proxy to it unchanged.
+//   MANAGED  (FACTORY_URL absent):  download the Factory JARs from the GitHub
+//   release, spawn the process (default port 8141, next free one otherwise),
+//   stop it at shutdown. The Factory is provisioned AFTER AgentOS because it
+//   needs AgentOS's URL.
+const FACTORY_URL_ENV = process.env.FACTORY_URL
 
-// Validate the env var if provided (fail fast on misconfiguration)
+// Validate proxy targets (fail fast on misconfiguration)
 if (AGENTOS_URL_ENV) {
   validateAgentOsUrl(AGENTOS_URL_ENV)
+}
+if (FACTORY_URL_ENV) {
+  validateAgentOsUrl(FACTORY_URL_ENV)
 }
 
 // Mutable proxy target — updated to the managed URL once AgentOS is running.
 // In external mode this is set once and never changes.
 let currentAgentosUrl = AGENTOS_URL_ENV ?? `http://localhost:8124`
 
-// Track the managed AgentOS process handle (null in external mode or before startup)
+// Mutable Factory proxy target — updated to the managed URL once the Factory is running.
+let currentFactoryUrl = FACTORY_URL_ENV ?? 'http://localhost:8141'
+
+// Track the managed process handles (null in external mode or before startup)
 let agentosProcess: AgentosProcess | null = null
+let factoryProcess: FactoryProcess | null = null
 
 app.use(
   '/api/agentos',
@@ -126,39 +142,77 @@ debugLog(
   `AgentOS proxy configured: /api/agentos → ${currentAgentosUrl} (${AGENTOS_URL_ENV ? 'external mode' : 'managed mode'})`
 )
 
+// Factory exposes its API with the /api/factory prefix already, so the complete
+// request path must be forwarded unchanged.
+//
+// Mounted at the root with `pathFilter`, NOT `app.use('/api/factory', …)`:
+// http-proxy-middleware v3 forwards `req.url` (v2 used `req.originalUrl`), and
+// Express strips the mount path from `req.url`. A path-mounted proxy would send
+// /api/factory/workflows upstream as /workflows → 404 from the Factory backend.
+app.use(
+  createProxyMiddleware({
+    // router callback reads currentFactoryUrl at request time, not at setup time
+    router: () => currentFactoryUrl,
+    changeOrigin: true,
+    pathFilter: (p) => p === '/api/factory' || p.startsWith('/api/factory/'),
+    on: {
+      proxyReq: (_proxyReq, req) => {
+        debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
+      },
+    },
+  })
+)
+debugLog(
+  'INIT',
+  `Factory proxy configured: /api/factory → ${currentFactoryUrl}/api/factory (${FACTORY_URL_ENV ? 'external mode' : 'managed mode'})`
+)
+
 // Middleware to parse JSON bodies with increased limit for image uploads
 app.use(express.json({ limit: '20mb' }))
 
-// Development mode: proxy to Angular dev server
+// Development mode: proxy to the Angular dev servers, mirroring the production
+// split between the main client (/) and the factory cockpit (/factory).
+//
+// Both proxies are mounted at the root with a `pathFilter` rather than via
+// `app.use('/factory', …)`:
+//  - Express strips the mount prefix, but the factory dev server serves its
+//    bundles under /factory/ (baseHref), so the full path must be preserved.
+//    Stripping it makes the dev server answer its SPA fallback (index.html)
+//    for /main.js → "Expected a JavaScript module script… MIME type text/html".
+//  - With `ws: true` each proxy also subscribes to the server's WebSocket
+//    `upgrade` events, where only `pathFilter` applies. Disjoint filters keep
+//    each app's HMR socket routed to its own dev server.
 if (process.env.BUILD_ENV === 'development') {
-  const angularClientPort = process.env.ANGULAR_CLIENT_PORT ?? '4200'
-  const ANGULAR_DEV_SERVER = `http://localhost:${angularClientPort}`
-  debugLog('INIT', `Development mode: proxying to Angular dev server at ${ANGULAR_DEV_SERVER}`)
+  const ANGULAR_DEV_SERVER = `http://localhost:${process.env.ANGULAR_CLIENT_PORT ?? '4200'}`
+  const FACTORY_COCKPIT_DEV_SERVER = `http://localhost:${process.env.FACTORY_COCKPIT_PORT ?? '4300'}`
 
-  // Import http-proxy-middleware dynamically
-  import('http-proxy-middleware')
-    .then(({ createProxyMiddleware: devProxyMiddleware }) => {
-      // Proxy all non-API requests to Angular dev server
-      const proxyMiddleware = devProxyMiddleware({
-        target: ANGULAR_DEV_SERVER,
-        changeOrigin: true,
-        ws: true, // Enable WebSocket proxying for Angular HMR
-      })
+  const isFactoryPath = (p: string) => {
+    return p === '/factory' || p.startsWith('/factory/')
+  }
+  const isBackendPath = (p: string) => p.startsWith('/api') || p.startsWith('/events')
 
-      // Only proxy if not an API route
-      app.use('/', (req, res, next) => {
-        if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
-          next()
-        } else {
-          proxyMiddleware(req, res, next as any)
-        }
-      })
-
-      debugLog('INIT', 'Proxy middleware configured successfully')
+  app.use(
+    createProxyMiddleware({
+      target: FACTORY_COCKPIT_DEV_SERVER,
+      changeOrigin: true,
+      ws: true,
+      pathFilter: (p) => isFactoryPath(p),
     })
-    .catch((error) => {
-      console.error('Failed to load http-proxy-middleware:', error)
+  )
+
+  app.use(
+    createProxyMiddleware({
+      target: ANGULAR_DEV_SERVER,
+      changeOrigin: true,
+      ws: true,
+      pathFilter: (p) => !isBackendPath(p) && !isFactoryPath(p),
     })
+  )
+
+  debugLog(
+    'INIT',
+    `Development mode: /factory → ${FACTORY_COCKPIT_DEV_SERVER}, other non-API routes → ${ANGULAR_DEV_SERVER}`
+  )
 } else {
   // Production mode: serve static Angular app
   // Check for CODAY_CLIENT_PATH environment variable (set by web launcher)
@@ -186,7 +240,29 @@ if (process.env.BUILD_ENV === 'development') {
     }
   }
 
-  // Serve static files from the Angular build output
+  // Serve the factory cockpit before the main client so /factory assets are not
+  // intercepted by the root static application.
+  const factoryCockpitPath = process.env.CODAY_FACTORY_COCKPIT_PATH
+    ? path.resolve(process.env.CODAY_FACTORY_COCKPIT_PATH)
+    : path.resolve(__dirname, '../coday-factory-cockpit/browser')
+
+  debugLog('INIT', `Production mode: serving factory cockpit static files from ${factoryCockpitPath}`)
+  if (!fs.existsSync(factoryCockpitPath)) {
+    console.error(`ERROR: Factory cockpit path does not exist: ${factoryCockpitPath}`)
+    console.error('Please build the factory cockpit first with: pnpm nx run factory-cockpit:build')
+  } else {
+    const factoryIndexPath = path.join(factoryCockpitPath, 'index.html')
+    if (!fs.existsSync(factoryIndexPath)) {
+      console.error(`ERROR: index.html not found at: ${factoryIndexPath}`)
+      console.error('Factory cockpit build may be incomplete. Try rebuilding with: pnpm nx run factory-cockpit:build')
+    } else {
+      debugLog('INIT', `Verified factory cockpit index.html exists at ${factoryIndexPath}`)
+    }
+  }
+
+  app.use('/factory', express.static(factoryCockpitPath))
+
+  // Serve static files from the main Angular build output.
   app.use(express.static(clientPath))
 }
 // Initialize project service for REST API endpoints
@@ -403,22 +479,30 @@ if (process.env.BUILD_ENV !== 'development') {
     : path.resolve(__dirname, '../coday-client/browser')
 
   const indexPath = path.resolve(clientPath, 'index.html')
+  const factoryCockpitPath = process.env.CODAY_FACTORY_COCKPIT_PATH
+    ? path.resolve(process.env.CODAY_FACTORY_COCKPIT_PATH)
+    : path.resolve(__dirname, '../coday-factory-cockpit/browser')
+  const factoryIndexPath = path.resolve(factoryCockpitPath, 'index.html')
   debugLog('INIT', `Catch-all route will serve: ${indexPath}`)
+  debugLog('INIT', `Factory cockpit catch-all route will serve: ${factoryIndexPath}`)
 
   // Use a middleware instead of route pattern to catch all remaining requests
   app.use((req, res, next) => {
-    // API routes should have been handled above, but double-check to avoid masking real 404s
+    // API routes should have been handled above, but double-check to avoid masking real 404s.
     if (req.path.startsWith('/api') || req.path.startsWith('/events')) {
       res.status(404).send('Not found')
       return
     }
+
+    const requestedIndexPath =
+      req.path === '/factory' || req.path.startsWith('/factory/') ? factoryIndexPath : indexPath
     debugLog('ROUTER', `Serving index.html for client route: ${req.path}`)
 
     // Read and send the file manually to avoid Express sendFile issues in bundled code
-    fs.readFile(indexPath, 'utf8', (err, data) => {
+    fs.readFile(requestedIndexPath, 'utf8', (err, data) => {
       if (err) {
-        debugLog('ERROR', `Failed to read index.html from ${indexPath}:`, err)
-        debugLog('ERROR', `File exists check: ${fs.existsSync(indexPath)}`)
+        debugLog('ERROR', `Failed to read index.html from ${requestedIndexPath}:`, err)
+        debugLog('ERROR', `File exists check: ${fs.existsSync(requestedIndexPath)}`)
         next(err)
       } else {
         res.type('html').send(data)
@@ -536,6 +620,53 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Factory provisioning entry point (managed mode only)
+// ---------------------------------------------------------------------------
+
+/**
+ * Provision and start the Factory. Must run after provisionAgentos() so that
+ * `currentAgentosUrl` is the final AgentOS URL.
+ *
+ * EXTERNAL mode (FACTORY_URL defined): returns immediately.
+ * MANAGED mode: download missing JARs (blocking, no background pre-fetch) → spawn.
+ * With the 'dev' version sentinel nothing is downloaded: the Factory only starts if
+ * its JARs were placed by hand in <configDir>/factory/.
+ *
+ * Never throws.
+ */
+async function provisionFactory(): Promise<void> {
+  if (FACTORY_URL_ENV) {
+    debugLog('FACTORY', `[PROVISION] External mode — target: ${FACTORY_URL_ENV}. No provisioning performed.`)
+    return
+  }
+
+  debugLog('FACTORY', '[PROVISION] Managed mode — starting Factory provisioning...')
+  try {
+    const factoryVersion = getFactoryVersion()
+
+    if (findMissingFactoryJars(codayOptions.configDir, factoryVersion).length > 0) {
+      const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
+      debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
+      if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
+        debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
+        return
+      }
+    }
+
+    factoryProcess = await startFactory(codayOptions.configDir, factoryVersion, currentAgentosUrl)
+    if (!factoryProcess) {
+      debugLog('FACTORY', '[PROVISION] Factory did not start. The proxy will return errors until it is available.')
+      return
+    }
+
+    currentFactoryUrl = `http://localhost:${factoryProcess.port}`
+    debugLog('FACTORY', `[PROVISION] Factory is ready. Proxy target: ${currentFactoryUrl}`)
+  } catch (error) {
+    debugLog('FACTORY', '[PROVISION] Unexpected error during provisioning (non-fatal):', error)
+  }
+}
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, _: express.NextFunction) => {
   debugLog('ERROR', `Request error on ${req.method} ${req.path}:`, err.message)
@@ -616,7 +747,11 @@ PORT_PROMISE.then(async (PORT) => {
   // AgentOS provisioning — fire-and-forget: runs in background so downloads
   // (up to ~230 MB) never block server startup or other services.
   // The proxy will return errors until AgentOS is ready, which is acceptable.
-  provisionAgentos(PORT).catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
+  // Factory is chained after AgentOS (it needs AgentOS's final URL). provisionAgentos never rejects.
+  provisionAgentos(PORT)
+    .catch((err) => debugLog('AGENTOS', '[PROVISION] Unhandled error:', err))
+    .then(() => provisionFactory())
+    .catch((err) => debugLog('FACTORY', '[PROVISION] Unhandled error:', err))
 
   // Auto-close stale threads — fire-and-forget, non-blocking
   autoCloseStaleThreads().catch((err) => console.error('autoCloseStaleThreads: unhandled error:', err))
@@ -684,7 +819,13 @@ async function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down gracefully...`)
 
   try {
-    // Stop AgentOS first (only if we spawned it — not if adopted or external mode)
+    // Stop the Factory first (it depends on AgentOS); only set when we spawned it
+    if (factoryProcess) {
+      console.log('Stopping Factory...')
+      await factoryProcess.shutdown()
+    }
+
+    // Stop AgentOS (only if we spawned it — not if adopted or external mode)
     if (agentosProcess?.spawned) {
       console.log('Stopping AgentOS...')
       await agentosProcess.shutdown()
