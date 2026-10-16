@@ -886,7 +886,7 @@ describe('FactoryStore', () => {
       { workflowId: 'wf-1', data: [] },
       {
         allowedActions: [
-          { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relancer' },
+          { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relaunch' },
           { type: 'stop_cost', expectedRevision: 7 },
         ],
         blockers: [{ code: 'STEP_BLOCKED', stepId: 'build', message: 'Step build blocked' }],
@@ -895,7 +895,7 @@ describe('FactoryStore', () => {
 
     const session = store.session('wf-1')
     expect(session?.allowedActions).toEqual([
-      { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relancer' },
+      { type: 'retry', stepId: 'build', expectedRevision: 7, label: 'Relaunch' },
       { type: 'stop_cost', expectedRevision: 7 },
     ])
     expect(session?.blockers).toEqual([

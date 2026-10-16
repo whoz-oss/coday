@@ -662,7 +662,7 @@ jobs:
 
           gh release create "$TAG" \
             --prerelease \
-            --title "Workstream ${SLUG} #${TAG##*-} - ${VERSION}" \
+            --title "${VERSION}" \
             --notes "$NOTES" \
             /tmp/agentos-jars/*.jar \
             /tmp/factory-jars/*.jar \
