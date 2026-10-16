@@ -504,7 +504,10 @@ describe('FactoryStore', () => {
     http
       .expectOne((r) => r.url === '/api/agentos/api/namespaces')
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
-    flushRunEnrichment('wf-a')
+
+    store.selectSession('wf-a')
+    http.expectOne((r) => r.url === '/api/factory/workflows/wf-a').flush({ data: snapshotFor('wf-a', 'ns-a', 'Run A') })
+    flushRunEnrichment('wf-a', false)
 
     expect(store.runs()).toHaveLength(1)
     expect(store.namespaces().size).toBe(0)

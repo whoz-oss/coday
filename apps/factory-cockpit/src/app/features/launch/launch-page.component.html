@@ -59,7 +59,7 @@
 
     <mat-form-field appearance="outline" class="field">
       <mat-label>AgentOS namespace</mat-label>
-      <mat-select formControlName="namespaceId" [disabled]="launchTargetsLoading()" data-launch-namespace="true">
+      <mat-select formControlName="namespaceId" data-launch-namespace="true">
         @for (namespace of namespaces(); track namespace.id) {
           <mat-option [value]="namespace.id">{{ namespace.name }}</mat-option>
         }
