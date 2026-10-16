@@ -9,12 +9,16 @@ class TrustContextExtractorTest {
 
     private val secret = "unit-test-secret"
 
-    private fun extractor(allowLoopbackDev: Boolean): TrustContextExtractor =
+    private fun extractor(
+        allowLoopbackDev: Boolean,
+        httpApiSubmission: FactoryProperties.HttpApiSubmission = FactoryProperties.HttpApiSubmission(),
+    ): TrustContextExtractor =
         TrustContextExtractor(
             FactoryProperties(
                 security = FactoryProperties.Security(
                     allowLoopbackDev = allowLoopbackDev,
                     fakeIdpSecret = secret,
+                    httpApiSubmission = httpApiSubmission,
                 ),
             ),
             LocalDevMembershipResolver(),
@@ -73,6 +77,128 @@ class TrustContextExtractorTest {
         val context = extractor(allowLoopbackDev = true).extract(request)
 
         assertThat(context.principalId).isEqualTo("alice")
+    }
+
+    @Test
+    fun `configured HTTP API bearer yields a narrow service identity`() {
+        val request = request().apply {
+            remoteAddr = "203.0.113.10"
+            addHeader("Authorization", "Bearer http-api-test-token")
+            addHeader("x-factory-namespace-id", "forged-namespace")
+            addHeader("x-factory-case-id", "forged-case")
+        }
+        val context = extractor(
+            allowLoopbackDev = false,
+            httpApiSubmission = FactoryProperties.HttpApiSubmission(
+                enabled = true,
+                bearerToken = "http-api-test-token",
+                serviceIdentityId = "agentos-http-test",
+            ),
+        ).extract(request)
+
+        assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_STATIC_SERVICE_BEARER)
+        assertThat(context.principalType).isEqualTo(TrustContext.PRINCIPAL_TYPE_SERVICE)
+        assertThat(context.serviceIdentityId).isEqualTo("agentos-http-test")
+        assertThat(context.scopes).containsExactly(TrustContextExtractor.HTTP_API_SUBMISSION_SCOPE)
+        assertThat(context.namespaceId).isNull()
+        assertThat(context.caseId).isNull()
+    }
+
+    private val workstreamToken = "workstream-token-at-least-32-bytes-long!"
+
+    private fun workstreamAccess(
+        enabled: Boolean = true,
+        permissions: Set<String> = setOf("read", "start_workflow"),
+        token: String = workstreamToken,
+    ) = FactoryProperties.WorkstreamServiceAccess(
+        enabled = enabled,
+        bearerToken = token,
+        serviceIdentityId = "agentos-workstream-test",
+        organizationId = "org-configured",
+        workstreamId = "ws-configured",
+        permissions = permissions,
+    )
+
+    private fun workstreamExtractor(access: FactoryProperties.WorkstreamServiceAccess): TrustContextExtractor =
+        TrustContextExtractor(
+            FactoryProperties(
+                security = FactoryProperties.Security(
+                    allowLoopbackDev = false,
+                    fakeIdpSecret = secret,
+                    workstreamService = access,
+                ),
+            ),
+            LocalDevMembershipResolver(),
+        )
+
+    @Test
+    fun `workstream bearer yields a service identity bound to its configured tenant and permissions`() {
+        val request = request().apply {
+            remoteAddr = "203.0.113.10"
+            addHeader("Authorization", "Bearer $workstreamToken")
+            // Caller-controlled attribution must never influence the tenant or the scopes.
+            addHeader("x-factory-namespace-id", "forged")
+            addHeader("x-proxy-principal-id", "forged")
+        }
+        val context = workstreamExtractor(workstreamAccess()).extract(request)
+
+        assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_STATIC_WORKSTREAM_BEARER)
+        assertThat(context.principalType).isEqualTo(TrustContext.PRINCIPAL_TYPE_SERVICE)
+        assertThat(context.serviceIdentityId).isEqualTo("agentos-workstream-test")
+        assertThat(context.organizationId).isEqualTo("org-configured")
+        assertThat(context.workstreamId).isEqualTo("ws-configured")
+        assertThat(context.roles).isEmpty()
+        assertThat(context.scopes).containsExactlyInAnyOrder(
+            WorkstreamServicePermissions.READ_SCOPE,
+            WorkstreamServicePermissions.START_SCOPE,
+        )
+        assertThat(context.namespaceId).isNull()
+        assertThat(context.caseId).isNull()
+    }
+
+    @Test
+    fun `workstream bearer never authenticates when disabled or misconfigured`() {
+        listOf(
+            workstreamAccess(enabled = false),
+            workstreamAccess(permissions = emptySet()),
+            workstreamAccess(token = "short"),
+        ).forEach { access ->
+            val request = request().apply {
+                remoteAddr = "203.0.113.10"
+                addHeader("Authorization", "Bearer ${access.bearerToken}")
+            }
+            val context = workstreamExtractor(access).extract(request)
+            assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+            assertThat(context.scopes).isEmpty()
+        }
+    }
+
+    @Test
+    fun `a wrong bearer does not authenticate as the workstream identity`() {
+        val request = request().apply {
+            remoteAddr = "203.0.113.10"
+            addHeader("Authorization", "Bearer ${workstreamToken}x")
+        }
+        val context = workstreamExtractor(workstreamAccess()).extract(request)
+        assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+    }
+
+    @Test
+    fun `HTTP API bearer is rejected while the opt in is disabled`() {
+        val request = request().apply {
+            remoteAddr = "203.0.113.10"
+            addHeader("Authorization", "Bearer http-api-test-token")
+        }
+        val context = extractor(
+            allowLoopbackDev = false,
+            httpApiSubmission = FactoryProperties.HttpApiSubmission(
+                enabled = false,
+                bearerToken = "http-api-test-token",
+            ),
+        ).extract(request)
+
+        assertThat(context.authenticationMethod).isEqualTo(TrustContext.AUTH_ANONYMOUS)
+        assertThat(context.scopes).isEmpty()
     }
 
     @Test

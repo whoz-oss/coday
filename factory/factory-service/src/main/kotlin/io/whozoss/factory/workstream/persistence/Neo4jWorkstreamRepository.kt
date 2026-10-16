@@ -32,6 +32,18 @@ class Neo4jWorkstreamRepository(
     fun findDomain(scope: TenantScope, slug: String): Workstream? =
         findNode(scope, slug)?.toDomain()
 
+    fun findDomainsByNamespace(organizationId: String, namespaceId: String): List<Workstream> =
+        repository.findAllByOrganizationAndNamespace(organizationId, namespaceId).map { it.toDomain() }
+
+    fun mergeInitialNamespaceMapping(organizationId: String, workstreamId: String, namespaceId: String, name: String): Workstream =
+        repository.mergeInitialMapping(
+            WorkstreamNode.compositeId(organizationId, workstreamId),
+            organizationId,
+            workstreamId,
+            namespaceId,
+            name,
+        ).toDomain()
+
     /** List the workstreams visible to [scope], ordered by their stable id. */
     fun list(scope: TenantScope): List<Map<String, Any?>> =
         repository

@@ -1,7 +1,7 @@
-import { ComponentFixture, TestBed } from '@angular/core/testing'
+import { ComponentFixture, TestBed, fakeAsync, tick } from '@angular/core/testing'
 import { FormGroup } from '@angular/forms'
 import { provideRouter, Router } from '@angular/router'
-import { of, throwError } from 'rxjs'
+import { Subject, of, throwError } from 'rxjs'
 import { FactoryApiError, FactoryApiService } from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
 import { LaunchPageComponent } from './launch-page.component'
@@ -12,14 +12,22 @@ interface ApiStub {
   createWorkflowRun: jest.Mock
 }
 
+const NS1 = '0d4bd471-df37-43d8-a8f7-c989f95e71d7'
+const NS2 = '1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28'
+
 function api(overrides: Partial<ApiStub> = {}): ApiStub {
   return {
     getWorkflowDefinitions: jest.fn().mockReturnValue(of({ items: [{ workflowType: 'delivery' }] })),
-    getNamespaces: jest.fn().mockReturnValue(of([{ namespaceId: 'ns-1' }, { id: 'ns-2' }])),
+    getNamespaces: jest.fn().mockReturnValue(
+      of([
+        { namespaceId: NS1, name: 'Talent' },
+        { id: NS2, name: 'Core' },
+      ])
+    ),
     createWorkflowRun: jest.fn().mockReturnValue(
       of({
         workflowId: 'generated-id',
-        title: 'Readable run',
+        title: 'Run',
         created: true,
         queued: true,
         idempotent: false,
@@ -33,7 +41,7 @@ function api(overrides: Partial<ApiStub> = {}): ApiStub {
   }
 }
 
-describe('LaunchPageComponent create-run contract', () => {
+describe('LaunchPageComponent namespace launch', () => {
   let fixture: ComponentFixture<LaunchPageComponent>
 
   async function setup(service: ApiStub): Promise<HTMLElement> {
@@ -54,68 +62,86 @@ describe('LaunchPageComponent create-run contract', () => {
     return (fixture.componentInstance as unknown as { form: FormGroup }).form
   }
 
-  it('requires a namespace and exposes the canonical business fields', async () => {
-    await setup(api({ getNamespaces: jest.fn().mockReturnValue(of([])) }))
+  it('uses the explicit namespace contract without workstream input', async () => {
+    await setup(api())
     expect(Object.keys(form().controls)).toEqual(['workflowType', 'namespaceId', 'title', 'ticket', 'initialRequest'])
-    form().patchValue({ workflowType: 'delivery', namespaceId: '', title: '', ticket: '', initialRequest: '' })
-    expect(form().valid).toBe(false)
-    form().controls['namespaceId'].setValue('ns-1')
+    expect(form().controls['namespaceId'].value).toBe('')
+    form().controls['namespaceId'].setValue(NS1)
     expect(form().valid).toBe(true)
-    form().controls['title'].setValue('x'.repeat(201))
-    expect(form().controls['title'].hasError('maxlength')).toBe(true)
   })
 
-  it('bounds the optional initial request and submits it only when non-blank', async () => {
-    const service = api()
-    await setup(service)
-    form().controls['initialRequest'].setValue('x'.repeat(4001))
-    expect(form().controls['initialRequest'].hasError('maxlength')).toBe(true)
-
-    form().patchValue({
-      workflowType: 'delivery',
-      namespaceId: 'ns-2',
-      title: '',
-      ticket: '',
-      initialRequest: '  Migrer le portail talent  ',
+  it('keeps a namespace visible and selectable without any Factory workstream lookup', async () => {
+    const service = api({
+      getNamespaces: jest.fn().mockReturnValue(of([{ namespaceId: NS1, name: 'Never launched' }])),
     })
-    jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
-    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
-
-    const [payload] = service.createWorkflowRun.mock.calls[0]
-    expect(payload).toEqual({ workflowType: 'delivery', initialRequest: 'Migrer le portail talent' })
+    const host = await setup(service)
+    expect(form().controls['namespaceId'].value).toBe(NS1)
+    expect(host.textContent).toContain('Never launched')
+    expect((service as unknown as { getWorkstreams?: jest.Mock }).getWorkstreams).toBeUndefined()
   })
 
-  it('calls the canonical use case without workflow or execution identity and navigates with the returned id', async () => {
-    const service = api()
-    await setup(service)
-    form().patchValue({ workflowType: 'delivery', namespaceId: 'ns-2', title: 'Readable run', ticket: 'ABC-1' })
-    const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+  it('shows loading, error and empty namespace states', fakeAsync(async () => {
+    const namespaces = new Subject<unknown[]>()
+    const host = await setup(api({ getNamespaces: jest.fn().mockReturnValue(namespaces.asObservable()) }))
+    expect(host.querySelector('[data-launch-targets-loading]')).not.toBeNull()
+    namespaces.error({ code: 'UNAVAILABLE', message: 'Namespaces unavailable', status: 503, raw: null })
+    tick()
+    fixture.detectChanges()
+    expect(host.querySelector('[data-launch-targets-error]')?.textContent).toContain('Namespaces unavailable')
+  }))
 
+  it('shows an explicit empty state', async () => {
+    const host = await setup(api({ getNamespaces: jest.fn().mockReturnValue(of([])) }))
+    expect(host.querySelector('[data-launch-targets-empty]')).not.toBeNull()
+    expect((host.querySelector('[data-launch-submit]') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('refuses a namespace not present in the loaded list', async () => {
+    const service = api()
+    const host = await setup(service)
+    form().patchValue({ workflowType: 'delivery', namespaceId: '00000000-0000-4000-8000-000000000000' })
     ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
     fixture.detectChanges()
+    expect(service.createWorkflowRun).not.toHaveBeenCalled()
+    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('Select an available namespace')
+  })
 
-    expect(service.createWorkflowRun).toHaveBeenCalledTimes(1)
-    const [payload, namespaceId, key] = service.createWorkflowRun.mock.calls[0]
-    expect(payload).toEqual({ workflowType: 'delivery', title: 'Readable run', parameters: { ticket: 'ABC-1' } })
-    expect(payload.workflowId).toBeUndefined()
-    expect(payload.namespaceId).toBeUndefined()
-    expect(payload.execution).toBeUndefined()
-    expect(namespaceId).toBe('ns-2')
-    expect(key).toEqual(expect.any(String))
+  it('submits namespace explicitly and navigates using the returned workflow id', async () => {
+    const service = api()
+    await setup(service)
+    form().patchValue({
+      workflowType: 'delivery',
+      namespaceId: NS2,
+      title: 'Readable',
+      ticket: 'ABC-1',
+      initialRequest: ' Build ',
+    })
+    const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
+    ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
+    expect(service.createWorkflowRun.mock.calls[0][0]).toEqual({
+      namespaceId: NS2,
+      workflowType: 'delivery',
+      title: 'Readable',
+      initialRequest: 'Build',
+      parameters: { ticket: 'ABC-1' },
+    })
     expect(navigate).toHaveBeenCalledWith(['/sessions', 'generated-id'])
   })
 
   it('surfaces Factory rejection and does not navigate', async () => {
-    const error: FactoryApiError = { code: 'INVALID_START_REQUEST', message: 'invalid', status: 400, raw: null }
+    const error: FactoryApiError = {
+      code: 'INVALID_NAMESPACE_ID',
+      message: 'invalid namespace',
+      status: 400,
+      raw: null,
+    }
     const service = api({ createWorkflowRun: jest.fn().mockReturnValue(throwError(() => error)) })
     const host = await setup(service)
-    form().patchValue({ workflowType: 'delivery' })
+    form().patchValue({ workflowType: 'delivery', namespaceId: NS1 })
     const navigate = jest.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true)
-
     ;(fixture.componentInstance as unknown as { onSubmit(): void }).onSubmit()
     fixture.detectChanges()
-
     expect(navigate).not.toHaveBeenCalled()
-    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('invalid')
+    expect(host.querySelector('[data-launch-error]')?.textContent).toContain('invalid namespace')
   })
 })

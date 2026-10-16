@@ -35,6 +35,13 @@ class ForbiddenAdminRequiredException(
     cause: Throwable? = null,
 ) : FactoryException(403, "FORBIDDEN_ADMIN_REQUIRED", message, details, cause)
 
+/** 403 — an authenticated caller lacks the required narrow permission. */
+class ForbiddenException(
+    message: String = "Forbidden",
+    details: Any? = null,
+    cause: Throwable? = null,
+) : FactoryException(403, "FORBIDDEN", message, details, cause)
+
 /** 404 — the requested resource does not exist in the caller's scope. */
 class ResourceNotFoundException(
     message: String = "Resource not found",

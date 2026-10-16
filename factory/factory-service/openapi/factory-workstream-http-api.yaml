@@ -1,0 +1,175 @@
+openapi: 3.0.3
+info:
+  title: Factory workstream HTTP API
+  version: 0.1.0
+  description: >-
+    Conversational Factory facade for agents of the FACTORY_WORKSTREAM integration. The service
+    credential identifies a deployment service, not the person talking to the agent and not the
+    case or agent making the call. Its organization/workstream and permissions (read, start_workflow,
+    request_retry) are configured on the Factory server. Factory resolves the single AgentOS namespace
+    from the registered workstream; the model never chooses it. Other identifiers are references resolved
+    inside that boundary, never permissions. Human validations are answered in Factory only.
+servers:
+  - url: https://factory.example.invalid
+paths:
+  /api/factory/workstream-service/workflows:
+    get:
+      operationId: list_workflows
+      summary: List the workflows of the configured workstream (read-only).
+      parameters:
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [active, removed]
+        - name: workflowType
+          in: query
+          required: false
+          schema:
+            type: string
+            maxLength: 128
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Workflow summaries.
+    post:
+      operationId: start_workflow
+      summary: Create a workflow run. Factory owns its identity and execution context.
+      description: >-
+        Starts a new Factory run in the namespace registered for the configured workstream. The run is not
+        attributed to an AgentOS case. Reuse the same Idempotency-Key to retry safely; the same key with a
+        different payload is refused.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          description: 'Stable key chosen for this start request (letters, digits, . _ : @ -).'
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [workflowType]
+              properties:
+                workflowType:
+                  type: string
+                  maxLength: 128
+                title:
+                  type: string
+                  maxLength: 200
+                ticket:
+                  type: string
+                  maxLength: 64
+      responses:
+        '200': { description: Identical start replayed. }
+        '201': { description: Run created. }
+        '403': { description: 'The service is not permitted, or its workstream namespace mapping is invalid.' }
+        '409': { description: Idempotency or identity conflict. }
+  /api/factory/workstream-service/workflows/{workflowId}:
+    get:
+      operationId: get_workflow
+      summary: Read the authoritative state of one workflow (read-only).
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: 'Workflow state with steps, blockers, allowed actions and bounded attempts.' }
+  /api/factory/workstream-service/workflows/{workflowId}/attempts:
+    get:
+      operationId: get_step_attempts
+      summary: List the durable attempts of a workflow, optionally of one step (read-only).
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+        - name: stepId
+          in: query
+          required: false
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: 'Bounded, secret-free attempts.' }
+  /api/factory/workstream-service/workflows/{workflowId}/blockers:
+    get:
+      operationId: get_blockers
+      summary: List the active blockers of a workflow (read-only).
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: Blockers calculated by Factory. }
+  /api/factory/workstream-service/workflows/{workflowId}/human-actions:
+    get:
+      operationId: get_required_human_actions
+      summary: List the pending human decisions of a workflow (read-only, information only).
+      description: These decisions are answered in Factory. This integration can never answer them.
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+      responses:
+        '200': { description: Pending human actions. }
+  /api/factory/workstream-service/workflows/{workflowId}/retries:
+    post:
+      operationId: request_agent_retry
+      summary: Request a governed retry of a blocked step.
+      description: >-
+        Only opens a retry request that a human approves in Factory. A repeated call for the same step
+        returns the existing open request instead of opening another.
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          schema: { type: string, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [stepId, expectedRevision, reasonCode]
+              properties:
+                stepId: { type: string, maxLength: 128 }
+                expectedRevision: { type: integer, minimum: 1 }
+                reasonCode: { type: string, maxLength: 64 }
+      responses:
+        '200': { description: An open retry request already existed for this step. }
+        '201': { description: Retry requested; awaiting human approval in Factory. }
+        '403': { description: The service is not permitted to request retries. }
+        '409': { description: Stale revision or the step is not blocked. }
+  /api/factory/workstream-service/workstreams/{workstreamId}:
+    get:
+      operationId: get_workstream
+      summary: Read the bounded aggregated projection of the configured workstream (read-only).
+      parameters:
+        - name: workstreamId
+          in: path
+          required: true
+          description: Must be the workstream configured for this service; any other is refused.
+          schema: { type: string, maxLength: 128 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 50 }
+      responses:
+        '200': { description: Aggregated workstream projection. }
+        '403': { description: The workstream is outside the configured boundary. }

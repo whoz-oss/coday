@@ -9,6 +9,7 @@ import io.whozoss.factory.agentattempt.service.AgentStepQuestionService
 import io.whozoss.factory.agentattempt.service.BridgeCancellationService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.config.SessionProperties
+import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.web.TrustContext
@@ -25,6 +26,8 @@ import io.whozoss.factory.workflow.service.SessionRunService
 import io.whozoss.factory.workflow.service.SessionRunSubmissionService
 import io.whozoss.factory.workflow.service.WorkflowHttpResult
 import io.whozoss.factory.workflow.service.WorkflowService
+import io.whozoss.factory.workstream.WorkstreamService
+import io.whozoss.factory.workstream.domain.WorkstreamStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -68,6 +71,7 @@ class WorkflowController(
     private val sessionProperties: SessionProperties,
     private val tenantScopeProvider: TenantScopeProvider,
     private val agentOsProxyClient: AgentOsProxyClient,
+    private val workstreamService: WorkstreamService,
     /**
      * Read side of the durable execution attempts, used by the Cockpit V2
      * attempts listing route.
@@ -178,22 +182,37 @@ class WorkflowController(
         @Parameter(hidden = true) trustContext: TrustContext?,
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
-        if (request.keys.any { it !in setOf("workflowType", "title", "initialRequest", "parameters") }) {
+        if (request.keys.any { it !in setOf("namespaceId", "workflowType", "title", "initialRequest", "parameters") }) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         }
+        val namespace = (request["namespaceId"] as? String)?.trim()?.takeIf { isValidNamespaceId(it) }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID, "A valid namespaceId is required.")
         val workflowType = request["workflowType"] as? String
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         val suppliedKey = idempotencyKey?.trim()?.takeIf { it.isNotEmpty() }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "Idempotency-Key is required.")
         val parameters = (request["parameters"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, trustContext?.namespaceId)
-        val repoRoot = resolveRepoRoot(caller.namespaceId, trustContext?.principalId)
+        val trustedScope = tenantScopeProvider.scopeOf(trustContext)
+            ?: throw workflowException(WorkflowErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Trust context unavailable")
+        if (!trustContext?.authenticated.orFalse() || trustContext?.principalType != TrustContext.PRINCIPAL_TYPE_HUMAN) {
+            throw workflowException(WorkflowErrorCodes.UNAUTHENTICATED_ACTOR)
+        }
+        // AgentOS' browser list is UX only, not individual backend authorization.
+        // Factory enforces the authenticated organization and resolves the unique
+        // organization+namespace registry mapping, initializing it on first use.
+        val selectedWorkstream = workstreamService.findOrInitializeForNamespace(trustedScope.organizationId, namespace)
+        if (selectedWorkstream.status != WorkstreamStatus.ACTIVE) {
+            throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The namespace workstream is inactive.")
+        }
+        val selectedScope = TenantScope(trustedScope.organizationId, selectedWorkstream.workstreamId)
+        val actorId = trustContext?.principalId?.takeIf { isSafeActor(it) } ?: "factory-operator"
+        val repoRoot = resolveRepoRoot(namespace, trustContext?.principalId)
             ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
         return respond(
             createWorkflowRunService.create(
-                caller.scope,
-                caller.namespaceId,
-                caller.actorId,
+                selectedScope,
+                namespace,
+                actorId,
                 trustContext?.caseId,
                 CreateWorkflowRunService.Command(
                     workflowType = workflowType,

@@ -4,6 +4,7 @@ import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.AgentOsExecutionVerdict
 import io.whozoss.factory.adapter.agentos.CaseHandle
+import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
@@ -147,7 +148,16 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         val startTurns = CopyOnWriteArrayList<String>()
         /** caseId → parentCaseId as received at the adapter boundary, for family-propagation assertions. */
         val createdCaseParents = CopyOnWriteArrayList<Pair<String, String?>>()
+        /** caseId → optional title carried by the trusted binding. */
+        val createdCaseTitles = CopyOnWriteArrayList<Pair<String, String?>>()
         private val knownCases = ConcurrentHashMap.newKeySet<String>()
+
+        override fun createOrRecoverExecution(binding: TrustedCaseBinding, workflowId: String, stepId: String): CaseHandle {
+            createdCaseParents.add(binding.caseId to binding.parentCaseId)
+            createdCaseTitles.add(binding.caseId to binding.title)
+            val recovered = !knownCases.add(binding.caseId)
+            return CaseHandle(caseId = binding.caseId, namespaceId = binding.namespaceId, recovered = recovered)
+        }
 
         override fun createOrRecoverExecution(
             namespaceId: String,
@@ -222,6 +232,8 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(adapter.startTurns.toSet()).containsExactly(root)
         // The entry (root) step carries no parent link.
         assertThat(adapter.createdCaseParents.firstOrNull { it.first == root }?.second).isNull()
+        assertThat(adapter.createdCaseTitles.firstOrNull { it.first == root }?.second)
+            .isEqualTo("Session case-concurrent")
     }
 
     // ----- 2. Crash after reservation ⇒ same root case, no recreation -----
@@ -279,6 +291,7 @@ class DurableCaseFamilyIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(b.caseId).isNotEqualTo(root)
         // The child sub-case reaches the AgentOS boundary with the root as parent.
         assertThat(adapter.createdCaseParents.firstOrNull { it.first == b.caseId }?.second).isEqualTo(root)
+        assertThat(adapter.createdCaseTitles.firstOrNull { it.first == b.caseId }?.second).isEqualTo("architect")
     }
 
     // ----- 4. Retry of a failed step ⇒ new sub-case, same worktree --------

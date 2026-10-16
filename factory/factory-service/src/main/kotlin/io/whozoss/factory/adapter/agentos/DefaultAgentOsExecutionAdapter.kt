@@ -97,7 +97,8 @@ class DefaultAgentOsExecutionAdapter(
         adoptRemoteCaseIfCompatible(binding)?.let { return it }
         val body = LinkedHashMap<String, Any?>()
         body["namespaceId"] = binding.namespaceId
-        body["title"] = "Factory session $workflowId · step $stepId"
+        body["title"] = binding.title?.takeIf { it.isNotBlank() }
+            ?: "Factory session $workflowId · step $stepId"
         body["id"] = binding.caseId
         body["attemptId"] = binding.attemptId
         if (!binding.parentCaseId.isNullOrBlank()) body["parentCaseId"] = binding.parentCaseId

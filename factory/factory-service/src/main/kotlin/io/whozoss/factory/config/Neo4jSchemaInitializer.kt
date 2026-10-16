@@ -213,6 +213,22 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.debug { "[Neo4jSchemaInitializer] Constraint idempotency_record_id_unique ensured" }
 
+        // ── Durable per-attempt service integration authorization ─────────
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT durable_attempt_integration_binding_id_unique IF NOT EXISTS " +
+                    "FOR (b:DurableAttemptIntegrationBinding) REQUIRE b.id IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint durable_attempt_integration_binding_id_unique ensured" }
+
+        neo4jClient
+            .query(
+                "CREATE INDEX durable_attempt_integration_binding_lookup IF NOT EXISTS " +
+                    "FOR (b:DurableAttemptIntegrationBinding) ON " +
+                    "(b.organizationId, b.workstreamId, b.attemptId, b.serviceIdentityId)",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Index durable_attempt_integration_binding_lookup ensured" }
+
         // ── Durable agent attempt journal (append-only) ────────────────────
         neo4jClient
             .query(

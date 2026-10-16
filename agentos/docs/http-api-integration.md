@@ -524,6 +524,20 @@ The plugin test suite reads the document it produces for that example (`converte
   `[A-Za-z0-9_-]` or containing `__`) exposes no tools; the message is logged at ERROR and shown in the
   namespace description.
 
+## Optional local HTTP
+
+HTTP API destinations remain HTTPS-only by default. An administrator may set
+`AGENTOS_HTTP_API_ALLOW_LOCAL_HTTP=true` before starting AgentOS to allow plain HTTP exclusively to the
+AgentOS machine's loopback interfaces: `localhost`, IPv4 `127.0.0.0/8`, and IPv6 `::1`. The setting applies
+to every `HTTP_API` integration, including base URLs, OpenAPI document URLs and final operation URLs; it
+does not depend on an integration name, port or route.
+
+The option accepts only the explicit value `true` (case-insensitive). An absent, blank, malformed or false
+value keeps the strict default. Public hosts over HTTP, RFC 1918 addresses, link-local ranges, CGNAT,
+IPv6 unique-local and unspecified addresses remain refused. DNS results are filtered by the same policy,
+so a hostname cannot use rebinding to reach a forbidden destination. Redirects and automatic retries remain
+disabled.
+
 ## Deployment
 
 The plugin is built and deployed like the other bundled plugins:

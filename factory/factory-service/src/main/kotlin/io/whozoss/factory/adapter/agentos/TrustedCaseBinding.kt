@@ -25,6 +25,8 @@ package io.whozoss.factory.adapter.agentos
  * @property environmentRevision expected revision of [environmentRef].
  * @property externalUserId trusted external identity forwarded as
  *   `X-External-User-Id`.
+ * @property title optional title used only if this binding creates a new case;
+ *   recovery never updates an existing AgentOS case.
  */
 data class TrustedCaseBinding(
     val caseId: String,
@@ -37,4 +39,6 @@ data class TrustedCaseBinding(
     val environmentRef: String? = null,
     val environmentRevision: Int? = null,
     val externalUserId: String? = null,
+    /** Optional title used only when this binding creates a new AgentOS case. */
+    val title: String? = null,
 )

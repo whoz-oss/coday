@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core'
-import { Observable, catchError, map, of, throwError } from 'rxjs'
+import { Observable, catchError, map, throwError } from 'rxjs'
 import { AgentQuestion, AllowedAction, GetActionsResponse, WorkflowBlocker } from './models'
 
 export type WorkflowState = 'active' | 'removed'
@@ -117,6 +117,7 @@ export function extractNamespaceOptions(payload: unknown): NamespaceOption[] {
 
 /** Bounded caller-owned input of the canonical create-run use case. */
 export interface CreateWorkflowRunRequest {
+  namespaceId: string
   workflowType: string
   title?: string
   initialRequest?: string
@@ -288,19 +289,9 @@ export class FactoryApiService {
     )
   }
 
-  /** Canonical Factory-owned creation and durable submission. */
-  createWorkflowRun(
-    payload: CreateWorkflowRunRequest,
-    namespaceId: string,
-    idempotencyKey: string
-  ): Observable<CreateWorkflowRunResponse> {
-    return this.post<CreateWorkflowRunResponse>(
-      '/api/factory/workflows',
-      payload,
-      namespaceId,
-      undefined,
-      idempotencyKey
-    )
+  /** Canonical Factory-owned creation and durable submission for an explicit AgentOS namespace. */
+  createWorkflowRun(payload: CreateWorkflowRunRequest, idempotencyKey: string): Observable<CreateWorkflowRunResponse> {
+    return this.post<CreateWorkflowRunResponse>('/api/factory/workflows', payload, undefined, undefined, idempotencyKey)
   }
 
   /**
@@ -465,9 +456,11 @@ export class FactoryApiService {
   }
 
   /**
-   * GET `/api/agentos/api/namespaces` → AgentOS namespaces. Unwraps a raw array or a
-   * `{ items: […] }` payload and degrades gracefully to `[]` when the endpoint
-   * is missing, unavailable or returns an error.
+   * GET `/api/agentos/api/namespaces` → AgentOS namespaces through Coday's
+   * `/api/agentos` proxy. Express strips the mount prefix before pathRewrite is
+   * evaluated, so AgentOS receives its canonical `GET /api/namespaces` route.
+   * Unwraps a raw array or an `{ items: […] }` payload. Transport and HTTP
+   * failures remain explicit so launch screens can distinguish errors from empty access.
    */
   getNamespaces(): Observable<NamespaceItem[]> {
     return this.request<unknown>('/api/agentos/api/namespaces', {}).pipe(
@@ -475,8 +468,7 @@ export class FactoryApiService {
         if (Array.isArray(payload)) return payload as NamespaceItem[]
         const items = (payload as { items?: unknown } | null)?.items
         return Array.isArray(items) ? (items as NamespaceItem[]) : []
-      }),
-      catchError(() => of([] as NamespaceItem[]))
+      })
     )
   }
 
