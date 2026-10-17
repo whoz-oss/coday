@@ -38,4 +38,14 @@ data class ToolContext(
     val credentialProvider: CredentialProvider? = null,
     /** Identifier of the ToolRequestEvent that caused this invocation, when available. */
     val toolRequestId: String? = null,
-)
+) {
+    /**
+     * The case the tool runs in: the case of the first of [caseEvents], or null when there are no events
+     * (tool-set resolution, a direct invocation through the API).
+     *
+     * [caseEvents] are events of the case the tool runs in, so any of them names it. It is derived, not a
+     * constructor parameter: it is not part of [copy] or [equals], and a plugin built against an earlier
+     * SDK is unaffected.
+     */
+    val caseId: UUID? get() = caseEvents.firstOrNull()?.caseId
+}

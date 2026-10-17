@@ -1,11 +1,12 @@
 package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.agentConfig.AgentConfigService
+import io.whozoss.agentos.casePlugin.CaseLaunchRefusal
+import io.whozoss.agentos.casePlugin.FreeCaseLauncherTool
 import io.whozoss.agentos.config.LimitsConfigProperties
-import io.whozoss.agentos.context.UserSessionContextResolver
-import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
+import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.tak
@@ -23,13 +24,28 @@ import java.util.UUID
  * ## Flow
  *
  * 1. Guard: the triggering user must be identified.
- *    Authorization (who can trigger a loop) is enforced at the trigger point, not here.
- * 2. SEARCH: call the Search tool with [AgentLoopSearch.params] (first page only) and
+ * 2. Guard: the `FreeCaseLauncher` tool must be among the agent's tools, i.e. a `CASE_LAUNCHER` integration is bound
+ *    to the loop agent. Checked before searching, so a misconfigured loop fails at once instead of after a
+ *    search whose results it could not use. Whether `allowOtherUsers` is on is not checked: a loop whose end
+ *    users are all the triggering user does not need it. Without it, every other end user is refused by the
+ *    tool and counted as failed.
+ * 3. SEARCH: call the Search tool with [AgentLoopSearch.params] (first page only) and
  *    parse its structured output as [SearchResult].
- * 3. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
+ * 4. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
  *    a. resolve the end-user via [UserService.findByExternalId] — skip if unknown;
- *    b. check the end-user can access the target agent — refuse otherwise;
- *    c. launch one standalone case through [CaseLauncherService], fire-and-forget.
+ *    b. call the `FreeCaseLauncher` tool, **as the triggering user**, naming the end-user as the target and handing the
+ *       entity over as its `sessionContext` (`activeContext`). `FreeCaseLauncher` checks that the end-user has the agent
+ *       deployed and resolves their own context (what the `UserContextProvider` returns, their preferred
+ *       language); the loop does neither. Fire-and-forget: the tool returns the new case id at once. The new
+ *       cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
+ *       iteration, the cases already started keep running on their own.
+ *
+ * ## Who is authorized
+ *
+ * The launches go through `FreeCaseLauncher`, so its rules apply: the integration must allow other users, and each
+ * end-user must read the namespace and have the agent deployed. The loop adds no authorization of its own.
+ * An end-user without the agent is refused by `FreeCaseLauncher` and counted as `noAgentAccess`. An end-user whose
+ * context cannot be resolved makes `FreeCaseLauncher` fail, and is counted as failed.
  *
  * Errors that prevent the whole run return [LoopRunOutcome.Aborted]; per-entity problems are
  * counted in [LoopRunOutcome.Completed] and never stop the loop.
@@ -38,10 +54,7 @@ import java.util.UUID
 class LoopWorkflowRunnerService(
     private val objectMapper: ObjectMapper,
     private val userService: UserService,
-    private val agentConfigService: AgentConfigService,
     private val limitsConfig: LimitsConfigProperties,
-    private val userSessionContextResolver: UserSessionContextResolver,
-    private val caseLauncherService: CaseLauncherService,
 ) {
     suspend fun run(
         payload: AgentLoopPayload,
@@ -51,6 +64,15 @@ class LoopWorkflowRunnerService(
         val triggerUser =
             context.triggerUser
                 ?: return LoopRunOutcome.Aborted("An AgentLoop must be launched by an identified user.")
+
+        val launchTool =
+            context.tools.find { FreeCaseLauncherTool.isFreeCaseLauncherTool(it.name) }
+                ?: return LoopRunOutcome.Aborted(
+                    "The '${FreeCaseLauncherTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
+                        "(available: ${context.tools.map { it.name }}). " +
+                        "Bind a CASE_LAUNCHER integration to the agent (with allowOtherUsers enabled to start " +
+                        "cases for users other than the one who triggers the loop).",
+                )
 
         val search =
             when (val searchOutcome = search(payload, context, triggerUser)) {
@@ -65,7 +87,15 @@ class LoopWorkflowRunnerService(
             buildList {
                 for (item in items) {
                     if (!shouldContinue()) break
-                    add(act(item, payload.act, context))
+                    add(
+                        act(
+                            item = item,
+                            act = payload.act,
+                            context = context,
+                            triggerUser = triggerUser,
+                            launchTool = launchTool,
+                        ),
+                    )
                 }
             }
 
@@ -109,14 +139,7 @@ class LoopWorkflowRunnerService(
                     "Search tool '$toolName' is not available to agent '${context.agentName}' " +
                         "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
                 )
-        val toolContext =
-            ToolContext(
-                namespaceId = context.namespaceId,
-                userId = triggerUser.metadata.id,
-                userExternalId = triggerUser.externalId,
-                caseEvents = context.caseEvents,
-                agentName = context.agentName,
-            )
+        val toolContext = toolContext(context = context, triggerUser = triggerUser)
         val paramsJson = objectMapper.writeValueAsString(payload.search.params)
         logger.debug { "[LoopWorkflowRunner] Search params JSON: $paramsJson" }
         val result =
@@ -146,10 +169,27 @@ class LoopWorkflowRunnerService(
         }
     }
 
-    private fun act(
+    /**
+     * The context every tool of the loop is called with: the triggering user, in the loop's namespace, with the
+     * loop's own case events, from which `FreeCaseLauncher` reads the case to record as the origin of the cases it starts.
+     */
+    private fun toolContext(
+        context: LoopRunContext,
+        triggerUser: User,
+    ) = ToolContext(
+        namespaceId = context.namespaceId,
+        userId = triggerUser.metadata.id,
+        userExternalId = triggerUser.externalId,
+        caseEvents = context.caseEvents,
+        agentName = context.agentName,
+    )
+
+    private suspend fun act(
         item: SearchResultItem,
         act: AgentLoopAct,
         context: LoopRunContext,
+        triggerUser: User,
+        launchTool: StandardTool<*>,
     ): ItemOutcome {
         val userTarget = item.targets?.firstOrNull { it.entityType.equals("User", ignoreCase = true) }
         if (userTarget == null) {
@@ -166,82 +206,74 @@ class LoopWorkflowRunnerService(
             return ItemOutcome.UnknownUser
         }
         val endUserId = endUser.metadata.id
-        if (!hasAgentAccess(endUserId, act.agentName, context.namespaceId)) {
-            logger.warn { "[LoopWorkflowRunner] User $endUserId cannot access agent '${act.agentName}' — refusing" }
-            return ItemOutcome.NoAgentAccess
-        }
 
-        // Resolve user session context (business context + preferred language).
-        // PermanentFailure and TransientFailure are both treated as failures in v0 (no retry):
-        // the entity is counted as failed and the loop continues with the next one.
-        // Without a provider, resolve() returns Success(null) and execution continues without context.
-        val preferredLanguage = endUser.preferredLanguage?.takeIf { it.isNotBlank() }
-        val sessionContext: Map<String, Any?>? =
-            when (val result = userSessionContextResolver.resolve(userExternalId, context.namespaceId)) {
-                is UserContextResult.Success -> {
-                    if (result.sessionContext == null && userSessionContextResolver.hasProvider()) {
-                        logger.warn {
-                            "[LoopWorkflowRunner] UserContextProvider returned Success(null)" +
-                                " for entity='${item.entityId}' — no sessionContext will be injected"
-                        }
-                    }
-                    userSessionContextResolver.mergePreferredLanguage(result.sessionContext, preferredLanguage)
-                }
-
-                is UserContextResult.PermanentFailure -> {
-                    logger.error {
-                        "[LoopWorkflowRunner] Permanent context failure for entity='${item.entityId}'" +
-                            " user=$endUserId — counting as failed. Reason: ${result.reason}"
-                    }
-                    return ItemOutcome.Failed
-                }
-
-                is UserContextResult.TransientFailure -> {
-                    logger.warn {
-                        "[LoopWorkflowRunner] Transient context failure for entity='${item.entityId}'" +
-                            " user=$endUserId — counting as failed (no retry in v0). Reason: ${result.reason}"
-                    }
-                    return ItemOutcome.Failed
-                }
-            }
-
-        val enrichedSessionContext: Map<String, Any?> = addActiveContext(sessionContext, item)
+        // Only the entity travels as the context of the new case: the end-user's own context (provider,
+        // preferred language) is resolved by FreeCaseLauncher, which fails the launch if it cannot be.
+        val input =
+            FreeCaseLauncherTool.Input(
+                agentName = act.agentName,
+                prompt = act.prompt,
+                userId = endUserId.toString(),
+                sessionContext = activeContextOf(item),
+            )
 
         return try {
-            val launchedCaseId =
-                caseLauncherService.launchCase(
-                    namespaceId = context.namespaceId,
-                    agentName = act.agentName,
-                    task = act.prompt,
-                    onBehalfOfUserId = endUserId,
-                    sessionContext = enrichedSessionContext,
+            val result =
+                launchTool.executeWithJson(
+                    objectMapper.writeValueAsString(input),
+                    toolContext(context = context, triggerUser = triggerUser),
                 )
-            logger.info {
-                "[LoopWorkflowRunner] Launched case $launchedCaseId for entity '${item.entityId}' " +
-                    "(user=$endUserId, agent=${act.agentName}, loopCase=${context.caseId})"
-            }
-            ItemOutcome.Launched(launchedCaseId)
+            launchOutcome(result = result, item = item, context = context)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logger.error(e) { "[LoopWorkflowRunner] Failed to launch case for entity '${item.entityId}'" }
+            logger.error(e) { "[LoopWorkflowRunner] '${FreeCaseLauncherTool.TOOL_NAME}' threw for entity '${item.entityId}'" }
             ItemOutcome.Failed
         }
     }
 
     /**
-     * [AgentConfigService.findDeployedByNamespaceIdAndUserIdAndName] is a prefix match, so the
-     * result is narrowed to an exact (case-insensitive) name — same as [io.whozoss.agentos.agent.AgentServiceImpl.findAgentByName].
+     * What a `FreeCaseLauncher` result means for the loop. A refusal because the agent is not deployed to the end user
+     * counts as no agent access; anything else is a failure. A refusal that comes from the
+     * integration (other users not allowed, agent outside the allowlist) hits every entity alike: it shows in
+     * the log with its reason, and in the summary as failures.
      */
-    private fun hasAgentAccess(
-        userId: UUID,
-        agentName: String,
-        namespaceId: UUID,
-    ): Boolean =
-        agentConfigService
-            .findDeployedByNamespaceIdAndUserIdAndName(
-                namespaceId = namespaceId,
-                userId = userId,
-                agentName = agentName.lowercase(),
-            ).any { it.name.equals(agentName, ignoreCase = true) }
+    private fun launchOutcome(
+        result: ToolExecutionResult,
+        item: SearchResultItem,
+        context: LoopRunContext,
+    ): ItemOutcome {
+        if (!result.success) {
+            if (result.errorType == CaseLaunchRefusal.AGENT_NOT_AVAILABLE.name) {
+                logger.warn { "[LoopWorkflowRunner] Agent not available for entity '${item.entityId}': ${result.output}" }
+                return ItemOutcome.NoAgentAccess
+            }
+            logger.error {
+                "[LoopWorkflowRunner] '${FreeCaseLauncherTool.TOOL_NAME}' refused entity '${item.entityId}' " +
+                    "(${result.errorType}): ${result.output}"
+            }
+            return ItemOutcome.Failed
+        }
+        val caseId = launchedCaseId(result)
+        if (caseId == null) {
+            logger.error {
+                "[LoopWorkflowRunner] '${FreeCaseLauncherTool.TOOL_NAME}' reported success without a case id " +
+                    "for entity '${item.entityId}': ${result.output}"
+            }
+            return ItemOutcome.Failed
+        }
+        logger.info {
+            "[LoopWorkflowRunner] Launched case $caseId for entity '${item.entityId}' " +
+                "(agent=${result.metadata["agentName"]}, loopCase=${context.caseId})"
+        }
+        return ItemOutcome.Launched(caseId)
+    }
+
+    /** The new case id, from the structured output of the tool ([FreeCaseLauncherTool.Output]); null if unreadable. */
+    private fun launchedCaseId(result: ToolExecutionResult): UUID? =
+        result.structuredOutput
+            ?.let { runCatching { objectMapper.treeToValue(it, FreeCaseLauncherTool.Output::class.java) }.getOrNull() }
+            ?.caseId
 
     private sealed interface ItemOutcome {
         data class Launched(
@@ -268,19 +300,24 @@ class LoopWorkflowRunnerService(
     companion object : KLogging()
 }
 
-private fun addActiveContext(
-    sessionContext: Map<String, Any?>?,
-    item: SearchResultItem,
-): Map<String, Any?> =
-    buildMap {
-        if (sessionContext != null) putAll(sessionContext)
-        put(
-            "activeContext",
+/**
+ * Keys of the `activeContext` the loop hands to `FreeCaseLauncher`: the Whoz UI's format for "the entities the
+ * prompt is about", a list of `{ type, data: { id } }`. Like [SearchResult], this is the loop's own coupling to
+ * Whoz (V0): neither `FreeCaseLauncher` nor the rest of agentos knows this format.
+ */
+private const val ACTIVE_CONTEXT = "activeContext"
+private const val ITEM_TYPE = "type"
+private const val ITEM_DATA = "data"
+private const val ITEM_ID = "id"
+
+/** The context the loop hands to `FreeCaseLauncher`: the entity of the search hit, as the UI would send it. */
+private fun activeContextOf(item: SearchResultItem): Map<String, Any?> =
+    mapOf(
+        ACTIVE_CONTEXT to
             listOf(
                 mapOf(
-                    "type" to item.entityType,
-                    "data" to mapOf("id" to item.entityId),
+                    ITEM_TYPE to item.entityType,
+                    ITEM_DATA to mapOf(ITEM_ID to item.entityId),
                 ),
             ),
-        )
-    }
+    )
