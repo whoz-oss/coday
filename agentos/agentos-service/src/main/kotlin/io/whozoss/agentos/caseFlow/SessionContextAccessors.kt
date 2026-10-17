@@ -18,10 +18,10 @@ fun Map<String, Any?>.preferredLanguage(): String? =
  * [SessionContextKeys.USER_CONTEXT], joined by a space. Null when there is no `userContext`, or neither name is a
  * non-blank string.
  */
-fun Map<String, Any?>.userDisplayName(): String? {
-    val userContext = this[SessionContextKeys.USER_CONTEXT] as? Map<*, *> ?: return null
-    return listOf(SessionContextKeys.FIRST_NAME, SessionContextKeys.LAST_NAME)
-        .mapNotNull { (userContext[it] as? String)?.trim()?.takeIf { name -> name.isNotEmpty() } }
-        .joinToString(" ")
-        .ifBlank { null }
-}
+fun Map<String, Any?>.userDisplayName(): String? =
+    (this[SessionContextKeys.USER_CONTEXT] as? Map<*, *>)
+        ?.let { userContext ->
+            listOf(SessionContextKeys.FIRST_NAME, SessionContextKeys.LAST_NAME)
+                .mapNotNull { (userContext[it] as? String)?.trim()?.takeIf { name -> name.isNotEmpty() } }
+        }?.joinToString(" ")
+        ?.ifBlank { null }

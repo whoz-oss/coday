@@ -3,7 +3,6 @@ package io.whozoss.agentos.casePlugin
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.caseFlow.SessionContextKeys
 import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -19,82 +18,6 @@ import mu.KLogging
 import org.springframework.context.annotation.Lazy
 import org.springframework.stereotype.Service
 import java.util.UUID
-
-/**
- * What a caller (today the `CreateCase` tool) asks for: start [agentName] on [task].
- *
- * The `caller*` fields describe the running case and come from it, never from LLM input; so does
- * [allowOtherUsers].
- *
- * @param callerCaseId The case that launches: it becomes the origin ([Case.originCaseId]) of the new one.
- * @param targetUserId The user the new case runs for. Null, or the caller itself: the caller. Any
- *   other user requires [allowOtherUsers], must exist and must be able to read the namespace.
- * @param title Name of the new conversation. Null or blank: derived from the start of [task].
- * @param sessionContext What the caller hands to the new case, in the shape of the session context. Only its
- *   `activeContext` (the entities the prompt is about, see [SessionContextKeys]) is kept: every other key is
- *   dropped (see [CaseLaunchService]), since the rest of the session context is the system's to give, not the
- *   caller's. The calling case's own session context is never inherited.
- */
-data class CaseLaunchRequest(
-    val callerUserId: UUID,
-    val callerNamespaceId: UUID,
-    val callerCaseId: UUID,
-    val agentName: String,
-    val task: String,
-    val targetUserId: UUID? = null,
-    val title: String? = null,
-    val sessionContext: Map<String, Any?>? = null,
-    /**
-     * Whether [targetUserId] may name a user other than the caller. Set from the caller's own
-     * configuration (the `allowOtherUsers` switch of a `CASE_LAUNCHER` integration), never from LLM input.
-     */
-    val allowOtherUsers: Boolean = false,
-)
-
-sealed interface CaseLaunchOutcome {
-    /** The case exists and its first turn has been handed to the runtime; it runs in the background. */
-    data class Launched(
-        val caseId: UUID,
-        val userId: UUID,
-        val agentName: String,
-    ) : CaseLaunchOutcome
-
-    /**
-     * A business refusal, decided before anything is written: nothing was created. [message] is safe to
-     * show to the LLM.
-     */
-    data class Refused(
-        val reason: CaseLaunchRefusal,
-        val message: String,
-    ) : CaseLaunchOutcome
-}
-
-/**
- * Why a launch was refused: a business rule, never a failure. The name is the stable `errorType` the
- * `CreateCase` tool reports.
- */
-enum class CaseLaunchRefusal {
-    /** The request names another user, which [CaseLaunchRequest.allowOtherUsers] does not allow. */
-    OTHER_USERS_NOT_ALLOWED,
-
-    /** The target user does not exist. */
-    TARGET_USER_NOT_FOUND,
-
-    /** The target user cannot read the namespace. */
-    TARGET_NO_ACCESS,
-
-    /** The agent is unknown, disabled or not deployed to the target user: the three look the same. */
-    AGENT_NOT_AVAILABLE,
-}
-
-/**
- * The context of the user a case was to be started for could not be resolved: the `UserContextProvider`
- * failed, for good or for now. A failure, not a refusal: it is thrown before anything is written. [message]
- * carries none of the provider's own reason, which may hold the body of an upstream error and is logged instead.
- */
-class UserContextUnavailableException(
-    message: String,
-) : RuntimeException(message)
 
 /**
  * Starts a new case from inside an agent run.
@@ -125,17 +48,15 @@ class UserContextUnavailableException(
  *
  * **Who checks what.** This service owns the rules that protect users: who the case runs for
  * ([CaseLaunchRequest.allowOtherUsers], the target's access to the namespace) and which agent may work
- * for them (deployed to the target). The `CreateCase` tool validates its input and scopes what its
+ * for them (deployed to the target). The `FreeCaseLauncher` tool validates its input and scopes what its
  * integration instance may launch (the agent allowlist); those checks are not repeated here.
  *
- * The session context of the first message has two sources, and no key has both:
- * - **the system**: what the `UserContextProvider` returns for the target user (`description`,
- *   `currentDateTime`, `userContext`...), with the user's `preferredLanguage`. It is resolved for the **target**
- *   user, not the caller: when a case runs for someone else, it carries that person's identity;
- * - **the caller**: its `activeContext` only, the entities the prompt is about. Whatever else it passes in
- *   [CaseLaunchRequest.sessionContext], a `userContext` or a `preferredLanguage` a LLM would forge for one, is
- *   dropped, whether or not the provider happens to return that key. Each item is reduced to its `type` and
- *   `data`, and an item that is not a `{ type, data }` object is dropped.
+ * The session context of the first message is the caller's [CaseLaunchRequest.sessionContext], passed on as
+ * given, with the context the system resolves for the target user on top: what the `UserContextProvider`
+ * returns, with the user's `preferredLanguage`. On a conflicting key the resolved one wins; a key the
+ * resolution does not produce is passed on as the caller gave it. This service knows nothing of the map's
+ * format: what the caller puts in it is the caller's business. The context is resolved for the **target**
+ * user, not the caller: when a case runs for someone else, it carries that person's identity.
  *
  * The calling case's own context is never inherited. Without either source, there is no session context.
  *
@@ -173,7 +94,7 @@ class CaseLaunchService(
         val targetUser = resolveTargetUser(request)
         val agentName =
             resolveAgentName(
-                requested = request.agentName,
+                requestedAgentName = request.agentName,
                 namespaceId = request.callerNamespaceId,
                 userId = targetUser.id,
             )
@@ -216,19 +137,16 @@ class CaseLaunchService(
         namespaceId: UUID,
     ): User {
         val user = userService.findById(userId) ?: refuse(CaseLaunchRefusal.TARGET_USER_NOT_FOUND, "No such user.")
-        if (!canReadNamespace(userId = user.id, namespaceId = namespaceId)) {
+        if (!user.isMemberOf(namespaceId)) {
             refuse(CaseLaunchRefusal.TARGET_NO_ACCESS, "The target user has no access to this namespace.")
         }
         return user
     }
 
-    /** Namespace READ is membership. */
-    private fun canReadNamespace(
-        userId: UUID,
-        namespaceId: UUID,
-    ): Boolean =
+    /** Whether this user is a member of [namespaceId]: membership is Namespace READ. */
+    private fun User.isMemberOf(namespaceId: UUID): Boolean =
         permissionService.hasPermission(
-            userId = userId.toString(),
+            userId = id.toString(),
             entityType = EntityType.NAMESPACE,
             entityId = namespaceId.toString(),
             action = Action.READ,
@@ -240,7 +158,7 @@ class CaseLaunchService(
      * `AgentServiceImpl.findAgentByName`. Unknown, disabled and not deployed look the same.
      */
     private fun resolveAgentName(
-        requested: String,
+        requestedAgentName: String,
         namespaceId: UUID,
         userId: UUID,
     ): String =
@@ -248,18 +166,18 @@ class CaseLaunchService(
             .findDeployedByNamespaceIdAndUserIdAndName(
                 namespaceId = namespaceId,
                 userId = userId,
-                agentName = requested.lowercase(),
+                agentName = requestedAgentName.lowercase(),
             )
-            .firstOrNull { it.name.equals(requested, ignoreCase = true) }
+            .firstOrNull { it.name.equals(requestedAgentName, ignoreCase = true) }
             ?.name
             ?: refuse(
                 CaseLaunchRefusal.AGENT_NOT_AVAILABLE,
-                "Agent '$requested' is not available to the target user in this namespace.",
+                "Agent '$requestedAgentName' is not available to the target user in this namespace.",
             )
 
     /**
-     * The session context of the first message: the context resolved for [targetUser], plus the caller's
-     * `activeContext` (see [callerActiveContext]). Null when both are empty.
+     * The session context of the first message: the caller's [CaseLaunchRequest.sessionContext], under the
+     * context resolved for [targetUser], which wins on a conflicting key. Null when both are empty.
      *
      * A failure of the provider is thrown, before anything is written. The reason the provider gives is
      * logged but kept out of the exception, which reaches the LLM: it may carry the body of an upstream error.
@@ -299,43 +217,7 @@ class CaseLaunchService(
                     )
                 }
             }
-        return ((resolved ?: emptyMap()) + callerActiveContext(request)).takeIf { it.isNotEmpty() }
-    }
-
-    /**
-     * The part of the caller's session context that is kept: its `activeContext`, as a list of `{ type, data }`
-     * items. Anything else is dropped with a warning that names the keys, never the values.
-     */
-    private fun callerActiveContext(request: CaseLaunchRequest): Map<String, Any?> {
-        val given = request.sessionContext?.takeIf { it.isNotEmpty() } ?: return emptyMap()
-        val ignored = given.keys - SessionContextKeys.ACTIVE_CONTEXT
-        if (ignored.isNotEmpty()) {
-            logger.warn {
-                "[CaseLaunch] dropped from the caller's session context (only '${SessionContextKeys.ACTIVE_CONTEXT}' " +
-                    "is kept): ${ignored.take(MAX_LOGGED_KEYS).joinToString { it.take(MAX_LOGGED_KEY_LENGTH) }}"
-            }
-        }
-        val raw = given[SessionContextKeys.ACTIVE_CONTEXT] ?: return emptyMap()
-        val rawItems = raw as? List<*>
-        if (rawItems == null) {
-            logger.warn { "[CaseLaunch] dropped '${SessionContextKeys.ACTIVE_CONTEXT}' from the caller's session context: not a list" }
-            return emptyMap()
-        }
-        val items = rawItems.mapNotNull(::entityItem)
-        if (items.size != rawItems.size) {
-            logger.warn { "[CaseLaunch] dropped malformed '${SessionContextKeys.ACTIVE_CONTEXT}' items from the caller's session context" }
-        }
-        return if (items.isEmpty()) emptyMap() else mapOf(SessionContextKeys.ACTIVE_CONTEXT to items)
-    }
-
-    /** An `activeContext` item reduced to its `type` (when it is a string) and its `data`; null if it has no `data` object. */
-    private fun entityItem(item: Any?): Map<String, Any?>? {
-        val map = item as? Map<*, *> ?: return null
-        val data = map[SessionContextKeys.ITEM_DATA] as? Map<*, *> ?: return null
-        return buildMap {
-            (map[SessionContextKeys.ITEM_TYPE] as? String)?.let { put(SessionContextKeys.ITEM_TYPE, it) }
-            put(SessionContextKeys.ITEM_DATA, data.entries.associate { (key, value) -> key.toString() to value })
-        }
+        return ((request.sessionContext ?: emptyMap()) + (resolved ?: emptyMap())).takeIf { it.isNotEmpty() }
     }
 
     /** Creates the case, tracing the calling one as its origin. */
@@ -343,7 +225,7 @@ class CaseLaunchService(
         caseService.create(
             Case(
                 namespaceId = request.callerNamespaceId,
-                title = (request.title?.takeIf { it.isNotBlank() } ?: request.task).take(MAX_TITLE_LENGTH),
+                title = (request.title?.takeIf { it.isNotBlank() } ?: request.prompt).take(MAX_TITLE_LENGTH),
                 originCaseId = request.callerCaseId,
             ),
         )
@@ -371,7 +253,7 @@ class CaseLaunchService(
             caseService.addMessage(
                 caseId = case.id,
                 actor = Actor(id = targetUser.id.toString(), displayName = targetUser.displayName(), role = ActorRole.USER),
-                content = listOf(MessageContent.Text("@$agentName ${request.task}")),
+                content = listOf(MessageContent.Text("@$agentName ${request.prompt}")),
                 sessionContext = sessionContext,
             )
         } catch (e: Exception) {
@@ -397,9 +279,5 @@ class CaseLaunchService(
     companion object : KLogging() {
         /** Maximum length of the title of a launched case, given or derived from its prompt. */
         private const val MAX_TITLE_LENGTH = 80
-
-        /** How many dropped keys, and how many characters of each, a warning shows: the keys come from an LLM. */
-        private const val MAX_LOGGED_KEYS = 10
-        private const val MAX_LOGGED_KEY_LENGTH = 40
     }
 }

@@ -13,8 +13,8 @@ import java.util.UUID
  * Tool that starts a new case and returns its id.
  *
  * Input: the agent (by name), the prompt (first message, sent on behalf of the user), an optional
- * title (name of the conversation), an optional session context (what the new case is shown with its first
- * message, in the shape every case has: see [io.whozoss.agentos.caseFlow.SessionContextKeys]), and, when the integration allows it, the user the case runs for. Output: the case id.
+ * title (name of the conversation), an optional session context (free key/value data the new case is shown
+ * with its first message), and, when the integration allows it, the user the case runs for. Output: the case id.
  *
  * The target agent runs in the background with its own conversation and the tool returns at once.
  * It does not wait for a result: that is what separates it from `DELEGATE__delegate`, which awaits
@@ -30,10 +30,10 @@ import java.util.UUID
  * from [ToolContext], never from the input: the calling case is [ToolContext.caseId], and a call
  * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`.
  * The calling case's session context is **not** inherited: [Input.sessionContext] is the only thing of the
- * caller that reaches the new case, so the caller hands over just the relevant part, typically the entity
- * the prompt is about. [CaseLaunchService] adds the context of the user the case runs for (what the
- * `UserContextProvider` returns and the user's preferred language). Of the caller's, only `activeContext` is
- * kept: the rest, a forged `userContext` for one, is dropped.
+ * caller that reaches the new case, passed on as given, so the caller hands over just the relevant part. The
+ * tool knows nothing of its format. [CaseLaunchService] adds the context of the user the case runs for (what
+ * the `UserContextProvider` returns and the user's preferred language), which wins over the caller's on a
+ * conflicting key.
  *
  * The tool parses the input, applies the agent allowlist of its integration config, and hands the
  * rest to [CaseLaunchService] along with the [allowOtherUsers] switch of that config. The service owns
@@ -56,13 +56,13 @@ import java.util.UUID
  * @param allowOtherUsers Whether the caller may start the case for a user other than itself. Handed
  *   to [CaseLaunchService], which enforces it.
  */
-class CreateCaseTool(
+class FreeCaseLauncherTool(
     configName: String?,
     private val caseLaunchService: CaseLaunchService,
     private val allowedAgents: List<String> = listOf("*"),
     deniedAgents: Set<String> = emptySet(),
     private val allowOtherUsers: Boolean = false,
-) : StandardTool<CreateCaseTool.Input> {
+) : StandardTool<FreeCaseLauncherTool.Input> {
     /**
      * @param agentName Name of the agent that runs the new case.
      * @param prompt The first message the agent receives, sent on behalf of the user. Must be
@@ -70,10 +70,9 @@ class CreateCaseTool(
      * @param title Name of the new conversation. Omit to derive it from the prompt.
      * @param userId Internal id of the user the case runs for. Only honoured when the integration
      *   allows it. Omit for the current user.
-     * @param sessionContext Session context the new case starts with, in the shape every case has
-     *   ([io.whozoss.agentos.caseFlow.SessionContextKeys]): typically `activeContext`, the entities the
-     *   prompt is about. Only `activeContext` is kept, any other key is dropped by [CaseLaunchService], and the
-     *   calling case's own session context is never passed on. The context of the target user is added by the system.
+     * @param sessionContext Free key/value data the new case starts with, passed on as given to its first
+     *   message, for example what the prompt is about. The calling case's own session context is never passed
+     *   on; the context of the target user is added by the system and wins on a conflicting key.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class Input(
@@ -82,6 +81,14 @@ class CreateCaseTool(
         val title: String? = null,
         val userId: String? = null,
         val sessionContext: Map<String, Any?>? = null,
+    )
+
+    /**
+     * The whole output of the tool, as [outputSchema] declares it: the id of the case it started. A caller that
+     * reads the structured output (AgentLoop) parses it back into this class.
+     */
+    data class Output(
+        val caseId: UUID,
     )
 
     private val allowedRegexes = allowedAgents.map { globToRegex(it) }
@@ -146,10 +153,9 @@ class CreateCaseTool(
                         put("type", "object")
                         put(
                             "description",
-                            "Optional session context the new case starts with. To say which entities the prompt is about, " +
-                                "pass `activeContext`: a list of { type, data: { id, ... } } as returned by the tools. Pass only " +
-                                "what the agent needs: nothing of the current session context is carried over, and the " +
-                                "user's own context (identity, language) is added by the system.",
+                            "Optional key/value data the new case starts with, passed on as given, for example what the " +
+                                "prompt is about. Pass only what the agent needs: nothing of the current session context is " +
+                                "carried over, and the user's own context (identity, language) is added by the system.",
                         )
                         put("additionalProperties", true)
                     }
@@ -198,7 +204,7 @@ class CreateCaseTool(
                     callerNamespaceId = context.namespaceId,
                     callerCaseId = callerCaseId,
                     agentName = input.agentName,
-                    task = input.prompt,
+                    prompt = input.prompt,
                     targetUserId = targetUserId,
                     title = input.title,
                     sessionContext = input.sessionContext,
@@ -220,7 +226,7 @@ class CreateCaseTool(
                             "userId" to userId.toString(),
                             "agentName" to agentName,
                         ),
-                    structuredOutput = objectMapper.createObjectNode().put("caseId", caseId.toString()),
+                    structuredOutput = objectMapper.valueToTree(Output(caseId = caseId)),
                 )
         }
 
@@ -242,11 +248,11 @@ class CreateCaseTool(
             )
 
         /** Name of the tool, bare or after the `__` that follows its integration config name. */
-        const val TOOL_NAME = "CreateCase"
+        const val TOOL_NAME = "FreeCaseLauncher"
 
         fun buildToolName(configName: String?): String = configName?.let { "${it}__$TOOL_NAME" } ?: TOOL_NAME
 
-        /** Whether [toolName] is a `CreateCase` tool, whatever its integration config. */
-        fun isCreateCaseTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
+        /** Whether [toolName] is a `FreeCaseLauncher` tool, whatever its integration config. */
+        fun isFreeCaseLauncherTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
     }
 }

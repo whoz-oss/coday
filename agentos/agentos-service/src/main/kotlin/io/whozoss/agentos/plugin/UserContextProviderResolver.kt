@@ -9,9 +9,9 @@ import org.springframework.stereotype.Component
  * Discovers [UserContextProvider] implementations registered by PF4J plugins.
  *
  * Only the first registered provider is used. If no plugin provides an implementation,
- * [resolve] returns null and the callers (scheduled prompts, `CreateCase`) skip context enrichment.
+ * [resolve] returns null and the callers (scheduled prompts, `FreeCaseLauncher`) skip context enrichment.
  *
- * Always active: it is not gated on the scheduler, since `CreateCase` resolves the context of the
+ * Always active: it is not gated on the scheduler, since `FreeCaseLauncher` resolves the context of the
  * user it starts a case for whether or not the scheduler is enabled.
  */
 @Component

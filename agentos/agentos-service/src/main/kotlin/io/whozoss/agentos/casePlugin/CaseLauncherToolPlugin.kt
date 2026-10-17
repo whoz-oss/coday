@@ -9,7 +9,7 @@ import io.whozoss.agentos.util.stringList
 import org.springframework.stereotype.Component
 
 /**
- * Spring-managed [ToolPlugin] providing the `CASE_LAUNCHER` integration: the [CreateCaseTool].
+ * Spring-managed [ToolPlugin] providing the `CASE_LAUNCHER` integration: the [FreeCaseLauncherTool].
  *
  * A separate integration type from `CASE` (which only *reads* other cases), so that granting an
  * agent the right to read transcripts never grants it the right to start work.
@@ -36,7 +36,7 @@ class CaseLauncherToolPlugin(
         context: ToolContext?,
     ): List<StandardTool<*>> =
         listOf(
-            CreateCaseTool(
+            FreeCaseLauncherTool(
                 configName = configName,
                 caseLaunchService = caseLaunchService,
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },

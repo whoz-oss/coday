@@ -9,8 +9,8 @@ import org.springframework.context.annotation.Configuration
  *
  * The resolution happens once at startup rather than on every use, improving performance and simplifying
  * its consumers and their unit tests. The only consumer is [io.whozoss.agentos.context.UserSessionContextResolver],
- * shared by the scheduled prompts and by `CreateCase` (through `CaseLaunchService`), so this configuration
- * is not tied to the scheduler: `CreateCase` needs the provider whether or not the scheduler is enabled.
+ * shared by the scheduled prompts and by `FreeCaseLauncher` (through `CaseLaunchService`), so this configuration
+ * is not tied to the scheduler: `FreeCaseLauncher` needs the provider whether or not the scheduler is enabled.
  *
  * The bean is null when no plugin registers a [UserContextProvider] implementation.
  */

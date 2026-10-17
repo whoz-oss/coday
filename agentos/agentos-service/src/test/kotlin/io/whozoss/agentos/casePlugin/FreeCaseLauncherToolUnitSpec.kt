@@ -1,8 +1,10 @@
 package io.whozoss.agentos.casePlugin
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -16,11 +18,11 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
 /**
- * Unit tests for [CreateCaseTool]: input and output contract, the agent allowlist, the `userId`
+ * Unit tests for [FreeCaseLauncherTool]: input and output contract, the agent allowlist, the `userId`
  * switch, schema and the hand-off to [CaseLaunchService]. The target user rules and agent access are in
  * [CaseLaunchServiceUnitSpec].
  */
-class CreateCaseToolUnitSpec :
+class FreeCaseLauncherToolUnitSpec :
     StringSpec({
 
         val mapper = jacksonObjectMapper()
@@ -49,7 +51,7 @@ class CreateCaseToolUnitSpec :
             allowedAgents: List<String> = listOf("*"),
             deniedAgents: Set<String> = emptySet(),
             allowOtherUsers: Boolean = false,
-        ) = CreateCaseTool(
+        ) = FreeCaseLauncherTool(
             configName = configName,
             caseLaunchService = launcher,
             allowedAgents = allowedAgents,
@@ -57,9 +59,9 @@ class CreateCaseToolUnitSpec :
             allowOtherUsers = allowOtherUsers,
         )
 
-        "is named CreateCase, prefixed by the integration config name when there is one" {
-            tool().name shouldBe "CreateCase"
-            tool(configName = "LAUNCHER").name shouldBe "LAUNCHER__CreateCase"
+        "is named FreeCaseLauncher, prefixed by the integration config name when there is one" {
+            tool().name shouldBe "FreeCaseLauncher"
+            tool(configName = "LAUNCHER").name shouldBe "LAUNCHER__FreeCaseLauncher"
         }
 
         // -------------------------------------------------------------------------
@@ -77,15 +79,15 @@ class CreateCaseToolUnitSpec :
             val launcher = service()
             val t = tool(launcher)
 
-            t.execute(CreateCaseTool.Input(agentName = " ", prompt = "x"), context()).errorType shouldBe "MISSING_INPUT"
-            t.execute(CreateCaseTool.Input(agentName = "Reporter", prompt = ""), context()).errorType shouldBe "MISSING_INPUT"
+            t.execute(FreeCaseLauncherTool.Input(agentName = " ", prompt = "x"), context()).errorType shouldBe "MISSING_INPUT"
+            t.execute(FreeCaseLauncherTool.Input(agentName = "Reporter", prompt = ""), context()).errorType shouldBe "MISSING_INPUT"
             verify(exactly = 0) { launcher.launch(any()) }
         }
 
         "a run without a user is refused before anything is launched" {
             val launcher = service()
 
-            val result = tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt"), context(user = null))
+            val result = tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context(user = null))
 
             result.errorType shouldBe "MISSING_USER_CONTEXT"
             verify(exactly = 0) { launcher.launch(any()) }
@@ -94,7 +96,7 @@ class CreateCaseToolUnitSpec :
         "a run whose case cannot be identified, with no case events, is refused: the origin would be unknown" {
             val launcher = service()
 
-            val result = tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt"), context(events = emptyList()))
+            val result = tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context(events = emptyList()))
 
             result.errorType shouldBe "MISSING_CASE_CONTEXT"
             verify(exactly = 0) { launcher.launch(any()) }
@@ -136,7 +138,7 @@ class CreateCaseToolUnitSpec :
             val launcher = service()
             val t = tool(launcher, allowedAgents = listOf("Profile*"))
 
-            t.execute(CreateCaseTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
+            t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
             verify(exactly = 0) { launcher.launch(any()) }
         }
 
@@ -145,7 +147,7 @@ class CreateCaseToolUnitSpec :
 
             val result =
                 tool(launcher, allowedAgents = listOf("profile*"))
-                    .execute(CreateCaseTool.Input("ProfileCaretaker", "prompt"), context())
+                    .execute(FreeCaseLauncherTool.Input("ProfileCaretaker", "prompt"), context())
 
             result.success shouldBe true
             verify(exactly = 1) { launcher.launch(any()) }
@@ -155,7 +157,7 @@ class CreateCaseToolUnitSpec :
             val launcher = service()
             val t = tool(launcher, allowedAgents = listOf("*"), deniedAgents = setOf("reporter"))
 
-            t.execute(CreateCaseTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
+            t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
             verify(exactly = 0) { launcher.launch(any()) }
         }
 
@@ -169,7 +171,7 @@ class CreateCaseToolUnitSpec :
                 val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
 
                 tool(launcher, allowOtherUsers = allowed)
-                    .execute(CreateCaseTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
+                    .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
 
                 request.captured.allowOtherUsers shouldBe allowed
                 request.captured.targetUserId shouldBe targetId
@@ -182,7 +184,7 @@ class CreateCaseToolUnitSpec :
 
             val result =
                 tool(service(refused), allowOtherUsers = false)
-                    .execute(CreateCaseTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
+                    .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
 
             result.success shouldBe false
             result.errorType shouldBe "OTHER_USERS_NOT_ALLOWED"
@@ -190,7 +192,7 @@ class CreateCaseToolUnitSpec :
 
         "a userId that is not a UUID is INVALID_INPUT, whether or not other users are allowed" {
             tool(allowOtherUsers = false)
-                .execute(CreateCaseTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
+                .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
                 .errorType shouldBe "INVALID_INPUT"
         }
 
@@ -199,7 +201,7 @@ class CreateCaseToolUnitSpec :
 
             val result =
                 tool(launcher, allowOtherUsers = true)
-                    .execute(CreateCaseTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
+                    .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
 
             result.errorType shouldBe "INVALID_INPUT"
             verify(exactly = 0) { launcher.launch(any()) }
@@ -210,7 +212,7 @@ class CreateCaseToolUnitSpec :
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
 
             tool(launcher, allowOtherUsers = true)
-                .execute(CreateCaseTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
+                .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
 
             request.captured.targetUserId shouldBe targetId
         }
@@ -219,7 +221,7 @@ class CreateCaseToolUnitSpec :
             val request = slot<CaseLaunchRequest>()
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
 
-            tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt", userId = "  "), context())
+            tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = "  "), context())
 
             request.captured.targetUserId shouldBe null
         }
@@ -232,14 +234,14 @@ class CreateCaseToolUnitSpec :
             val request = slot<CaseLaunchRequest>()
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
 
-            tool(launcher).execute(CreateCaseTool.Input("Reporter", "Summarise"), context())
+            tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "Summarise"), context())
 
             request.captured.also {
                 it.callerUserId shouldBe userId
                 it.callerNamespaceId shouldBe namespaceId
                 it.callerCaseId shouldBe callerCaseId
                 it.agentName shouldBe "Reporter"
-                it.task shouldBe "Summarise"
+                it.prompt shouldBe "Summarise"
                 it.targetUserId shouldBe null
                 it.title shouldBe null
                 it.sessionContext shouldBe null
@@ -252,7 +254,7 @@ class CreateCaseToolUnitSpec :
             val ctx = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
             tool(launcher).execute(
-                CreateCaseTool.Input("Reporter", "Summarise", title = "Weekly review", sessionContext = ctx),
+                FreeCaseLauncherTool.Input("Reporter", "Summarise", title = "Weekly review", sessionContext = ctx),
                 context(),
             )
 
@@ -265,28 +267,30 @@ class CreateCaseToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "the output is the case id, in the text, the metadata and the structured output" {
-            val result = tool().execute(CreateCaseTool.Input("Reporter", "prompt"), context())
+            val result = tool().execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
 
             result.success shouldBe true
             result.output shouldContain newCaseId.toString()
             result.metadata["caseId"] shouldBe newCaseId.toString()
             result.metadata["userId"] shouldBe userId.toString()
-            result.structuredOutput!!["caseId"].asText() shouldBe newCaseId.toString()
+            mapper.treeToValue(result.structuredOutput, FreeCaseLauncherTool.Output::class.java) shouldBe
+                FreeCaseLauncherTool.Output(caseId = newCaseId)
         }
 
-        "the structured output honours the declared output schema" {
+        "the structured output is an Output, with exactly the fields the output schema declares, all required" {
             val t = tool()
             val schema = t.outputSchema()!!
-            val result = t.execute(CreateCaseTool.Input("Reporter", "prompt"), context())
+            val result = t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
+            val declared = schema["properties"].fieldNames().asSequence().toList()
 
-            schema["required"].map { it.asText() } shouldBe listOf("caseId")
-            result.structuredOutput!!.fieldNames().asSequence().toList() shouldBe schema["properties"].fieldNames().asSequence().toList()
+            result.structuredOutput!!.fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder declared
+            schema["required"].map { it.asText() } shouldContainExactlyInAnyOrder declared
         }
 
         "a refusal becomes a tool error carrying its reason as errorType, and no structured output" {
             val t = tool(service(CaseLaunchOutcome.Refused(CaseLaunchRefusal.TARGET_NO_ACCESS, "No.")))
 
-            val result = t.execute(CreateCaseTool.Input("Reporter", "prompt"), context())
+            val result = t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
 
             result.success shouldBe false
             result.errorType shouldBe "TARGET_NO_ACCESS"
@@ -299,7 +303,7 @@ class CreateCaseToolUnitSpec :
                 mockk<CaseLaunchService> { every { launch(any()) } throws IllegalStateException("Neo4j unavailable") }
 
             shouldThrow<IllegalStateException> {
-                tool(launcher).execute(CreateCaseTool.Input("Reporter", "prompt"), context())
+                tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
             }
         }
 
@@ -307,33 +311,19 @@ class CreateCaseToolUnitSpec :
         // Schema and description
         // -------------------------------------------------------------------------
 
-        "by default the schema takes agentName, prompt, title and sessionContext, and nothing else" {
-            val schema = mapper.readTree(tool().inputSchema)
+        "the input schema declares exactly the fields of Input, userId only when other users are allowed" {
+            val everyField = FreeCaseLauncherTool.Input("agent", "prompt", "title", "user", emptyMap())
+            val inputFields = mapper.valueToTree<JsonNode>(everyField).fieldNames().asSequence().toList()
 
-            schema["properties"].fieldNames().asSequence().toList() shouldBe listOf("agentName", "prompt", "title", "sessionContext")
-            schema["required"].map { it.asText() } shouldBe listOf("agentName", "prompt")
-            schema["additionalProperties"].asBoolean() shouldBe false
-        }
+            fun schema(allowOtherUsers: Boolean) = mapper.readTree(tool(allowOtherUsers = allowOtherUsers).inputSchema)
 
-        "the agent is designated by name: the schema has no agent id" {
-            val properties = mapper.readTree(tool(allowOtherUsers = true).inputSchema)["properties"]
-
-            properties.has("agentName") shouldBe true
-            properties.has("agentId") shouldBe false
-        }
-
-        "userId appears in the schema only when other users are allowed, and is never required" {
-            val schema = mapper.readTree(tool(allowOtherUsers = true).inputSchema)
-
-            schema["properties"].has("userId") shouldBe true
-            schema["required"].map { it.asText() } shouldBe listOf("agentName", "prompt")
-        }
-
-        "the schema never exposes an external id" {
-            val properties = mapper.readTree(tool(allowOtherUsers = true).inputSchema)["properties"]
-
-            properties.has("userExternalId") shouldBe false
-            properties.has("namespaceExternalId") shouldBe false
+            schema(allowOtherUsers = true)["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder
+                inputFields
+            schema(allowOtherUsers = false)["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder
+                inputFields - "userId"
+            // userId is never required, even when it is offered
+            schema(allowOtherUsers = true)["required"].map { it.asText() } shouldContainExactlyInAnyOrder
+                listOf("agentName", "prompt")
         }
 
         "the description says the case lives on its own, is not stopped with the current one, and is not awaited" {

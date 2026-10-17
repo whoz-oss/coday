@@ -33,7 +33,7 @@ data class Case(
      */
     val scheduledPromptId: UUID? = null,
     /**
-     * Id of the case whose agent started this one with the `CreateCase` tool
+     * Id of the case whose agent started this one with the `FreeCaseLauncher` tool
      * ([io.whozoss.agentos.casePlugin.CaseLaunchService]). Null for cases started otherwise.
      *
      * A trace of provenance only, unlike [parentCaseId]: a launched case is a top-level case in every

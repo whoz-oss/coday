@@ -30,15 +30,15 @@ class CaseLauncherToolPluginUnitSpec :
             plugin().integrationType shouldBe "CASE_LAUNCHER"
         }
 
-        "provides a single CreateCaseTool" {
+        "provides a single FreeCaseLauncherTool" {
             val tools = plugin().provideTools(config = null, configName = null, context = context)
 
             tools shouldHaveSize 1
-            tools.single().shouldBeInstanceOf<CreateCaseTool>()
+            tools.single().shouldBeInstanceOf<FreeCaseLauncherTool>()
         }
 
         "prefixes the tool name with the config name" {
-            plugin().provideTools(config = null, configName = "LAUNCHER", context = context).single().name shouldBe "LAUNCHER__CreateCase"
+            plugin().provideTools(config = null, configName = "LAUNCHER", context = context).single().name shouldBe "LAUNCHER__FreeCaseLauncher"
         }
 
         "the configSchema declares agents, deniedAgents and allowOtherUsers, and refuses anything else" {
@@ -51,10 +51,10 @@ class CaseLauncherToolPluginUnitSpec :
 
         "agents and deniedAgents from the config bound the tool" {
             val config = mapper.readTree("""{"agents": ["Profile*"], "deniedAgents": ["ProfileAdmin"]}""")
-            val tool = plugin().provideTools(config, "LAUNCHER", context).single() as CreateCaseTool
+            val tool = plugin().provideTools(config, "LAUNCHER", context).single() as FreeCaseLauncherTool
 
-            tool.execute(CreateCaseTool.Input("ProfileAdmin", "t"), context).errorType shouldBe "UNAUTHORIZED_AGENT"
-            tool.execute(CreateCaseTool.Input("Reporter", "t"), context).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tool.execute(FreeCaseLauncherTool.Input("ProfileAdmin", "t"), context).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tool.execute(FreeCaseLauncherTool.Input("Reporter", "t"), context).errorType shouldBe "UNAUTHORIZED_AGENT"
         }
 
         "other users are off unless the config turns them on" {
