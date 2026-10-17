@@ -129,7 +129,7 @@ class CaseLaunchServiceUnitSpec :
             prompt: String = "Summarise the week",
             targetUserId: UUID? = null,
             title: String? = null,
-            context: Map<String, Any?>? = null,
+            sessionContext: Map<String, Any?>? = null,
             allowOtherUsers: Boolean = false,
         ) = CaseLaunchRequest(
             callerUserId = caller.id,
@@ -139,7 +139,7 @@ class CaseLaunchServiceUnitSpec :
             prompt = prompt,
             targetUserId = targetUserId,
             title = title,
-            sessionContext = context,
+            sessionContext = sessionContext,
             allowOtherUsers = allowOtherUsers,
         )
 
@@ -265,18 +265,19 @@ class CaseLaunchServiceUnitSpec :
         "an empty context counts as none" {
             val f = Fixture()
 
-            f.service.launch(request(context = emptyMap()))
+            f.service.launch(request(sessionContext = emptyMap()))
 
             f.sent.single().sessionContext shouldBe null
         }
 
         "when nothing is resolved, the context handed over is the session context of the first message, as given" {
             val f = Fixture()
-            val context = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
+            val callerContext =
+                mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
-            f.service.launch(request(context = context))
+            f.service.launch(request(sessionContext = callerContext))
 
-            f.sent.single().sessionContext shouldBe context
+            f.sent.single().sessionContext shouldBe callerContext
         }
 
         "the target user's context is resolved from the provider, in the namespace of the calling case" {
@@ -318,7 +319,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("userContext" to "u"))))
             val entity = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
-            f.service.launch(request(context = entity))
+            f.service.launch(request(sessionContext = entity))
 
             f.sent.single().sessionContext shouldBe entity + mapOf("userContext" to "u")
         }
@@ -326,36 +327,37 @@ class CaseLaunchServiceUnitSpec :
         "the resolved context wins over a key the caller also gives, and the caller's other keys are kept" {
             val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("userContext" to "real"))))
             every { f.userService.findById(caller.id) } returns caller.copy(preferredLanguage = "fr")
-            val given = mapOf("userContext" to "given", SessionContextKeys.PREFERRED_LANGUAGE to "de", "kept" to 1)
+            val callerContext =
+                mapOf("userContext" to "from the caller", SessionContextKeys.PREFERRED_LANGUAGE to "de", "kept" to 1)
 
-            f.service.launch(request(context = given))
+            f.service.launch(request(sessionContext = callerContext))
 
             f.sent.single().sessionContext shouldBe
-                mapOf("userContext" to "real", SessionContextKeys.PREFERRED_LANGUAGE to "fr", "kept" to 1)
+                    mapOf("userContext" to "real", SessionContextKeys.PREFERRED_LANGUAGE to "fr", "kept" to 1)
         }
 
         "a key the resolution does not produce is passed on as the caller gave it" {
             // No provider answer and no preferred language: nothing overrides the caller's keys.
             val f = Fixture(resolverAnswering(UserContextResult.Success(null)))
-            val given =
+            val callerContext =
                 mapOf("userContext" to mapOf("firstName" to "Alice"), SessionContextKeys.PREFERRED_LANGUAGE to "de")
 
-            f.service.launch(request(context = given))
+            f.service.launch(request(sessionContext = callerContext))
 
-            f.sent.single().sessionContext shouldBe given
+            f.sent.single().sessionContext shouldBe callerContext
         }
 
         "the service does not look into the caller's context: any key and any shape is passed on as given" {
             val f = Fixture()
-            val given =
+            val callerContext =
                 mapOf(
                     "activeContext" to listOf("just a string", mapOf("type" to 42), null),
                     "anything" to mapOf("nested" to listOf(1, 2)),
                 )
 
-            f.service.launch(request(context = given))
+            f.service.launch(request(sessionContext = callerContext))
 
-            f.sent.single().sessionContext shouldBe given
+            f.sent.single().sessionContext shouldBe callerContext
         }
 
         "a provider with nothing to say and no preferred language leaves no session context" {
@@ -373,7 +375,7 @@ class CaseLaunchServiceUnitSpec :
 
             f.service.launch(request()).refusal().reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe
-                CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
+                    CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
 
             asked shouldBe emptyList()
         }
@@ -406,7 +408,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
 
             f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe
-                CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
+                    CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
             f.created shouldBe emptyList()
             verify(exactly = 0) { f.userService.findById(other.id) }
         }
@@ -441,7 +443,7 @@ class CaseLaunchServiceUnitSpec :
             f.namespacePermission(other, Action.READ, false)
 
             f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)).refusal().reason shouldBe
-                CaseLaunchRefusal.TARGET_NO_ACCESS
+                    CaseLaunchRefusal.TARGET_NO_ACCESS
             f.created shouldBe emptyList()
         }
 
@@ -450,7 +452,7 @@ class CaseLaunchServiceUnitSpec :
             f.deployAgent(other, "SomethingElse")
 
             f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)).refusal().reason shouldBe
-                CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+                    CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
 
@@ -460,7 +462,7 @@ class CaseLaunchServiceUnitSpec :
             every { f.userService.findById(ghost) } returns null
 
             f.service.launch(request(targetUserId = ghost, allowOtherUsers = true)).refusal().reason shouldBe
-                CaseLaunchRefusal.TARGET_USER_NOT_FOUND
+                    CaseLaunchRefusal.TARGET_USER_NOT_FOUND
             f.created shouldBe emptyList()
         }
 
@@ -537,7 +539,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture(resolverAnswering(UserContextResult.TransientFailure("503")))
 
             shouldThrow<UserContextUnavailableException> { f.service.launch(request()) }.message shouldContain
-                "may succeed later"
+                    "may succeed later"
             f.created shouldBe emptyList()
         }
 
