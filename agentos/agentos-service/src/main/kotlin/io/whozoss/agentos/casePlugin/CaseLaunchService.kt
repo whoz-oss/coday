@@ -1,5 +1,6 @@
 package io.whozoss.agentos.casePlugin
 
+import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
@@ -93,10 +94,13 @@ class CaseLaunchService(
     private fun doLaunch(request: CaseLaunchRequest): CaseLaunchOutcome.Launched {
         val targetUser = resolveTargetUser(request)
         val agentName =
-            resolveAgentName(
-                requestedAgentName = request.agentName,
+            findDeployedAgent(
+                agentName = request.agentName,
                 namespaceId = request.callerNamespaceId,
                 userId = targetUser.id,
+            )?.name ?: refuse(
+                CaseLaunchRefusal.AGENT_NOT_AVAILABLE,
+                "Agent '${request.agentName}' is not available to the target user in this namespace.",
             )
 
         val sessionContext = resolveSessionContext(targetUser = targetUser, request = request)
@@ -153,27 +157,24 @@ class CaseLaunchService(
         )
 
     /**
-     * The agent as it is actually named (casing), if deployed to the user in the namespace.
-     * `findDeployed...` is a prefix match, so the result is narrowed to an exact one, as in
-     * `AgentServiceImpl.findAgentByName`. Unknown, disabled and not deployed look the same.
+     * The agent matching [agentName] among those deployed to the user in the namespace, or null if there is
+     * none. `findDeployed...` is a prefix match, so the result is narrowed to an exact (case-insensitive) one, as
+     * in `AgentServiceImpl.findAgentByName`. Unknown, disabled and not deployed look the same.
+     *
+     * The launch uses the canonical name of the agent found, not the one the caller typed, for the `@mention` of
+     * the first message, the log and the outcome.
      */
-    private fun resolveAgentName(
-        requestedAgentName: String,
+    private fun findDeployedAgent(
+        agentName: String,
         namespaceId: UUID,
         userId: UUID,
-    ): String =
+    ): AgentConfig? =
         agentConfigService
             .findDeployedByNamespaceIdAndUserIdAndName(
                 namespaceId = namespaceId,
                 userId = userId,
-                agentName = requestedAgentName.lowercase(),
-            )
-            .firstOrNull { it.name.equals(requestedAgentName, ignoreCase = true) }
-            ?.name
-            ?: refuse(
-                CaseLaunchRefusal.AGENT_NOT_AVAILABLE,
-                "Agent '$requestedAgentName' is not available to the target user in this namespace.",
-            )
+                agentName = agentName.lowercase(),
+            ).firstOrNull { it.name.equals(agentName, ignoreCase = true) }
 
     /**
      * The session context of the first message: the caller's [CaseLaunchRequest.sessionContext], under the

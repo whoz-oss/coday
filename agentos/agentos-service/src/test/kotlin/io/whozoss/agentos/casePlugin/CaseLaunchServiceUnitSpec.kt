@@ -30,9 +30,27 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [CaseLaunchService]: the case it creates (origin, title, first message, ADMIN grant), its
- * session context (the caller's, under the one resolved for the target user), agent access, the target user,
- * and failures. A refusal must never create a case, and a failure is thrown, never turned into a refusal.
+ * Unit tests for [CaseLaunchService], all driven through its only entry point, [CaseLaunchService.launch]. The
+ * service has five collaborators, so each test runs against a whole small world, and changes only what it is about.
+ *
+ * **The world of a test** (`Fixture`): a `caller` and an `other` user, both members of the namespace, both with
+ * the agent `Reporter` deployed, and no `UserContextProvider`. A test changes a permission (`namespacePermission`),
+ * a deployment (`deployAgent`), a user lookup (`userService.findById`), or the provider (`resolverAnswering`,
+ * `provider`). `request(...)` builds the launch request, from the caller's case, for the caller by default.
+ *
+ * **What a test observes**: the fake `CaseService` of the fixture records what the service did (`created`, `sent`,
+ * `deleted`), and can make each step fail (`createFailure`, `grantFailure`, `sendFailure`, `deleteFailure`).
+ * `refusal()` reads a [CaseLaunchOutcome.Refused].
+ *
+ * **Sections**, in the order the service applies its rules:
+ * 1. the case it creates: origin, first message, ADMIN grant;
+ * 2. its title;
+ * 3. its session context: the caller's, under the one resolved for the target user;
+ * 4. agent access and the calling user;
+ * 5. another user: allowed by the `allowOtherUsers` switch, no administration right required;
+ * 6. failures: thrown, never turned into refusals.
+ *
+ * A refusal never creates a case.
  */
 class CaseLaunchServiceUnitSpec :
     StringSpec({
@@ -212,12 +230,14 @@ class CaseLaunchServiceUnitSpec :
             }
         }
 
-        "uses the agent's real casing, not the one the LLM typed" {
+        "the agent is addressed by its canonical name, whatever the case it was requested in" {
             val f = Fixture()
 
-            f.service.launch(request(agentName = "reporter"))
+            val outcome =
+                f.service.launch(request(agentName = "reporter")).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
 
             f.sent.single().content shouldBe listOf(MessageContent.Text("@Reporter Summarise the week"))
+            outcome.agentName shouldBe "Reporter"
         }
 
         // -------------------------------------------------------------------------
