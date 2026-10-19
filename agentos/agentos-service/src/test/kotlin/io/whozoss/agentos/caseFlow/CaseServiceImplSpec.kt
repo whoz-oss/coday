@@ -2473,7 +2473,8 @@ class CaseServiceImplSpec :
             val child = service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
 
             child.parentCaseId shouldBe parent.id
-            verify(exactly = 1) { repository.linkParentToChild(parent.id, child.id) }
+            // The repository writes the [:PARENT_OF] edge with the case (see EmbeddedNeo4jSubCaseCreationSpec).
+            verify(exactly = 1) { repository.insert(match { it.id == child.id && it.parentCaseId == parent.id }) }
         }
 
         "create rejects a parent from another namespace" {
@@ -2560,6 +2561,9 @@ class CaseServiceImplSpec :
                     every { findActiveDescendants(any()) } answers { delegate.findActiveDescendants(firstArg()) }
                     every { countAncestorDepth(any()) } answers { delegate.countAncestorDepth(firstArg()) }
                     every { linkParentToChild(any(), any()) } throws RuntimeException("simulated Neo4j link failure")
+                    every { insert(any()) } answers {
+                        delegate.save(firstArg()).also { saved -> saved.parentCaseId?.let { linkParentToChild(it, saved.id) } }
+                    }
                 }
             val namespace =
                 Namespace(

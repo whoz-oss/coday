@@ -99,6 +99,10 @@ open class Neo4jCaseRepository(
     ) = caseNodeNeo4jRepository.linkParentToChild(parentCaseId.toString(), childCaseId.toString())
 
     @Transactional
+    override fun insert(case: Case): Case =
+        save(case).also { saved -> saved.parentCaseId?.let { linkParentToChild(it, saved.id) } }
+
+    @Transactional
     override fun deleteByParent(parentId: UUID): Int {
         val active = caseNodeNeo4jRepository.findActiveByNamespaceId(parentId.toString())
         caseNodeNeo4jRepository.saveAll(active.map { it.copy(removed = true) })

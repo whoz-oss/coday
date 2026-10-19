@@ -81,4 +81,13 @@ interface CaseRepository : EntityRepository<Case, UUID> {
         parentCaseId: UUID,
         childCaseId: UUID,
     )
+
+    /**
+     * Save a new [case] and, for a sub-case, the [:PARENT_OF] edge from its parent.
+     *
+     * Implementations write the case, its links and the edge in one transaction, whether or not
+     * the caller runs one, so a failed link never leaves a sub-case that [countAncestorDepth]
+     * cannot reach.
+     */
+    fun insert(case: Case): Case
 }
