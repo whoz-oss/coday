@@ -296,7 +296,7 @@ export function checkAndSwapNext(configDir: string, targetVersion: string): Swap
  * Fire-and-forget safe — never throws.
  *
  * @param configDir     Root config directory.
- * @param targetVersion Version to pre-fetch (AGENTOS_BUNDLED_VERSION).
+ * @param targetVersion Version to pre-fetch (from getAgentosVersion()).
  */
 export async function downloadAgentosJarsToNext(configDir: string, targetVersion: string): Promise<DownloadResult> {
   if (targetVersion === 'dev') {

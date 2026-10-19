@@ -1,4 +1,35 @@
-import { releaseBaseUrl, releaseTagForVersion } from './release-url'
+import { releaseBaseUrl, releaseTagForVersion, resolveRuntimeVersion } from './release-url'
+
+describe('resolveRuntimeVersion', () => {
+  it('prefers the env override', () => {
+    expect(resolveRuntimeVersion('9.9.9', '0.0.0-workstream-forge.34')).toEqual({
+      version: '9.9.9',
+      source: 'env',
+    })
+  })
+
+  it('follows the package version for a workstream build', () => {
+    expect(resolveRuntimeVersion(undefined, '0.0.0-workstream-forge.34')).toEqual({
+      version: '0.0.0-workstream-forge.34',
+      source: 'package',
+    })
+  })
+
+  it('follows the package version for a regular release', () => {
+    expect(resolveRuntimeVersion(undefined, '3.36.1')).toEqual({
+      version: '3.36.1',
+      source: 'package',
+    })
+  })
+
+  it('ignores an empty env override', () => {
+    expect(resolveRuntimeVersion('', '3.36.1').source).toBe('package')
+  })
+
+  it('passes the dev sentinel through (downloads are skipped for it)', () => {
+    expect(resolveRuntimeVersion(undefined, 'dev')).toEqual({ version: 'dev', source: 'package' })
+  })
+})
 
 describe('releaseTagForVersion', () => {
   it('maps a regular version to release/<version>', () => {
