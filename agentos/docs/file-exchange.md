@@ -182,6 +182,50 @@ The service passes the sentence to the plugin as the `scopeGuidance` key of the 
 writes the key only when it has one — a FILE_ACCESS integration configured by a user gets none,
 since the sentence talks about cases and namespaces and only the exchange scopes are in one.
 
+## Pointing an integration at an exchange
+
+An integration that runs commands or opens files names its directory as a fixed absolute path:
+`workingDirectory` for BASH and TMUX, `cwd` for MCP_STDIO, `rootPath` for a FILE_ACCESS. None of
+them has any notion of a case, so a command configured once runs in the same directory for every
+case of the namespace — which is how an agent ends up editing the files of its own case and building
+somewhere else entirely.
+
+Two tokens, resolved per run by `ExchangePathRunIntegration`, let an operator name an exchange
+instead of a path, anywhere in an integration's parameters:
+
+| Token | Resolves to | Available |
+|---|---|---|
+| `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case) |
+| `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | always |
+
+```yaml
+# BASH, running the case's own checkout
+workingDirectory: "{{CASE_EXCHANGE}}/repo"
+```
+
+They are the upper-case spelling of the `case-exchange` / `namespace-exchange` tool prefixes on
+purpose: `{{CASE_EXCHANGE}}` designates exactly the directory the agent's own `case-exchange__*`
+tools are rooted at. They name the exchange root itself and say nothing about Git — in an equipped
+family the worktree is `repo/` underneath (see [git-workspaces.md](git-workspaces.md)), hence the
+`/repo` above. A token whose meaning changed with `agentos.git.workspaces.enabled` would be
+implicit in a way nothing else here is.
+
+Substitution is textual and positional, so a token also works mid-string (`cd
+{{CASE_EXCHANGE}}/repo && pnpm test`) and inside nested objects and arrays. Resolution is skipped
+entirely for a run whose integrations carry no token, since resolving the case one costs a read of
+the case and of its family binding.
+
+A token that cannot be resolved is left verbatim, and the plugin reading it rejects it — the BASH
+parser requires an absolute path, so the integration contributes no tool and logs why. That is
+deliberate: falling back to another directory would run the work where nobody looks for it. A case
+whose workspace is still being prepared or has failed raises the same conflict the file endpoints
+raise, rather than having commands pointed at it.
+
+This shares the `{{TOKEN}}` spelling of `{{NAMESPACE_CONFIG_PATH}}`
+([plugin-system.md](plugin-system.md)) but not its lifecycle: that one is resolved once, when a
+filesystem YAML config is loaded, and only for those; these are resolved on every run, for configs
+of every origin.
+
 ## Safety
 
 - **Create-only writes**: written straight to the target with an atomic create-new open. A concurrent
@@ -195,6 +239,13 @@ since the sentence talks about cases and namespaces and only the exchange scopes
   granted agent runs in; an agent that opts out with `[]` creates nothing.
 - **Upload allow-list**: user uploads are restricted to a configurable set of file extensions
   (`agentos.exchange.allowed-upload-extensions`); a disallowed type is rejected with 400.
+- **An exchange token grants nothing, and bypasses the exchange's own gates**: a BASH integration
+  pointed at `{{NAMESPACE_EXCHANGE}}` runs as the service user with no permission check, unlike the
+  agent's namespace file tools, which require the invoking user's Namespace `READ` and `WRITE`, and
+  unlike the REST endpoints, which enforce the same through `@PreAuthorize`. The deny-list does not
+  apply there either. This is not a capability the tokens add — the same integration could always
+  be handed the namespace path verbatim, and a shell integration is arbitrary code execution by
+  nature — but it is now easy enough to write that it must be a deliberate choice.
 
 ## Related
 

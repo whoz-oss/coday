@@ -1,10 +1,8 @@
 package io.whozoss.agentos.plugin.filesystem
 
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.JsonNodeFactory
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.node.TextNode
+import io.whozoss.agentos.util.substituteJsonTokens
+import io.whozoss.agentos.util.substituteTokens
 
 /**
  * Token substituted, at filesystem-YAML parse time only, by the owning namespace's
@@ -17,6 +15,10 @@ import com.fasterxml.jackson.databind.node.TextNode
  * No path normalization is applied: `{{NAMESPACE_CONFIG_PATH}}/../scripts` resolves to
  * `<configPath>/../scripts` literally. Downstream consumers (`Path.of`, `File`,
  * `canonicalPath`, `BashConfigParser`'s own traversal check) resolve `..` themselves.
+ *
+ * This one is resolved **once, at load time, and only for filesystem configs**. The exchange
+ * tokens of [io.whozoss.agentos.exchange.ExchangeIntegrationTypes] share the same spelling
+ * convention but a different lifecycle: per agent run, for configs of every origin.
  */
 const val NAMESPACE_CONFIG_PATH_TOKEN = "{{NAMESPACE_CONFIG_PATH}}"
 
@@ -24,7 +26,7 @@ const val NAMESPACE_CONFIG_PATH_TOKEN = "{{NAMESPACE_CONFIG_PATH}}"
 fun substituteConfigPath(
     text: String,
     configPath: String,
-): String = text.replace(NAMESPACE_CONFIG_PATH_TOKEN, configPath)
+): String = substituteTokens(text, mapOf(NAMESPACE_CONFIG_PATH_TOKEN to configPath))
 
 /**
  * Returns a new [JsonNode] with [NAMESPACE_CONFIG_PATH_TOKEN] substituted by [configPath]
@@ -37,18 +39,8 @@ fun substituteConfigPath(
 fun substituteConfigPath(
     node: JsonNode?,
     configPath: String?,
-): JsonNode? {
-    if (node == null || configPath == null) return node
-    return when (node) {
-        is TextNode -> TextNode.valueOf(substituteConfigPath(node.textValue(), configPath))
-        is ObjectNode ->
-            JsonNodeFactory.instance.objectNode().also { result ->
-                node.fields().forEach { (key, value) -> result.set<JsonNode>(key, substituteConfigPath(value, configPath)) }
-            }
-        is ArrayNode ->
-            JsonNodeFactory.instance.arrayNode().also { result ->
-                node.forEach { element -> result.add(substituteConfigPath(element, configPath)) }
-            }
-        else -> node
+): JsonNode? =
+    when (configPath) {
+        null -> node
+        else -> substituteJsonTokens(node, mapOf(NAMESPACE_CONFIG_PATH_TOKEN to configPath))
     }
-}

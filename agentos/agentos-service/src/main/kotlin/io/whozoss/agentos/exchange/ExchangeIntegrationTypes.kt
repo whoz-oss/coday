@@ -27,6 +27,29 @@ object ExchangeIntegrationTypes {
     const val NAMESPACE_CONFIG_NAME = "namespace-exchange"
 
     /**
+     * Tokens an integration's parameters may carry to name an exchange directory, resolved per run
+     * by [ExchangePathRunIntegration].
+     *
+     * They are the upper-case spelling of [CASE_CONFIG_NAME] and [NAMESPACE_CONFIG_NAME] on
+     * purpose: `{{CASE_EXCHANGE}}` designates exactly the directory the agent's own
+     * `case-exchange__*` tools are rooted at. One vocabulary for the operator configuring an
+     * integration and for the model reading a tool name.
+     *
+     * They name the exchange root itself, with no cleverness about Git. In an equipped family the
+     * worktree is `repo/` underneath (see `docs/git-workspaces.md`), so an integration that must
+     * run inside it writes `{{CASE_EXCHANGE}}/repo`. A token whose value silently changed meaning
+     * depending on whether Git workspaces are enabled would be the kind of implicit behaviour this
+     * codebase avoids elsewhere.
+     *
+     * They share the `{{TOKEN}}` spelling of
+     * [io.whozoss.agentos.plugin.filesystem.NAMESPACE_CONFIG_PATH_TOKEN] but not its lifecycle:
+     * that one is resolved once, when a filesystem YAML config is loaded; these are resolved on
+     * every run, for configs of every origin, because the case directory only exists per run.
+     */
+    const val CASE_PATH_TOKEN = "{{CASE_EXCHANGE}}"
+    const val NAMESPACE_PATH_TOKEN = "{{NAMESPACE_EXCHANGE}}"
+
+    /**
      * Catalogue descriptors for the built-in exchange integrations (toggle-only, no config).
      *
      * The two flags come from [ExchangeToolsConfigProperties] and are published so a client can tell

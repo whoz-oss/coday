@@ -63,7 +63,7 @@ class TmuxToolProvider : ToolPlugin {
                         "workingDirectory": {
                             "type": "string",
                             "title": "Working Directory",
-                            "description": "Absolute path used as the working directory when creating new tmux sessions. Defaults to the user home directory if omitted."
+                            "description": "Absolute path used as the working directory when creating new tmux sessions. Defaults to the user home directory if omitted. Write {{CASE_EXCHANGE}} to use the current case's own directory, or {{NAMESPACE_EXCHANGE}} for the namespace shared one; in a Git workspace the worktree is {{CASE_EXCHANGE}}/repo."
                         }
                     },
                     "additionalProperties": false
