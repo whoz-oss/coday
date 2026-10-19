@@ -33,7 +33,6 @@ import { registerTranscribeRoutes } from './lib/transcribe.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
-import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
@@ -43,6 +42,7 @@ import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
 import { downloadFactoryJars, findMissingFactoryJars } from './lib/factory-download'
 import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
+import { createAgentOsProxy } from './lib/agentos-proxy'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -141,18 +141,14 @@ function forwardIdentity(proxyReq: import('http').ClientRequest, req: import('ht
 
 app.use(
   '/api/agentos',
-  createProxyMiddleware({
-    // router callback reads currentAgentosUrl at request time, not at setup time
-    router: () => currentAgentosUrl,
-    changeOrigin: true,
-    pathRewrite: { '^/api/agentos': '' },
-    on: {
-      proxyReq: (proxyReq, req) => {
-        debugLog('AGENTOS', `[PROXY] ${req.method} ${req.url}`)
-        forwardIdentity(proxyReq, req)
-      },
-    },
-  })
+  (req, _res, next) => {
+    debugLog('AGENTOS', `[PROXY] ${req.method} ${req.path}`)
+    if (AGENTOS_EXTERNAL_USERID) {
+      req.headers['X-External-User-Id'] = AGENTOS_EXTERNAL_USERID
+    }
+    next()
+  },
+  createAgentOsProxy(() => currentAgentosUrl)
 )
 debugLog(
   'INIT',
