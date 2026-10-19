@@ -7,7 +7,8 @@
  *   <configDir>/factory/factory-service-<version>.jar
  *   <configDir>/factory/plugins/factory-forge-plugin-<version>.jar
  *
- * Assets come from the GitHub Release `release/<version>` (same release as
+ * Assets come from the GitHub Release of that version (`release/<version>`, or
+ * `workstream-<slug>-<n>` for workstream prereleases; same release as
  * the AgentOS JARs), verified against `checksums.sha256`.
  *
  * Unlike AgentOS there is no background pre-fetch / next/ swap: when the JARs on
@@ -21,6 +22,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { debugLog } from './log'
 import { cleanDirectory, extractHashFromManifest, sha256hex } from './agentos-download'
+import { releaseBaseUrl } from './release-url'
 
 const FETCH_TIMEOUT_MS = 60_000
 
@@ -70,7 +72,7 @@ export async function downloadFactoryJars(configDir: string, version: string): P
     return { outcome: 'skipped:dev-version', message: "Version is 'dev' sentinel — no release URL available" }
   }
 
-  const baseUrl = `https://github.com/whoz-oss/coday/releases/download/release/${version}`
+  const baseUrl = releaseBaseUrl(version)
   const factoryDir = path.join(configDir, 'factory')
   const pluginsDir = path.join(factoryDir, 'plugins')
 
