@@ -29,6 +29,10 @@ import java.nio.file.Path
  * When [readOnly] is true, only the read tools (list, read, readAsImage, readDocument,
  * readSpreadsheet, search) are provided. Write tools (edit, remove, move) are not
  * included at all, so the agent is never aware of their existence.
+ *
+ * The `scopeGuidance` config key, when the host sets one, is appended to the description of the
+ * write tools only — see [io.whozoss.agentos.plugins.file.tools.withScopeGuidance] for why the read
+ * tools are left alone.
  */
 @Extension
 class FileToolProvider : ToolPlugin {
@@ -57,6 +61,14 @@ class FileToolProvider : ToolPlugin {
         val documentMaxAttachedImages = config.get("documentMaxAttachedImages")?.asInt() ?: ReadDocumentTool.MAX_ATTACHED_IMAGES
         val documentMaxTableColumns = config.get("documentMaxTableColumns")?.asInt() ?: ReadDocumentTool.MAX_TABLE_COLUMNS
         val documentMaxCellChars = config.get("documentMaxCellChars")?.asInt() ?: ReadDocumentTool.MAX_CELL_CHARS
+
+        // One sentence the host may attach to the write tools when they are one of several surfaces
+        // the model has to choose between (the AgentOS case / namespace exchanges, whose two tool
+        // sets are otherwise described identically). Absent for an integration configured by a user.
+        val scopeGuidance = config.get("scopeGuidance")?.asText()?.takeIf { it.isNotBlank() }
+        logger.debug {
+            "FILE_ACCESS '$configName': scope guidance ${if (scopeGuidance == null) "absent" else "applied to the write tools"}"
+        }
 
         val readMaxSizeBytes = readMaxSizeMb * 1024 * 1024
         val denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + extraDenyPatterns
@@ -92,9 +104,9 @@ class FileToolProvider : ToolPlugin {
         )
 
         val writeTools = listOf(
-            EditFilesTool(rootPath, configName, denyPatterns),
-            RemoveFileTool(rootPath, configName, denyPatterns),
-            MoveFileTool(rootPath, configName, denyPatterns),
+            EditFilesTool(rootPath, configName, denyPatterns, scopeGuidance),
+            RemoveFileTool(rootPath, configName, denyPatterns, scopeGuidance),
+            MoveFileTool(rootPath, configName, denyPatterns, scopeGuidance),
         )
 
         return if (readOnly) readTools else readTools + writeTools
@@ -172,6 +184,11 @@ class FileToolProvider : ToolPlugin {
                         "title": "Document Max Cell Chars",
                         "description": "A single table cell longer than this is cut by readDocument. Default is 5000.",
                         "default": 5000
+                    },
+                    "scopeGuidance": {
+                        "type": "string",
+                        "title": "Scope Guidance",
+                        "description": "One sentence appended to the description of the write tools (editFiles, remove, moveFile), telling the model which surface they write to. Set it when the agent holds several file integrations it has to choose between. Only the write tools carry it: providers cap a tool description and the read tools are already close to that cap."
                     },
                     "extraDenyPatterns": {
                         "type": "array",

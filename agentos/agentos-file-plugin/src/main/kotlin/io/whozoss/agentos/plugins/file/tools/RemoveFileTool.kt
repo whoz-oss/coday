@@ -27,6 +27,7 @@ class RemoveFileTool(
     private val projectRoot: Path,
     private val configName: String? = null,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
+    scopeGuidance: String? = null,
 ) : StandardTool<RemoveFileTool.Input> {
     companion object {
         private const val IO_TIMEOUT = 30L
@@ -37,7 +38,7 @@ class RemoveFileTool(
     override val description: String =
         """
         Remove a file. Only removes files, not directories.
-        """.trimIndent()
+        """.trimIndent().withScopeGuidance(scopeGuidance)
 
     override val version: String = "1.0.0"
 

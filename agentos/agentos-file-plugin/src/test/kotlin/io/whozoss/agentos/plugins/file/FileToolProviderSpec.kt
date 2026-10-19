@@ -1,10 +1,14 @@
 package io.whozoss.agentos.plugins.file
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.ints.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldEndWith
+import io.kotest.matchers.string.shouldNotContain
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
 import java.nio.file.Path
@@ -62,6 +66,58 @@ class FileToolProviderSpec : StringSpec() {
                 "TEST__readSpreadsheet",
                 "TEST__searchFiles",
             )
+        }
+
+        "scopeGuidance is appended to the write tools only" {
+            val config = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "scopeGuidance": "Scope: the shared files."}""",
+            )
+            val tools = FileToolProvider().provideTools(config, "TEST")
+
+            listOf("TEST__editFiles", "TEST__remove", "TEST__moveFile").forEach { name ->
+                tools.first { it.name == name }.description shouldEndWith "\nScope: the shared files."
+            }
+            // The read tools are deliberately left alone: providers cap a tool description (OpenAI
+            // rejects one past 1024 characters) and readSpreadsheet is already within ~60 characters
+            // of that ceiling, so appending here would break a run rather than guide it.
+            listOf(
+                "TEST__listFiles",
+                "TEST__readFile",
+                "TEST__readAsImage",
+                "TEST__readDocument",
+                "TEST__readSpreadsheet",
+                "TEST__searchFiles",
+            ).forEach { name ->
+                tools.first { it.name == name }.description shouldNotContain "Scope: the shared files."
+            }
+        }
+
+        "descriptions are untouched when the host sets no scopeGuidance" {
+            val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}""")
+            val withoutKey = FileToolProvider().provideTools(config, "TEST")
+            val blank = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "scopeGuidance": "   "}""",
+            )
+            val withBlankKey = FileToolProvider().provideTools(blank, "TEST")
+
+            // A FILE_ACCESS integration configured by a user gets no key, and a blank one must not
+            // leave a dangling newline on three tool descriptions either.
+            withoutKey.map { it.description } shouldBe withBlankKey.map { it.description }
+            withoutKey.first { it.name == "TEST__editFiles" }.description shouldEndWith
+                "a failure on one file does not prevent others from being processed."
+        }
+
+        "every provided description stays within the provider description cap" {
+            // OpenAI rejects a tool description past 1024 characters with a 400, and the three
+            // document read tools are the long ones (readSpreadsheet ~963 at the time of writing).
+            // The suite otherwise runs against no provider, so nothing else would catch a growth.
+            val config = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "scopeGuidance": "${"x".repeat(300)}"}""",
+            )
+
+            FileToolProvider().provideTools(config, "namespace-exchange").forEach { tool ->
+                withClue(tool.name) { tool.description.length shouldBeLessThanOrEqual 1024 }
+            }
         }
 
         "readMaxSizeMb propagation to ReadFileTool" {

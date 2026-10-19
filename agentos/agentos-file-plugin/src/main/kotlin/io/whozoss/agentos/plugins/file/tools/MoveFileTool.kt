@@ -24,6 +24,7 @@ class MoveFileTool(
     private val projectRoot: Path,
     private val configName: String? = null,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
+    scopeGuidance: String? = null,
 ) : StandardTool<MoveFileTool.Input> {
     companion object {
         private const val IO_TIMEOUT = 30L
@@ -34,7 +35,7 @@ class MoveFileTool(
     override val description: String =
         """
         Move or rename a file or directory. Fails if the source does not exist, the destination already exists, or any moved entry is protected.
-        """.trimIndent()
+        """.trimIndent().withScopeGuidance(scopeGuidance)
 
     override val version: String = "1.0.0"
 
