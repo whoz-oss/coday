@@ -1,5 +1,6 @@
 package io.whozoss.agentos.entity
 
+import io.whozoss.agentos.exception.BadRequestException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -7,8 +8,6 @@ import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.sdk.entity.Entity
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
-import org.springframework.http.HttpStatus
-import org.springframework.web.server.ResponseStatusException
 import java.util.UUID
 
 /**
@@ -85,10 +84,7 @@ class EntityCrudDelegate<ResourceType>(
     ): List<ResourceType> {
         val ids = request.ids
         if (ids.size > MAX_BATCH_SIZE) {
-            throw ResponseStatusException(
-                HttpStatus.BAD_REQUEST,
-                "Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE",
-            )
+            throw BadRequestException("Batch size ${ids.size} exceeds maximum of $MAX_BATCH_SIZE")
         }
         if (ids.isEmpty()) return emptyList()
 
