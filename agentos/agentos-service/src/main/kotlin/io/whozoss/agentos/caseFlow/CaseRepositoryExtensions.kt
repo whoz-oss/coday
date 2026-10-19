@@ -20,6 +20,10 @@ private const val CHANGE_ATTEMPTS = 3
  * [change] can therefore run up to [CHANGE_ATTEMPTS] times, first on [current], then on each
  * re-read. It must be side-effect-free and just return the changed case. Events and any other
  * effect belong after [saveChange] returns.
+ *
+ * Inside a transaction, a refusal marks it rollback-only: the retry saves, then the commit
+ * fails and rolls the whole transaction back. Call it there only on a case no other
+ * transaction can write yet, such as one created in that same transaction.
  */
 fun CaseRepository.saveChange(
     current: Case,
