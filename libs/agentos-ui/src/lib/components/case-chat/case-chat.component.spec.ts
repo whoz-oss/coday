@@ -137,6 +137,7 @@ describe('CaseChatComponent — submit with attachments', () => {
     globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
     const log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
     const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    jest.useFakeTimers()
     const ref = makeComponent()
     try {
       ref.instance['connectSse']()
@@ -146,6 +147,7 @@ describe('CaseChatComponent — submit with attachments', () => {
       emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
       emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
       emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      jest.runOnlyPendingTimers()
       expect(ref.instance['isRunning']()).toBe(true)
 
       source.onerror!(new Event('error'))
@@ -155,9 +157,10 @@ describe('CaseChatComponent — submit with attachments', () => {
       emit('CaseStatusEvent', 'running-1', { status: 'RUNNING' })
       emit('ToolResponseEvent', 'tool-1', { toolName: 'case-exchange__editFiles' })
       emit('TextChunkEvent', 'chunk-1', { chunk: 'Hello' })
+      jest.runOnlyPendingTimers()
       expect(ref.instance['isRunning']()).toBe(true)
       expect(ref.instance['streamingText']()).toBe('Hello')
-      expect(ref.instance['events']()).toHaveLength(4)
+      expect(ref.instance['events']()).toHaveLength(3)
       expect(exchangeState.refreshCase).toHaveBeenCalledTimes(1)
 
       emit('AgentFinishedEvent', 'finished-1')
@@ -166,10 +169,63 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(exchangeState.refreshManifest).toHaveBeenCalledTimes(1)
     } finally {
       ref.destroy()
+      jest.useRealTimers()
       globalThis.EventSource = original
       log.mockRestore()
       warn.mockRestore()
     }
+  })
+
+  describe('streamed text chunks', () => {
+    let original: typeof EventSource
+    let source: EventTarget & { close: jest.Mock }
+    let log: jest.SpyInstance
+    let ref: ComponentRef<CaseChatComponent>
+    const emit = (type: string, id: string, fields: object = {}) =>
+      source.dispatchEvent(new MessageEvent(type, { data: JSON.stringify({ type, id, ...fields }) }))
+    const emitChunks = (text: string) =>
+      [...text].forEach((chunk, i) => emit('TextChunkEvent', `chunk-${i}`, { chunk }))
+
+    beforeEach(() => {
+      original = globalThis.EventSource
+      source = Object.assign(new EventTarget(), { close: jest.fn() })
+      globalThis.EventSource = jest.fn(() => source) as unknown as typeof EventSource
+      log = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+      jest.useFakeTimers()
+      ref = makeComponent()
+      ref.instance['connectSse']()
+    })
+
+    afterEach(() => {
+      ref.destroy()
+      jest.useRealTimers()
+      globalThis.EventSource = original
+      log.mockRestore()
+    })
+
+    it('publishes a burst of chunks once, after the flush interval, without storing them as events', () => {
+      emitChunks('Hello world')
+      expect(ref.instance['streamingText']()).toBe('')
+
+      jest.advanceTimersByTime(100)
+      expect(ref.instance['streamingText']()).toBe('Hello world')
+      expect(ref.instance['events']()).toHaveLength(0)
+    })
+
+    it('publishes the pending chunks before handling the next event', () => {
+      emitChunks('Let me check')
+      emit('ToolRequestEvent', 'tool-1', { toolName: 'search', toolRequestId: 'tool-1' })
+
+      expect(ref.instance['streamingText']()).toBe('Let me check')
+    })
+
+    it('drops a pending flush at the end of the turn', () => {
+      emitChunks('Done')
+      emit('AgentFinishedEvent', 'finished-1')
+
+      jest.advanceTimersByTime(100)
+      expect(ref.instance['streamingText']()).toBe('')
+    })
   })
 
   it('uploads the attachments before sending, and appends the mention to the message', async () => {

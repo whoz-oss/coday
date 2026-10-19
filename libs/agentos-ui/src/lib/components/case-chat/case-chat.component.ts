@@ -39,6 +39,7 @@ import {
   MessageEvent as CaseMessageEvent,
   QuestionEvent,
   QuestionEventQuestionTypeEnum,
+  TextChunkEvent,
   ToolRequestEvent,
   ToolResponseEvent,
   ToolSelectedEvent,
@@ -111,6 +112,12 @@ export type TimelineItem =
 
 /** Threshold (px) from the bottom of the scroll container below which we consider "at bottom". */
 const SCROLL_BOTTOM_THRESHOLD = 64
+
+/**
+ * Minimum delay (ms) between two renders of the streaming bubble. A long answer arrives as
+ * dozens of TextChunkEvents per second; rendering each one froze the page.
+ */
+const STREAMING_FLUSH_INTERVAL_MS = 100
 
 /** True when the user has an active text selection (e.g. preparing to copy). */
 function hasActiveSelection(): boolean {
@@ -237,6 +244,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   protected readonly events = signal<CaseEvent[]>([])
 
+  /** Ids of every event received, streamed chunks included: a reconnection replays history. */
+  private readonly seenEventIds = new Set<string>()
+
   /**
    * Pre-computed markdown HTML per event id.
    * Populated at SSE ingestion time so the computed() timeline stays synchronous.
@@ -345,7 +355,11 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   /** Streaming assistant text assembled from TextChunkEvent during a RUNNING turn. */
   protected readonly streamingText = signal('')
 
-  /** Markdown-rendered SafeHtml of the streaming text — updated on every chunk. */
+  /** Text received but not yet published to streamingText (see bufferTextChunk). */
+  private streamingBuffer = ''
+  private streamingFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** Markdown-rendered SafeHtml of the streaming text — updated once per flush. */
   protected readonly streamingHtml = computed<SafeHtml>(() => {
     const text = this.streamingText()
     if (!text) return ''
@@ -672,6 +686,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.eventSource?.close()
     this.scrollListenerCleanup?.()
+    this.cancelStreamingFlush()
   }
 
   // ---------------------------------------------------------------------------
@@ -725,30 +740,31 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       now: new Date().toISOString(),
     })
 
-    this.eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
+    const eventSource = this.zone.runOutsideAngular(() => new EventSource(url))
+    this.eventSource = eventSource
 
     // BREAKING SSE protocol: every domain event uses the stable `case-event` channel.
     // The JSON payload's `type` field is the sole CaseEvent subtype discriminant.
+    // The listeners run outside the Angular zone: each event enters it explicitly, except text
+    // chunks, which are buffered and only enter it once per flush.
     const handler = (msg: globalThis.MessageEvent<string>) => {
-      const receivedAt = performance.now()
       const sseEventName = (msg as unknown as { type?: string }).type
-
-      // Log first bytes + sizes to detect batching.
       const raw = msg.data
-      console.log('[AgentOS SSE] frame received', {
-        sseEventName,
-        dataLength: raw?.length ?? 0,
-        dataPreview: raw?.slice(0, 120),
-        receivedAtMs: receivedAt,
-      })
 
       try {
         const event = JSON.parse(raw) as CaseEvent
+        if (event.type === 'TextChunkEvent') {
+          this.bufferTextChunk(event)
+          return
+        }
         this.zone.run(() => {
+          // Buffered chunks precede this event in the stream: publish them first.
+          this.flushStreamingText()
+
           // Reconnection replays persisted history. The last known status restores the
           // running indicator after a transport error; older statuses must not undo it.
           // Timeline rows, file refreshes and streamed text remain deduplicated.
-          if (this.events().some((previous) => previous.id === event.id)) {
+          if (this.seenEventIds.has(event.id)) {
             if (event.type === 'CaseStatusEvent') {
               const latestStatus = [...this.events()]
                 .reverse()
@@ -759,7 +775,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
             }
             return
           }
-          const beforeLen = this.events().length
+          this.seenEventIds.add(event.id)
 
           // Pre-compute markdown HTML for MessageEvent before adding to signal.
           if (event.type === 'MessageEvent') {
@@ -774,25 +790,6 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           }
 
           this.events.update((prev) => [...prev, event])
-          const afterLen = this.events().length
-
-          console.log('[AgentOS SSE] event processed', {
-            sseEventName,
-            eventType: event.type,
-            eventId: event.id,
-            beforeLen,
-            afterLen,
-            running: this.isRunning(),
-            terminal: this.isTerminal(),
-          })
-
-          if (event.type === 'TextChunkEvent') {
-            const chunk = (event as unknown as { chunk?: string }).chunk
-            if (chunk) {
-              this.streamingText.update((prev) => prev + chunk)
-            }
-            return
-          }
 
           if (event.type === 'CaseUpdatedEvent') {
             const updated = event as CaseUpdatedEvent
@@ -823,7 +820,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
               this.isRunning.set(running)
               if (!running) {
                 // End of turn / idle: reset streaming buffer.
-                this.streamingText.set('')
+                this.resetStreaming()
               }
             }
             return
@@ -834,7 +831,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
           if (event.type === 'AgentFinishedEvent') {
             this.isRunning.set(false)
             // End-of-turn: reset streaming buffer.
-            this.streamingText.set('')
+            this.resetStreaming()
             // Safety net: refresh both scopes at end-of-turn ONLY if a tool ran (covers a mutation the
             // per-op regex may have missed); pure-conversation turns skip the manifest fetch.
             if (this.anyToolResponseThisTurn) {
@@ -901,30 +898,68 @@ export class CaseChatComponent implements OnInit, OnDestroy {
       'AnswerEvent',
     ] as const
 
-    // handle the different event names we see in the SSE stream
-    for (const name of eventNames) {
-      console.log('[AgentOS SSE] addEventListener', name)
-      this.eventSource.addEventListener(name, handler)
-    }
+    this.zone.runOutsideAngular(() => {
+      // handle the different event names we see in the SSE stream
+      for (const name of eventNames) {
+        console.log('[AgentOS SSE] addEventListener', name)
+        eventSource.addEventListener(name, handler)
+      }
 
-    this.eventSource.onopen = () => {
-      console.log('[AgentOS SSE] connection open', {
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
-    }
+      eventSource.onopen = () => {
+        console.log('[AgentOS SSE] connection open', {
+          readyState: this.eventSource?.readyState,
+          at: new Date().toISOString(),
+        })
+      }
 
-    this.eventSource.onerror = (err) => {
-      console.warn('[AgentOS SSE] connection error', {
-        err,
-        readyState: this.eventSource?.readyState,
-        at: new Date().toISOString(),
-      })
-      this.zone.run(() => {
-        this.isRunning.set(false)
-        // Do not mark terminal on transport error: EventSource may reconnect.
-      })
-    }
+      eventSource.onerror = (err) => {
+        console.warn('[AgentOS SSE] connection error', {
+          err,
+          readyState: this.eventSource?.readyState,
+          at: new Date().toISOString(),
+        })
+        this.zone.run(() => {
+          this.isRunning.set(false)
+          // Do not mark terminal on transport error: EventSource may reconnect.
+        })
+      }
+    })
+  }
+
+  /**
+   * Accumulate a streamed text fragment, outside the Angular zone. Chunks are not stored in
+   * `events`: they would rebuild the whole timeline each time, and the final MessageEvent
+   * supersedes them. The streaming bubble is re-rendered at most every
+   * STREAMING_FLUSH_INTERVAL_MS, which bounds the markdown, change detection and scroll work.
+   */
+  private bufferTextChunk(event: TextChunkEvent): void {
+    if (this.seenEventIds.has(event.id)) return
+    this.seenEventIds.add(event.id)
+    if (!event.chunk) return
+    this.streamingBuffer += event.chunk
+    this.streamingFlushTimer ??= setTimeout(
+      () => this.zone.run(() => this.flushStreamingText()),
+      STREAMING_FLUSH_INTERVAL_MS
+    )
+  }
+
+  /** Publish the buffered text to the streaming bubble. */
+  private flushStreamingText(): void {
+    this.cancelStreamingFlush()
+    this.streamingText.set(this.streamingBuffer)
+  }
+
+  /** Drop the streamed text: end of turn, new message or case switch. */
+  private resetStreaming(): void {
+    this.cancelStreamingFlush()
+    this.streamingBuffer = ''
+    this.streamingText.set('')
+  }
+
+  private cancelStreamingFlush(): void {
+    if (this.streamingFlushTimer === null) return
+    clearTimeout(this.streamingFlushTimer)
+    this.streamingFlushTimer = null
   }
 
   /** Whether any tool ran this turn — gates the end-of-turn exchange refresh (skips pure-chat turns). */
@@ -982,13 +1017,14 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.eventSource?.close()
     this.eventSource = null
     this.events.set([])
+    this.seenEventIds.clear()
     this.messageHtmlCache.clear()
     this.inputValue.set('')
     this.isRunning.set(false)
     this.isTerminal.set(false)
     this._sseStatus.set('')
     this.confirmingDelete.set(false)
-    this.streamingText.set('')
+    this.resetStreaming()
     this.collapsedTools.set(new Set())
     this.isAtBottom.set(true)
     this.drawerPanel.set('files')
@@ -1040,7 +1076,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   private postMessage(content: string): Promise<boolean> {
     this.isRunning.set(true)
-    this.streamingText.set('')
+    this.resetStreaming()
 
     return firstValueFrom(
       this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/messages`, {
