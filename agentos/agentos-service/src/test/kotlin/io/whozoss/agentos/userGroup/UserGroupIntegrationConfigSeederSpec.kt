@@ -54,7 +54,7 @@ class UserGroupIntegrationConfigSeederSpec :
             created.captured.userId shouldBe null
             created.captured.name shouldBe "USER_GROUP"
             created.captured.integrationType shouldBe "USER_GROUP"
-            created.captured.autoGrant shouldBe true
+            created.captured.autoGrant shouldBe false
             // The integration requires no parameters
             created.captured.parameters shouldBe null
         }

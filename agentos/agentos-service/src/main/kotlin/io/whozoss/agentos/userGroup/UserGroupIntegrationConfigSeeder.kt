@@ -109,7 +109,7 @@ class UserGroupIntegrationConfigSeeder(
             integrationType = UserGroupToolPlugin.INTEGRATION_TYPE,
             description = DEFAULT_DESCRIPTION,
             parameters = null,
-            autoGrant = true,
+            autoGrant = false,
         )
 
     companion object : KLogging() {

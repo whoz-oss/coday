@@ -47,11 +47,7 @@ data class IntegrationsProperties(
      * Override with environment variable (Spring Boot relaxed binding):
      * - `AGENTOS_INTEGRATIONS_AUTO_GRANTABLE_TYPES` (comma-separated, replaces the default list)
      */
-    val autoGrantableTypes: List<String> =
-        listOf(
-            IntegrationTypeConstraints.QUERY_USER_TYPE,
-            IntegrationTypeConstraints.USER_GROUP_TYPE, // = "USER_GROUP"
-        ),
+    val autoGrantableTypes: List<String> = listOf(IntegrationTypeConstraints.QUERY_USER_TYPE),
 ) {
     private val autoGrantableUpper: Set<String> = autoGrantableTypes.mapTo(mutableSetOf()) { it.uppercase() }
 
