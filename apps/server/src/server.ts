@@ -35,6 +35,7 @@ import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
 import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
+import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion, getFactoryVersion } from './lib/version'
 import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
@@ -121,20 +122,36 @@ let currentFactoryUrl = FACTORY_URL_ENV ?? 'http://localhost:8141'
 let agentosProcess: AgentosProcess | null = null
 let factoryProcess: FactoryProcess | null = null
 
+/**
+ * All incoming headers are already forwarded by http-proxy-middleware. This hook
+ * adds the caller identity expected by the upstream services in X-External-User-Id
+ * (see ./lib/proxy-identity.ts). `getUsername` is a hoisted function declaration
+ * and is only invoked at request time, once codayOptions is initialised.
+ */
+function forwardIdentity(proxyReq: import('http').ClientRequest, req: import('http').IncomingMessage): void {
+  applyProxyIdentity(
+    proxyReq,
+    decideProxyIdentity({
+      authEnabled: !!codayOptions.auth,
+      envUserId: AGENTOS_EXTERNAL_USERID,
+      resolveUser: () => getUsername(req as express.Request),
+    })
+  )
+}
+
 app.use(
   '/api/agentos',
-  (req, _res, next) => {
-    debugLog('AGENTOS', `[PROXY] ${req.method} ${req.path}`)
-    if (AGENTOS_EXTERNAL_USERID) {
-      req.headers['X-External-User-Id'] = AGENTOS_EXTERNAL_USERID
-    }
-    next()
-  },
   createProxyMiddleware({
     // router callback reads currentAgentosUrl at request time, not at setup time
     router: () => currentAgentosUrl,
     changeOrigin: true,
     pathRewrite: { '^/api/agentos': '' },
+    on: {
+      proxyReq: (proxyReq, req) => {
+        debugLog('AGENTOS', `[PROXY] ${req.method} ${req.url}`)
+        forwardIdentity(proxyReq, req)
+      },
+    },
   })
 )
 debugLog(
@@ -156,8 +173,9 @@ app.use(
     changeOrigin: true,
     pathFilter: (p) => p === '/api/factory' || p.startsWith('/api/factory/'),
     on: {
-      proxyReq: (_proxyReq, req) => {
+      proxyReq: (proxyReq, req) => {
         debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
+        forwardIdentity(proxyReq, req)
       },
     },
   })
@@ -371,7 +389,7 @@ const FORBIDDEN_USERNAMES = [
  * Extract username for authentication and logging purposes.
  *
  * Resolution order when `--auth` is enabled:
- *  1. `CF_Authorization` header — Cloudflare Access JWT (email claim decoded
+ *  1. `Cf-Access-Jwt-Assertion` header — Cloudflare Access JWT (email claim decoded
  *     from the base64url payload; no signature verification needed as
  *     Cloudflare validates the token at the edge).
  *  2. `x-forwarded-email` header — standard reverse-proxy header.
