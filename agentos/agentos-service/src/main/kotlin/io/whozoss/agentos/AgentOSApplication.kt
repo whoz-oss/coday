@@ -2,6 +2,7 @@ package io.whozoss.agentos
 
 import io.whozoss.agentos.agent.AgentConfigProperties
 import io.whozoss.agentos.caseFlow.CaseConfigProperties
+import io.whozoss.agentos.casePlugin.CasePluginConfigProperties
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.PersistenceConfigProperties
@@ -33,6 +34,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
     AgentConfigProperties::class,
     AnthropicProperties::class,
     CaseConfigProperties::class,
+    CasePluginConfigProperties::class,
     AgentOsPluginsConfigProperties::class,
     PersistenceConfigProperties::class,
     LimitsConfigProperties::class,
