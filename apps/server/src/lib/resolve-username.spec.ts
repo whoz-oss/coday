@@ -48,9 +48,9 @@ describe('resolveUsername', () => {
   })
 
   describe('when auth is enabled', () => {
-    it('uses CF_Authorization JWT email (path 1)', () => {
+    it('uses Cf-Access-Jwt-Assertion JWT email (path 1)', () => {
       const token = buildJwt({ email: 'cf-user@example.com' })
-      const headers = { cf_authorization: token }
+      const headers = { 'cf-access-jwt-assertion': token }
       expect(resolveUsername(headers, true)).toBe('cf-user@example.com')
     })
 
@@ -61,7 +61,7 @@ describe('resolveUsername', () => {
 
     it('falls back to x-forwarded-email when CF JWT is malformed (path 2)', () => {
       const headers = {
-        cf_authorization: 'not-a-jwt',
+        'cf-access-jwt-assertion': 'not-a-jwt',
         'x-forwarded-email': 'proxy-user@example.com',
       }
       expect(resolveUsername(headers, true)).toBe('proxy-user@example.com')
@@ -70,7 +70,7 @@ describe('resolveUsername', () => {
     it('falls back to x-forwarded-email when CF JWT has no email claim (path 2)', () => {
       const token = buildJwt({ sub: 'user-id' })
       const headers = {
-        cf_authorization: token,
+        'cf-access-jwt-assertion': token,
         'x-forwarded-email': 'proxy-user@example.com',
       }
       expect(resolveUsername(headers, true)).toBe('proxy-user@example.com')
@@ -81,7 +81,7 @@ describe('resolveUsername', () => {
     })
 
     it('throws when CF JWT is malformed and x-forwarded-email is absent (path 3)', () => {
-      const headers = { cf_authorization: 'bad.token' }
+      const headers = { 'cf-access-jwt-assertion': 'bad.token' }
       expect(() => resolveUsername(headers, true)).toThrow(
         'Authentication required but no valid identity header found.'
       )
