@@ -20,7 +20,8 @@ import java.util.UUID
  * It does not wait for a result: that is what separates it from `DELEGATE__delegate`, which awaits
  * its sub-cases. The new case is a top-level case, not a sub-case: stopping the calling case does not
  * stop it. The calling case is only recorded as its origin
- * ([io.whozoss.agentos.caseFlow.Case.originCaseId]).
+ * ([io.whozoss.agentos.caseFlow.Case.originCaseId]), and a case started this way cannot start another one
+ * (`LAUNCH_DEPTH_EXCEEDED`).
  *
  * The agent is designated by **name**, not by id: names are unique per scope and are what an
  * `@mention` resolves, whereas an id is an internal value an LLM could only guess.

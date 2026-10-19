@@ -5,6 +5,12 @@ package io.whozoss.agentos.casePlugin
  * `FreeCaseLauncher` tool reports.
  */
 enum class CaseLaunchRefusal {
+    /**
+     * The calling case was itself started by a launch, or was delegated from a case that was: a launched case
+     * cannot launch another one, so launches never chain.
+     */
+    LAUNCH_DEPTH_EXCEEDED,
+
     /** The request names another user, which [CaseLaunchRequest.allowOtherUsers] does not allow. */
     OTHER_USERS_NOT_ALLOWED,
 

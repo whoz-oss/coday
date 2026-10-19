@@ -33,9 +33,10 @@ import java.util.UUID
  * service has five collaborators, so each test runs against a whole small world, and changes only what it is about.
  *
  * **The world of a test** (`Fixture`): a `caller` and an `other` user, both members of the namespace, both with
- * the agent `Reporter` deployed, and no `UserContextProvider`. A test changes a permission (`namespacePermission`),
- * a deployment (`deployAgent`), a user lookup (`userService.findById`), or the provider (`resolverAnswering`,
- * `provider`). `request(...)` builds the launch request, from the caller's case, for the caller by default.
+ * the agent `Reporter` deployed, no `UserContextProvider`, and a calling case that is top-level and was not launched.
+ * A test changes a permission (`namespacePermission`), a deployment (`deployAgent`), a user lookup
+ * (`userService.findById`), the provider (`resolverAnswering`, `provider`), or the cases the service can read
+ * (`cases`). `request(...)` builds the launch request, from the caller's case, for the caller by default.
  *
  * **What a test observes**: the fake `CaseService` of the fixture records what the service did (`created`, `sent`,
  * `deleted`), and can make each step fail (`createFailure`, `grantFailure`, `sendFailure`, `deleteFailure`).
@@ -45,9 +46,10 @@ import java.util.UUID
  * 1. the case it creates: origin, first message, ADMIN grant;
  * 2. its title;
  * 3. its session context: the caller's, under the one resolved for the target user;
- * 4. agent access and the calling user;
- * 5. another user: allowed by the `allowOtherUsers` switch, no administration right required;
- * 6. failures: thrown, never turned into refusals.
+ * 4. launch depth: a launched case cannot launch, nor can a case delegated from one;
+ * 5. agent access and the calling user;
+ * 6. another user: allowed by the `allowOtherUsers` switch, no administration right required;
+ * 7. failures: thrown, never turned into refusals.
  *
  * A refusal never creates a case.
  */
@@ -79,11 +81,20 @@ class CaseLaunchServiceUnitSpec :
             var sendFailure: Throwable? = null
             var deleteFailure: Throwable? = null
 
+            /**
+             * The cases `CaseService.findById` knows, by id: by default the calling case, top-level and not launched.
+             * A deleted one is only found when asked for `withRemoved`.
+             */
+            val cases = mutableMapOf(callerCaseId to Case(metadata = EntityMetadata(id = callerCaseId), namespaceId = namespaceId))
+
             val userService = mockk<UserService>()
             val agentConfigService = mockk<AgentConfigService>()
             val permissionService = mockk<PermissionService>()
             val caseService =
                 mockk<CaseService> {
+                    every { findById(any(), any()) } answers {
+                        cases[firstArg()]?.takeIf { secondArg<Boolean>() || !it.metadata.removed }
+                    }
                     every { create(any()) } answers {
                         createFailure?.let { throw it }
                         firstArg<Case>().also { created += it }
@@ -397,6 +408,59 @@ class CaseLaunchServiceUnitSpec :
                     CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
 
             asked shouldBe emptyList()
+        }
+
+        // -------------------------------------------------------------------------
+        // Launch depth: a launched case cannot launch
+        // -------------------------------------------------------------------------
+
+        "a case that was itself launched cannot launch another one" {
+            val f = Fixture()
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(originCaseId = UUID.randomUUID())
+
+            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            f.created shouldBe emptyList()
+        }
+
+        "nor can a case delegated from a launched case, at any depth" {
+            val f = Fixture()
+            val launched = Case(namespaceId = namespaceId, originCaseId = UUID.randomUUID())
+            val subCase = Case(namespaceId = namespaceId, parentCaseId = launched.id)
+            f.cases += listOf(launched, subCase).associateBy { it.id }
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = subCase.id)
+
+            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            f.created shouldBe emptyList()
+        }
+
+        "nor can a case delegated from a launched case that was deleted since: its origin does not go away" {
+            val f = Fixture()
+            val launched =
+                Case(metadata = EntityMetadata(removed = true), namespaceId = namespaceId, originCaseId = UUID.randomUUID())
+            f.cases[launched.id] = launched
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = launched.id)
+
+            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            f.created shouldBe emptyList()
+        }
+
+        "a case delegated from a case that was not launched can launch" {
+            val f = Fixture()
+            val parent = Case(namespaceId = namespaceId)
+            f.cases[parent.id] = parent
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = parent.id)
+
+            f.service.launch(request())
+
+            f.created.size shouldBe 1
+        }
+
+        "a calling case that no longer exists is a bug, not a refusal: it is thrown" {
+            val f = Fixture()
+            f.cases.clear()
+
+            shouldThrow<IllegalStateException> { f.service.launch(request()) }
+            f.created shouldBe emptyList()
         }
 
         // -------------------------------------------------------------------------

@@ -26,17 +26,21 @@ import java.util.UUID
  * The new case is a top-level case: it has no [Case.parentCaseId], so nothing waits for it, stopping
  * the calling case leaves it running, it does not count in the delegation depth, it works in its own
  * Exchange directory and Git workspace, and its spend is its own. Where it came from is recorded in
- * [Case.originCaseId], a trace that no behavior follows.
+ * [Case.originCaseId], which only the launch depth rule below reads.
  *
  * What this adds, in the order it is applied:
  *
- * 1. **Target user.** The caller, unless [CaseLaunchRequest.targetUserId] names someone else. Then
+ * 1. **Launch depth.** A case started by a launch cannot start another one, nor can a case delegated from
+ *    it: the [Case.parentCaseId] chain of the calling case is walked up, which delegation caps at a few
+ *    levels. A launched case counts in no delegation depth, so without this an agent could launch itself
+ *    without end. One level is all a caller like AgentLoop needs.
+ * 2. **Target user.** The caller, unless [CaseLaunchRequest.targetUserId] names someone else. Then
  *    [CaseLaunchRequest.allowOtherUsers] must be set, and the target must exist and read the namespace.
  *    No administration right is required of the caller: the switch, set by whoever configured the
  *    caller, is what decides.
- * 2. **Agent access.** The agent must be deployed to the target user in the namespace: the same
+ * 3. **Agent access.** The agent must be deployed to the target user in the namespace: the same
  *    condition as addressing it with an `@mention`.
- * 3. **User context.** The context of the target user is resolved by [UserSessionContextResolver], as for a
+ * 4. **User context.** The context of the target user is resolved by [UserSessionContextResolver], as for a
  *    scheduled prompt: what the `UserContextProvider` plugin returns, with the user's `preferredLanguage`
  *    on top. It comes last because the provider may be an external request: a refused launch never makes one.
  *    A provider failure, permanent or transient, is thrown ([UserContextUnavailableException]) before
@@ -47,9 +51,9 @@ import java.util.UUID
  * of those last two steps fails the case is soft-deleted, so no empty conversation shows up, and the
  * failure is rethrown. An ADMIN grant already made is not revoked.
  *
- * **Who checks what.** This service owns the rules that protect users: who the case runs for
- * ([CaseLaunchRequest.allowOtherUsers], the target's access to the namespace) and which agent may work
- * for them (deployed to the target). The `FreeCaseLauncher` tool validates its input and scopes what its
+ * **Who checks what.** This service owns the rules that protect users and the platform: who the case runs
+ * for ([CaseLaunchRequest.allowOtherUsers], the target's access to the namespace), which agent may work
+ * for them (deployed to the target), and how far launches go (one level). The `FreeCaseLauncher` tool validates its input and scopes what its
  * integration instance may launch (the agent allowlist); those checks are not repeated here.
  *
  * The session context of the first message is the caller's [CaseLaunchRequest.sessionContext], passed on as
@@ -88,6 +92,12 @@ class CaseLaunchService(
      *   Any other failure is thrown as is.
      */
     fun launch(request: CaseLaunchRequest): LaunchedCase {
+        if (isInLaunchedCase(request.callerCaseId)) {
+            refuse(
+                CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED,
+                "The current case was itself started by another case, so it cannot start a new one.",
+            )
+        }
         val targetUser = resolveTargetUser(request)
         val agentName =
             findDeployedAgent(
@@ -115,6 +125,18 @@ class CaseLaunchService(
                 "namespace=${request.callerNamespaceId} origin=${request.callerCaseId} (by user ${request.callerUserId})"
         }
         return LaunchedCase(caseId = case.id, userId = targetUser.id, agentName = agentName)
+    }
+
+    /**
+     * Whether the calling case was started by a launch, itself or through the cases it was delegated from.
+     * The calling case is running: missing, it is a bug. Its ancestors are read even when deleted, since a
+     * deleted case's sub-cases may still run and its origin does not go away. Delegation is capped, so this
+     * reads a few cases at most.
+     */
+    private fun isInLaunchedCase(callerCaseId: UUID): Boolean {
+        val callerCase = checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
+        return generateSequence(callerCase) { case -> case.parentCaseId?.let { caseService.findById(it, withRemoved = true) } }
+            .any { it.originCaseId != null }
     }
 
     private fun resolveTargetUser(request: CaseLaunchRequest): User {
