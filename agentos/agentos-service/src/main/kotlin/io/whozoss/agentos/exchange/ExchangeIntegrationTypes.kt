@@ -46,8 +46,8 @@ object ExchangeIntegrationTypes {
      * that one is resolved once, when a filesystem YAML config is loaded; these are resolved on
      * every run, for configs of every origin, because the case directory only exists per run.
      */
-    const val CASE_PATH_TOKEN = "{{CASE_EXCHANGE}}"
-    const val NAMESPACE_PATH_TOKEN = "{{NAMESPACE_EXCHANGE}}"
+    const val CASE_EXCHANGE_TOKEN = "{{CASE_EXCHANGE}}"
+    const val NAMESPACE_EXCHANGE_TOKEN = "{{NAMESPACE_EXCHANGE}}"
 
     /**
      * Catalogue descriptors for the built-in exchange integrations (toggle-only, no config).

@@ -179,8 +179,9 @@ redirect guideline is sorted: tool definitions sit in the provider's cached prom
 varying per run would miss that cache on every turn.
 
 The service passes the sentence to the plugin as the `scopeGuidance` key of the plugin config, and
-writes the key only when it has one — a FILE_ACCESS integration configured by a user gets none,
-since the sentence talks about cases and namespaces and only the exchange scopes are in one.
+writes the key only when it has one. Nothing about the key is specific to the exchange: it is part
+of the published FILE_ACCESS config schema, so an agent holding several ordinary file integrations
+can be told which is which the same way. The sentences below are the exchange's own use of it.
 
 ## Pointing an integration at an exchange
 
@@ -195,7 +196,7 @@ instead of a path, anywhere in an integration's parameters:
 
 | Token | Resolves to | Available |
 |---|---|---|
-| `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case) |
+| `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case), and only for a user who may write the case that owns the directory |
 | `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | always |
 
 ```yaml
@@ -214,6 +215,13 @@ Substitution is textual and positional, so a token also works mid-string (`cd
 {{CASE_EXCHANGE}}/repo && pnpm test`) and inside nested objects and arrays. Resolution is skipped
 entirely for a run whose integrations carry no token, since resolving the case one costs a read of
 the case and of its family binding.
+
+`{{CASE_EXCHANGE}}` carries the same permission rule as the agent's own case file tools: the run's
+own directory needs no gate, since the invoking user holds Case `WRITE` on that case to have reached
+this point, but a directory owned by *another* case — a family's shared workspace — additionally
+requires that user's permission on the owner. Delegation does not confer its rights, and a shell
+pointed at a directory is a write surface, so the check asks for `WRITE`, exactly as the GIT
+integration does before handing over the same worktree.
 
 A token that cannot be resolved is left verbatim, and the plugin reading it rejects it — the BASH
 parser requires an absolute path, so the integration contributes no tool and logs why. That is
@@ -239,13 +247,15 @@ of every origin.
   granted agent runs in; an agent that opts out with `[]` creates nothing.
 - **Upload allow-list**: user uploads are restricted to a configurable set of file extensions
   (`agentos.exchange.allowed-upload-extensions`); a disallowed type is rejected with 400.
-- **An exchange token grants nothing, and bypasses the exchange's own gates**: a BASH integration
-  pointed at `{{NAMESPACE_EXCHANGE}}` runs as the service user with no permission check, unlike the
-  agent's namespace file tools, which require the invoking user's Namespace `READ` and `WRITE`, and
-  unlike the REST endpoints, which enforce the same through `@PreAuthorize`. The deny-list does not
-  apply there either. This is not a capability the tokens add — the same integration could always
-  be handed the namespace path verbatim, and a shell integration is arbitrary code execution by
-  nature — but it is now easy enough to write that it must be a deliberate choice.
+- **`{{NAMESPACE_EXCHANGE}}` grants nothing, and bypasses the exchange's own gates**: a BASH
+  integration pointed at it runs as the service user with no permission check, unlike the agent's
+  namespace file tools, which require the invoking user's Namespace `READ` and `WRITE`, and unlike
+  the REST endpoints, which enforce the same through `@PreAuthorize`. The deny-list does not apply
+  there either. This is not a capability the token adds — the namespace directory has one fixed
+  path per namespace, so the same integration could always be handed it verbatim, and a shell
+  integration is arbitrary code execution by nature — but it is now easy enough to write that it
+  must be a deliberate choice. `{{CASE_EXCHANGE}}` is the one that needed a gate, because the path
+  it resolves to cannot be written by hand, and it has one.
 
 ## Related
 

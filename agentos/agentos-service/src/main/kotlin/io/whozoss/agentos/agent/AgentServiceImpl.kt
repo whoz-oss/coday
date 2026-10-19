@@ -982,7 +982,7 @@ class AgentServiceImpl(
                         toolContext = toolContext,
                         scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
                     )
-                caseAccess = access(canWrite)
+                caseAccess = ExchangeScopeGuidance.Access.forWrite(canWrite)
             }
         }
 
@@ -1019,17 +1019,11 @@ class AgentServiceImpl(
                         toolContext = toolContext,
                         scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
                     )
-                namespaceAccess = access(userCanWriteNamespace)
+                namespaceAccess = ExchangeScopeGuidance.Access.forWrite(userCanWriteNamespace)
             }
         }
         return ResolvedExchangeScopes(tools, caseAccess, namespaceAccess)
     }
-
-    private fun access(canWrite: Boolean): ExchangeScopeGuidance.Access =
-        when (canWrite) {
-            true -> ExchangeScopeGuidance.Access.READ_WRITE
-            false -> ExchangeScopeGuidance.Access.READ_ONLY
-        }
 
     /**
      * Static-secret fallback used when no per-user Credential row exists: synthesised in memory

@@ -30,9 +30,9 @@ import java.nio.file.Path
  * readSpreadsheet, search) are provided. Write tools (edit, remove, move) are not
  * included at all, so the agent is never aware of their existence.
  *
- * The `scopeGuidance` config key, when the host sets one, is appended to the description of the
- * write tools only — see [io.whozoss.agentos.plugins.file.tools.withScopeGuidance] for why the read
- * tools are left alone.
+ * The `scopeGuidance` config key, when the config carries one, is appended to the description of
+ * the write tools only — see [io.whozoss.agentos.plugins.file.tools.withScopeGuidance] for why the
+ * read tools are left alone.
  */
 @Extension
 class FileToolProvider : ToolPlugin {
@@ -62,9 +62,9 @@ class FileToolProvider : ToolPlugin {
         val documentMaxTableColumns = config.get("documentMaxTableColumns")?.asInt() ?: ReadDocumentTool.MAX_TABLE_COLUMNS
         val documentMaxCellChars = config.get("documentMaxCellChars")?.asInt() ?: ReadDocumentTool.MAX_CELL_CHARS
 
-        // One sentence the host may attach to the write tools when they are one of several surfaces
-        // the model has to choose between (the AgentOS case / namespace exchanges, whose two tool
-        // sets are otherwise described identically). Absent for an integration configured by a user.
+        // One sentence attached to the write tools when they are one of several surfaces the model
+        // has to choose between (the AgentOS case / namespace exchanges, whose two tool sets are
+        // otherwise described identically). Blank and absent are the same thing: no sentence.
         val scopeGuidance = config.get("scopeGuidance")?.asText()?.takeIf { it.isNotBlank() }
         logger.debug {
             "FILE_ACCESS '$configName': scope guidance ${if (scopeGuidance == null) "absent" else "applied to the write tools"}"

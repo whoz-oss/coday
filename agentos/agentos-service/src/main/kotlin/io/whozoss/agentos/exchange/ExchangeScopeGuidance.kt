@@ -36,7 +36,20 @@ object ExchangeScopeGuidance {
      * tools is therefore still told the scope is writable: it chose that restriction itself, and the
      * block never claims a specific tool exists.
      */
-    enum class Access { READ_ONLY, READ_WRITE }
+    enum class Access {
+        READ_ONLY,
+        READ_WRITE,
+        ;
+
+        companion object {
+            /** The stance of a granted scope whose per-run `readOnly` decision came out as [canWrite]. */
+            fun forWrite(canWrite: Boolean): Access =
+                when (canWrite) {
+                    true -> READ_WRITE
+                    false -> READ_ONLY
+                }
+        }
+    }
 
     /** Appended to the case-scope write tools. See the class note on length. */
     const val CASE_TOOL_GUIDANCE: String =
@@ -61,32 +74,35 @@ object ExchangeScopeGuidance {
     fun buildBlock(
         case: Access?,
         namespace: Access?,
-    ): String? {
-        if (case == null || namespace == null) return null
-        return buildString {
-            appendLine()
-            appendLine("## File scopes")
-            appendLine()
-            appendLine(
-                "Your file tools reach two different places, and the prefix of a tool name says which one.",
-            )
-            appendLine()
-            appendLine(
-                "- `${ExchangeIntegrationTypes.CASE_CONFIG_NAME}__` — the files of the case you are working " +
-                    "on. This is your working surface: what you produce for the task at hand belongs here.",
-            )
-            appendLine(
-                "- `${ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME}__` — the files shared by every case of " +
-                    "the namespace: common procedures, templates, reference documents. They are visible to " +
-                    "every user and every agent of the namespace, from every other case.",
-            )
-            appendLine()
-            append(caseStance(case))
-            append(" ")
-            append(namespaceStance(namespace))
-            append(" Follow your own instructions where they say otherwise.")
-        }.trimEnd()
-    }
+    ): String? =
+        when {
+            case == null || namespace == null -> null
+            else ->
+                buildString {
+                    appendLine()
+                    appendLine("## File scopes")
+                    appendLine()
+                    appendLine(
+                        "Your file tools reach two different places, and the prefix of a tool name says which one.",
+                    )
+                    appendLine()
+                    appendLine(
+                        "- `${ExchangeIntegrationTypes.CASE_CONFIG_NAME}__` — the files of the case you are " +
+                            "working on. This is your working surface: what you produce for the task at hand " +
+                            "belongs here.",
+                    )
+                    appendLine(
+                        "- `${ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME}__` — the files shared by every " +
+                            "case of the namespace: common procedures, templates, reference documents. They are " +
+                            "visible to every user and every agent of the namespace, from every other case.",
+                    )
+                    appendLine()
+                    append(caseStance(case))
+                    append(" ")
+                    append(namespaceStance(namespace))
+                    append(" Follow your own instructions where they say otherwise.")
+                }.trimEnd()
+        }
 
     /**
      * Written as the default target rather than as a prohibition on the namespace scope: a tool
