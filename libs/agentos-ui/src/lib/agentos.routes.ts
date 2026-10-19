@@ -219,6 +219,32 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.PlatformAiModelsComponent
               ),
           },
+          // --- Admin: Platform Skills ---
+          {
+            path: 'admin/skills/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+          },
+          {
+            path: 'admin/skills/:skillId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+          },
+          {
+            path: 'admin/skills/:skillId/inspect',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-inspect/skill-inspect.component').then((m) => m.SkillInspectComponent),
+          },
+          {
+            path: 'admin/skills',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/platform-skills/platform-skills.component').then((m) => m.PlatformSkillsComponent),
+          },
+
           // --- Admin: Platform Agent Configs ---
           {
             path: 'admin/agent-configs/new',
@@ -409,6 +435,34 @@ export const AGENTOS_ROUTES: Route[] = [
                 (m) => m.NamespacePromptsComponent
               ),
           },
+          // --- Skills ---
+          {
+            path: ':namespaceId/skills/new',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+          },
+          {
+            path: ':namespaceId/skills/:skillId/edit',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-form/skill-form.component').then((m) => m.SkillFormComponent),
+          },
+          {
+            path: ':namespaceId/skills/:skillId/inspect',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/skill-inspect/skill-inspect.component').then((m) => m.SkillInspectComponent),
+          },
+          {
+            path: ':namespaceId/skills',
+            canActivate: [agentosReadyGuard],
+            loadComponent: () =>
+              import('./components/namespace-skills/namespace-skills.component').then(
+                (m) => m.NamespaceSkillsComponent
+              ),
+          },
+
           // --- Agent Configs ---
           {
             path: ':namespaceId/agent-configs/new',

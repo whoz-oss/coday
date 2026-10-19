@@ -1,0 +1,33 @@
+<div class="skill-item" role="listitem" [class.skill-item--pending-delete]="pendingDelete()">
+  <div class="skill-item__body">
+    <div class="skill-item__name-row">
+      <span class="skill-item__name">{{ skill().name }}</span>
+      @if (skill().readOnly) {
+        <span
+          class="skill-item__badge"
+          data-variant="neutral"
+          aria-label="Skill defined by a SKILL.md file, read-only through the API"
+          >YAML</span
+        >
+      }
+    </div>
+    @if (skill().description) {
+      <span class="skill-item__description">{{ skill().description }}</span>
+    }
+    @if (resourceCount() > 0) {
+      <span class="skill-item__meta">
+        {{ resourceCount() }} {{ resourceCount() === 1 ? 'resource' : 'resources' }}
+      </span>
+    }
+  </div>
+
+  <div class="skill-item__actions">
+    @if (pendingDelete()) {
+      <span class="skill-item__confirm-label">Delete?</span>
+      <ds-icon-button icon="check" variant="danger" title="Confirm deletion" (action)="onDeleteConfirmed()" />
+      <ds-icon-button icon="close" title="Cancel deletion" (action)="onDeleteCancelled()" />
+    } @else {
+      <ds-kebab-menu [items]="isImmutable() ? readOnlyMenuItems : menuItems" (itemSelected)="onMenuAction($event)" />
+    }
+  </div>
+</div>

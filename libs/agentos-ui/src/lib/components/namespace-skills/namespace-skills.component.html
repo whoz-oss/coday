@@ -1,0 +1,24 @@
+<ds-entity-list
+  title="Skills"
+  [items]="(skillItems$ | async) ?? []"
+  [loading]="isLoading()"
+  [showCreate]="true"
+  emptyMessage="No skills defined yet. Add one above, or drop a SKILL.md under the namespace config path."
+  cardMinWidth="400px"
+  [itemTemplate]="skillItemTpl"
+  (createRequested)="openCreateForm()"
+>
+  <button toolbar-start class="namespace-skills__back" type="button" (click)="goBack()">&#8592; Namespaces</button>
+</ds-entity-list>
+
+<!-- Item template: renders SkillItemComponent for each entity-list card slot -->
+<ng-template #skillItemTpl let-item>
+  @if (resolveSkill(item.id); as skill) {
+    <agentos-skill-item
+      [skill]="skill"
+      [namespaceId]="namespaceId"
+      [readOnly]="isPlatformSkill(item.id)"
+      (deleteRequested)="deleteSkill($event)"
+    />
+  }
+</ng-template>
