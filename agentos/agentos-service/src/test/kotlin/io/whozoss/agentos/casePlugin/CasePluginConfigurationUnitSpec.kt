@@ -62,7 +62,7 @@ class CasePluginConfigurationUnitSpec : StringSpec({
         userId: UUID?,
     ): ReadCaseTool {
         val eventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-        val config = CasePluginConfiguration(caseRepo, eventService, permissionService)
+        val config = CasePluginConfiguration(caseRepo, eventService, permissionService, mockk<CaseLaunchService>())
         val plugin = config.caseToolPlugin() as CaseToolPlugin
         val context = ToolContext(
             namespaceId = namespaceId,
@@ -70,7 +70,7 @@ class CasePluginConfigurationUnitSpec : StringSpec({
             userExternalId = null,
             caseEvents = emptyList(),
         )
-        return plugin.provideTools(config = null, context = context).first() as ReadCaseTool
+        return plugin.provideTools(config = null, context = context).filterIsInstance<ReadCaseTool>().single()
     }
 
     // -------------------------------------------------------------------------

@@ -200,7 +200,7 @@ class LoopWorkflowRunnerUnitSpec :
             val reason = f.runner.run(payload, context(listOf(search))) { true }.reason()
 
             reason shouldContain "'FreeCaseLauncher' tool is not available"
-            reason shouldContain "CASE_LAUNCHER"
+            reason shouldContain "CASE integration"
             coVerify(exactly = 0) { search.executeWithJson(any(), any()) }
         }
 

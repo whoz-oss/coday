@@ -10,7 +10,8 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 /**
- * Spring configuration for the CASE internal integration.
+ * Spring configuration for the CASE internal integration ([CaseToolPlugin]: `ReadCase` and
+ * `FreeCaseLauncher`).
  *
  * Declared in a dedicated `@Configuration` class (mirroring
  * [io.whozoss.agentos.redirect.RedirectConfiguration]) to avoid a circular Spring
@@ -18,14 +19,15 @@ import org.springframework.context.annotation.Configuration
  * directly rather than [io.whozoss.agentos.caseFlow.CaseService], because
  * `CaseServiceImpl` depends on `AgentService` which depends on `ToolRegistryService`
  * which collects all `ToolPlugin` beans — creating a cycle if `CaseService` were
- * injected here.
+ * injected here. [CaseLaunchService] is safe to inject: it reaches `CaseService` through a
+ * `@Lazy` proxy.
  *
- * The [caseEventsLoader] lambda:
+ * The `caseEventsLoader` lambda (read side):
  * 1. Loads the target [io.whozoss.agentos.caseFlow.Case] by id — returns null if absent.
- * 2. Checks that the case's [namespaceId] matches the caller's namespace — returns null
+ * 2. Checks that the case's namespaceId matches the caller's namespace — returns null
  *    if it does not (cross-namespace reads are not allowed).
  * 3. Verifies the user has READ permission on the target case via [PermissionService].
- *    Returns null when [userId] is null (anonymous calls are not permitted) or when
+ *    Returns null when userId is null (anonymous calls are not permitted) or when
  *    permission is denied (fail-closed).
  * 4. Returns the ordered list of [io.whozoss.agentos.sdk.caseEvent.CaseEvent]s for the case.
  */
@@ -34,17 +36,21 @@ class CasePluginConfiguration(
     private val caseRepository: CaseRepository,
     private val caseEventService: CaseEventService,
     private val permissionService: PermissionService,
+    private val caseLaunchService: CaseLaunchService,
 ) {
     @Bean
     fun caseToolPlugin(): ToolPlugin =
-        CaseToolPlugin { caseId, namespaceId, userId ->
-            val case = caseRepository.findByIds(listOf(caseId)).firstOrNull() ?: return@CaseToolPlugin null
-            if (case.namespaceId != namespaceId) return@CaseToolPlugin null
-            if (userId == null ||
-                !permissionService.hasPermission(userId.toString(), EntityType.CASE, caseId.toString(), Action.READ)
-            ) {
-                return@CaseToolPlugin null
-            }
-            caseEventService.findByParent(caseId)
-        }
+        CaseToolPlugin(
+            caseEventsLoader = { caseId, namespaceId, userId ->
+                val case = caseRepository.findByIds(listOf(caseId)).firstOrNull()
+                when {
+                    case == null -> null
+                    case.namespaceId != namespaceId -> null
+                    userId == null ||
+                        !permissionService.hasPermission(userId.toString(), EntityType.CASE, caseId.toString(), Action.READ) -> null
+                    else -> caseEventService.findByParent(caseId)
+                }
+            },
+            caseLaunchService = caseLaunchService,
+        )
 }

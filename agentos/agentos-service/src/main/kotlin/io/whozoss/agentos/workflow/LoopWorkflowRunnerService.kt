@@ -24,7 +24,7 @@ import java.util.UUID
  * ## Flow
  *
  * 1. Guard: the triggering user must be identified.
- * 2. Guard: the `FreeCaseLauncher` tool must be among the agent's tools, i.e. a `CASE_LAUNCHER` integration is bound
+ * 2. Guard: the `FreeCaseLauncher` tool must be among the agent's tools, i.e. a `CASE` integration is bound
  *    to the loop agent. Checked before searching, so a misconfigured loop fails at once instead of after a
  *    search whose results it could not use. Whether `allowOtherUsers` is on is not checked: a loop whose end
  *    users are all the triggering user does not need it. Without it, every other end user is refused by the
@@ -70,7 +70,7 @@ class LoopWorkflowRunnerService(
                 ?: return LoopRunOutcome.Aborted(
                     "The '${FreeCaseLauncherTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
                         "(available: ${context.tools.map { it.name }}). " +
-                        "Bind a CASE_LAUNCHER integration to the agent (with allowOtherUsers enabled to start " +
+                        "Bind a CASE integration to the agent, granting FreeCaseLauncher (with allowOtherUsers enabled to start " +
                         "cases for users other than the one who triggers the loop).",
                 )
 

@@ -28,7 +28,7 @@ data class CaseLaunchRequest(
     val sessionContext: Map<String, Any?>? = null,
     /**
      * Whether [targetUserId] may name a user other than the caller. Set from the caller's own
-     * configuration (the `allowOtherUsers` switch of a `CASE_LAUNCHER` integration), never from LLM input.
+     * configuration (the `allowOtherUsers` switch of a `CASE` integration), never from LLM input.
      */
     val allowOtherUsers: Boolean = false,
 )
