@@ -1,4 +1,4 @@
-package io.whozoss.agentos.casePlugin
+package io.whozoss.agentos.freeCaseLauncherPlugin
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.JsonNode

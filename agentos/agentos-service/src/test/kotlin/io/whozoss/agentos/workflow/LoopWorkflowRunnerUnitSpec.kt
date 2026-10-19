@@ -13,7 +13,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.whozoss.agentos.casePlugin.FreeCaseLauncherTool
+import io.whozoss.agentos.freeCaseLauncherPlugin.FreeCaseLauncherTool
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent

@@ -1,4 +1,4 @@
-package io.whozoss.agentos.casePlugin
+package io.whozoss.agentos.freeCaseLauncherPlugin
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec

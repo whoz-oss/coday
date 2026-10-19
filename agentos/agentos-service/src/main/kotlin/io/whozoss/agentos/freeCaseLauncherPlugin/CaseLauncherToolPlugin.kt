@@ -1,4 +1,4 @@
-package io.whozoss.agentos.casePlugin
+package io.whozoss.agentos.freeCaseLauncherPlugin
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper

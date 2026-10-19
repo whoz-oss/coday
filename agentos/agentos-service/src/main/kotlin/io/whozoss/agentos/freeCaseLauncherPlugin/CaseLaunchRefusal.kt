@@ -1,4 +1,4 @@
-package io.whozoss.agentos.casePlugin
+package io.whozoss.agentos.freeCaseLauncherPlugin
 
 /**
  * Why a launch was refused: a business rule, never a failure. The name is the stable `errorType` the

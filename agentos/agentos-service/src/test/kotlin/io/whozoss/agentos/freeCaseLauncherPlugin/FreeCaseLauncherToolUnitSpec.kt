@@ -1,4 +1,4 @@
-package io.whozoss.agentos.casePlugin
+package io.whozoss.agentos.freeCaseLauncherPlugin
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -40,7 +40,8 @@ class FreeCaseLauncherToolUnitSpec :
             events: List<CaseEvent> = caseEvents(),
         ) = ToolContext(namespaceId = namespaceId, userId = user, userExternalId = "ext", caseEvents = events)
 
-        fun launched(agentName: String = "Reporter") = LaunchedCase(caseId = newCaseId, userId = userId, agentName = agentName)
+        fun launched(agentName: String = "Reporter") =
+            LaunchedCase(caseId = newCaseId, userId = userId, agentName = agentName)
 
         fun service(launched: LaunchedCase = launched()) = mockk<CaseLaunchService> { every { launch(any()) } returns launched }
 
