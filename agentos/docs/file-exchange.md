@@ -202,7 +202,7 @@ instead of a path, anywhere in an integration's parameters:
 | Token | Resolves to | Available |
 |---|---|---|
 | `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case), and only for a user who may write the case that owns the directory |
-| `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | always |
+| `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | only for a user who holds Namespace `READ` |
 
 ```yaml
 # BASH, running the case's own checkout
@@ -221,18 +221,31 @@ Substitution is textual and positional, so a token also works mid-string (`cd
 entirely for a run whose integrations carry no token, since resolving the case one costs a read of
 the case and of its family binding.
 
-`{{CASE_EXCHANGE}}` carries the same permission rule as the agent's own case file tools: the run's
-own directory needs no gate, since the invoking user holds Case `WRITE` on that case to have reached
-this point, but a directory owned by *another* case — a family's shared workspace — additionally
-requires that user's permission on the owner. Delegation does not confer its rights, and a shell
-pointed at a directory is a write surface, so the check asks for `WRITE`, exactly as the GIT
-integration does before handing over the same worktree.
+Each token carries the permission rule of the agent's own file tools for the same directory, because
+a shell pointed at a directory is a write surface. `{{CASE_EXCHANGE}}`: the run's own directory needs
+no gate, since the invoking user holds Case `WRITE` on that case to have reached this point, but a
+directory owned by *another* case — a family's shared workspace — additionally requires that user's
+permission on the owner, because delegation does not confer its rights. `{{NAMESPACE_EXCHANGE}}`:
+Namespace `READ`, the floor every REST namespace-file endpoint enforces.
 
-A token that cannot be resolved is left verbatim, and the plugin reading it rejects it — the BASH
-parser requires an absolute path, so the integration contributes no tool and logs why. That is
-deliberate: falling back to another directory would run the work where nobody looks for it. A case
-whose workspace is still being prepared or has failed raises the same conflict the file endpoints
-raise, rather than having commands pointed at it.
+**A token that cannot be resolved removes its integration from the run** — no tool, no exception,
+and the reason is logged. Only the integration that carries the token is affected; every other one
+reaches the run untouched.
+
+The alternative, substituting nothing and letting the plugin reading the parameter refuse it, is
+what this mechanism did at first, and it only works on BASH: `BashConfigParser` requires an absolute
+path, but TMUX passes the literal to `tmux new-session -c` and
+[discards the failure](../agentos-tmux-plugin/src/main/kotlin/io/whozoss/agentos/plugins/tmux/TmuxTool.kt),
+so the command lands in whatever session already holds that name; FILE_ACCESS turns the literal into
+a *relative* path and roots its tools under the service's working directory; MCP_STDIO puts it in
+its connection pool key. Each of those runs or writes somewhere nobody looks, and quietly. Deciding
+in the customizer costs no per-plugin knowledge, which is the whole reason this is a token rather
+than a rebinding of each plugin's own parameter names.
+
+A case whose workspace is still being prepared or has failed is one more unresolvable token, not an
+exception: the customizer sees every integration config of the namespace rather than the ones the
+agent declares, so raising from there would abort the resolution of every agent of that namespace,
+including one that references no integration at all.
 
 This shares the `{{TOKEN}}` spelling of `{{NAMESPACE_CONFIG_PATH}}`
 ([plugin-system.md](plugin-system.md)) but not its lifecycle: that one is resolved once, when a
@@ -259,8 +272,12 @@ of every origin.
   there either. This is not a capability the token adds — the namespace directory has one fixed
   path per namespace, so the same integration could always be handed it verbatim, and a shell
   integration is arbitrary code execution by nature — but it is now easy enough to write that it
-  must be a deliberate choice. `{{CASE_EXCHANGE}}` is the one that needed a gate, because the path
-  it resolves to cannot be written by hand, and it has one.
+  must be a deliberate choice, and the token now at least asks for Namespace `READ`, the same floor
+  the file tools and the REST endpoints apply.
+- **MCP_STDIO is reachable but unadvised**: `cwd` accepts the tokens like any other parameter, and
+  `McpConfigHash` includes `cwd` in the connection pool key, so one child process is spawned and
+  pooled per case with nothing bounding the count. Point an MCP server at a case directory only if
+  you have sized that.
 
 ## Related
 

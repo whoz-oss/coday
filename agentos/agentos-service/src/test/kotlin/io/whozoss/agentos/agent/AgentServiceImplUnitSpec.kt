@@ -35,6 +35,7 @@ import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
+import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeScopeGuidance
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
@@ -278,6 +279,9 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // above and rely on surviving across tests.
         beforeTest {
             every { integrationConfigService.findEffective(any(), null) } returns emptyList()
+            // A granted scope has a way to write unless a test says otherwise; the one that does is
+            // "a scope restricted to read tools is not named as the write target" below.
+            every { exchangeToolGrantService.grantsMutatingTool(any(), any()) } returns true
         }
 
         // -------------------------------------------------------------------------
@@ -679,6 +683,22 @@ class AgentServiceImplUnitSpec : StringSpec() {
             instructions shouldContain "## File scopes"
             instructions shouldContain "The namespace scope is read-only for you"
             instructions shouldNotContain "Reach for the namespace scope"
+        }
+
+        "a scope restricted to read tools is not named as the write target" {
+            // The stance follows the agent's own allowlist, not only the user's rights. Told to write
+            // in a case scope whose write tools it filtered out, the model would find no case tool,
+            // reach for `namespace-exchange__editFiles`, and produce exactly the cross-scope write
+            // this block exists to prevent.
+            every {
+                exchangeToolGrantService.grantsMutatingTool(ExchangeIntegrationTypes.CASE_CONFIG_NAME, any())
+            } returns false
+
+            val instructions = agentWithBothScopes("read-only-case-agent", namespaceWrite = true).instructions ?: ""
+
+            instructions shouldContain "## File scopes"
+            instructions shouldContain "The case scope is read-only for you on this run"
+            instructions shouldNotContain "Work in the case scope by default"
         }
 
         "no block and no tool sentence when only the case scope is granted" {

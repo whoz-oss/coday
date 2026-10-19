@@ -4,6 +4,7 @@ import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.RunIntegrationCustomizer
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.util.jsonTokensPresent
 import io.whozoss.agentos.util.substituteJsonTokens
 import mu.KLogging
@@ -45,20 +46,34 @@ import java.util.UUID
  *
  * ## What it grants, and what it does not
  *
- * The case token carries the same permission rule as the agent's own case file tools (see
- * [io.whozoss.agentos.agent.AgentServiceImpl.buildExchangeTools]): the run's own directory needs no
- * gate, since the invoking user already holds Case WRITE on that case to have reached this point,
- * but a directory owned by *another* case — a family's shared workspace — additionally requires the
- * user's permission on that owner. Delegation does not confer its rights, and a shell pointed at a
- * directory is a write surface, so the check asks for WRITE exactly as
- * [io.whozoss.agentos.git.GitToolsRunIntegration] does before handing over the same worktree.
+ * Each token carries the permission rule of the agent's own file tools for the same directory (see
+ * [io.whozoss.agentos.agent.AgentServiceImpl.buildExchangeTools]), because a shell pointed at a
+ * directory is a write surface:
+ * - the case token: the run's own directory needs no gate, since the invoking user already holds
+ *   Case WRITE on that case to have reached this point, but a directory owned by *another* case
+ *   — a family's shared workspace — additionally requires that user's permission on the owner.
+ *   Delegation does not confer its rights. This is the rule `buildExchangeTools` applies, not the
+ *   stricter one of [io.whozoss.agentos.git.GitToolsRunIntegration], which asks for Case WRITE even
+ *   on the case's own directory;
+ * - the namespace token: Namespace READ, the floor every REST namespace-file endpoint enforces.
+ *   The token still grants nothing beyond that — a shell runs as the service user, and the
+ *   namespace directory has one fixed path per namespace, so the same integration could always have
+ *   been handed it verbatim — but asking the same question as the namespace file tools costs one
+ *   query and removes an asymmetry nobody auditing this boundary would expect. See the Safety
+ *   section of `docs/file-exchange.md`.
  *
- * The namespace token grants nothing and checks nothing: a BASH integration pointed at
- * `{{NAMESPACE_EXCHANGE}}` runs as the service user, unlike the agent's namespace file tools which
- * require the invoking user's Namespace READ (and WRITE to write). That is not a capability this
- * adds — the namespace directory has one fixed path per namespace, so the same integration could
- * already be given it verbatim — but it is now easy enough to write that it has to be said out
- * loud. See the Safety section of `docs/file-exchange.md`.
+ * ## An unresolvable token removes its integration from the run
+ *
+ * A token this run cannot resolve — no live case, no permission, a workspace still being prepared
+ * — drops the integration that carries it, with no tool and no exception. The alternative would be
+ * to substitute nothing and let the plugin reading the parameter refuse it, which is what this class
+ * did at first and what only `BashConfigParser` actually does: TMUX passes the literal to
+ * `tmux new-session -c` and discards the failure, FILE_ACCESS turns it into a *relative* path and
+ * roots its tools under the service's working directory, MCP_STDIO puts it in its connection pool
+ * key. Each would run or write somewhere nobody looks, and quietly. Deciding here costs no
+ * per-plugin knowledge, which is the whole reason this is a token and not a rebinding of each
+ * plugin's own parameter names, and [io.whozoss.agentos.git.GitToolsRunIntegration] already drops
+ * its own config the same way when it cannot build its parameters.
  */
 @Component
 class ExchangePathRunIntegration(
@@ -75,18 +90,34 @@ class ExchangePathRunIntegration(
         // carries a token. The per-config answer is kept so that a config found clean is handed back
         // untouched rather than rebuilt.
         val carried = configs.map { config -> config to jsonTokensPresent(config.parameters, ALL_TOKENS) }
-        val resolved = resolveTokens(carried.flatMapTo(mutableSetOf()) { it.second }, context)
+        val used = carried.flatMapTo(mutableSetOf()) { it.second }
         return when {
-            resolved.isEmpty() -> configs
-            else ->
-                carried.map { (config, tokens) ->
-                    when {
-                        tokens.isEmpty() -> config
-                        else -> config.copy(parameters = substituteJsonTokens(config.parameters, resolved))
-                    }
-                }
+            used.isEmpty() -> configs
+            else -> substituted(carried, resolveTokens(used, context))
         }
     }
+
+    private fun substituted(
+        carried: List<Pair<IntegrationConfig, Set<String>>>,
+        resolved: Map<String, String>,
+    ): List<IntegrationConfig> =
+        carried.mapNotNull { (config, tokens) ->
+            val unresolved = tokens.filterNot { it in resolved }
+            when {
+                // Guarding on the tokens this config carries, not on the run's: a config that
+                // mentions none is the common case and must not be rebuilt node by node, and one
+                // whose token stayed unresolved must not be rebuilt either, since nothing changes.
+                tokens.isEmpty() -> config
+                unresolved.isEmpty() -> config.copy(parameters = substituteJsonTokens(config.parameters, resolved))
+                else -> {
+                    logger.debug {
+                        "Integration '${config.name}' provides no tool on this run: " +
+                            "${unresolved.joinToString()} could not be resolved (the reason is logged above)"
+                    }
+                    null
+                }
+            }
+        }
 
     /**
      * What each of [used] stands for on this run, leaving out the ones that cannot be resolved.
@@ -110,14 +141,42 @@ class ExchangePathRunIntegration(
             caseExchangePath(context)?.let { tokens[ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN] = it }
         }
         if (ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN in used) {
-            tokens[ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN] =
+            namespaceExchangePath(context)?.let { tokens[ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN] = it }
+        }
+        return tokens
+    }
+
+    /**
+     * The namespace's shared directory, or null when the invoking user does not hold Namespace
+     * READ — the floor [io.whozoss.agentos.agent.AgentServiceImpl] applies before granting a single
+     * namespace file tool, and that every REST namespace-file endpoint enforces through
+     * `@PreAuthorize`. A run with no identified user is denied fail-closed, as everywhere else.
+     */
+    private fun namespaceExchangePath(context: AgentExecutionContext): String? {
+        val userId = context.userId?.toString()
+        val canRead =
+            userId != null &&
+                exchangeCapabilityService.canRead(
+                    userId = userId,
+                    entityType = EntityType.NAMESPACE,
+                    entityId = context.namespaceId.toString(),
+                )
+        return when {
+            !canRead -> {
+                logger.warn {
+                    "${ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN} is used by an integration but the " +
+                        "user of this run does not hold Namespace READ; the integration provides no tool"
+                }
+                null
+            }
+
+            else ->
                 exchangeStorageService
                     .namespaceRoot(context.namespaceId)
                     .toAbsolutePath()
                     .normalize()
                     .toString()
         }
-        return tokens
     }
 
     /**
@@ -129,10 +188,12 @@ class ExchangePathRunIntegration(
         val caseCreatedAt = context.caseCreatedAt
         return when {
             caseId == null || caseCreatedAt == null -> {
-                logger.warn {
+                // Debug, not warn: a definition preview and an agent listing both resolve without a
+                // case, so on an instance with one token-carrying integration this is a per-request
+                // non-event. The two refusals below are the ones worth a warning.
+                logger.debug {
                     "${ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN} is used by an integration but this " +
-                        "resolution has no live case; the token is left unresolved and its integration will " +
-                        "provide no tool"
+                        "resolution has no live case; the integration provides no tool"
                 }
                 null
             }
@@ -142,14 +203,15 @@ class ExchangePathRunIntegration(
     }
 
     /**
-     * The resolved directory once the invoking user's rights on it are established, or null when
-     * they are not.
+     * The resolved directory once the invoking user's rights on it are established and the
+     * directory is usable, or null when either fails.
      *
-     * `requireUsable` comes after the permission check and is deliberate, mirroring
-     * [io.whozoss.agentos.git.GitToolsRunIntegration]: a family whose workspace is still being
-     * prepared or has failed must not have commands pointed at it, and the conflict it raises says
-     * which of the two happened — which is not something to tell a caller who may not reach the
-     * directory in the first place.
+     * An unavailable workspace is read here rather than through `requireUsable`, deliberately: a
+     * `ConflictException` thrown from a [RunIntegrationCustomizer] would abort the resolution of
+     * *every* agent of the namespace, since this sees every effective integration config and not
+     * the ones the agent declares — a chat agent that references no integration included. Dropping
+     * the integration protects the half-prepared worktree just as well, and only from the agents
+     * that actually point at it.
      */
     private fun accessibleCasePath(
         caseId: UUID,
@@ -158,21 +220,29 @@ class ExchangePathRunIntegration(
     ): String? {
         val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
         return when {
-            canAccess(root, caseId, context.userId) ->
-                root
-                    .requireUsable()
-                    .toAbsolutePath()
-                    .normalize()
-                    .toString()
-
-            else -> {
+            !canAccess(root, caseId, context.userId) -> {
                 logger.warn {
                     "${ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN} resolves to the directory of case " +
-                        "${root.ownerCaseId}, which the user of case $caseId may not write; the token is left " +
-                        "unresolved and its integration will provide no tool"
+                        "${root.ownerCaseId}, which the user of case $caseId may not write; the integration " +
+                        "provides no tool"
                 }
                 null
             }
+
+            root.unavailableReason != null -> {
+                logger.warn {
+                    "${ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN} cannot be resolved for case $caseId: " +
+                        "${root.unavailableReason}; the integration provides no tool rather than pointing " +
+                        "commands at a directory that is not ready"
+                }
+                null
+            }
+
+            else ->
+                root.path
+                    .toAbsolutePath()
+                    .normalize()
+                    .toString()
         }
     }
 

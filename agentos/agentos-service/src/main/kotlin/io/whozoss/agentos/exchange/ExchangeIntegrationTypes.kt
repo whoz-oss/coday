@@ -27,6 +27,16 @@ object ExchangeIntegrationTypes {
     const val NAMESPACE_CONFIG_NAME = "namespace-exchange"
 
     /**
+     * The file-plugin tools that mutate their scope, unprefixed.
+     *
+     * Mirrored from the plugin, which owns them, for the one question the service cannot answer
+     * otherwise: [ExchangeScopeGuidance] must not name a scope as the default write target when the
+     * agent's own per-tool allowlist left it no way to write. The frontend's exchange-mutation
+     * matcher mirrors the same literals (see [CASE_CONFIG_NAME]), so keep the three in sync.
+     */
+    val MUTATING_TOOLS = setOf("editFiles", "moveFile", "remove")
+
+    /**
      * Tokens an integration's parameters may carry to name an exchange directory, resolved per run
      * by [ExchangePathRunIntegration].
      *

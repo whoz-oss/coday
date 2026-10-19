@@ -2,24 +2,31 @@ package io.whozoss.agentos.exchange
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.agent.AgentExecutionContext
-import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
+import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
 /**
- * Unit tests for [ExchangePathRunIntegration]: which tokens are resolved, who may resolve the case
- * one, what a run pays when none is used, and what happens to a token that cannot be resolved.
+ * Unit tests for [ExchangePathRunIntegration]: which tokens are resolved, who may resolve each one,
+ * what a run pays when none is used, and what happens to a token that cannot be resolved.
+ *
+ * That last one is the contract worth pinning: an unresolvable token removes its integration from
+ * the run. Leaving the token in the parameters only fails closed on BASH, the one plugin that
+ * requires an absolute path. TMUX discards the failure of `new-session -c` and sends the command to
+ * whatever session already holds the name, and FILE_ACCESS reads the literal as a *relative* path
+ * and roots its tools under the service's working directory, both of them silently.
  */
 class ExchangePathRunIntegrationSpec : StringSpec() {
     private val exchangeRootResolver: ExchangeRootResolver = mockk()
@@ -66,6 +73,15 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             ResolvedExchangeRoot(path = casePath, ownerCaseId = ownerCaseId, unavailableReason = null)
     }
 
+    private fun givenNamespaceRead(allowed: Boolean = true) {
+        every {
+            exchangeCapabilityService.canRead(userId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+        } returns allowed
+        if (allowed) {
+            every { exchangeStorageService.namespaceRoot(namespaceId) } returns namespacePath
+        }
+    }
+
     init {
         "the case token becomes the case exchange directory" {
             givenCaseRoot()
@@ -76,13 +92,31 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             result.single().parameters.text("workingDirectory") shouldBe "$casePath/repo"
         }
 
-        "the namespace token becomes the shared directory" {
-            every { exchangeStorageService.namespaceRoot(namespaceId) } returns namespacePath
+        "the namespace token becomes the shared directory for a user who holds Namespace READ" {
+            givenNamespaceRead()
             val configs = listOf(config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""))
 
-            val result = customizer.customize(configs, context)
+            val result = customizer.customize(configs, context.copy(userId = userId))
 
             result.single().parameters.text("workingDirectory") shouldBe namespacePath.toString()
+        }
+
+        "the namespace token is refused to a user without Namespace READ" {
+            // Namespace READ is the floor the REST namespace-file endpoints enforce through
+            // @PreAuthorize, and the one AgentServiceImpl applies before granting a single namespace
+            // file tool. A shell bound to that directory must not be the way around it.
+            givenNamespaceRead(allowed = false)
+            val configs = listOf(config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""))
+
+            customizer.customize(configs, context.copy(userId = userId)).shouldBeEmpty()
+            verify(exactly = 0) { exchangeStorageService.namespaceRoot(any()) }
+        }
+
+        "the namespace token is denied to a run with no identified user" {
+            val configs = listOf(config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""))
+
+            customizer.customize(configs, context).shouldBeEmpty()
+            verify(exactly = 0) { exchangeCapabilityService.canRead(any(), any(), any()) }
         }
 
         "tokens are substituted anywhere in the tree, not only at the top level" {
@@ -132,23 +166,51 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             verify(exactly = 0) { exchangeStorageService.namespaceRoot(any()) }
         }
 
-        "the case token is left verbatim when the resolution has no live case" {
-            // A definition preview resolves no case. Leaving the token in place makes the plugin
-            // reject a non-absolute path and provide no tool, which is the point: falling back to
-            // another directory would run the work where nobody looks for it.
-            val configs = listOf(config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}/repo"}"""))
+        "an integration whose token cannot be resolved is removed from the run" {
+            // A definition preview resolves no case. The integration is dropped rather than handed
+            // its token verbatim: see the class note on what each plugin does with the literal.
+            val configs =
+                listOf(
+                    config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}/repo"}"""),
+                    config("datetime", null),
+                )
 
             val result = customizer.customize(configs, AgentExecutionContext(namespaceId = namespaceId))
 
-            result.single().parameters.text("workingDirectory") shouldBe "{{CASE_EXCHANGE}}/repo"
+            result shouldHaveSize 1
+            result.single().name shouldBe "datetime"
             verify(exactly = 0) { exchangeRootResolver.resolve(any(), any(), any()) }
         }
 
-        "an unusable workspace fails the run instead of pointing commands at it" {
-            givenCaseRoot(usable = false)
-            val configs = listOf(config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}/repo"}"""))
+        "an unresolvable token removes its own integration and no other" {
+            givenCaseRoot()
+            givenNamespaceRead()
+            val configs =
+                listOf(
+                    config("shared", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""),
+                    config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}/repo"}"""),
+                )
 
-            shouldThrow<ConflictException> { customizer.customize(configs, context) }
+            // No live case: the case token cannot be resolved, the namespace one can.
+            val result =
+                customizer.customize(configs, AgentExecutionContext(namespaceId = namespaceId, userId = userId))
+
+            result.single().name shouldBe "shared"
+            result.single().parameters.text("workingDirectory") shouldBe namespacePath.toString()
+        }
+
+        "an unusable workspace removes the integration instead of failing every agent of the namespace" {
+            // Deliberately not a ConflictException: this customizer sees every effective integration
+            // config of the namespace, not the ones the agent declares, so throwing would abort the
+            // resolution of every agent there, a chat agent referencing no integration included.
+            // Dropping the integration protects the half-prepared worktree just as well.
+            givenCaseRoot(usable = false)
+            val configs =
+                listOf(config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}/repo"}"""), config("datetime", null))
+
+            val result = customizer.customize(configs, context)
+
+            result.single().name shouldBe "datetime"
         }
 
         "a directory the case owns is resolved without a permission query" {
@@ -164,8 +226,7 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
         }
 
         "a family's shared directory is resolved only for a user who may write the owning case" {
-            val rootCaseId = UUID.randomUUID()
-            givenSharedCaseRoot(rootCaseId)
+            givenSharedCaseRoot(UUID.randomUUID())
             every {
                 exchangeCapabilityService.canAccessCase(userId.toString(), caseId, any(), Action.WRITE)
             } returns true
@@ -176,21 +237,17 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             result.single().parameters.text("workingDirectory") shouldBe "$casePath/repo"
         }
 
-        "a family's shared directory is left unresolved for a user who may not write the owning case" {
+        "a family's shared directory is refused to a user who may not write the owning case" {
             // Delegation does not confer its rights: a sub-case of a family whose root case the user
-            // cannot reach must not get a shell pointed at the shared workspace, which is exactly
-            // what GitToolsRunIntegration refuses before handing over the same worktree. The token
-            // stays verbatim, the plugin rejects a non-absolute path, and the integration provides
-            // no tool.
+            // cannot reach must not get a shell pointed at the shared workspace, which is what
+            // GitToolsRunIntegration refuses before handing over the same worktree.
             givenSharedCaseRoot(UUID.randomUUID())
             every {
                 exchangeCapabilityService.canAccessCase(userId.toString(), caseId, any(), Action.WRITE)
             } returns false
             val configs = listOf(config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}/repo"}"""))
 
-            val result = customizer.customize(configs, context.copy(userId = userId))
-
-            result.single().parameters.text("workingDirectory") shouldBe "{{CASE_EXCHANGE}}/repo"
+            customizer.customize(configs, context.copy(userId = userId)).shouldBeEmpty()
         }
 
         "a family's shared directory is denied to a run with no identified user" {
@@ -199,17 +256,15 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             every { exchangeCapabilityService.canAccessCase(null, caseId, any(), Action.WRITE) } returns false
             val configs = listOf(config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}"}"""))
 
-            val result = customizer.customize(configs, context)
-
-            result.single().parameters.text("workingDirectory") shouldBe "{{CASE_EXCHANGE}}"
+            customizer.customize(configs, context).shouldBeEmpty()
         }
 
         "configs that carry no parameters are passed through untouched" {
-            every { exchangeStorageService.namespaceRoot(namespaceId) } returns namespacePath
+            givenNamespaceRead()
             val withToken = config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}""")
             val withoutParameters = config("datetime", null)
 
-            val result = customizer.customize(listOf(withToken, withoutParameters), context)
+            val result = customizer.customize(listOf(withToken, withoutParameters), context.copy(userId = userId))
 
             result[1] shouldBe withoutParameters
         }

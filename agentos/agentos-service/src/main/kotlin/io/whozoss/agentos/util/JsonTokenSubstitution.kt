@@ -16,9 +16,11 @@ import com.fasterxml.jackson.databind.node.TextNode
  *
  * Substitution is a plain textual replacement, positional and repeatable within a value (e.g.
  * `--config={{SOME_TOKEN}}/settings.json`), never a prefix-only rule, and no normalization is
- * applied: downstream consumers resolve `..` themselves. Tokens are applied in iteration order and
- * a value a token expands to is not rescanned, so one token's expansion can never be read as
- * another token.
+ * applied: downstream consumers resolve `..` themselves. Tokens are applied in iteration order, one
+ * full pass each, so a later token *is* matched against what an earlier one expanded to: with
+ * `A -> "x/{{B}}/y"` and `B -> "z"`, `{{A}}` yields `x/z/y`. Do not rely on an expansion being
+ * left alone; the exchange tokens expand to filesystem paths, which cannot contain a `{{TOKEN}}`
+ * spelling unless the configured mount root does.
  *
  * Two independent callers use this with different lifecycles, and they must not be confused:
  * [io.whozoss.agentos.plugin.filesystem.substituteConfigPath] resolves `{{NAMESPACE_CONFIG_PATH}}`
@@ -50,10 +52,12 @@ fun substituteJsonTokens(
  * Which of [candidates] appear in a text node of [node], at any depth.
  *
  * The cheap question a caller asks before resolving what a token stands for: that resolution can
- * cost database reads, and most configs carry no token at all. One walk answers for every
- * candidate at once and stops as soon as they have all been seen, and nothing is serialized, so a
- * node of any size costs a single traversal — an integration may hold a whole inline OpenAPI
- * document in its parameters.
+ * cost database reads, and most configs carry no token at all. One walk answers for every candidate
+ * at once, and nothing is serialized. The early exit only fires once every candidate has been seen,
+ * so the common no-token case does traverse the whole node — an integration may hold a whole inline
+ * OpenAPI document in its parameters. That traversal is in-memory and bounded by a tree the caller
+ * has just deserialized from the database anyway; what it buys is never resolving a token nobody
+ * wrote.
  */
 fun jsonTokensPresent(
     node: JsonNode?,

@@ -360,6 +360,30 @@ class AgentServiceImpl(
                 null
             }
         }
+        // Decided here, granted later: the block describes what the run was granted, and the two
+        // decisions carry everything it needs. Keeping them before the tool assembly means a failure
+        // in buildInstructions still happens before resolveToolsForRun's side effects -- an
+        // interactive OAuth prompt, a pooled MCP child process -- and before the grant creates the
+        // scope directories.
+        val exchangeScopes =
+            ResolvedExchangeScopes(
+                case = resolveCaseScope(agentConfig.integrations, context),
+                namespace = resolveNamespaceScope(agentConfig.integrations, context),
+            )
+        val instructions =
+            buildInstructions(
+                baseInstructions = agentConfig.instructions,
+                agentIntegrations = agentConfig.integrations,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+                docs = agentConfig.docs,
+                resolvedSkills = resolvedSkills,
+                exchangeScopesBlock =
+                    ExchangeScopeGuidance.buildBlock(
+                        case = exchangeScopes.case?.access,
+                        namespace = exchangeScopes.namespace?.access,
+                    ),
+            )
         val baseTools =
             toolResolverService.resolveToolsForRun(
                 agentIntegrations = agentConfig.integrations,
@@ -376,7 +400,7 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
-        val exchangeScopes = buildExchangeTools(agentConfig, context, toolContext)
+        val exchangeTools = grantExchangeTools(exchangeScopes, toolContext)
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -389,29 +413,9 @@ class AgentServiceImpl(
                             )
                         },
                     ) +
-                    exchangeScopes.tools +
+                    exchangeTools +
                     skillTools,
             )
-        // Built after the tools, and only here: the exchange block describes the scopes this run was
-        // actually granted, which is known once buildExchangeTools has run its permission queries.
-        // Nothing in buildInstructions depends on the tool set otherwise, so the move only reorders
-        // this call against side effects the tool resolution already had (scope directories created
-        // by the grant, an interactive OAuth flow triggered by resolveToolsForRun).
-        val instructions =
-            buildInstructions(
-                baseInstructions = agentConfig.instructions,
-                agentIntegrations = agentConfig.integrations,
-                resolvedUser = resolvedUser,
-                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
-                docs = agentConfig.docs,
-                resolvedSkills = resolvedSkills,
-                exchangeScopesBlock =
-                    ExchangeScopeGuidance.buildBlock(
-                        case = exchangeScopes.caseAccess,
-                        namespace = exchangeScopes.namespaceAccess,
-                    ),
-            )
-
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
 
         return ResolvedAgentDefinition(
@@ -891,10 +895,10 @@ class AgentServiceImpl(
      * carried out of here rather than recomputed next to the instructions because only this method
      * holds what they depend on: the run's case id and the permission queries it already paid for.
      */
+    /** The exchange scopes a run was granted, decided but not yet granted. */
     private data class ResolvedExchangeScopes(
-        val tools: List<StandardTool<*>>,
-        val caseAccess: ExchangeScopeGuidance.Access?,
-        val namespaceAccess: ExchangeScopeGuidance.Access?,
+        val case: ExchangeScope?,
+        val namespace: ExchangeScope?,
     )
 
     /**
@@ -944,24 +948,20 @@ class AgentServiceImpl(
      * [AgentConfig.integrations]: materialising it in the map would leak into the persisted config,
      * the YAML export, and the peer descriptions the redirect tool puts in every agent's prompt.
      */
-    private fun buildExchangeTools(
-        config: AgentConfig,
-        context: AgentExecutionContext,
+    private fun grantExchangeTools(
+        scopes: ResolvedExchangeScopes,
         toolContext: ToolContext,
-    ): ResolvedExchangeScopes {
-        val integrations = config.integrations
-        val case = resolveCaseScope(integrations, context)
-        val namespace = resolveNamespaceScope(integrations, context)
-        // Both scopes are decided before either is granted, because the per-tool sentence only
-        // makes sense when there are two surfaces to arbitrate between. An agent that ends up with
+    ): List<StandardTool<*>> {
+        // The per-tool sentence only makes sense when there are two surfaces to arbitrate between,
+        // which is why both scopes are decided before either is granted. An agent that ends up with
         // a single scope keeps the file-plugin's own descriptions byte for byte, and with them its
         // cached prompt prefix -- the same both-scopes condition [ExchangeScopeGuidance.buildBlock]
         // applies to the instructions block.
-        val bothGranted = case != null && namespace != null
+        val bothGranted = scopes.case != null && scopes.namespace != null
         val tools = mutableListOf<StandardTool<*>>()
-        case?.let { tools += grantScope(it, toolContext, bothGranted) }
-        namespace?.let { tools += grantScope(it, toolContext, bothGranted) }
-        return ResolvedExchangeScopes(tools, case?.access, namespace?.access)
+        scopes.case?.let { tools += grantScope(it, toolContext, bothGranted) }
+        scopes.namespace?.let { tools += grantScope(it, toolContext, bothGranted) }
+        return tools
     }
 
     /** One exchange scope, decided but not yet granted. */
@@ -972,6 +972,19 @@ class AgentServiceImpl(
         val access: ExchangeScopeGuidance.Access,
         val toolGuidance: String,
     )
+
+    /**
+     * The stance to describe for a scope: writable only when the user may write *and* the agent's
+     * own allowlist left a tool to write with.
+     */
+    private fun accessFor(
+        userCanWrite: Boolean,
+        configName: String,
+        grant: ExchangeGrant,
+    ): ExchangeScopeGuidance.Access =
+        ExchangeScopeGuidance.Access.forWrite(
+            userCanWrite && exchangeToolGrantService.grantsMutatingTool(configName, grant.allowedTools),
+        )
 
     private fun grantScope(
         scope: ExchangeScope,
@@ -1025,7 +1038,7 @@ class AgentServiceImpl(
                     root = root.requireUsable(),
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
                     grant = caseGrant,
-                    access = ExchangeScopeGuidance.Access.forWrite(canWrite),
+                    access = accessFor(canWrite, ExchangeIntegrationTypes.CASE_CONFIG_NAME, caseGrant),
                     toolGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
                 )
             }
@@ -1076,7 +1089,12 @@ class AgentServiceImpl(
                     root = exchangeStorageService.namespaceRoot(context.namespaceId),
                     configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
                     grant = namespaceGrant,
-                    access = ExchangeScopeGuidance.Access.forWrite(userCanWriteNamespace),
+                    access =
+                        accessFor(
+                            userCanWriteNamespace,
+                            ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                            namespaceGrant,
+                        ),
                     toolGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
                 )
             }

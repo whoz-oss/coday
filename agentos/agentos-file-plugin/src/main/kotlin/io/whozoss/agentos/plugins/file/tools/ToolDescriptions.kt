@@ -16,5 +16,16 @@ package io.whozoss.agentos.plugins.file.tools
 internal fun String.withScopeGuidance(guidance: String?): String =
     when {
         guidance.isNullOrBlank() -> this
-        else -> "$this\n${guidance.trim()}"
+        else -> "$this\n${guidance.trim().take(MAX_SCOPE_GUIDANCE_LENGTH)}"
     }
+
+/**
+ * The longest scope guidance appended to a description.
+ *
+ * The key is user-settable through the FILE_ACCESS config schema, and a description past 1024
+ * characters is rejected outright by OpenAI, which would fail every turn of every run of the agent
+ * holding that integration. Clamping here rather than refusing the config keeps a too-long sentence
+ * a cosmetic problem: `editFiles`, the longest write tool, sits around 325 characters, so this
+ * leaves well over half the budget unused.
+ */
+internal const val MAX_SCOPE_GUIDANCE_LENGTH = 400

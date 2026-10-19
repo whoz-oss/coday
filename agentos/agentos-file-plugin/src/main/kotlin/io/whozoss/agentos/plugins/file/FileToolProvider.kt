@@ -190,6 +190,7 @@ class FileToolProvider : ToolPlugin {
                     },
                     "scopeGuidance": {
                         "type": "string",
+                        "maxLength": 400,
                         "title": "Scope Guidance",
                         "description": "One sentence appended to the description of the write tools (editFiles, remove, moveFile), telling the model which surface they write to. Set it when the agent holds several file integrations it has to choose between. Only the write tools carry it: providers cap a tool description and the read tools are already close to that cap."
                     },
