@@ -27,6 +27,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { debugLog } from './log'
 import { AGENTOS_ARTIFACT_IDS, AgentosArtifactId } from './agentos-lifecycle'
+import { releaseBaseUrl } from './release-url'
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -75,11 +76,11 @@ export interface SwapResult {
 // ---------------------------------------------------------------------------
 
 function buildJarUrl(artifactId: string, version: string): string {
-  return `https://github.com/whoz-oss/coday/releases/download/release/${version}/${artifactId}-${version}.jar`
+  return `${releaseBaseUrl(version)}/${artifactId}-${version}.jar`
 }
 
 function buildManifestUrl(version: string): string {
-  return `https://github.com/whoz-oss/coday/releases/download/release/${version}/checksums.sha256`
+  return `${releaseBaseUrl(version)}/checksums.sha256`
 }
 
 // ---------------------------------------------------------------------------
