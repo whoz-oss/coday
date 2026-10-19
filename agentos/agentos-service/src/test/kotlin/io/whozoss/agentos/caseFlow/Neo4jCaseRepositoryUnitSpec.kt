@@ -7,6 +7,7 @@ import io.mockk.clearAllMocks
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -120,5 +121,22 @@ class Neo4jCaseRepositoryUnitSpec :
             tickingRepo.save(entity)
 
             capturedModifieds[1] shouldBeGreaterThan capturedModifieds[0]
+        }
+
+        // -------------------------------------------------------------------------
+        // insert
+        // -------------------------------------------------------------------------
+
+        "insert writes the PARENT_OF edge of a sub-case" {
+            val parentId = UUID.randomUUID()
+            val child = repo.insert(case().copy(parentCaseId = parentId))
+
+            verify(exactly = 1) { neo4jRepo.linkParentToChild(parentId.toString(), child.id.toString()) }
+        }
+
+        "insert writes no PARENT_OF edge for a root case" {
+            repo.insert(case())
+
+            verify(exactly = 0) { neo4jRepo.linkParentToChild(any(), any()) }
         }
     })

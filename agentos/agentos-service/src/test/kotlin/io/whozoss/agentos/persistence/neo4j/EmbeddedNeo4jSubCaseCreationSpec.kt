@@ -7,8 +7,10 @@ import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.whozoss.agentos.caseFlow.Case
+import io.whozoss.agentos.caseFlow.CaseNodeNeo4jRepository
 import io.whozoss.agentos.caseFlow.CaseRepository
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.caseFlow.Neo4jCaseRepository
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceRepository
@@ -17,10 +19,15 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserRepository
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.aop.framework.ProxyFactory
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.util.AopTestUtils
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.annotation.AnnotationTransactionAttributeSource
+import org.springframework.transaction.interceptor.TransactionInterceptor
+import java.time.Clock
 import java.util.UUID
 
 /** Sub-case creation, against the embedded Neo4j engine. */
@@ -44,10 +51,34 @@ class EmbeddedNeo4jSubCaseCreationSpec : StringSpec() {
 
     @SpykBean lateinit var childLinkService: Neo4jChildLinkService
 
+    @Autowired lateinit var caseNodes: CaseNodeNeo4jRepository
+
+    @Autowired lateinit var transactionManager: PlatformTransactionManager
+
+    @Autowired lateinit var clock: Clock
+
     private fun count(
         query: String,
         parameters: Map<String, Any>,
     ): Long = driver.session().use { it.run(query, parameters).single().get("n").asLong() }
+
+    private fun countChildren(parent: Case): Long =
+        count("MATCH (c:Case {parentCaseId: \$parent}) RETURN count(c) AS n", mapOf("parent" to parent.id.toString()))
+
+    private fun family(): Triple<Namespace, Case, User> {
+        val namespace = namespaces.save(Namespace(name = "owner"))
+        val user = users.save(User(externalId = "delegator@example.com"))
+        return Triple(namespace, caseService.create(Case(namespaceId = namespace.id)), user)
+    }
+
+    /** DelegationTool gets the service itself, not its proxy: CaseServiceImpl.runAgent passes `this`. */
+    private fun delegate(
+        namespace: Namespace,
+        parent: Case,
+        user: User,
+    ) = AopTestUtils
+        .getUltimateTargetObject<SubCaseManager>(subCases)
+        .startSubCase(parent.id, namespace.id, "agent", "task", user.id)
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
@@ -62,22 +93,37 @@ class EmbeddedNeo4jSubCaseCreationSpec : StringSpec() {
             ) shouldBe 1L
         }
 
-        "a sub-case whose links fail is not persisted, although startSubCase runs without a transaction" {
-            val namespace = namespaces.save(Namespace(name = "owner"))
-            val user = users.save(User(externalId = "delegator@example.com"))
-            val parent = caseService.create(Case(namespaceId = namespace.id))
+        "a sub-case whose namespace link fails is not persisted, although startSubCase runs without a transaction" {
+            val (namespace, parent, user) = family()
             every { childLinkService.link("Case", any(), "Namespace", namespace.id.toString(), any()) } throws
                 IllegalStateException("link failed")
 
-            // DelegationTool gets the service itself, not its proxy: CaseServiceImpl.runAgent passes `this`.
-            val delegating = AopTestUtils.getUltimateTargetObject<SubCaseManager>(subCases)
+            shouldThrow<IllegalStateException> { delegate(namespace, parent, user) }
+            countChildren(parent) shouldBe 0L
+        }
+
+        "insert rolls a sub-case back when its PARENT_OF edge fails" {
+            val (namespace, parent) = family()
+            // Spring Data repositories are JDK proxies that mockk cannot spy: wrap the real one instead,
+            // under the transaction interceptor Spring applies to the Neo4jCaseRepository bean.
+            val failingNodes =
+                object : CaseNodeNeo4jRepository by caseNodes {
+                    override fun linkParentToChild(
+                        parentCaseId: String,
+                        childCaseId: String,
+                    ): Unit = throw IllegalStateException("edge failed")
+                }
+            val repository =
+                ProxyFactory(Neo4jCaseRepository(failingNodes, childLinkService, clock))
+                    .apply {
+                        isProxyTargetClass = true
+                        addAdvice(TransactionInterceptor(transactionManager, AnnotationTransactionAttributeSource()))
+                    }.proxy as CaseRepository
+
             shouldThrow<IllegalStateException> {
-                delegating.startSubCase(parent.id, namespace.id, "agent", "task", user.id)
+                repository.insert(Case(namespaceId = namespace.id, parentCaseId = parent.id))
             }
-            count(
-                "MATCH (c:Case {parentCaseId: \$parent}) RETURN count(c) AS n",
-                mapOf("parent" to parent.id.toString()),
-            ) shouldBe 0L
+            countChildren(parent) shouldBe 0L
         }
     }
 }

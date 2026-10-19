@@ -2536,9 +2536,9 @@ class CaseServiceImplSpec :
             }
         }
 
-        "startSubCase propagates exception when linkParentToChild fails" {
+        "startSubCase propagates exception when the sub-case insert fails" {
             // Uses a mockk CaseRepository that delegates all operations to InMemoryCaseRepository
-            // but throws on linkParentToChild.
+            // but throws when inserting a sub-case, as a failed [:PARENT_OF] link does.
             // Before the refacto, this exception was swallowed by runCatching — the sub-case
             // would be created and the error silently logged.
             // After the refacto, the exception propagates to the caller.
@@ -2560,10 +2560,8 @@ class CaseServiceImplSpec :
                     every { findActiveByParentCaseId(any()) } answers { delegate.findActiveByParentCaseId(firstArg()) }
                     every { findActiveDescendants(any()) } answers { delegate.findActiveDescendants(firstArg()) }
                     every { countAncestorDepth(any()) } answers { delegate.countAncestorDepth(firstArg()) }
-                    every { linkParentToChild(any(), any()) } throws RuntimeException("simulated Neo4j link failure")
-                    every { insert(any()) } answers {
-                        delegate.save(firstArg()).also { saved -> saved.parentCaseId?.let { linkParentToChild(it, saved.id) } }
-                    }
+                    every { insert(match { it.parentCaseId == null }) } answers { delegate.save(firstArg()) }
+                    every { insert(match { it.parentCaseId != null }) } throws RuntimeException("simulated Neo4j link failure")
                 }
             val namespace =
                 Namespace(
