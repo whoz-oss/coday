@@ -166,10 +166,13 @@ namespace get rewritten by a run that only meant to produce its own.
 | `buildBlock` | a `## File scopes` block in the agent's instructions | the advanced intention prompt explicitly orders the model to reason from `<instructions>`, and prose can afford to say what a case and a namespace are |
 | `CASE_TOOL_GUIDANCE` / `NAMESPACE_TOOL_GUIDANCE` | appended to the description of `editFiles`, `moveFile` and `remove` | restates the decision where the choice is actually made |
 
-The block is emitted **only when both scopes are granted**: one file surface cannot be confused with
-another, so a single-scope agent pays neither the tokens nor the risk of being told about a scope it
-does not have. It also follows the invoking user's rights — a namespace member without Namespace
-`WRITE` is told the namespace scope is read-only rather than offered it as a write target.
+Both carriers are written **only when both scopes are granted**: one file surface cannot be confused
+with another, so a single-scope agent pays neither the tokens nor the risk of being told about a
+scope it does not have, and its write tools keep the file-plugin's own descriptions byte for byte
+— and with them the provider's cached prompt prefix, which a changed description would invalidate
+once. That is why both scopes are decided before either is granted. The block also follows the
+invoking user's rights: a namespace member without Namespace `WRITE` is told the namespace scope is
+read-only rather than offered it as a write target.
 
 Only the write tools carry the per-tool sentence. Providers cap a tool description (OpenAI rejects
 one past 1024 characters) and `readSpreadsheet`, `readDocument` and `readAsImage` are already close
@@ -181,7 +184,9 @@ varying per run would miss that cache on every turn.
 The service passes the sentence to the plugin as the `scopeGuidance` key of the plugin config, and
 writes the key only when it has one. Nothing about the key is specific to the exchange: it is part
 of the published FILE_ACCESS config schema, so an agent holding several ordinary file integrations
-can be told which is which the same way. The sentences below are the exchange's own use of it.
+can be told which is which the same way. The sentences below are the exchange's own use of it. The
+plugin reads the key only when it holds a string: an explicit JSON null, which is what a config form
+sends for a cleared optional field, would otherwise reach three descriptions as the text `null`.
 
 ## Pointing an integration at an exchange
 

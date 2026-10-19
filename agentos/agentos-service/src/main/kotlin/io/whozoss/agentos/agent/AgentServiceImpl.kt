@@ -18,6 +18,7 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.delegation.DelegationTool
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
+import io.whozoss.agentos.exchange.ExchangeGrant
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeScopeGuidance
@@ -54,6 +55,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import mu.KLogging
 import org.springframework.stereotype.Service
+import java.nio.file.Path
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -947,45 +950,92 @@ class AgentServiceImpl(
         toolContext: ToolContext,
     ): ResolvedExchangeScopes {
         val integrations = config.integrations
+        val case = resolveCaseScope(integrations, context)
+        val namespace = resolveNamespaceScope(integrations, context)
+        // Both scopes are decided before either is granted, because the per-tool sentence only
+        // makes sense when there are two surfaces to arbitrate between. An agent that ends up with
+        // a single scope keeps the file-plugin's own descriptions byte for byte, and with them its
+        // cached prompt prefix -- the same both-scopes condition [ExchangeScopeGuidance.buildBlock]
+        // applies to the instructions block.
+        val bothGranted = case != null && namespace != null
         val tools = mutableListOf<StandardTool<*>>()
-        var caseAccess: ExchangeScopeGuidance.Access? = null
-        var namespaceAccess: ExchangeScopeGuidance.Access? = null
+        case?.let { tools += grantScope(it, toolContext, bothGranted) }
+        namespace?.let { tools += grantScope(it, toolContext, bothGranted) }
+        return ResolvedExchangeScopes(tools, case?.access, namespace?.access)
+    }
+
+    /** One exchange scope, decided but not yet granted. */
+    private data class ExchangeScope(
+        val root: Path,
+        val configName: String,
+        val grant: ExchangeGrant,
+        val access: ExchangeScopeGuidance.Access,
+        val toolGuidance: String,
+    )
+
+    private fun grantScope(
+        scope: ExchangeScope,
+        toolContext: ToolContext,
+        withGuidance: Boolean,
+    ): List<StandardTool<*>> =
+        exchangeToolGrantService.grantTools(
+            root = scope.root,
+            readOnly = scope.access == ExchangeScopeGuidance.Access.READ_ONLY,
+            configName = scope.configName,
+            allowedTools = scope.grant.allowedTools,
+            toolContext = toolContext,
+            scopeGuidance = scope.toolGuidance.takeIf { withGuidance },
+        )
+
+    private fun resolveCaseScope(
+        integrations: Map<String, List<String>?>?,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
         val caseId = context.caseId
         val caseCreatedAt = context.caseCreatedAt
+        return when {
+            caseGrant == null || caseId == null || caseCreatedAt == null -> null
+            else -> caseScope(caseGrant, caseId, caseCreatedAt, context)
+        }
+    }
 
-        val caseGrant = exchangeToolGrantService.resolveCaseGrant(integrations)
-        if (caseGrant != null && caseId != null && caseCreatedAt != null) {
-            // The agent gets read/write on the case exchange by design (it produces files during a run).
-            // User-facing write is separately gated: the exchange upload/delete endpoints require Case
-            // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
-            // A directory owned by another case (a family's shared workspace) also requires the
-            // invoking user's permission on that owner: delegation does not confer its rights.
-            val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
-            val userId = context.userId?.toString()
-            val canRead =
-                root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
-            if (canRead) {
+    private fun caseScope(
+        caseGrant: ExchangeGrant,
+        caseId: UUID,
+        caseCreatedAt: Instant,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        // The agent gets read/write on the case exchange by design (it produces files during a run).
+        // User-facing write is separately gated: the exchange upload/delete endpoints require Case
+        // WRITE via @PreAuthorize, and the manifest exposes the computed ExchangeCapability.
+        // A directory owned by another case (a family's shared workspace) also requires the
+        // invoking user's permission on that owner: delegation does not confer its rights.
+        val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
+        val userId = context.userId?.toString()
+        val canRead =
+            root.ownerCaseId == caseId || exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.READ)
+        return when {
+            !canRead -> null
+            else -> {
                 val canWrite =
                     root.ownerCaseId == caseId ||
-                        exchangeCapabilityService.canAccessCase(
-                            userId,
-                            caseId,
-                            root,
-                            Action.WRITE,
-                        )
-                tools +=
-                    exchangeToolGrantService.grantTools(
-                        root = root.requireUsable(),
-                        readOnly = !canWrite,
-                        configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
-                        allowedTools = caseGrant.allowedTools,
-                        toolContext = toolContext,
-                        scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
-                    )
-                caseAccess = ExchangeScopeGuidance.Access.forWrite(canWrite)
+                        exchangeCapabilityService.canAccessCase(userId, caseId, root, Action.WRITE)
+                ExchangeScope(
+                    root = root.requireUsable(),
+                    configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    grant = caseGrant,
+                    access = ExchangeScopeGuidance.Access.forWrite(canWrite),
+                    toolGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                )
             }
         }
+    }
 
+    private fun resolveNamespaceScope(
+        integrations: Map<String, List<String>?>?,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
         val namespaceGrant = exchangeToolGrantService.resolveNamespaceGrant(integrations)
         // The agent inherits the invoking user's namespace rights. Namespace READ is the floor the
         // REST namespace-file endpoints already enforce via @PreAuthorize, so the agent path must
@@ -994,14 +1044,26 @@ class AgentServiceImpl(
         // permission queries run only once the grant stands, so a scope nobody was granted costs
         // no permission query.
         val namespaceUserId = context.userId?.toString()
-        if (namespaceGrant != null && namespaceUserId != null) {
-            val userCanReadNamespace =
-                exchangeCapabilityService.canRead(
-                    userId = namespaceUserId,
-                    entityType = EntityType.NAMESPACE,
-                    entityId = context.namespaceId.toString(),
-                )
-            if (userCanReadNamespace) {
+        return when {
+            namespaceGrant == null || namespaceUserId == null -> null
+            else -> namespaceScope(namespaceGrant, namespaceUserId, context)
+        }
+    }
+
+    private fun namespaceScope(
+        namespaceGrant: ExchangeGrant,
+        namespaceUserId: String,
+        context: AgentExecutionContext,
+    ): ExchangeScope? {
+        val userCanReadNamespace =
+            exchangeCapabilityService.canRead(
+                userId = namespaceUserId,
+                entityType = EntityType.NAMESPACE,
+                entityId = context.namespaceId.toString(),
+            )
+        return when {
+            !userCanReadNamespace -> null
+            else -> {
                 // Read/write for a namespace admin (Namespace WRITE, super-admin included),
                 // read-only for a plain member.
                 val userCanWriteNamespace =
@@ -1010,19 +1072,15 @@ class AgentServiceImpl(
                         entityType = EntityType.NAMESPACE,
                         entityId = context.namespaceId.toString(),
                     )
-                tools +=
-                    exchangeToolGrantService.grantTools(
-                        root = exchangeStorageService.namespaceRoot(context.namespaceId),
-                        readOnly = !userCanWriteNamespace,
-                        configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
-                        allowedTools = namespaceGrant.allowedTools,
-                        toolContext = toolContext,
-                        scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
-                    )
-                namespaceAccess = ExchangeScopeGuidance.Access.forWrite(userCanWriteNamespace)
+                ExchangeScope(
+                    root = exchangeStorageService.namespaceRoot(context.namespaceId),
+                    configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
+                    grant = namespaceGrant,
+                    access = ExchangeScopeGuidance.Access.forWrite(userCanWriteNamespace),
+                    toolGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                )
             }
         }
-        return ResolvedExchangeScopes(tools, caseAccess, namespaceAccess)
     }
 
     /**

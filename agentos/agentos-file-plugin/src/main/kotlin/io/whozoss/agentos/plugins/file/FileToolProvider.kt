@@ -65,7 +65,10 @@ class FileToolProvider : ToolPlugin {
         // One sentence attached to the write tools when they are one of several surfaces the model
         // has to choose between (the AgentOS case / namespace exchanges, whose two tool sets are
         // otherwise described identically). Blank and absent are the same thing: no sentence.
-        val scopeGuidance = config.get("scopeGuidance")?.asText()?.takeIf { it.isNotBlank() }
+        // `isTextual` before `asText`: Jackson's NullNode.asText() returns the four-letter string
+        // "null", which isNotBlank() accepts, and a cleared optional field in a config form is an
+        // explicit JSON null. The same guard the array keys above use.
+        val scopeGuidance = config.get("scopeGuidance")?.takeIf { it.isTextual }?.asText()?.takeIf { it.isNotBlank() }
         logger.debug {
             "FILE_ACCESS '$configName': scope guidance ${if (scopeGuidance == null) "absent" else "applied to the write tools"}"
         }

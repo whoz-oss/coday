@@ -92,17 +92,25 @@ class FileToolProviderSpec : StringSpec() {
             }
         }
 
-        "descriptions are untouched when the host sets no scopeGuidance" {
+        "descriptions are untouched when the config sets no scopeGuidance" {
             val config = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}""")
             val withoutKey = FileToolProvider().provideTools(config, "TEST")
             val blank = jacksonObjectMapper().readTree(
                 """{"rootPath": "${tempDir.pathString}", "scopeGuidance": "   "}""",
             )
             val withBlankKey = FileToolProvider().provideTools(blank, "TEST")
+            // An explicit JSON null is what a config form sends for a cleared optional field, and
+            // NullNode.asText() is the four-letter string "null", which isNotBlank() accepts: read
+            // without a type guard it would leave a line saying `null` on three tool descriptions.
+            val explicitNull = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "scopeGuidance": null}""",
+            )
+            val withNullKey = FileToolProvider().provideTools(explicitNull, "TEST")
 
-            // A FILE_ACCESS integration configured by a user gets no key, and a blank one must not
-            // leave a dangling newline on three tool descriptions either.
+            // A FILE_ACCESS integration that sets no key keeps its descriptions, and a blank or null
+            // one must not leave a dangling newline on three tool descriptions either.
             withoutKey.map { it.description } shouldBe withBlankKey.map { it.description }
+            withoutKey.map { it.description } shouldBe withNullKey.map { it.description }
             withoutKey.first { it.name == "TEST__editFiles" }.description shouldEndWith
                 "a failure on one file does not prevent others from being processed."
         }

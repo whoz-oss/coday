@@ -381,7 +381,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "case-exchange",
                     allowedTools = null,
                     toolContext = any(),
-                    scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -423,7 +424,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                             "case-exchange",
                             null,
                             any(),
-                            ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                            null,
                         )
                     }
                 } finally {
@@ -457,7 +458,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "case-exchange",
                     allowedTools = listOf("readFile"),
                     toolContext = any(),
-                    scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -522,7 +524,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "namespace-exchange",
                     allowedTools = null,
                     toolContext = any(),
-                    scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -583,7 +586,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "namespace-exchange",
                     allowedTools = null,
                     toolContext = any(),
-                    scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -640,6 +644,33 @@ class AgentServiceImplUnitSpec : StringSpec() {
             instructions shouldContain "Reach for the namespace scope only when the user asks you"
         }
 
+        "both scopes granted: each write tool set carries its own scope sentence" {
+            // The companion of "no sentence when only one scope is granted" below: the per-tool
+            // sentence arbitrates between two surfaces, so it is written exactly when there are two.
+            agentWithBothScopes("tool-sentence-agent", namespaceWrite = true)
+
+            verify(exactly = 1) {
+                exchangeToolGrantService.grantTools(
+                    root = Path.of("/tmp/both-case"),
+                    readOnly = false,
+                    configName = "case-exchange",
+                    allowedTools = null,
+                    toolContext = any(),
+                    scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                )
+            }
+            verify(exactly = 1) {
+                exchangeToolGrantService.grantTools(
+                    root = Path.of("/tmp/both-ns"),
+                    readOnly = false,
+                    configName = "namespace-exchange",
+                    allowedTools = null,
+                    toolContext = any(),
+                    scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                )
+            }
+        }
+
         "a namespace member without WRITE is told the namespace scope is read-only" {
             // The admin case is the one that needs the prose; a member has no writable namespace tool
             // at all, so promising them one would make them try and fail.
@@ -650,9 +681,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
             instructions shouldNotContain "Reach for the namespace scope"
         }
 
-        "no block when only the case scope is granted" {
+        "no block and no tool sentence when only the case scope is granted" {
             // What keeps this change inert for every single-scope agent: with one file surface there
-            // is nothing to arbitrate, so the run pays neither the tokens nor the risk.
+            // is nothing to arbitrate, so the run pays neither the tokens nor the risk, and the
+            // write tools keep the file-plugin's own descriptions -- and with them the provider's
+            // cached prompt prefix, which a changed description would invalidate.
             every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
             every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns Path.of("/tmp/case-only")
 
@@ -667,6 +700,16 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("case-only-agent", context) as AgentSimple
 
             (agent.instructions ?: "") shouldNotContain "## File scopes"
+            verify(exactly = 0) {
+                exchangeToolGrantService.grantTools(
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                )
+            }
         }
 
         "namespace permissions are not queried when the namespace grant is denied" {

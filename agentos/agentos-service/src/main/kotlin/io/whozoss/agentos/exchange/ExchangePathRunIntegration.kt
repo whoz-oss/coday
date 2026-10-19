@@ -4,7 +4,7 @@ import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.RunIntegrationCustomizer
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
-import io.whozoss.agentos.util.jsonContainsToken
+import io.whozoss.agentos.util.jsonTokensPresent
 import io.whozoss.agentos.util.substituteJsonTokens
 import mu.KLogging
 import org.springframework.stereotype.Component
@@ -70,37 +70,46 @@ class ExchangePathRunIntegration(
         configs: List<IntegrationConfig>,
         context: AgentExecutionContext,
     ): List<IntegrationConfig> {
-        val tokens = resolveTokens(configs, context)
+        // One walk per config, before anything is resolved: this runs on every agent resolution of
+        // every namespace, over every integration config of that namespace, and almost none of them
+        // carries a token. The per-config answer is kept so that a config found clean is handed back
+        // untouched rather than rebuilt.
+        val carried = configs.map { config -> config to jsonTokensPresent(config.parameters, ALL_TOKENS) }
+        val resolved = resolveTokens(carried.flatMapTo(mutableSetOf()) { it.second }, context)
         return when {
-            tokens.isEmpty() -> configs
+            resolved.isEmpty() -> configs
             else ->
-                configs.map { config ->
-                    when (val parameters = config.parameters) {
-                        null -> config
-                        else -> config.copy(parameters = substituteJsonTokens(parameters, tokens))
+                carried.map { (config, tokens) ->
+                    when {
+                        tokens.isEmpty() -> config
+                        else -> config.copy(parameters = substituteJsonTokens(config.parameters, resolved))
                     }
                 }
         }
     }
 
     /**
-     * The tokens actually present in [configs] that could be resolved for this run.
+     * What each of [used] stands for on this run, leaving out the ones that cannot be resolved.
      *
      * A token left out of the map stays in the parameters verbatim, and the plugin that reads it
      * rejects it: `BashConfigParser` requires an absolute path, so the integration contributes no
      * tool and logs why. That is the intended outcome — a run with no case, or one whose user may
      * not reach the directory, has no case directory, and quietly falling back to another one would
      * put the work somewhere nobody looks.
+     *
+     * Only the tokens actually written somewhere are resolved: the case one costs the resolver a
+     * read of the case and of its family binding, and a run that never mentions it must not pay
+     * for that.
      */
     private fun resolveTokens(
-        configs: List<IntegrationConfig>,
+        used: Set<String>,
         context: AgentExecutionContext,
     ): Map<String, String> {
         val tokens = mutableMapOf<String, String>()
-        if (configs.anyCarries(ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN)) {
+        if (ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN in used) {
             caseExchangePath(context)?.let { tokens[ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN] = it }
         }
-        if (configs.anyCarries(ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN)) {
+        if (ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN in used) {
             tokens[ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN] =
                 exchangeStorageService
                     .namespaceRoot(context.namespaceId)
@@ -110,16 +119,6 @@ class ExchangePathRunIntegration(
         }
         return tokens
     }
-
-    /**
-     * Whether any of these configs carries [token] in its parameters.
-     *
-     * Asked before resolving what a token stands for: the case token costs the resolver a read of
-     * the case and of its family binding, and a run whose integrations carry no token must not pay
-     * for it.
-     */
-    private fun List<IntegrationConfig>.anyCarries(token: String): Boolean =
-        any { jsonContainsToken(it.parameters, token) }
 
     /**
      * The case's exchange directory, or null when this resolution has no live case — a definition
@@ -189,5 +188,11 @@ class ExchangePathRunIntegration(
         root.ownerCaseId == caseId ||
             exchangeCapabilityService.canAccessCase(userId?.toString(), caseId, root, Action.WRITE)
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        private val ALL_TOKENS =
+            listOf(
+                ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN,
+                ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN,
+            )
+    }
 }

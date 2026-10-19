@@ -47,24 +47,39 @@ fun substituteJsonTokens(
     }
 
 /**
- * Whether [token] appears in any text node of [node], at any depth.
+ * Which of [candidates] appear in a text node of [node], at any depth.
  *
  * The cheap question a caller asks before resolving what a token stands for: that resolution can
- * cost database reads, and most configs carry no token at all. The walk stops at the first match
- * and never serializes the tree, so the answer costs nothing on a node of any size — an
- * integration may hold a whole inline OpenAPI document in its parameters.
+ * cost database reads, and most configs carry no token at all. One walk answers for every
+ * candidate at once and stops as soon as they have all been seen, and nothing is serialized, so a
+ * node of any size costs a single traversal — an integration may hold a whole inline OpenAPI
+ * document in its parameters.
  */
-fun jsonContainsToken(
+fun jsonTokensPresent(
     node: JsonNode?,
-    token: String,
-): Boolean =
+    candidates: Collection<String>,
+): Set<String> {
+    val found = mutableSetOf<String>()
+    collectTokens(node, candidates, found)
+    return found
+}
+
+private fun collectTokens(
+    node: JsonNode?,
+    candidates: Collection<String>,
+    found: MutableSet<String>,
+) {
     when {
-        node == null -> false
-        node.isTextual -> node.textValue().contains(token)
+        node == null || found.size == candidates.size -> Unit
+        node.isTextual -> {
+            val text = node.textValue()
+            candidates.forEach { token -> if (text.contains(token)) found.add(token) }
+        }
         // Iterating a JsonNode yields an object's values and an array's elements alike.
-        node.isContainerNode -> node.any { jsonContainsToken(it, token) }
-        else -> false
+        node.isContainerNode -> node.forEach { child -> collectTokens(child, candidates, found) }
+        else -> Unit
     }
+}
 
 /** Replaces every occurrence of every key of [tokens] in [text] with its value. */
 fun substituteTokens(
