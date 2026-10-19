@@ -1,5 +1,9 @@
 package io.whozoss.agentos.agent
 
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.core.json.JsonReadFeature
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.json.JsonMapper
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AnswerEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -12,6 +16,7 @@ import io.whozoss.agentos.redirect.RedirectTool
 import io.whozoss.agentos.util.AttemptFailure
 import io.whozoss.agentos.util.AttemptSuccess
 import io.whozoss.agentos.util.retryWithFallback
+import io.whozoss.agentos.util.trimmedTextOrNull
 import mu.KLogging
 import org.springframework.ai.chat.prompt.Prompt
 import org.springframework.stereotype.Service
@@ -78,6 +83,8 @@ $redirectGuideline
 
         val intentionDescription = "[A thorough rationale justifying the action. Identify the instructions and expectations that applies with what is available and have been found which are pertinent and relevant for this step. This situation requires careful reasoning: explain shortly the instructions from <instructions> that should apply here and explain step by step WHY this specific next action is the right one, considering alternatives you discarded and why. Stay grounded in the conversation history — do not invent or assume technical details not explicitly present.]"
 
+        val outputTemplate = """{"$INTENTION_FIELD": "$intentionDescription", "$TOOL_FIELD": "[The exact name of the tool to be called]"}"""
+
         val prompt =
             """
 Available agents and tools:
@@ -130,13 +137,12 @@ Do not plan steps that would discriminate based on gender, ethnicity, religion, 
 ${repetitionWarning ?: ""}
 
 ### Output Instructions
-You must respond with **exactly** this XML structure and **nothing else** — no prose, no markdown fences, no preamble (any deviation from the following expected xml would result in a error):
+You must respond with **exactly** this JSON object and **nothing else** — no prose, no markdown fences, no preamble (any deviation from the following expected json would result in an error):
 
-<$INTENTION_TAG_NAME>$intentionDescription</$INTENTION_TAG_NAME>
-<$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>
+$outputTemplate
 
-The tag names $INTENTION_TAG_NAME and $TOOL_TAG_NAME are fixed. The chosen tool’s name as to be called like this <$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>. Do not reorder them.
-Do not wrap in code blocks. Do not add any text before or after the XML.
+The field names `$INTENTION_FIELD` and `$TOOL_FIELD` are fixed, and the object must contain these two fields and no other. Do not reorder intention and tool name.
+Do not wrap in code blocks. Do not add any text before or after the JSON.
         """.trimIndent()
 
         logger.debug { "Intention generation: building messages for LLM" }
@@ -167,16 +173,15 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
                         is AgentIntentionGenerationException.InvalidFormat ->
                             append(
                                 """
-                                This does not match the expected XML output (${e.message}) that should correspond to the following:
-                                <$INTENTION_TAG_NAME>$intentionDescription</$INTENTION_TAG_NAME>
-                                <$TOOL_TAG_NAME>[The exact name of the tool to be called]</$TOOL_TAG_NAME>
+                                This does not match the expected JSON output (${e.message}) that should correspond to the following:
+                                $outputTemplate
                                 """.trimIndent()
                             )
                         is AgentIntentionGenerationException.UnknownTool ->
-                            append("This does not match the expected XML output because the tool '${e.toolName}' does not exist. Valid tools are: ${toolNames.joinToString()}")
+                            append("This does not match the expected JSON output because the tool '${e.toolName}' does not exist. Valid tools are: ${toolNames.joinToString()}")
                     }
                     appendLine()
-                    append("Correct the error and output only the valid XML block described above.")
+                    append("Correct the error and output only the valid JSON object described above.")
                 }.trim()
             }
             val fullPrompt = listOfNotNull(prompt, retryHint).joinToString("\n\n")
@@ -205,60 +210,64 @@ Do not wrap in code blocks. Do not add any text before or after the XML.
         }
     }
 
+    /**
+     * Reads the planning decision from the raw LLM response: the last JSON object carrying the string fields
+     * [INTENTION_FIELD] and [TOOL_FIELD], wherever it sits in the text. Anything else invalid is left to the
+     * caller's retry.
+     */
     internal fun parseIntentionAndTool(
         response: String,
         validToolNames: List<String>,
     ): Pair<String, String> {
-        if (response.isBlank()) {
-            throw AgentIntentionGenerationException.InvalidFormat("Empty LLM response", response)
-        }
+        val (intention, tool) = findLastDecision(response)
+            ?: throw AgentIntentionGenerationException.InvalidFormat(EXPECTED_FORMAT_MESSAGE, response)
 
-        // Track intention boundaries so nested examples are preserved. A decision
-        // is complete only when its closing tag is followed by the tool tag.
-        // Keep the last complete decision, even inside an unfinished outer tag.
-        val intentionStarts = java.util.ArrayDeque<Int>()
-        var lastPair: Pair<String, String>? = null
-        for (match in INTENTION_BOUNDARY.findAll(response)) {
-            if (match.value == "<$INTENTION_TAG_NAME>") {
-                intentionStarts.addLast(match.range.last + 1)
-                continue
-            }
-            if (intentionStarts.isEmpty()) continue
-
-            val start = intentionStarts.removeLast()
-            val tool = match.groups[1] ?: continue
-            lastPair = response.substring(start, match.range.first) to tool.value
-        }
-
-        val pair = lastPair
-            ?: throw AgentIntentionGenerationException.InvalidFormat(
-                "Expected <$INTENTION_TAG_NAME>...</$INTENTION_TAG_NAME> followed by <$TOOL_TAG_NAME>...</$TOOL_TAG_NAME>",
-                response,
-            )
-
-        val intention = pair.first.trim()
-        if (intention.isBlank()) {
-            throw AgentIntentionGenerationException.InvalidFormat("Empty intention", response)
-        }
-
-        val rawTool = pair.second.trim()
-        val toolName = validToolNames.firstOrNull { it.equals(rawTool, ignoreCase = true) }
-            ?: throw AgentIntentionGenerationException.UnknownTool(rawTool, response)
+        val toolName = validToolNames.firstOrNull { it.equals(tool, ignoreCase = true) }
+            ?: throw AgentIntentionGenerationException.UnknownTool(tool, response)
 
         return intention to toolName
+    }
+
+    /**
+     * Scans [response] for JSON objects carrying non-blank string [INTENTION_FIELD] and [TOOL_FIELD] fields
+     * and returns the last one. A `{` that does not start such an object is skipped, so an unfinished attempt,
+     * stray braces or a quoted example never hide a complete decision that follows. A decision is consumed
+     * whole, so JSON quoted inside its own strings is not read as a separate decision.
+     */
+    private fun findLastDecision(response: String): Pair<String, String>? {
+        var last: Pair<String, String>? = null
+        var start = response.indexOf('{')
+        while (start >= 0) {
+            val parser = MAPPER.createParser(response.substring(start))
+            val node: JsonNode? =
+                try {
+                    MAPPER.readTree<JsonNode>(parser)
+                } catch (_: JsonProcessingException) {
+                    null
+                }
+            val intention = node?.trimmedTextOrNull(INTENTION_FIELD)
+            val tool = node?.trimmedTextOrNull(TOOL_FIELD)
+            start =
+                if (intention != null && tool != null) {
+                    last = intention to tool
+                    response.indexOf('{', start + parser.currentLocation.charOffset.toInt())
+                } else {
+                    response.indexOf('{', start + 1)
+                }
+        }
+        return last
     }
 
     companion object : KLogging() {
         const val ANSWER_TOOL = "Answer"
         private const val MAX_INTENTION_ATTEMPTS = 3
-        internal const val INTENTION_TAG_NAME = "intention"
-        internal const val TOOL_TAG_NAME = "tool"
+        internal const val INTENTION_FIELD = "intention"
+        internal const val TOOL_FIELD = "tool"
+        internal const val EXPECTED_FORMAT_MESSAGE =
+            "Expected a JSON object with string fields \"$INTENTION_FIELD\" and \"$TOOL_FIELD\""
 
-        // Attach an adjacent tool tag to its closing intention boundary. Nesting
-        // is handled by the stack, not the regex; other XML-like text is preserved.
-        private val INTENTION_BOUNDARY = Regex(
-            "${Regex.escape("<$INTENTION_TAG_NAME>")}|${Regex.escape("</$INTENTION_TAG_NAME>")}" +
-                "(?:\\s*${Regex.escape("<$TOOL_TAG_NAME>")}([^<>]*)${Regex.escape("</$TOOL_TAG_NAME>")})?",
-        )
+        // The intention is a multi-line rationale, and raw line breaks inside a JSON string are invalid
+        // strict JSON: accept them.
+        private val MAPPER = JsonMapper.builder().enable(JsonReadFeature.ALLOW_UNESCAPED_CONTROL_CHARS).build()
     }
 }
