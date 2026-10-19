@@ -4,48 +4,45 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
+import io.whozoss.agentos.integrationConfig.IntegrationTypeConstraints
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import java.util.UUID
 
 /**
- * Spring-managed [ToolPlugin] that provides the LIST_USER_GROUP_MEMBERS integration.
+ * Spring-managed [ToolPlugin] that provides the USER_GROUP integration.
  *
- * Unlike PF4J plugins, this class is NOT annotated with `@Component` — it is
- * instantiated as a `@Bean` in [UserGroupToolPluginConfiguration] so that the
- * [UserGroupService] dependency can be wired without creating a circular Spring
- * dependency through [io.whozoss.agentos.tool.ToolRegistryService].
+ * Not annotated with `@Component` — instantiated as a `@Bean` in
+ * [UserGroupToolPluginConfiguration] so that [UserGroupRepository] and
+ * [io.whozoss.agentos.permissions.PermissionService] can be wired without creating a
+ * circular Spring dependency through [io.whozoss.agentos.tool.ToolRegistryService].
  *
- * [io.whozoss.agentos.tool.ToolRegistryService] collects all `ToolPlugin` beans via
- * its `springToolPlugins: List<ToolPlugin>` constructor parameter, so this bean is
- * automatically discovered alongside PF4J-loaded plugins.
+ * ## Tools provided
+ *
+ * - [ListUserGroupMembersTool] (`listMembers`) — list all members of a group
+ * - [ListAgentUsersTool] (`listAgentUsers`) — list all users who have access to an agent
+ * - [ListGroupAgentUsersTool] (`listGroupAgentUsers`) — list members of a group that
+ *   has a specific agent deployed to it
+ *
+ * ## Authorization
+ *
+ * All three loaders enforce namespace isolation and permission checks inside
+ * [UserGroupToolPluginConfiguration]. The data returned by [ListUserGroupMembersTool]
+ * is identical to `GET /api/user-groups/{id}/members` minus the Spring Security layer;
+ * that layer is replaced here by explicit [io.whozoss.agentos.permissions.PermissionService]
+ * checks in the loader lambdas.
  *
  * ## Configuration
  *
- * This plugin declares a non-null [configSchema] (an empty object schema) so that it is
- * catalogued by [io.whozoss.agentos.integrationConfig.CompositeIntegrationTypeRegistry]:
- * plugins with a null schema are skipped during registration and cannot be declared in
- * the integration form. An empty schema means the integration requires no parameters —
- * the admin simply creates an [io.whozoss.agentos.integrationConfig.IntegrationConfig]
- * of type [INTEGRATION_TYPE] and assigns it to the relevant agent.
- *
- * ## Public API alignment
- *
- * The membership data returned by this tool is identical to what the REST endpoint
- * `GET /api/user-groups/{userGroupId}/members` returns, and the same [UserGroupService]
- * method ([UserGroupService.getMembers]) is used in both paths. Clients that prefer HTTP
- * over agent-tool invocation can call the existing endpoint directly.
+ * Non-null [configSchema] (empty object) so the type appears in the integration catalogue.
+ * No parameters are needed — all access decisions are runtime, not config-time.
  */
 class UserGroupToolPlugin(
-    private val membersLoader: (UUID) -> List<UserGroupMember>,
-    private val usersByAgentLoader: (UUID) -> List<UserGroupMember>,
-    private val membersByGroupAndAgentLoader: (userGroupId: UUID, agentConfigId: UUID) -> List<UserGroupMember>,
+    private val membersLoader: (groupId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val usersByAgentLoader: (agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val membersByGroupAndAgentLoader: (groupId: UUID, agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
 
-    /**
-     * Empty object schema: the integration needs no configuration parameters.
-     * Non-null so the type is registered in the integration catalogue.
-     */
     override val configSchema: JsonNode = CONFIG_SCHEMA
 
     override fun provideTools(
@@ -59,7 +56,7 @@ class UserGroupToolPlugin(
     )
 
     companion object {
-        const val INTEGRATION_TYPE = "USER_GROUP"
+        const val INTEGRATION_TYPE = IntegrationTypeConstraints.USER_GROUP_TYPE
 
         val CONFIG_SCHEMA: JsonNode =
             jacksonObjectMapper().readTree(

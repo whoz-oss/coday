@@ -30,6 +30,6 @@ object IntegrationTypeConstraints {
     /** The conversational `queryUser` tool. See `io.whozoss.agentos.queryUser.QueryUserToolPlugin`. */
     const val QUERY_USER_TYPE: String = "QUERY_USER"
 
-    /** The group-membership listing tool. */
+    /** The USER_GROUP integration (membership + deployment queries). See `io.whozoss.agentos.userGroup.UserGroupToolPlugin`. */
     const val USER_GROUP_TYPE: String = "USER_GROUP"
 }

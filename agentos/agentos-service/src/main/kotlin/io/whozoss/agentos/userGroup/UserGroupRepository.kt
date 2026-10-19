@@ -28,10 +28,10 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
 
     /**
      * Returns all non-removed users who are members (MEMBER or ADMIN) of any non-removed
-     * UserGroup that has [agentConfigId] deployed to it via a [:DEPLOYED_TO] edge.
+     * UserGroup that has [agentConfigId] deployed to it and belongs to [namespaceId].
      * Deduplicates users that belong to multiple qualifying groups.
      */
-    fun findUsersByAgentId(agentConfigId: UUID): List<UserGroupMember>
+    fun findUsersByAgentId(agentConfigId: UUID, namespaceId: UUID): List<UserGroupMember>
 
     /**
      * Returns all non-removed members of [userGroupId] if — and only if — [agentConfigId]

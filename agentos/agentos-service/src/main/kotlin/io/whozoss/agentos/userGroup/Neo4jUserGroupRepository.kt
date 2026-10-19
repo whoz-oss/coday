@@ -192,15 +192,17 @@ open class Neo4jUserGroupRepository(
     /**
      * Single-query implementation: deduplication of users across multiple deployed groups
      * is handled inside Cypher with `WITH DISTINCT u` rather than in the JVM.
-     * A user who is ADMIN in one group and MEMBER in another gets whichever role the
-     * `collect(type(r))` across ALL their qualifying groups resolves to — ADMIN wins.
+     * Scoped to [namespaceId] so cross-namespace leakage is impossible at the query level.
+     * A user who is ADMIN in one group and MEMBER in another gets ADMIN (ADMIN wins in collect).
      */
-    override fun findUsersByAgentId(agentConfigId: UUID): List<UserGroupMember> =
+    override fun findUsersByAgentId(agentConfigId: UUID, namespaceId: UUID): List<UserGroupMember> =
         neo4jClient
             .query(
                 $$"""
                     MATCH (a:AgentConfig {id: $agentConfigId})-[:DEPLOYED_TO]->(g:UserGroup)
-                    WHERE NOT COALESCE(a.removed, false) AND NOT COALESCE(g.removed, false)
+                    WHERE NOT COALESCE(a.removed, false)
+                      AND NOT COALESCE(g.removed, false)
+                      AND g.namespaceId = $namespaceId
                     MATCH (u:User)-[r:MEMBER|ADMIN]->(g)
                     WHERE NOT COALESCE(u.removed, false)
                     WITH DISTINCT u, collect(DISTINCT type(r)) AS rels
@@ -209,8 +211,8 @@ open class Neo4jUserGroupRepository(
                            CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role
                     ORDER BY u.externalId ASC
                 """.trimIndent(),
-            ).bind(agentConfigId.toString())
-            .to("agentConfigId")
+            ).bind(agentConfigId.toString()).to("agentConfigId")
+            .bind(namespaceId.toString()).to("namespaceId")
             .fetchAs(UserGroupMember::class.java)
             .mappedBy(MEMBER_MAPPER)
             .all()

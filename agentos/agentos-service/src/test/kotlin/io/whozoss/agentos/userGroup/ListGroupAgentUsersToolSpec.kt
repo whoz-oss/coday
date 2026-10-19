@@ -8,11 +8,16 @@ import io.mockk.mockk
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
-private val CONTEXT = mockk<ToolContext>(relaxed = true)
+private val NAMESPACE_ID: UUID = UUID.randomUUID()
+private val USER_ID: UUID = UUID.randomUUID()
+private val CONTEXT = mockk<ToolContext>(relaxed = true).also {
+    every { it.namespaceId } returns NAMESPACE_ID
+    every { it.userId } returns USER_ID
+}
 
 class ListGroupAgentUsersToolSpec : StringSpec({
 
-    val loader = mockk<(UUID, UUID) -> List<UserGroupMember>>()
+    val loader = mockk<(UUID, UUID, UUID, UUID?) -> List<UserGroupMember>?>()
 
     fun tool() = ListGroupAgentUsersTool(membersByGroupAndAgentLoader = loader)
 
@@ -38,20 +43,30 @@ class ListGroupAgentUsersToolSpec : StringSpec({
     "execute returns RETRIEVAL_ERROR when loader throws" {
         val groupId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
-        every { loader(groupId, agentId) } throws RuntimeException("DB error")
+        every { loader(groupId, agentId, NAMESPACE_ID, USER_ID) } throws RuntimeException("DB error")
         val result = tool().execute(ListGroupAgentUsersTool.Input(groupId, agentId), CONTEXT)
         result.success shouldBe false
         result.errorType shouldBe "RETRIEVAL_ERROR"
+        if (result.output.contains("DB error")) throw AssertionError("Exception message leaked into output")
+    }
+
+    "execute returns NOT_FOUND when loader returns null (group missing or no access)" {
+        val groupId = UUID.randomUUID()
+        val agentId = UUID.randomUUID()
+        every { loader(groupId, agentId, NAMESPACE_ID, USER_ID) } returns null
+        val result = tool().execute(ListGroupAgentUsersTool.Input(groupId, agentId), CONTEXT)
+        result.success shouldBe false
+        result.errorType shouldBe "NOT_FOUND"
     }
 
     // -------------------------------------------------------------------------
     // Agent not deployed to group — empty list, not an error
     // -------------------------------------------------------------------------
 
-    "execute returns empty list when agent is not deployed to group" {
+    "execute returns success with empty list when agent is not deployed to group" {
         val groupId = UUID.randomUUID()
         val agentId = UUID.randomUUID()
-        every { loader(groupId, agentId) } returns emptyList()
+        every { loader(groupId, agentId, NAMESPACE_ID, USER_ID) } returns emptyList()
         val result = tool().execute(ListGroupAgentUsersTool.Input(groupId, agentId), CONTEXT)
         result.success shouldBe true
         result.structuredOutput!!.isArray shouldBe true
@@ -68,7 +83,7 @@ class ListGroupAgentUsersToolSpec : StringSpec({
         val agentId = UUID.randomUUID()
         val alice = member("alice@example.com", "ADMIN")
         val bob = member("bob@example.com")
-        every { loader(groupId, agentId) } returns listOf(alice, bob)
+        every { loader(groupId, agentId, NAMESPACE_ID, USER_ID) } returns listOf(alice, bob)
 
         val result = tool().execute(ListGroupAgentUsersTool.Input(groupId, agentId), CONTEXT)
         result.success shouldBe true

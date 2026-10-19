@@ -5,34 +5,35 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import mu.KLogging
 import java.util.UUID
 
 /**
  * Tool that lists all users belonging to a user group.
  *
- * Input: [userGroupId] — the UUID of the user group to inspect.
- * Output: textual summary + [ToolExecutionResult.structuredOutput] containing the array of
- * user UUIDs so callers can process the result without parsing free-form text.
+ * Input:  [userGroupId] — the UUID of the group to inspect.
+ * Output: textual summary + [ToolExecutionResult.structuredOutput] JSON array of members.
  *
- * Authorization note: the tool does not enforce UserGroup READ permission itself — the
- * caller (agent + user) is expected to only be granted this integration for groups they
- * are allowed to inspect. The REST equivalent (`GET /api/user-groups/{userGroupId}/members`)
- * enforces READ via `@PreAuthorize`; an agent tool call does not go through that path.
+ * ## Authorization
  *
- * @param configName The [io.whozoss.agentos.integrationConfig.IntegrationConfig] name used
- *   as tool-name prefix (e.g. `"USER_GROUP__listUserGroupMembers"`). Null for the bare name.
- * @param membersLoader Lambda that resolves members for a given group UUID. Injected at
- *   construction time by [ListUserGroupMembersConfiguration] (via [UserGroupRepository])
- *   so the tool itself is stateless and free of Spring dependencies.
+ * The [membersLoader] lambda (wired in [UserGroupToolPluginConfiguration]) enforces:
+ * - namespace isolation: the group must belong to the caller's namespace
+ * - READ permission on the group via [io.whozoss.agentos.permissions.PermissionService]
+ * - anonymous calls (userId == null): fail-closed
+ *
+ * A null return from the loader is mapped to NOT_FOUND, mirroring @HideOnAccessDenied
+ * on the REST path (`GET /api/user-groups/{id}/members`).
+ *
+ * @param configName IntegrationConfig name used as tool-name prefix. Null for bare name.
+ * @param membersLoader Lambda: (groupId, namespaceId, userId) → members, or null when the
+ *   group does not exist, belongs to a different namespace, or the caller lacks READ.
  */
 class ListUserGroupMembersTool(
     private val configName: String? = null,
-    private val membersLoader: (UUID) -> List<UserGroupMember>,
+    private val membersLoader: (groupId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
 ) : StandardTool<ListUserGroupMembersTool.Input> {
 
-    data class Input(
-        val userGroupId: UUID,
-    )
+    data class Input(val userGroupId: UUID)
 
     override val name: String = configName?.let { "${it}__listMembers" } ?: "listMembers"
 
@@ -46,6 +47,9 @@ class ListUserGroupMembersTool(
         Use this tool when you need to know which users are part of a specific group —
         for example to fan out a task, audit membership, or check whether a particular
         user is included.
+
+        Note: you need the group UUID. If you don't have it, ask the user or look it up
+        through another available tool before calling this one.
         """.trimIndent()
 
     override val inputSchema: String =
@@ -64,17 +68,40 @@ class ListUserGroupMembersTool(
         """.trimIndent()
 
     override val version: String = "1.0.0"
-
     override val paramType: Class<Input> = Input::class.java
 
-    /**
-     * Structured-output schema: an array of objects, each carrying the fields returned by
-     * [UserGroupMember] that are most useful for downstream automation (userId, externalId,
-     * role). Display fields (email, firstname, lastname) are included so callers can build
-     * human-readable output without a second lookup.
-     */
-    override fun outputSchema(): JsonNode =
-        mapper.readTree(
+    override fun outputSchema(): JsonNode = MEMBER_ARRAY_SCHEMA
+
+    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
+        if (input == null) {
+            return ToolExecutionResult.error("userGroupId is required.", errorType = "MISSING_INPUT")
+        }
+        val members = try {
+            membersLoader(input.userGroupId, context.namespaceId, context.userId)
+        } catch (e: Exception) {
+            logger.warn(e) { "[listMembers] Failed to retrieve members for group ${input.userGroupId}" }
+            return ToolExecutionResult.error(
+                "Failed to retrieve members for group ${input.userGroupId}.",
+                errorType = "RETRIEVAL_ERROR",
+            )
+        } ?: return ToolExecutionResult.error(
+            "User group ${input.userGroupId} was not found or you do not have access to it.",
+            errorType = "NOT_FOUND",
+        )
+
+        val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
+        val summary = if (members.isEmpty()) {
+            "User group ${input.userGroupId} has no members."
+        } else {
+            "User group ${input.userGroupId} has ${members.size} member(s): " +
+                members.joinToString(", ") { "${it.externalId} (${it.role})" }
+        }
+        return ToolExecutionResult.success(output = summary, structuredOutput = structuredOutput)
+    }
+
+    companion object : KLogging() {
+        private val mapper = jacksonObjectMapper()
+        internal val MEMBER_ARRAY_SCHEMA: JsonNode = mapper.readTree(
             """
             {
               "type": "array",
@@ -93,42 +120,5 @@ class ListUserGroupMembersTool(
             }
             """.trimIndent(),
         )
-
-    override suspend fun execute(
-        input: Input?,
-        context: ToolContext,
-    ): ToolExecutionResult {
-        if (input == null) {
-            return ToolExecutionResult.error("userGroupId is required.", errorType = "MISSING_INPUT")
-        }
-
-        val members =
-            try {
-                membersLoader(input.userGroupId)
-            } catch (e: Exception) {
-                return ToolExecutionResult.error(
-                    "Failed to retrieve members for group ${input.userGroupId}: ${e.message}",
-                    errorType = "RETRIEVAL_ERROR",
-                )
-            }
-
-        val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
-
-        val summary =
-            if (members.isEmpty()) {
-                "User group ${input.userGroupId} has no members."
-            } else {
-                "User group ${input.userGroupId} has ${members.size} member(s): " +
-                    members.joinToString(", ") { "${it.externalId} (${it.role})" }
-            }
-
-        return ToolExecutionResult.success(
-            output = summary,
-            structuredOutput = structuredOutput,
-        )
-    }
-
-    companion object {
-        private val mapper = jacksonObjectMapper()
     }
 }

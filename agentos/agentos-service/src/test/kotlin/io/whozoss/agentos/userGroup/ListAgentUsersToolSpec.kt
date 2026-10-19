@@ -8,11 +8,16 @@ import io.mockk.mockk
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
-private val CONTEXT = mockk<ToolContext>(relaxed = true)
+private val NAMESPACE_ID: UUID = UUID.randomUUID()
+private val USER_ID: UUID = UUID.randomUUID()
+private val CONTEXT = mockk<ToolContext>(relaxed = true).also {
+    every { it.namespaceId } returns NAMESPACE_ID
+    every { it.userId } returns USER_ID
+}
 
 class ListAgentUsersToolSpec : StringSpec({
 
-    val loader = mockk<(UUID) -> List<UserGroupMember>>()
+    val loader = mockk<(UUID, UUID, UUID?) -> List<UserGroupMember>?>()
 
     fun tool() = ListAgentUsersTool(usersByAgentLoader = loader)
 
@@ -37,11 +42,19 @@ class ListAgentUsersToolSpec : StringSpec({
 
     "execute returns RETRIEVAL_ERROR when loader throws" {
         val agentId = UUID.randomUUID()
-        every { loader(agentId) } throws RuntimeException("DB error")
+        every { loader(agentId, NAMESPACE_ID, USER_ID) } throws RuntimeException("DB error")
         val result = tool().execute(ListAgentUsersTool.Input(agentId), CONTEXT)
         result.success shouldBe false
         result.errorType shouldBe "RETRIEVAL_ERROR"
-        result.output shouldContain agentId.toString()
+        if (result.output.contains("DB error")) throw AssertionError("Exception message leaked into output")
+    }
+
+    "execute returns NOT_FOUND when loader returns null (no access)" {
+        val agentId = UUID.randomUUID()
+        every { loader(agentId, NAMESPACE_ID, USER_ID) } returns null
+        val result = tool().execute(ListAgentUsersTool.Input(agentId), CONTEXT)
+        result.success shouldBe false
+        result.errorType shouldBe "NOT_FOUND"
     }
 
     // -------------------------------------------------------------------------
@@ -50,7 +63,7 @@ class ListAgentUsersToolSpec : StringSpec({
 
     "execute returns empty structured output when no users are deployed" {
         val agentId = UUID.randomUUID()
-        every { loader(agentId) } returns emptyList()
+        every { loader(agentId, NAMESPACE_ID, USER_ID) } returns emptyList()
         val result = tool().execute(ListAgentUsersTool.Input(agentId), CONTEXT)
         result.success shouldBe true
         result.structuredOutput!!.isArray shouldBe true
@@ -58,11 +71,11 @@ class ListAgentUsersToolSpec : StringSpec({
         result.output shouldContain "no users"
     }
 
-    "execute returns all users across deployed groups deduplicated" {
+    "execute returns all users across deployed groups" {
         val agentId = UUID.randomUUID()
         val alice = member("alice@example.com", "ADMIN")
         val bob = member("bob@example.com")
-        every { loader(agentId) } returns listOf(alice, bob)
+        every { loader(agentId, NAMESPACE_ID, USER_ID) } returns listOf(alice, bob)
 
         val result = tool().execute(ListAgentUsersTool.Input(agentId), CONTEXT)
         result.success shouldBe true

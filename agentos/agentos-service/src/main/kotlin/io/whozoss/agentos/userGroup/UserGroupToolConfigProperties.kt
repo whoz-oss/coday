@@ -3,26 +3,24 @@ package io.whozoss.agentos.userGroup
 import org.springframework.boot.context.properties.ConfigurationProperties
 
 /**
- * Platform-level policy for the built-in `listUserGroupMembers` tool.
+ * Platform-level policy for seeding the built-in `USER_GROUP` integration configuration.
  *
- * Bound from the `agentos.list-user-group-members` prefix in `application.yml`.
+ * Bound from the `agentos.user-group` prefix in `application.yml`.
+ * Override with environment variable: `AGENTOS_USER_GROUP_ENABLED_BY_DEFAULT`.
  *
  * When [enabledByDefault] is `true` (the shipped default),
  * [UserGroupIntegrationConfigSeeder] ensures a platform-scoped
- * [io.whozoss.agentos.integrationConfig.IntegrationConfig] named
- * [UserGroupIntegrationConfigSeeder.DEFAULT_CONFIG_NAME] exists at startup,
- * with `autoGrant = true` — so every agent of the environment receives the
- * tool without declaring it.
+ * [io.whozoss.agentos.integrationConfig.IntegrationConfig] named `USER_GROUP` exists at
+ * startup with `autoGrant = false`. This makes the integration type visible in the
+ * catalogue so admins can assign it to specific agents without having to know the type
+ * string. No agent receives the tools automatically.
  *
- * This declares **existence, not content**: once the configuration row exists it
- * belongs to the administrator and startup never rewrites it. It is also
- * **create-only** — setting this back to `false` later does NOT delete an
- * already-seeded configuration; a warning is logged instead.
- *
- * Override with environment variable:
- * - `AGENTOS_LIST_USER_GROUP_MEMBERS_ENABLED_BY_DEFAULT` (boolean, default `true`)
+ * This declares **existence, not content**: once the row exists it belongs to the
+ * administrator and startup never rewrites it. It is also **create-only** — setting
+ * this back to `false` later does NOT delete an already-seeded row; a warning is
+ * logged instead.
  */
-@ConfigurationProperties(prefix = "agentos.user-group-tool-config")
+@ConfigurationProperties(prefix = "agentos.user-group")
 data class UserGroupToolConfigProperties(
     val enabledByDefault: Boolean = true,
 )

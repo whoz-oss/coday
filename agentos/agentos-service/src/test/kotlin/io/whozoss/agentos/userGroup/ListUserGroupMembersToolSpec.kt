@@ -8,11 +8,16 @@ import io.mockk.mockk
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
-private val CONTEXT = mockk<ToolContext>(relaxed = true)
+private val NAMESPACE_ID: UUID = UUID.randomUUID()
+private val USER_ID: UUID = UUID.randomUUID()
+private val CONTEXT = mockk<ToolContext>(relaxed = true).also {
+    every { it.namespaceId } returns NAMESPACE_ID
+    every { it.userId } returns USER_ID
+}
 
 class ListUserGroupMembersToolSpec : StringSpec({
 
-    val membersLoader = mockk<(UUID) -> List<UserGroupMember>>()
+    val membersLoader = mockk<(UUID, UUID, UUID?) -> List<UserGroupMember>?>()
 
     // -------------------------------------------------------------------------
     // Error cases
@@ -26,15 +31,23 @@ class ListUserGroupMembersToolSpec : StringSpec({
         result.output shouldContain "userGroupId"
     }
 
-    "execute returns error when loader throws" {
+    "execute returns RETRIEVAL_ERROR when loader throws" {
         val groupId = UUID.randomUUID()
-        every { membersLoader(groupId) } throws RuntimeException("DB unavailable")
-
+        every { membersLoader(groupId, NAMESPACE_ID, USER_ID) } throws RuntimeException("DB unavailable")
         val tool = ListUserGroupMembersTool(membersLoader = membersLoader)
         val result = tool.execute(ListUserGroupMembersTool.Input(groupId), CONTEXT)
         result.success shouldBe false
         result.errorType shouldBe "RETRIEVAL_ERROR"
-        result.output shouldContain groupId.toString()
+        if (result.output.contains("DB unavailable")) throw AssertionError("Exception message leaked into output")
+    }
+
+    "execute returns NOT_FOUND when loader returns null (cross-namespace or no permission)" {
+        val groupId = UUID.randomUUID()
+        every { membersLoader(groupId, NAMESPACE_ID, USER_ID) } returns null
+        val tool = ListUserGroupMembersTool(membersLoader = membersLoader)
+        val result = tool.execute(ListUserGroupMembersTool.Input(groupId), CONTEXT)
+        result.success shouldBe false
+        result.errorType shouldBe "NOT_FOUND"
     }
 
     // -------------------------------------------------------------------------
@@ -43,8 +56,7 @@ class ListUserGroupMembersToolSpec : StringSpec({
 
     "execute returns success with empty list when group has no members" {
         val groupId = UUID.randomUUID()
-        every { membersLoader(groupId) } returns emptyList()
-
+        every { membersLoader(groupId, NAMESPACE_ID, USER_ID) } returns emptyList()
         val tool = ListUserGroupMembersTool(membersLoader = membersLoader)
         val result = tool.execute(ListUserGroupMembersTool.Input(groupId), CONTEXT)
         result.success shouldBe true
@@ -63,10 +75,9 @@ class ListUserGroupMembersToolSpec : StringSpec({
         val userId2 = UUID.randomUUID()
         val members = listOf(
             UserGroupMember(userId = userId1, externalId = "alice@example.com", role = "ADMIN", email = "alice@example.com", firstname = "Alice", lastname = "Smith"),
-            UserGroupMember(userId = userId2, externalId = "bob@example.com",   role = "MEMBER", email = null, firstname = null, lastname = null),
+            UserGroupMember(userId = userId2, externalId = "bob@example.com", role = "MEMBER", email = null, firstname = null, lastname = null),
         )
-        every { membersLoader(groupId) } returns members
-
+        every { membersLoader(groupId, NAMESPACE_ID, USER_ID) } returns members
         val tool = ListUserGroupMembersTool(membersLoader = membersLoader)
         val result = tool.execute(ListUserGroupMembersTool.Input(groupId), CONTEXT)
 
@@ -102,8 +113,7 @@ class ListUserGroupMembersToolSpec : StringSpec({
     }
 
     "name is prefixed when configName is provided" {
-        ListUserGroupMembersTool(configName = "USER_GROUP", membersLoader = membersLoader).name shouldBe
-            "USER_GROUP__listMembers"
+        ListUserGroupMembersTool(configName = "USER_GROUP", membersLoader = membersLoader).name shouldBe "USER_GROUP__listMembers"
     }
 
     // -------------------------------------------------------------------------
