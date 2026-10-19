@@ -33,7 +33,6 @@ import { registerTranscribeRoutes } from './lib/transcribe.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
-import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
@@ -43,6 +42,9 @@ import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
 import { downloadFactoryJars, findMissingFactoryJars } from './lib/factory-download'
 import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
+import { createAgentOsProxy } from './lib/agentos-proxy'
+import { createFactoryProxy } from './lib/factory-proxy'
+import { createProxyMiddleware } from 'http-proxy-middleware'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -141,16 +143,10 @@ function forwardIdentity(proxyReq: import('http').ClientRequest, req: import('ht
 
 app.use(
   '/api/agentos',
-  createProxyMiddleware({
-    // router callback reads currentAgentosUrl at request time, not at setup time
-    router: () => currentAgentosUrl,
-    changeOrigin: true,
-    pathRewrite: { '^/api/agentos': '' },
-    on: {
-      proxyReq: (proxyReq, req) => {
-        debugLog('AGENTOS', `[PROXY] ${req.method} ${req.url}`)
-        forwardIdentity(proxyReq, req)
-      },
+  createAgentOsProxy(() => currentAgentosUrl, {
+    onProxyReq: (proxyReq, req) => {
+      debugLog('AGENTOS', `[PROXY] ${req.method} ${req.url}`)
+      forwardIdentity(proxyReq, req)
     },
   })
 )
@@ -159,24 +155,14 @@ debugLog(
   `AgentOS proxy configured: /api/agentos → ${currentAgentosUrl} (${AGENTOS_URL_ENV ? 'external mode' : 'managed mode'})`
 )
 
-// Factory exposes its API with the /api/factory prefix already, so the complete
-// request path must be forwarded unchanged.
-//
-// Mounted at the root with `pathFilter`, NOT `app.use('/api/factory', …)`:
-// http-proxy-middleware v3 forwards `req.url` (v2 used `req.originalUrl`), and
-// Express strips the mount path from `req.url`. A path-mounted proxy would send
-// /api/factory/workflows upstream as /workflows → 404 from the Factory backend.
+// Factory exposes its API with the /api/factory prefix already, so the complete request path is
+// forwarded unchanged (mounted at the root with a pathFilter, see ./lib/factory-proxy.ts).
+// Same identity forwarding and stream-abort propagation as the AgentOS proxy above.
 app.use(
-  createProxyMiddleware({
-    // router callback reads currentFactoryUrl at request time, not at setup time
-    router: () => currentFactoryUrl,
-    changeOrigin: true,
-    pathFilter: (p) => p === '/api/factory' || p.startsWith('/api/factory/'),
-    on: {
-      proxyReq: (proxyReq, req) => {
-        debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
-        forwardIdentity(proxyReq, req)
-      },
+  createFactoryProxy(() => currentFactoryUrl, {
+    onProxyReq: (proxyReq, req) => {
+      debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
+      forwardIdentity(proxyReq, req)
     },
   })
 )

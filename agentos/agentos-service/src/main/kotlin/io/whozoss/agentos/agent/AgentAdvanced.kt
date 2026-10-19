@@ -1035,12 +1035,29 @@ class AgentAdvanced(
                 appendLine(
                     "- Base your response solely on the content of this conversation history. If information is missing, say so explicitly.",
                 )
+                appendLine()
+                appendLine("**Entity Links:**")
+                appendLine(
+                    "Entities (objects, records, people, documents, or any other domain item) may appear in the conversation " +
+                        "history or in tool responses as Markdown links, e.g. `[Label](#type=id)`.",
+                )
+                appendLine("- They are rendered as CLICKABLE links: the user clicks them to open the entity.")
+                appendLine(
+                    "- When mentioning an important entity in your response, prefer a Markdown link over plain text whenever " +
+                        "its link target is known, reusing exactly the link format in which it appeared.",
+                )
+                appendLine(
+                    "- Use a readable label (name, title). A technical ID may appear in the link target, never in the visible label.",
+                )
+                appendLine("- Never invent or guess a link target: if none is known, use the plain readable name instead.")
+                appendLine()
                 if (alreadyGreeted) {
                     appendLine(
                         "- The conversation is already in progress. Do not greet the user again, continue naturally from the last exchange.",
                     )
                 }
                 userFullName?.let {
+                    
                     appendLine("Now, continue your conversation with $it.")
                 } ?: appendLine("Now, continue your conversation with the user.")
             }
