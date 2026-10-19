@@ -151,6 +151,37 @@ in turn round-trips the agent's own choice in both directions: a built-in key ma
 re-importing an agent keeps its exchange stance. Granted tool names follow `<configName>__<tool>`
 (for example `case-exchange__editFiles`).
 
+### Telling the two scopes apart
+
+An agent granted **both** scopes sees two sets of file tools whose names differ only by their prefix
+and whose descriptions, produced by the same file-plugin tool classes, are identical. Nothing else in
+the prompt says what a case or a namespace is, so the only thing arbitrating between them is the
+model's bias towards the first matching tool of its list — which is how files shared by a whole
+namespace get rewritten by a run that only meant to produce its own.
+
+`ExchangeScopeGuidance` closes that with two carriers:
+
+| Carrier | Where it lands | Why |
+|---|---|---|
+| `buildBlock` | a `## File scopes` block in the agent's instructions | the advanced intention prompt explicitly orders the model to reason from `<instructions>`, and prose can afford to say what a case and a namespace are |
+| `CASE_TOOL_GUIDANCE` / `NAMESPACE_TOOL_GUIDANCE` | appended to the description of `editFiles`, `moveFile` and `remove` | restates the decision where the choice is actually made |
+
+The block is emitted **only when both scopes are granted**: one file surface cannot be confused with
+another, so a single-scope agent pays neither the tokens nor the risk of being told about a scope it
+does not have. It also follows the invoking user's rights — a namespace member without Namespace
+`WRITE` is told the namespace scope is read-only rather than offered it as a write target.
+
+Only the write tools carry the per-tool sentence. Providers cap a tool description (OpenAI rejects
+one past 1024 characters) and `readSpreadsheet`, `readDocument` and `readAsImage` are already close
+enough to that ceiling that appending to them would break a run on those providers; the read side is
+covered by the instructions block instead. The sentences are constants for the same reason the
+redirect guideline is sorted: tool definitions sit in the provider's cached prompt prefix, so a text
+varying per run would miss that cache on every turn.
+
+The service passes the sentence to the plugin as the `scopeGuidance` key of the plugin config, and
+writes the key only when it has one — a FILE_ACCESS integration configured by a user gets none,
+since the sentence talks about cases and namespaces and only the exchange scopes are in one.
+
 ## Safety
 
 - **Create-only writes**: written straight to the target with an atomic create-new open. A concurrent

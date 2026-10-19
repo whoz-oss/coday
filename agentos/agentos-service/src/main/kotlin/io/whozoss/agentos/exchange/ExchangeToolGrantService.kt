@@ -75,6 +75,12 @@ class ExchangeToolGrantService(
      * Fail-closed and side-effect free when the file-plugin is not loaded: no tools, no directory.
      * [resolveGrant] already denies in that case, so this check is defence in depth for a caller
      * that reaches [grantTools] without a resolution.
+     *
+     * [scopeGuidance] is the one sentence the plugin appends to the description of its write tools,
+     * so that the model choosing between two identically-described tool sets can tell which surface
+     * each one writes to ([ExchangeScopeGuidance]). It defaults to null, which is also what a
+     * FILE_ACCESS integration configured by a user gets: the sentence talks about cases and
+     * namespaces, and only the two exchange scopes are in one.
      */
     fun grantTools(
         root: Path,
@@ -82,6 +88,7 @@ class ExchangeToolGrantService(
         configName: String,
         allowedTools: List<String>?,
         toolContext: ToolContext,
+        scopeGuidance: String? = null,
     ): List<StandardTool<*>> {
         val filePlugin = toolRegistryService.findPlugin(ExchangeIntegrationTypes.FILE_ACCESS)
         return when (filePlugin) {
@@ -89,13 +96,14 @@ class ExchangeToolGrantService(
             else -> {
                 Files.createDirectories(root)
                 logger.info {
-                    "Granting $configName (FILE_ACCESS, readOnly=$readOnly) " +
+                    "Granting $configName (FILE_ACCESS, readOnly=$readOnly, " +
+                        "scopeGuidance=${scopeGuidance != null}) " +
                         "to agent '${toolContext.agentName}' at $root"
                 }
                 // Honour the per-tool allowlist via the same matcher every other integration uses
                 // (accepts both bare and `configName__tool` forms); null = all tools.
                 filePlugin
-                    .provideTools(buildFileToolConfig(root, readOnly), configName, toolContext)
+                    .provideTools(buildFileToolConfig(root, readOnly, scopeGuidance), configName, toolContext)
                     .filter { toolResolverService.isToolAllowed(it.name, configName, allowedTools) }
             }
         }
@@ -140,7 +148,11 @@ class ExchangeToolGrantService(
      * The configuration node handed to the file-plugin's `provideTools`.
      *
      * Every key the plugin knows is emitted, so its compiled fallbacks only ever apply to a jar older
-     * than a key. [root] and [readOnly] come from the caller (computed per run); `readMaxSizeMb`
+     * than a key. `scopeGuidance` is the one exception: it is written only when the caller supplied
+     * one, because the plugin reads it with `asText()`, which would turn an emitted JSON null into
+     * the four-letter string "null" appended to every write tool's description.
+     *
+     * [root] and [readOnly] come from the caller (computed per run); `readMaxSizeMb`
      * derives from the exchange read cap so the agent's read tools honour the same limit as the REST
      * read/download path rather than the plugin's smaller built-in default — the plugin key is
      * megabytes, floored at 1.
@@ -153,6 +165,7 @@ class ExchangeToolGrantService(
     private fun buildFileToolConfig(
         root: Path,
         readOnly: Boolean,
+        scopeGuidance: String?,
     ): ObjectNode {
         val node =
             objectMapper
@@ -175,6 +188,7 @@ class ExchangeToolGrantService(
                 // Floored at 0: a negative cell cap makes readDocument call String.take with a
                 // negative count, which throws; zero is a legal (if drastic) truncation.
                 .put("documentMaxCellChars", properties.documentMaxCellChars.coerceAtLeast(0))
+        scopeGuidance?.let { node.put("scopeGuidance", it) }
         // The plugin reads this key with `takeIf { it.isArray }`, so it must be a real ArrayNode —
         // never a missing key or a scalar. putArray returns the ArrayNode, hence the separate
         // statement.

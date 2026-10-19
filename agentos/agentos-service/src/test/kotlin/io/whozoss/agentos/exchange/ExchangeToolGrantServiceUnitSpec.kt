@@ -68,6 +68,7 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
         grantService: ExchangeToolGrantService,
         root: Path = unmaterialisedRoot("grant-config"),
         readOnly: Boolean = false,
+        scopeGuidance: String? = null,
     ): JsonNode {
         val filePlugin = mockk<ToolPlugin>(relaxed = true)
         every { toolRegistryService.findPlugin("FILE_ACCESS") } returns filePlugin
@@ -77,6 +78,7 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
             configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
             allowedTools = null,
             toolContext = toolContext,
+            scopeGuidance = scopeGuidance,
         )
         val cfg = slot<JsonNode>()
         verify { filePlugin.provideTools(capture(cfg), ExchangeIntegrationTypes.CASE_CONFIG_NAME, any()) }
@@ -297,6 +299,22 @@ class ExchangeToolGrantServiceUnitSpec : StringSpec() {
 
             cfg.get("rootPath").asText() shouldBe root.toAbsolutePath().toString()
             cfg.get("readOnly").asBoolean() shouldBe true
+        }
+
+        "the scope guidance reaches the plugin as a plain string" {
+            val cfg = captureConfig(service(), scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE)
+
+            cfg.get("scopeGuidance").asText() shouldBe ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE
+        }
+
+        "no scopeGuidance key at all when the caller supplied none" {
+            // The plugin reads this key with asText(), which turns a JSON null into the four-letter
+            // string "null" — appended to the description of every write tool it builds. Absent is
+            // also what a FILE_ACCESS integration configured by a user must get: the sentence talks
+            // about cases and namespaces, and only the two exchange scopes are in one.
+            val cfg = captureConfig(service())
+
+            cfg.has("scopeGuidance") shouldBe false
         }
 
         // -------------------------------------------------------------------------

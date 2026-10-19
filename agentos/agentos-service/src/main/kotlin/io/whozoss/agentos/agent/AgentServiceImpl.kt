@@ -20,6 +20,7 @@ import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
 import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.ExchangeScopeGuidance
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
@@ -256,15 +257,6 @@ class AgentServiceImpl(
                 namespaceId = context.namespaceId,
                 selectors = agentConfig.skillSelectors,
             )
-        val instructions =
-            buildInstructions(
-                baseInstructions = agentConfig.instructions,
-                agentIntegrations = agentConfig.integrations,
-                resolvedUser = resolvedUser,
-                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
-                docs = agentConfig.docs,
-                resolvedSkills = resolvedSkills,
-            )
         val toolContext =
             context.toToolContext(
                 userExternalId = context.userId?.let { userService.findById(it) }?.externalId,
@@ -381,6 +373,7 @@ class AgentServiceImpl(
             } else {
                 emptyList()
             }
+        val exchangeScopes = buildExchangeTools(agentConfig, context, toolContext)
         val tools =
             toolResolverService.dedupToolsByName(
                 baseTools +
@@ -393,8 +386,27 @@ class AgentServiceImpl(
                             )
                         },
                     ) +
-                    buildExchangeTools(agentConfig, context, toolContext) +
+                    exchangeScopes.tools +
                     skillTools,
+            )
+        // Built after the tools, and only here: the exchange block describes the scopes this run was
+        // actually granted, which is known once buildExchangeTools has run its permission queries.
+        // Nothing in buildInstructions depends on the tool set otherwise, so the move only reorders
+        // this call against side effects the tool resolution already had (scope directories created
+        // by the grant, an interactive OAuth flow triggered by resolveToolsForRun).
+        val instructions =
+            buildInstructions(
+                baseInstructions = agentConfig.instructions,
+                agentIntegrations = agentConfig.integrations,
+                resolvedUser = resolvedUser,
+                effectiveIntegrationConfigs = effectiveIntegrationConfigs,
+                docs = agentConfig.docs,
+                resolvedSkills = resolvedSkills,
+                exchangeScopesBlock =
+                    ExchangeScopeGuidance.buildBlock(
+                        case = exchangeScopes.caseAccess,
+                        namespace = exchangeScopes.namespaceAccess,
+                    ),
             )
 
         val redirectGuideline = resolveRedirectGuideline(agentConfig, effectiveIntegrationConfigs)
@@ -694,6 +706,11 @@ class AgentServiceImpl(
      *
      * The user context block is included when [context.userId] resolves to a known [User]
      * with at least one human-readable field.
+     *
+     * [exchangeScopesBlock] is the already-rendered `## File scopes` block of
+     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance], null for every run that was not granted
+     * both exchange scopes. It is passed in rather than computed here because only
+     * [buildExchangeTools] knows which scopes the run actually got.
      */
     private suspend fun buildInstructions(
         baseInstructions: String?,
@@ -702,6 +719,7 @@ class AgentServiceImpl(
         effectiveIntegrationConfigs: List<IntegrationConfig>,
         docs: List<String>? = null,
         resolvedSkills: List<Skill> = emptyList(),
+        exchangeScopesBlock: String? = null,
     ): String {
         val integrationsBlock =
             when {
@@ -758,6 +776,7 @@ class AgentServiceImpl(
         return listOfNotNull(
             baseInstructions.takeUnless { it.isNullOrBlank() },
             integrationsBlock,
+            exchangeScopesBlock,
             userBlock,
             docsBlock,
             skillsBlock,
@@ -861,7 +880,23 @@ class AgentServiceImpl(
     }
 
     /**
-     * Builds the file-exchange tools enabled on [config], scoped to the current run.
+     * What [buildExchangeTools] granted on one run: the tools themselves, and the stance of each
+     * scope for the invoking user.
+     *
+     * The two accesses are null when the scope was not granted, which is how
+     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance.buildBlock] knows to stay silent. They are
+     * carried out of here rather than recomputed next to the instructions because only this method
+     * holds what they depend on: the run's case id and the permission queries it already paid for.
+     */
+    private data class ResolvedExchangeScopes(
+        val tools: List<StandardTool<*>>,
+        val caseAccess: ExchangeScopeGuidance.Access?,
+        val namespaceAccess: ExchangeScopeGuidance.Access?,
+    )
+
+    /**
+     * Builds the file-exchange tools enabled on [config], scoped to the current run, and reports
+     * which scopes it granted so the agent's instructions can name them.
      *
      * The case/namespace exchange is exposed to the agent as a **built-in integration of the
      * file-plugin** (integration type [ExchangeIntegrationTypes.FILE_ACCESS]): we point the plugin's own tools
@@ -910,9 +945,11 @@ class AgentServiceImpl(
         config: AgentConfig,
         context: AgentExecutionContext,
         toolContext: ToolContext,
-    ): List<StandardTool<*>> {
+    ): ResolvedExchangeScopes {
         val integrations = config.integrations
         val tools = mutableListOf<StandardTool<*>>()
+        var caseAccess: ExchangeScopeGuidance.Access? = null
+        var namespaceAccess: ExchangeScopeGuidance.Access? = null
         val caseId = context.caseId
         val caseCreatedAt = context.caseCreatedAt
 
@@ -943,7 +980,9 @@ class AgentServiceImpl(
                         configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
                         allowedTools = caseGrant.allowedTools,
                         toolContext = toolContext,
+                        scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
                     )
+                caseAccess = access(canWrite)
             }
         }
 
@@ -978,11 +1017,19 @@ class AgentServiceImpl(
                         configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
                         allowedTools = namespaceGrant.allowedTools,
                         toolContext = toolContext,
+                        scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
                     )
+                namespaceAccess = access(userCanWriteNamespace)
             }
         }
-        return tools
+        return ResolvedExchangeScopes(tools, caseAccess, namespaceAccess)
     }
+
+    private fun access(canWrite: Boolean): ExchangeScopeGuidance.Access =
+        when (canWrite) {
+            true -> ExchangeScopeGuidance.Access.READ_WRITE
+            false -> ExchangeScopeGuidance.Access.READ_ONLY
+        }
 
     /**
      * Static-secret fallback used when no per-user Credential row exists: synthesised in memory
