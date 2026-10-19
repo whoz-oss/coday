@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { RequestHandler } from 'express'
 import { createProxyMiddleware } from 'http-proxy-middleware'
+import { debugLog } from './log'
 
 /**
  * Proxy for the AgentOS API mounted under /api/agentos.
@@ -25,8 +26,13 @@ export function createAgentOsProxy(resolveTarget: () => string): RequestHandler 
  * replay the durable history. Without this, the browser stays on an open but silent connection:
  * EventSource never fires onerror and never reconnects.
  */
-function propagateUpstreamAbort(proxyRes: IncomingMessage, _req: IncomingMessage, res: ServerResponse): void {
+function propagateUpstreamAbort(proxyRes: IncomingMessage, req: IncomingMessage, res: ServerResponse): void {
   proxyRes.on('close', () => {
-    if (!proxyRes.complete) res.destroy()
+    if (proxyRes.complete) return
+    debugLog(
+      'AGENTOS',
+      `[PROXY] upstream closed before the end of ${req.method} ${req.url}, closing the client connection`
+    )
+    res.destroy()
   })
 }

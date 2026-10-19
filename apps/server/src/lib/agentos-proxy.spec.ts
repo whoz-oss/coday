@@ -17,24 +17,40 @@ function listen(server: http.Server): Promise<number> {
   return new Promise((resolve) => server.listen(0, () => resolve((server.address() as AddressInfo).port)))
 }
 
-/** An SSE upstream that sends two frames, then ends its response cleanly or drops the socket. */
-function startUpstream(ending: UpstreamEnding, paths: string[]): http.Server {
-  return http.createServer((req, res) => {
+/**
+ * An SSE upstream that sends two frames, then ends its response cleanly or drops the socket once
+ * `release` is called, so the ending never races the delivery of the frames.
+ */
+function startUpstream(ending: UpstreamEnding, paths: string[]): { server: http.Server; release: () => void } {
+  let release: () => void = () => undefined
+  const released = new Promise<void>((resolve) => (release = resolve))
+  const server = http.createServer((req, res) => {
     paths.push(req.url ?? '')
     res.writeHead(200, { 'Content-Type': 'text/event-stream' })
     res.write(FRAME)
     res.write(FRAME)
-    setTimeout(() => (ending === 'end' ? res.end() : res.socket?.destroy()), 50)
+    void released.then(() => (ending === 'end' ? res.end() : res.socket?.destroy()))
   })
+  return { server, release: () => release() }
 }
 
-/** Read the stream through the proxy; still open after the deadline means the client was left hanging. */
-function readThroughProxy(port: number, deadlineMs: number): Promise<ClientOutcome> {
+const countFrames = (body: string): number => body.split('data:').length - 1
+
+/**
+ * Read the stream through the proxy, calling `onFrames` once both frames have arrived. Still open
+ * after the deadline means the client was left hanging.
+ */
+function readThroughProxy(port: number, onFrames: () => void, deadlineMs: number): Promise<ClientOutcome> {
   return new Promise((resolve) => {
+    let body = ''
     const outcome: ClientOutcome = { frames: 0, ended: false, closed: false }
     const timer = setTimeout(() => resolve(outcome), deadlineMs)
     const req = http.get({ port, path: '/api/agentos/api/cases/c-1/events' }, (res) => {
-      res.on('data', (data: Buffer) => (outcome.frames += data.toString().split('data:').length - 1))
+      res.on('data', (data: Buffer) => {
+        body += data.toString()
+        outcome.frames = countFrames(body)
+        if (outcome.frames === 2) onFrames()
+      })
       res.on('end', () => (outcome.ended = true))
       res.on('error', () => undefined)
       res.on('close', () => {
@@ -80,18 +96,20 @@ describe('createAgentOsProxy', () => {
   }
 
   it('closes the client connection when the upstream drops the stream mid-body', async () => {
-    const proxyPort = await startProxyTo(startUpstream('destroy', []))
+    const upstream = startUpstream('destroy', [])
+    const proxyPort = await startProxyTo(upstream.server)
 
-    const outcome = await readThroughProxy(proxyPort, 2000)
+    const outcome = await readThroughProxy(proxyPort, upstream.release, 2000)
 
     expect(outcome).toEqual({ frames: 2, ended: false, closed: true })
   })
 
   it('passes a stream that ends normally through to its end, with the AgentOS path rewritten', async () => {
     const paths: string[] = []
-    const proxyPort = await startProxyTo(startUpstream('end', paths))
+    const upstream = startUpstream('end', paths)
+    const proxyPort = await startProxyTo(upstream.server)
 
-    const outcome = await readThroughProxy(proxyPort, 2000)
+    const outcome = await readThroughProxy(proxyPort, upstream.release, 2000)
 
     expect(outcome).toEqual({ frames: 2, ended: true, closed: true })
     expect(paths).toEqual(['/api/cases/c-1/events'])
