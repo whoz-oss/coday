@@ -70,7 +70,7 @@ class ListUserGroupMembersTool(
     override val version: String = "1.0.0"
     override val paramType: Class<Input> = Input::class.java
 
-    override fun outputSchema(): JsonNode = MEMBER_ARRAY_SCHEMA
+    override fun outputSchema(): JsonNode = ListAgentUsersTool.MEMBER_ARRAY_SCHEMA
 
     override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
         if (input == null) {
@@ -101,24 +101,5 @@ class ListUserGroupMembersTool(
 
     companion object : KLogging() {
         private val mapper = jacksonObjectMapper()
-        internal val MEMBER_ARRAY_SCHEMA: JsonNode = mapper.readTree(
-            """
-            {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "userId":     { "type": "string", "format": "uuid" },
-                  "externalId": { "type": "string" },
-                  "role":       { "type": "string", "enum": ["ADMIN", "MEMBER"] },
-                  "email":      { "type": ["string", "null"] },
-                  "firstname":  { "type": ["string", "null"] },
-                  "lastname":   { "type": ["string", "null"] }
-                },
-                "required": ["userId", "externalId", "role"]
-              }
-            }
-            """.trimIndent(),
-        )
     }
 }

@@ -30,8 +30,9 @@ class ListAgentUsersTool(
     private val configName: String? = null,
     private val usersByAgentLoader: (agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
 ) : StandardTool<ListAgentUsersTool.Input> {
-
-    data class Input(val agentConfigId: UUID)
+    data class Input(
+        val agentConfigId: UUID,
+    )
 
     override val name: String = configName?.let { "${it}__listAgentUsers" } ?: "listAgentUsers"
 
@@ -68,36 +69,63 @@ class ListAgentUsersTool(
     override val version: String = "1.0.0"
     override val paramType: Class<Input> = Input::class.java
 
-    override fun outputSchema(): JsonNode = ListUserGroupMembersTool.MEMBER_ARRAY_SCHEMA
+    override fun outputSchema(): JsonNode = MEMBER_ARRAY_SCHEMA
 
-    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         if (input == null) {
             return ToolExecutionResult.error("agentConfigId is required.", errorType = "MISSING_INPUT")
         }
-        val members = try {
-            usersByAgentLoader(input.agentConfigId, context.namespaceId, context.userId)
-        } catch (e: Exception) {
-            logger.warn(e) { "[listAgentUsers] Failed to retrieve users for agent ${input.agentConfigId}" }
-            return ToolExecutionResult.error(
-                "Failed to retrieve users for agent ${input.agentConfigId}.",
-                errorType = "RETRIEVAL_ERROR",
+        val members =
+            try {
+                usersByAgentLoader(input.agentConfigId, context.namespaceId, context.userId)
+            } catch (e: Exception) {
+                logger.warn(e) { "[listAgentUsers] Failed to retrieve users for agent ${input.agentConfigId}" }
+                return ToolExecutionResult.error(
+                    "Failed to retrieve users for agent ${input.agentConfigId}.",
+                    errorType = "RETRIEVAL_ERROR",
+                )
+            } ?: return ToolExecutionResult.error(
+                "You do not have access to list users for agent ${input.agentConfigId}.",
+                errorType = "NOT_FOUND",
             )
-        } ?: return ToolExecutionResult.error(
-            "You do not have access to list users for agent ${input.agentConfigId}.",
-            errorType = "NOT_FOUND",
-        )
 
         val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
-        val summary = if (members.isEmpty()) {
-            "Agent ${input.agentConfigId} has no users deployed through any UserGroup in this namespace."
-        } else {
-            "Agent ${input.agentConfigId} is accessible to ${members.size} user(s): " +
-                members.joinToString(", ") { "${it.externalId} (${it.role})" }
-        }
+        val summary =
+            if (members.isEmpty()) {
+                "Agent ${input.agentConfigId} has no users deployed through any UserGroup in this namespace."
+            } else {
+                "Agent ${input.agentConfigId} is accessible to ${members.size} user(s): " +
+                    members.joinToString(", ") { "${it.externalId} (${it.role})" }
+            }
         return ToolExecutionResult.success(output = summary, structuredOutput = structuredOutput)
     }
 
     companion object : KLogging() {
         private val mapper = jacksonObjectMapper()
+
+        /** Shared output schema for all USER_GROUP member-listing tools. */
+        val MEMBER_ARRAY_SCHEMA: JsonNode =
+            mapper.readTree(
+                """
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "userId":     { "type": "string", "format": "uuid" },
+                      "externalId": { "type": "string" },
+                      "role":       { "type": "string", "enum": ["ADMIN", "MEMBER"] },
+                      "email":      { "type": ["string", "null"] },
+                      "firstname":  { "type": ["string", "null"] },
+                      "lastname":   { "type": ["string", "null"] }
+                    },
+                    "required": ["userId", "externalId", "role"]
+                  }
+                }
+                """.trimIndent(),
+            )
     }
 }

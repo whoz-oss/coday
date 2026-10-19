@@ -205,7 +205,7 @@ open class Neo4jUserGroupRepository(
                       AND g.namespaceId = $namespaceId
                     MATCH (u:User)-[r:MEMBER|ADMIN]->(g)
                     WHERE NOT COALESCE(u.removed, false)
-                    WITH DISTINCT u, collect(DISTINCT type(r)) AS rels
+                    WITH u, collect(DISTINCT type(r)) AS rels
                     RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
                            u.firstname AS firstname, u.lastname AS lastname,
                            CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role

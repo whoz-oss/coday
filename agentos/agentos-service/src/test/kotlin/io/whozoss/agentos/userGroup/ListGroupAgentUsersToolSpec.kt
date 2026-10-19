@@ -71,7 +71,7 @@ class ListGroupAgentUsersToolSpec : StringSpec({
         result.success shouldBe true
         result.structuredOutput!!.isArray shouldBe true
         result.structuredOutput!!.size() shouldBe 0
-        result.output shouldContain "not deployed"
+        result.output shouldContain "No member of group"
     }
 
     // -------------------------------------------------------------------------

@@ -33,10 +33,17 @@ import java.util.UUID
  */
 class ListGroupAgentUsersTool(
     private val configName: String? = null,
-    private val membersByGroupAndAgentLoader: (groupId: UUID, agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val membersByGroupAndAgentLoader: (
+        groupId: UUID,
+        agentConfigId: UUID,
+        namespaceId: UUID,
+        userId: UUID?,
+    ) -> List<UserGroupMember>?,
 ) : StandardTool<ListGroupAgentUsersTool.Input> {
-
-    data class Input(val userGroupId: UUID, val agentConfigId: UUID)
+    data class Input(
+        val userGroupId: UUID,
+        val agentConfigId: UUID,
+    )
 
     override val name: String = configName?.let { "${it}__listGroupAgentUsers" } ?: "listGroupAgentUsers"
 
@@ -78,40 +85,49 @@ class ListGroupAgentUsersTool(
     override val version: String = "1.0.0"
     override val paramType: Class<Input> = Input::class.java
 
-    override fun outputSchema(): JsonNode = ListUserGroupMembersTool.MEMBER_ARRAY_SCHEMA
+    override fun outputSchema(): JsonNode = ListAgentUsersTool.MEMBER_ARRAY_SCHEMA
 
-    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         if (input == null) {
             return ToolExecutionResult.error(
                 "userGroupId and agentConfigId are required.",
                 errorType = "MISSING_INPUT",
             )
         }
-        val members = try {
-            membersByGroupAndAgentLoader(input.userGroupId, input.agentConfigId, context.namespaceId, context.userId)
-        } catch (e: Exception) {
-            logger.warn(e) {
-                "[listGroupAgentUsers] Failed to retrieve members for group ${input.userGroupId} " +
-                    "and agent ${input.agentConfigId}"
-            }
-            return ToolExecutionResult.error(
-                "Failed to retrieve members for group ${input.userGroupId} and agent ${input.agentConfigId}.",
-                errorType = "RETRIEVAL_ERROR",
+        val members =
+            try {
+                membersByGroupAndAgentLoader(
+                    input.userGroupId,
+                    input.agentConfigId,
+                    context.namespaceId,
+                    context.userId,
+                )
+            } catch (e: Exception) {
+                logger.warn(e) {
+                    "[listGroupAgentUsers] Failed to retrieve members for group ${input.userGroupId} " +
+                        "and agent ${input.agentConfigId}"
+                }
+                return ToolExecutionResult.error(
+                    "Failed to retrieve members for group ${input.userGroupId} and agent ${input.agentConfigId}.",
+                    errorType = "RETRIEVAL_ERROR",
+                )
+            } ?: return ToolExecutionResult.error(
+                "User group ${input.userGroupId} was not found or you do not have access to it.",
+                errorType = "NOT_FOUND",
             )
-        } ?: return ToolExecutionResult.error(
-            "User group ${input.userGroupId} was not found or you do not have access to it.",
-            errorType = "NOT_FOUND",
-        )
 
         val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
-        val summary = if (members.isEmpty()) {
-            "Agent ${input.agentConfigId} is not deployed to group ${input.userGroupId}, " +
-                "or the group has no members."
-        } else {
-            "Group ${input.userGroupId} has ${members.size} member(s) with access to " +
-                "agent ${input.agentConfigId}: " +
-                members.joinToString(", ") { "${it.externalId} (${it.role})" }
-        }
+        val summary =
+            if (members.isEmpty()) {
+                "No member of group ${input.userGroupId} has access to agent ${input.agentConfigId}."
+            } else {
+                "Group ${input.userGroupId} has ${members.size} member(s) with access to " +
+                    "agent ${input.agentConfigId}: " +
+                    members.joinToString(", ") { "${it.externalId} (${it.role})" }
+            }
         return ToolExecutionResult.success(output = summary, structuredOutput = structuredOutput)
     }
 

@@ -64,7 +64,7 @@ class UserGroupToolPlugin(
                 {
                   "type": "object",
                   "title": "User Group Configuration",
-                  "description": "Allows an agent to query UserGroup membership and agent deployment.",
+                  "description": "Find users thanks to their UserGroup membership and/or their access to an agent.",
                   "properties": {},
                   "additionalProperties": false
                 }
