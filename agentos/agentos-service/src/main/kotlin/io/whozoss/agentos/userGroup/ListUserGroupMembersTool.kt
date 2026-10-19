@@ -112,19 +112,7 @@ class ListUserGroupMembersTool(
                 )
             }
 
-        val structuredOutput =
-            mapper.valueToTree<JsonNode>(
-                members.map { m ->
-                    mapOf(
-                        "userId" to m.userId.toString(),
-                        "externalId" to m.externalId,
-                        "role" to m.role,
-                        "email" to m.email,
-                        "firstname" to m.firstname,
-                        "lastname" to m.lastname,
-                    )
-                },
-            )
+        val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
 
         val summary =
             if (members.isEmpty()) {

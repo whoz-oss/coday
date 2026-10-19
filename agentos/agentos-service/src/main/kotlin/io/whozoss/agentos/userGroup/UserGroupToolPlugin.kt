@@ -37,6 +37,8 @@ import java.util.UUID
  */
 class UserGroupToolPlugin(
     private val membersLoader: (UUID) -> List<UserGroupMember>,
+    private val usersByAgentLoader: (UUID) -> List<UserGroupMember>,
+    private val membersByGroupAndAgentLoader: (userGroupId: UUID, agentConfigId: UUID) -> List<UserGroupMember>,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
 
@@ -50,7 +52,11 @@ class UserGroupToolPlugin(
         config: JsonNode?,
         configName: String?,
         context: ToolContext?,
-    ): List<StandardTool<*>> = listOf(ListUserGroupMembersTool(configName = configName, membersLoader = membersLoader))
+    ): List<StandardTool<*>> = listOf(
+        ListUserGroupMembersTool(configName = configName, membersLoader = membersLoader),
+        ListAgentUsersTool(configName = configName, usersByAgentLoader = usersByAgentLoader),
+        ListGroupAgentUsersTool(configName = configName, membersByGroupAndAgentLoader = membersByGroupAndAgentLoader),
+    )
 
     companion object {
         const val INTEGRATION_TYPE = "USER_GROUP"
@@ -61,7 +67,7 @@ class UserGroupToolPlugin(
                 {
                   "type": "object",
                   "title": "User Group Configuration",
-                  "description": "Allows an agent to list all users belonging to a user group.",
+                  "description": "Allows an agent to query UserGroup membership and agent deployment.",
                   "properties": {},
                   "additionalProperties": false
                 }

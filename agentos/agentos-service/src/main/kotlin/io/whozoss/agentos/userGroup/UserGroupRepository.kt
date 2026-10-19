@@ -25,4 +25,17 @@ interface UserGroupRepository : EntityRepository<UserGroup, UUID> {
      * When [namespaceId] is provided, only groups belonging to that namespace are returned.
      */
     fun findGroupsByUserExternalIds(externalIds: Collection<String>, namespaceId: UUID? = null): Map<String, List<UserGroupSummary>>
+
+    /**
+     * Returns all non-removed users who are members (MEMBER or ADMIN) of any non-removed
+     * UserGroup that has [agentConfigId] deployed to it via a [:DEPLOYED_TO] edge.
+     * Deduplicates users that belong to multiple qualifying groups.
+     */
+    fun findUsersByAgentId(agentConfigId: UUID): List<UserGroupMember>
+
+    /**
+     * Returns all non-removed members of [userGroupId] if — and only if — [agentConfigId]
+     * is deployed to that group. Returns an empty list when the agent is not deployed to the group.
+     */
+    fun findMembersByGroupAndAgent(userGroupId: UUID, agentConfigId: UUID): List<UserGroupMember>
 }

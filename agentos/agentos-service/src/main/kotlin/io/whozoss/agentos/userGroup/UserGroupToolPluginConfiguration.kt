@@ -34,5 +34,9 @@ class UserGroupToolPluginConfiguration(
     private val userGroupRepository: UserGroupRepository,
 ) {
     @Bean
-    fun userGroupToolPlugin(): ToolPlugin = UserGroupToolPlugin(membersLoader = userGroupRepository::findMembers)
+    fun userGroupToolPlugin(): ToolPlugin = UserGroupToolPlugin(
+        membersLoader = userGroupRepository::findMembers,
+        usersByAgentLoader = userGroupRepository::findUsersByAgentId,
+        membersByGroupAndAgentLoader = userGroupRepository::findMembersByGroupAndAgent,
+    )
 }

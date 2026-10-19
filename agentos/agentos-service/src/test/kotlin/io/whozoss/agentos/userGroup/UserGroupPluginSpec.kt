@@ -4,7 +4,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
@@ -14,6 +13,8 @@ class UserGroupPluginSpec :
     StringSpec({
 
         val membersLoader = mockk<(UUID) -> List<UserGroupMember>>()
+        val usersByAgentLoader = mockk<(UUID) -> List<UserGroupMember>>()
+        val membersByGroupAndAgentLoader = mockk<(UUID, UUID) -> List<UserGroupMember>>()
 
         fun context() =
             ToolContext(
@@ -28,7 +29,7 @@ class UserGroupPluginSpec :
         // -------------------------------------------------------------------------
 
         "integrationType is USER_GROUP" {
-            UserGroupToolPlugin(membersLoader).integrationType shouldBe "USER_GROUP"
+            UserGroupToolPlugin(membersLoader, usersByAgentLoader, membersByGroupAndAgentLoader).integrationType shouldBe "USER_GROUP"
         }
 
         // -------------------------------------------------------------------------
@@ -36,14 +37,13 @@ class UserGroupPluginSpec :
         // -------------------------------------------------------------------------
 
         "configSchema is a non-null object schema" {
-            val schema = UserGroupToolPlugin(membersLoader).configSchema
+            val schema = UserGroupToolPlugin(membersLoader, usersByAgentLoader, membersByGroupAndAgentLoader).configSchema
             schema.shouldNotBeNull()
             schema["type"].asText() shouldBe "object"
         }
 
         "configSchema has no required properties" {
-            val schema = UserGroupToolPlugin(membersLoader).configSchema
-            // properties node exists but is empty
+            val schema = UserGroupToolPlugin(membersLoader, usersByAgentLoader, membersByGroupAndAgentLoader).configSchema
             schema["properties"].size() shouldBe 0
         }
 
@@ -51,28 +51,36 @@ class UserGroupPluginSpec :
         // provideTools
         // -------------------------------------------------------------------------
 
-        "provideTools returns a single ListUserGroupMembersTool" {
-            val plugin = UserGroupToolPlugin(membersLoader)
+        "provideTools returns three tools" {
+            val plugin = UserGroupToolPlugin(membersLoader, usersByAgentLoader, membersByGroupAndAgentLoader)
             val tools = plugin.provideTools(config = null, configName = null, context = context())
-            tools shouldHaveSize 1
-            tools.first().shouldBeInstanceOf<ListUserGroupMembersTool>()
+            tools shouldHaveSize 3
+            tools.map { it::class.simpleName }.toSet() shouldBe setOf(
+                "ListUserGroupMembersTool",
+                "ListAgentUsersTool",
+                "ListGroupAgentUsersTool",
+            )
         }
 
-        "provideTools returns tool with bare name when configName is null" {
-            val plugin = UserGroupToolPlugin(membersLoader)
+        "provideTools returns tools with bare names when configName is null" {
+            val plugin = UserGroupToolPlugin(membersLoader, usersByAgentLoader, membersByGroupAndAgentLoader)
             val tools = plugin.provideTools(config = null, configName = null, context = context())
-            tools.first().name shouldBe "listMembers"
+            tools.map { it.name }.toSet() shouldBe setOf("listMembers", "listAgentUsers", "listGroupAgentUsers")
         }
 
-        "provideTools returns tool with prefixed name when configName is provided" {
-            val plugin = UserGroupToolPlugin(membersLoader)
+        "provideTools returns tools with prefixed names when configName is provided" {
+            val plugin = UserGroupToolPlugin(membersLoader, usersByAgentLoader, membersByGroupAndAgentLoader)
             val tools = plugin.provideTools(config = null, configName = "USER_GROUP", context = context())
-            tools.first().name shouldBe "USER_GROUP__listMembers"
+            tools.map { it.name }.toSet() shouldBe setOf(
+                "USER_GROUP__listMembers",
+                "USER_GROUP__listAgentUsers",
+                "USER_GROUP__listGroupAgentUsers",
+            )
         }
 
-        "provideTools returns a single tool even when context is null" {
-            val plugin = UserGroupToolPlugin(membersLoader)
+        "provideTools returns three tools even when context is null" {
+            val plugin = UserGroupToolPlugin(membersLoader, usersByAgentLoader, membersByGroupAndAgentLoader)
             val tools = plugin.provideTools(config = null, configName = null, context = null)
-            tools shouldHaveSize 1
+            tools shouldHaveSize 3
         }
     })
