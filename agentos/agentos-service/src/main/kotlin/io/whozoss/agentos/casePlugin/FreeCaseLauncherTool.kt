@@ -38,8 +38,10 @@ import java.util.UUID
  * The tool parses the input, applies the agent allowlist of its integration config, and hands the
  * rest to [CaseLaunchService] along with the [allowOtherUsers] switch of that config. The service owns
  * every rule on users: whether another user may be named at all, and whether that user exists, reads
- * the namespace and has the agent deployed. A failure of the service other than a refusal is not caught
- * here: like any tool failure, it reaches the agent layer, which logs it and reports it to the LLM.
+ * the namespace and has the agent deployed. It signals a refusal with a [CaseLaunchRefusedException], which
+ * the tool catches and turns into its error result, the reason being the `errorType`. A failure of the service
+ * other than a refusal is not caught here: like any tool failure, it reaches the agent layer, which logs it and
+ * reports it to the LLM.
  * Another caller (an AgentLoop step, say) can look the tool up by name and call [executeWithJson],
  * reading the case id from its structured output, so that the integration's config applies to it too.
  *
@@ -197,38 +199,37 @@ class FreeCaseLauncherTool(
         if (requestedUserId != null && targetUserId == null) {
             return ToolExecutionResult.error("userId must be a valid UUID.", errorType = "INVALID_INPUT")
         }
-        return caseLaunchService
-            .launch(
-                CaseLaunchRequest(
-                    callerUserId = callerId,
-                    callerNamespaceId = context.namespaceId,
-                    callerCaseId = callerCaseId,
-                    agentName = input.agentName,
-                    prompt = input.prompt,
-                    targetUserId = targetUserId,
-                    title = input.title,
-                    sessionContext = input.sessionContext,
-                    allowOtherUsers = allowOtherUsers,
-                ),
-            ).toToolResult()
+        val request =
+            CaseLaunchRequest(
+                callerUserId = callerId,
+                callerNamespaceId = context.namespaceId,
+                callerCaseId = callerCaseId,
+                agentName = input.agentName,
+                prompt = input.prompt,
+                targetUserId = targetUserId,
+                title = input.title,
+                sessionContext = input.sessionContext,
+                allowOtherUsers = allowOtherUsers,
+            )
+        return try {
+            caseLaunchService.launch(request).toToolResult()
+        } catch (refusal: CaseLaunchRefusedException) {
+            ToolExecutionResult.error(refusal.message, errorType = refusal.reason.name)
+        }
     }
 
-    private fun CaseLaunchOutcome.toToolResult(): ToolExecutionResult =
-        when (this) {
-            is CaseLaunchOutcome.Refused -> ToolExecutionResult.error(message, errorType = reason.name)
-            is CaseLaunchOutcome.Launched ->
-                ToolExecutionResult.success(
-                    "Case $caseId started for agent '$agentName'. " +
-                        "It runs in the background on its own; its result is not returned here.",
-                    metadata =
-                        mapOf(
-                            "caseId" to caseId.toString(),
-                            "userId" to userId.toString(),
-                            "agentName" to agentName,
-                        ),
-                    structuredOutput = objectMapper.valueToTree(Output(caseId = caseId)),
-                )
-        }
+    private fun LaunchedCase.toToolResult(): ToolExecutionResult =
+        ToolExecutionResult.success(
+            "Case $caseId started for agent '$agentName'. " +
+                "It runs in the background on its own; its result is not returned here.",
+            metadata =
+                mapOf(
+                    "caseId" to caseId.toString(),
+                    "userId" to userId.toString(),
+                    "agentName" to agentName,
+                ),
+            structuredOutput = objectMapper.valueToTree(Output(caseId = caseId)),
+        )
 
     companion object {
         private val objectMapper = jacksonObjectMapper()

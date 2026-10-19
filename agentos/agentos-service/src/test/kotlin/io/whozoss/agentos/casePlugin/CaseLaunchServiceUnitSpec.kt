@@ -5,7 +5,6 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
-import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -40,7 +39,7 @@ import java.util.UUID
  *
  * **What a test observes**: the fake `CaseService` of the fixture records what the service did (`created`, `sent`,
  * `deleted`), and can make each step fail (`createFailure`, `grantFailure`, `sendFailure`, `deleteFailure`).
- * `refusal()` reads a [CaseLaunchOutcome.Refused].
+ * `refusalOf { ... }` runs a launch and returns the [CaseLaunchRefusedException] it throws.
  *
  * **Sections**, in the order the service applies its rules:
  * 1. the case it creates: origin, first message, ADMIN grant;
@@ -161,7 +160,8 @@ class CaseLaunchServiceUnitSpec :
             allowOtherUsers = allowOtherUsers,
         )
 
-        fun CaseLaunchOutcome.refusal() = shouldBeInstanceOf<CaseLaunchOutcome.Refused>()
+        /** Runs [launch] and returns the refusal it throws; fails if it does not refuse. */
+        fun refusalOf(launch: () -> LaunchedCase): CaseLaunchRefusedException = shouldThrow<CaseLaunchRefusedException> { launch() }
 
         /** A provider answering [answer] for any user; the calls it received are recorded in [asked]. */
         fun provider(
@@ -185,11 +185,11 @@ class CaseLaunchServiceUnitSpec :
         "creates the case in the calling case's namespace, with the calling case as its origin, and returns its id" {
             val f = Fixture()
 
-            val outcome = f.service.launch(request()).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
+            val launched = f.service.launch(request())
 
             val case = f.created.single()
-            outcome.caseId shouldBe case.id
-            outcome.userId shouldBe caller.id
+            launched.caseId shouldBe case.id
+            launched.userId shouldBe caller.id
             case.originCaseId shouldBe callerCaseId
             case.namespaceId shouldBe namespaceId
         }
@@ -233,11 +233,10 @@ class CaseLaunchServiceUnitSpec :
         "the agent is addressed by its canonical name, whatever the case it was requested in" {
             val f = Fixture()
 
-            val outcome =
-                f.service.launch(request(agentName = "reporter")).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
+            val launched = f.service.launch(request(agentName = "reporter"))
 
             f.sent.single().content shouldBe listOf(MessageContent.Text("@Reporter Summarise the week"))
-            outcome.agentName shouldBe "Reporter"
+            launched.agentName shouldBe "Reporter"
         }
 
         // -------------------------------------------------------------------------
@@ -393,8 +392,8 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture(UserSessionContextResolver(provider(asked) { UserContextResult.Success(null) }))
             f.deployAgent(caller, "SomethingElse")
 
-            f.service.launch(request()).refusal().reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
-            f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe
+            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
 
             asked shouldBe emptyList()
@@ -408,7 +407,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.deployAgent(caller, "Reporter-v2")
 
-            f.service.launch(request()).refusal().reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
 
@@ -424,10 +423,21 @@ class CaseLaunchServiceUnitSpec :
         // Another user: allowed by the switch, no administration right required
         // -------------------------------------------------------------------------
 
+        "a refusal carries its reason and a message for the LLM, and no stack trace: it is control flow" {
+            val f = Fixture()
+            f.deployAgent(caller, "SomethingElse")
+
+            val refusal = refusalOf { f.service.launch(request(agentName = "Reporter")) }
+
+            refusal.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusal.message shouldContain "Reporter"
+            refusal.stackTrace.size shouldBe 0
+        }
+
         "another user is refused unless the request allows other users, before the target is even looked up" {
             val f = Fixture()
 
-            f.service.launch(request(targetUserId = other.id)).refusal().reason shouldBe
+            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
             f.created shouldBe emptyList()
             verify(exactly = 0) { f.userService.findById(other.id) }
@@ -436,12 +446,9 @@ class CaseLaunchServiceUnitSpec :
         "a plain member can start a case for another user, who is the one given ADMIN on it" {
             val f = Fixture()
 
-            val outcome =
-                f.service
-                    .launch(request(targetUserId = other.id, allowOtherUsers = true))
-                    .shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
+            val launched = f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
 
-            outcome.userId shouldBe other.id
+            launched.userId shouldBe other.id
             f.sent.single().actor.id shouldBe other.id.toString()
             // The origin is still the calling case, whoever the new case runs for.
             f.created.single().originCaseId shouldBe callerCaseId
@@ -462,7 +469,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.namespacePermission(other, Action.READ, false)
 
-            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)).refusal().reason shouldBe
+            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
                     CaseLaunchRefusal.TARGET_NO_ACCESS
             f.created shouldBe emptyList()
         }
@@ -471,7 +478,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.deployAgent(other, "SomethingElse")
 
-            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)).refusal().reason shouldBe
+            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
                     CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
@@ -481,7 +488,7 @@ class CaseLaunchServiceUnitSpec :
             val ghost = UUID.randomUUID()
             every { f.userService.findById(ghost) } returns null
 
-            f.service.launch(request(targetUserId = ghost, allowOtherUsers = true)).refusal().reason shouldBe
+            refusalOf { f.service.launch(request(targetUserId = ghost, allowOtherUsers = true)) }.reason shouldBe
                     CaseLaunchRefusal.TARGET_USER_NOT_FOUND
             f.created shouldBe emptyList()
         }
@@ -489,7 +496,7 @@ class CaseLaunchServiceUnitSpec :
         "naming the caller itself is not 'another user': it needs neither the switch nor a namespace check" {
             val f = Fixture()
 
-            f.service.launch(request(targetUserId = caller.id)).shouldBeInstanceOf<CaseLaunchOutcome.Launched>()
+            f.service.launch(request(targetUserId = caller.id))
 
             f.sent.single().actor.id shouldBe caller.id.toString()
             verify(exactly = 0) {
@@ -498,7 +505,7 @@ class CaseLaunchServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Failures: thrown, never turned into refusals
+        // Failures: thrown as they are, never turned into a refusal
         // -------------------------------------------------------------------------
 
         "a failure to look a user up is thrown as is, before anything is created" {

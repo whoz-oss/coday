@@ -64,11 +64,10 @@ import java.util.UUID
  * The session context is resolved in every flow that starts a case through this service, so a caller such
  * as the loop hands over the entity only and does not resolve the user's context itself.
  *
- * **Refusals and failures.** A [CaseLaunchOutcome.Refused] is a business decision, taken before anything
- * is written. Anything else (an infrastructure failure, a bug, a calling user that vanished) is thrown as
- * is, like any tool failure, to the caller's error boundary: for a tool call, the agent layer, which logs
- * it and reports it to the LLM. Refusals travel as a private exception, turned into
- * [CaseLaunchOutcome.Refused] at the single exit of [launch]; that exception never leaves this class.
+ * **Refusals and failures.** [launch] returns the [LaunchedCase], or throws. A [CaseLaunchRefusedException] is a
+ * business decision, taken before anything is written: the caller, the tool, catches it and reports it. Anything
+ * else (an infrastructure failure, a bug, a calling user that vanished) is thrown as is, like any tool failure,
+ * to the error boundary above the tool: the agent layer, which logs it and reports it to the LLM.
  *
  * [caseService] is a `@Lazy` proxy: `CaseService` depends on `AgentService`, which depends on the
  * tool registry that collects the plugin using this class, so resolving it eagerly would close a
@@ -82,16 +81,13 @@ class CaseLaunchService(
     private val permissionService: PermissionService,
     private val userSessionContextResolver: UserSessionContextResolver,
 ) {
-    /** [CaseLaunchOutcome.Refused] for a business refusal; any other failure is thrown. */
-    fun launch(request: CaseLaunchRequest): CaseLaunchOutcome =
-        try {
-            doLaunch(request)
-        } catch (refusal: Refusal) {
-            logger.info { "[CaseLaunch] refused (${refusal.reason}): ${refusal.explanation}" }
-            CaseLaunchOutcome.Refused(reason = refusal.reason, message = refusal.explanation)
-        }
-
-    private fun doLaunch(request: CaseLaunchRequest): CaseLaunchOutcome.Launched {
+    /**
+     * Starts the case and returns it.
+     *
+     * @throws CaseLaunchRefusedException when a business rule refuses the launch, before anything is written.
+     *   Any other failure is thrown as is.
+     */
+    fun launch(request: CaseLaunchRequest): LaunchedCase {
         val targetUser = resolveTargetUser(request)
         val agentName =
             findDeployedAgent(
@@ -118,7 +114,7 @@ class CaseLaunchService(
             "[CaseLaunch] case ${case.id} launched: agent='$agentName' user=${targetUser.id} " +
                 "namespace=${request.callerNamespaceId} origin=${request.callerCaseId} (by user ${request.callerUserId})"
         }
-        return CaseLaunchOutcome.Launched(caseId = case.id, userId = targetUser.id, agentName = agentName)
+        return LaunchedCase(caseId = case.id, userId = targetUser.id, agentName = agentName)
     }
 
     private fun resolveTargetUser(request: CaseLaunchRequest): User {
@@ -162,7 +158,7 @@ class CaseLaunchService(
      * in `AgentServiceImpl.findAgentByName`. Unknown, disabled and not deployed look the same.
      *
      * The launch uses the canonical name of the agent found, not the one the caller typed, for the `@mention` of
-     * the first message, the log and the outcome.
+     * the first message, the log and the [LaunchedCase].
      */
     private fun findDeployedAgent(
         agentName: String,
@@ -266,16 +262,14 @@ class CaseLaunchService(
         }
     }
 
-    /** [explanation] is kept as a non-null property: `Throwable.message` is nullable. No stack trace, it is control flow. */
-    private class Refusal(
-        val reason: CaseLaunchRefusal,
-        val explanation: String,
-    ) : RuntimeException(explanation, null, false, false)
-
+    /** Logs and throws the refusal: the business rule that failed, before anything is written. */
     private fun refuse(
         reason: CaseLaunchRefusal,
         message: String,
-    ): Nothing = throw Refusal(reason, message)
+    ): Nothing {
+        logger.info { "[CaseLaunch] refused ($reason): $message" }
+        throw CaseLaunchRefusedException(reason = reason, message = message)
+    }
 
     companion object : KLogging() {
         /** Maximum length of the title of a launched case, given or derived from its prompt. */

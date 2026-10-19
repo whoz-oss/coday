@@ -40,10 +40,15 @@ class FreeCaseLauncherToolUnitSpec :
             events: List<CaseEvent> = caseEvents(),
         ) = ToolContext(namespaceId = namespaceId, userId = user, userExternalId = "ext", caseEvents = events)
 
-        fun launched(agentName: String = "Reporter") =
-            CaseLaunchOutcome.Launched(caseId = newCaseId, userId = userId, agentName = agentName)
+        fun launched(agentName: String = "Reporter") = LaunchedCase(caseId = newCaseId, userId = userId, agentName = agentName)
 
-        fun service(outcome: CaseLaunchOutcome = launched()) = mockk<CaseLaunchService> { every { launch(any()) } returns outcome }
+        fun service(launched: LaunchedCase = launched()) = mockk<CaseLaunchService> { every { launch(any()) } returns launched }
+
+        /** A service that refuses every launch with [reason]. */
+        fun refusingService(
+            reason: CaseLaunchRefusal,
+            message: String = "No.",
+        ) = mockk<CaseLaunchService> { every { launch(any()) } throws CaseLaunchRefusedException(reason, message) }
 
         fun tool(
             launcher: CaseLaunchService = service(),
@@ -179,11 +184,8 @@ class FreeCaseLauncherToolUnitSpec :
         }
 
         "a userId the service refuses because other users are not allowed comes back as its refusal" {
-            val refused =
-                CaseLaunchOutcome.Refused(reason = CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED, message = "No.")
-
             val result =
-                tool(service(refused), allowOtherUsers = false)
+                tool(refusingService(CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED), allowOtherUsers = false)
                     .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
 
             result.success shouldBe false
@@ -288,7 +290,7 @@ class FreeCaseLauncherToolUnitSpec :
         }
 
         "a refusal becomes a tool error carrying its reason as errorType, and no structured output" {
-            val t = tool(service(CaseLaunchOutcome.Refused(CaseLaunchRefusal.TARGET_NO_ACCESS, "No.")))
+            val t = tool(refusingService(CaseLaunchRefusal.TARGET_NO_ACCESS))
 
             val result = t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
 
@@ -296,6 +298,17 @@ class FreeCaseLauncherToolUnitSpec :
             result.errorType shouldBe "TARGET_NO_ACCESS"
             result.output shouldBe "No."
             result.structuredOutput shouldBe null
+        }
+
+        "every refusal reason reaches the LLM as its errorType, which AgentLoop reads: the names are a contract" {
+            CaseLaunchRefusal.entries.forEach { reason ->
+                val result =
+                    tool(refusingService(reason)).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
+
+                result.errorType shouldBe reason.name
+            }
+            // AgentLoop counts this one as "no agent access": renaming it would silently change that.
+            CaseLaunchRefusal.AGENT_NOT_AVAILABLE.name shouldBe "AGENT_NOT_AVAILABLE"
         }
 
         "a failure of the service is not caught by the tool: it is left to the agent layer" {
