@@ -1,3 +1,23 @@
+## 3.36.1 (2026-10-19)
+
+### 🩹 Fixes
+
+- **server:** close the client connection when AgentOS drops a proxied stream ([#1468](https://github.com/whoz-oss/coday/pull/1468))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.36.0 (2026-10-19)
+
+### 🚀 Features
+
+- **agentos-service:** answer with more links ([#1464](https://github.com/whoz-oss/coday/pull/1464))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
 ## 3.35.2 (2026-10-15)
 
 ### 🩹 Fixes
