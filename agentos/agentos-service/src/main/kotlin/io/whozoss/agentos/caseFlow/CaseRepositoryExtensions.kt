@@ -16,6 +16,10 @@ private const val CHANGE_ATTEMPTS = 3
  * concurrent one. Status changes, generated titles and deletions land on the same case
  * independently: on a refusal the case is read again, soft-deleted included, and [change] is
  * applied to that copy, up to [CHANGE_ATTEMPTS] saves.
+ *
+ * [change] can therefore run up to [CHANGE_ATTEMPTS] times, first on [current], then on each
+ * re-read. It must be side-effect-free and just return the changed case. Events and any other
+ * effect belong after [saveChange] returns.
  */
 fun CaseRepository.saveChange(
     current: Case,
