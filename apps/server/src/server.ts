@@ -39,7 +39,13 @@ import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion, getFactoryVersion } from './lib/version'
 import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
-import { downloadFactoryJars, findMissingFactoryJars } from './lib/factory-download'
+import {
+  checkAndSwapNextFactory,
+  downloadFactoryJars,
+  downloadFactoryJarsToNext,
+  findInstalledFactoryVersion,
+  findMissingFactoryJars,
+} from './lib/factory-download'
 import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
 import { createAgentOsProxy } from './lib/agentos-proxy'
@@ -633,7 +639,9 @@ async function provisionAgentos(expressPort: number): Promise<void> {
  * `currentAgentosUrl` is the final AgentOS URL.
  *
  * EXTERNAL mode (FACTORY_URL defined): returns immediately.
- * MANAGED mode: download missing JARs (blocking, no background pre-fetch) → spawn.
+ * MANAGED mode, same upgrade flow as AgentOS: promote a complete next/ → start the target
+ * version if present, else start the older installed set and pre-fetch the target into
+ * next/ in the background, else (nothing installed) download blocking → spawn.
  * With the 'dev' version sentinel nothing is downloaded: the Factory only starts if
  * its JARs were placed by hand in <configDir>/factory/.
  *
@@ -649,19 +657,48 @@ async function provisionFactory(): Promise<void> {
   try {
     const factoryVersion = getFactoryVersion()
 
+    // --- 1. Apply pending update from next/ (swap before inventory check) ---
+    const swapResult = checkAndSwapNextFactory(codayOptions.configDir, factoryVersion)
+    if (swapResult.outcome === 'swapped') {
+      debugLog('FACTORY', `[PROVISION] Swap applied: ${swapResult.message}`)
+    }
+
+    // --- 2. Pick the version to start ---
+    let versionToStart = factoryVersion
+    let prefetchTarget = false
     if (findMissingFactoryJars(codayOptions.configDir, factoryVersion).length > 0) {
-      const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
-      debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
-      if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
-        debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
-        return
+      const installedVersion = findInstalledFactoryVersion(codayOptions.configDir)
+
+      if (installedVersion !== null) {
+        // A coherent older set is on disk: start it now, pre-fetch the target for next startup.
+        debugLog(
+          'FACTORY',
+          `[PROVISION] Installed version ${installedVersion} differs from target ${factoryVersion} — starting installed, pre-fetching target in background`
+        )
+        versionToStart = installedVersion
+        prefetchTarget = true
+      } else {
+        // Nothing usable installed (first run): blocking download.
+        const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
+        debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
+        if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
+          debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
+          return
+        }
       }
     }
 
-    factoryProcess = await startFactory(codayOptions.configDir, factoryVersion, currentAgentosUrl)
+    factoryProcess = await startFactory(codayOptions.configDir, versionToStart, currentAgentosUrl)
     if (!factoryProcess) {
       debugLog('FACTORY', '[PROVISION] Factory did not start. The proxy will return errors until it is available.')
       return
+    }
+
+    // --- 3. Pre-fetch the target version into next/ (only once the current one is running) ---
+    if (prefetchTarget) {
+      downloadFactoryJarsToNext(codayOptions.configDir, factoryVersion).catch((err) =>
+        debugLog('FACTORY', '[UPDATE] Unhandled error in background pre-fetch:', err)
+      )
     }
 
     currentFactoryUrl = `http://localhost:${factoryProcess.port}`
