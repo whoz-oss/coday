@@ -1,4 +1,4 @@
-package io.whozoss.agentos.freeCaseLauncherPlugin
+package io.whozoss.agentos.casePlugin
 
 /**
  * The context of the user a case was to be started for could not be resolved: the `UserContextProvider`

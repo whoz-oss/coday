@@ -12,7 +12,7 @@ import java.util.UUID
  * for a given end-user.
  *
  * Shared by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] and
- * [io.whozoss.agentos.freeCaseLauncherPlugin.CaseLaunchService] (the `FreeCaseLauncher` tool, hence AgentLoop) so that
+ * [io.whozoss.agentos.casePlugin.CaseLaunchService] (the `FreeCaseLauncher` tool, hence AgentLoop) so that
  * both code paths produce identical context enrichment:
  * 1. Call the optional [UserContextProvider] plugin — returns business context (e.g. talent profile).
  * 2. Overlay [preferredLanguage] on top: the user's stored language preference is the authoritative

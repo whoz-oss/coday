@@ -1,4 +1,4 @@
-package io.whozoss.agentos.freeCaseLauncherPlugin
+package io.whozoss.agentos.casePlugin
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec

@@ -1,4 +1,4 @@
-package io.whozoss.agentos.freeCaseLauncherPlugin
+package io.whozoss.agentos.casePlugin
 
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService

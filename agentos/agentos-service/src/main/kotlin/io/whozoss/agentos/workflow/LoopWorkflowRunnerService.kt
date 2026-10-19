@@ -1,8 +1,8 @@
 package io.whozoss.agentos.workflow
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.freeCaseLauncherPlugin.CaseLaunchRefusal
-import io.whozoss.agentos.freeCaseLauncherPlugin.FreeCaseLauncherTool
+import io.whozoss.agentos.casePlugin.CaseLaunchRefusal
+import io.whozoss.agentos.casePlugin.FreeCaseLauncherTool
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext

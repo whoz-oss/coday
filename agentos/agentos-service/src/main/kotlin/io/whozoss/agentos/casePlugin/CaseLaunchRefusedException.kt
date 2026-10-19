@@ -1,4 +1,4 @@
-package io.whozoss.agentos.freeCaseLauncherPlugin
+package io.whozoss.agentos.casePlugin
 
 /**
  * A launch refused by a business rule of [CaseLaunchService], decided before anything is written: nothing was
