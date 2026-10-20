@@ -37,6 +37,18 @@ interface CaseService : EntityService<Case, UUID> {
      */
     override fun findById(id: UUID, withRemoved: Boolean): Case?
 
+    /**
+     * Applies a user edit to case [id]. [change] returns the edited case; status and namespace are kept
+     * as they are, since the runtime drives the status and the namespace carries the permissions.
+     *
+     * When a concurrent write wins, such as a status change or a generated title, the case is read again
+     * and [change] applied to that copy, so [change] must be side-effect-free.
+     *
+     * @throws io.whozoss.agentos.exception.ResourceNotFoundException if the case does not exist
+     * @throws io.whozoss.agentos.exception.ConflictException if concurrent writes keep winning
+     */
+    fun edit(id: UUID, change: (Case) -> Case): Case
+
     // ========================================
     // Permission-filtered listing
     // ========================================

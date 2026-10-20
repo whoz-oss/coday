@@ -218,6 +218,20 @@ class CaseServiceImpl(
         }
     }
 
+    override fun edit(
+        id: UUID,
+        change: (Case) -> Case,
+    ): Case {
+        val current = findById(id) ?: throw ResourceNotFoundException("Case not found: $id")
+        return try {
+            caseRepository.saveChange(current) { case ->
+                change(case).copy(status = case.status, namespaceId = case.namespaceId)
+            }
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Case $id kept changing concurrently, retry", e)
+        }
+    }
+
     /** An edit read before a concurrent write is refused rather than overwriting it: the client reloads. */
     private fun saveEdit(entity: Case): Case =
         try {

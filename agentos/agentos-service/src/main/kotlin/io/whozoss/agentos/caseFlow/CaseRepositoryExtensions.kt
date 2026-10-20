@@ -7,7 +7,7 @@ import org.springframework.dao.OptimisticLockingFailureException
 private val logger = KotlinLogging.logger {}
 
 /** Saves of one change before a concurrent write is reported to the caller. */
-private const val CHANGE_ATTEMPTS = 3
+internal const val CHANGE_ATTEMPTS = 3
 
 /**
  * Saves [change] applied to [current], the case as last read.

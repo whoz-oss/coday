@@ -3826,6 +3826,85 @@ class CaseServiceImplSpec :
         }
 
         // -------------------------------------------------------------------------
+        // edit: a user edit lands on the fresh case when a concurrent write wins
+        // -------------------------------------------------------------------------
+
+        "edit applies the change again to a case written concurrently, keeping that write" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "draft"))
+                var raced = false
+                every { repository.save(match { it.title == "renamed" }) } answers {
+                    if (raced) {
+                        callOriginal()
+                    } else {
+                        raced = true
+                        // A status change commits between the edit's read and its save, which is refused.
+                        repository.save(service.getById(case.id).copy(status = CaseStatus.RUNNING))
+                        throw OptimisticLockingFailureException("stale")
+                    }
+                }
+
+                service.edit(case.id) { it.copy(title = "renamed") }
+
+                val saved = service.getById(case.id)
+                saved.title shouldBe "renamed"
+                saved.status shouldBe CaseStatus.RUNNING
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "edit answers 409 once concurrent writes have won every attempt" {
+            val repository = spyk(InMemoryCaseRepository())
+            val service = buildService(caseRepository = repository)
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "draft"))
+                every { repository.save(match { it.title == "renamed" }) } throws
+                    OptimisticLockingFailureException("stale")
+
+                shouldThrow<ConflictException> { service.edit(case.id) { it.copy(title = "renamed") } }
+
+                verify(exactly = CHANGE_ATTEMPTS) { repository.save(match { it.title == "renamed" }) }
+                service.getById(case.id).title shouldBe "draft"
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "edit keeps the status and namespace a change tries to set" {
+            val service = buildService()
+            try {
+                val case = service.create(Case(namespaceId = namespaceId, title = "draft"))
+
+                val saved =
+                    service.edit(case.id) {
+                        it.copy(title = "renamed", status = CaseStatus.RUNNING, namespaceId = UUID.randomUUID())
+                    }
+
+                saved.title shouldBe "renamed"
+                saved.status shouldBe case.status
+                saved.namespaceId shouldBe namespaceId
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        "edit of an unknown or deleted case is a 404" {
+            val service = buildService()
+            try {
+                val deleted = service.create(Case(namespaceId = namespaceId, title = "gone"))
+                service.delete(deleted.id)
+
+                shouldThrow<ResourceNotFoundException> { service.edit(UUID.randomUUID()) { it.copy(title = "x") } }
+                shouldThrow<ResourceNotFoundException> { service.edit(deleted.id) { it.copy(title = "x") } }
+            } finally {
+                service.shutdown()
+            }
+        }
+
+        // -------------------------------------------------------------------------
         // resumeSubCase: security — ownership and namespace checks
         // -------------------------------------------------------------------------
 
