@@ -57,13 +57,22 @@ interface SubCaseManager {
     ): CaseRuntime
 
     /**
-     * Permanently terminate a case that did not complete in time.
-     * Called by [DelegationTool] after a timeout to avoid leaving orphan runtimes in memory.
+     * Stop a sub-case and its descendants as the Stop button does: their turns are cancelled and they
+     * end [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE], so the parent can still resume the sub-case.
+     * Called by [DelegationTool] when a sub-case showed no activity for its whole delegation budget.
      */
-    fun killCase(caseId: UUID)
+    fun interruptCase(caseId: UUID)
 
     /** Human cost confirmation time is excluded from delegation execution deadlines. */
     fun isCostPaused(caseId: UUID): Boolean = false
+
+    /**
+     * Record activity on [caseId] without an event: a delegation relays the activity of its sub-case to
+     * the delegating case, so that a delegation waiting on the delegating case sees it working.
+     */
+    fun recordActivity(caseId: UUID) {
+        // Default keeps existing alternative implementations source-compatible.
+    }
 
     /** Persist and emit a durable observation on a parent case without re-entering its runtime. */
     fun emitParentEvent(event: CaseEvent) {

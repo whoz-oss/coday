@@ -20,6 +20,7 @@ class CostPausedDelegationSpec :
                 val status = MutableStateFlow(CaseStatus.RUNNING)
                 val runtime = mockk<CaseRuntime>()
                 every { runtime.statusFlow } returns status
+                every { runtime.activityCount } returns 0L
                 var paused = true
                 val result = async { awaitDelegationStatus(runtime, 1000) { paused } }
                 advanceTimeBy(10_000)
@@ -31,10 +32,11 @@ class CostPausedDelegationSpec :
             }
         }
 
-        "active execution still expires when no confirmation is pending" {
+        "a silent sub-case still expires when no confirmation is pending" {
             runTest {
                 val runtime = mockk<CaseRuntime>()
                 every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+                every { runtime.activityCount } returns 0L
                 val result = async { awaitDelegationStatus(runtime, 1000) { false } }
                 advanceTimeBy(1001)
                 result.await() shouldBe null
