@@ -186,7 +186,7 @@ class RunCostService(
         }
     }
 
-    /** Waiting on a descendant's human confirmation also pauses a delegation's deadline. */
+    /** Waiting on a descendant's human confirmation also pauses a delegation's budget. */
     @Synchronized
     fun isPaused(caseId: UUID): Boolean {
         if (!usageConfig.enabled) return false
