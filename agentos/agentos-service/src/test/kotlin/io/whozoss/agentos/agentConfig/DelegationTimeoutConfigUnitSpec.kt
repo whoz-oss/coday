@@ -13,7 +13,7 @@ import org.springframework.boot.context.properties.source.MapConfigurationProper
 
 class DelegationTimeoutConfigUnitSpec : StringSpec({
     "binds the server default and rejects non-positive settings" {
-        AgentConfigProperties().delegationTimeoutSeconds shouldBe 300
+        AgentConfigProperties().delegationTimeoutSeconds shouldBe 600
         val binder = Binder(MapConfigurationPropertySource(mapOf("agentos.defaults.delegation-timeout-seconds" to "1800")))
         val properties = binder.bind("agentos.defaults", Bindable.of(AgentConfigProperties::class.java)).get()
         properties.delegationTimeoutSeconds shouldBe 1800
@@ -23,7 +23,7 @@ class DelegationTimeoutConfigUnitSpec : StringSpec({
     }
 
     "the shipped YAML resolves the deployment environment variable" {
-        for ((configured, expected) in listOf(null to 300, "1800" to 1800)) {
+        for ((configured, expected) in listOf(null to 600, "1800" to 1800)) {
             val environment = org.springframework.core.env.StandardEnvironment()
             environment.propertySources.remove("systemEnvironment")
             environment.propertySources.remove("systemProperties")
