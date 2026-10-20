@@ -230,9 +230,11 @@ requires that user's permission on the owner, because delegation does not confer
 the namespace file tools granted, since those tools are read-only without `WRITE` and a shell has no
 read-only mode.
 
-**A token that cannot be resolved removes its integration from the run** — no tool, no exception,
-and the reason is logged. Only the integration that carries the token is affected; every other one
-reaches the run untouched.
+**A token that cannot be resolved removes its integration from the run** — no tool and no
+exception. The drop is logged at `warn`, naming the integration and the token, and the reason it
+could not be resolved at `debug`: this runs over every integration config of the namespace, so a
+refusal would otherwise warn on resolutions that were never going to use that integration. Only the
+integration that carries the token is affected, every other one reaches the run untouched.
 
 The alternative, substituting nothing and letting the plugin reading the parameter refuse it, is
 what this mechanism did at first, and it only works on BASH: `BashConfigParser` requires an absolute

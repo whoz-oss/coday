@@ -110,9 +110,15 @@ class ExchangePathRunIntegration(
                 tokens.isEmpty() -> config
                 unresolved.isEmpty() -> config.copy(parameters = substituteJsonTokens(config.parameters, resolved))
                 else -> {
-                    logger.debug {
+                    // The one event worth a warning: an integration an operator configured is not
+                    // there any more. The three reasons below are logged at debug instead, because
+                    // this customizer sees every integration config of the namespace and cannot
+                    // tell which ones the agent references, so a refusal repeats on resolutions
+                    // that were never going to use the integration.
+                    logger.warn {
                         "Integration '${config.name}' provides no tool on this run: " +
-                            "${unresolved.joinToString()} could not be resolved (the reason is logged above)"
+                            "${unresolved.joinToString()} could not be resolved " +
+                            "(enable debug on this class for the reason)"
                     }
                     null
                 }
@@ -165,7 +171,7 @@ class ExchangePathRunIntegration(
                 )
         return when {
             !canWrite -> {
-                logger.warn {
+                logger.debug {
                     "${ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN} is used by an integration but the " +
                         "user of this run does not hold Namespace WRITE; the integration provides no tool"
                 }
@@ -190,9 +196,9 @@ class ExchangePathRunIntegration(
         val caseCreatedAt = context.caseCreatedAt
         return when {
             caseId == null || caseCreatedAt == null -> {
-                // Debug, not warn: a definition preview and an agent listing both resolve without a
-                // case, so on an instance with one token-carrying integration this is a per-request
-                // non-event. The two refusals below are the ones worth a warning.
+                // A definition preview and an agent listing both resolve without a case, so on an
+                // instance with one token-carrying integration this is a per-request non-event.
+                // Like the other two reasons, it is logged at debug and the drop itself warns.
                 logger.debug {
                     "${ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN} is used by an integration but this " +
                         "resolution has no live case; the integration provides no tool"
@@ -223,7 +229,7 @@ class ExchangePathRunIntegration(
         val root = exchangeRootResolver.resolve(caseId, context.namespaceId, caseCreatedAt)
         return when {
             !canAccess(root, caseId, context.userId) -> {
-                logger.warn {
+                logger.debug {
                     "${ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN} resolves to the directory of case " +
                         "${root.ownerCaseId}, which the user of case $caseId may not write; the integration " +
                         "provides no tool"
@@ -232,7 +238,7 @@ class ExchangePathRunIntegration(
             }
 
             root.unavailableReason != null -> {
-                logger.warn {
+                logger.debug {
                     "${ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN} cannot be resolved for case $caseId: " +
                         "${root.unavailableReason}; the integration provides no tool rather than pointing " +
                         "commands at a directory that is not ready"
