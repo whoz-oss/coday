@@ -9,6 +9,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.string.shouldNotContain
+import io.whozoss.agentos.plugins.file.tools.MAX_SCOPE_GUIDANCE_LENGTH
 import io.whozoss.agentos.sdk.tool.ToolContext
 import java.nio.file.Files
 import java.nio.file.Path
@@ -115,17 +116,46 @@ class FileToolProviderSpec : StringSpec() {
                 "a failure on one file does not prevent others from being processed."
         }
 
-        "every provided description stays within the provider description cap" {
+        "the write tools are exactly the three names the service and the frontend mirror" {
+            // AgentOS keeps the same three names in ExchangeIntegrationTypes.MUTATING_TOOLS, and the
+            // frontend in its exchange-mutation matcher, to answer whether an allowlist left a scope
+            // a way to write. Neither can import this module, so this is where a fourth write tool
+            // has to be noticed: add it to both mirrors.
+            val all = jacksonObjectMapper().readTree("""{"rootPath": "${tempDir.pathString}"}""")
+            val readOnly = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "readOnly": true}""",
+            )
+
+            val writeTools =
+                FileToolProvider().provideTools(all, "TEST").map { it.name } -
+                    FileToolProvider().provideTools(readOnly, "TEST").map { it.name }.toSet()
+
+            writeTools.map { it.removePrefix("TEST__") }.toSet() shouldBe
+                setOf("editFiles", "moveFile", "remove")
+        }
+
+        "a guidance past the clamp is truncated, and every description stays within the provider cap" {
             // OpenAI rejects a tool description past 1024 characters with a 400, and the three
             // document read tools are the long ones (readSpreadsheet ~963 at the time of writing).
             // The suite otherwise runs against no provider, so nothing else would catch a growth.
+            // The input is deliberately far longer than MAX_SCOPE_GUIDANCE_LENGTH: a guidance that
+            // fits the clamp would pass this test with the clamp removed.
             val config = jacksonObjectMapper().readTree(
-                """{"rootPath": "${tempDir.pathString}", "scopeGuidance": "${"x".repeat(300)}"}""",
+                """{"rootPath": "${tempDir.pathString}", "scopeGuidance": "${"x".repeat(2000)}"}""",
             )
 
-            FileToolProvider().provideTools(config, "namespace-exchange").forEach { tool ->
+            val tools = FileToolProvider().provideTools(config, "namespace-exchange")
+
+            tools.forEach { tool ->
                 withClue(tool.name) { tool.description.length shouldBeLessThanOrEqual 1024 }
             }
+            // The write tools carry the guidance, clamped to its own limit, and nothing else does.
+            tools.first { it.name == "namespace-exchange__editFiles" }.description
+                .substringAfterLast("\n") shouldBe "x".repeat(MAX_SCOPE_GUIDANCE_LENGTH)
+            // A bare `contains("x")` would match the read tool's own text (`xlsx`), so the run of
+            // x's is what proves the guidance is not there.
+            tools.first { it.name == "namespace-exchange__readSpreadsheet" }.description shouldNotContain
+                "x".repeat(50)
         }
 
         "readMaxSizeMb propagation to ReadFileTool" {
