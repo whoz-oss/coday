@@ -45,7 +45,7 @@ data class AgentConfigProperties(
      * from its sub-case, or from the sub-case's own delegations, before stopping it. Cost confirmation does
      * not count.
      */
-    val delegationTimeoutSeconds: Int = 300,
+    val delegationTimeoutSeconds: Int = 600,
     /**
      * Char-equivalent cost of one attached image against the detailed-tool budget.
      * Derived from the legacy Coday estimate: (width * height) / 750 tokens at

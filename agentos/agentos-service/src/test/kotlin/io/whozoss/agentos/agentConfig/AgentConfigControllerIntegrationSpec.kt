@@ -79,7 +79,7 @@ class AgentConfigControllerIntegrationSpec : SuperAdminCallerSpec() {
             mockMvc.perform(get("/api/agent-configs/defaults"))
                 .andExpect(status().isOk)
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
-                .andExpect(jsonPath("$.delegationTimeoutSeconds").value(300))
+                .andExpect(jsonPath("$.delegationTimeoutSeconds").value(600))
         }
 
 
