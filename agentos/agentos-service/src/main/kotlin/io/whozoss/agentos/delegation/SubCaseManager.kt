@@ -63,7 +63,7 @@ interface SubCaseManager {
      */
     fun interruptCase(caseId: UUID)
 
-    /** Human cost confirmation time is excluded from delegation execution deadlines. */
+    /** Human cost confirmation time does not count against delegation budgets. */
     fun isCostPaused(caseId: UUID): Boolean = false
 
     /**
