@@ -263,7 +263,7 @@ agentos:
   security:
     # Identity resolution mode: 'local' (default) or 'auth'.
     # local: uses the OS username; auto-creates a User record on first access.
-    # auth:  decodes the Cloudflare JWT (CF_Authorization header) or falls back
+    # auth:  decodes the Cloudflare JWT (Cf-Access-Jwt-Assertion header) or falls back
     #        to x-forwarded-email; requires the User to be pre-registered.
     # Override with env var: AGENTOS_SECURITY_MODE
     mode: local

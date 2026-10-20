@@ -33,15 +33,24 @@ import { registerTranscribeRoutes } from './lib/transcribe.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
-import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
+import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion, getFactoryVersion } from './lib/version'
 import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
-import { downloadFactoryJars, findMissingFactoryJars } from './lib/factory-download'
+import {
+  checkAndSwapNextFactory,
+  downloadFactoryJars,
+  downloadFactoryJarsToNext,
+  findInstalledFactoryVersion,
+  findMissingFactoryJars,
+} from './lib/factory-download'
 import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
+import { createAgentOsProxy } from './lib/agentos-proxy'
+import { createFactoryProxy } from './lib/factory-proxy'
+import { createProxyMiddleware } from 'http-proxy-middleware'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -121,20 +130,30 @@ let currentFactoryUrl = FACTORY_URL_ENV ?? 'http://localhost:8141'
 let agentosProcess: AgentosProcess | null = null
 let factoryProcess: FactoryProcess | null = null
 
+/**
+ * All incoming headers are already forwarded by http-proxy-middleware. This hook
+ * adds the caller identity expected by the upstream services in X-External-User-Id
+ * (see ./lib/proxy-identity.ts). `getUsername` is a hoisted function declaration
+ * and is only invoked at request time, once codayOptions is initialised.
+ */
+function forwardIdentity(proxyReq: import('http').ClientRequest, req: import('http').IncomingMessage): void {
+  applyProxyIdentity(
+    proxyReq,
+    decideProxyIdentity({
+      authEnabled: !!codayOptions.auth,
+      envUserId: AGENTOS_EXTERNAL_USERID,
+      resolveUser: () => getUsername(req as express.Request),
+    })
+  )
+}
+
 app.use(
   '/api/agentos',
-  (req, _res, next) => {
-    debugLog('AGENTOS', `[PROXY] ${req.method} ${req.path}`)
-    if (AGENTOS_EXTERNAL_USERID) {
-      req.headers['X-External-User-Id'] = AGENTOS_EXTERNAL_USERID
-    }
-    next()
-  },
-  createProxyMiddleware({
-    // router callback reads currentAgentosUrl at request time, not at setup time
-    router: () => currentAgentosUrl,
-    changeOrigin: true,
-    pathRewrite: { '^/api/agentos': '' },
+  createAgentOsProxy(() => currentAgentosUrl, {
+    onProxyReq: (proxyReq, req) => {
+      debugLog('AGENTOS', `[PROXY] ${req.method} ${req.url}`)
+      forwardIdentity(proxyReq, req)
+    },
   })
 )
 debugLog(
@@ -142,23 +161,14 @@ debugLog(
   `AgentOS proxy configured: /api/agentos → ${currentAgentosUrl} (${AGENTOS_URL_ENV ? 'external mode' : 'managed mode'})`
 )
 
-// Factory exposes its API with the /api/factory prefix already, so the complete
-// request path must be forwarded unchanged.
-//
-// Mounted at the root with `pathFilter`, NOT `app.use('/api/factory', …)`:
-// http-proxy-middleware v3 forwards `req.url` (v2 used `req.originalUrl`), and
-// Express strips the mount path from `req.url`. A path-mounted proxy would send
-// /api/factory/workflows upstream as /workflows → 404 from the Factory backend.
+// Factory exposes its API with the /api/factory prefix already, so the complete request path is
+// forwarded unchanged (mounted at the root with a pathFilter, see ./lib/factory-proxy.ts).
+// Same identity forwarding and stream-abort propagation as the AgentOS proxy above.
 app.use(
-  createProxyMiddleware({
-    // router callback reads currentFactoryUrl at request time, not at setup time
-    router: () => currentFactoryUrl,
-    changeOrigin: true,
-    pathFilter: (p) => p === '/api/factory' || p.startsWith('/api/factory/'),
-    on: {
-      proxyReq: (_proxyReq, req) => {
-        debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
-      },
+  createFactoryProxy(() => currentFactoryUrl, {
+    onProxyReq: (proxyReq, req) => {
+      debugLog('FACTORY', `[PROXY] ${req.method} ${req.url}`)
+      forwardIdentity(proxyReq, req)
     },
   })
 )
@@ -371,7 +381,7 @@ const FORBIDDEN_USERNAMES = [
  * Extract username for authentication and logging purposes.
  *
  * Resolution order when `--auth` is enabled:
- *  1. `CF_Authorization` header — Cloudflare Access JWT (email claim decoded
+ *  1. `Cf-Access-Jwt-Assertion` header — Cloudflare Access JWT (email claim decoded
  *     from the base64url payload; no signature verification needed as
  *     Cloudflare validates the token at the edge).
  *  2. `x-forwarded-email` header — standard reverse-proxy header.
@@ -629,7 +639,9 @@ async function provisionAgentos(expressPort: number): Promise<void> {
  * `currentAgentosUrl` is the final AgentOS URL.
  *
  * EXTERNAL mode (FACTORY_URL defined): returns immediately.
- * MANAGED mode: download missing JARs (blocking, no background pre-fetch) → spawn.
+ * MANAGED mode, same upgrade flow as AgentOS: promote a complete next/ → start the target
+ * version if present, else start the older installed set and pre-fetch the target into
+ * next/ in the background, else (nothing installed) download blocking → spawn.
  * With the 'dev' version sentinel nothing is downloaded: the Factory only starts if
  * its JARs were placed by hand in <configDir>/factory/.
  *
@@ -645,19 +657,48 @@ async function provisionFactory(): Promise<void> {
   try {
     const factoryVersion = getFactoryVersion()
 
+    // --- 1. Apply pending update from next/ (swap before inventory check) ---
+    const swapResult = checkAndSwapNextFactory(codayOptions.configDir, factoryVersion)
+    if (swapResult.outcome === 'swapped') {
+      debugLog('FACTORY', `[PROVISION] Swap applied: ${swapResult.message}`)
+    }
+
+    // --- 2. Pick the version to start ---
+    let versionToStart = factoryVersion
+    let prefetchTarget = false
     if (findMissingFactoryJars(codayOptions.configDir, factoryVersion).length > 0) {
-      const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
-      debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
-      if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
-        debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
-        return
+      const installedVersion = findInstalledFactoryVersion(codayOptions.configDir)
+
+      if (installedVersion !== null) {
+        // A coherent older set is on disk: start it now, pre-fetch the target for next startup.
+        debugLog(
+          'FACTORY',
+          `[PROVISION] Installed version ${installedVersion} differs from target ${factoryVersion} — starting installed, pre-fetching target in background`
+        )
+        versionToStart = installedVersion
+        prefetchTarget = true
+      } else {
+        // Nothing usable installed (first run): blocking download.
+        const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
+        debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
+        if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
+          debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
+          return
+        }
       }
     }
 
-    factoryProcess = await startFactory(codayOptions.configDir, factoryVersion, currentAgentosUrl)
+    factoryProcess = await startFactory(codayOptions.configDir, versionToStart, currentAgentosUrl)
     if (!factoryProcess) {
       debugLog('FACTORY', '[PROVISION] Factory did not start. The proxy will return errors until it is available.')
       return
+    }
+
+    // --- 3. Pre-fetch the target version into next/ (only once the current one is running) ---
+    if (prefetchTarget) {
+      downloadFactoryJarsToNext(codayOptions.configDir, factoryVersion).catch((err) =>
+        debugLog('FACTORY', '[UPDATE] Unhandled error in background pre-fetch:', err)
+      )
     }
 
     currentFactoryUrl = `http://localhost:${factoryProcess.port}`

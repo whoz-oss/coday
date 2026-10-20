@@ -706,7 +706,14 @@ class CaseServiceImpl(
                 usageAccumulator = usageAccumulator,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
+        val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
         val agent = agentService.findAgentByName(agentName, context, this)
+        if (agentResolutionStartedAtNanos != 0L) {
+            logger.debug {
+                "Case $caseId: agent $agentName resolved in " +
+                    "${(System.nanoTime() - agentResolutionStartedAtNanos) / 1_000_000}ms"
+            }
+        }
         var outcome = UsageOutcome.COMPLETED
         val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         try {
@@ -1091,7 +1098,20 @@ class CaseServiceImpl(
 
     /** Start an agent turn: now without a [caseLaunchGate], once it admits the turn with one. */
     private fun launchRun(runtime: CaseRuntime) {
-        if (gatedRuns != null) gatedRuns.launch(runtime) else scope.launch { runtime.run() }
+        if (gatedRuns != null) {
+            gatedRuns.launch(runtime)
+        } else {
+            val scheduledAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
+            scope.launch {
+                if (scheduledAtNanos != 0L) {
+                    logger.debug {
+                        "Case ${runtime.id}: coroutine dispatch delayed by " +
+                            "${(System.nanoTime() - scheduledAtNanos) / 1_000_000}ms"
+                    }
+                }
+                runtime.run()
+            }
+        }
     }
 
     override fun resumeIfPending(caseId: UUID) {
