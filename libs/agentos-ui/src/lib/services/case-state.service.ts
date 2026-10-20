@@ -11,8 +11,8 @@ import {
   Observable,
   of,
   shareReplay,
-  Subscription,
   Subject,
+  takeUntil,
   tap,
   throwError,
 } from 'rxjs'
@@ -39,8 +39,14 @@ export class CaseStateService {
   private readonly agentMessageEventSubject = new Subject<MessageEvent>()
   readonly agentMessageEvent$ = this.agentMessageEventSubject.asObservable()
 
-  /** Tracks the in-flight load subscription so a newer call can cancel a stale one. */
-  private loadSubscription: Subscription | null = null
+  /** Completes the current load when switching namespaces. */
+  private readonly cancelLoad$ = new Subject<void>()
+
+  /** Whether the active namespace currently has a list request in flight. */
+  private loadInFlight = false
+
+  /** Coalesces same-namespace refreshes while retaining one trailing invalidation. */
+  private refreshPending = false
 
   /** Namespace of the currently held cases — used to detect a namespace switch. */
   private currentNamespaceId: string | null = null
@@ -57,21 +63,58 @@ export class CaseStateService {
    * cleared first, so a failed load can't leave the previous namespace's cases showing.
    */
   loadCases(namespaceId: string): void {
-    if (namespaceId !== this.currentNamespaceId) {
-      this.currentNamespaceId = namespaceId
-      this.cases.set([])
+    if (namespaceId === this.currentNamespaceId) {
+      this.refreshCases(namespaceId)
+      return
     }
-    this.loadSubscription?.unsubscribe()
-    this.loadSubscription = this.caseController.listMineByParentCase(namespaceId).subscribe({
-      next: (cases) => {
-        this.cases.set(cases)
-        this.loadSubscription = null
-      },
-      error: (err) => {
-        console.error(`[CaseState] Failed to load cases for namespace ${namespaceId}:`, err)
-        this.loadSubscription = null
-      },
-    })
+
+    this.currentNamespaceId = namespaceId
+    this.cases.set([])
+    this.refreshPending = false
+    this.cancelLoad$.next()
+    this.loadInFlight = false
+    this.startLoad(namespaceId)
+  }
+
+  /**
+   * Refresh the active namespace without clearing the visible list. Repeated signals
+   * during a request are collapsed into one trailing refresh, so the last invalidation
+   * is never lost and an older response can never overwrite a newer one.
+   */
+  refreshCases(namespaceId: string): void {
+    if (namespaceId !== this.currentNamespaceId) return
+    if (this.loadInFlight) {
+      this.refreshPending = true
+      return
+    }
+    this.startLoad(namespaceId)
+  }
+
+  private startLoad(namespaceId: string): void {
+    this.loadInFlight = true
+    this.caseController
+      .listMineByParentCase(namespaceId)
+      .pipe(
+        takeUntil(this.cancelLoad$),
+        finalize(() => this.finishLoad(namespaceId))
+      )
+      .subscribe({
+        next: (cases) => {
+          if (namespaceId === this.currentNamespaceId) this.cases.set(cases)
+        },
+        error: (err) => {
+          console.error(`[CaseState] Failed to load cases for namespace ${namespaceId}:`, err)
+        },
+      })
+  }
+
+  private finishLoad(namespaceId: string): void {
+    if (namespaceId !== this.currentNamespaceId) return
+    this.loadInFlight = false
+    if (this.refreshPending) {
+      this.refreshPending = false
+      this.startLoad(namespaceId)
+    }
   }
 
   /**
@@ -216,7 +259,7 @@ export class CaseStateService {
   /** Reload the currently held namespace (no-op before the first load). */
   reloadCurrent(): void {
     if (this.currentNamespaceId) {
-      this.loadCases(this.currentNamespaceId)
+      this.refreshCases(this.currentNamespaceId)
     }
   }
 
