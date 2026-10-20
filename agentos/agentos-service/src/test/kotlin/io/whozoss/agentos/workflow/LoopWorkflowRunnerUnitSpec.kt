@@ -211,7 +211,7 @@ class LoopWorkflowRunnerUnitSpec :
                     every { tool.name } returns "LAUNCHER__FreeCaseLauncher"
                     coEvery { tool.executeWithJson(any(), any()) } returns f.success(UUID.randomUUID())
                 }
-            // the end user is the triggering user, so no other-users switch is involved
+            // the end user is the triggering user, so no ADMIN right is involved
             every { f.userService.findByExternalId("alice") } returns triggerUser
 
             val outcome =
@@ -431,8 +431,8 @@ class LoopWorkflowRunnerUnitSpec :
                 if (first) {
                     first = false
                     ToolExecutionResult.error(
-                        "Cases can only be started for the current user.",
-                        errorType = "OTHER_USERS_NOT_ALLOWED",
+                        "Only an administrator of the namespace can start a case for another user.",
+                        errorType = "FORBIDDEN",
                     )
                 } else {
                     f.success(UUID.randomUUID().also { f.launchedIds += it })

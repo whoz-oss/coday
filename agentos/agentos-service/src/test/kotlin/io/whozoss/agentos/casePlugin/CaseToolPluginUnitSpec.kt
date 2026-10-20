@@ -74,8 +74,7 @@ class CaseToolPluginUnitSpec :
             val schema = plugin().configSchema
 
             schema["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder
-                listOf("includesTechnicalEvents", "agents", "deniedAgents", "allowOtherUsers")
-            schema["properties"]["allowOtherUsers"]["default"].asBoolean() shouldBe false
+                listOf("includesTechnicalEvents", "agents", "deniedAgents")
             schema["additionalProperties"].asBoolean() shouldBe false
         }
 
@@ -197,14 +196,10 @@ class CaseToolPluginUnitSpec :
             tool.execute(FreeCaseLauncherTool.Input("Reporter", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
         }
 
-        "other users are off unless the config turns them on" {
-            val off = plugin().provideTools(null, null, context()).launcher()
-            val explicitOff = plugin().provideTools(mapper.readTree("""{"allowOtherUsers": false}"""), null, context()).launcher()
-            val on = plugin().provideTools(mapper.readTree("""{"allowOtherUsers": true}"""), null, context()).launcher()
+        "the launcher always offers userId: who may use it is decided by the service, not by the config" {
+            val tool = plugin().provideTools(null, null, context()).launcher()
 
-            mapper.readTree(off.inputSchema)["properties"].has("userId") shouldBe false
-            mapper.readTree(explicitOff.inputSchema)["properties"].has("userId") shouldBe false
-            mapper.readTree(on.inputSchema)["properties"].has("userId") shouldBe true
+            mapper.readTree(tool.inputSchema)["properties"].has("userId") shouldBe true
         }
 
         "an anonymous run still gets the launcher, which refuses it at execution: the tool is not withheld" {
@@ -218,7 +213,7 @@ class CaseToolPluginUnitSpec :
         // -------------------------------------------------------------------------
 
         "the launch parameters do not alter ReadCase" {
-            val config = mapper.readTree("""{"agents": ["Nobody"], "allowOtherUsers": true}""")
+            val config = mapper.readTree("""{"agents": ["Nobody"]}""")
             val ctx = runContext()
             val tool = plugin().provideTools(config, null, ctx).readCase()
 
@@ -229,7 +224,6 @@ class CaseToolPluginUnitSpec :
             val config = mapper.readTree("""{"includesTechnicalEvents": false}""")
             val tool = plugin().provideTools(config, null, context()).launcher()
 
-            mapper.readTree(tool.inputSchema)["properties"].has("userId") shouldBe false
             tool.name shouldBe "FreeCaseLauncher"
         }
     })

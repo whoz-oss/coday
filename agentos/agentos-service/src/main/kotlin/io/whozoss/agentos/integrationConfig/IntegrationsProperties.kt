@@ -14,9 +14,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * user redirect the shared credential to a host they control. Those types are therefore refused in
  * the two user scopes at the API edge; platform and namespace-shared configs are unaffected.
  *
- * `CASE` is on the list for a different reason: its `allowOtherUsers` parameter (the `FreeCaseLauncher`
- * tool) decides whether an agent may start a case under another user's identity. A user-scoped
- * overlay of the shared config could switch it on for the very user it is meant to constrain.
+ * `CASE` is on the list for a different reason: its `agents` and `deniedAgents` parameters (the
+ * `FreeCaseLauncher` tool) bound which agents an agent may start on a user's behalf. A user-scoped
+ * overlay of the shared config could widen them for the very user they are meant to constrain.
  * The same plugin provides `ReadCase`, so a user cannot overlay its parameters either.
  *
  * Override with environment variable (Spring Boot relaxed binding):

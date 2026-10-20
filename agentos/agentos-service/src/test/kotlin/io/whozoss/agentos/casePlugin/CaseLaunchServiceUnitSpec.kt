@@ -48,7 +48,7 @@ import java.util.UUID
  * 3. its session context: the caller's, under the one resolved for the target user;
  * 4. launch depth: a launched case cannot launch, nor can a case delegated from one;
  * 5. agent access and the calling user;
- * 6. another user: needs the `allowOtherUsers` switch AND the caller to be ADMIN of the namespace;
+ * 6. another user: needs the caller to be ADMIN of the namespace;
  * 7. failures: thrown, never turned into refusals.
  *
  * A refusal never creates a case.
@@ -160,7 +160,6 @@ class CaseLaunchServiceUnitSpec :
             targetUserId: UUID? = null,
             title: String? = null,
             sessionContext: Map<String, Any?>? = null,
-            allowOtherUsers: Boolean = false,
         ) = CaseLaunchRequest(
             callerUserId = caller.id,
             callerNamespaceId = namespaceId,
@@ -170,7 +169,6 @@ class CaseLaunchServiceUnitSpec :
             targetUserId = targetUserId,
             title = title,
             sessionContext = sessionContext,
-            allowOtherUsers = allowOtherUsers,
         )
 
         /** Runs [launch] and returns the refusal it throws; fails if it does not refuse. */
@@ -333,7 +331,7 @@ class CaseLaunchServiceUnitSpec :
                 )
             f.namespacePermission(caller, Action.WRITE, true)
 
-            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
+            f.service.launch(request(targetUserId = other.id))
 
             asked shouldBe listOf(other.externalId to namespaceId)
             f.sent.single().sessionContext shouldBe mapOf("who" to other.externalId)
@@ -344,7 +342,7 @@ class CaseLaunchServiceUnitSpec :
             every { f.userService.findById(other.id) } returns other.copy(preferredLanguage = "fr")
             f.namespacePermission(caller, Action.WRITE, true)
 
-            f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
+            f.service.launch(request(targetUserId = other.id))
 
             f.sent.single().sessionContext shouldBe mapOf(SessionContextKeys.PREFERRED_LANGUAGE to "fr")
         }
@@ -409,7 +407,7 @@ class CaseLaunchServiceUnitSpec :
 
             refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
-                    CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
+                    CaseLaunchRefusal.FORBIDDEN
 
             asked shouldBe emptyList()
         }
@@ -502,38 +500,20 @@ class CaseLaunchServiceUnitSpec :
             refusal.stackTrace.size shouldBe 0
         }
 
-        "another user is refused unless the request allows other users, before the target is even looked up" {
+        "a plain member cannot start a case for another user, and the target is not even looked up" {
             val f = Fixture()
 
             refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
-                    CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
-            f.created shouldBe emptyList()
-            verify(exactly = 0) { f.userService.findById(other.id) }
-        }
-
-        "a plain member cannot start a case for another user, even when the switch allows other users" {
-            val f = Fixture()
-
-            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
                     CaseLaunchRefusal.FORBIDDEN
             f.created shouldBe emptyList()
             verify(exactly = 0) { f.userService.findById(other.id) }
-        }
-
-        "an ADMIN of the namespace cannot start a case for another user when the switch does not allow it" {
-            val f = Fixture()
-            f.namespacePermission(caller, Action.WRITE, true)
-
-            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = false)) }.reason shouldBe
-                    CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
-            f.created shouldBe emptyList()
         }
 
         "an ADMIN of the namespace can start a case for another user, who is the one given ADMIN on it" {
             val f = Fixture()
             f.namespacePermission(caller, Action.WRITE, true)
 
-            val launched = f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
+            val launched = f.service.launch(request(targetUserId = other.id))
 
             launched.userId shouldBe other.id
             f.sent.single().actor.id shouldBe other.id.toString()
@@ -557,7 +537,7 @@ class CaseLaunchServiceUnitSpec :
             f.namespacePermission(caller, Action.WRITE, true)
             f.namespacePermission(other, Action.READ, false)
 
-            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
+            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.TARGET_NO_ACCESS
             f.created shouldBe emptyList()
         }
@@ -567,7 +547,7 @@ class CaseLaunchServiceUnitSpec :
             f.namespacePermission(caller, Action.WRITE, true)
             f.deployAgent(other, "SomethingElse")
 
-            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
+            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
@@ -578,12 +558,12 @@ class CaseLaunchServiceUnitSpec :
             val ghost = UUID.randomUUID()
             every { f.userService.findById(ghost) } returns null
 
-            refusalOf { f.service.launch(request(targetUserId = ghost, allowOtherUsers = true)) }.reason shouldBe
+            refusalOf { f.service.launch(request(targetUserId = ghost)) }.reason shouldBe
                     CaseLaunchRefusal.TARGET_USER_NOT_FOUND
             f.created shouldBe emptyList()
         }
 
-        "naming the caller itself is not 'another user': it needs neither the switch nor an ADMIN check" {
+        "naming the caller itself is not 'another user': it needs no ADMIN check" {
             val f = Fixture()
 
             f.service.launch(request(targetUserId = caller.id))

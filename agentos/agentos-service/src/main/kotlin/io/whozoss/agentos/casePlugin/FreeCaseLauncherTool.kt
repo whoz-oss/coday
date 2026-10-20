@@ -14,7 +14,7 @@ import java.util.UUID
  *
  * Input: the agent (by name), the prompt (first message, sent on behalf of the user), an optional
  * title (name of the conversation), an optional session context (free key/value data the new case is shown
- * with its first message), and, when the integration allows it, the user the case runs for. Output: the case id.
+ * with its first message), and optionally the user the case runs for. Output: the case id.
  *
  * The target agent runs in the background with its own conversation and the tool returns at once.
  * It does not wait for a result: that is what separates it from `DELEGATE__delegate`, which awaits
@@ -26,8 +26,8 @@ import java.util.UUID
  * The agent is designated by **name**, not by id: names are unique per scope and are what an
  * `@mention` resolves, whereas an id is an internal value an LLM could only guess.
  *
- * The case runs in the **same namespace** as the calling run, and for the **same user** unless
- * [allowOtherUsers] lets the caller name another one. Who is calling, and from which case, comes
+ * The case runs in the **same namespace** as the calling run, and for the **same user** unless the caller
+ * names another one, which only an ADMIN of the namespace may do. Who is calling, and from which case, comes
  * from [ToolContext], never from the input: the calling case is [ToolContext.caseId], and a call
  * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`.
  * The calling case's session context is **not** inherited: [Input.sessionContext] is the only thing of the
@@ -37,8 +37,8 @@ import java.util.UUID
  * conflicting key.
  *
  * The tool parses the input, applies the agent allowlist of its integration config, and hands the
- * rest to [CaseLaunchService] along with the [allowOtherUsers] switch of that config. The service owns
- * every rule on users: whether another user may be named at all, and whether that user exists, reads
+ * rest to [CaseLaunchService]. The service owns every rule on users: whether the caller may name another
+ * user at all (ADMIN of the namespace), and whether that user exists, reads
  * the namespace and has the agent deployed. It signals a refusal with a [CaseLaunchRefusedException], which
  * the tool catches and turns into its error result, the reason being the `errorType`. A failure of the service
  * other than a refusal is not caught here: like any tool failure, it reaches the agent layer, which logs it and
@@ -46,33 +46,30 @@ import java.util.UUID
  * Another caller (an AgentLoop step, say) can look the tool up by name and call [executeWithJson],
  * reading the case id from its structured output, so that the integration's config applies to it too.
  *
- * ## `userId`: the schema guides, the service enforces -- same pattern as `queryUser`
+ * ## `userId`: the schema guides, the service enforces
  *
- * `userId` only appears in [inputSchema] when [allowOtherUsers] is on. That *guides* the LLM; the
- * service, given the switch, is what *enforces*, because an LLM can and does send fields its schema
- * does not declare. The caller's own id designates the current user, and is accepted either way.
+ * `userId` is always in [inputSchema], described as reserved to administrators of the namespace. That only
+ * *guides* the LLM: the service is what *enforces* it. The caller's own id designates the current user and
+ * is accepted for anyone.
  *
  * @param configName The integration config name, used as tool-name prefix.
  * @param allowedAgents Glob patterns (`*` wildcard, case-insensitive) of the agents this instance
  *   may start. An agent must match one of them and none of [deniedAgents].
  * @param deniedAgents Exact agent names (case-insensitive) that are never started.
- * @param allowOtherUsers Whether the caller may start the case for a user other than itself. Handed
- *   to [CaseLaunchService], which enforces it.
  */
 class FreeCaseLauncherTool(
     configName: String?,
     private val caseLaunchService: CaseLaunchService,
     private val allowedAgents: List<String> = listOf("*"),
     deniedAgents: Set<String> = emptySet(),
-    private val allowOtherUsers: Boolean = false,
 ) : StandardTool<FreeCaseLauncherTool.Input> {
     /**
      * @param agentName Name of the agent that runs the new case.
      * @param prompt The first message the agent receives, sent on behalf of the user. Must be
      *   self-contained: the new case does not see the conversation it was started from.
      * @param title Name of the new conversation. Omit to derive it from the prompt.
-     * @param userId Internal id of the user the case runs for. Only honoured when the integration
-     *   allows it. Omit for the current user.
+     * @param userId Internal id of the user the case runs for. Only an ADMIN of the namespace may name a
+     *   user other than the current one. Omit for the current user.
      * @param sessionContext Free key/value data the new case starts with, passed on as given to its first
      *   message, for example what the prompt is about. The calling case's own session context is never passed
      *   on; the context of the target user is added by the system and wins on a conflicting key.
@@ -116,13 +113,9 @@ class FreeCaseLauncherTool(
                     "context: pass in `sessionContext` only the part the agent needs. ",
             )
             append(
-                if (allowOtherUsers) {
-                    "The case runs in the current namespace, for the current user unless you pass userId " +
-                        "(only allowed for an administrator of the namespace; the user must have access to " +
-                        "the namespace and the agent)."
-                } else {
-                    "The case runs for the current user, in the current namespace."
-                },
+                "The case runs in the current namespace, for the current user unless you pass userId " +
+                    "(only allowed for an administrator of the namespace; the user must have access to " +
+                    "the namespace and the agent).",
             )
             if (allowedAgents != listOf("*")) {
                 append(" Agents that can be started: ${allowedAgents.joinToString(", ")}.")
@@ -143,16 +136,15 @@ class FreeCaseLauncherTool(
                     putObject("title")
                         .put("type", "string")
                         .put("description", "Name of the new conversation. Omit to derive it from the prompt.")
-                    if (allowOtherUsers) {
-                        putObject("userId")
-                            .put("type", "string")
-                            .put("format", "uuid")
-                            .put(
-                                "description",
-                                "Id of the user the case runs for, as returned by another tool. " +
-                                    "Omit for the current user.",
-                            )
-                    }
+                    putObject("userId")
+                        .put("type", "string")
+                        .put("format", "uuid")
+                        .put(
+                            "description",
+                            "Id of the user the case runs for, as returned by another tool. Only an administrator " +
+                                "of the namespace can name a user other than the current one. " +
+                                "Omit for the current user.",
+                        )
                     putObject("sessionContext").apply {
                         put("type", "object")
                         put(
@@ -211,7 +203,6 @@ class FreeCaseLauncherTool(
                 targetUserId = targetUserId,
                 title = input.title,
                 sessionContext = input.sessionContext,
-                allowOtherUsers = allowOtherUsers,
             )
         return try {
             caseLaunchService.launch(request).toToolResult()

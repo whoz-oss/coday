@@ -26,9 +26,9 @@ import java.util.UUID
  * 1. Guard: the triggering user must be identified.
  * 2. Guard: the `FreeCaseLauncher` tool must be among the agent's tools, i.e. a `CASE` integration is bound
  *    to the loop agent. Checked before searching, so a misconfigured loop fails at once instead of after a
- *    search whose results it could not use. Whether `allowOtherUsers` is on is not checked: a loop whose end
- *    users are all the triggering user does not need it. Without it, every other end user is refused by the
- *    tool and counted as failed.
+ *    search whose results it could not use. Whether the triggering user is an ADMIN of the namespace is not
+ *    checked here: a loop whose end users are all the triggering user does not need it. Without it, every
+ *    other end user is refused by the tool (`FORBIDDEN`) and counted as failed.
  * 3. SEARCH: call the Search tool with [AgentLoopSearch.params] (first page only) and
  *    parse its structured output as [SearchResult].
  * 4. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
@@ -42,8 +42,8 @@ import java.util.UUID
  *
  * ## Who is authorized
  *
- * The launches go through `FreeCaseLauncher`, so its rules apply: the integration must allow other users, the
- * **triggering user** must be an ADMIN of the namespace (federation) to start a case for someone else, and each
+ * The launches go through `FreeCaseLauncher`, so its rules apply: the **triggering user** must be an ADMIN of
+ * the namespace (federation) to start a case for someone else, and each
  * end-user must read the namespace and have the agent deployed. The loop adds no authorization of its own.
  * An end-user without the agent is refused by `FreeCaseLauncher` and counted as `noAgentAccess`. An end-user whose
  * context cannot be resolved makes `FreeCaseLauncher` fail, and is counted as failed.
@@ -71,8 +71,8 @@ class LoopWorkflowRunnerService(
                 ?: return LoopRunOutcome.Aborted(
                     "The '${FreeCaseLauncherTool.TOOL_NAME}' tool is not available to agent '${context.agentName}' " +
                         "(available: ${context.tools.map { it.name }}). " +
-                        "Bind a CASE integration to the agent, granting FreeCaseLauncher (with allowOtherUsers enabled to start " +
-                        "cases for users other than the one who triggers the loop).",
+                        "Bind a CASE integration to the agent, granting FreeCaseLauncher (the user who triggers the loop must be " +
+                        "an ADMIN of the namespace to start cases for other users).",
                 )
 
         val search =
@@ -236,7 +236,7 @@ class LoopWorkflowRunnerService(
     /**
      * What a `FreeCaseLauncher` result means for the loop. A refusal because the agent is not deployed to the end user
      * counts as no agent access; anything else is a failure. A refusal that comes from the
-     * integration or from the triggering user (other users not allowed, not an ADMIN of the namespace, agent outside
+     * integration or from the triggering user (not an ADMIN of the namespace, agent outside
      * the allowlist) hits every entity alike: it shows in
      * the log with its reason, and in the summary as failures.
      */

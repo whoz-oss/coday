@@ -28,9 +28,9 @@ import java.util.UUID
  * ## Parameters
  *
  * Seeded without parameters, so the plugin defaults apply: all agents may be started
- * (`agents = ["*"]`), `allowOtherUsers = false`, technical events included in transcripts. To restrict
- * the agents or allow other users, an administrator creates an override of the same name at namespace
- * scope: a user-scoped one is refused for this type.
+ * (`agents = ["*"]`), technical events included in transcripts. To restrict the agents, an
+ * administrator creates an override of the same name at namespace scope: a user-scoped one is refused
+ * for this type.
  *
  * ## Existence, not content
  *

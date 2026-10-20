@@ -19,7 +19,8 @@ import java.util.UUID
 
 /**
  * Unit tests for [FreeCaseLauncherTool]: input and output contract, the agent allowlist, the `userId`
- * switch, schema and the hand-off to [CaseLaunchService]. The target user rules and agent access are in
+ * input, schema and the hand-off to [CaseLaunchService]. The target user rules (ADMIN of the namespace,
+ * access of the target) and agent access are in
  * [CaseLaunchServiceUnitSpec].
  */
 class FreeCaseLauncherToolUnitSpec :
@@ -55,13 +56,11 @@ class FreeCaseLauncherToolUnitSpec :
             configName: String? = null,
             allowedAgents: List<String> = listOf("*"),
             deniedAgents: Set<String> = emptySet(),
-            allowOtherUsers: Boolean = false,
         ) = FreeCaseLauncherTool(
             configName = configName,
             caseLaunchService = launcher,
             allowedAgents = allowedAgents,
             deniedAgents = deniedAgents,
-            allowOtherUsers = allowOtherUsers,
         )
 
         "is named FreeCaseLauncher, prefixed by the integration config name when there is one" {
@@ -170,50 +169,31 @@ class FreeCaseLauncherToolUnitSpec :
         // Another user
         // -------------------------------------------------------------------------
 
-        "the integration's allowOtherUsers switch is handed to the service, which enforces it" {
-            listOf(false, true).forEach { allowed ->
-                val request = slot<CaseLaunchRequest>()
-                val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
-
-                tool(launcher, allowOtherUsers = allowed)
-                    .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
-
-                request.captured.allowOtherUsers shouldBe allowed
-                request.captured.targetUserId shouldBe targetId
-            }
-        }
-
-        "a userId the service refuses because other users are not allowed comes back as its refusal" {
+        "a userId the service refuses because the caller is not an ADMIN of the namespace comes back as its refusal" {
             val result =
-                tool(refusingService(CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED), allowOtherUsers = false)
+                tool(refusingService(CaseLaunchRefusal.FORBIDDEN))
                     .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
 
             result.success shouldBe false
-            result.errorType shouldBe "OTHER_USERS_NOT_ALLOWED"
+            result.errorType shouldBe "FORBIDDEN"
         }
 
-        "a userId that is not a UUID is INVALID_INPUT, whether or not other users are allowed" {
-            tool(allowOtherUsers = false)
-                .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
-                .errorType shouldBe "INVALID_INPUT"
-        }
-
-        "a userId that is not a UUID is INVALID_INPUT" {
+        "a userId that is not a UUID is INVALID_INPUT, and nothing is launched" {
             val launcher = service()
 
             val result =
-                tool(launcher, allowOtherUsers = true)
+                tool(launcher)
                     .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
 
             result.errorType shouldBe "INVALID_INPUT"
             verify(exactly = 0) { launcher.launch(any()) }
         }
 
-        "when allowed, the userId is handed to the service, which owns the target user checks" {
+        "the userId is handed to the service, which owns the ADMIN and target user checks" {
             val request = slot<CaseLaunchRequest>()
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
 
-            tool(launcher, allowOtherUsers = true)
+            tool(launcher)
                 .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
 
             request.captured.targetUserId shouldBe targetId
@@ -324,19 +304,13 @@ class FreeCaseLauncherToolUnitSpec :
         // Schema and description
         // -------------------------------------------------------------------------
 
-        "the input schema declares exactly the fields of Input, userId only when other users are allowed" {
+        "the input schema declares exactly the fields of Input, and userId is never required" {
             val everyField = FreeCaseLauncherTool.Input("agent", "prompt", "title", "user", emptyMap())
             val inputFields = mapper.valueToTree<JsonNode>(everyField).fieldNames().asSequence().toList()
+            val schema = mapper.readTree(tool().inputSchema)
 
-            fun schema(allowOtherUsers: Boolean) = mapper.readTree(tool(allowOtherUsers = allowOtherUsers).inputSchema)
-
-            schema(allowOtherUsers = true)["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder
-                inputFields
-            schema(allowOtherUsers = false)["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder
-                inputFields - "userId"
-            // userId is never required, even when it is offered
-            schema(allowOtherUsers = true)["required"].map { it.asText() } shouldContainExactlyInAnyOrder
-                listOf("agentName", "prompt")
+            schema["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder inputFields
+            schema["required"].map { it.asText() } shouldContainExactlyInAnyOrder listOf("agentName", "prompt")
         }
 
         "the description says the case lives on its own, is not stopped with the current one, and is not awaited" {
@@ -349,9 +323,9 @@ class FreeCaseLauncherToolUnitSpec :
             tool().description shouldContain "does not inherit"
         }
 
-        "the description mentions userId only when other users are allowed" {
-            tool().description shouldNotContain "userId"
-            tool(allowOtherUsers = true).description shouldContain "userId"
+        "the description mentions userId, reserved to administrators of the namespace" {
+            tool().description shouldContain "userId"
+            tool().description shouldContain "administrator of the namespace"
         }
 
         "the description lists the allowed agents only when they are restricted" {

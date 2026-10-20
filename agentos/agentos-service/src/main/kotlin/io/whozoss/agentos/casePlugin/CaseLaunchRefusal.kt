@@ -11,9 +11,6 @@ enum class CaseLaunchRefusal {
      */
     LAUNCH_DEPTH_EXCEEDED,
 
-    /** The request names another user, which [CaseLaunchRequest.allowOtherUsers] does not allow. */
-    OTHER_USERS_NOT_ALLOWED,
-
     /** Only an ADMIN of the namespace (federation) can start a case for another user. */
     FORBIDDEN,
 

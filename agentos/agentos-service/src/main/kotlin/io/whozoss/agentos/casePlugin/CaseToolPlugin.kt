@@ -31,12 +31,13 @@ import java.util.UUID
  * ## Configuration
  *
  * - `includesTechnicalEvents`: read side, shape of the transcript returned by `ReadCase`.
- * - `agents` / `deniedAgents` / `allowOtherUsers`: launch side, see [FreeCaseLauncherTool]. They have
- *   no effect on `ReadCase`.
+ * - `agents` / `deniedAgents`: launch side, see [FreeCaseLauncherTool]. They have no effect on `ReadCase`.
  *
- * `allowOtherUsers` decides whether an agent may start a case under another user's identity, which is
- * why `CASE` is on the list of integration types refused in user scopes
- * ([io.whozoss.agentos.integrationConfig.IntegrationsProperties.userScopeDeniedTypes]).
+ * Starting a case for another user is not configured here: the service requires the calling user to be
+ * ADMIN of the namespace. `agents` / `deniedAgents` bound what an agent may start, which is why `CASE` is
+ * on the list of integration types refused in user scopes
+ * ([io.whozoss.agentos.integrationConfig.IntegrationsProperties.userScopeDeniedTypes]): a user overlay
+ * could otherwise widen them.
  *
  * @param caseEventsLoader Lambda injected by [CasePluginConfiguration] that loads the events of a
  *   target case. Returns null when the case does not exist, when its namespace does not match the
@@ -81,7 +82,6 @@ class CaseToolPlugin(
                 caseLaunchService = caseLaunchService,
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
                 deniedAgents = config.stringList("deniedAgents").toSet(),
-                allowOtherUsers = config?.get("allowOtherUsers")?.asBoolean(false) ?: false,
             ),
         )
     }
@@ -116,12 +116,6 @@ class CaseToolPlugin(
                       "description": "FreeCaseLauncher: exact agent names (case-insensitive) that are never started, even if they match an allowed pattern.",
                       "items": { "type": "string" },
                       "uniqueItems": true
-                    },
-                    "allowOtherUsers": {
-                      "type": "boolean",
-                      "title": "Allow other users",
-                      "description": "FreeCaseLauncher: lets the agent start the case for a user other than the one it is running for (input field userId). Even then, only an administrator of the namespace can do it, and the target user must have access to the namespace and the agent deployed.",
-                      "default": false
                     }
                   },
                   "additionalProperties": false

@@ -34,11 +34,10 @@ import java.util.UUID
  *    it: the [Case.parentCaseId] chain of the calling case is walked up, which delegation caps at a few
  *    levels. A launched case counts in no delegation depth, so without this an agent could launch itself
  *    without end. One level is all a caller like AgentLoop needs.
- * 2. **Target user.** The caller, unless [CaseLaunchRequest.targetUserId] names someone else. Then
- *    [CaseLaunchRequest.allowOtherUsers] must be set (the integration allows it upstream), **and** the
+ * 2. **Target user.** The caller, unless [CaseLaunchRequest.targetUserId] names someone else. Then the
  *    caller must be an ADMIN of the namespace (the federation: Namespace WRITE, which super-admins also
- *    hold), and the target must exist and read the namespace. The switch alone is not enough: a plain
- *    member cannot run a case on behalf of someone else.
+ *    hold), and the target must exist and read the namespace. A plain member cannot run a case on behalf
+ *    of someone else.
  * 3. **Agent access.** The agent must be deployed to the target user in the namespace: the same
  *    condition as addressing it with an `@mention`.
  * 4. **User context.** The context of the target user is resolved by [UserSessionContextResolver], as for a
@@ -53,8 +52,7 @@ import java.util.UUID
  * failure is rethrown. An ADMIN grant already made is not revoked.
  *
  * **Who checks what.** This service owns the rules that protect users and the platform: who the case runs
- * for ([CaseLaunchRequest.allowOtherUsers], the caller being ADMIN of the namespace, the target's access
- * to the namespace), which agent may work
+ * for (the caller being ADMIN of the namespace, the target's access to the namespace), which agent may work
  * for them (deployed to the target), and how far launches go (one level). The `FreeCaseLauncher` tool validates its input and scopes what its
  * integration instance may launch (the agent allowlist); those checks are not repeated here.
  *
@@ -146,8 +144,6 @@ class CaseLaunchService(
         val otherUserId = request.targetUserId?.takeIf { it != request.callerUserId }
         return when {
             otherUserId == null -> resolveCaller(request.callerUserId)
-            !request.allowOtherUsers ->
-                refuse(CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED, "Cases can only be started for the current user.")
             !hasNamespacePermission(request.callerUserId, request.callerNamespaceId, Action.WRITE) ->
                 refuse(
                     CaseLaunchRefusal.FORBIDDEN,
