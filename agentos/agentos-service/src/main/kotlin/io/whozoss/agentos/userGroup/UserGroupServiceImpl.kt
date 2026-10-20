@@ -60,6 +60,14 @@ class UserGroupServiceImpl(
     @Transactional(readOnly = true)
     override fun getMembers(userGroupId: UUID): List<UserGroupMember> = userGroupRepository.findMembers(userGroupId)
 
+    @Transactional(readOnly = true)
+    override fun getUsersByAgent(agentConfigId: UUID, namespaceId: UUID): List<UserGroupMember> =
+        userGroupRepository.findUsersByAgentId(agentConfigId, namespaceId)
+
+    @Transactional(readOnly = true)
+    override fun getMembersByGroupAndAgent(userGroupId: UUID, agentConfigId: UUID): List<UserGroupMember> =
+        userGroupRepository.findMembersByGroupAndAgent(userGroupId, agentConfigId)
+
     @Transactional
     override fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult {
         val namespace =
