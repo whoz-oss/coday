@@ -1,11 +1,13 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, effect, inject, signal } from '@angular/core'
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop'
 import { MatButtonModule } from '@angular/material/button'
 import { MatDialog } from '@angular/material/dialog'
 import { MatIconModule } from '@angular/material/icon'
 import { MatTableModule } from '@angular/material/table'
 import { Observable, map } from 'rxjs'
-import { FactoryApiError, FactoryApiService, WorkflowDefinition } from '../../core/factory-api.service'
+import { FactoryApiError, WorkflowDefinition } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
+import { WorkflowDefinitionsStateService } from '../../core/workflow-definitions-state.service'
 import { StatusChipComponent } from '../../shared/ui/status-chip.component'
 import { ConfirmDialogComponent, ConfirmDialogData } from './confirm-dialog.component'
 
@@ -33,12 +35,6 @@ export function describeAdminError(error: FactoryApiError): AdminErrorDescriptor
   return { forbidden: false, message: serverMessage ?? 'Admin command failed (network or server error).' }
 }
 
-function extractDefinitions(payload: unknown): WorkflowDefinition[] {
-  if (Array.isArray(payload)) return payload as WorkflowDefinition[]
-  const items = (payload as { items?: unknown } | null)?.items
-  return Array.isArray(items) ? (items as WorkflowDefinition[]) : []
-}
-
 /**
  * Administration page for workflow definitions.
  *
@@ -51,44 +47,39 @@ function extractDefinitions(payload: unknown): WorkflowDefinition[] {
   templateUrl: './admin-page.component.html',
   styleUrl: './admin-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [WorkflowDefinitionsStateService],
 })
 export class AdminPageComponent {
-  private readonly api = inject(FactoryApiService)
+  private readonly state = inject(WorkflowDefinitionsStateService)
   private readonly dialog = inject(MatDialog)
+  private readonly destroyRef = inject(DestroyRef)
 
   /** True once the server has refused an admin command (403). */
   protected readonly adminDisabled = signal(false)
   protected readonly forbiddenError = signal<string | null>(null)
 
   // -- Workflow definitions --------------------------------------------------
-  protected readonly definitions = signal<WorkflowDefinition[]>([])
-  protected readonly definitionsLoading = signal(false)
-  protected readonly uploading = signal(false)
+  protected readonly definitions = this.state.definitions
+  protected readonly definitionsLoading = this.state.loading
+  protected readonly uploading = this.state.uploading
   protected readonly selectedFile = signal<File | null>(null)
   protected readonly definitionsError = signal<string | null>(null)
-  protected readonly deletingKey = signal<string | null>(null)
+  protected readonly deletingKey = this.state.deletingKey
   protected readonly definitionColumns = ['workflowType', 'version', 'definitionHash', 'actions']
 
   constructor() {
     inject(ShellState).crumbs.set([{ label: 'Workflow definitions' }])
+    effect(() => {
+      const error = this.state.error()
+      if (error) this.applyError(error, (message) => this.definitionsError.set(message))
+    })
     this.loadDefinitions()
   }
 
   /** Fetch the registered workflow definitions. */
   protected loadDefinitions(): void {
     if (this.adminDisabled()) return
-    this.definitionsLoading.set(true)
-    this.definitionsError.set(null)
-    this.api.getWorkflowDefinitions().subscribe({
-      next: (payload) => {
-        this.definitions.set(extractDefinitions(payload))
-        this.definitionsLoading.set(false)
-      },
-      error: (error: FactoryApiError) => {
-        this.applyError(error, (message) => this.definitionsError.set(message))
-        this.definitionsLoading.set(false)
-      },
-    })
+    this.state.load()
   }
 
   protected onFileSelected(event: Event): void {
@@ -104,19 +95,19 @@ export class AdminPageComponent {
       this.definitionsError.set('Please select a JSON definition file.')
       return
     }
-    this.uploading.set(true)
     this.definitionsError.set(null)
-    this.api.uploadWorkflowDefinition(file).subscribe({
-      next: () => {
-        this.selectedFile.set(null)
-        this.uploading.set(false)
-        this.loadDefinitions()
-      },
-      error: (error: FactoryApiError) => {
-        this.applyError(error, (message) => this.definitionsError.set(message))
-        this.uploading.set(false)
-      },
-    })
+    this.state
+      .upload(file)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe({
+        next: () => {
+          this.selectedFile.set(null)
+          this.loadDefinitions()
+        },
+        error: (error: FactoryApiError) => {
+          this.applyError(error, (message) => this.definitionsError.set(message))
+        },
+      })
   }
 
   /** Delete a workflow definition after an explicit confirmation. */
@@ -131,21 +122,21 @@ export class AdminPageComponent {
       detail: `${workflowType}@${version}`,
       confirmLabel: 'Delete',
       destructive: true,
-    }).subscribe((approved) => {
-      if (!approved) return
-      this.deletingKey.set(`${workflowType}@${version}`)
-      this.definitionsError.set(null)
-      this.api.deleteWorkflowDefinition(workflowType, version).subscribe({
-        next: () => {
-          this.deletingKey.set(null)
-          this.loadDefinitions()
-        },
-        error: (error: FactoryApiError) => {
-          this.applyError(error, (message) => this.definitionsError.set(message))
-          this.deletingKey.set(null)
-        },
-      })
     })
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((approved) => {
+        if (!approved) return
+        this.definitionsError.set(null)
+        this.state
+          .delete(workflowType, version)
+          .pipe(takeUntilDestroyed(this.destroyRef))
+          .subscribe({
+            next: () => this.loadDefinitions(),
+            error: (error: FactoryApiError) => {
+              this.applyError(error, (message) => this.definitionsError.set(message))
+            },
+          })
+      })
   }
 
   protected definitionKey(definition: WorkflowDefinition): string {
