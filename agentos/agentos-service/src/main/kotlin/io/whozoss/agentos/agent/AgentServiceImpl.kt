@@ -958,10 +958,7 @@ class AgentServiceImpl(
         // cached prompt prefix -- the same both-scopes condition [ExchangeScopeGuidance.buildBlock]
         // applies to the instructions block.
         val bothGranted = scopes.case != null && scopes.namespace != null
-        val tools = mutableListOf<StandardTool<*>>()
-        scopes.case?.let { tools += grantScope(it, toolContext, bothGranted) }
-        scopes.namespace?.let { tools += grantScope(it, toolContext, bothGranted) }
-        return tools
+        return listOfNotNull(scopes.case, scopes.namespace).flatMap { grantScope(it, toolContext, bothGranted) }
     }
 
     /** One exchange scope, decided but not yet granted. */
