@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import mu.KLogging
 import java.util.UUID
 
@@ -78,6 +79,8 @@ class ListUserGroupMembersTool(
         }
         val members = try {
             membersLoader(input.userGroupId, context.namespaceId, context.userId)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.warn(e) { "[listMembers] Failed to retrieve members for group ${input.userGroupId}" }
             return ToolExecutionResult.error(

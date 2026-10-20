@@ -5,6 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
+import kotlinx.coroutines.CancellationException
 import mu.KLogging
 import java.util.UUID
 
@@ -81,6 +82,8 @@ class ListAgentUsersTool(
         val members =
             try {
                 usersByAgentLoader(input.agentConfigId, context.namespaceId, context.userId)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.warn(e) { "[listAgentUsers] Failed to retrieve users for agent ${input.agentConfigId}" }
                 return ToolExecutionResult.error(
