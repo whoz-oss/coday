@@ -216,7 +216,7 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
 
         "a directory the case owns is resolved without a permission query" {
             // The run's own directory needs no gate: the invoking user already holds Case WRITE on
-            // that case to have reached this point, which is the rule buildExchangeTools applies to
+            // that case to have reached this point, which is the rule resolveCaseScope applies to
             // the file tools rooted at the very same directory. The strict mock is the assertion.
             givenCaseRoot()
             val configs = listOf(config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}"}"""))

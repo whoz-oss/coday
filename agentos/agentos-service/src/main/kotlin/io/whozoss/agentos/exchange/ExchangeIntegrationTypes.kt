@@ -9,7 +9,9 @@ import io.whozoss.agentos.sdk.api.integrationConfig.IntegrationTypeDescriptor
  * computed root. [CASE]/[NAMESPACE] are the **built-in** exchange integration types: enabling one
  * adds its key directly to the agent's `integrations` map (no persisted `IntegrationConfig`
  * instance), and the actual per-run tools are built imperatively in
- * [io.whozoss.agentos.agent.AgentServiceImpl.buildExchangeTools] (which has the run's `caseId`).
+ * [io.whozoss.agentos.agent.AgentServiceImpl.grantExchangeTools], from the scopes
+ * `AgentServiceImpl.resolveCaseScope` and `resolveNamespaceScope` settle first (they hold the run's
+ * `caseId`).
  * They are surfaced in `GET /api/integration-types` (with `builtIn = true`) only when the
  * file-plugin is loaded.
  */

@@ -31,10 +31,11 @@ object ExchangeScopeGuidance {
      * What the invoking user may do in a scope that was granted. A scope nobody was granted has no
      * stance at all, which is what the null arguments of [buildBlock] mean.
      *
-     * Derived from the per-run `readOnly` decision, i.e. from the user's rights, not from the tools
-     * that survived the agent's own per-tool allowlist. An agent that restricted a scope to read
-     * tools is therefore still told the scope is writable: it chose that restriction itself, and the
-     * block never claims a specific tool exists.
+     * Both halves have to hold for a scope to be named as writable: the invoking user's rights,
+     * through the per-run `readOnly` decision, and the agent's own per-tool allowlist, through
+     * [ExchangeToolGrantService.grantsMutatingTool]. A scope the agent restricted to read tools is
+     * therefore described as read-only, because naming it as the write target would send the model
+     * to a tool it was not granted, and from there to the other scope's `editFiles`.
      */
     enum class Access {
         READ_ONLY,

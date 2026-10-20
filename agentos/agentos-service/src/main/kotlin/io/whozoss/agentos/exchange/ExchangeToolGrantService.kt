@@ -63,6 +63,24 @@ class ExchangeToolGrantService(
         resolveGrant(ExchangeIntegrationTypes.NAMESPACE, properties.namespaceEnabledByDefault, integrations)
 
     /**
+     * Whether [allowedTools] leaves the scope a way to write, asked through the same matcher
+     * [grantTools] filters with.
+     *
+     * An agent that restricted a scope to read tools must not be told that scope is where its
+     * writes belong: it would find no tool there, and the next matching one is the other scope's
+     * `editFiles` -- the very confusion [ExchangeScopeGuidance] exists to prevent. Answered from
+     * the allowlist rather than from the granted tools so the stance is known before anything is
+     * granted, which is what keeps the instructions buildable without the tool assembly.
+     */
+    fun grantsMutatingTool(
+        configName: String,
+        allowedTools: List<String>?,
+    ): Boolean =
+        ExchangeIntegrationTypes.MUTATING_TOOLS.any { tool ->
+            toolResolverService.isToolAllowed("${configName}__$tool", configName, allowedTools)
+        }
+
+    /**
      * Builds the file-plugin tools for one exchange scope rooted at [root], filtered through
      * [allowedTools].
      *
@@ -82,24 +100,6 @@ class ExchangeToolGrantService(
      * FILE_ACCESS integration configured by a user gets: the sentence talks about cases and
      * namespaces, and only the two exchange scopes are in one.
      */
-    /**
-     * Whether [allowedTools] leaves the scope a way to write, asked through the same matcher
-     * [grantTools] filters with.
-     *
-     * An agent that restricted a scope to read tools must not be told that scope is where its
-     * writes belong: it would find no tool there, and the next matching one is the other scope's
-     * `editFiles` -- the very confusion [ExchangeScopeGuidance] exists to prevent. Answered from
-     * the allowlist rather than from the granted tools so the stance is known before anything is
-     * granted, which is what keeps the instructions buildable without the tool assembly.
-     */
-    fun grantsMutatingTool(
-        configName: String,
-        allowedTools: List<String>?,
-    ): Boolean =
-        ExchangeIntegrationTypes.MUTATING_TOOLS.any { tool ->
-            toolResolverService.isToolAllowed("${configName}__$tool", configName, allowedTools)
-        }
-
     fun grantTools(
         root: Path,
         readOnly: Boolean,

@@ -716,8 +716,8 @@ class AgentServiceImpl(
      *
      * [exchangeScopesBlock] is the already-rendered `## File scopes` block of
      * [io.whozoss.agentos.exchange.ExchangeScopeGuidance], null for every run that was not granted
-     * both exchange scopes. It is passed in rather than computed here because only
-     * [buildExchangeTools] knows which scopes the run actually got.
+     * both exchange scopes. It is passed in rather than computed here because the scopes are
+     * settled earlier, by [resolveCaseScope] and [resolveNamespaceScope].
      */
     private suspend fun buildInstructions(
         baseInstructions: String?,
@@ -887,23 +887,23 @@ class AgentServiceImpl(
     }
 
     /**
-     * What [buildExchangeTools] granted on one run: the tools themselves, and the stance of each
-     * scope for the invoking user.
+     * The exchange scopes this run gets, decided by [resolveCaseScope] and [resolveNamespaceScope]
+     * before anything is granted.
      *
-     * The two accesses are null when the scope was not granted, which is how
-     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance.buildBlock] knows to stay silent. They are
-     * carried out of here rather than recomputed next to the instructions because only this method
-     * holds what they depend on: the run's case id and the permission queries it already paid for.
+     * A null side is a scope this run does not get, which is how
+     * [io.whozoss.agentos.exchange.ExchangeScopeGuidance.buildBlock] knows to stay silent about it.
+     * Deciding first is what lets the instructions name the scopes without waiting for the tool
+     * assembly, and each side carries the permission answers that decision already paid for.
      */
-    /** The exchange scopes a run was granted, decided but not yet granted. */
     private data class ResolvedExchangeScopes(
         val case: ExchangeScope?,
         val namespace: ExchangeScope?,
     )
 
     /**
-     * Builds the file-exchange tools enabled on [config], scoped to the current run, and reports
-     * which scopes it granted so the agent's instructions can name them.
+     * Builds the file-exchange tools of the scopes [scopes] already holds, and nothing else: who
+     * gets which scope, and read-only or not, is settled by [resolveCaseScope] and
+     * [resolveNamespaceScope] before this runs.
      *
      * The case/namespace exchange is exposed to the agent as a **built-in integration of the
      * file-plugin** (integration type [ExchangeIntegrationTypes.FILE_ACCESS]): we point the plugin's own tools
@@ -922,29 +922,12 @@ class AgentServiceImpl(
      * [io.whozoss.agentos.exchange.ExchangeController] path, which applies no deny-list (users manage
      * their own files); the two views of the same directory can therefore differ for such files.
      *
-     * Gating: the agent's own [AgentConfig.integrations] map decides, with a platform-level fallback
-     * for agents that say nothing at all
-     * ([io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.caseEnabledByDefault] /
-     * [io.whozoss.agentos.exchange.ExchangeToolsConfigProperties.namespaceEnabledByDefault], both off
-     * by default, so an upgrade changes no agent's tool set):
-     * - if the file-plugin is not loaded ([ExchangeIntegrationTypes.FILE_ACCESS] absent) → no tools;
-     * - key absent → the platform default decides, and no per-tool filter applies;
-     * - key present, null → granted, all tools;
-     * - key present, non-empty → granted, filtered to the listed tools;
-     * - key present, empty → explicit opt-out: nothing is granted and no scope directory is created
-     *   (the empty list would otherwise filter every tool out *after* the grant had materialised the
-     *   root);
-     * - the case scope additionally requires a live [context.caseId]. The run's own directory needs no
-     *   extra gate: the invoking user already holds Case WRITE on that case to have reached this point.
-     *   A directory owned by another case (a family's shared workspace) also requires the user's
-     *   permission on that owner, and is read-only without WRITE on both;
-     * - the namespace scope requires the invoking user to hold Namespace READ, the same floor every
-     *   REST namespace-file endpoint enforces via `@PreAuthorize`. A run without an identified user
-     *   is denied fail-closed, so a definition preview resolved without a user reports no namespace
-     *   exchange tools. Read/write when the user also holds Namespace WRITE (admin/super-admin),
-     *   read-only otherwise.
-     *
-     * The default is a decision local to [ExchangeToolGrantService] and never a mutation of
+     * Gating lives in two other places, on purpose. What an agent's own
+     * [AgentConfig.integrations] map means — key absent and the platform default deciding, present
+     * and null, present and filtered, present and empty as an explicit opt-out — is
+     * [io.whozoss.agentos.exchange.ExchangeToolGrantService.resolveCaseGrant] and its siblings. Who
+     * may reach each directory, and whether the scope is writable, is [resolveCaseScope] and
+     * [resolveNamespaceScope]. Neither default is ever written back into
      * [AgentConfig.integrations]: materialising it in the map would leak into the persisted config,
      * the YAML export, and the peer descriptions the redirect tool puts in every agent's prompt.
      */
@@ -997,6 +980,15 @@ class AgentServiceImpl(
             scopeGuidance = scope.toolGuidance.takeIf { withGuidance },
         )
 
+    /**
+     * The case scope of this run, or null when the agent was not granted it or the run has no live
+     * case (a definition preview).
+     *
+     * The run's own directory needs no permission query: the invoking user already holds Case WRITE
+     * on that case to have reached this point. A directory owned by *another* case, a family's
+     * shared workspace, additionally requires that user's permission on the owner, and is read-only
+     * without WRITE on both, because delegation does not confer its rights.
+     */
     private fun resolveCaseScope(
         integrations: Map<String, List<String>?>?,
         context: AgentExecutionContext,
@@ -1042,6 +1034,13 @@ class AgentServiceImpl(
         }
     }
 
+    /**
+     * The namespace scope of this run, or null when the agent was not granted it or the invoking
+     * user does not hold Namespace READ, the floor every REST namespace-file endpoint enforces via
+     * `@PreAuthorize`. A run without an identified user is denied fail-closed, so a definition
+     * preview resolved without a user reports no namespace exchange tools. Read/write when that
+     * user also holds Namespace WRITE (admin, super-admin included), read-only otherwise.
+     */
     private fun resolveNamespaceScope(
         integrations: Map<String, List<String>?>?,
         context: AgentExecutionContext,

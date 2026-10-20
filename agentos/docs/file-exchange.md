@@ -140,8 +140,9 @@ and the user leaves the row on *Enabled*, the original list is written back unch
 silently widened to "all tools", and the restriction is surfaced as read-only text under the row (the
 form edits enablement, not the list).
 
-Per-run tools are built by `AgentServiceImpl.buildExchangeTools`, which keeps what only it knows (the
-run's `caseId`, the invoking user's Namespace `READ` and `WRITE` rights) and delegates the decision,
+Per-run tools are settled by `AgentServiceImpl.resolveCaseScope` and `resolveNamespaceScope`, then
+built by `grantExchangeTools`. Those keep what only they know (the run's `caseId`, the invoking
+user's Namespace `READ` and `WRITE` rights) and delegate the decision,
 the plugin configuration and the `ToolResolverService.isToolAllowed` filtering to
 `ExchangeToolGrantService`. The platform default is a decision local to that service and never a
 mutation of `AgentConfig.integrations`, which would otherwise leak into the persisted config, the
@@ -201,7 +202,7 @@ instead of a path, anywhere in an integration's parameters:
 
 | Token | Resolves to | Available |
 |---|---|---|
-| `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case), and only for a user who may write the case that owns the directory |
+| `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case). No permission query when the run's own case owns the directory, and the owner's Case `WRITE` when it is a family's shared one, owned by another case |
 | `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | only for a user who holds Namespace `WRITE` |
 
 ```yaml

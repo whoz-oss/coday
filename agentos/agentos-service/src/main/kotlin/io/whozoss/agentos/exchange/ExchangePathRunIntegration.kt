@@ -51,8 +51,9 @@ import java.util.UUID
  * - the case token: the run's own directory needs no gate, since the invoking user already holds
  *   Case WRITE on that case to have reached this point, but a directory owned by *another* case
  *   — a family's shared workspace — additionally requires that user's permission on the owner.
- *   Delegation does not confer its rights. This is the rule `buildExchangeTools` applies, not the
- *   stricter one of [io.whozoss.agentos.git.GitToolsRunIntegration], which asks for Case WRITE even
+ *   Delegation does not confer its rights. This is the rule
+ *   [io.whozoss.agentos.agent.AgentServiceImpl.resolveCaseScope] applies, not the stricter one of
+ *   [io.whozoss.agentos.git.GitToolsRunIntegration], which asks for Case WRITE even
  *   on the case's own directory. A run always has that identity, whatever started it:
  *   [io.whozoss.agentos.caseFlow.CaseServiceImpl] refuses to build a context without a user found
  *   in the case's event history, and an existing one, so a webhook or a scheduled prompt carries
@@ -150,11 +151,10 @@ class ExchangePathRunIntegration(
     /**
      * What each of [used] stands for on this run, leaving out the ones that cannot be resolved.
      *
-     * A token left out of the map stays in the parameters verbatim, and the plugin that reads it
-     * rejects it: `BashConfigParser` requires an absolute path, so the integration contributes no
-     * tool and logs why. That is the intended outcome — a run with no case, or one whose user may
-     * not reach the directory, has no case directory, and quietly falling back to another one would
-     * put the work somewhere nobody looks.
+     * A token left out of the map removes every integration that carries it, in [substituted].
+     * That is the intended outcome — a run with no case, or one whose user may not reach the
+     * directory, has no case directory, and quietly falling back to another one would put the work
+     * somewhere nobody looks.
      *
      * Only the tokens actually written somewhere are resolved: the case one costs the resolver a
      * read of the case and of its family binding, and a run that never mentions it must not pay
