@@ -12,6 +12,18 @@ interface UserGroupService : EntityService<UserGroup, UUID> {
 
     fun getMembers(userGroupId: UUID): List<UserGroupMember>
 
+    /**
+     * Returns all non-removed users who are members of any UserGroup in [namespaceId]
+     * that has [agentConfigId] deployed to it.
+     */
+    fun getUsersByAgent(agentConfigId: UUID, namespaceId: UUID): List<UserGroupMember>
+
+    /**
+     * Returns all members of [userGroupId] if [agentConfigId] is deployed to that group,
+     * or an empty list when the agent is not deployed there.
+     */
+    fun getMembersByGroupAndAgent(userGroupId: UUID, agentConfigId: UUID): List<UserGroupMember>
+
     fun createFromRequest(request: UserGroupCreateRequest): UserGroupSearchResult
 
     fun updateFromRequest(

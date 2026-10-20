@@ -1,3 +1,13 @@
+## 3.37.0 (2026-10-20)
+
+### 🚀 Features
+
+- wz-35442 - user group list member tool ([#1451](https://github.com/whoz-oss/coday/pull/1451))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
 ## 3.36.1 (2026-10-19)
 
 ### 🩹 Fixes
