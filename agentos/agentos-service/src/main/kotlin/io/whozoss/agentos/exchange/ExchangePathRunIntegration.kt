@@ -74,6 +74,19 @@ import java.util.UUID
  * per-plugin knowledge, which is the whole reason this is a token and not a rebinding of each
  * plugin's own parameter names, and [io.whozoss.agentos.git.GitToolsRunIntegration] already drops
  * its own config the same way when it cannot build its parameters.
+ *
+ * ## Order against the other customizer
+ *
+ * The customizers are folded in Spring's injection order, and this one carries no `@Order` because
+ * the result does not depend on where it sits relative to
+ * [io.whozoss.agentos.git.GitToolsRunIntegration]. That one only touches `GIT` configs, and on
+ * those it writes its five keys with `put` on a deep copy, unconditionally, so it wins on them from
+ * either side. The case that could diverge — a `GIT` config whose `workingDirectory` carries
+ * [ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN] that this run cannot resolve, dropped here and
+ * overwritten there — cannot arise: its gate is the stricter one, Case `WRITE` on the owning case
+ * even when the run's own case owns the directory, so it cannot keep a config this one would drop,
+ * and when it refuses it drops the config itself. Neither writes a `{{TOKEN}}` spelling the other
+ * would then expand.
  */
 @Component
 class ExchangePathRunIntegration(
