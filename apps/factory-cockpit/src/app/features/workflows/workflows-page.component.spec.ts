@@ -4,7 +4,8 @@ import { provideRouter } from '@angular/router'
 import { of, throwError } from 'rxjs'
 import { FactoryApiError, FactoryApiService, WorkflowDefinition } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
-import { WorkflowsPageComponent, extractWorkflowDefinitions } from './workflows-page.component'
+import { extractWorkflowDefinitions } from '../../core/workflow-definitions-state.service'
+import { WorkflowsPageComponent } from './workflows-page.component'
 
 interface ApiStub {
   getWorkflowDefinitions: jest.Mock

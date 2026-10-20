@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal } from '@angular/core'
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms'
 import { Router, RouterLink } from '@angular/router'
@@ -46,6 +46,7 @@ export class LaunchPageComponent {
   private readonly launchState = inject(LaunchStateService)
   private readonly store = inject(FactoryStore)
   private readonly router = inject(Router)
+  private readonly destroyRef = inject(DestroyRef)
 
   protected readonly workflowTypes = this.launchState.workflowTypes
   protected readonly namespaces = this.launchState.namespaces
@@ -119,7 +120,7 @@ export class LaunchPageComponent {
         ...(trimmedInitialRequest ? { initialRequest: trimmedInitialRequest } : {}),
         ...(trimmedTicket ? { parameters: { ticket: trimmedTicket } } : {}),
       })
-      .pipe(takeUntilDestroyed())
+      .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (response) => {
           const submissionId = response?.submissionId
