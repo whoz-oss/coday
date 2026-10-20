@@ -186,9 +186,11 @@ class CaseLaunchService(
         )
 
     /**
-     * The agent matching [agentName] among those deployed to the user in the namespace, or null if there is
-     * none. `findDeployed...` is a prefix match, so the result is narrowed to an exact (case-insensitive) one, as
-     * in `AgentServiceImpl.findAgentByName`. Unknown, disabled and not deployed look the same.
+     * The agent named [agentName] among those deployed to the user in the namespace, or null if there is none.
+     * The query already does the access work: it returns only enabled, non-removed agents deployed to the user,
+     * and matches the name case-insensitively on both sides, so [agentName] is passed as given. What it matches is
+     * a *prefix* (autocomplete semantics, `Reporter` also returns `Reporter-v2`), so the result is narrowed to the
+     * agent whose name is [agentName] in full. Unknown, disabled and not deployed look the same.
      *
      * The launch uses the canonical name of the agent found, not the one the caller typed, for the `@mention` of
      * the first message, the log and the [LaunchedCase].
@@ -202,7 +204,7 @@ class CaseLaunchService(
             .findDeployedByNamespaceIdAndUserIdAndName(
                 namespaceId = namespaceId,
                 userId = userId,
-                agentName = agentName.lowercase(),
+                agentName = agentName,
             ).firstOrNull { it.name.equals(agentName, ignoreCase = true) }
 
     /**
