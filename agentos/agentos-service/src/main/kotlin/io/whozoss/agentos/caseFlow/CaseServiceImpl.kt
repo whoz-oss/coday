@@ -1031,6 +1031,10 @@ class CaseServiceImpl(
         val runtime = getCaseRuntime(subCaseId)
         caseLaunchGate?.requireAccepting(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
+        // A launch gate marks the queued turn PENDING itself. Without one, the turn starts asynchronously:
+        // mark it queued now, in memory (run() publishes RUNNING), so that the delegation waiting on this
+        // sub-case does not take the IDLE left by its previous turn for the end of this one.
+        if (gatedRuns == null) runtime.claimPending()
         launchRun(runtime)
         logger.info { "Sub-case $subCaseId resumed under parent $parentCaseId, agent=$agentName" }
         return runtime
