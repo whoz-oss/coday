@@ -2,19 +2,18 @@ package io.whozoss.agentos.casePlugin
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import java.util.UUID
 
 /**
- * Tool that starts a new case and returns its id.
+ * Tool that starts a new case **for the current user** and returns its id. To start one for someone else, an
+ * agent is granted [FreeCaseLauncherForUserTool] instead (or as well): the two have a fixed schema each, and can be
+ * granted separately through the agent's `integrations`.
  *
  * Input: the agent (by name), the prompt (first message, sent on behalf of the user), an optional
- * title (name of the conversation), an optional session context (free key/value data the new case is shown
- * with its first message), and optionally the user the case runs for. Output: the case id.
+ * title (name of the conversation) and an optional session context (free key/value data the new case is shown
+ * with its first message). Output: the case id ([CaseLauncherOutput]).
  *
  * The target agent runs in the background with its own conversation and the tool returns at once.
  * It does not wait for a result: that is what separates it from `DELEGATE__delegate`, which awaits
@@ -26,9 +25,8 @@ import java.util.UUID
  * The agent is designated by **name**, not by id: names are unique per scope and are what an
  * `@mention` resolves, whereas an id is an internal value an LLM could only guess.
  *
- * The case runs in the **same namespace** as the calling run, and for the **same user** unless the caller
- * names another one, which only an ADMIN of the namespace may do. Who is calling, and from which case, comes
- * from [ToolContext], never from the input: the calling case is [ToolContext.caseId], and a call
+ * The case runs in the **same namespace** and for the **same user** as the calling run. Who is calling, and from
+ * which case, comes from [ToolContext], never from the input: the calling case is [ToolContext.caseId], and a call
  * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`.
  * The calling case's session context is **not** inherited: [Input.sessionContext] is the only thing of the
  * caller that reaches the new case, passed on as given, so the caller hands over just the relevant part. The
@@ -36,21 +34,12 @@ import java.util.UUID
  * the `UserContextProvider` returns and the user's preferred language), which wins over the caller's on a
  * conflicting key.
  *
- * The tool parses the input, applies the agent allowlist of its integration config, and hands the
- * rest to [CaseLaunchService]. The service owns every rule on users: whether the caller may name another
- * user at all (ADMIN of the namespace), and whether that user exists, reads
- * the namespace and has the agent deployed. It signals a refusal with a [CaseLaunchRefusedException], which
- * the tool catches and turns into its error result, the reason being the `errorType`. A failure of the service
- * other than a refusal is not caught here: like any tool failure, it reaches the agent layer, which logs it and
- * reports it to the LLM.
- * Another caller (an AgentLoop step, say) can look the tool up by name and call [executeWithJson],
- * reading the case id from its structured output, so that the integration's config applies to it too.
+ * The tool validates its input, then [CaseLauncher] applies the agent allowlist of its integration config and hands
+ * the rest to [CaseLaunchService]. Another caller can look the tool up by name and call [executeWithJson], reading
+ * the case id from its structured output, so that the integration's config applies to it too.
  *
- * ## `userId`: the schema guides, the service enforces
- *
- * `userId` is always in [inputSchema], described as reserved to administrators of the namespace. That only
- * *guides* the LLM: the service is what *enforces* it. The caller's own id designates the current user and
- * is accepted for anyone.
+ * There is no `userId` in the schema, and a field of that name that an LLM sends anyway is ignored: the case runs
+ * for the caller.
  *
  * @param configName The integration config name, used as tool-name prefix.
  * @param allowedAgents Glob patterns (`*` wildcard, case-insensitive) of the agents this instance
@@ -59,7 +48,7 @@ import java.util.UUID
  */
 class FreeCaseLauncherTool(
     configName: String?,
-    private val caseLaunchService: CaseLaunchService,
+    caseLaunchService: CaseLaunchService,
     private val allowedAgents: List<String> = listOf("*"),
     deniedAgents: Set<String> = emptySet(),
 ) : StandardTool<FreeCaseLauncherTool.Input> {
@@ -68,34 +57,19 @@ class FreeCaseLauncherTool(
      * @param prompt The first message the agent receives, sent on behalf of the user. Must be
      *   self-contained: the new case does not see the conversation it was started from.
      * @param title Name of the new conversation. Omit to derive it from the prompt.
-     * @param userId Internal id of the user the case runs for. Only an ADMIN of the namespace may name a
-     *   user other than the current one. Omit for the current user.
      * @param sessionContext Free key/value data the new case starts with, passed on as given to its first
      *   message, for example what the prompt is about. The calling case's own session context is never passed
-     *   on; the context of the target user is added by the system and wins on a conflicting key.
+     *   on; the context of the user is added by the system and wins on a conflicting key.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class Input(
         val agentName: String,
         val prompt: String,
         val title: String? = null,
-        val userId: String? = null,
         val sessionContext: Map<String, Any?>? = null,
     )
 
-    /**
-     * The whole output of the tool, as [outputSchema] declares it: the id of the case it started. A caller that
-     * reads the structured output (AgentLoop) parses it back into this class.
-     */
-    data class Output(
-        val caseId: UUID,
-    )
-
-    private val allowedRegexes = allowedAgents.map { globToRegex(it) }
-    private val deniedNames = deniedAgents.map { it.lowercase() }.toSet()
-
-    private fun isAgentAllowed(agentName: String): Boolean =
-        agentName.lowercase() !in deniedNames && allowedRegexes.any { it.matches(agentName) }
+    private val launcher = CaseLauncher(caseLaunchService, allowedAgents, deniedAgents)
 
     override val name: String = buildToolName(configName)
     override val version: String = "1.0.0"
@@ -110,137 +84,38 @@ class FreeCaseLauncherTool(
                     "The new case lives on its own: stopping the current case does not stop it. Unlike " +
                     "delegation, nothing waits for it and its result is never returned here. The prompt must be " +
                     "self-contained, the new case cannot see this conversation, and it does not inherit its " +
-                    "context: pass in `sessionContext` only the part the agent needs. ",
-            )
-            append(
-                "The case runs in the current namespace, for the current user unless you pass userId " +
-                    "(only allowed for an administrator of the namespace; the user must have access to " +
-                    "the namespace and the agent).",
+                    "context: pass in `sessionContext` only the part the agent needs. " +
+                    "The case runs for the current user, in the current namespace.",
             )
             if (allowedAgents != listOf("*")) {
                 append(" Agents that can be started: ${allowedAgents.joinToString(", ")}.")
             }
         }
 
-    override val inputSchema: String =
-        objectMapper.writeValueAsString(
-            objectMapper.createObjectNode().apply {
-                put("type", "object")
-                putObject("properties").apply {
-                    putObject("agentName")
-                        .put("type", "string")
-                        .put("description", "Name of the agent that will work on the prompt.")
-                    putObject("prompt")
-                        .put("type", "string")
-                        .put("description", "Full, self-contained first message for the agent, sent on behalf of the user.")
-                    putObject("title")
-                        .put("type", "string")
-                        .put("description", "Name of the new conversation. Omit to derive it from the prompt.")
-                    putObject("userId")
-                        .put("type", "string")
-                        .put("format", "uuid")
-                        .put(
-                            "description",
-                            "Id of the user the case runs for, as returned by another tool. Only an administrator " +
-                                "of the namespace can name a user other than the current one. " +
-                                "Omit for the current user.",
-                        )
-                    putObject("sessionContext").apply {
-                        put("type", "object")
-                        put(
-                            "description",
-                            "Optional key/value data the new case starts with, passed on as given, for example what the " +
-                                "prompt is about. Pass only what the agent needs: nothing of the current session context is " +
-                                "carried over, and the user's own context (identity, language) is added by the system.",
-                        )
-                        put("additionalProperties", true)
-                    }
-                }
-                putArray("required").add("agentName").add("prompt")
-                put("additionalProperties", false)
-            },
-        )
+    override val inputSchema: String = INPUT_SCHEMA
 
-    override fun outputSchema(): JsonNode = OUTPUT_SCHEMA
+    override fun outputSchema(): JsonNode = CaseLauncherOutput.SCHEMA
 
     override suspend fun execute(
         input: Input?,
         context: ToolContext,
-    ): ToolExecutionResult {
-        if (input == null || input.agentName.isBlank() || input.prompt.isBlank()) {
-            return ToolExecutionResult.error("Both agentName and prompt are required.", errorType = "MISSING_INPUT")
-        }
-        val callerId =
-            context.userId
-                ?: return ToolExecutionResult.error(
-                    "Starting a case requires a user context (userId is null).",
-                    errorType = "MISSING_USER_CONTEXT",
-                )
-        val callerCaseId =
-            context.caseId
-                ?: return ToolExecutionResult.error(
-                    "Starting a case requires the calling case (the tool context has no case events).",
-                    errorType = "MISSING_CASE_CONTEXT",
-                )
-        if (!isAgentAllowed(input.agentName)) {
-            return ToolExecutionResult.error(
-                "Agent '${input.agentName}' cannot be started by this tool.",
-                errorType = "UNAUTHORIZED_AGENT",
-            )
-        }
-        val requestedUserId = input.userId?.takeIf { it.isNotBlank() }
-        val targetUserId = requestedUserId?.let { runCatching { UUID.fromString(it) }.getOrNull() }
-        if (requestedUserId != null && targetUserId == null) {
-            return ToolExecutionResult.error("userId must be a valid UUID.", errorType = "INVALID_INPUT")
-        }
-        val request =
-            CaseLaunchRequest(
-                callerUserId = callerId,
-                callerNamespaceId = context.namespaceId,
-                callerCaseId = callerCaseId,
-                agentName = input.agentName,
-                prompt = input.prompt,
-                targetUserId = targetUserId,
-                title = input.title,
-                sessionContext = input.sessionContext,
-            )
-        return try {
-            caseLaunchService.launch(request).toToolResult()
-        } catch (refusal: CaseLaunchRefusedException) {
-            ToolExecutionResult.error(refusal.message, errorType = refusal.reason.name)
-        }
-    }
+    ): ToolExecutionResult =
+        when {
+            input == null || input.agentName.isBlank() || input.prompt.isBlank() ->
+                ToolExecutionResult.error("Both agentName and prompt are required.", errorType = "MISSING_INPUT")
 
-    private fun LaunchedCase.toToolResult(): ToolExecutionResult =
-        ToolExecutionResult.success(
-            "Case $caseId started for agent '$agentName'. " +
-                "It runs in the background on its own; its result is not returned here.",
-            metadata =
-                mapOf(
-                    "caseId" to caseId.toString(),
-                    "userId" to userId.toString(),
-                    "agentName" to agentName,
-                ),
-            structuredOutput = objectMapper.valueToTree(Output(caseId = caseId)),
-        )
+            else ->
+                launcher.launch(
+                    context = context,
+                    agentName = input.agentName,
+                    prompt = input.prompt,
+                    title = input.title,
+                    sessionContext = input.sessionContext,
+                    targetUserId = null,
+                )
+        }
 
     companion object {
-        private val objectMapper = jacksonObjectMapper()
-
-        /** The whole output of the tool: the id of the case it started. */
-        private val OUTPUT_SCHEMA: JsonNode =
-            objectMapper.readTree(
-                """
-                {
-                  "type": "object",
-                  "properties": {
-                    "caseId": { "type": "string", "format": "uuid", "description": "Id of the case that was started." }
-                  },
-                  "required": ["caseId"]
-                }
-                """.trimIndent(),
-            )
-
         /** Name of the tool, bare or after the `__` that follows its integration config name. */
         const val TOOL_NAME = "FreeCaseLauncher"
 
@@ -248,5 +123,33 @@ class FreeCaseLauncherTool(
 
         /** Whether [toolName] is a `FreeCaseLauncher` tool, whatever its integration config. */
         fun isFreeCaseLauncherTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
+
+        private val INPUT_SCHEMA =
+            """
+            {
+              "type": "object",
+              "properties": {
+                "agentName": {
+                  "type": "string",
+                  "description": "Name of the agent that will work on the prompt."
+                },
+                "prompt": {
+                  "type": "string",
+                  "description": "Full, self-contained first message for the agent, sent on behalf of the user."
+                },
+                "title": {
+                  "type": "string",
+                  "description": "Name of the new conversation. Omit to derive it from the prompt."
+                },
+                "sessionContext": {
+                  "type": "object",
+                  "description": "Optional key/value data the new case starts with, passed on as given, for example what the prompt is about. Pass only what the agent needs: nothing of the current session context is carried over, and the user's own context (identity, language) is added by the system.",
+                  "additionalProperties": true
+                }
+              },
+              "required": ["agentName", "prompt"],
+              "additionalProperties": false
+            }
+            """.trimIndent()
     }
 }

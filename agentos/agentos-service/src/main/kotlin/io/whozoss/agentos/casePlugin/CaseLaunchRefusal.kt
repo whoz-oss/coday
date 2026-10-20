@@ -2,7 +2,7 @@ package io.whozoss.agentos.casePlugin
 
 /**
  * Why a launch was refused: a business rule, never a failure. The name is the stable `errorType` the
- * `FreeCaseLauncher` tool reports.
+ * launcher tools report.
  */
 enum class CaseLaunchRefusal {
     /**

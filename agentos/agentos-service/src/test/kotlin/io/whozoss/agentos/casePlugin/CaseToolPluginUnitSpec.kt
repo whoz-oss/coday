@@ -45,6 +45,8 @@ class CaseToolPluginUnitSpec :
 
         fun List<StandardTool<*>>.launcher() = filterIsInstance<FreeCaseLauncherTool>().single()
 
+        fun List<StandardTool<*>>.launcherForUser() = filterIsInstance<FreeCaseLauncherForUserTool>().single()
+
         // -------------------------------------------------------------------------
         // context == null guard
         // -------------------------------------------------------------------------
@@ -62,12 +64,13 @@ class CaseToolPluginUnitSpec :
             plugin().integrationType shouldBe "CASE"
         }
 
-        "provides both tools, a ReadCaseTool and a FreeCaseLauncherTool, when context is provided" {
+        "provides the three tools, ReadCase and the two launchers, when context is provided" {
             val tools = plugin().provideTools(config = null, context = context())
 
-            tools shouldHaveSize 2
+            tools shouldHaveSize 3
             tools.readCase()
             tools.launcher()
+            tools.launcherForUser()
         }
 
         "the configSchema declares the read and the launch parameters, and refuses anything else" {
@@ -93,7 +96,7 @@ class CaseToolPluginUnitSpec :
         "defaults includesTechnicalEvents to true when config has no 'includesTechnicalEvents' key" {
             val config = mapper.readTree("{\"someOtherKey\": 42}")
             val tools = plugin().provideTools(config = config, context = context())
-            tools shouldHaveSize 2
+            tools shouldHaveSize 3
         }
 
         // -------------------------------------------------------------------------
@@ -105,7 +108,7 @@ class CaseToolPluginUnitSpec :
             // here we only verify that the plugin reads the config value without breaking the tool set.
             val config = mapper.readTree("{\"includesTechnicalEvents\": false}")
             val tools = plugin().provideTools(config = config, context = context())
-            tools shouldHaveSize 2
+            tools shouldHaveSize 3
             // The flag value is tested in ReadCaseToolUnitSpec and CaseTranscriptFormatterUnitSpec.
             tools.readCase()
         }
@@ -113,7 +116,7 @@ class CaseToolPluginUnitSpec :
         "propagates includesTechnicalEvents=true from config" {
             val config = mapper.readTree("{\"includesTechnicalEvents\": true}")
             val tools = plugin().provideTools(config = config, context = context())
-            tools shouldHaveSize 2
+            tools shouldHaveSize 3
             tools.readCase()
         }
 
@@ -129,11 +132,12 @@ class CaseToolPluginUnitSpec :
         "propagates configName to FreeCaseLauncherTool" {
             val tools = plugin().provideTools(config = null, configName = "CASE_prod", context = context())
             tools.launcher().name shouldBe "CASE_prod__FreeCaseLauncher"
+            tools.launcherForUser().name shouldBe "CASE_prod__FreeCaseLauncherForUser"
         }
 
         "uses default tool names when configName is null" {
             val tools = plugin().provideTools(config = null, configName = null, context = context())
-            tools.map { it.name } shouldContainExactlyInAnyOrder listOf("ReadCase", "FreeCaseLauncher")
+            tools.map { it.name } shouldContainExactlyInAnyOrder listOf("ReadCase", "FreeCaseLauncher", "FreeCaseLauncherForUser")
         }
 
         // -------------------------------------------------------------------------
@@ -190,16 +194,26 @@ class CaseToolPluginUnitSpec :
         "agents and deniedAgents from the config bound the launcher" {
             val config = mapper.readTree("""{"agents": ["Profile*"], "deniedAgents": ["ProfileAdmin"]}""")
             val ctx = runContext()
-            val tool = plugin().provideTools(config, "CASE_x", ctx).launcher()
+            val tools = plugin().provideTools(config, "CASE_x", ctx)
+            val someone = UUID.randomUUID().toString()
 
-            tool.execute(FreeCaseLauncherTool.Input("ProfileAdmin", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
-            tool.execute(FreeCaseLauncherTool.Input("Reporter", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tools.launcher().execute(FreeCaseLauncherTool.Input("ProfileAdmin", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tools.launcher().execute(FreeCaseLauncherTool.Input("Reporter", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tools.launcherForUser().execute(FreeCaseLauncherForUserTool.Input("ProfileAdmin", "t", someone), ctx).errorType shouldBe
+                "UNAUTHORIZED_AGENT"
+            tools.launcherForUser().execute(FreeCaseLauncherForUserTool.Input("Reporter", "t", someone), ctx).errorType shouldBe
+                "UNAUTHORIZED_AGENT"
         }
 
-        "the launcher always offers userId: who may use it is decided by the service, not by the config" {
-            val tool = plugin().provideTools(null, null, context()).launcher()
+        "the schemas are fixed by the tool, not by the config or the caller: userId is in one launcher and not in the other" {
+            listOf(null, mapper.readTree("""{"agents": ["Profile*"]}""")).forEach { config ->
+                listOf(context(), runContext()).forEach { ctx ->
+                    val tools = plugin().provideTools(config, null, ctx)
 
-            mapper.readTree(tool.inputSchema)["properties"].has("userId") shouldBe true
+                    mapper.readTree(tools.launcher().inputSchema)["properties"].has("userId") shouldBe false
+                    mapper.readTree(tools.launcherForUser().inputSchema)["properties"].has("userId") shouldBe true
+                }
+            }
         }
 
         "an anonymous run still gets the launcher, which refuses it at execution: the tool is not withheld" {

@@ -13,7 +13,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.whozoss.agentos.casePlugin.FreeCaseLauncherTool
+import io.whozoss.agentos.casePlugin.CaseLauncherOutput
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
@@ -88,7 +88,7 @@ class LoopWorkflowRunnerUnitSpec :
             /** Stands in for the `FreeCaseLauncher` tool: records the call, answers like the real one. */
             val createCaseTool: StandardTool<*> =
                 mockk<StandardTool<*>>().also { tool ->
-                    every { tool.name } returns "FreeCaseLauncher"
+                    every { tool.name } returns "FreeCaseLauncherForUser"
                     coEvery { tool.executeWithJson(any(), any()) } answers {
                         val call = Call(objectMapper.readTree(firstArg<String>()), secondArg())
                         calls += call
@@ -107,7 +107,7 @@ class LoopWorkflowRunnerUnitSpec :
                 ToolExecutionResult.success(
                     "Case $id started.",
                     metadata = mapOf("caseId" to id.toString(), "agentName" to "ProfileCaretaker"),
-                    structuredOutput = objectMapper.valueToTree(FreeCaseLauncherTool.Output(caseId = id)),
+                    structuredOutput = objectMapper.valueToTree(CaseLauncherOutput(caseId = id)),
                 )
 
             fun knownUser(externalId: String): User =
@@ -199,7 +199,7 @@ class LoopWorkflowRunnerUnitSpec :
 
             val reason = f.runner.run(payload, context(listOf(search))) { true }.reason()
 
-            reason shouldContain "'FreeCaseLauncher' tool is not available"
+            reason shouldContain "'FreeCaseLauncherForUser' tool is not available"
             reason shouldContain "CASE integration"
             coVerify(exactly = 0) { search.executeWithJson(any(), any()) }
         }
@@ -208,7 +208,7 @@ class LoopWorkflowRunnerUnitSpec :
             val f = Fixture(objectMapper)
             val prefixed =
                 mockk<StandardTool<*>>().also { tool ->
-                    every { tool.name } returns "LAUNCHER__FreeCaseLauncher"
+                    every { tool.name } returns "LAUNCHER__FreeCaseLauncherForUser"
                     coEvery { tool.executeWithJson(any(), any()) } returns f.success(UUID.randomUUID())
                 }
             // the end user is the triggering user, so no ADMIN right is involved

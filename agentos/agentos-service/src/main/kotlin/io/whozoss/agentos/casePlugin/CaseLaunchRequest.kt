@@ -3,7 +3,7 @@ package io.whozoss.agentos.casePlugin
 import java.util.UUID
 
 /**
- * What a caller (today the `FreeCaseLauncher` tool) asks for: start [agentName] on [prompt].
+ * What a caller (today the `FreeCaseLauncher` and `FreeCaseLauncherForUser` tools) asks for: start [agentName] on [prompt].
  *
  * The `caller*` fields describe the running case and come from it, never from LLM input.
  *

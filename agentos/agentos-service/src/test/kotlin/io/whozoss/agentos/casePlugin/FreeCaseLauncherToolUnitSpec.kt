@@ -18,10 +18,10 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
 /**
- * Unit tests for [FreeCaseLauncherTool]: input and output contract, the agent allowlist, the `userId`
- * input, schema and the hand-off to [CaseLaunchService]. The target user rules (ADMIN of the namespace,
- * access of the target) and agent access are in
- * [CaseLaunchServiceUnitSpec].
+ * Unit tests for [FreeCaseLauncherTool], the launcher for the current user: input and output contract, the agent
+ * allowlist, its fixed schema (no `userId`) and the hand-off to [CaseLaunchService]. The launcher for another user is
+ * in [FreeCaseLauncherForUserToolUnitSpec]; the target user rules (ADMIN of the namespace, access of the target)
+ * and agent access are in [CaseLaunchServiceUnitSpec].
  */
 class FreeCaseLauncherToolUnitSpec :
     StringSpec({
@@ -166,45 +166,20 @@ class FreeCaseLauncherToolUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Another user
+        // Always for the current user
         // -------------------------------------------------------------------------
 
-        "a userId the service refuses because the caller is not an ADMIN of the namespace comes back as its refusal" {
-            val result =
-                tool(refusingService(CaseLaunchRefusal.FORBIDDEN))
-                    .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
-
-            result.success shouldBe false
-            result.errorType shouldBe "FORBIDDEN"
-        }
-
-        "a userId that is not a UUID is INVALID_INPUT, and nothing is launched" {
-            val launcher = service()
-
-            val result =
-                tool(launcher)
-                    .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = "alice@example.com"), context())
-
-            result.errorType shouldBe "INVALID_INPUT"
-            verify(exactly = 0) { launcher.launch(any()) }
-        }
-
-        "the userId is handed to the service, which owns the ADMIN and target user checks" {
+        "a userId the LLM sends anyway is ignored: the case runs for the caller" {
             val request = slot<CaseLaunchRequest>()
             val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
 
-            tool(launcher)
-                .execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = targetId.toString()), context())
+            val result =
+                tool(launcher).executeWithJson(
+                    """{"agentName": "Reporter", "prompt": "go", "userId": "$targetId"}""",
+                    context(),
+                )
 
-            request.captured.targetUserId shouldBe targetId
-        }
-
-        "a blank userId is treated as absent" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
-
-            tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt", userId = "  "), context())
-
+            result.success shouldBe true
             request.captured.targetUserId shouldBe null
         }
 
@@ -255,11 +230,11 @@ class FreeCaseLauncherToolUnitSpec :
             result.output shouldContain newCaseId.toString()
             result.metadata["caseId"] shouldBe newCaseId.toString()
             result.metadata["userId"] shouldBe userId.toString()
-            mapper.treeToValue(result.structuredOutput, FreeCaseLauncherTool.Output::class.java) shouldBe
-                FreeCaseLauncherTool.Output(caseId = newCaseId)
+            mapper.treeToValue(result.structuredOutput, CaseLauncherOutput::class.java) shouldBe
+                CaseLauncherOutput(caseId = newCaseId)
         }
 
-        "the structured output is an Output, with exactly the fields the output schema declares, all required" {
+        "the structured output is a CaseLauncherOutput, with exactly the fields the output schema declares, all required" {
             val t = tool()
             val schema = t.outputSchema()!!
             val result = t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
@@ -304,13 +279,25 @@ class FreeCaseLauncherToolUnitSpec :
         // Schema and description
         // -------------------------------------------------------------------------
 
-        "the input schema declares exactly the fields of Input, and userId is never required" {
-            val everyField = FreeCaseLauncherTool.Input("agent", "prompt", "title", "user", emptyMap())
+        "the input schema declares exactly the fields of Input, and no userId" {
+            val everyField = FreeCaseLauncherTool.Input("agent", "prompt", "title", emptyMap())
             val inputFields = mapper.valueToTree<JsonNode>(everyField).fieldNames().asSequence().toList()
             val schema = mapper.readTree(tool().inputSchema)
 
             schema["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder inputFields
+            schema["properties"].has("userId") shouldBe false
             schema["required"].map { it.asText() } shouldContainExactlyInAnyOrder listOf("agentName", "prompt")
+        }
+
+        "the schema is the same whatever the configuration and the caller: it is fixed by the tool" {
+            val schemas =
+                listOf(
+                    tool(),
+                    tool(allowedAgents = listOf("Profile*"), deniedAgents = setOf("x")),
+                    tool(configName = "LAUNCHER"),
+                ).map { it.inputSchema }
+
+            schemas.toSet().size shouldBe 1
         }
 
         "the description says the case lives on its own, is not stopped with the current one, and is not awaited" {
@@ -323,9 +310,9 @@ class FreeCaseLauncherToolUnitSpec :
             tool().description shouldContain "does not inherit"
         }
 
-        "the description mentions userId, reserved to administrators of the namespace" {
-            tool().description shouldContain "userId"
-            tool().description shouldContain "administrator of the namespace"
+        "the description says the case runs for the current user, and does not mention userId" {
+            tool().description shouldContain "for the current user"
+            tool().description shouldNotContain "userId"
         }
 
         "the description lists the allowed agents only when they are restricted" {

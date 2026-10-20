@@ -15,7 +15,9 @@ import java.util.UUID
  * with *other* cases of its namespace.
  *
  * - [ReadCaseTool] (`ReadCase`): reads the transcript of another case.
- * - [FreeCaseLauncherTool] (`FreeCaseLauncher`): starts a new, independent case with another agent.
+ * - [FreeCaseLauncherTool] (`FreeCaseLauncher`): starts a new, independent case with another agent, for the
+ *   current user.
+ * - [FreeCaseLauncherForUserTool] (`FreeCaseLauncherForUser`): the same, for a user named by the caller.
  *
  * Like [io.whozoss.agentos.redirect.RedirectToolPlugin], this class is NOT annotated
  * with `@Component`: it is instantiated as a `@Bean` in [CasePluginConfiguration], so that the
@@ -25,16 +27,18 @@ import java.util.UUID
  *
  * An admin creates an [io.whozoss.agentos.integrationConfig.IntegrationConfig] of type `CASE` and
  * assigns it to the relevant [io.whozoss.agentos.agentConfig.AgentConfig] via `integrations`.
- * Both tools are provided by every config. To grant only one of them, the agent names it in its
- * `integrations` map (`CASE_x: [ReadCase]`); an agent that maps the config to `null` receives both.
+ * The three tools are provided by every config. To grant only some of them, the agent names them in its
+ * `integrations` map (`CASE_x: [ReadCase, FreeCaseLauncher]`); an agent that maps the config to `null` receives
+ * all three.
  *
  * ## Configuration
  *
  * - `includesTechnicalEvents`: read side, shape of the transcript returned by `ReadCase`.
- * - `agents` / `deniedAgents`: launch side, see [FreeCaseLauncherTool]. They have no effect on `ReadCase`.
+ * - `agents` / `deniedAgents`: launch side, shared by both launcher tools. They have no effect on `ReadCase`.
  *
- * Starting a case for another user is not configured here: the service requires the calling user to be
- * ADMIN of the namespace. `agents` / `deniedAgents` bound what an agent may start, which is why `CASE` is
+ * Starting a case for another user is not a parameter: it is a tool of its own, which an agent has to be
+ * granted, and the service additionally requires the calling user to be ADMIN of the namespace.
+ * `agents` / `deniedAgents` bound what an agent may start, which is why `CASE` is
  * on the list of integration types refused in user scopes
  * ([io.whozoss.agentos.integrationConfig.IntegrationsProperties.userScopeDeniedTypes]): a user overlay
  * could otherwise widen them.
@@ -83,6 +87,12 @@ class CaseToolPlugin(
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
                 deniedAgents = config.stringList("deniedAgents").toSet(),
             ),
+            FreeCaseLauncherForUserTool(
+                configName = configName,
+                caseLaunchService = caseLaunchService,
+                allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
+                deniedAgents = config.stringList("deniedAgents").toSet(),
+            ),
         )
     }
 
@@ -95,7 +105,7 @@ class CaseToolPlugin(
                 {
                   "type": "object",
                   "title": "Case Plugin Configuration",
-                  "description": "Lets an agent work with other cases of the namespace: read the transcript of a case (ReadCase) and start a new case with another agent (FreeCaseLauncher). The new case lives on its own: stopping the agent's case does not stop it. It runs in the background, in the same namespace, and its result is not returned to the caller. An agent can be granted only one of the two tools by naming it in its integrations.",
+                  "description": "Lets an agent work with other cases of the namespace: read the transcript of a case (ReadCase) and start a new case with another agent, for yourself (FreeCaseLauncher) or for another user (FreeCaseLauncherForUser). The new case lives on its own: stopping the agent's case does not stop it. It runs in the background, in the same namespace, and its result is not returned to the caller. An agent can be granted only some of the three tools by naming them in its integrations.",
                   "properties": {
                     "includesTechnicalEvents": {
                       "type": "boolean",
@@ -106,14 +116,14 @@ class CaseToolPlugin(
                     "agents": {
                       "type": "array",
                       "title": "Allowed Agents",
-                      "description": "FreeCaseLauncher: glob patterns matching the agent names this integration may start. Use \"*\" for all agents. Examples: [\"*\"], [\"Profile*\", \"Report*\"].",
+                      "description": "FreeCaseLauncher and FreeCaseLauncherForUser: glob patterns matching the agent names this integration may start. Use \"*\" for all agents. Examples: [\"*\"], [\"Profile*\", \"Report*\"].",
                       "items": { "type": "string" },
                       "default": ["*"]
                     },
                     "deniedAgents": {
                       "type": "array",
                       "title": "Denied Agents",
-                      "description": "FreeCaseLauncher: exact agent names (case-insensitive) that are never started, even if they match an allowed pattern.",
+                      "description": "FreeCaseLauncher and FreeCaseLauncherForUser: exact agent names (case-insensitive) that are never started, even if they match an allowed pattern.",
                       "items": { "type": "string" },
                       "uniqueItems": true
                     }

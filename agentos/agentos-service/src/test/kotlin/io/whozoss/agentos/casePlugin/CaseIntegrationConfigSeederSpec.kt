@@ -142,5 +142,6 @@ class CaseIntegrationConfigSeederSpec :
             name shouldBe "CASE"
             "${name}__ReadCase" shouldBe ReadCaseTool.buildToolName(name)
             "${name}__FreeCaseLauncher" shouldBe FreeCaseLauncherTool.buildToolName(name)
+            "${name}__FreeCaseLauncherForUser" shouldBe FreeCaseLauncherForUserTool.buildToolName(name)
         }
     })

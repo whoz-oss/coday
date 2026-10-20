@@ -23,7 +23,8 @@ import java.util.UUID
  * [io.whozoss.agentos.integrationConfig.IntegrationsProperties.autoGrantableTypes].
  *
  * An agent then names `CASE` in its `integrations`, optionally narrowing it to one tool
- * (`CASE: [ReadCase]`). Tools are named `CASE__ReadCase` and `CASE__FreeCaseLauncher`.
+ * (`CASE: [ReadCase]`). Tools are named `CASE__ReadCase`, `CASE__FreeCaseLauncher` (for the current user) and
+ * `CASE__FreeCaseLauncherForUser` (for a user the caller names, ADMIN of the namespace only).
  *
  * ## Parameters
  *
