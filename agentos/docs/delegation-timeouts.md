@@ -86,5 +86,6 @@ On expiration, AgentOS stops the child and its active descendants as the Stop bu
 does: the call in progress is cancelled and the child ends idle. The delegation
 returns `TIMEOUT` with the child's `subCaseId`; the delegating agent resumes the child
 by delegating again with that `subCaseId`, and the child continues from its history.
+If the child cannot be stopped, the result says so and does not offer to resume it.
 When an agent becomes idle with a pending question before expiration, the question is
 returned to the parent as usual.
