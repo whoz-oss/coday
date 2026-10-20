@@ -16,8 +16,18 @@ package io.whozoss.agentos.plugins.file.tools
 internal fun String.withScopeGuidance(guidance: String?): String =
     when {
         guidance.isNullOrBlank() -> this
-        else -> "$this\n${guidance.trim().take(MAX_SCOPE_GUIDANCE_LENGTH)}"
+        else -> "$this\n${guidance.trim().clampedToLength(MAX_SCOPE_GUIDANCE_LENGTH)}"
     }
+
+/**
+ * The first [limit] characters, never cut inside a surrogate pair.
+ *
+ * `take` counts UTF-16 code units, so a limit landing between the two halves of an astral character
+ * (any emoji) would leave a lone high surrogate. Jackson refuses to serialise one, which would fail
+ * every request of every run of the agent carrying that description, rather than the cosmetic
+ * truncation this clamp is for.
+ */
+private fun String.clampedToLength(limit: Int): String = take(limit).trimEnd { it.isHighSurrogate() }
 
 /**
  * The longest scope guidance appended to a description.

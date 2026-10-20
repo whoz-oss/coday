@@ -53,7 +53,9 @@ fun substituteJsonTokens(
  *
  * The cheap question a caller asks before resolving what a token stands for: that resolution can
  * cost database reads, and most configs carry no token at all. One walk answers for every candidate
- * at once, and nothing is serialized. The early exit only fires once every candidate has been seen,
+ * at once, and nothing is serialized. The early exit compares sizes, which is why [candidates] is a
+ * set: a list with a repeated token would cap [found] below it and disable the exit for good. It
+ * only fires once every candidate has been seen,
  * so the common no-token case does traverse the whole node — an integration may hold a whole inline
  * OpenAPI document in its parameters. That traversal is in-memory and bounded by a tree the caller
  * has just deserialized from the database anyway; what it buys is never resolving a token nobody
@@ -61,7 +63,7 @@ fun substituteJsonTokens(
  */
 fun jsonTokensPresent(
     node: JsonNode?,
-    candidates: Collection<String>,
+    candidates: Set<String>,
 ): Set<String> {
     val found = mutableSetOf<String>()
     collectTokens(node, candidates, found)
@@ -70,7 +72,7 @@ fun jsonTokensPresent(
 
 private fun collectTokens(
     node: JsonNode?,
-    candidates: Collection<String>,
+    candidates: Set<String>,
     found: MutableSet<String>,
 ) {
     when {

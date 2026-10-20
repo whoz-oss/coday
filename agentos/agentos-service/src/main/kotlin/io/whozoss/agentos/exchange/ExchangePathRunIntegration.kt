@@ -349,7 +349,7 @@ class ExchangePathRunIntegration(
 
     companion object : KLogging() {
         private val ALL_TOKENS =
-            listOf(
+            setOf(
                 ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN,
                 ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN,
             )

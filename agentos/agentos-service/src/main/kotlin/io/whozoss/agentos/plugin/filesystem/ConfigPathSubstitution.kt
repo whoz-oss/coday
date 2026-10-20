@@ -2,7 +2,6 @@ package io.whozoss.agentos.plugin.filesystem
 
 import com.fasterxml.jackson.databind.JsonNode
 import io.whozoss.agentos.util.substituteJsonTokens
-import io.whozoss.agentos.util.substituteTokens
 
 /**
  * Token substituted, at filesystem-YAML parse time only, by the owning namespace's
@@ -22,11 +21,18 @@ import io.whozoss.agentos.util.substituteTokens
  */
 const val NAMESPACE_CONFIG_PATH_TOKEN = "{{NAMESPACE_CONFIG_PATH}}"
 
-/** Replaces every occurrence of [NAMESPACE_CONFIG_PATH_TOKEN] in [text] with [configPath]. */
+/**
+ * Replaces every occurrence of [NAMESPACE_CONFIG_PATH_TOKEN] in [text] with [configPath].
+ *
+ * One token, so a direct `replace` rather than [io.whozoss.agentos.util.substituteTokens], which
+ * would fold over a one-entry map to reach the same call. This runs per text node of every
+ * filesystem integration and agent config at load time. Only the recursive JSON walk is worth
+ * sharing, and that is [substituteJsonTokens].
+ */
 fun substituteConfigPath(
     text: String,
     configPath: String,
-): String = substituteTokens(text, mapOf(NAMESPACE_CONFIG_PATH_TOKEN to configPath))
+): String = text.replace(NAMESPACE_CONFIG_PATH_TOKEN, configPath)
 
 /**
  * Returns a new [JsonNode] with [NAMESPACE_CONFIG_PATH_TOKEN] substituted by [configPath]

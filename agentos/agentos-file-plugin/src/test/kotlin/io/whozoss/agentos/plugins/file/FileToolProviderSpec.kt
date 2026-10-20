@@ -116,6 +116,26 @@ class FileToolProviderSpec : StringSpec() {
                 "a failure on one file does not prevent others from being processed."
         }
 
+        "the clamp never cuts inside a surrogate pair" {
+            // take() counts UTF-16 code units. An emoji straddling the limit would leave a lone high
+            // surrogate, which Jackson refuses to serialise, so every request of every run of this
+            // agent would fail instead of the sentence being merely truncated.
+            val straddling = "x".repeat(MAX_SCOPE_GUIDANCE_LENGTH - 1) + "\uD83D\uDE00"
+            val config = jacksonObjectMapper().readTree(
+                """{"rootPath": "${tempDir.pathString}", "scopeGuidance": "$straddling"}""",
+            )
+
+            val guidance =
+                FileToolProvider()
+                    .provideTools(config, "TEST")
+                    .first { it.name == "TEST__editFiles" }
+                    .description
+                    .substringAfterLast("\n")
+
+            guidance shouldBe "x".repeat(MAX_SCOPE_GUIDANCE_LENGTH - 1)
+            guidance.any { it.isSurrogate() } shouldBe false
+        }
+
         "the write tools are exactly the three names the service and the frontend mirror" {
             // AgentOS keeps the same three names in ExchangeIntegrationTypes.MUTATING_TOOLS, and the
             // frontend in its exchange-mutation matcher, to answer whether an allowlist left a scope
