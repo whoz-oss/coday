@@ -6,7 +6,7 @@ from the **delegating agent**, in seconds:
 
 1. The agent's `delegationTimeoutSeconds`, when explicitly set.
 2. The server's `agentos.defaults.delegation-timeout-seconds`.
-3. The application default of **300 seconds** (five minutes).
+3. The application default of **600 seconds** (ten minutes).
 
 ## Server configuration
 
