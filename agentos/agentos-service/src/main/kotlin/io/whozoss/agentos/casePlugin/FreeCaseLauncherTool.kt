@@ -50,7 +50,7 @@ class FreeCaseLauncherTool(
     configName: String?,
     caseLaunchService: CaseLaunchService,
     private val allowedAgents: List<String> = listOf("*"),
-    deniedAgents: Set<String> = emptySet(),
+    private val deniedAgents: Set<String> = emptySet(),
 ) : StandardTool<FreeCaseLauncherTool.Input> {
     /**
      * @param agentName Name of the agent that runs the new case.
@@ -89,6 +89,9 @@ class FreeCaseLauncherTool(
             )
             if (allowedAgents != listOf("*")) {
                 append(" Agents that can be started: ${allowedAgents.joinToString(", ")}.")
+            }
+            if (deniedAgents.isNotEmpty()) {
+                append(" Agents that can never be started: ${deniedAgents.joinToString(", ")}.")
             }
         }
 

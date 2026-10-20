@@ -319,4 +319,14 @@ class FreeCaseLauncherToolUnitSpec :
             tool().description shouldNotContain "Agents that can be started"
             tool(allowedAgents = listOf("Profile*")).description shouldContain "Agents that can be started: Profile*"
         }
+
+        "the description lists the denied agents only when there are some, whether or not the allowed ones are restricted" {
+            tool().description shouldNotContain "can never be started"
+            tool(deniedAgents = setOf("Admin", "Billing")).description shouldContain
+                "Agents that can never be started: Admin, Billing."
+            tool(allowedAgents = listOf("Profile*"), deniedAgents = setOf("ProfileAdmin")).description.also {
+                it shouldContain "Agents that can be started: Profile*."
+                it shouldContain "Agents that can never be started: ProfileAdmin."
+            }
+        }
     })

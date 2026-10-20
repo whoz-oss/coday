@@ -7,6 +7,7 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -189,5 +190,14 @@ class FreeCaseLauncherForUserToolUnitSpec :
         "the description says the case runs for the given user, and that only an administrator can name another one" {
             tool().description shouldContain "given by userId"
             tool().description shouldContain "administrator of the namespace"
+        }
+
+        "the description lists the allowed and the denied agents, each only when they restrict something" {
+            tool().description shouldNotContain "Agents that can be started"
+            tool().description shouldNotContain "can never be started"
+            tool(allowedAgents = listOf("Profile*"), deniedAgents = setOf("ProfileAdmin")).description.also {
+                it shouldContain "Agents that can be started: Profile*."
+                it shouldContain "Agents that can never be started: ProfileAdmin."
+            }
         }
     })
