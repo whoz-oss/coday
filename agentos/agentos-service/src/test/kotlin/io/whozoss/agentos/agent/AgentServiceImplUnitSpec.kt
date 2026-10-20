@@ -312,6 +312,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 every { runtime.id } returns childId
                 every { runtime.statusFlow } returns status
                 every { runtime.activityCount } returns 0L
+                every { runtime.isRunning() } returns false
                 every { manager.startSubCase(any(), any(), any(), any(), any()) } returns runtime
                 every { manager.interruptCase(childId) } answers { status.value = CaseStatus.IDLE }
                 val agent = agentService.findAgentByName("timeout-parent", context, manager)
