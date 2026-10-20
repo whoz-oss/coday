@@ -73,9 +73,9 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             ResolvedExchangeRoot(path = casePath, ownerCaseId = ownerCaseId, unavailableReason = null)
     }
 
-    private fun givenNamespaceRead(allowed: Boolean = true) {
+    private fun givenNamespaceWrite(allowed: Boolean = true) {
         every {
-            exchangeCapabilityService.canRead(userId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            exchangeCapabilityService.canWrite(userId.toString(), EntityType.NAMESPACE, namespaceId.toString())
         } returns allowed
         if (allowed) {
             every { exchangeStorageService.namespaceRoot(namespaceId) } returns namespacePath
@@ -92,8 +92,8 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             result.single().parameters.text("workingDirectory") shouldBe "$casePath/repo"
         }
 
-        "the namespace token becomes the shared directory for a user who holds Namespace READ" {
-            givenNamespaceRead()
+        "the namespace token becomes the shared directory for a user who holds Namespace WRITE" {
+            givenNamespaceWrite()
             val configs = listOf(config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""))
 
             val result = customizer.customize(configs, context.copy(userId = userId))
@@ -101,11 +101,12 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             result.single().parameters.text("workingDirectory") shouldBe namespacePath.toString()
         }
 
-        "the namespace token is refused to a user without Namespace READ" {
-            // Namespace READ is the floor the REST namespace-file endpoints enforce through
-            // @PreAuthorize, and the one AgentServiceImpl applies before granting a single namespace
-            // file tool. A shell bound to that directory must not be the way around it.
-            givenNamespaceRead(allowed = false)
+        "the namespace token is refused to a user without Namespace WRITE" {
+            // A shell or an MCP server rooted at that directory writes, and nothing can make it
+            // read-only. Namespace READ only gets the namespace file tools granted, read-only
+            // without WRITE, so resolving this token on READ would be the way around both them and
+            // the REST namespace-file endpoints.
+            givenNamespaceWrite(allowed = false)
             val configs = listOf(config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""))
 
             customizer.customize(configs, context.copy(userId = userId)).shouldBeEmpty()
@@ -116,7 +117,7 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             val configs = listOf(config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""))
 
             customizer.customize(configs, context).shouldBeEmpty()
-            verify(exactly = 0) { exchangeCapabilityService.canRead(any(), any(), any()) }
+            verify(exactly = 0) { exchangeCapabilityService.canWrite(any(), any(), any()) }
         }
 
         "tokens are substituted anywhere in the tree, not only at the top level" {
@@ -184,7 +185,7 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
 
         "an unresolvable token removes its own integration and no other" {
             givenCaseRoot()
-            givenNamespaceRead()
+            givenNamespaceWrite()
             val configs =
                 listOf(
                     config("shared", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}"""),
@@ -260,7 +261,7 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
         }
 
         "configs that carry no parameters are passed through untouched" {
-            givenNamespaceRead()
+            givenNamespaceWrite()
             val withToken = config("index", """{"workingDirectory": "{{NAMESPACE_EXCHANGE}}"}""")
             val withoutParameters = config("datetime", null)
 

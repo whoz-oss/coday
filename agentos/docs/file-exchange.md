@@ -202,7 +202,7 @@ instead of a path, anywhere in an integration's parameters:
 | Token | Resolves to | Available |
 |---|---|---|
 | `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case), and only for a user who may write the case that owns the directory |
-| `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | only for a user who holds Namespace `READ` |
+| `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | only for a user who holds Namespace `WRITE` |
 
 ```yaml
 # BASH, running the case's own checkout
@@ -221,12 +221,14 @@ Substitution is textual and positional, so a token also works mid-string (`cd
 entirely for a run whose integrations carry no token, since resolving the case one costs a read of
 the case and of its family binding.
 
-Each token carries the permission rule of the agent's own file tools for the same directory, because
-a shell pointed at a directory is a write surface. `{{CASE_EXCHANGE}}`: the run's own directory needs
-no gate, since the invoking user holds Case `WRITE` on that case to have reached this point, but a
-directory owned by *another* case — a family's shared workspace — additionally requires that user's
-permission on the owner, because delegation does not confer its rights. `{{NAMESPACE_EXCHANGE}}`:
-Namespace `READ`, the floor every REST namespace-file endpoint enforces.
+Each token asks for a permission at least as strict as the agent's own file tools on the same
+directory, because a directory handed to a shell is a write surface. `{{CASE_EXCHANGE}}`: the run's
+own directory needs no gate, since the invoking user holds Case `WRITE` on that case to have reached
+this point, but a directory owned by *another* case — a family's shared workspace — additionally
+requires that user's permission on the owner, because delegation does not confer its rights.
+`{{NAMESPACE_EXCHANGE}}`: Namespace `WRITE`, which is stricter than the Namespace `READ` that gets
+the namespace file tools granted, since those tools are read-only without `WRITE` and a shell has no
+read-only mode.
 
 **A token that cannot be resolved removes its integration from the run** — no tool, no exception,
 and the reason is logged. Only the integration that carries the token is affected; every other one
@@ -265,15 +267,17 @@ of every origin.
   granted agent runs in; an agent that opts out with `[]` creates nothing.
 - **Upload allow-list**: user uploads are restricted to a configurable set of file extensions
   (`agentos.exchange.allowed-upload-extensions`); a disallowed type is rejected with 400.
-- **`{{NAMESPACE_EXCHANGE}}` grants nothing, and bypasses the exchange's own gates**: a BASH
-  integration pointed at it runs as the service user with no permission check, unlike the agent's
-  namespace file tools, which require the invoking user's Namespace `READ` and `WRITE`, and unlike
-  the REST endpoints, which enforce the same through `@PreAuthorize`. The deny-list does not apply
-  there either. This is not a capability the token adds — the namespace directory has one fixed
-  path per namespace, so the same integration could always be handed it verbatim, and a shell
-  integration is arbitrary code execution by nature — but it is now easy enough to write that it
-  must be a deliberate choice, and the token now at least asks for Namespace `READ`, the same floor
-  the file tools and the REST endpoints apply.
+- **`{{NAMESPACE_EXCHANGE}}` asks for Namespace `WRITE`, and what it hands over is unguarded**:
+  the rule is one query, Namespace `WRITE` on the run's namespace, and the integration is dropped
+  for anyone else. It is deliberately stricter than the `READ` that gets the namespace file tools
+  granted: those are read-only without `WRITE`, while a shell or an MCP server rooted at that
+  directory writes and has no read-only mode, so a plain member would otherwise reach through one
+  integration the write surface the file tools and the REST endpoints both refuse them. Past that
+  one check nothing else applies — the integration runs as the service user, the deny-list does not
+  cover it, and the per-tool allowlist says nothing about a shell command. The token adds no
+  capability, the namespace directory having one fixed path per namespace that the same integration
+  could always be handed verbatim, but it makes that path easy enough to write that it must stay a
+  deliberate choice.
 - **MCP_STDIO is reachable but unadvised**: `cwd` accepts the tokens like any other parameter, and
   `McpConfigHash` includes `cwd` in the connection pool key, so one child process is spawned and
   pooled per case with nothing bounding the count. Point an MCP server at a case directory only if

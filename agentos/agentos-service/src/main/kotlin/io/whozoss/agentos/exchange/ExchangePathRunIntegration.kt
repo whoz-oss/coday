@@ -46,21 +46,21 @@ import java.util.UUID
  *
  * ## What it grants, and what it does not
  *
- * Each token carries the permission rule of the agent's own file tools for the same directory (see
- * [io.whozoss.agentos.agent.AgentServiceImpl.buildExchangeTools]), because a shell pointed at a
- * directory is a write surface:
+ * Each token asks for a permission at least as strict as the agent's own file tools on the same
+ * directory, because a directory handed to a shell is a write surface:
  * - the case token: the run's own directory needs no gate, since the invoking user already holds
  *   Case WRITE on that case to have reached this point, but a directory owned by *another* case
  *   — a family's shared workspace — additionally requires that user's permission on the owner.
  *   Delegation does not confer its rights. This is the rule `buildExchangeTools` applies, not the
  *   stricter one of [io.whozoss.agentos.git.GitToolsRunIntegration], which asks for Case WRITE even
  *   on the case's own directory;
- * - the namespace token: Namespace READ, the floor every REST namespace-file endpoint enforces.
- *   The token still grants nothing beyond that — a shell runs as the service user, and the
- *   namespace directory has one fixed path per namespace, so the same integration could always have
- *   been handed it verbatim — but asking the same question as the namespace file tools costs one
- *   query and removes an asymmetry nobody auditing this boundary would expect. See the Safety
- *   section of `docs/file-exchange.md`.
+ * - the namespace token: Namespace WRITE, which is stricter than the Namespace READ that gets the
+ *   namespace file tools granted. Those tools are read-only without WRITE, and a directory handed
+ *   to a shell has no read-only mode, so the equivalent of a read-only grant is no integration at
+ *   all. Resolving on READ would hand a plain member, through one integration, the write surface
+ *   that both the file tools and the REST namespace-file endpoints refuse them. That member still
+ *   reads the whole namespace through their own read-only file tools. See the Safety section of
+ *   `docs/file-exchange.md`.
  *
  * ## An unresolvable token removes its integration from the run
  *
@@ -148,24 +148,26 @@ class ExchangePathRunIntegration(
 
     /**
      * The namespace's shared directory, or null when the invoking user does not hold Namespace
-     * READ — the floor [io.whozoss.agentos.agent.AgentServiceImpl] applies before granting a single
-     * namespace file tool, and that every REST namespace-file endpoint enforces through
-     * `@PreAuthorize`. A run with no identified user is denied fail-closed, as everywhere else.
+     * WRITE. A shell or an MCP server rooted there writes, and nothing can make it read-only, so
+     * the question asked is the one [io.whozoss.agentos.agent.AgentServiceImpl] asks before handing
+     * the namespace file tools their write tools, not the weaker Namespace READ that gets those
+     * tools granted read-only. A run with no identified user is denied fail-closed, as everywhere
+     * else.
      */
     private fun namespaceExchangePath(context: AgentExecutionContext): String? {
         val userId = context.userId?.toString()
-        val canRead =
+        val canWrite =
             userId != null &&
-                exchangeCapabilityService.canRead(
+                exchangeCapabilityService.canWrite(
                     userId = userId,
                     entityType = EntityType.NAMESPACE,
                     entityId = context.namespaceId.toString(),
                 )
         return when {
-            !canRead -> {
+            !canWrite -> {
                 logger.warn {
                     "${ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN} is used by an integration but the " +
-                        "user of this run does not hold Namespace READ; the integration provides no tool"
+                        "user of this run does not hold Namespace WRITE; the integration provides no tool"
                 }
                 null
             }
