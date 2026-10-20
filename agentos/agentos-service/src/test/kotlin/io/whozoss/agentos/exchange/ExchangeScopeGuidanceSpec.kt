@@ -97,6 +97,15 @@ class ExchangeScopeGuidanceSpec : StringSpec({
     "each write-tool sentence names its own scope, so two identical descriptions stop being identical" {
         ExchangeScopeGuidance.CASE_TOOL_GUIDANCE shouldContain "case"
         ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE shouldContain "namespace"
-        ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE shouldContain "otherwise work in the case scope"
+    }
+
+    "no write-tool sentence names the other scope as a fallback" {
+        // A constant cannot know the other scope's stance. On a sub-case whose family workspace is
+        // owned by a case the invoking user cannot write, the case scope is read-only and the
+        // namespace one is writable, so a sentence sending the model back to the case scope would
+        // contradict the block rendered in the same prompt. Naming a default target is the block's
+        // job, since it varies with the access.
+        ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE shouldNotContain "work in the case scope"
+        ExchangeScopeGuidance.CASE_TOOL_GUIDANCE shouldNotContain "namespace"
     }
 })

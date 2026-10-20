@@ -56,10 +56,19 @@ object ExchangeScopeGuidance {
     const val CASE_TOOL_GUIDANCE: String =
         "Scope: the files of the case being run, your own working surface."
 
-    /** Appended to the namespace-scope write tools. See the class note on length. */
+    /**
+     * Appended to the namespace-scope write tools. See the class note on length.
+     *
+     * It names no fallback. A constant cannot know the case scope's stance, and the one run where
+     * the sentence would matter most is the one where it would be wrong: a sub-case whose family
+     * workspace belongs to a case the invoking user cannot write has a read-only case scope and a
+     * writable namespace one, so "otherwise work in the case scope" would send the model at the
+     * surface [buildBlock] has just declared unwritable. Naming the default target is the block's
+     * job, because the block varies with [Access].
+     */
     const val NAMESPACE_TOOL_GUIDANCE: String =
         "Scope: the files shared by every case of the namespace. Write here only for a change the " +
-            "user asked to make to those shared files; otherwise work in the case scope."
+            "user asked to make to those shared files."
 
     /**
      * The `## File scopes` block for a run that was granted [case] and [namespace], or null when
