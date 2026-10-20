@@ -61,8 +61,7 @@ class ThreadCodayInstance {
     private readonly mcpPool: McpInstancePool,
     private readonly onTimeout: (threadId: string) => void,
     private readonly projectEventManager: ProjectEventManager | undefined,
-    private readonly setPendingInviteCb: (threadId: string) => void,
-    private readonly hasPendingInviteCb: (threadId: string) => boolean
+    private readonly setPendingInviteCb: (threadId: string) => void
   ) {
     // Start inactivity timeout
     this.resetInactivityTimeout()
@@ -94,6 +93,13 @@ class ThreadCodayInstance {
    * Works whether or not the Coday instance is still alive:
    * - If alive: reads from the in-memory AiThread (most up-to-date)
    * - If cleaned up (one-shot finished): reads directly from ThreadService on disk
+   *
+   * After replaying historical messages, replayLastQuestion() is called
+   * unconditionally. The Interactor is the source of truth: if lastQuestionEvent
+   * is undefined (agent idle or already answered), the call is a no-op. This
+   * avoids the previous bug where InviteEventDefault was excluded from
+   * pendingInvites, so a fresh-idle agent never re-sent its "ready" prompt to
+   * a reconnecting client.
    */
   private async replayThreadHistory(response: Response): Promise<void> {
     try {
@@ -126,20 +132,22 @@ class ThreadCodayInstance {
         }
       }
 
-      // Re-emit the active pending invite/choice so the frontend knows the agent
-      // is waiting for a response. Only replay if the thread still has a pending invite
-      // (i.e. the user has not yet answered). This prevents stale invites from being
-      // shown after the user has already responded.
-      const hasPendingInvite = this.hasPendingInviteCb(this.threadId)
-      if (hasPendingInvite) {
-        // Replay the invite but suppress the SET in broadcastEvent —
-        // the registry already knows about this invite, we're just re-sending it to the new SSE client.
-        this.isReplaying = true
-        try {
-          this.coday?.interactor.replayLastQuestion()
-        } finally {
-          this.isReplaying = false
-        }
+      // Re-emit the last question event (InviteEvent or ChoiceEvent) if any.
+      // We delegate entirely to the Interactor — it knows whether a question is
+      // still pending (lastQuestionEvent !== undefined). If the agent is idle
+      // (InviteEventDefault was the last prompt), lastQuestionEvent holds that
+      // default invite and the client will receive it, restoring the input field.
+      // If the agent already received an answer, lastQuestionEvent is undefined
+      // and this is a no-op — no stale prompt is sent.
+      //
+      // isReplaying is set to prevent broadcastEvent from re-triggering
+      // setPendingInviteCb and broadcasting a ThreadUpdateEvent to project-level
+      // SSE clients — we are merely re-sending to this one new SSE client.
+      this.isReplaying = true
+      try {
+        this.coday?.interactor.replayLastQuestion()
+      } finally {
+        this.isReplaying = false
       }
     } catch (error) {
       debugLog('THREAD_CODAY', `Error replaying thread history:`, error)
@@ -718,8 +726,7 @@ export class ThreadCodayManager {
         this.mcpPool,
         this.handleInstanceTimeout,
         this.projectEventManager,
-        (id) => this.setPendingInvite(id),
-        (id) => this.hasPendingInvite(id)
+        (id) => this.setPendingInvite(id)
       )
       this.instances.set(threadId, instance)
     } else {
@@ -763,8 +770,7 @@ export class ThreadCodayManager {
         this.mcpPool,
         this.handleInstanceTimeout,
         this.projectEventManager,
-        (id) => this.setPendingInvite(id),
-        (id) => this.hasPendingInvite(id)
+        (id) => this.setPendingInvite(id)
       )
       instance.markAsOneshot() // Mark as oneshot for shorter timeout
       this.instances.set(threadId, instance)

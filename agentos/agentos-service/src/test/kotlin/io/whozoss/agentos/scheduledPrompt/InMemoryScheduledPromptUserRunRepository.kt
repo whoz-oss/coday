@@ -71,6 +71,7 @@ class InMemoryScheduledPromptUserRunRepository(
             val claimed = ur.copy(
                 status = UserRunStatus.RUNNING,
                 leaseUntil = now.plus(leaseDuration),
+                startedAt = now,
             )
             store[claimed.id] = claimed
             claimed

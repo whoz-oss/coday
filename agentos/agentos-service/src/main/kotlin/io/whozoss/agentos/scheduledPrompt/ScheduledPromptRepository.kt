@@ -30,10 +30,11 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
     fun findEffective(namespaceId: UUID, userId: UUID): List<ScheduledPrompt>
 
     /**
-     * Find all non-removed scheduled prompts at an exact scope level (no merge, no inheritance).
+     * Find scheduled prompts at an exact scope level (no merge, no inheritance).
      * [agentConfigIds] is an optional filter; null or empty means no filter.
+     * When [withRemoved] is true, soft-deleted entries are included.
      */
-    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?): List<ScheduledPrompt>
+    fun findByScope(namespaceId: UUID?, userId: UUID?, agentConfigIds: List<UUID>?, withRemoved: Boolean = false, modifiedSince: Instant? = null): List<ScheduledPrompt>
 
     /**
      * Find all enabled scheduled prompts whose [ScheduledPrompt.nextRunAt] is at or before [now],
@@ -64,4 +65,34 @@ interface ScheduledPromptRepository : EntityRepository<ScheduledPrompt, UUID> {
      * by the scheduler between the time the caller loaded the aggregate and the time it saves it.
      */
     fun updateEnabled(id: UUID, enabled: Boolean)
+
+    /**
+     * Returns true if at least one non-removed ScheduledPrompt references the given promptTemplateId.
+     * Used to guard against deleting a Prompt that is still in use.
+     */
+    fun existsActiveByPromptTemplateId(promptTemplateId: UUID): Boolean
+
+    /**
+     * Disable all non-removed [ScheduledPrompt]s that reference the given [agentConfigId].
+     *
+     * Called when the linked AgentConfig is disabled, to prevent orphaned schedulers
+     * from being picked up by the scheduler scanner and failing at execution time.
+     * Reversible: [enableByAgentConfigId] restores them when the agent is re-enabled.
+     *
+     * @return the number of schedulers that were actually disabled
+     */
+    fun disableByAgentConfigId(agentConfigId: UUID): Int
+
+    /**
+     * Soft-delete all non-removed [ScheduledPrompt]s referencing the given [agentConfigId]
+     * and their linked [io.whozoss.agentos.prompt.Prompt]s in a single query.
+     *
+     * Called on AgentConfig soft-delete. The linked prompts (named `scheduled--{slug}`) are
+     * looked up by [ScheduledPrompt.promptTemplateId] directly — no graph relation needed.
+     *
+     * @return the number of scheduled prompts soft-deleted
+     */
+    fun softDeleteWithPromptsByAgentConfigId(agentConfigId: UUID): Int
+
+
 }

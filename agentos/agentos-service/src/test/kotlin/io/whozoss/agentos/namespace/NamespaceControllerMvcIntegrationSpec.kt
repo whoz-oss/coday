@@ -1,8 +1,7 @@
 package io.whozoss.agentos.namespace
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
@@ -33,8 +32,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class NamespaceControllerMvcIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class NamespaceControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
@@ -67,6 +65,34 @@ class NamespaceControllerMvcIntegrationSpec : StringSpec() {
                     .contentType(MediaType.APPLICATION_JSON)
                     .content("""{ "name": "coday", "configPath": "/opt/coday" }""")
             ).andExpect(status().isCreated)
+        }
+
+        "POST /api/namespaces with negative runCostThreshold returns 400" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "bad-threshold", "runCostThreshold": -5.0 }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /api/namespaces with zero runCostThreshold returns 201" {
+            mockMvc.perform(
+                post("/api/namespaces")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "name": "zero-threshold", "runCostThreshold": 0.0 }""")
+            ).andExpect(status().isCreated)
+        }
+
+        "PUT /api/namespaces/{id} with negative runCostThreshold returns 400" {
+            val created = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "threshold-update-neg"),
+            )
+
+            mockMvc.perform(
+                put("/api/namespaces/${created.id}")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "id": "${created.id}", "name": "threshold-update-neg", "runCostThreshold": -1.0 }""")
+            ).andExpect(status().isBadRequest)
         }
 
         "POST /api/namespaces with path-traversal in configPath returns 201" {

@@ -45,10 +45,12 @@ data class IntegrationConfigNode(
     val userId: String? = null,
     val name: String,
     val tripleKey: String,
+    val singletonKey: String? = null,
     val integrationType: String,
     val description: String? = null,
     val parametersJson: String? = null,
     val authSettingName: String? = null,
+    val autoGrant: Boolean = false,
     // EntityMetadata fields
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -76,6 +78,7 @@ data class IntegrationConfigNode(
             description = description,
             parameters = parametersJson?.let { objectMapper.readTree(it) },
             authSettingName = authSettingName,
+            autoGrant = autoGrant,
         )
 
     companion object {
@@ -86,6 +89,22 @@ data class IntegrationConfigNode(
         ): String = OverlayKeyEncoding.activeKey(namespaceId, userId, name)
 
         fun tombstoneTripleKey(id: String): String = OverlayKeyEncoding.tombstoneKey(id)
+
+        /**
+         * Discriminator backing "one active row of this type per namespace", or `null` when the
+         * row is not subject to that rule.
+         *
+         * `null` is the mechanism, not an oversight: Neo4j property uniqueness ignores nodes that
+         * do not carry the property, so a soft-deleted or non-singleton row simply stops competing
+         * for the slot. That is also why no tombstone form is needed here, unlike [tripleKey].
+         */
+        fun computeSingletonKey(config: IntegrationConfig): String? =
+            when {
+                config.metadata.removed -> null
+                config.namespaceId == null || config.userId != null -> null
+                !IntegrationTypeConstraints.isNamespaceSingleton(config.integrationType) -> null
+                else -> OverlayKeyEncoding.namespaceSingletonKey(config.namespaceId, config.integrationType)
+            }
 
         fun fromDomain(
             config: IntegrationConfig,
@@ -103,10 +122,12 @@ data class IntegrationConfigNode(
                 userId = config.userId?.toString(),
                 name = config.name,
                 tripleKey = tripleKey,
+                singletonKey = computeSingletonKey(config),
                 integrationType = config.integrationType,
                 description = config.description,
                 parametersJson = config.parameters?.let { objectMapper.writeValueAsString(it) },
                 authSettingName = config.authSettingName,
+                autoGrant = config.autoGrant,
                 created = config.metadata.created,
                 createdBy = config.metadata.createdBy,
                 modified = config.metadata.modified,

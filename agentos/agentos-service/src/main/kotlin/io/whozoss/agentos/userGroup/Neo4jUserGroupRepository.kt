@@ -5,7 +5,7 @@ import mu.KLogging
 import org.springframework.data.neo4j.core.Neo4jClient
 import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
-import java.util.*
+import java.util.UUID
 
 private data class UserExternalIdGroupRow(
     val externalId: String,
@@ -26,7 +26,10 @@ open class Neo4jUserGroupRepository(
                 if (!entity.metadata.removed) neo4jRepository.setActive(it.id)
             }.toDomain()
 
-    override fun findByIds(ids: Collection<UUID>, withRemoved: Boolean): List<UserGroup> =
+    override fun findByIds(
+        ids: Collection<UUID>,
+        withRemoved: Boolean,
+    ): List<UserGroup> =
         neo4jRepository
             .findAllById(ids.map { it.toString() })
             .filter { withRemoved || it.removed != true }
@@ -70,16 +73,8 @@ open class Neo4jUserGroupRepository(
             ).bind(userGroupId.toString())
             .to("userGroupId")
             .fetchAs(UserGroupMember::class.java)
-            .mappedBy { _, record ->
-                UserGroupMember(
-                    userId = UUID.fromString(record["userId"].asString()),
-                    externalId = record["externalId"].asString(),
-                    role = record["role"].asString(),
-                    email = record["email"].takeUnless { it.isNull }?.asString(),
-                    firstname = record["firstname"].takeUnless { it.isNull }?.asString(),
-                    lastname = record["lastname"].takeUnless { it.isNull }?.asString(),
-                )
-            }.all()
+            .mappedBy(MEMBER_MAPPER)
+            .all()
             .toList()
 
     private fun querySearchResults(
@@ -89,15 +84,15 @@ open class Neo4jUserGroupRepository(
     ) = neo4jClient
         .query(
             """
-                MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
-                WHERE $whereClause
-                OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
-                  WHERE NOT COALESCE(a.removed, false)
-                OPTIONAL MATCH (u:User)-[:MEMBER|ADMIN]->(g)
-                  WHERE NOT COALESCE(u.removed, false)
-                RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
-                       g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
-                ORDER BY g.name ASC
+            MATCH (g:UserGroup)-[:BELONGS_TO]->(ns:Namespace)
+            WHERE $whereClause
+            OPTIONAL MATCH (a:AgentConfig)-[:DEPLOYED_TO]->(g)
+              WHERE NOT COALESCE(a.removed, false)
+            OPTIONAL MATCH (u:User)-[:MEMBER|ADMIN]->(g)
+              WHERE NOT COALESCE(u.removed, false)
+            RETURN g.id AS userGroupId, ns.id AS namespaceId, ns.externalId AS namespaceExternalId,
+                   g.name AS name, collect(DISTINCT a.id) AS agentIds, count(DISTINCT u) AS userCount
+            ORDER BY g.name ASC
             """.trimIndent(),
         ).bind(paramValue)
         .to(paramName)
@@ -138,7 +133,10 @@ open class Neo4jUserGroupRepository(
         neo4jRepository.removeUsers(userGroupId.toString(), userExternalIds.toList())
     }
 
-    override fun removeUserFromGroupsInNamespace(userId: String, namespaceId: UUID) {
+    override fun removeUserFromGroupsInNamespace(
+        userId: String,
+        namespaceId: UUID,
+    ) {
         neo4jRepository.removeUserFromGroupsInNamespace(userId, namespaceId.toString())
     }
 
@@ -164,7 +162,8 @@ open class Neo4jUserGroupRepository(
         } else {
             namespaceClause = ""
         }
-        val query = $$"""
+        val query =
+            $$"""
             MATCH (u:User)-[:MEMBER|ADMIN]->(g:UserGroup)
             WHERE u.externalId IN $externalIds
               AND NOT COALESCE(g.removed, false)
@@ -172,7 +171,7 @@ open class Neo4jUserGroupRepository(
               $$namespaceClause
             RETURN u.externalId AS externalId, g.id AS groupId, g.name AS groupName
             ORDER BY u.externalId ASC, g.name ASC
-        """.trimIndent()
+            """.trimIndent()
         return neo4jClient
             .query(query)
             .bindAll(params)
@@ -189,6 +188,67 @@ open class Neo4jUserGroupRepository(
                 valueTransform = { UserGroupSummary(id = UUID.fromString(it.groupId), name = it.groupName) },
             )
     }
+
+    /**
+     * Single-query implementation: deduplication of users across multiple deployed groups
+     * is handled inside Cypher with `WITH DISTINCT u` rather than in the JVM.
+     * Scoped to [namespaceId] so cross-namespace leakage is impossible at the query level.
+     * A user who is ADMIN in one group and MEMBER in another gets ADMIN (ADMIN wins in collect).
+     */
+    override fun findUsersByAgentId(agentConfigId: UUID, namespaceId: UUID): List<UserGroupMember> =
+        neo4jClient
+            .query(
+                $$"""
+                    MATCH (a:AgentConfig {id: $agentConfigId})-[:DEPLOYED_TO]->(g:UserGroup)
+                    WHERE NOT COALESCE(a.removed, false)
+                      AND NOT COALESCE(g.removed, false)
+                      AND g.namespaceId = $namespaceId
+                    MATCH (u:User)-[r:MEMBER|ADMIN]->(g)
+                    WHERE NOT COALESCE(u.removed, false)
+                    WITH u, collect(DISTINCT type(r)) AS rels
+                    RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
+                           u.firstname AS firstname, u.lastname AS lastname,
+                           CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role
+                    ORDER BY u.externalId ASC
+                """.trimIndent(),
+            ).bind(agentConfigId.toString()).to("agentConfigId")
+            .bind(namespaceId.toString()).to("namespaceId")
+            .fetchAs(UserGroupMember::class.java)
+            .mappedBy(MEMBER_MAPPER)
+            .all()
+            .toList()
+
+    /**
+     * Single-query implementation: the deployment check and member fetch are merged into
+     * one Cypher. The MATCH on the [:DEPLOYED_TO] edge acts as the guard — if the agent
+     * is not deployed to the group the MATCH finds nothing and the result set is empty,
+     * so no separate existence check round-trip is needed.
+     */
+    override fun findMembersByGroupAndAgent(
+        userGroupId: UUID,
+        agentConfigId: UUID,
+    ): List<UserGroupMember> =
+        neo4jClient
+            .query(
+                $$"""
+                    MATCH (a:AgentConfig {id: $agentConfigId})-[:DEPLOYED_TO]->(g:UserGroup {id: $userGroupId})
+                    WHERE NOT COALESCE(a.removed, false) AND NOT COALESCE(g.removed, false)
+                    MATCH (u:User)-[r:MEMBER|ADMIN]->(g)
+                    WHERE NOT COALESCE(u.removed, false)
+                    WITH u, collect(type(r)) AS rels
+                    RETURN u.id AS userId, u.externalId AS externalId, u.email AS email,
+                           u.firstname AS firstname, u.lastname AS lastname,
+                           CASE WHEN 'ADMIN' IN rels THEN 'ADMIN' ELSE 'MEMBER' END AS role
+                    ORDER BY u.externalId ASC
+                """.trimIndent(),
+            ).bind(agentConfigId.toString())
+            .to("agentConfigId")
+            .bind(userGroupId.toString())
+            .to("userGroupId")
+            .fetchAs(UserGroupMember::class.java)
+            .mappedBy(MEMBER_MAPPER)
+            .all()
+            .toList()
 
     override fun delete(id: UUID): Boolean =
         neo4jRepository
@@ -208,5 +268,23 @@ open class Neo4jUserGroupRepository(
         return active.size
     }
 
-    companion object : KLogging()
+    companion object : KLogging() {
+        /**
+         * Maps a Neo4j record with the standard member projection
+         * (userId, externalId, email, firstname, lastname, role) onto a [UserGroupMember].
+         * Shared by [findMembers], [findUsersByAgentId], and [findMembersByGroupAndAgent]
+         * to avoid repeating the same six-field mapping.
+         */
+        private val MEMBER_MAPPER: (org.neo4j.driver.types.TypeSystem, org.neo4j.driver.Record) -> UserGroupMember =
+            { _, record ->
+                UserGroupMember(
+                    userId = UUID.fromString(record["userId"].asString()),
+                    externalId = record["externalId"].asString(),
+                    role = record["role"].asString(),
+                    email = record["email"].takeUnless { it.isNull }?.asString(),
+                    firstname = record["firstname"].takeUnless { it.isNull }?.asString(),
+                    lastname = record["lastname"].takeUnless { it.isNull }?.asString(),
+                )
+            }
+    }
 }

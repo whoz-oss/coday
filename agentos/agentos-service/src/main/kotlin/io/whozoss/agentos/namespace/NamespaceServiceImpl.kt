@@ -1,6 +1,7 @@
 package io.whozoss.agentos.namespace
 
 import io.whozoss.agentos.agentConfig.AgentConfigRepository
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
@@ -36,6 +37,7 @@ class NamespaceServiceImpl(
     private val permissionService: PermissionService,
     private val userGroupRepository: UserGroupRepository,
     private val agentConfigRepository: AgentConfigRepository,
+    private val limitsConfig: LimitsConfigProperties,
 ) : NamespaceService {
     @Transactional
     override fun create(entity: Namespace): Namespace = try {
@@ -111,6 +113,9 @@ class NamespaceServiceImpl(
             namespaceRepository.undeployAgents(namespaceId, ids)
         }
     }
+
+    override fun resolveRunCostThreshold(namespaceId: UUID): Double? =
+        findById(namespaceId)?.runCostThreshold ?: limitsConfig.runCostThreshold
 
     private fun validateAgentsInNamespace(agentConfigIds: Collection<UUID>, namespaceId: UUID) {
         agentConfigIds

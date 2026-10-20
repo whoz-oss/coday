@@ -1,11 +1,10 @@
 package io.whozoss.agentos.caseFlow
 
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionNodeNeo4jRepository
 import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserRepository
 import io.whozoss.agentos.user.UserService
@@ -41,8 +40,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class CaseControllerMvcIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class CaseControllerMvcIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var mockMvc: MockMvc
     @Autowired lateinit var namespaceService: NamespaceService
@@ -90,6 +88,32 @@ class CaseControllerMvcIntegrationSpec : StringSpec() {
                 .andExpect(status().isCreated)
                 // scheduledPromptId is null for cases created directly by a user
                 .andExpect(jsonPath("$.scheduledPromptId").doesNotExist())
+        }
+
+        "POST /api/cases with runCostThreshold preserves the value in the response" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-threshold"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "runCostThreshold": 25.0 }""")
+            )
+                .andExpect(status().isCreated)
+                .andExpect(jsonPath("$.runCostThreshold").value(25.0))
+        }
+
+        "POST /api/cases with negative runCostThreshold returns 400" {
+            val ns = namespaceService.create(
+                Namespace(metadata = EntityMetadata(id = UUID.randomUUID()), name = "team-case-threshold-neg"),
+            )
+
+            mockMvc.perform(
+                post("/api/cases")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "namespaceId": "${ns.id}", "runCostThreshold": -1.0 }""")
+            ).andExpect(status().isBadRequest)
         }
 
         "POST /api/cases without title still returns 201 (title optional)" {

@@ -20,7 +20,7 @@ export interface MessageEvent {
   type: 'MessageEvent'
   actor: Actor
   content: Array<MessageEventAllOfContent>
-  sessionContext?: { [key: string]: any }
-  llmProvider?: string
   llmModel?: string
+  llmProvider?: string
+  sessionContext?: { [key: string]: any }
 }

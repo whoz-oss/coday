@@ -16,6 +16,7 @@ export interface ScheduledPrompt {
   createdOn?: string
   description?: string
   enabled: boolean
+  externalMetadata?: { [key: string]: any }
   id?: string
   lastRunAt?: string
   name: string
@@ -24,6 +25,7 @@ export interface ScheduledPrompt {
   planning: Planning
   promptContent: string
   recurrence: Recurrence
+  removed: boolean
   updatedBy?: string
   updatedOn?: string
   userId?: string | null

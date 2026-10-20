@@ -2,16 +2,23 @@ package io.whozoss.agentos.aiProvider
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.chat.ChatClientProvider
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.springframework.ai.chat.model.ChatModel
+import org.springframework.ai.chat.model.ChatResponse
+import org.springframework.ai.chat.model.Generation
+import org.springframework.ai.chat.messages.AssistantMessage
+import org.springframework.ai.chat.prompt.Prompt
+import org.springframework.ai.model.tool.ToolCallingChatOptions
 import java.util.UUID
 
 class ChatClientProviderUnitSpec :
@@ -35,17 +42,17 @@ class ChatClientProviderUnitSpec :
         fun model(
             apiName: String = "claude-sonnet-4-5",
             temperature: Double? = 0.7,
-            maxTokens: Int? = null,
+            maxCompletionTokens: Int? = null,
         ) = AiModel(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             aiProviderId = aiProviderId,
             apiModelName = apiName,
             temperature = temperature,
-            maxTokens = maxTokens,
+            maxCompletionTokens = maxCompletionTokens,
         )
 
         "getChatClient forwards model and provider fields to ChatModelFactory" {
-            val m = model(apiName = "claude-sonnet-4-5", temperature = 0.3, maxTokens = 8192)
+            val m = model(apiName = "claude-sonnet-4-5", temperature = 0.3, maxCompletionTokens = 8192)
             val p = provider()
             val chatModel = mockk<ChatModel>(relaxed = true)
 
@@ -56,7 +63,7 @@ class ChatClientProviderUnitSpec :
                     apiKey = "sk-test",
                     modelName = "claude-sonnet-4-5",
                     temperature = 0.3,
-                    maxTokens = 8192,
+                    maxCompletionTokens = 8192,
                 )
             } returns chatModel
 
@@ -70,13 +77,13 @@ class ChatClientProviderUnitSpec :
                     apiKey = "sk-test",
                     modelName = "claude-sonnet-4-5",
                     temperature = 0.3,
-                    maxTokens = 8192,
+                    maxCompletionTokens = 8192,
                 )
             }
         }
 
-        "getChatClient passes null temperature and maxTokens when model does not specify them" {
-            val m = model(apiName = "gpt-4o", temperature = null, maxTokens = null)
+        "getChatClient passes null temperature and maxCompletionTokens when model does not specify them" {
+            val m = model(apiName = "gpt-4o", temperature = null, maxCompletionTokens = null)
             val p = provider()
             val chatModel = mockk<ChatModel>(relaxed = true)
 
@@ -87,10 +94,30 @@ class ChatClientProviderUnitSpec :
                     apiKey = "sk-test",
                     modelName = "gpt-4o",
                     temperature = null,
-                    maxTokens = null,
+                    maxCompletionTokens = null,
                 )
             } returns chatModel
 
             chatClientProvider.getChatClient(m, p).shouldNotBeNull()
         }
+
+        "enabled accounting still preserves native model behavior when no accumulator is supplied" {
+            val nativeModel = mockk<ChatModel>()
+            every { nativeModel.defaultOptions } returns ToolCallingChatOptions.builder()
+                .internalToolExecutionEnabled(true)
+                .build()
+            every { nativeModel.call(any<Prompt>()) } answers {
+                (firstArg<Prompt>().options as ToolCallingChatOptions).internalToolExecutionEnabled shouldBe true
+                ChatResponse(listOf(Generation(AssistantMessage("Done"))))
+            }
+            val factory = mockk<ChatModelFactory> {
+                every { createChatModel(any(), any(), any(), any(), any(), any(), any()) } returns nativeModel
+            }
+            val clientProvider = ChatClientProvider(factory, usageConfig = UsageConfigProperties(enabled = true))
+            val client = clientProvider.getChatClient(model(), provider())
+
+            client.prompt("Hello").call().content() shouldBe "Done"
+            verify(exactly = 1) { nativeModel.call(any<Prompt>()) }
+        }
+
     })

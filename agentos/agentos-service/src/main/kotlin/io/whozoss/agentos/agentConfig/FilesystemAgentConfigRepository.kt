@@ -6,7 +6,9 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import io.whozoss.agentos.namespace.NamespaceRepository
 import io.whozoss.agentos.plugin.filesystem.FilesystemYamlCacheRegistry
+import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import io.whozoss.agentos.sdk.util.StringUtils.nullOrNotBlankItems
 import mu.KLogging
 import java.nio.file.Path
 import java.time.Duration
@@ -169,6 +171,7 @@ class FilesystemAgentConfigRepository(
             logger.warn { "[FilesystemAgentConfigRepository] Skipping $file: 'name' is blank" }
             return null
         }
+        @Suppress("DEPRECATION")
         return AgentConfig(
             // Stable UUID derived from the name so identity survives restarts.
             // namespaceId is null here; it is overwritten in findByParent.
@@ -179,8 +182,10 @@ class FilesystemAgentConfigRepository(
             instructions = model.instructions,
             modelName = model.modelName,
             integrations = model.integrations,
+            executionMode = model.executionMode,
             advancedExecution = model.advancedExecution,
-            subAgents = model.subAgents?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() },
+            subAgents = model.subAgents.nullOrNotBlankItems(),
+            delegationTimeoutSeconds = model.delegationTimeoutSeconds,
             docs =
                 model.docs
                     ?.filter { it.isNotBlank() }
@@ -201,6 +206,7 @@ class FilesystemAgentConfigRepository(
                             .normalize()
                             .toString() + suffix
                     }?.takeIf { it.isNotEmpty() },
+            skillSelectors = model.skillSelectors.nullOrNotBlankItems(),
             // Filesystem agents have no lifecycle — they are always published.
             enabled = true,
         )
@@ -231,11 +237,14 @@ private data class AgentConfigYamlModel(
     val name: String = "",
     val description: String? = null,
     val instructions: String? = null,
+    val executionMode: ExecutionMode? = null,
     val advancedExecution: Boolean = false,
     val modelName: String? = null,
     val integrations: Map<String, List<String>?>? = null,
     val subAgents: List<String>? = null,
+    val delegationTimeoutSeconds: Int? = null,
     val docs: List<String>? = null,
+    val skillSelectors: List<String>? = null,
     // mandatoryDocs kept for backward compat with existing YAML files
     val mandatoryDocs: List<String>? = null,
 )

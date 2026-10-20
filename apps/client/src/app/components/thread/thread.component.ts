@@ -31,6 +31,7 @@ import { MatBadgeModule } from '@angular/material/badge'
 
 import { toSignal } from '@angular/core/rxjs-interop'
 import { CodayService } from '../../core/services/coday.service'
+import { DelegationTrackerService } from '../../core/services/delegation-tracker.service'
 import { OAuthService } from '../../core/services/oauth.service'
 import { ConnectionStatus } from '../../core/services/event-stream.service'
 import { PreferencesService } from '../../services/preferences.service'
@@ -138,6 +139,7 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
 
   // Modern Angular dependency injection
   private readonly codayService = inject(CodayService)
+  private readonly delegationTracker = inject(DelegationTrackerService)
   private readonly oauthService = inject(OAuthService)
 
   /** Signal exposing the current pending OAuth request for the template. */
@@ -277,8 +279,9 @@ export class ThreadComponent implements OnInit, OnDestroy, OnChanges, AfterViewC
       this.threadDetails = thread
     })
 
-    // Reset messages when switching threads
+    // Reset messages and delegation tracker when switching threads
     this.codayService.resetMessages()
+    this.delegationTracker.reset()
 
     // Connect services (to avoid circular dependency)
     this.codayService.setTabTitleService(this.titleService)

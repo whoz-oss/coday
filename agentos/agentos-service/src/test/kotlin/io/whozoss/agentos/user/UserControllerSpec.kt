@@ -58,6 +58,7 @@ class UserControllerSpec : StringSpec({
         lastname: String? = "Smith",
         bio: String? = null,
         isAdmin: Boolean = false,
+        preferredLanguage: String? = null,
     ) = User(
         metadata = EntityMetadata(id = id),
         externalId = externalId,
@@ -66,6 +67,7 @@ class UserControllerSpec : StringSpec({
         lastname = lastname,
         bio = bio,
         isAdmin = isAdmin,
+        preferredLanguage = preferredLanguage,
     )
 
     fun resource(
@@ -75,6 +77,7 @@ class UserControllerSpec : StringSpec({
         lastname: String? = "Smith",
         bio: String? = null,
         isAdmin: Boolean = false,
+        preferredLanguage: String? = null,
     ) = UserDto(
         id = id,
         email = email,
@@ -82,6 +85,7 @@ class UserControllerSpec : StringSpec({
         lastname = lastname,
         bio = bio,
         isAdmin = isAdmin,
+        preferredLanguage = preferredLanguage,
     )
 
     // -------------------------------------------------------------------------
@@ -92,7 +96,13 @@ class UserControllerSpec : StringSpec({
         val id = UUID.randomUUID()
         val u = user(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev")
         val result = toDto(u)
-        result shouldBe UserDto(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false)
+        result shouldBe UserDto(id = id, email = "bob@example.com", externalId = "ext-key", firstname = "Bob", lastname = "Jones", bio = "dev", isAdmin = false, preferredLanguage = null)
+    }
+
+    "toDto maps preferredLanguage from User to UserDto" {
+        val id = UUID.randomUUID()
+        val u = user(id = id, preferredLanguage = "fr")
+        toDto(u).preferredLanguage shouldBe "fr"
     }
 
     "toDto returns null email when user has no email (local mode)" {

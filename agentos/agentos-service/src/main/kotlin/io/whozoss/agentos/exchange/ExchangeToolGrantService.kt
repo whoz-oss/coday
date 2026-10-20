@@ -46,6 +46,7 @@ data class ExchangeGrant(
 class ExchangeToolGrantService(
     private val properties: ExchangeToolsConfigProperties,
     private val storageProperties: ExchangeStorageConfigProperties,
+    private val reservedEntries: List<ExchangeReservedEntries>,
     private val toolRegistryService: ToolRegistryService,
     private val toolResolverService: ToolResolverService,
     private val objectMapper: ObjectMapper,
@@ -62,6 +63,24 @@ class ExchangeToolGrantService(
         resolveGrant(ExchangeIntegrationTypes.NAMESPACE, properties.namespaceEnabledByDefault, integrations)
 
     /**
+     * Whether [allowedTools] leaves the scope a way to write, asked through the same matcher
+     * [grantTools] filters with.
+     *
+     * An agent that restricted a scope to read tools must not be told that scope is where its
+     * writes belong: it would find no tool there, and the next matching one is the other scope's
+     * `editFiles` -- the very confusion [ExchangeScopeGuidance] exists to prevent. Answered from
+     * the allowlist rather than from the granted tools so the stance is known before anything is
+     * granted, which is what keeps the instructions buildable without the tool assembly.
+     */
+    fun grantsMutatingTool(
+        configName: String,
+        allowedTools: List<String>?,
+    ): Boolean =
+        ExchangeIntegrationTypes.MUTATING_TOOLS.any { tool ->
+            toolResolverService.isToolAllowed("${configName}__$tool", configName, allowedTools)
+        }
+
+    /**
      * Builds the file-plugin tools for one exchange scope rooted at [root], filtered through
      * [allowedTools].
      *
@@ -74,6 +93,12 @@ class ExchangeToolGrantService(
      * Fail-closed and side-effect free when the file-plugin is not loaded: no tools, no directory.
      * [resolveGrant] already denies in that case, so this check is defence in depth for a caller
      * that reaches [grantTools] without a resolution.
+     *
+     * [scopeGuidance] is the one sentence the plugin appends to the description of its write tools,
+     * so that the model choosing between two identically-described tool sets can tell which surface
+     * each one writes to ([ExchangeScopeGuidance]). It defaults to null, which is also what a
+     * FILE_ACCESS integration configured by a user gets: the sentence talks about cases and
+     * namespaces, and only the two exchange scopes are in one.
      */
     fun grantTools(
         root: Path,
@@ -81,6 +106,7 @@ class ExchangeToolGrantService(
         configName: String,
         allowedTools: List<String>?,
         toolContext: ToolContext,
+        scopeGuidance: String? = null,
     ): List<StandardTool<*>> {
         val filePlugin = toolRegistryService.findPlugin(ExchangeIntegrationTypes.FILE_ACCESS)
         return when (filePlugin) {
@@ -88,13 +114,14 @@ class ExchangeToolGrantService(
             else -> {
                 Files.createDirectories(root)
                 logger.info {
-                    "Granting $configName (FILE_ACCESS, readOnly=$readOnly) " +
+                    "Granting $configName (FILE_ACCESS, readOnly=$readOnly, " +
+                        "scopeGuidance=${scopeGuidance != null}) " +
                         "to agent '${toolContext.agentName}' at $root"
                 }
                 // Honour the per-tool allowlist via the same matcher every other integration uses
                 // (accepts both bare and `configName__tool` forms); null = all tools.
                 filePlugin
-                    .provideTools(buildFileToolConfig(root, readOnly), configName, toolContext)
+                    .provideTools(buildFileToolConfig(root, readOnly, scopeGuidance), configName, toolContext)
                     .filter { toolResolverService.isToolAllowed(it.name, configName, allowedTools) }
             }
         }
@@ -139,7 +166,11 @@ class ExchangeToolGrantService(
      * The configuration node handed to the file-plugin's `provideTools`.
      *
      * Every key the plugin knows is emitted, so its compiled fallbacks only ever apply to a jar older
-     * than a key. [root] and [readOnly] come from the caller (computed per run); `readMaxSizeMb`
+     * than a key. `scopeGuidance` is the one exception: it is written only when the caller supplied
+     * one, because the plugin reads it with `asText()`, which would turn an emitted JSON null into
+     * the four-letter string "null" appended to every write tool's description.
+     *
+     * [root] and [readOnly] come from the caller (computed per run); `readMaxSizeMb`
      * derives from the exchange read cap so the agent's read tools honour the same limit as the REST
      * read/download path rather than the plugin's smaller built-in default — the plugin key is
      * megabytes, floored at 1.
@@ -152,6 +183,7 @@ class ExchangeToolGrantService(
     private fun buildFileToolConfig(
         root: Path,
         readOnly: Boolean,
+        scopeGuidance: String?,
     ): ObjectNode {
         val node =
             objectMapper
@@ -174,11 +206,25 @@ class ExchangeToolGrantService(
                 // Floored at 0: a negative cell cap makes readDocument call String.take with a
                 // negative count, which throws; zero is a legal (if drastic) truncation.
                 .put("documentMaxCellChars", properties.documentMaxCellChars.coerceAtLeast(0))
+        scopeGuidance?.let { node.put("scopeGuidance", it) }
         // The plugin reads this key with `takeIf { it.isArray }`, so it must be a real ArrayNode —
-        // an empty one when nothing is configured, never a missing key or a scalar. putArray returns
-        // the ArrayNode, hence the separate statement.
+        // never a missing key or a scalar. putArray returns the ArrayNode, hence the separate
+        // statement.
+        //
+        // Reserved entries lead and are not configurable: a feature running inside the scope owns
+        // them (a Git worktree's `.git` is a file the agent could otherwise rewrite to repoint the
+        // worktree). They are prepended here rather than defaulted on
+        // [ExchangeToolsConfigProperties.extraDenyPatterns] because a configured list replaces a
+        // default instead of extending it, which would silently reopen them on any instance that
+        // sets patterns of its own. The plugin matches every path segment, so this also covers
+        // everything below them. The REST path refuses the same names, so both views of a scope
+        // agree.
+        val reserved = reservedEntries.flatMap { it.names() }.distinct()
         val denyPatterns = node.putArray("extraDenyPatterns")
-        properties.extraDenyPatterns.forEach { denyPatterns.add(it) }
+        reserved.forEach { denyPatterns.add(it) }
+        properties.extraDenyPatterns
+            .filterNot { it in reserved }
+            .forEach { denyPatterns.add(it) }
         return node
     }
 

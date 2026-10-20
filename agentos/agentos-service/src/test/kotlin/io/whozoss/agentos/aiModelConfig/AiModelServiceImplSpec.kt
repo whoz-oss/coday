@@ -16,7 +16,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import org.springframework.web.server.ResponseStatusException
+import io.whozoss.agentos.exception.ConflictException
 import java.util.UUID
 
 /**
@@ -56,7 +56,7 @@ class AiModelServiceImplSpec : StringSpec() {
         alias: String? = null,
         priority: Int = 0,
         temperature: Double? = null,
-        maxTokens: Int? = null,
+        maxCompletionTokens: Int? = null,
     ): AiModel =
         AiModel(
             metadata = EntityMetadata(),
@@ -66,7 +66,7 @@ class AiModelServiceImplSpec : StringSpec() {
             alias = alias,
             priority = priority,
             temperature = temperature,
-            maxTokens = maxTokens,
+            maxCompletionTokens = maxCompletionTokens,
         )
 
     init {
@@ -183,9 +183,9 @@ class AiModelServiceImplSpec : StringSpec() {
             val (service, aiProviderId) = newService()
             service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5", alias = "SMALL"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-sonnet-4-6", alias = "SMALL"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create allows null alias even when another model has no alias" {
@@ -565,9 +565,9 @@ class AiModelServiceImplSpec : StringSpec() {
             service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-opus-4-6", alias = "big"))
             val toUpdate = service.create(modelConfig(aiProviderId = aiProviderId, apiName = "claude-haiku-4-5", alias = "small"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.update(toUpdate.copy(alias = "big"))
-            }.statusCode.value() shouldBe 409
+            }
         }
     }
 }

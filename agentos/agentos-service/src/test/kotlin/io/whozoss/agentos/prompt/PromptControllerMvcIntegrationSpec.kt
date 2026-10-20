@@ -433,7 +433,7 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/prompts/effective")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{}"""),
+                    .content("""{}""")
             ).andExpect(status().isBadRequest)
         }
 
@@ -443,8 +443,123 @@ class PromptControllerMvcIntegrationSpec : StringSpec() {
             mockMvc.perform(
                 post("/api/prompts/effective")
                     .contentType(MediaType.APPLICATION_JSON)
-                    .content("""{ "namespaceExternalId": "no-such-ns" }"""),
+                    .content("""{ "namespaceExternalId": "no-such-ns" }""")
             ).andExpect(status().isNotFound)
+        }
+
+        // -------------------------------------------------------------------------
+        // POST /translations/{languageCode} — batch translate
+        // -------------------------------------------------------------------------
+
+        "POST /translations/fr without body returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/translations/fr").contentType(MediaType.APPLICATION_JSON),
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /translations/fr with empty ids list returns 400" {
+            mockMvc.perform(
+                post("/api/prompts/translations/fr")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "ids": [] }""")
+            ).andExpect(status().isBadRequest)
+        }
+
+        "POST /translations returns 200 with translations for readable prompts" {
+            val created = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "Batch-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                ),
+            )
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.PROMPT, created.id.toString(), Action.READ)
+            } returns true
+
+            // Request in sourceLanguage — no LLM call, content returned as-is
+            mockMvc.perform(
+                post("/api/prompts/translations/en")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "ids": ["${created.id}"] }""")
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+                .andExpect(jsonPath("$[0].id").value(created.id.toString()))
+                .andExpect(jsonPath("$[0].content[0]").value("Hello"))
+        }
+
+        "POST /translations silently omits prompts the caller cannot READ" {
+            val readable = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "Readable-${UUID.randomUUID()}",
+                    content = listOf("Hello"),
+                    sourceLanguage = "en",
+                ),
+            )
+            val hidden = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "Hidden-${UUID.randomUUID()}",
+                    content = listOf("Secret"),
+                    sourceLanguage = "en",
+                ),
+            )
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.PROMPT, readable.id.toString(), Action.READ)
+            } returns true
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.PROMPT, hidden.id.toString(), Action.READ)
+            } returns false
+
+            mockMvc.perform(
+                post("/api/prompts/translations/en")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "ids": ["${readable.id}", "${hidden.id}"] }""")
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$").isArray)
+                .andExpect(jsonPath("$[0].id").value(readable.id.toString()))
+                .andExpect(jsonPath("$[?(@.id == '${hidden.id}')]").doesNotExist())
+        }
+
+        "POST /translations preserves input order in the response" {
+            val first = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "First-${UUID.randomUUID()}",
+                    content = listOf("First"),
+                    sourceLanguage = "en",
+                ),
+            )
+            val second = promptService.create(
+                Prompt(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "Second-${UUID.randomUUID()}",
+                    content = listOf("Second"),
+                    sourceLanguage = "en",
+                ),
+            )
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.PROMPT, first.id.toString(), Action.READ)
+            } returns true
+            every {
+                permissionService.hasPermission(aliceId.toString(), EntityType.PROMPT, second.id.toString(), Action.READ)
+            } returns true
+
+            // Request in reverse order — response must respect that order
+            mockMvc.perform(
+                post("/api/prompts/translations/en")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""{ "ids": ["${second.id}", "${first.id}"] }""")
+            ).andExpect(status().isOk)
+                .andExpect(jsonPath("$[0].id").value(second.id.toString()))
+                .andExpect(jsonPath("$[1].id").value(first.id.toString()))
         }
     }
 }

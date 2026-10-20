@@ -69,6 +69,13 @@ export class AdminHomeComponent {
       description: 'Manage scheduled case definitions shared across all namespaces.',
       path: '/agentos/admin/case-definitions',
     },
+    {
+      key: 'tool-invoke',
+      mark: '\u{1F9EA}',
+      name: 'Tool invoke',
+      description: 'Debug: execute any registered tool directly with a custom payload.',
+      path: '/agentos/admin/tool-invoke',
+    },
   ] as const
 
   protected navigateTo(path: string): void {

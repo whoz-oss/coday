@@ -1,0 +1,111 @@
+package io.whozoss.agentos.git
+
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.types.shouldBeInstanceOf
+import io.whozoss.agentos.agent.RunIntegrationCustomizer
+import io.whozoss.agentos.caseFlow.CaseLaunchGate
+import io.whozoss.agentos.caseFlow.CaseWorkspaceProvisioning
+import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
+import io.whozoss.agentos.exchange.ExchangePathRunIntegration
+import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.persistence.neo4j.EmbeddedNeo4jTestConfiguration
+import io.whozoss.agentos.security.SuperAdminCallerSpec
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc
+import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.context.ApplicationContext
+import org.springframework.context.annotation.Import
+import org.springframework.http.MediaType
+import org.springframework.test.context.ActiveProfiles
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import java.util.UUID
+
+/** Default configuration: `agentos.git.workspaces.enabled` is not set. */
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test", "embedded-neo4j")
+@Import(EmbeddedNeo4jTestConfiguration::class)
+class GitWorkspacesDisabledSpec : SuperAdminCallerSpec() {
+
+    @Autowired
+    lateinit var context: ApplicationContext
+
+    @Autowired
+    lateinit var exchangeRootResolver: ExchangeRootResolver
+
+    @Autowired
+    lateinit var mockMvc: MockMvc
+
+    init {
+        "without agentos.git.workspaces.enabled no binding service or repository is registered" {
+            context.getBeanNamesForType(CaseResourceBindingService::class.java).toList().shouldBeEmpty()
+            context.getBeanNamesForType(CaseResourceBindingRepository::class.java).toList().shouldBeEmpty()
+        }
+
+        "without agentos.git.workspaces.enabled no launch gate is installed and cases keep their own Exchange directory" {
+            context.getBeanNamesForType(CaseLaunchGate::class.java).toList().shouldBeEmpty()
+            exchangeRootResolver.shouldBeInstanceOf<DefaultExchangeRootResolver>()
+        }
+
+        // The absent bean is the whole contract: CaseResourceBindingSchemaInitializer is the only
+        // declaration of the `case_resource_binding*` constraints and indexes, so a context without it
+        // creates none. Asserting that the database holds none is a claim about every other spec of the
+        // run, now that they share one database (EmbeddedNeo4jHarness), and not this spec's to make.
+        "without agentos.git.workspaces.enabled the binding schema initializer is not registered" {
+            context.getBeanNamesForType(CaseResourceBindingSchemaInitializer::class.java).toList().shouldBeEmpty()
+        }
+
+        "without agentos.git.workspaces.enabled no workspace provisioning, cleanup or status bean is loaded" {
+            listOf(
+                CaseWorkspaceProvisioning::class,
+                GitExchangeRootResolver::class,
+                CaseWorkspaceController::class,
+                CaseWorktreeProvisioner::class,
+                CaseWorkspaceSweep::class,
+                GitWorkspaceLifecycleService::class,
+                WorktreeSetupRunner::class,
+                WorkspaceProcessGuard::class,
+                GitWorkspaceStatusService::class,
+            ).forEach { type -> context.getBeanNamesForType(type.java).toList().shouldBeEmpty() }
+        }
+
+        "without agentos.git.workspaces.enabled a GIT integration reaches runs as configured" {
+            // Asserted on the Git customizer itself, not on every RunIntegrationCustomizer: the
+            // exchange one below is deliberately unconditional, and the claim here is about GIT.
+            context.getBeanNamesForType(GitToolsRunIntegration::class.java).toList().shouldBeEmpty()
+        }
+
+        "without agentos.git.workspaces.enabled the exchange path tokens still resolve, and nothing else" {
+            // {{CASE_EXCHANGE}} answers through ExchangeRootResolver, which DefaultExchangeRootResolver
+            // serves on an instance without Git workspaces. Pointing a BASH integration at the case's
+            // own directory must not require equipping anything.
+            context.getBeanNamesForType(ExchangePathRunIntegration::class.java).toList().shouldHaveSize(1)
+            // The assertion this replaced was shouldBeEmpty() on every RunIntegrationCustomizer.
+            // Pinning the whole set, and not only the two classes named here, is what notices a third
+            // unconditional customizer rewriting integration parameters on an instance that
+            // deliberately runs without Git workspaces.
+            context.getBeanNamesForType(RunIntegrationCustomizer::class.java).toList().shouldHaveSize(1)
+        }
+
+        "without agentos.git.workspaces.enabled the workspace routes answer 404" {
+            val id = UUID.randomUUID()
+            mockMvc.perform(get("/api/cases/$id/workspace")).andExpect(status().isNotFound)
+            mockMvc.perform(get("/api/namespaces/$id/workspaces")).andExpect(status().isNotFound)
+            mockMvc
+                .perform(post("/api/cases/$id/workspace/retry").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isNotFound)
+        }
+
+        "without agentos.git.workspaces.enabled the configuration route still answers, and reports them off" {
+            mockMvc
+                .perform(get("/api/git-workspaces-configuration"))
+                .andExpect(status().isOk)
+                .andExpect(jsonPath("$.enabled").value(false))
+        }
+    }
+}

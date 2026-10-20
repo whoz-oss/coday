@@ -2,14 +2,17 @@ package io.whozoss.agentos.aiProvider
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.micrometer.observation.ObservationRegistry
 import io.whozoss.agentos.chat.AnthropicProperties
 import io.whozoss.agentos.chat.ChatModelFactory
+import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import org.springframework.ai.anthropic.AnthropicChatModel
 import org.springframework.ai.google.genai.GoogleGenAiChatModel
 import org.springframework.ai.openai.OpenAiChatModel
+import org.springframework.ai.openai.OpenAiChatOptions
 
 class ChatModelFactoryUnitSpec : StringSpec({
 
@@ -22,7 +25,7 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "sk-test",
             modelName = "gpt-4",
             temperature = 0.7,
-            maxTokens = null,
+            maxCompletionTokens = null,
         )
 
         model.shouldNotBeNull()
@@ -48,7 +51,7 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "sk-ant-test",
             modelName = "claude-3",
             temperature = 0.5,
-            maxTokens = 4000,
+            maxCompletionTokens = 4000,
         )
 
         model.shouldNotBeNull()
@@ -62,7 +65,7 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "google-key",
             modelName = "gemini-pro",
             temperature = 0.5,
-            maxTokens = null,
+            maxCompletionTokens = null,
         )
 
         model.shouldNotBeNull()
@@ -100,10 +103,27 @@ class ChatModelFactoryUnitSpec : StringSpec({
             apiKey = "key",
             modelName = "gpt-4o",
             temperature = null,
-            maxTokens = null,
+            maxCompletionTokens = null,
         )
 
         model.shouldNotBeNull()
         model.shouldBeInstanceOf<OpenAiChatModel>()
     }
+    listOf(AiApiType.OpenAI, AiApiType.vLLM).forEach { apiType ->
+        "${apiType} requests stream usage only after explicit opt in" {
+            val defaultModel = factory.createChatModel(apiType, "http://localhost:8000", "test", "test")
+            val nativeOptions = OpenAiChatOptions.builder().build()
+            (defaultModel.defaultOptions as OpenAiChatOptions).streamOptions shouldBe nativeOptions.streamOptions
+            (defaultModel.defaultOptions as OpenAiChatOptions).streamUsage shouldBe nativeOptions.streamUsage
+
+            val enabledFactory = ChatModelFactory(
+                ObservationRegistry.NOOP,
+                AnthropicProperties(promptCachingEnabled = true),
+                UsageConfigProperties(enabled = true),
+            )
+            val trackedModel = enabledFactory.createChatModel(apiType, "http://localhost:8000", "test", "test")
+            (trackedModel.defaultOptions as OpenAiChatOptions).streamUsage shouldBe true
+        }
+    }
+
 })

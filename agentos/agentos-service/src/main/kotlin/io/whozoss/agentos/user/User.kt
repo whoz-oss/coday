@@ -24,6 +24,8 @@ data class User(
     val lastname: String? = null,
     val bio: String? = null,
     val isAdmin: Boolean = false,
+    /** BCP 47 language tag (e.g. "en", "fr", "en-US"). Null means no preference set. */
+    val preferredLanguage: String? = null,
 ) : Entity {
     /** Full name when available, falling back to the UUID string for a guaranteed non-blank identity label. */
     fun displayName(): String =

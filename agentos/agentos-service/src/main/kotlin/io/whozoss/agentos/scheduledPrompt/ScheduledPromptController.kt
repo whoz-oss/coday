@@ -128,7 +128,13 @@ class ScheduledPromptController(
             userExternalId = request.userExternalId,
         )
         return scheduledPromptService
-            .findByScope(scope.namespaceId, scope.userId, request.agentConfigIds)
+            .findByScope(
+                namespaceId = scope.namespaceId,
+                userId = scope.userId,
+                agentConfigIds = request.agentConfigIds,
+                withRemoved = request.withRemoved,
+                modifiedSince = request.modifiedSince,
+            )
             .let { scheduledPromptService.withContent(it) }
             .map { (sp, content) -> toDto(sp, content) }
     }
@@ -174,6 +180,7 @@ class ScheduledPromptController(
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
             nextRunAt = java.time.Instant.EPOCH,
+            externalMetadata = resource.externalMetadata,
         )
         val (saved, promptContent) = scheduledPromptService.createWithPrompt(entity, resource.promptContent)
         return toDto(saved, promptContent)
@@ -236,6 +243,7 @@ class ScheduledPromptController(
             recurrence = resource.recurrence.toDomain(),
             planning = resource.planning.toDomain(),
             enabled = resource.enabled,
+            externalMetadata = resource.externalMetadata,
         )
 
     companion object : KLogging()
@@ -285,4 +293,6 @@ internal fun toDto(entity: ScheduledPrompt, promptContent: String): ScheduledPro
         createdOn = entity.metadata.created,
         updatedBy = entity.metadata.modifiedBy,
         updatedOn = entity.metadata.modified,
+        removed = entity.metadata.removed,
+        externalMetadata = entity.externalMetadata,
     )

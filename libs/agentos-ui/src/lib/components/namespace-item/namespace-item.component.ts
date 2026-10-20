@@ -1,7 +1,8 @@
-import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
 import { Namespace } from '@whoz-oss/agentos-api-client'
 import { IconButtonComponent } from '@whoz-oss/design-system'
 import { ActionCardChipsDirective, ActionCardComponent, ActionCardMenuItem } from '../action-card/action-card.component'
+import { UsageConfigurationService } from '../../services/usage-configuration.service'
 
 @Component({
   selector: 'agentos-namespace-item',
@@ -11,7 +12,10 @@ import { ActionCardChipsDirective, ActionCardComponent, ActionCardMenuItem } fro
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class NamespaceItemComponent {
+  readonly usageConfiguration = inject(UsageConfigurationService)
   readonly namespace = input.required<Namespace>()
+  /** Git settings exist only while the GIT plugin is loaded on the server. */
+  readonly gitAvailable = input(false)
 
   readonly selected = output<Namespace>()
   readonly editRequested = output<Namespace>()
@@ -22,8 +26,11 @@ export class NamespaceItemComponent {
   readonly promptsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
+  readonly usageRequested = output<Namespace>()
   readonly membersRequested = output<Namespace>()
+  readonly gitRequested = output<Namespace>()
   readonly authSettingsRequested = output<Namespace>()
+  readonly toolInvokeRequested = output<Namespace>()
   readonly deleteRequested = output<Namespace>()
 
   protected readonly pendingDelete = signal(false)
@@ -61,8 +68,14 @@ export class NamespaceItemComponent {
   protected onMembers(): void {
     this.membersRequested.emit(this.namespace())
   }
+  protected onGit(): void {
+    this.gitRequested.emit(this.namespace())
+  }
   protected onAuthSettings(): void {
     this.authSettingsRequested.emit(this.namespace())
+  }
+  protected onToolInvoke(): void {
+    this.toolInvokeRequested.emit(this.namespace())
   }
 
   protected onMenuAction(key: string): void {

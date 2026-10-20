@@ -27,6 +27,32 @@ interface IntegrationConfigService :
     override fun resolveOwner(targetId: UUID): UUID? = findById(targetId)?.userId
 
     /**
+     * Explicit override of [ConfigLookup.findByTriple] with a precise return type.
+     *
+     * Redundant to the reader, load-bearing to the JVM. [ConfigLookup]'s type parameter erases to
+     * its upper bound ([io.whozoss.agentos.sdk.entity.Entity]), so without this redeclaration the
+     * only signature this interface carries in bytecode returns `Entity`, and every Kotlin call
+     * site compiles to that call followed by a `CHECKCAST` to [IntegrationConfig].
+     *
+     * That is invisible until something answers the erased signature on its own terms. A relaxed
+     * MockK mock does exactly that: it derives its auto-stub from the declared return type, hands
+     * back a child mock of `Entity`, and the caller's `CHECKCAST` fails with a
+     * `ClassCastException` naming a synthetic `Entity$SubclassNN` — a message that points at
+     * neither the mock nor the erasure.
+     *
+     * It surfaced through [io.whozoss.agentos.queryUser.QueryUserConfigSeeder], an
+     * [org.springframework.boot.ApplicationRunner] that calls this method during startup of every
+     * Spring test context: any spec mocking this service failed at context load, far from the
+     * spec that mocked it. Declaring the override here is the fix, not a workaround — the precise
+     * type is what the contract always meant.
+     */
+    override fun findByTriple(
+        namespaceId: UUID?,
+        userId: UUID?,
+        name: String,
+    ): IntegrationConfig?
+
+    /**
      * Find a single namespace-scoped [IntegrationConfig] by its (namespaceId, name) pair.
      * Equivalent to `findByTriple(namespaceId, null, name)`.
      *
@@ -116,4 +142,13 @@ interface IntegrationConfigService :
         userRequested: Boolean,
         canReadNamespace: (UUID) -> Boolean,
     ): List<IntegrationConfig>
+
+    /**
+     * The active namespace-shared row of a singleton [integrationType], or null. Unlike [findEffective]
+     * it merges no layer and reads no YAML: see [IntegrationTypeConstraints].
+     */
+    fun findActiveNamespaceSingleton(
+        namespaceId: UUID,
+        integrationType: String,
+    ): IntegrationConfig?
 }

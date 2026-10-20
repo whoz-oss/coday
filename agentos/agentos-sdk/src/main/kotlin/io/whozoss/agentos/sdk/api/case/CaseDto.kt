@@ -3,6 +3,7 @@ package io.whozoss.agentos.sdk.api.case
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import io.swagger.v3.oas.annotations.media.Schema
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
+import jakarta.validation.constraints.Min
 import jakarta.validation.constraints.NotNull
 import java.time.Instant
 import java.util.UUID
@@ -18,7 +19,7 @@ import java.util.UUID
  *
  * @property id Server-assigned UUID. Null on create requests; always present in responses.
  * @property namespaceId The namespace this case belongs to. Required on create.
- * @property status Current lifecycle status. Defaults to [CaseStatus.PENDING] on create.
+ * @property status Current lifecycle status. Defaults to [CaseStatus.CREATED] on create.
  * @property title Optional human-readable title.
  * @property created Server-set creation timestamp. Present in responses only.
  * @property modified Server-set last-modification timestamp. Present in responses only.
@@ -31,10 +32,13 @@ import java.util.UUID
  *   caller has no direct edge (e.g. transitive namespace-admin access). Same population rules as `favorite`.
  * @property readAt Timestamp of the caller's last read of this case, or null when the case has never
  *   been opened by this user (meaning it is unread). Same population rules as `favorite`.
- * @property unreadCount Number of unread cases in the namespace for the current user. Only populated
- *   by the dedicated [io.whozoss.agentos.sdk.api.case.CaseApi.countUnread] endpoint; null everywhere else.
  * @property scheduledPromptId Id of the ScheduledPrompt that triggered this case, or null when the
  *   case was started by a human user or a delegation tool.
+ * @property runCostThreshold Per-case override of the run cost threshold, in the platform currency
+ *   unit. Null means "inherit from the namespace or platform default", never "no limit" or "zero".
+ *   Can be set upfront when the caller anticipates a costly run, or written by the cost-enforcement
+ *   mechanism when the user chooses to continue after a breach. A stored value is always absolute
+ *   and independent of platform or namespace config changes.
  */
 @Schema(name = "Case")
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -42,10 +46,18 @@ data class CaseDto(
     val id: UUID? = null,
     @field:NotNull(message = "namespaceId must not be null")
     val namespaceId: UUID,
-    val status: CaseStatus = CaseStatus.PENDING,
+    val status: CaseStatus = CaseStatus.CREATED,
     val title: String? = null,
     val parentCaseId: UUID? = null,
     val scheduledPromptId: UUID? = null,
+    @field:Schema(
+        description =
+            "Per-case override of the run cost threshold, in the platform currency unit. " +
+                "Null means inherit from the namespace or platform default (never \"no limit\" or \"zero\"). " +
+                "Set upfront for costly runs, or written by the enforcement mechanism on continuation.",
+    )
+    @field:Min(value = 0, message = "runCostThreshold must be zero or positive")
+    val runCostThreshold: Double? = null,
     val created: Instant? = null,
     val modified: Instant? = null,
     /**

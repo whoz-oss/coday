@@ -230,6 +230,26 @@
         </p>
       </div>
 
+      <!-- External Metadata -->
+      <div class="scheduled-prompt-form__field">
+        <label class="scheduled-prompt-form__label" for="sp-external-metadata">External Metadata</label>
+        <textarea
+          id="sp-external-metadata"
+          class="scheduled-prompt-form__textarea scheduled-prompt-form__textarea--code"
+          rows="6"
+          placeholder='{ "key": "value" }'
+          [formControl]="externalMetadataJsonControl"
+          spellcheck="false"
+          autocomplete="off"
+        ></textarea>
+        @if (externalMetadataJsonControl.invalid && externalMetadataJsonControl.touched) {
+          <span class="scheduled-prompt-form__field-error">Invalid JSON.</span>
+        }
+        <span class="scheduled-prompt-form__field-hint"
+          >Optional. Opaque JSON object stored as-is. Leave empty to clear.</span
+        >
+      </div>
+
       @if (errorMessage()) {
         <p class="scheduled-prompt-form__error">{{ errorMessage() }}</p>
       }

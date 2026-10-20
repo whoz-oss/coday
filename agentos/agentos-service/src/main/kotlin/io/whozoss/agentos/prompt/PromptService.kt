@@ -72,6 +72,27 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
         targetLanguage: String,
         callerNamespaceId: UUID?,
     ): PromptTranslation
+
+    /**
+     * Batch-translates a list of prompts into [targetLanguage], running permission checks
+     * and translations concurrently per prompt on [kotlinx.coroutines.Dispatchers.IO].
+     *
+     * Only prompts for which [currentUserId] holds READ permission are included in the
+     * result. Inaccessible prompts are silently omitted — same convention as
+     * `@HideOnAccessDenied` on the single-prompt endpoint.
+     *
+     * The response list preserves the order of the input [ids]. Prompts not found in the
+     * repository (unknown IDs) are also omitted.
+     *
+     * [callerNamespaceId] is used for AI model resolution when a prompt is platform-scoped
+     * (namespaceId IS NULL). For namespace-scoped prompts it is ignored.
+     */
+    fun translateBatch(
+        ids: List<UUID>,
+        targetLanguage: String,
+        callerNamespaceId: UUID?,
+        currentUserId: String,
+    ): List<PromptBatchTranslation>
 }
 
 /**
@@ -81,6 +102,20 @@ interface PromptService : EntityService<Prompt, UUID>, OwnershipAware {
  * [content] always has the same size as [Prompt.content].
  */
 data class PromptTranslation(
+    val title: String?,
+    val content: List<String>,
+)
+
+/**
+ * Resolved translation for a single prompt in a batch, returned by
+ * [PromptService.translateBatch].
+ *
+ * [id] identifies which prompt this translation belongs to.
+ * [title] is null when the prompt has no [Prompt.title].
+ * [content] always has the same size as [Prompt.content].
+ */
+data class PromptBatchTranslation(
+    val id: UUID,
     val title: String?,
     val content: List<String>,
 )

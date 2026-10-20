@@ -33,13 +33,13 @@ import { registerTranscribeRoutes } from './lib/transcribe.routes'
 import { parseCodayOptions } from './lib/coday-options-utils'
 import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
-import { createProxyMiddleware } from 'http-proxy-middleware'
 import { resolveUsername } from './lib/resolve-username'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion } from './lib/version'
 import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
+import { createAgentOsProxy } from './lib/agentos-proxy'
 
 const app = express()
 const DEFAULT_PORT = process.env.PORT
@@ -114,12 +114,7 @@ app.use(
     }
     next()
   },
-  createProxyMiddleware({
-    // router callback reads currentAgentosUrl at request time, not at setup time
-    router: () => currentAgentosUrl,
-    changeOrigin: true,
-    pathRewrite: { '^/api/agentos': '' },
-  })
+  createAgentOsProxy(() => currentAgentosUrl)
 )
 debugLog(
   'INIT',

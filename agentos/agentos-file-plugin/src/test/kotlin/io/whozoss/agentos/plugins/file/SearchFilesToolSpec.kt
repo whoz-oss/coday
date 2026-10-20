@@ -267,6 +267,50 @@ class SearchFilesToolSpec : StringSpec() {
             result.output shouldContain "config.env"
         }
 
+        "name and content searches exclude denied parents and symlink targets but retain normal files" {
+            val tool = SearchFilesTool(tempDir, denyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + ".git")
+            Files.createDirectories(tempDir.resolve("nested/.git"))
+            tempDir.resolve("nested/.git/config").writeText("-search private metadata")
+            tempDir.resolve("config.txt").writeText("-search public data")
+            Files.createSymbolicLink(tempDir.resolve("config-link"), tempDir.resolve("nested/.git/config"))
+            val outside = Files.createTempFile("outside-config", ".txt")
+            try {
+                outside.writeText("-search outside content")
+                Files.createSymbolicLink(tempDir.resolve("config-outside"), outside)
+                for (input in listOf(
+                    SearchFilesTool.Input(fileName = "config"),
+                    SearchFilesTool.Input(fileContent = "search"),
+                    // Leading '-' forces the NIO fallback, so both search implementations are covered.
+                    SearchFilesTool.Input(fileContent = "-search"),
+                )) {
+                    val result = tool.execute(input, ctx)
+                    result.success shouldBe true
+                    result.output shouldContain "config.txt"
+                    result.output shouldContain "public data"
+                    result.output shouldNotContain "private metadata"
+                    result.output shouldNotContain ".git"
+                    result.output shouldNotContain "config-link"
+                    result.output shouldNotContain "config-outside"
+                    result.output shouldNotContain "outside content"
+                }
+            } finally {
+                Files.deleteIfExists(outside)
+            }
+        }
+
+        "searching inside a permitted subdirectory uses the same boundary and relative result paths" {
+            val tool = SearchFilesTool(tempDir, denyPatterns = listOf(".git"))
+            Files.createDirectories(tempDir.resolve("src/nested/.git"))
+            tempDir.resolve("src/nested/.git/config").writeText("private metadata")
+            tempDir.resolve("src/config.txt").writeText("public config")
+
+            val result = tool.execute(SearchFilesTool.Input(path = "src", fileName = "config"), ctx)
+
+            result.success shouldBe true
+            result.output shouldContain "src/config.txt"
+            result.output shouldNotContain "private metadata"
+        }
+
         "should deny extra patterns passed via constructor" {
             // Construct SearchFilesTool with custom denyPatterns
             val customDenyPatterns = SensitiveFilePatterns.DEFAULT_PATTERNS + listOf("*.custom")

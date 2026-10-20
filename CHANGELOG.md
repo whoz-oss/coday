@@ -1,3 +1,684 @@
+## 3.38.0 (2026-10-20)
+
+### 🚀 Features
+
+- #35527 bind Forge Agents to the case worktree for files and commands ([#1463](https://github.com/whoz-oss/coday/pull/1463), [#35527](https://github.com/whoz-oss/coday/issues/35527))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.37.0 (2026-10-20)
+
+### 🚀 Features
+
+- wz-35442 - user group list member tool ([#1451](https://github.com/whoz-oss/coday/pull/1451))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.36.1 (2026-10-19)
+
+### 🩹 Fixes
+
+- **server:** close the client connection when AgentOS drops a proxied stream ([#1468](https://github.com/whoz-oss/coday/pull/1468))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.36.0 (2026-10-19)
+
+### 🚀 Features
+
+- **agentos-service:** answer with more links ([#1464](https://github.com/whoz-oss/coday/pull/1464))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.35.2 (2026-10-15)
+
+### 🩹 Fixes
+
+- **agentos-service:** #35451 transform ResponseStatusException to AgentOs <Status>Exception ([#1449](https://github.com/whoz-oss/coday/pull/1449), [#35451](https://github.com/whoz-oss/coday/issues/35451))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.1 (2026-10-15)
+
+### 🩹 Fixes
+
+- #1405 display the user's answer to a queryUser question in the case chat ([#1406](https://github.com/whoz-oss/coday/pull/1406), [#1405](https://github.com/whoz-oss/coday/issues/1405))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.0 (2026-10-14)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention generation tool name ([#1448](https://github.com/whoz-oss/coday/pull/1448))
+
+### 🔥 Performance
+
+- **agentos:** share one Neo4j test harness across Spring test contexts ([#1440](https://github.com/whoz-oss/coday/pull/1440))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.34.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos-service:** stop now ends the agent's turn at once ([#1442](https://github.com/whoz-oss/coday/pull/1442))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.34.0 (2026-10-13)
+
+### 🚀 Features
+
+- #1425 #34871 add integration configuration on query user ([#1428](https://github.com/whoz-oss/coday/pull/1428), [#1425](https://github.com/whoz-oss/coday/issues/1425), [#34871](https://github.com/whoz-oss/coday/issues/34871))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.33.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos:** skip workspace requests when Git workspaces are disabled ([#1438](https://github.com/whoz-oss/coday/pull/1438))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.33.0 (2026-10-12)
+
+### 🚀 Features
+
+- update anthropic and google models ([d0f41fb1](https://github.com/whoz-oss/coday/commit/d0f41fb1))
+- update anthropic and google models ([#1441](https://github.com/whoz-oss/coday/pull/1441))
+
+### ❤️ Thank You
+
+- David Palita
+
+## 3.32.0 (2026-10-12)
+
+### 🚀 Features
+
+- **agentos-service:** try to change tool balis to have more consiste… ([#1439](https://github.com/whoz-oss/coday/pull/1439))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.31.0 (2026-10-12)
+
+### 🚀 Features
+
+- wz-35120 - CREATED status ([#1434](https://github.com/whoz-oss/coday/pull/1434))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.30.0 (2026-10-09)
+
+### 🚀 Features
+
+- **agentos:** #WZ-35090 AgentLoop V0 : one case per tool result row ([#1414](https://github.com/whoz-oss/coday/pull/1414))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+- thomas.martin @thomas-martin-whoz
+
+## 3.29.0 (2026-10-09)
+
+### 🚀 Features
+
+- wz-35120 - add CREATED status ([#1435](https://github.com/whoz-oss/coday/pull/1435))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.28.0 (2026-10-08)
+
+### 🚀 Features
+
+- **agentos-service:** more resilient generate intent ([a77e7286](https://github.com/whoz-oss/coday/commit/a77e7286))
+- **agentos-service:** close balis ([90125107](https://github.com/whoz-oss/coday/commit/90125107))
+- **agentos-service:** more resilient generate intent ([#1424](https://github.com/whoz-oss/coday/pull/1424))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 3.27.0 (2026-10-07)
+
+### 🚀 Features
+
+- wz-35270 - batch translate API ([#1422](https://github.com/whoz-oss/coday/pull/1422))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.26.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** inspect workspace changes and participating agents ([#1370](https://github.com/whoz-oss/coday/pull/1370))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.25.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** observe workspace branches and pull requests ([#1369](https://github.com/whoz-oss/coday/pull/1369))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.24.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** activate optional case-family worktrees ([#1368](https://github.com/whoz-oss/coday/pull/1368))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.23.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** configure global and per-agent delegation timeouts ([#1338](https://github.com/whoz-oss/coday/pull/1338))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.22.0 (2026-10-06)
+
+### 🚀 Features
+
+- **agentos:** resolve case-family workspaces and gate their runs behind a flag ([#1367](https://github.com/whoz-oss/coday/pull/1367))
+
+### ❤️ Thank You
+
+- ctraon
+- selim-bensenouci-ep-whoz
+
+## 3.21.0 (2026-10-01)
+
+### 🚀 Features
+
+- **agentos-service:** improve thinking process for intention ([6858e570](https://github.com/whoz-oss/coday/commit/6858e570))
+- **agentos-service:** null safe ([9c47b185](https://github.com/whoz-oss/coday/commit/9c47b185))
+- **agentos-service:** and fix 's' in instructions ([910b00c6](https://github.com/whoz-oss/coday/commit/910b00c6))
+- **agentos-service:** null safe ([651a7965](https://github.com/whoz-oss/coday/commit/651a7965))
+- **agentos-service:** improve thinking process for intention ([#1404](https://github.com/whoz-oss/coday/pull/1404))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 3.20.0 (2026-10-01)
+
+### 🚀 Features
+
+- wz-35088 - structured output in tool invoke UI and endpoint ([#1403](https://github.com/whoz-oss/coday/pull/1403))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.19.0 (2026-09-30)
+
+### 🚀 Features
+
+- wz-35088 - add test endpoint and UI for tool calls ([#1395](https://github.com/whoz-oss/coday/pull/1395))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.18.0 (2026-09-30)
+
+### 🚀 Features
+
+- introduce UsageRecord entity, persistence, service and controller ([a71fc3e9](https://github.com/whoz-oss/coday/commit/a71fc3e9))
+- regen openapi and api-client ([0299f1a8](https://github.com/whoz-oss/coday/commit/0299f1a8))
+- add sumCostByCaseTreeSince — cost sum for a case tree from a given instant ([1e4c8f0d](https://github.com/whoz-oss/coday/commit/1e4c8f0d))
+- regen openapi and api-client ([83f4de1c](https://github.com/whoz-oss/coday/commit/83f4de1c))
+- pr-review ([6abdb14c](https://github.com/whoz-oss/coday/commit/6abdb14c))
+- **agentos:** complete usage tracking and cost confirmation ([4c45eece](https://github.com/whoz-oss/coday/commit/4c45eece))
+- **agentos:** make usage tracking explicitly opt-in ([2a42524e](https://github.com/whoz-oss/coday/commit/2a42524e))
+- **agentos:** complete usage tracking, monitoring and cost confirmation ([#1358](https://github.com/whoz-oss/coday/pull/1358))
+
+### 🩹 Fixes
+
+- correct UsageRecord permissions — drop getById, restrict namespace aggregates to ADMIN ([68bf6653](https://github.com/whoz-oss/coday/commit/68bf6653))
+- address review comments on UsageRecord PR ([baac24dd](https://github.com/whoz-oss/coday/commit/baac24dd))
+- #1309 address Vincent's review — timestamp explicit, collect comment ([#1309](https://github.com/whoz-oss/coday/issues/1309))
+- align generated usage aggregate contract ([93e5bbab](https://github.com/whoz-oss/coday/commit/93e5bbab))
+- wz-34476 Refresh case usage on distinct agent message events ([926f3e46](https://github.com/whoz-oss/coday/commit/926f3e46))
+- wz-34476 Refactor delegation timeout and terminal status handling ([fbb3ba5f](https://github.com/whoz-oss/coday/commit/fbb3ba5f))
+- wz-34476: correct test ([73df739c](https://github.com/whoz-oss/coday/commit/73df739c))
+- **agentos:** preserve graceful interruption and fix usage template lint ([bf2d6d1c](https://github.com/whoz-oss/coday/commit/bf2d6d1c))
+- **agentos:** preserve tool history when stopping a cost pause ([10bc512c](https://github.com/whoz-oss/coday/commit/10bc512c))
+- **agentos:** record terminal tool failures in usage ([c264ff26](https://github.com/whoz-oss/coday/commit/c264ff26))
+- **agentos:** refresh cost confirmations during active runs ([e5081fe6](https://github.com/whoz-oss/coday/commit/e5081fe6))
+- **agentos:** release cost sessions when run startup fails ([7ca3e1bb](https://github.com/whoz-oss/coday/commit/7ca3e1bb))
+- **agentos:** tolerate analytics outages for uncapped runs ([df60f80a](https://github.com/whoz-oss/coday/commit/df60f80a))
+- **agentos:** show ancestor cost pauses in child conversations ([445a5951](https://github.com/whoz-oss/coday/commit/445a5951))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- selimbensenouciep-prog
+- vincent.audibert
+
+## 3.17.0 (2026-09-30)
+
+### 🚀 Features
+
+- #WZ-35099 add externalMetadata to ScheduledPrompt ([#1400](https://github.com/whoz-oss/coday/pull/1400))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.16.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** browse Exchange directories reliably ([#1366](https://github.com/whoz-oss/coday/pull/1366))
+
+### ❤️ Thank You
+
+- ctraon
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.15.1 (2026-09-30)
+
+### 🩹 Fixes
+
+- #1271 Resume multiple answered questions sequentially ([#1273](https://github.com/whoz-oss/coday/pull/1273), [#1271](https://github.com/whoz-oss/coday/issues/1271))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+- vincent.couturier @vincent-couturier-whoz
+
+## 3.15.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** configure optional namespace Git repositories ([#1365](https://github.com/whoz-oss/coday/pull/1365))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.14.0 (2026-09-30)
+
+### 🚀 Features
+
+- **agentos:** add managed Git execution and repository storage ([#1364](https://github.com/whoz-oss/coday/pull/1364))
+
+### ❤️ Thank You
+
+- selim
+- selim-bensenouci-ep-whoz
+
+## 3.13.0 (2026-09-29)
+
+### 🚀 Features
+
+- wz-35088 - structured output for tools ([#1392](https://github.com/whoz-oss/coday/pull/1392))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.12.0 (2026-09-28)
+
+### 🚀 Features
+
+- define a default platform-level runCostThreshold ([a0c635fa](https://github.com/whoz-oss/coday/commit/a0c635fa))
+- define a default namespace-level runCostThreshold ([6cbc5d4a](https://github.com/whoz-oss/coday/commit/6cbc5d4a))
+- define a default case-level runCostThreshold ([4dd5057b](https://github.com/whoz-oss/coday/commit/4dd5057b))
+- regen openapi and api-client ([ca5be3ef](https://github.com/whoz-oss/coday/commit/ca5be3ef))
+- add front for runCostThreshold ([c2e96650](https://github.com/whoz-oss/coday/commit/c2e96650))
+- apply runCostThreshold to case creation and manual update ([f3e97316](https://github.com/whoz-oss/coday/commit/f3e97316))
+- make case runCostThreshold editable on case ([16e628d5](https://github.com/whoz-oss/coday/commit/16e628d5))
+- add default runCostThreshold for Coday ([ce5472bd](https://github.com/whoz-oss/coday/commit/ce5472bd))
+- regen openapi and rework default coday env var ([df10d7e6](https://github.com/whoz-oss/coday/commit/df10d7e6))
+- pr-review ([d088eb03](https://github.com/whoz-oss/coday/commit/d088eb03))
+- #WZ-34476 add runCostThreshold to platform, namespace, and case ([#1301](https://github.com/whoz-oss/coday/pull/1301))
+
+### 🩹 Fixes
+
+- test NamespaceServiceImplSpec.kt ([74a7a5b4](https://github.com/whoz-oss/coday/commit/74a7a5b4))
+- test CaseServiceImplSpec.kt ([23a55197](https://github.com/whoz-oss/coday/commit/23a55197))
+- #WZ-34476 address frontend review comments on run cost threshold ([b5c2655b](https://github.com/whoz-oss/coday/commit/b5c2655b))
+- #WZ-34476 preserve runCostThreshold on case creation and reject negative values ([b171078c](https://github.com/whoz-oss/coday/commit/b171078c))
+- serialize case edits and restore confirmed state on failure ([623831f7](https://github.com/whoz-oss/coday/commit/623831f7))
+- preserve explicit AgentOS environment fallbacks ([2116b4a9](https://github.com/whoz-oss/coday/commit/2116b4a9))
+- #1290 remove unused import ([#1290](https://github.com/whoz-oss/coday/issues/1290))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- Benjamin VALDES @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- selimbensenouciep-prog
+- vincent.audibert
+
+## 3.11.0 (2026-09-26)
+
+### 🚀 Features
+
+- #1290 add delegation lifecycle events ([#1324](https://github.com/whoz-oss/coday/pull/1324), [#1290](https://github.com/whoz-oss/coday/issues/1290))
+
+### ❤️ Thank You
+
+- Benjamin VALDES @benjamin-valdes-whoz
+
+## 3.10.1 (2026-09-25)
+
+### 🩹 Fixes
+
+- restore clean input state on thread resume ([9a9a4052](https://github.com/whoz-oss/coday/commit/9a9a4052))
+- restore clean input state on thread resume ([#1384](https://github.com/whoz-oss/coday/pull/1384))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 3.10.0 (2026-09-25)
+
+### 🚀 Features
+
+- display running delegation count in thinking loader ([cdf862f8](https://github.com/whoz-oss/coday/commit/cdf862f8))
+- display running delegation count in thinking loader ([#1227](https://github.com/whoz-oss/coday/pull/1227))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 3.9.0 (2026-09-25)
+
+### 🚀 Features
+
+- status icone on delegate thread chat box ([138d2f74](https://github.com/whoz-oss/coday/commit/138d2f74))
+- delegation status event and inline status icon ([#1226](https://github.com/whoz-oss/coday/pull/1226))
+
+### ❤️ Thank You
+
+- Romain Petit
+
+## 3.8.0 (2026-09-24)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention and recall available agents ([4fac9d2f](https://github.com/whoz-oss/coday/commit/4fac9d2f))
+- **agentos-service:** improve intention and recall available agents ([#1383](https://github.com/whoz-oss/coday/pull/1383))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+- yannick.bride
+
+## 3.7.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- wz-34403 - fix case title and first message translation ([#1382](https://github.com/whoz-oss/coday/pull/1382))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.7.0 (2026-09-24)
+
+### 🚀 Features
+
+- wz-34403 - use preferred language in scheduled cases ([#1378](https://github.com/whoz-oss/coday/pull/1378))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.6.2 (2026-09-24)
+
+### 🩹 Fixes
+
+- add Neo4j index on ScheduledPrompt.modified ([d7be44e8](https://github.com/whoz-oss/coday/commit/d7be44e8))
+- add Neo4j index on ScheduledPrompt.modified ([#1381](https://github.com/whoz-oss/coday/pull/1381))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+- mathieu_dearmey @mathieu-de-armey-whoz
+
+## 3.6.1 (2026-09-24)
+
+### 🩹 Fixes
+
+- #WZ-34777 guard case creation against users who lost agent access ([#1373](https://github.com/whoz-oss/coday/pull/1373))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.6.0 (2026-09-24)
+
+### 🚀 Features
+
+- #1375 delta-sync support for ScheduledPrompts (withRemoved, modifiedSince) ([#1376](https://github.com/whoz-oss/coday/pull/1376), [#1375](https://github.com/whoz-oss/coday/issues/1375))
+
+### ❤️ Thank You
+
+- Mathieu De Armey @mathieu-de-armey-whoz
+
+## 3.5.0 (2026-09-23)
+
+### 🚀 Features
+
+- introduce UsageRecord entity, persistence, service and controller ([#1309](https://github.com/whoz-oss/coday/pull/1309))
+
+### ❤️ Thank You
+
+- Benjamin Valdes @benjamin-valdes-whoz
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- vincent-audibert-whoz
+
+## 3.4.0 (2026-09-23)
+
+### 🚀 Features
+
+- wz-34403 - add language support in agentOS ([#1374](https://github.com/whoz-oss/coday/pull/1374))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.3.1 (2026-09-23)
+
+### 🩹 Fixes
+
+- revert requesty provider config mistakenly added to agents ([#1352](https://github.com/whoz-oss/coday/pull/1352))
+- revert requesty provider config mistakenly added to agents ([#1352](https://github.com/whoz-oss/coday/pull/1352), [#1353](https://github.com/whoz-oss/coday/pull/1353))
+- **agentos-service:** remove use of dynamic label on PermissionNodeNeo4jRepository.kt 34948 ([#1354](https://github.com/whoz-oss/coday/pull/1354))
+
+### ❤️ Thank You
+
+- leo
+- leo-punsola-whoz @leo-punsola-whoz
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.3.0 (2026-09-22)
+
+### 🚀 Features
+
+- #wz-34476 add contextWindow, maxCompletionTokens and pricing fields to AiModel ([#1305](https://github.com/whoz-oss/coday/pull/1305))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+- vincent-audibert-whoz
+
+## 3.2.1 (2026-09-22)
+
+### 🩹 Fixes
+
+- #WZ-34801 Cascade agent soft-delete and disable to its scheduled prompts ([#1346](https://github.com/whoz-oss/coday/pull/1346))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
+## 3.2.0 (2026-09-21)
+
+### 🚀 Features
+
+- **agentos-service:** #34892 inject redirect guideline into planning prompt ([#1348](https://github.com/whoz-oss/coday/pull/1348), [#34892](https://github.com/whoz-oss/coday/issues/34892))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.1.0 (2026-09-21)
+
+### 🚀 Features
+
+- wz-34857 - blacklist in redirect tool plugin ([#1347](https://github.com/whoz-oss/coday/pull/1347))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+# 3.0.0 (2026-09-18)
+
+### 🚀 Features
+
+- #1275 filesystem skill catalog discovery and prompt injection ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- #1275 promote Skill to Entity with Neo4j persistence layer ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- add skill discovery and agent capability composition ([2c4b9794](https://github.com/whoz-oss/coday/commit/2c4b9794))
+- #1275 filesystem skill catalog discovery and prompt injection ([#1277](https://github.com/whoz-oss/coday/pull/1277), [#1275](https://github.com/whoz-oss/coday/issues/1275))
+- ⚠️  **skill:** authorize filesystem-backed skills and harden resource reads ([83bab738](https://github.com/whoz-oss/coday/commit/83bab738))
+
+### 🩹 Fixes
+
+- #1275 revert out-of-scope AgentConfigController changes ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- #1275 harden SkillResolver and document skill trust boundary ([#1275](https://github.com/whoz-oss/coday/issues/1275))
+- stabilize scheduled prompt batch scenario mock ([2d466e41](https://github.com/whoz-oss/coday/commit/2d466e41))
+
+### ⚠️  Breaking Changes
+
+- **skill:** authorize filesystem-backed skills and harden resource reads  ([83bab738](https://github.com/whoz-oss/coday/commit/83bab738))
+
+### ❤️ Thank You
+
+- leo
+- leo-punsola-whoz @leo-punsola-whoz
+
+## 2.1.1 (2026-09-18)
+
+### 🩹 Fixes
+
+- #1317 surface provider error body on streaming path ([#1318](https://github.com/whoz-oss/coday/pull/1318), [#1317](https://github.com/whoz-oss/coday/issues/1317))
+
+### ❤️ Thank You
+
+- vincent-audibert-whoz
+
+## 2.1.0 (2026-09-17)
+
+### 🚀 Features
+
+- 1344 - remove kill button from agentos ui ([#1345](https://github.com/whoz-oss/coday/pull/1345))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+# 2.0.0 (2026-09-16)
+
+### 🩹 Fixes
+
+- ⚠️  #WZ-34456 populate startedAt, typed UserContextResult, explicit error handling ([#1334](https://github.com/whoz-oss/coday/pull/1334))
+
+### ⚠️  Breaking Changes
+
+- #WZ-34456 populate startedAt, typed UserContextResult, explicit error handling  ([#1334](https://github.com/whoz-oss/coday/pull/1334))
+  ** `UserContextProvider.provideUserContext `now
+  returns `UserContextResult` instead of `Map<String, Any?>?`. Plugin
+  implementations must be updated to return `UserContextResult.Success` /
+  `PermanentFailure` / `TransientFailure` instead of a raw map.
+  - Set `startedAt = now` in
+  `Neo4jScheduledPromptUserRunRepository.claimBatch` so the field is
+  populated when a `UserRun` transitions from `PENDING` to `RUNNING`
+  - Introduce `UserContextResult` sealed class (Success/PermanentFailure
+  /TransientFailure) in the SDK, replacing the opaque `Map<String, Any?>?`
+  return type of `UserContextProvider.provideUserContext`, errors are now
+  explicit and always logged instead of being silently absorbed as `null`
+  - `ScheduledPromptExecutor.resolveSessionContext` dispatches on
+  `UserContextResult`: PermanentFailure -> marks `UserRun` `FAILED`
+  immediately; `TransientFailure` -> leaves `UserRun` `RUNNING` for
+  lease-based reclaim; unexpected exception -> treated as transient with a
+  warn log
+  Local testing:
+  > 2026-09-15 11:43:02 - [Executor]
+  UserRun=5141a12a-2fdf-4543-bbfd-1d6cc108ef1d
+  user=914b4ea6-b23b-4bfc-bd8e-431ea5ee03fc — transient context failure,
+  leaving RUNNING for lease-based reclaim. Reason: Failed to connect to
+  copilot/127.0.0.1:80"
+  M	agentos/agentos-sdk/src/main/kotlin/io/whozoss/agentos/sdk/scheduledPrompt/UserContextProvider.kt
+  A	agentos/agentos-sdk/src/main/kotlin/io/whozoss/agentos/sdk/scheduledPrompt/UserContextResult.kt
+  M	agentos/agentos-service/src/main/kotlin/io/whozoss/agentos/scheduledPrompt/Neo4jScheduledPromptUserRunRepository.kt
+  M	agentos/agentos-service/src/main/kotlin/io/whozoss/agentos/scheduledPrompt/ScheduledPromptExecutor.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/persistence/neo4j/AbstractScheduledPromptUserRunPersistenceSpec.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/scheduledPrompt/InMemoryScheduledPromptUserRunRepository.kt
+  M	agentos/agentos-service/src/test/kotlin/io/whozoss/agentos/scheduledPrompt/ScheduledPromptExecutorUnitSpec.kt
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 1.3.7 (2026-09-14)
 
 ### 🩹 Fixes

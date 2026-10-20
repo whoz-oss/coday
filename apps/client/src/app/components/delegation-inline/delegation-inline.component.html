@@ -8,6 +8,15 @@
     (keydown.space)="toggle()"
   >
     <mat-icon class="expand-icon">{{ isExpanded ? 'expand_more' : 'chevron_right' }}</mat-icon>
+    @if (status === 'running') {
+      <mat-spinner class="status-icon" [diameter]="14"></mat-spinner>
+    } @else if (status === 'completed') {
+      <mat-icon class="status-icon status-completed">check_circle</mat-icon>
+    } @else if (status === 'failed') {
+      <mat-icon class="status-icon status-failed">error</mat-icon>
+    } @else if (status === 'interrupted') {
+      <mat-icon class="status-icon status-interrupted">cancel</mat-icon>
+    }
     <span class="agent-name">{{ agentName }}</span>
     @if (taskSummary) {
       <span class="task-summary">{{ taskSummary }}</span>

@@ -11,12 +11,14 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.whozoss.agentos.aiModel.AiModelRepository
 import io.whozoss.agentos.aiProvider.AiProviderRepository
+import io.whozoss.agentos.config.Neo4jPersistenceConfiguration
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.data.neo4j.core.Neo4jClient
 import java.util.UUID
 
 /**
@@ -40,6 +42,9 @@ abstract class AbstractAiModelPersistenceSpec : StringSpec() {
 
     @Autowired
     lateinit var driver: Driver
+
+    @Autowired
+    lateinit var neo4jClient: Neo4jClient
 
     private fun aiProvider(namespaceId: UUID = UUID.randomUUID()): AiProvider =
         AiProvider(
@@ -67,6 +72,42 @@ abstract class AbstractAiModelPersistenceSpec : StringSpec() {
 
     init {
         beforeEach { Neo4jContainerSupport.clearDatabase(driver) }
+
+        "legacy token migration does not restore a completion limit cleared after migration" {
+            val provider = providerRepo.save(aiProvider())
+            val saved = repo.save(aiModel(aiProviderId = provider.id))
+            neo4jClient.query("MATCH (m:AiModel {id: \$id}) SET m.maxTokens = 4000")
+                .bind(saved.id.toString()).to("id").run()
+            val migration = Neo4jPersistenceConfiguration().migrateAiModelMaxTokens(neo4jClient)
+
+            migration.run()
+            val migrated = repo.findByIds(listOf(saved.id)).single()
+            migrated.maxCompletionTokens shouldBe 4000
+
+            repo.save(migrated.copy(maxCompletionTokens = null))
+            migration.run()
+            repo.findByIds(listOf(saved.id)).single().maxCompletionTokens.shouldBeNull()
+            neo4jClient.query("MATCH (m:AiModel {id: \$id}) RETURN m.maxTokens AS legacy")
+                .bind(saved.id.toString()).to("id").fetch().one().orElseThrow()["legacy"] shouldBe 4000L
+        }
+
+        "legacy token migration preserves an explicit completion limit and records migration before it is cleared" {
+            val provider = providerRepo.save(aiProvider())
+            val saved = repo.save(aiModel(aiProviderId = provider.id).copy(maxCompletionTokens = 8000))
+            val modern = repo.save(aiModel(aiProviderId = provider.id))
+            neo4jClient.query("MATCH (m:AiModel {id: \$id}) SET m.maxTokens = 4000")
+                .bind(saved.id.toString()).to("id").run()
+            val migration = Neo4jPersistenceConfiguration().migrateAiModelMaxTokens(neo4jClient)
+
+            migration.run()
+            val migrated = repo.findByIds(listOf(saved.id)).single()
+            migrated.maxCompletionTokens shouldBe 8000
+
+            repo.save(migrated.copy(maxCompletionTokens = null))
+            migration.run()
+            repo.findByIds(listOf(saved.id)).single().maxCompletionTokens.shouldBeNull()
+            repo.findByIds(listOf(modern.id)).single().maxCompletionTokens.shouldBeNull()
+        }
 
         // -------------------------------------------------------------------------
         // Basic save / read

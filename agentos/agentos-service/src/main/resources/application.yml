@@ -84,10 +84,10 @@ management:
       # Eureka health check URL is configured accordingly in application-whoz.yml.
       base-path: /management
       exposure:
-        include: health,info,metrics,prometheus,scheduler,jolokia
+        include: health,info,metrics,prometheus,scheduler,gitworkspaces,jolokia
     jmx:
       exposure:
-        include: health,info,metrics,scheduler
+        include: health,info,metrics,scheduler,gitworkspaces
   endpoint:
     health:
       # 'always' so that Eureka can read the health status without credentials.
@@ -103,6 +103,15 @@ management:
 # datadog/agent:latest
 
 agentos:
+  usage:
+    # Opt in to LLM usage accounting, analytical records and the run-cost guard.
+    # Disabled by default in every profile, including Whoz.
+    enabled: ${AGENTOS_USAGE_ENABLED:false}
+  git:
+    workspaces:
+      # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
+      # runs exactly as without Git, whatever the namespace's Git association.
+      enabled: ${AGENTOS_GIT_WORKSPACES_ENABLED:false}
   encryption:
     key: ${AGENTOS_ENCRYPTION_KEY}
     salt: ${AGENTOS_ENCRYPTION_SALT}
@@ -175,21 +184,74 @@ agentos:
     # Override with env var: AGENTOS_EXCHANGE_TOOLS_DOCUMENT_MAX_CELL_CHARS
     # document-max-cell-chars: 5000
   integrations:
-    # Comma-separated integration types that cannot be created or updated in a user scope
-    # (user-global or user x namespace), because a user overlay of a network-reaching type could
-    # redirect a shared credential to a host the user controls. Platform and namespace-shared
-    # configs are unaffected. Setting the list replaces the default entirely.
-    # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
-    # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP
+  # Comma-separated integration types that cannot be created or updated in a user scope
+  # (user-global or user x namespace), because a user overlay of a network-reaching type could
+  # redirect a shared credential to a host the user controls. Platform and namespace-shared
+  # configs are unaffected. Setting the list replaces the default entirely.
+  # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
+  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
+  # Comma-separated integration types that may set autoGrant, i.e. be handed to every agent within
+  # a config's scope without any agent naming it. At platform scope that is every agent of the
+  # environment at once, so the list starts closed and setting it replaces the default entirely.
+  # Override with env var: AGENTOS_INTEGRATIONS_AUTO_GRANTABLE_TYPES
+  # auto-grantable-types: QUERY_USER
   query-user:
-    # Grant the built-in queryUser tool to every agent that does not mention QUERY_USER in its
-    # integrations map. On by default: asking a question is a primitive of conversation, not an
-    # integration, so agents should not have to declare it. An agent can still opt out by mapping
-    # the QUERY_USER key to an empty list [] in its integrations map — the right choice for fully
-    # autonomous agents triggered by webhooks where nobody is listening.
+    # Declare that a platform-scoped 'QUERY_USER' integration configuration should exist. When true
+    # (shipped default), QueryUserConfigSeeder creates it at startup if absent, with autoGrant=true
+    # and all three question types allowed — so every agent of the environment receives the
+    # queryUser tool without declaring it, as before.
+    #
+    # This declares EXISTENCE, not content: once the configuration exists it belongs to the
+    # administrator and startup never rewrites it. It is also create-only — setting this back to
+    # false later does NOT delete an already-seeded configuration (a warning is logged instead);
+    # set autoGrant=false on that configuration, or delete it, through the API.
+    #
+    # Restrict the allowed question types for a namespace by creating a configuration with the same
+    # name scoped to it: the 4-tier overlay merges them parameter by parameter.
+    #
+    # An agent always keeps the last word: mapping 'QUERY_USER' to an empty list [] in its
+    # integrations map opts out, which beats autoGrant — the right choice for fully autonomous
+    # agents triggered by webhooks where nobody is listening.
     # Override with env var: AGENTOS_QUERY_USER_ENABLED_BY_DEFAULT
-    # enabled-by-default: true
+    enabled-by-default: true
+  user-group:
+    # Declare that a platform-scoped 'USER_GROUP' integration configuration should exist.
+    # When true (shipped default), UserGroupIntegrationConfigSeeder creates it at startup
+    # if absent, with autoGrant=false. This makes the USER_GROUP type visible in the
+    # integration catalogue so admins can assign it to specific agents. No agent receives
+    # the tools automatically — an explicit assignment is required.
+    #
+    # Existence, not content: once the row exists it belongs to the administrator.
+    # Create-only: setting this back to false does NOT delete an existing row.
+    # Override with env var: AGENTOS_USER_GROUP_ENABLED_BY_DEFAULT
+    enabled-by-default: true
+  limits:
+  # Maximum number of internal steps per user message in the CaseRuntime before the case
+  # transitions to ERROR status. A "step" is one processNextStep() call covering agent
+  # selection, agent run, and redirect events. The counter resets to 0 on each
+  # AgentFinishedEvent, so a case with multiple sequential commands can safely exceed this
+  # threshold across the full session without triggering it within a single turn.
+  # Override with env var: AGENTOS_LIMITS_CASE_MAX_ITERATIONS
+  # case-max-iterations: 100
+  # Maximum number of intention->tool iterations per agent run in AgentAdvanced.
+  # Each iteration consists of one intention-generation call followed by zero or one tool
+  # executions. When this limit is reached the agent emits a WarnEvent and breaks out
+  # of the loop, producing its final response based on what it has gathered so far.
+  # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
+  # agent-max-iterations: 20
+  # Maximum number of entities processed by one AgentLoop run. Each entity launches one case
+  # immediately, so this bounds concurrent agent runs started by a single loop.
+  # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
+  agent-loop-max-items: 50
+  # Maximum amount the platform accepts spending without a human check-in, in the platform's
+  # currency unit. Unlike the iteration limits above, this is a NEGOTIABLE guard-rail: breaching
+  # it triggers a human decision (continue or stop), never a CaseStatus.ERROR transition.
+  # Resolution order: Case.runCostThreshold ?: Namespace.runCostThreshold ?: this value.
+  # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
+  # run-cost-threshold: 10.0
   defaults:
+    # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
+    delegation-timeout-seconds: ${AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS:300}
   # Environment-level fallback agent name. Consulted when a namespace has no
   # defaultAgentName configured. The named agent must exist in the case's namespace.
   # Override with env var: AGENTOS_DEFAULTS_AGENT_NAME
@@ -201,12 +263,12 @@ agentos:
   # Override with env var: AGENTOS_DEFAULTS_MAX_ATTACHED_IMAGES
   # max-attached-images: 20
   anthropic:
-    # Activate Anthropic prompt caching (CONVERSATION_HISTORY strategy) on every Anthropic chat model
-    # instance. Caches the system prompt, tool definitions, and the conversation history across API
-    # calls — the full prefix grows incrementally each turn, yielding significant cost and latency
-    # savings on multi-turn agent runs. Disable if prompt caching is not available on your plan.
-    # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
-    # prompt-caching-enabled: true
+  # Activate Anthropic prompt caching (CONVERSATION_HISTORY strategy) on every Anthropic chat model
+  # instance. Caches the system prompt, tool definitions, and the conversation history across API
+  # calls — the full prefix grows incrementally each turn, yielding significant cost and latency
+  # savings on multi-turn agent runs. Disable if prompt caching is not available on your plan.
+  # Override with env var: AGENTOS_ANTHROPIC_PROMPT_CACHING_ENABLED
+  # prompt-caching-enabled: true
   plugins:
     dir: ${PLUGINS_DIR:plugins/}
   security:
@@ -249,6 +311,11 @@ agentos:
     # Override with env var: AGENTOS_PERSISTENCE_MODE
     mode: ${AGENTOS_PERSISTENCE_MODE:embedded-neo4j}
   prompt:
+    batch-translation:
+      # Maximum number of prompts translated concurrently in a single batch-translate request.
+      # Each concurrent slot may issue a Neo4j permission check and an LLM HTTP call.
+      # Override with env var: AGENTOS_PROMPT_BATCH_TRANSLATION_PARALLELISM_LIMIT
+      parallelism-limit: 30
     scheduler:
       # Enable/disable the scheduler. Enabled by default for production.
       # Dev profiles (embedded-neo4j, docker) disable it to prevent accidental Case creation.

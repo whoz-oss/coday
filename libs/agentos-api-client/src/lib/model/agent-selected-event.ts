@@ -18,4 +18,5 @@ export interface AgentSelectedEvent {
   type: 'AgentSelectedEvent'
   agentId: string
   agentName: string
+  questionId?: string
 }

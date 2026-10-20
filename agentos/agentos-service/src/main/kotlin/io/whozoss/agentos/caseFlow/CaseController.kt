@@ -16,6 +16,7 @@ import io.whozoss.agentos.sdk.api.case.CaseDto
 import io.whozoss.agentos.sdk.api.case.ListByUserInNamespaceRequest
 import io.whozoss.agentos.sdk.api.case.UnreadCountResponse
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.security.declarative.HideOnAccessDenied
 import io.whozoss.agentos.user.UserService
@@ -23,6 +24,7 @@ import jakarta.validation.Valid
 import mu.KLogging
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
@@ -139,7 +141,7 @@ class CaseController(
     }
 
     /**
-     * Map domain [cases] to [CaseDto]s, enriching each with [userId]'s direct
+     * Map domain [Case] to [CaseDto]s, enriching each with [userId]'s direct
      * relation (`role`), favorite flag, [CaseDto.readAt], and [CaseDto.lastMessageAt].
      *
      * Two batch queries resolve the whole set (no per-case round-trips):
@@ -177,16 +179,20 @@ class CaseController(
     override fun create(
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
+        val userId = userService.getCurrentUser().id.toString()
+        resource.parentCaseId?.let { checkParentCasePermission(userId, it) }
         val metadata = EntityMetadata(id = resource.id ?: UUID.randomUUID())
+        val runCostThreshold = namespaceService.resolveRunCostThreshold(resource.namespaceId)
         val domain =
             Case(
                 metadata = metadata,
                 namespaceId = resource.namespaceId,
-                status = resource.status,
+                status = CaseStatus.CREATED,
                 title = resource.title ?: "Case ${metadata.id}",
+                runCostThreshold = resource.runCostThreshold ?: runCostThreshold,
+                parentCaseId = resource.parentCaseId,
             )
         val saved = caseService.create(domain)
-        val userId = userService.getCurrentUser().id.toString()
         val granted =
             runCatching {
                 permissionService.grantPermission(
@@ -227,6 +233,12 @@ class CaseController(
                     // namespaceId is the transitivity key for permissions;
                     // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
+                    // runCostThreshold: keep the existing value when the caller omits the field
+                    // (null in DTO = not provided, not an explicit reset). An explicit reset to
+                    // the inherited regime is not supported via PUT — the value materialised at
+                    // creation is sticky. The enforcement mechanism raises the limit by writing
+                    // a concrete value here when the user chooses to continue after a breach.
+                    runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
                 ),
             )
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
@@ -407,6 +419,19 @@ class CaseController(
         return map { toDto(it).copy(lastMessageAt = lastMessageTimestamps[it.id]) }
     }
 
+    /**
+     * Namespace READ lets a member create a case; attaching it under another case also
+     * needs WRITE on that parent, as delegation from it would.
+     */
+    private fun checkParentCasePermission(
+        userId: String,
+        parentCaseId: UUID,
+    ) {
+        if (!permissionService.hasPermission(userId, EntityType.CASE, parentCaseId.toString(), Action.WRITE)) {
+            throw AccessDeniedException("No write permission on the parent case")
+        }
+    }
+
     companion object : KLogging()
 }
 
@@ -418,6 +443,7 @@ internal fun toDto(entity: Case) =
         title = entity.title,
         parentCaseId = entity.parentCaseId,
         scheduledPromptId = entity.scheduledPromptId,
+        runCostThreshold = entity.runCostThreshold,
         created = entity.metadata.created,
         modified = entity.metadata.modified,
         // lastMessageAt is not stored on Case — it is resolved at list time by

@@ -1,5 +1,3 @@
-import { ExchangeFileEntry } from '@whoz-oss/agentos-api-client'
-
 /**
  * Pure helpers ported from the legacy file-exchange drawer
  * (apps/client/.../content-viewer.service.ts + file-exchange-drawer.component.ts).
@@ -113,9 +111,15 @@ export function isViewable(fileSize: number): boolean {
   return fileSize <= MAX_VIEWABLE_SIZE
 }
 
-/** A file can be previewed when its format is viewable AND it is within the size limit. */
-export function canViewFile(file: Pick<ExchangeFileEntry, 'filename' | 'size'>): boolean {
-  return isFormatViewable(file.filename) && isViewable(file.size)
+/**
+ * A file can be previewed when its format is viewable AND it is within the size limit.
+ *
+ * Accepts either shape of entry: the manifest calls the leaf `filename`, a directory listing calls
+ * it `name`. A directory reports no size, and is never previewable.
+ */
+export function canViewFile(file: { filename?: string; name?: string; size?: number }): boolean {
+  const leaf = file.filename ?? file.name ?? ''
+  return file.size !== undefined && isFormatViewable(leaf) && isViewable(file.size)
 }
 
 /** Pretty-print JSON content with 2-space indentation; returns the input unchanged on parse error. */

@@ -32,7 +32,7 @@ export class SseService extends BaseService {
 
   /**
    * Stream case events via SSE
-   * Server-Sent Events stream emitting all events generated during case execution. Use the browser EventSource API to consume this endpoint, not a regular HTTP client.
+   * Every SSE frame uses the stable event name \&#39;case-event\&#39;. Its JSON CaseEvent payload carries the subtype in its \&#39;type\&#39; discriminant. includePreviousEvents defaults to true.
    * @param caseId
    * @param includePreviousEvents
    * @param observe set whether or not to return the data Observable as the body, response or events. defaults to returning the body.

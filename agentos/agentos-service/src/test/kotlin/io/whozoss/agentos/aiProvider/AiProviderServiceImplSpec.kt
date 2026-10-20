@@ -14,7 +14,7 @@ import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.user.UserService
-import org.springframework.web.server.ResponseStatusException
+import io.whozoss.agentos.exception.ConflictException
 import java.util.UUID
 
 class AiProviderServiceImplSpec : StringSpec() {
@@ -152,9 +152,9 @@ class AiProviderServiceImplSpec : StringSpec() {
             val nsId = UUID.randomUUID()
             service.create(config(namespaceId = nsId, userId = null, name = "anthropic"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(config(namespaceId = nsId, userId = null, name = "anthropic"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create allows same name for different scopes" {
@@ -231,9 +231,9 @@ class AiProviderServiceImplSpec : StringSpec() {
             service.create(config(namespaceId = nsId, name = "openai"))
             val toUpdate = service.create(config(namespaceId = nsId, name = "anthropic"))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.update(toUpdate.copy(name = "openai"))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         // -------------------------------------------------------------------------
@@ -250,9 +250,9 @@ class AiProviderServiceImplSpec : StringSpec() {
             val userId = UUID.randomUUID()
             service.create(config(namespaceId = nsId, userId = null, name = "primary", apiType = AiApiType.Anthropic))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(config(namespaceId = nsId, userId = userId, name = "primary", apiType = AiApiType.OpenAI))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create user-global rejects when same-user user×ns layer has same name with different apiType" {
@@ -261,9 +261,9 @@ class AiProviderServiceImplSpec : StringSpec() {
             val userId = UUID.randomUUID()
             service.create(config(namespaceId = nsId, userId = userId, name = "primary", apiType = AiApiType.Anthropic))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(config(namespaceId = null, userId = userId, name = "primary", apiType = AiApiType.OpenAI))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create user×ns rejects when same-user user-global layer has same name with different apiType" {
@@ -272,9 +272,9 @@ class AiProviderServiceImplSpec : StringSpec() {
             val userId = UUID.randomUUID()
             service.create(config(namespaceId = null, userId = userId, name = "primary", apiType = AiApiType.Anthropic))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.create(config(namespaceId = nsId, userId = userId, name = "primary", apiType = AiApiType.OpenAI))
-            }.statusCode.value() shouldBe 409
+            }
         }
 
         "create allows same name across layers when apiType matches" {
@@ -387,9 +387,9 @@ class AiProviderServiceImplSpec : StringSpec() {
             service.create(config(namespaceId = nsId, userId = null, name = "primary", apiType = AiApiType.Anthropic))
             val mine = service.create(config(namespaceId = nsId, userId = userId, name = "secondary", apiType = AiApiType.OpenAI))
 
-            shouldThrow<ResponseStatusException> {
+            shouldThrow<ConflictException> {
                 service.update(mine.copy(name = "primary"))
-            }.statusCode.value() shouldBe 409
+            }
         }
     }
 }

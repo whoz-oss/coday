@@ -14,3 +14,5 @@ export {
   DAY_OF_WEEK_LABELS,
   DAY_OF_WEEK_FULL_LABELS,
 } from './custom/scheduler-enums'
+export { ToolInvokeApiService } from './custom/tool-invoke-api.service'
+export type { ToolInvokeRequest, ToolInvokeResponse } from './custom/tool-invoke-api.service'

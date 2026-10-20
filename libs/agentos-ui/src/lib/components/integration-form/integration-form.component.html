@@ -69,6 +69,19 @@
         </select>
       </div>
 
+      @if (isAutoGrantable()) {
+        <div class="integration-form__field">
+          <label class="integration-form__checkbox-row">
+            <input type="checkbox" [formControl]="autoGrantControl" />
+            <span class="integration-form__label">Grant automatically</span>
+          </label>
+          <p class="integration-form__hint">
+            Give this integration to {{ autoGrantReach() }}, without each agent having to declare it. An agent can
+            still opt out by mapping this configuration to an empty tool list.
+          </p>
+        </div>
+      }
+
       @if (schema(); as s) {
         <div class="integration-form__schema-form">
           <ds-json-schema-form [schema]="s" [value]="initialParams()" (valueChange)="onParamsChange($event)" />

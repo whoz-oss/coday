@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldHaveAtLeastSize
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -20,12 +21,21 @@ import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
+import io.whozoss.agentos.sdk.caseEvent.QuestionType
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 
 /** Authorization check that grants access to all agents. */
 private val TRUE_FOR_ANY_AGENTS: (String, UUID?) -> Boolean = { _, _ -> true }
@@ -166,6 +176,50 @@ class CaseRuntimeSpec : StringSpec() {
 
         return TestFixture(runtime, selectAgent, runAgent, savedEvents)
     }
+
+    /** A runtime whose agent hangs in a suspended call (an LLM stream, a tool) until cancelled. */
+    inner class HangingFixture(
+        hangOnce: Boolean,
+    ) {
+        val agentStarted = CompletableDeferred<Unit>()
+        val agentCancelled = CompletableDeferred<CancellationException>()
+        val statuses = CopyOnWriteArrayList<CaseStatus>()
+        val savedEvents = CopyOnWriteArrayList<CaseEvent>()
+        var runAgentCalls = 0
+        private val runtimeId: UUID = UUID.randomUUID()
+        private val agentId: UUID = UUID.nameUUIDFromBytes("hanging-agent".toByteArray())
+
+        val runtime: CaseRuntime = CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, status -> statuses += status },
+                    storeEvent = { event -> event.also { savedEvents += it } },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "hanging-agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { name, _, _, _, _ ->
+                        runAgentCalls++
+                        runtime.pushEvents(
+                            listOf(AgentRunningEvent(namespaceId = namespaceId, caseId = runtimeId, agentId = agentId, agentName = name)),
+                        )
+                        if (hangOnce && runAgentCalls > 1) {
+                            runtime.pushEvents(
+                                listOf(AgentFinishedEvent(namespaceId = namespaceId, caseId = runtimeId, agentId = agentId, agentName = name)),
+                            )
+                        } else {
+                            agentStarted.complete(Unit)
+                            try {
+                                awaitCancellation()
+                            } catch (e: CancellationException) {
+                                agentCancelled.complete(e)
+                                throw e
+                            }
+                        }
+                    },
+                ).also { it.addUserMessage(userActor, userMessage) }
+    }
+
+    fun hangingRuntime(hangOnce: Boolean = false) = HangingFixture(hangOnce)
 
     init {
 
@@ -324,10 +378,10 @@ class CaseRuntimeSpec : StringSpec() {
         // shouldContinue lambda contract
         // -------------------------------------------------------------------------
 
-        "shouldContinue lambda returns true after requestInterrupt (interrupt does not stop mid-stream LLM)" {
-            // requestInterrupt() stops the run loop after the current agent turn completes,
-            // but does NOT signal the LLM to stop mid-stream. Only requestKill() does that.
-            // shouldContinue reflects killRequested only.
+        "shouldContinue lambda returns false after requestInterrupt" {
+            // A Stop makes shouldContinue false, as a Kill or a shutdown stop does. An agent only reads it
+            // between two steps, so it only matters for an agent that never suspends (e.g. a loop over
+            // blocking steps). Reaching an agent suspended in a call is the cancellation, tested separately.
             val runtimeId = UUID.randomUUID()
             var capturedShouldContinue: (() -> Boolean)? = null
 
@@ -350,8 +404,262 @@ class CaseRuntimeSpec : StringSpec() {
 
             capturedShouldContinue shouldNotBe null
             runtime.requestInterrupt()
-            // interrupt does not affect shouldContinue — only kill does
-            capturedShouldContinue!!.invoke() shouldBe true
+            capturedShouldContinue!!.invoke() shouldBe false
+        }
+
+        "shouldContinue lambda returns false after requestShutdownStop is called" {
+            val runtimeId = UUID.randomUUID()
+            var capturedShouldContinue: (() -> Boolean)? = null
+
+            val runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, shouldContinue ->
+                        capturedShouldContinue = shouldContinue
+                    },
+                )
+
+            runtime.addUserMessage(userActor, userMessage)
+            runtime.run()
+
+            runtime.requestShutdownStop()
+            capturedShouldContinue!!.invoke() shouldBe false
+        }
+
+        // -------------------------------------------------------------------------
+        // Cancellation of a running turn
+        // -------------------------------------------------------------------------
+
+        "requestInterrupt alone only marks the turn: it does not cancel the agent" {
+            runTest {
+                // A Stop marks the whole case family first; cancelInterruptedTurn then cancels each turn.
+                val fixture = hangingRuntime()
+                val run = launch { fixture.runtime.run() }
+                fixture.agentStarted.await()
+
+                fixture.runtime.requestInterrupt()
+                delay(200)
+
+                fixture.agentCancelled.isCompleted shouldBe false
+                fixture.runtime.isRunning() shouldBe true
+                fixture.runtime.requestKill()
+                run.join()
+            }
+        }
+
+        "cancelInterruptedTurn after requestInterrupt cancels a turn suspended in the agent and ends the case IDLE" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestInterrupt()
+            fixture.runtime.cancelInterruptedTurn()
+
+            run.join()
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+            fixture.statuses.last() shouldBe CaseStatus.IDLE
+            fixture.savedEvents.filterIsInstance<AgentFinishedEvent>().single().agentName shouldBe "hanging-agent"
+        }
+
+        "cancelInterruptedTurn without a pending Stop does not cancel the turn" {
+            runTest {
+                val fixture = hangingRuntime()
+                val run = launch { fixture.runtime.run() }
+                fixture.agentStarted.await()
+
+                fixture.runtime.cancelInterruptedTurn()
+                delay(200)
+
+                fixture.agentCancelled.isCompleted shouldBe false
+                fixture.runtime.isRunning() shouldBe true
+                fixture.runtime.requestKill()
+                run.join()
+            }
+        }
+
+        "a Stop requested before the turn job is published still cancels the turn" {
+            // The turn starts undispatched: a Stop landing before its first suspension finds no job to
+            // cancel, and run() must catch it when it publishes the job.
+            val runtimeId = UUID.randomUUID()
+            val agentCancelled = CompletableDeferred<Unit>()
+            lateinit var runtime: CaseRuntime
+            runtime =
+                CaseRuntime(
+                    id = runtimeId,
+                    namespaceId = namespaceId,
+                    caseCreatedAt = Instant.EPOCH,
+                    updateStatusCallback = { _, _ -> },
+                    storeEvent = { it },
+                    selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
+                    isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                    runAgent = { _, _, _, _, _ ->
+                        runtime.requestInterrupt()
+                        runtime.cancelInterruptedTurn()
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            agentCancelled.complete(Unit)
+                        }
+                    },
+                )
+            runtime.addUserMessage(userActor, userMessage)
+
+            runtime.run()
+
+            agentCancelled.isCompleted shouldBe true
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "a runtime whose turn was stopped runs the next turn normally" {
+            val fixture = hangingRuntime(hangOnce = true)
+            fixture.runtime.enqueueCommand(listOf(MessageContent.Text("queued")))
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+            fixture.runtime.requestInterrupt()
+            fixture.runtime.cancelInterruptedTurn()
+            run.join()
+
+            fixture.runtime.addUserMessage(userActor, listOf(MessageContent.Text("again")))
+            fixture.runtime.run()
+
+            // The queued command of the stopped turn was dropped; the new message ran the agent once more.
+            fixture.savedEvents.filterIsInstance<MessageEvent>().none { it.content == listOf(MessageContent.Text("queued")) } shouldBe true
+            fixture.runAgentCalls shouldBe 2
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "requestKill cancels a turn suspended in the agent and ends the case KILLED" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestKill()
+
+            run.join()
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.KILLED
+            fixture.statuses.last() shouldBe CaseStatus.KILLED
+        }
+
+        "requestShutdownStop cancels a turn suspended in the agent and ends the case IDLE" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestShutdownStop()
+
+            run.join()
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "a Kill requested while a Stop is pending ends the case KILLED" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestInterrupt()
+            fixture.runtime.requestKill()
+
+            run.join()
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.KILLED
+            fixture.statuses.last() shouldBe CaseStatus.KILLED
+        }
+
+        "a Stop requested after a Kill does not lower the final status: the case still ends KILLED" {
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestKill()
+            fixture.runtime.requestInterrupt()
+            fixture.runtime.cancelInterruptedTurn()
+
+            run.join()
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.KILLED
+            fixture.statuses.last() shouldBe CaseStatus.KILLED
+        }
+
+        "a cancelled turn is closed with an AgentFinishedEvent for the agent that was running" {
+            // Without it, the dangling AgentRunningEvent would restart the agent on rehydration.
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestShutdownStop()
+            run.join()
+
+            val finished = fixture.savedEvents.filterIsInstance<AgentFinishedEvent>().single()
+            finished.agentName shouldBe "hanging-agent"
+            finished.caseId shouldBe fixture.runtime.id
+        }
+
+        "a Kill cancels only the turn, not the coroutine that called run()" {
+            val fixture = hangingRuntime()
+            var continuedAfterRun = false
+            val run =
+                launch {
+                    fixture.runtime.run()
+                    continuedAfterRun = true
+                }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestKill()
+            run.join()
+
+            run.isCancelled shouldBe false
+            continuedAfterRun shouldBe true
+        }
+
+        "cancelling the coroutine that called run() closes the turn and does not leave the case RUNNING" {
+            // e.g. a gated launch cancelled, or the service scope cancelled at shutdown.
+            val fixture = hangingRuntime()
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            run.cancel()
+            run.join()
+
+            run.isCancelled shouldBe true
+            fixture.agentCancelled.isCompleted shouldBe true
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+            fixture.savedEvents.filterIsInstance<AgentFinishedEvent>() shouldHaveSize 1
+            fixture.runtime.isRunning() shouldBe false
+        }
+
+        "a runtime whose turn was stopped for shutdown runs the next turn normally" {
+            val fixture = hangingRuntime(hangOnce = true)
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+            fixture.runtime.requestShutdownStop()
+            run.join()
+
+            fixture.runtime.addUserMessage(userActor, listOf(MessageContent.Text("again")))
+            fixture.runtime.run()
+
+            fixture.runAgentCalls shouldBe 2
+            fixture.runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "requestShutdownStop clears the command queue of the cancelled turn" {
+            val fixture = hangingRuntime(hangOnce = true)
+            fixture.runtime.enqueueCommand(listOf(MessageContent.Text("queued")))
+            val run = launch { fixture.runtime.run() }
+            fixture.agentStarted.await()
+
+            fixture.runtime.requestShutdownStop()
+            run.join()
+
+            // The queued command was dropped: it never became a user message nor a second agent run.
+            fixture.savedEvents.filterIsInstance<MessageEvent>().none { it.content == listOf(MessageContent.Text("queued")) } shouldBe true
+            fixture.runAgentCalls shouldBe 1
         }
 
         "shouldContinue lambda returns false after requestKill is called" {
@@ -384,11 +692,9 @@ class CaseRuntimeSpec : StringSpec() {
             // Positive-path test: the lambda must return true while runAgent is executing
             // and no interrupt or kill has been signalled.
             //
-            // Note on lifecycle: processNextStep sets interruptRequested=true when it finds
-            // AgentFinishedEvent (to break the while-loop). run() resets interruptRequested
-            // to false at the START of each invocation. So the lambda returns true only
-            // while runAgent is executing BEFORE AgentFinishedEvent is pushed — that is
-            // the window we sample here.
+            // Note on lifecycle: run() resets the stop request at the START of each invocation.
+            // So the lambda returns true only while runAgent is executing and no stop has been
+            // requested: that is the window we sample here.
             val runtimeId = UUID.randomUUID()
             var lambdaResultDuringRun: Boolean? = null
 
@@ -403,8 +709,8 @@ class CaseRuntimeSpec : StringSpec() {
                     selectAgent = { _, _ -> listOf(agentSelectedEvent(runtimeId, "agent")) },
                     isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
                     runAgent = { _, _, _, _, shouldContinue ->
-                        // Sample BEFORE pushing AgentFinishedEvent: interruptRequested is
-                        // still false at this point, so shouldContinue() must return true.
+                        // Sample BEFORE any stop is requested: the stop request is still NOT_REQUESTED
+                        // at this point, so shouldContinue() must return true.
                         lambdaResultDuringRun = shouldContinue()
                         // Now push AgentFinishedEvent so the loop exits cleanly.
                         runtime.pushEvents(
@@ -434,7 +740,7 @@ class CaseRuntimeSpec : StringSpec() {
         "statusFlow reflects RUNNING during run() and IDLE after normal completion" {
             val (runtime) = buildRuntime()
 
-            runtime.statusFlow.value shouldBe CaseStatus.PENDING
+            runtime.statusFlow.value shouldBe CaseStatus.CREATED
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
             runtime.statusFlow.value shouldBe CaseStatus.IDLE
@@ -458,7 +764,7 @@ class CaseRuntimeSpec : StringSpec() {
 
         "statusFlow reflects KILLED after requestKill during run" {
             // requestKill() must be called while run() is executing — run() resets
-            // the kill flag at startup, so calling it before run() has no effect.
+            // the stop request at startup, so calling it before run() has no effect.
             val runtimeId = UUID.randomUUID()
             lateinit var runtime: CaseRuntime
             runtime =
@@ -865,6 +1171,165 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }
 
+        "pre-flight resumes every legitimately answered outstanding question sequentially in question history order" {
+            // Both answers exist before the run starts. The first question remains first
+            // even when the answers arrive in reverse order; QuestionEvent history order
+            // is the explicit deterministic scheduling rule.
+            val caseId = UUID.randomUUID()
+            val firstAgent = "first-agent"
+            val secondAgent = "second-agent"
+            val firstId = UUID.nameUUIDFromBytes(firstAgent.toByteArray())
+            val secondId = UUID.nameUUIDFromBytes(secondAgent.toByteArray())
+            val firstQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId,
+                agentId = firstId, agentName = firstAgent, question = "First?",
+            )
+            val secondQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId,
+                agentId = secondId, agentName = secondAgent, question = "Second?",
+            )
+            val respondent = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val secondAnswer = secondQuestion.createAnswer(respondent, "second").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val firstAnswer = firstQuestion.createAnswer(respondent, "first").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val runOrder = mutableListOf<String>()
+            val savedEvents = mutableListOf<CaseEvent>()
+            var nextStoredTimestamp = Instant.EPOCH.plusSeconds(5)
+
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event ->
+                    val saved = if (event is AgentSelectedEvent) event.copy(timestamp = nextStoredTimestamp) else event
+                    savedEvents += saved
+                    nextStoredTimestamp = nextStoredTimestamp.plusSeconds(1)
+                    saved
+                },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runOrder += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(
+                        timestamp = nextStoredTimestamp,
+                        namespaceId = namespaceId,
+                        caseId = caseId,
+                        agentId = if (name == firstAgent) firstId else secondId,
+                        agentName = name,
+                    )))
+                    nextStoredTimestamp = nextStoredTimestamp.plusSeconds(1)
+                },
+            )
+            runtime.pushEvents(listOf(firstQuestion, secondQuestion, secondAnswer, firstAnswer))
+
+            runtime.run()
+
+            runOrder shouldBe listOf(firstAgent, secondAgent)
+            savedEvents.filterIsInstance<AgentSelectedEvent>().map { it.agentName } shouldBe
+                listOf(firstAgent, secondAgent)
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight leaves unanswered questions pending while resuming an answered one" {
+            val caseId = UUID.randomUUID()
+            val answeredAgent = "answered-agent"
+            val waitingAgent = "waiting-agent"
+            val answeredQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId,
+                agentId = UUID.nameUUIDFromBytes(answeredAgent.toByteArray()), agentName = answeredAgent, question = "Answered?",
+            )
+            val waitingQuestion = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId,
+                agentId = UUID.nameUUIDFromBytes(waitingAgent.toByteArray()), agentName = waitingAgent, question = "Waiting?",
+            )
+            val answer = answeredQuestion.createAnswer(Actor(UUID.randomUUID().toString(), "User", ActorRole.USER), "yes")
+                .copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val runCalls = mutableListOf<String>()
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId, namespaceId = namespaceId, caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> if (event is AgentSelectedEvent) event.copy(timestamp = Instant.EPOCH.plusSeconds(4)) else event },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    runCalls += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(
+                        timestamp = Instant.EPOCH.plusSeconds(5), namespaceId = namespaceId, caseId = caseId,
+                        agentId = UUID.nameUUIDFromBytes(name.toByteArray()), agentName = name,
+                    )))
+                },
+            )
+            runtime.pushEvents(listOf(answeredQuestion, waitingQuestion, answer))
+
+            runtime.run()
+
+            runCalls shouldBe listOf(answeredAgent)
+        }
+
+        "pre-flight deduplicates two answered questions from the same agent by questionId" {
+            val caseId = UUID.randomUUID()
+            val agentName = "same-agent"
+            val agentId = UUID.nameUUIDFromBytes(agentName.toByteArray())
+            val first = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName, question = "one")
+            val second = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = agentName, question = "two")
+            val actor = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val firstAnswer = first.createAnswer(actor, "one").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val secondAnswer = second.createAnswer(actor, "two").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val calls = mutableListOf<String>()
+            var timestamp = Instant.EPOCH.plusSeconds(5)
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId, namespaceId = namespaceId, caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event ->
+                    val stored = if (event is AgentSelectedEvent) event.copy(timestamp = timestamp) else event
+                    timestamp = timestamp.plusSeconds(1)
+                    stored
+                },
+                selectAgent = { _, _ -> emptyList() }, isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    calls += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(timestamp = timestamp, namespaceId = namespaceId, caseId = caseId, agentId = agentId, agentName = name)))
+                    timestamp = timestamp.plusSeconds(1)
+                },
+            )
+            runtime.pushEvents(listOf(first, second, firstAnswer, secondAnswer))
+            runtime.run()
+
+            calls shouldBe listOf(agentName, agentName)
+        }
+
+        "replay after first resumed question finished still resumes the second question exactly once" {
+            val caseId = UUID.randomUUID()
+            val agentOne = "agent-one"
+            val agentTwo = "agent-two"
+            val first = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(1), namespaceId = namespaceId, caseId = caseId, agentId = UUID.nameUUIDFromBytes(agentOne.toByteArray()), agentName = agentOne, question = "one")
+            val second = QuestionEvent(timestamp = Instant.EPOCH.plusSeconds(2), namespaceId = namespaceId, caseId = caseId, agentId = UUID.nameUUIDFromBytes(agentTwo.toByteArray()), agentName = agentTwo, question = "two")
+            val actor = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val firstAnswer = first.createAnswer(actor, "one").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val secondAnswer = second.createAnswer(actor, "two").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val firstSelection = AgentSelectedEvent(timestamp = Instant.EPOCH.plusSeconds(5), namespaceId = namespaceId, caseId = caseId, agentId = first.agentId, agentName = agentOne, questionId = first.id)
+            val firstFinished = AgentFinishedEvent(timestamp = Instant.EPOCH.plusSeconds(6), namespaceId = namespaceId, caseId = caseId, agentId = first.agentId, agentName = agentOne)
+            val calls = mutableListOf<String>()
+            lateinit var runtime: CaseRuntime
+            runtime = CaseRuntime(
+                id = caseId, namespaceId = namespaceId, caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { event -> if (event is AgentSelectedEvent) event.copy(timestamp = Instant.EPOCH.plusSeconds(7)) else event },
+                selectAgent = { _, _ -> emptyList() }, isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ ->
+                    calls += name
+                    runtime.pushEvents(listOf(AgentFinishedEvent(timestamp = Instant.EPOCH.plusSeconds(8), namespaceId = namespaceId, caseId = caseId, agentId = second.agentId, agentName = name)))
+                },
+            )
+            runtime.pushEvents(listOf(first, second, firstAnswer, secondAnswer, firstSelection, firstFinished))
+            runtime.run()
+
+            calls shouldBe listOf(agentTwo)
+        }
+
         "pre-flight does NOT wake up agent when answer is followed by AgentFinishedEvent (OAuth guard)" {
             // Simulate the OAuth path: agent was running INSIDE its run when the answer
             // arrived, finished its turn normally, so AgentFinishedEvent comes AFTER the
@@ -898,6 +1363,7 @@ class CaseRuntimeSpec : StringSpec() {
                 agentId = agentId,
                 agentName = agentName,
                 question = "Authorize OAuth?",
+                questionType = QuestionType.OAUTH_AUTHORIZE,
             )
             // createAnswer() defaults timestamp to Instant.now(); override it to t4
             // so the sort order is deterministic and AnswerEvent lands before AgentFinishedEvent.
@@ -949,8 +1415,71 @@ class CaseRuntimeSpec : StringSpec() {
 
             runtime.run()
 
-            // The pre-flight must NOT have fired: AgentFinishedEvent is after AnswerEvent,
-            // so the OAuth guard in findUnresolvedQuestion returns null.
+            // The pre-flight must NOT have fired: the persisted OAuth question type
+            // explicitly marks this answer as owned by the still-running OAuth flow.
+            runCalls shouldBe emptyList()
+            runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "pre-flight does not falsely wake an OAuth question when another question was resumed before OAuth finished" {
+            // Exact interleaving regression:
+            // Q1 and Q2 are outstanding; Q2 is an active OAuth flow. After Answer(Q2),
+            // Answer(Q1) causes the durable correlated selection for Q1. OAuth Q2 then
+            // finishes. On replay, Q2 must remain suppressed even though the Q1 selection
+            // sits between its answer and the OAuth finish.
+            val caseId = UUID.randomUUID()
+            val q1AgentId = UUID.randomUUID()
+            val oauthAgentId = UUID.randomUUID()
+            val user = Actor(UUID.randomUUID().toString(), "User", ActorRole.USER)
+            val q1 = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(1),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = q1AgentId,
+                agentName = "await-agent",
+                question = "Q1",
+            )
+            val q2 = QuestionEvent(
+                timestamp = Instant.EPOCH.plusSeconds(2),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = oauthAgentId,
+                agentName = "oauth-agent",
+                question = "Q2",
+                questionType = QuestionType.OAUTH_AUTHORIZE,
+            )
+            val q2Answer = q2.createAnswer(user, "authorized").copy(timestamp = Instant.EPOCH.plusSeconds(3))
+            val q1Answer = q1.createAnswer(user, "answer").copy(timestamp = Instant.EPOCH.plusSeconds(4))
+            val q1Selection = AgentSelectedEvent(
+                timestamp = Instant.EPOCH.plusSeconds(5),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = q1AgentId,
+                agentName = q1.agentName,
+                questionId = q1.id,
+            )
+            val oauthFinished = AgentFinishedEvent(
+                timestamp = Instant.EPOCH.plusSeconds(6),
+                namespaceId = namespaceId,
+                caseId = caseId,
+                agentId = oauthAgentId,
+                agentName = q2.agentName,
+            )
+            val runCalls = mutableListOf<String>()
+            val runtime = CaseRuntime(
+                id = caseId,
+                namespaceId = namespaceId,
+                caseCreatedAt = Instant.EPOCH,
+                updateStatusCallback = { _, _ -> },
+                storeEvent = { it },
+                selectAgent = { _, _ -> emptyList() },
+                isAgentAuthorized = TRUE_FOR_ANY_AGENTS,
+                runAgent = { name, _, _, _, _ -> runCalls += name },
+            )
+            runtime.pushEvents(listOf(q1, q2, q2Answer, q1Answer, q1Selection, oauthFinished))
+
+            runtime.run()
+
             runCalls shouldBe emptyList()
             runtime.statusFlow.value shouldBe CaseStatus.IDLE
         }

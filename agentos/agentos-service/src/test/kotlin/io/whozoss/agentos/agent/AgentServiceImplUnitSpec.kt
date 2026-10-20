@@ -17,53 +17,69 @@ import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.agentConfig.AgentDocumentResolver
-import io.whozoss.agentos.authSetting.ApiKeyAuthSetting
-import io.whozoss.agentos.authSetting.BearerTokenAuthSetting
-import io.whozoss.agentos.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.aiModel.AiModelService
 import io.whozoss.agentos.aiProvider.AiProviderService
 import io.whozoss.agentos.auth.AuthService
 import io.whozoss.agentos.auth.AuthServiceFactory
 import io.whozoss.agentos.auth.OAuthFlowService
 import io.whozoss.agentos.auth.StaticCredentialFactory
+import io.whozoss.agentos.authSetting.ApiKeyAuthSetting
+import io.whozoss.agentos.authSetting.BearerTokenAuthSetting
+import io.whozoss.agentos.authSetting.OAuthRegisteredAuthSetting
 import io.whozoss.agentos.caseEvent.CaseEventService
+import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.chat.ChatClientProvider
+import io.whozoss.agentos.config.LimitsConfigProperties
+import io.whozoss.agentos.delegation.DelegationTool
+import io.whozoss.agentos.delegation.SubCaseManager
+import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeGrant
+import io.whozoss.agentos.exchange.ExchangeIntegrationTypes
+import io.whozoss.agentos.exchange.ExchangeRootResolver
+import io.whozoss.agentos.exchange.ExchangeScopeGuidance
 import io.whozoss.agentos.exchange.ExchangeStorageConfigProperties
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.exchange.ExchangeToolGrantService
 import io.whozoss.agentos.exchange.ExchangeToolsConfigProperties
-import io.whozoss.agentos.queryUser.QueryUserConfigProperties
-import io.whozoss.agentos.queryUser.QueryUserToolGrantService
-import io.whozoss.agentos.queryUser.QueryUserToolPlugin
+import io.whozoss.agentos.exchange.ResolvedExchangeRoot
+import io.whozoss.agentos.git.GitMetadataEntries
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.integrationConfig.IntegrationConfigService
 import io.whozoss.agentos.metrics.ToolMetricsService
 import io.whozoss.agentos.namespace.Namespace
 import io.whozoss.agentos.namespace.NamespaceService
+import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.aiProvider.AiApiType
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.auth.CredentialProvider
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.credential.Credential
 import io.whozoss.agentos.sdk.credential.CredentialType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
+import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolPlugin
+import io.whozoss.agentos.skill.Skill
+import io.whozoss.agentos.skill.SkillService
+import io.whozoss.agentos.skill.SkillToolGrantService
 import io.whozoss.agentos.tool.ToolRegistryService
 import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.IdCompressorService
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.test.runTest
 import org.springframework.ai.chat.client.ChatClient
 import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class AgentServiceImplUnitSpec : StringSpec() {
     private val chatClientProvider: ChatClientProvider = mockk()
     private val toolResolverService: ToolResolverService = mockk()
@@ -81,19 +97,31 @@ class AgentServiceImplUnitSpec : StringSpec() {
     private val caseEventService: CaseEventService = mockk(relaxed = true)
     private val authServiceFactory: AuthServiceFactory = mockk(relaxed = true)
     private val oAuthFlowService: OAuthFlowService = mockk(relaxed = true)
+
     // Strict: the static fallback must only run on the exact path under test (non-OAuth type, no
     // per-user row). A relaxed mock would silently return a Credential and mask a wrong dispatch.
     private val staticCredentialFactory: StaticCredentialFactory = mockk()
     private val agentDocumentResolver: AgentDocumentResolver = mockk(relaxed = true)
+    private val skillService: SkillService = mockk(relaxed = true)
+    private val skillToolGrantService: SkillToolGrantService = SkillToolGrantService()
     private val exchangeStorageService: ExchangeStorageService = mockk(relaxed = true)
     private val exchangeCapabilityService: ExchangeCapabilityService = mockk(relaxed = true)
+
+    // Default resolution, which a test can replace with a directory owned by another case.
+    private var sharedRoot: ResolvedExchangeRoot? = null
+    private val defaultRootResolver = DefaultExchangeRootResolver(exchangeStorageService)
+    private val exchangeRootResolver: ExchangeRootResolver =
+        object : ExchangeRootResolver by defaultRootResolver {
+            override fun resolve(
+                caseId: UUID,
+                namespaceId: UUID,
+                caseCreatedAt: java.time.Instant,
+            ): ResolvedExchangeRoot = sharedRoot ?: defaultRootResolver.resolve(caseId, namespaceId, caseCreatedAt)
+        }
 
     // Strict on purpose: a relaxed mock would return a non-null ExchangeGrant and silently grant the
     // exchange in every unrelated test. The defaults stubbed in init deny both scopes.
     private val exchangeToolGrantService: ExchangeToolGrantService = mockk()
-    // Relaxed: queryUser grant is a side concern for most tests in this spec; a relaxed mock returns
-    // false for isGranted() (Boolean default) which means no tools are added — a safe neutral state.
-    private val queryUserToolGrantService: QueryUserToolGrantService = mockk(relaxed = true)
     private val agentService =
         AgentServiceImpl(
             chatClientProvider = chatClientProvider,
@@ -117,16 +145,21 @@ class AgentServiceImplUnitSpec : StringSpec() {
             exchangeCapabilityService = exchangeCapabilityService,
             exchangeToolGrantService = exchangeToolGrantService,
             agentDocumentResolver = agentDocumentResolver,
+            skillService = skillService,
+            skillToolGrantService = skillToolGrantService,
             idCompressorService = IdCompressorService(),
-            agentConfigProperties = AgentConfigProperties(),
-            queryUserToolGrantService = queryUserToolGrantService,
+            agentConfigProperties = AgentConfigProperties(delegationTimeoutSeconds = 2),
+            limitsConfig = LimitsConfigProperties(),
+            exchangeRootResolver = exchangeRootResolver,
+            loopWorkflowRunnerService = mockk(relaxed = true),
         )
 
     private val namespaceId: UUID = UUID.randomUUID()
     private val aiProviderId: UUID = UUID.randomUUID()
     private val caseId: UUID = UUID.randomUUID()
     private val caseCreatedAt: Instant = Instant.parse("2025-12-15T10:30:00Z")
-    private val context = AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, caseCreatedAt = caseCreatedAt)
+    private val context =
+        AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, caseCreatedAt = caseCreatedAt)
     private val namespace =
         Namespace(
             metadata = EntityMetadata(id = namespaceId),
@@ -149,7 +182,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias: String? = "sonnet",
         priority: Int = 0,
         temperature: Double? = null,
-        maxTokens: Int? = null,
+        maxCompletionTokens: Int? = null,
     ) = AiModel(
         metadata = EntityMetadata(id = UUID.randomUUID()),
         aiProviderId = aiProviderId,
@@ -158,7 +191,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         alias = alias,
         priority = priority,
         temperature = temperature,
-        maxTokens = maxTokens,
+        maxCompletionTokens = maxCompletionTokens,
     )
 
     private fun agentConfig(
@@ -226,7 +259,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
         // Both exchange scopes are denied unless a test says otherwise, mirroring the shipped defaults.
         every { exchangeToolGrantService.resolveCaseGrant(any()) } returns null
         every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns null
-        every { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) } returns emptyList()
+        every { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any(), any()) } returns emptyList()
 
         every { namespaceService.findById(namespaceId) } returns namespace
         every { integrationConfigService.findByParent(any()) } returns emptyList()
@@ -236,9 +269,71 @@ class AgentServiceImplUnitSpec : StringSpec() {
         every { toolRegistryService.findPlugin(any()) } returns null
         // reconciliation services are relaxed mocks — return the base entity unchanged (passthrough) by default
 
+        // Re-establish the default findEffective(any(), null) stub before EVERY test, not just once
+        // at spec construction. Several tests below override this stub with a specific set of
+        // IntegrationConfigs to exercise the redirectGuideline merge; without this per-test reset,
+        // a test whose assertions fail before it can restore the stub itself would leak that
+        // override into whichever test runs next, making test order significant. Scoped strictly to
+        // findEffective(any(), null) — this spec does not use a blanket clearAllMocks() because
+        // several other mocks (e.g. namespaceService, toolRegistryService) are also stubbed once
+        // above and rely on surviving across tests.
+        beforeTest {
+            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
+            // A granted scope has a way to write unless a test says otherwise; the one that does is
+            // "a scope restricted to read tools is not named as the write target" below.
+            every { exchangeToolGrantService.grantsMutatingTool(any(), any()) } returns true
+        }
+
         // -------------------------------------------------------------------------
         // findAgentByName — AgentConfig-first resolution
         // -------------------------------------------------------------------------
+
+        "delegation uses the server budget unless the delegating agent overrides it" {
+            for ((overrideSeconds, expectedSeconds) in listOf(null to 2, 1 to 1)) {
+                val config =
+                    agentConfig(name = "timeout-parent").copy(
+                        subAgents = listOf("child"),
+                        delegationTimeoutSeconds = overrideSeconds,
+                    )
+                val model = modelConfig(alias = "sonnet")
+                val provider = providerConfig()
+                every { agentConfigService.findByName(namespaceId, "timeout-parent") } returns config
+                every { agentConfigService.findByNamespace(namespaceId, withDisabled = false) } returns
+                    listOf(
+                        agentConfig(name = "child"),
+                    )
+                every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+                every { aiProviderService.getById(aiProviderId) } returns provider
+                every { chatClientProvider.getChatClient(model, provider, any()) } returns mockk(relaxed = true)
+                val manager = mockk<SubCaseManager>(relaxed = true)
+                val runtime = mockk<CaseRuntime>()
+                val childId = UUID.randomUUID()
+                every { runtime.id } returns childId
+                every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+                every { manager.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+                val agent = agentService.findAgentByName("timeout-parent", context, manager)
+                val field = AgentSimple::class.java.getDeclaredField("tools").apply { isAccessible = true }
+                val tool = (field.get(agent) as Collection<*>).filterIsInstance<DelegationTool>().single()
+                runTest {
+                    val started = testScheduler.currentTime
+                    val result =
+                        tool.execute(
+                            DelegationTool.Args(listOf(DelegationTool.Delegation("child", "task"))),
+                            ToolContext(
+                                namespaceId = namespaceId,
+                                userId = UUID.randomUUID(),
+                                userExternalId = null,
+                                caseEvents = emptyList(),
+                                toolRequestId = "delegate-request",
+                            ),
+                        )
+                    result.success shouldBe false
+                    result.output shouldContain "Sub-case timed out after ${expectedSeconds}s of active execution."
+                    (testScheduler.currentTime - started) shouldBe expectedSeconds * 1000L
+                    verify(exactly = 1) { manager.killCase(childId) }
+                }
+            }
+        }
 
         "findAgentByName resolves from AgentConfig when one exists with matching name" {
             val config = agentConfig(name = "my-agent", instructions = "Be helpful.", modelName = "sonnet")
@@ -267,7 +362,11 @@ class AgentServiceImplUnitSpec : StringSpec() {
             every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
             every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns caseRootPath
 
-            val config = agentConfig(name = "case-agent", modelName = "sonnet").copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null))
+            val config =
+                agentConfig(
+                    name = "case-agent",
+                    modelName = "sonnet",
+                ).copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null))
             every { agentConfigService.findByName(namespaceId, "case-agent") } returns config
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
@@ -286,7 +385,55 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "case-exchange",
                     allowedTools = null,
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
+            }
+        }
+
+        listOf(false to false, true to false, true to true).forEach { (canRead, canWrite) ->
+            "shared case file tools follow the owner's permissions (read=$canRead, write=$canWrite)" {
+                val ownerId = UUID.randomUUID()
+                val root = ResolvedExchangeRoot(Path.of("/tmp/shared-case-test"), ownerId)
+                sharedRoot = root
+                try {
+                    every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(null)
+                    every { exchangeCapabilityService.canAccessCase(any(), caseId, root, Action.READ) } returns canRead
+                    every {
+                        exchangeCapabilityService.canAccessCase(
+                            any(),
+                            caseId,
+                            root,
+                            Action.WRITE,
+                        )
+                    } returns canWrite
+                    every { agentConfigService.findByName(namespaceId, "shared-agent") } returns
+                        agentConfig(name = "shared-agent", modelName = "sonnet")
+                    every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+                    every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+                    every {
+                        chatClientProvider.getChatClient(
+                            any(),
+                            any(),
+                            any(),
+                        )
+                    } returns mockk<ChatClient>(relaxed = true)
+
+                    agentService.findAgentByName("shared-agent", context)
+
+                    verify(exactly = if (canRead) 1 else 0) {
+                        exchangeToolGrantService.grantTools(
+                            root.path,
+                            !canWrite,
+                            "case-exchange",
+                            null,
+                            any(),
+                            null,
+                        )
+                    }
+                } finally {
+                    sharedRoot = null
+                }
             }
         }
 
@@ -315,6 +462,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "case-exchange",
                     allowedTools = listOf("readFile"),
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -347,7 +496,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             // namespace grant is denied fail-closed before any permission query; and with no live
             // case id the case scope is not granted either. Nothing may be built.
             verify(exactly = 0) { exchangeCapabilityService.canRead(any(), any(), any()) }
-            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any(), any()) }
         }
 
         "namespace exchange is granted read-only when the user holds Namespace READ but not WRITE" {
@@ -379,6 +528,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "namespace-exchange",
                     allowedTools = null,
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
                 )
             }
         }
@@ -403,7 +554,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.resolveDefinition(config.metadata.id, namespaceId, userId = strangerId)
 
             verify(exactly = 0) { exchangeCapabilityService.canWrite(any(), any(), any()) }
-            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { exchangeToolGrantService.grantTools(any(), any(), any(), any(), any(), any()) }
         }
 
         "namespace exchange is read/write when the invoking user holds Namespace WRITE" {
@@ -439,6 +590,157 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     configName = "namespace-exchange",
                     allowedTools = null,
                     toolContext = any(),
+                    // A single scope: nothing to arbitrate, so the plugin's own description stands.
+                    scopeGuidance = null,
+                )
+            }
+        }
+
+        // -------------------------------------------------------------------------
+        // The `## File scopes` instructions block. The wording itself belongs to
+        // ExchangeScopeGuidance and is covered by its own spec; what matters here is that the block
+        // is emitted exactly for the runs that can get the choice wrong.
+        // -------------------------------------------------------------------------
+
+        /**
+         * Grants both scopes to one run: a live case (from [context]) plus an invoking user holding
+         * Namespace WRITE. Returns the instantiated agent so a test can read its instructions.
+         */
+        suspend fun agentWithBothScopes(
+            name: String,
+            namespaceWrite: Boolean,
+        ): AgentSimple {
+            val adminId = UUID.randomUUID()
+            every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every { exchangeToolGrantService.resolveNamespaceGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns Path.of("/tmp/both-case")
+            every { exchangeStorageService.namespaceRoot(namespaceId) } returns Path.of("/tmp/both-ns")
+            every {
+                exchangeCapabilityService.canRead(adminId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns true
+            every {
+                exchangeCapabilityService.canWrite(adminId.toString(), EntityType.NAMESPACE, namespaceId.toString())
+            } returns namespaceWrite
+
+            val config =
+                agentConfig(name = name, modelName = "sonnet").copy(
+                    integrations = mapOf("CASE_FILE_EXCHANGE" to null, "NAMESPACE_FILE_EXCHANGE" to null),
+                )
+            // A context carrying a userId takes the deployed-for-this-user lookup, not findByName.
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, adminId, name)
+            } returns listOf(config)
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { aiProviderService.resolveProvider(any(), any(), any()) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            return agentService.findAgentByName(name, context.copy(userId = adminId)) as AgentSimple
+        }
+
+        "both scopes granted: the block names them and makes the case the default target" {
+            val instructions = agentWithBothScopes("both-scopes-agent", namespaceWrite = true).instructions ?: ""
+
+            instructions shouldContain "## File scopes"
+            instructions shouldContain "`case-exchange__`"
+            instructions shouldContain "`namespace-exchange__`"
+            instructions shouldContain "Work in the case scope by default"
+            instructions shouldContain "Reach for the namespace scope only when the user asks you"
+        }
+
+        "both scopes granted: each write tool set carries its own scope sentence" {
+            // The companion of "no sentence when only one scope is granted" below: the per-tool
+            // sentence arbitrates between two surfaces, so it is written exactly when there are two.
+            agentWithBothScopes("tool-sentence-agent", namespaceWrite = true)
+
+            verify(exactly = 1) {
+                exchangeToolGrantService.grantTools(
+                    root = Path.of("/tmp/both-case"),
+                    readOnly = false,
+                    configName = "case-exchange",
+                    allowedTools = null,
+                    toolContext = any(),
+                    scopeGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
+                )
+            }
+            verify(exactly = 1) {
+                exchangeToolGrantService.grantTools(
+                    root = Path.of("/tmp/both-ns"),
+                    readOnly = false,
+                    configName = "namespace-exchange",
+                    allowedTools = null,
+                    toolContext = any(),
+                    scopeGuidance = ExchangeScopeGuidance.NAMESPACE_TOOL_GUIDANCE,
+                )
+            }
+        }
+
+        "a namespace member without WRITE is told the namespace scope is read-only" {
+            // The admin case is the one that needs the prose; a member has no writable namespace tool
+            // at all, so promising them one would make them try and fail.
+            val instructions = agentWithBothScopes("member-scopes-agent", namespaceWrite = false).instructions ?: ""
+
+            instructions shouldContain "## File scopes"
+            instructions shouldContain "The namespace scope is read-only for you"
+            instructions shouldNotContain "Reach for the namespace scope"
+        }
+
+        "a scope restricted to read tools is not named as the write target" {
+            // The stance follows the agent's own allowlist, not only the user's rights. Told to write
+            // in a case scope whose write tools it filtered out, the model would find no case tool,
+            // reach for `namespace-exchange__editFiles`, and produce exactly the cross-scope write
+            // this block exists to prevent.
+            every {
+                exchangeToolGrantService.grantsMutatingTool(ExchangeIntegrationTypes.CASE_CONFIG_NAME, any())
+            } returns false
+
+            val instructions = agentWithBothScopes("read-only-case-agent", namespaceWrite = true).instructions ?: ""
+
+            instructions shouldContain "## File scopes"
+            instructions shouldContain "The case scope is read-only for you on this run"
+            instructions shouldNotContain "Work in the case scope by default"
+            // The stance is prose. What the plugin builds still follows the user's rights alone, so a
+            // write tool the allowlist did name is still granted: folding the two would make any
+            // write tool absent from MUTATING_TOOLS un-grantable.
+            verify {
+                exchangeToolGrantService.grantTools(
+                    any(),
+                    false,
+                    ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
+        }
+
+        "no block and no tool sentence when only the case scope is granted" {
+            // What keeps this change inert for every single-scope agent: with one file surface there
+            // is nothing to arbitrate, so the run pays neither the tokens nor the risk, and the
+            // write tools keep the file-plugin's own descriptions -- and with them the provider's
+            // cached prompt prefix, which a changed description would invalidate.
+            every { exchangeToolGrantService.resolveCaseGrant(any()) } returns ExchangeGrant(allowedTools = null)
+            every { exchangeStorageService.caseRoot(namespaceId, caseId, any()) } returns Path.of("/tmp/case-only")
+
+            val config =
+                agentConfig(name = "case-only-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("CASE_FILE_EXCHANGE" to null))
+            every { agentConfigService.findByName(namespaceId, "case-only-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+
+            val agent = agentService.findAgentByName("case-only-agent", context) as AgentSimple
+
+            (agent.instructions ?: "") shouldNotContain "## File scopes"
+            verify(exactly = 0) {
+                exchangeToolGrantService.grantTools(
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
                 )
             }
         }
@@ -467,6 +769,7 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 ExchangeToolGrantService(
                     properties = ExchangeToolsConfigProperties(caseEnabledByDefault = true),
                     storageProperties = ExchangeStorageConfigProperties(),
+                    reservedEntries = listOf(GitMetadataEntries()),
                     toolRegistryService = toolRegistryService,
                     toolResolverService = toolResolverService,
                     objectMapper = testObjectMapper,
@@ -494,9 +797,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = realGrantService,
                     agentDocumentResolver = agentDocumentResolver,
+                    skillService = skillService,
+                    skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
-                    queryUserToolGrantService = queryUserToolGrantService,
+                    limitsConfig = LimitsConfigProperties(),
+                    exchangeRootResolver = exchangeRootResolver,
+                    loopWorkflowRunnerService = mockk(relaxed = true),
                 )
             val caseTool = mockk<StandardTool<*>>()
             every { caseTool.name } returns "case-exchange__readFile"
@@ -561,7 +868,8 @@ class AgentServiceImplUnitSpec : StringSpec() {
         }
 
         "findAgentByName uses AgentConfig instructions as base of system prompt" {
-            val config = agentConfig(name = "my-agent", instructions = "Always respond in French.", modelName = "sonnet")
+            val config =
+                agentConfig(name = "my-agent", instructions = "Always respond in French.", modelName = "sonnet")
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
@@ -706,10 +1014,22 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val chatClient = mockk<ChatClient>(relaxed = true)
 
             // userId != null => findAgentByName takes the findDeployedByNamespaceIdAndUserIdAndName path
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    "my-agent",
+                )
+            } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "default") } returns platformModel
             every { aiProviderService.getById(platformProviderId) } returns platformProvider
-            every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-platform") } returns platformProvider
+            every {
+                aiProviderService.resolveProvider(
+                    namespaceId,
+                    userId,
+                    "anthropic-platform",
+                )
+            } returns platformProvider
             every { chatClientProvider.getChatClient(platformModel, platformProvider, any()) } returns chatClient
             every { userService.findById(userId) } returns null
 
@@ -825,9 +1145,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
                     exchangeCapabilityService = exchangeCapabilityService,
                     exchangeToolGrantService = exchangeToolGrantService,
                     agentDocumentResolver = agentDocumentResolver,
+                    skillService = skillService,
+                    skillToolGrantService = skillToolGrantService,
                     idCompressorService = IdCompressorService(),
                     agentConfigProperties = AgentConfigProperties(),
-                    queryUserToolGrantService = queryUserToolGrantService,
+                    limitsConfig = LimitsConfigProperties(),
+                    exchangeRootResolver = exchangeRootResolver,
+                    loopWorkflowRunnerService = mockk(relaxed = true),
                 )
             val configs =
                 listOf(
@@ -878,7 +1202,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
                 )
             every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(integrationConfig)
             every { toolRegistryService.findPlugin("JIRA") } returns plugin
-            coEvery { plugin.describeNamespace(any(), eq("JIRA_PROD"), any()) } returns "Jira workspace: ACME Engineering (42 open issues)"
+            coEvery {
+                plugin.describeNamespace(
+                    any(),
+                    eq("JIRA_PROD"),
+                    any(),
+                )
+            } returns "Jira workspace: ACME Engineering (42 open issues)"
             val config = agentConfig(name = "my-agent", modelName = "sonnet")
             val model = modelConfig(alias = "sonnet")
             val provider = providerConfig()
@@ -892,8 +1222,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
 
             agent.systemPrompt shouldContain "Jira workspace: ACME Engineering (42 open issues)"
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -924,8 +1252,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agent.systemPrompt shouldContain namespace.name
             agent.systemPrompt shouldNotContain "null"
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -955,8 +1281,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
             agent.systemPrompt shouldContain namespace.name
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -1000,8 +1324,6 @@ class AgentServiceImplUnitSpec : StringSpec() {
             coVerify(exactly = 1) { jiraPlugin.describeNamespace(any(), eq("JIRA_PROD"), any()) }
             coVerify(exactly = 1) { slackPlugin.describeNamespace(any(), eq("SLACK_DEV"), any()) }
 
-            // restore default stubs
-            every { integrationConfigService.findEffective(any(), null) } returns emptyList()
             every { toolRegistryService.findPlugin(any()) } returns null
         }
 
@@ -1202,7 +1524,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    "my-agent",
+                )
+            } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -1238,7 +1566,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    "my-agent",
+                )
+            } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
 
             every { aiProviderService.getById(aiProviderId) } returns provider
@@ -1291,7 +1625,13 @@ class AgentServiceImplUnitSpec : StringSpec() {
             val provider = providerConfig()
             val chatClient = mockk<ChatClient>(relaxed = true)
 
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "my-agent") } returns listOf(config)
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    "my-agent",
+                )
+            } returns listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
             every { aiProviderService.getById(aiProviderId) } returns provider
             every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns provider
@@ -1305,6 +1645,106 @@ class AgentServiceImplUnitSpec : StringSpec() {
             (agent.instructions ?: "") shouldNotContain "## User"
             (agent.instructions ?: "") shouldNotContain userId.toString()
             (agent.instructions ?: "") shouldNotContain "opaque-objectid-123"
+        }
+
+        // -------------------------------------------------------------------------
+        // Skills block injection into instructions
+        // -------------------------------------------------------------------------
+
+        "findAgentByName appends skills block when skills are resolved for namespace" {
+            val skill =
+                Skill(
+                    metadata = EntityMetadata(),
+                    namespaceId = namespaceId,
+                    name = "Review",
+                    description = "Code review",
+                    body = "## Body",
+                )
+            val config =
+                agentConfig(name = "my-agent", instructions = "Base instructions", modelName = "sonnet")
+                    .copy(skillSelectors = listOf("*"))
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "my-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            coEvery { skillService.findSkills(any<UUID>(), eq(listOf("*"))) } returns listOf(skill)
+
+            val agent = agentService.findAgentByName("my-agent", context) as AgentSimple
+
+            agent.instructions shouldContain "Base instructions"
+            agent.instructions shouldContain "## Available Skills"
+            agent.instructions shouldContain "- **Review**: Code review"
+        }
+
+        "findAgentByName forwards skillSelectors from agentConfig to skillService" {
+            val skill =
+                Skill(
+                    metadata = EntityMetadata(),
+                    namespaceId = namespaceId,
+                    name = "spec-writing",
+                    description = "Spec writing",
+                    body = "## Body",
+                )
+            val config =
+                agentConfig(name = "filtered-agent", instructions = "Base instructions", modelName = "sonnet")
+                    .copy(skillSelectors = listOf("spec-writing"))
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "filtered-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            coEvery { skillService.findSkills(any<UUID>(), eq(listOf("spec-writing"))) } returns listOf(skill)
+
+            val agent = agentService.findAgentByName("filtered-agent", context) as AgentSimple
+
+            agent.instructions shouldContain "- **spec-writing**: Spec writing"
+            coVerify(exactly = 1) { skillService.findSkills(namespaceId, eq(listOf("spec-writing"))) }
+        }
+
+        "findAgentByName with null skillSelectors results in no skills block (new semantics: null = no skills)" {
+            val config =
+                agentConfig(name = "no-skills-agent", instructions = "Base instructions", modelName = "sonnet")
+            // skillSelectors = null (default)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "no-skills-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            coEvery { skillService.findSkills(any<UUID>(), null) } returns emptyList()
+
+            val agent = agentService.findAgentByName("no-skills-agent", context) as AgentSimple
+
+            (agent.instructions ?: "") shouldNotContain "## Available Skills"
+        }
+
+        "findAgentByName with empty skillSelectors results in no skills block" {
+            val config =
+                agentConfig(name = "opt-out-agent", instructions = "Base instructions", modelName = "sonnet")
+                    .copy(skillSelectors = emptyList())
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+            val chatClient = mockk<ChatClient>(relaxed = true)
+
+            every { agentConfigService.findByName(namespaceId, "opt-out-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+            every { chatClientProvider.getChatClient(model, provider, any()) } returns chatClient
+            coEvery { skillService.findSkills(any<UUID>(), eq(emptyList())) } returns emptyList()
+
+            val agent = agentService.findAgentByName("opt-out-agent", context) as AgentSimple
+
+            (agent.instructions ?: "") shouldNotContain "## Available Skills"
+            coVerify(exactly = 1) { skillService.findSkills(namespaceId, eq(emptyList())) }
         }
 
         // -------------------------------------------------------------------------
@@ -1430,7 +1870,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
             } returns emptyList()
 
             val config = agentConfig(name = "oauth-agent", modelName = "sonnet")
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "oauth-agent") } returns listOf(config)
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    "oauth-agent",
+                )
+            } returns
+                listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns providerConfig()
@@ -1504,7 +1951,14 @@ class AgentServiceImplUnitSpec : StringSpec() {
             } returns emptyList()
 
             val config = agentConfig(name = "apikey-agent", modelName = "sonnet")
-            every { agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(namespaceId, userId, "apikey-agent") } returns listOf(config)
+            every {
+                agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
+                    namespaceId,
+                    userId,
+                    "apikey-agent",
+                )
+            } returns
+                listOf(config)
             every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
             every { aiProviderService.getById(aiProviderId) } returns providerConfig()
             every { aiProviderService.resolveProvider(namespaceId, userId, "anthropic-prod") } returns providerConfig()
@@ -1520,7 +1974,17 @@ class AgentServiceImplUnitSpec : StringSpec() {
             resolvedCredential shouldBe expectedCredential
             verify(exactly = 1) { mockAuthService.resolveCredential(authSettingId) }
             // OAuth flow must never be triggered for a non-OAuth authType.
-            coVerify(exactly = 0) { oAuthFlowService.resolveOAuthCredential(any(), any(), any(), any(), any(), any(), any()) }
+            coVerify(exactly = 0) {
+                oAuthFlowService.resolveOAuthCredential(
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
             // The persisted per-user row wins: static synthesis is not even attempted.
             verify(exactly = 0) { staticCredentialFactory.fromAuthSetting(any(), any()) }
         }
@@ -1671,6 +2135,273 @@ class AgentServiceImplUnitSpec : StringSpec() {
             agentService.resolveAgentName("restricted", namespaceId, userId) shouldBe null
 
             verify(exactly = 0) { agentConfigService.findByName(any(), any()) }
+        }
+
+        // -------------------------------------------------------------------------
+        // redirectGuideline extraction — resolveDefinition seam
+        // -------------------------------------------------------------------------
+
+        "resolveDefinition extracts redirectGuideline from a REDIRECT integration config referenced by the agent" {
+            val redirectConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_PROD",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "When done, redirect to TRSharing."}"""),
+                )
+            val config =
+                agentConfig(name = "redirect-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe "When done, redirect to TRSharing."
+        }
+
+        "resolveDefinition returns null redirectGuideline when no REDIRECT integration config is present" {
+            val config =
+                agentConfig(name = "no-redirect-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("JIRA_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe null
+        }
+
+        "resolveDefinition returns null redirectGuideline when REDIRECT config exists but is not referenced in agent integrations" {
+            val redirectConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_PROD",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "Redirect to TRSharing."}"""),
+                )
+            // Agent does NOT declare REDIRECT_PROD in its integrations
+            val config =
+                agentConfig(name = "unlinked-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("JIRA_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe null
+        }
+
+        "resolveDefinition returns null redirectGuideline when REDIRECT config guideline parameter is blank" {
+            val redirectConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_PROD",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "   "}"""),
+                )
+            val config =
+                agentConfig(name = "blank-guideline-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe null
+        }
+
+        "resolveDefinition merges guidelines from several referenced REDIRECT configs, sorted by config name (deterministic, cache-stable order)" {
+            // Config names are chosen so the ALPHABETICAL order differs from the INSERTION order
+            // below: if resolveRedirectGuideline ever regressed to preserving findEffective's
+            // (unspecified) return order instead of sorting by name, this test would catch it.
+            val zetaConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_ZETA",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "Second guideline (zeta)."}"""),
+                )
+            val alphaConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_ALPHA",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "First guideline (alpha)."}"""),
+                )
+            // Insertion order is [zeta, alpha] — the reverse of the expected sorted output.
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(zetaConfig, alphaConfig)
+            val config =
+                agentConfig(name = "multi-redirect-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("REDIRECT_ZETA" to null, "REDIRECT_ALPHA" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe "First guideline (alpha).\n\nSecond guideline (zeta)."
+        }
+
+        "resolveDefinition merge ignores a blank guideline among several referenced REDIRECT configs, keeping only the non-blank one" {
+            val blankConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_BLANK",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "   "}"""),
+                )
+            val validConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_VALID",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "Only this one counts."}"""),
+                )
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(blankConfig, validConfig)
+            val config =
+                agentConfig(name = "partial-blank-redirect-agent", modelName = "sonnet")
+                    .copy(integrations = mapOf("REDIRECT_BLANK" to null, "REDIRECT_VALID" to null))
+            every { agentConfigService.findById(config.metadata.id) } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+
+            val result = agentService.resolveDefinition(config.metadata.id, namespaceId, userId = null)
+
+            result.redirectGuideline shouldBe "Only this one counts."
+        }
+
+        // -------------------------------------------------------------------------
+        // redirectGuideline routing — AgentSimple (instructions) vs AgentAdvanced (context), no double injection
+        // -------------------------------------------------------------------------
+
+        "findAgentByName with advancedExecution=false wires redirectGuideline into AgentSimple instructions" {
+            val redirectConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_PROD",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "Redirect billing questions to Finance."}"""),
+                )
+            val config =
+                agentConfig(name = "simple-redirect-agent", modelName = "sonnet")
+                    .copy(advancedExecution = false, integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findByName(namespaceId, "simple-redirect-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val agent = agentService.findAgentByName("simple-redirect-agent", context) as AgentSimple
+
+            agent.instructions shouldContain "## Redirect Guideline"
+            agent.instructions shouldContain "Redirect billing questions to Finance."
+        }
+
+        "findAgentByName with advancedExecution=true does not duplicate redirectGuideline into resolved instructions" {
+            val redirectConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_PROD",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "Redirect billing questions to Finance."}"""),
+                )
+            val config =
+                agentConfig(name = "advanced-no-dup-agent", modelName = "sonnet")
+                    .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findByName(namespaceId, "advanced-no-dup-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val agent = agentService.findAgentByName("advanced-no-dup-agent", context) as AgentAdvanced
+
+            // Pragmatic reflection use, justified: exercising the guideline routing here would
+            // otherwise require driving a full AgentAdvanced.run() flow (event list, ThinkingEvent,
+            // an intentionGenerator stub returning ANSWER_TOOL to end the loop, flow collection)
+            // just to observe a value set at construction time by createAgentInstance. The
+            // constructed AgentAdvancedContext is not otherwise observable — intentionGenerator is
+            // only invoked once the agent actually runs. Reflection on the private 'context' field
+            // keeps this test focused on the wiring seam (same rationale as the pre-existing
+            // confirmationManager wiring test above).
+            val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
+            val advancedCtx = contextField.get(agent) as AgentAdvancedContext
+
+            advancedCtx.redirectGuideline shouldBe "Redirect billing questions to Finance."
+            // AgentAdvancedContext.buildMessages already merges `instructions` into the last user
+            // message — so the guideline must NOT also be present in resolved instructions, or it
+            // would be duplicated in the advanced-mode prompt.
+            (advancedCtx.instructions ?: "") shouldNotContain "Redirect billing questions to Finance."
+            (advancedCtx.instructions ?: "") shouldNotContain "## Redirect Guideline"
+        }
+
+        // -------------------------------------------------------------------------
+        // redirectGuideline wiring seam — findAgentByName → AgentAdvancedContext
+        // -------------------------------------------------------------------------
+
+        // -------------------------------------------------------------------------
+        // ExecutionMode.LOOP wiring — AgentLoop instantiation
+        // -------------------------------------------------------------------------
+
+        "findAgentByName with executionMode=LOOP returns an AgentLoop without calling getChatClient" {
+            val config =
+                agentConfig(name = "loop-agent", modelName = "sonnet")
+                    .copy(executionMode = io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode.LOOP)
+            val model = modelConfig(alias = "sonnet")
+            val provider = providerConfig()
+
+            every { agentConfigService.findByName(namespaceId, "loop-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns model
+            every { aiProviderService.getById(aiProviderId) } returns provider
+
+            val agent = agentService.findAgentByName("loop-agent", context)
+
+            (agent is AgentLoop) shouldBe true
+            agent.name shouldBe "loop-agent"
+            // LOOP mode must never create a chat client — no LLM provider is involved.
+            verify(exactly = 0) { chatClientProvider.getChatClient(any(), any(), any()) }
+        }
+
+        "findAgentByName with advancedExecution=true wires redirectGuideline into AgentAdvancedContext" {
+            val redirectConfig =
+                IntegrationConfig(
+                    metadata = EntityMetadata(id = UUID.randomUUID()),
+                    namespaceId = namespaceId,
+                    name = "REDIRECT_PROD",
+                    integrationType = "REDIRECT",
+                    parameters = testObjectMapper.readTree("""{"guideline": "Always redirect to TRSharing when finished."}"""),
+                )
+            val config =
+                agentConfig(name = "advanced-redirect-agent", modelName = "sonnet")
+                    .copy(advancedExecution = true, integrations = mapOf("REDIRECT_PROD" to null))
+            every { agentConfigService.findByName(namespaceId, "advanced-redirect-agent") } returns config
+            every { aiModelService.findAiModel(namespaceId, "sonnet") } returns modelConfig(alias = "sonnet")
+            every { aiProviderService.getById(aiProviderId) } returns providerConfig()
+            every { chatClientProvider.getChatClient(any(), any(), any()) } returns mockk<ChatClient>(relaxed = true)
+            every { integrationConfigService.findEffective(namespaceId, null) } returns listOf(redirectConfig)
+
+            val agent = agentService.findAgentByName("advanced-redirect-agent", context) as AgentAdvanced
+
+            val contextField = AgentAdvanced::class.java.getDeclaredField("context").apply { isAccessible = true }
+            val advancedCtx = contextField.get(agent) as AgentAdvancedContext
+            advancedCtx.redirectGuideline shouldBe "Always redirect to TRSharing when finished."
         }
     }
 }
