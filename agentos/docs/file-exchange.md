@@ -235,10 +235,14 @@ the namespace file tools granted, since those tools are read-only without `WRITE
 read-only mode.
 
 **A token that cannot be resolved removes its integration from the run** — no tool and no
-exception. The drop is logged at `warn`, naming the integration and the token, and the reason it
-could not be resolved at `debug`: this runs over every integration config of the namespace, so a
-refusal would otherwise warn on resolutions that were never going to use that integration. Only the
-integration that carries the token is affected, every other one reaches the run untouched.
+exception. The drop is logged at `warn` on a real run, naming the integration and the token, and the
+reason it could not be resolved at `debug`: this runs over every integration config of the
+namespace, and also where there is no run at all (a definition preview, an agent listing), so both
+would otherwise be noisy about an integration nobody asked for. Only the integration that carries
+the token is affected, every other one reaches the run untouched.
+
+A resolved token names a directory that exists: it is created if it does not yet, and a creation
+that fails drops the integration like any other unresolvable token.
 
 The alternative, substituting nothing and letting the plugin reading the parameter refuse it, is
 what this mechanism did at first, and it only works on BASH: `BashConfigParser` requires an absolute
@@ -267,10 +271,13 @@ of every origin.
 - **Path containment**: the resolved path must stay within the scope root. Traversal (`../`) and
   symlink escapes are rejected.
 - **No phantom directories**: reads and deletes on a never-written scope return 404 without
-  materializing empty shard directories. The agent grant is the one exception — the file plugin
-  canonicalizes `rootPath` at construction, so granting a scope creates its directory. Turning
-  `case-enabled-by-default` on therefore materializes a case exchange directory for every case a
-  granted agent runs in; an agent that opts out with `[]` creates nothing.
+  materializing empty shard directories. The agent path is the exception, twice over. Granting a
+  scope creates its directory, because the file plugin canonicalizes `rootPath` at construction, so
+  turning `case-enabled-by-default` on materializes a case exchange directory for every case a
+  granted agent runs in. Resolving a token creates it too: `ProcessBuilder.directory` fails on a
+  missing directory, so an integration pointed at a case that has never been written would answer an
+  `IOException` on every command, and an agent can carry the token without holding the matching
+  scope. An agent that opts out with `[]` and carries no token creates nothing.
 - **Upload allow-list**: user uploads are restricted to a configurable set of file extensions
   (`agentos.exchange.allowed-upload-extensions`); a disallowed type is rejected with 400.
 - **`{{NAMESPACE_EXCHANGE}}` asks for Namespace `WRITE`, and what it hands over is unguarded**:

@@ -14,6 +14,7 @@ import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.sdk.entity.EntityMetadata
+import java.nio.file.Files
 import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
@@ -42,8 +43,11 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
     private val context =
         AgentExecutionContext(namespaceId = namespaceId, caseId = caseId, caseCreatedAt = caseCreatedAt)
 
-    private val casePath = Path.of("/srv/exchange/ns/cases/2026/10/19/case")
-    private val namespacePath = Path.of("/srv/exchange/ns/shared")
+    // Real directories under a temp root: a resolved token names a directory the customizer
+    // creates, so a path nobody can create (/srv/...) would be dropped rather than substituted.
+    private val mountRoot: Path = Files.createTempDirectory("exchange-token-spec")
+    private val casePath = mountRoot.resolve("ns/cases/2026/10/19/case")
+    private val namespacePath = mountRoot.resolve("ns/shared")
 
     private fun config(
         name: String,
@@ -90,6 +94,20 @@ class ExchangePathRunIntegrationSpec : StringSpec() {
             val result = customizer.customize(configs, context)
 
             result.single().parameters.text("workingDirectory") shouldBe "$casePath/repo"
+        }
+
+        "the resolved directory is created when it does not exist yet" {
+            // ProcessBuilder.directory fails on a missing directory, so a BASH integration pointed at
+            // a case that has never been written would answer an IOException on every command. The
+            // grant creates the scope directory, but an agent can carry the token without holding the
+            // scope: the platform default is off and an agent can opt out with an empty list.
+            givenCaseRoot()
+            val configs = listOf(config("build", """{"workingDirectory": "{{CASE_EXCHANGE}}"}"""))
+
+            Files.exists(casePath) shouldBe false
+            customizer.customize(configs, context).single().parameters.text("workingDirectory") shouldBe
+                casePath.toString()
+            Files.isDirectory(casePath) shouldBe true
         }
 
         "the namespace token becomes the shared directory for a user who holds Namespace WRITE" {

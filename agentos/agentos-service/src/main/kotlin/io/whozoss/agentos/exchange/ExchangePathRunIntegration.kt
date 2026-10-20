@@ -11,6 +11,8 @@ import io.whozoss.agentos.util.substituteJsonTokens
 import mu.KLogging
 import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
+import java.nio.file.Files
+import java.nio.file.Path
 import java.time.Instant
 import java.util.UUID
 
@@ -232,11 +234,10 @@ class ExchangePathRunIntegration(
             }
 
             else ->
-                exchangeStorageService
-                    .namespaceRoot(context.namespaceId)
-                    .toAbsolutePath()
-                    .normalize()
-                    .toString()
+                materialised(
+                    exchangeStorageService.namespaceRoot(context.namespaceId),
+                    ExchangeIntegrationTypes.NAMESPACE_EXCHANGE_TOKEN,
+                )
         }
     }
 
@@ -299,11 +300,38 @@ class ExchangePathRunIntegration(
                 null
             }
 
-            else ->
-                root.path
-                    .toAbsolutePath()
-                    .normalize()
-                    .toString()
+            else -> materialised(root.path, ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN)
+        }
+    }
+
+    /**
+     * The absolute path of [root], created if it does not exist yet, or null when it cannot be.
+     *
+     * A resolved token has to name a directory that exists: `ProcessBuilder.directory` fails on a
+     * missing one, so a BASH integration would answer an `IOException` on every command. Nothing
+     * else on this path creates it. An exchange root is materialised by
+     * [ExchangeToolGrantService.grantTools] when the agent is granted the matching file scope, and
+     * an agent can point an integration at a directory without holding that scope: the platform
+     * default is off, and an agent can opt out with an empty list. The REST side deliberately
+     * creates nothing, which is what keeps a never-written scope from leaving empty shard
+     * directories behind.
+     *
+     * A failure is logged and drops the integration, like any other unresolvable token, rather than
+     * aborting the resolution of every agent of the namespace.
+     */
+    private fun materialised(
+        root: Path,
+        token: String,
+    ): String? {
+        val path = root.toAbsolutePath().normalize()
+        return runCatching {
+            Files.createDirectories(path)
+            path.toString()
+        }.getOrElse { failure ->
+            logger.warn(failure) {
+                "$token resolves to $path, which could not be created; the integration provides no tool"
+            }
+            null
         }
     }
 

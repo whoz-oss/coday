@@ -699,6 +699,19 @@ class AgentServiceImplUnitSpec : StringSpec() {
             instructions shouldContain "## File scopes"
             instructions shouldContain "The case scope is read-only for you on this run"
             instructions shouldNotContain "Work in the case scope by default"
+            // The stance is prose. What the plugin builds still follows the user's rights alone, so a
+            // write tool the allowlist did name is still granted: folding the two would make any
+            // write tool absent from MUTATING_TOOLS un-grantable.
+            verify {
+                exchangeToolGrantService.grantTools(
+                    any(),
+                    false,
+                    ExchangeIntegrationTypes.CASE_CONFIG_NAME,
+                    any(),
+                    any(),
+                    any(),
+                )
+            }
         }
 
         "no block and no tool sentence when only the case scope is granted" {

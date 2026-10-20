@@ -944,11 +944,22 @@ class AgentServiceImpl(
         return listOfNotNull(scopes.case, scopes.namespace).flatMap { grantScope(it, toolContext, bothGranted) }
     }
 
-    /** One exchange scope, decided but not yet granted. */
+    /**
+     * One exchange scope, decided but not yet granted.
+     *
+     * [userCanWrite] and [access] answer two different questions and must not be folded into one.
+     * The first is the invoking user's right on the directory, and it alone decides what the file
+     * plugin builds. The second is what the prompt says about the scope, which also depends on the
+     * agent's own allowlist: a scope restricted to read tools is described as read-only, but the
+     * tools it did allow are still built from the user's rights. Deriving the plugin's `readOnly`
+     * from the stance instead would make a write tool unreachable as soon as the allowlist names
+     * one that [ExchangeIntegrationTypes.MUTATING_TOOLS] does not know.
+     */
     private data class ExchangeScope(
         val root: Path,
         val configName: String,
         val grant: ExchangeGrant,
+        val userCanWrite: Boolean,
         val access: ExchangeScopeGuidance.Access,
         val toolGuidance: String,
     )
@@ -973,7 +984,7 @@ class AgentServiceImpl(
     ): List<StandardTool<*>> =
         exchangeToolGrantService.grantTools(
             root = scope.root,
-            readOnly = scope.access == ExchangeScopeGuidance.Access.READ_ONLY,
+            readOnly = !scope.userCanWrite,
             configName = scope.configName,
             allowedTools = scope.grant.allowedTools,
             toolContext = toolContext,
@@ -1027,6 +1038,7 @@ class AgentServiceImpl(
                     root = root.requireUsable(),
                     configName = ExchangeIntegrationTypes.CASE_CONFIG_NAME,
                     grant = caseGrant,
+                    userCanWrite = canWrite,
                     access = accessFor(canWrite, ExchangeIntegrationTypes.CASE_CONFIG_NAME, caseGrant),
                     toolGuidance = ExchangeScopeGuidance.CASE_TOOL_GUIDANCE,
                 )
@@ -1085,6 +1097,7 @@ class AgentServiceImpl(
                     root = exchangeStorageService.namespaceRoot(context.namespaceId),
                     configName = ExchangeIntegrationTypes.NAMESPACE_CONFIG_NAME,
                     grant = namespaceGrant,
+                    userCanWrite = userCanWriteNamespace,
                     access =
                         accessFor(
                             userCanWriteNamespace,
