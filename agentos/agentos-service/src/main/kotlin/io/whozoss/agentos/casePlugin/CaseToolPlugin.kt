@@ -120,7 +120,7 @@ class CaseToolPlugin(
                     "allowOtherUsers": {
                       "type": "boolean",
                       "title": "Allow other users",
-                      "description": "FreeCaseLauncher: lets the agent start the case for a user other than the one it is running for (input field userId). The target user must have access to the namespace and the agent deployed.",
+                      "description": "FreeCaseLauncher: lets the agent start the case for a user other than the one it is running for (input field userId). Even then, only an administrator of the namespace can do it, and the target user must have access to the namespace and the agent deployed.",
                       "default": false
                     }
                   },

@@ -42,7 +42,8 @@ import java.util.UUID
  *
  * ## Who is authorized
  *
- * The launches go through `FreeCaseLauncher`, so its rules apply: the integration must allow other users, and each
+ * The launches go through `FreeCaseLauncher`, so its rules apply: the integration must allow other users, the
+ * **triggering user** must be an ADMIN of the namespace (federation) to start a case for someone else, and each
  * end-user must read the namespace and have the agent deployed. The loop adds no authorization of its own.
  * An end-user without the agent is refused by `FreeCaseLauncher` and counted as `noAgentAccess`. An end-user whose
  * context cannot be resolved makes `FreeCaseLauncher` fail, and is counted as failed.
@@ -235,7 +236,8 @@ class LoopWorkflowRunnerService(
     /**
      * What a `FreeCaseLauncher` result means for the loop. A refusal because the agent is not deployed to the end user
      * counts as no agent access; anything else is a failure. A refusal that comes from the
-     * integration (other users not allowed, agent outside the allowlist) hits every entity alike: it shows in
+     * integration or from the triggering user (other users not allowed, not an ADMIN of the namespace, agent outside
+     * the allowlist) hits every entity alike: it shows in
      * the log with its reason, and in the summary as failures.
      */
     private fun launchOutcome(

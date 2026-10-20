@@ -11,7 +11,8 @@ import java.util.UUID
  * @param callerCaseId The case that launches: it becomes the origin
  *   ([io.whozoss.agentos.caseFlow.Case.originCaseId]) of the new one.
  * @param targetUserId The user the new case runs for. Null, or the caller itself: the caller. Any
- *   other user requires [allowOtherUsers], must exist and must be able to read the namespace.
+ *   other user requires [allowOtherUsers] and the caller to be ADMIN of the namespace; the target must
+ *   exist and be able to read the namespace.
  * @param title Name of the new conversation. Null or blank: derived from the start of [prompt].
  * @param sessionContext What the caller hands to the new case: free key/value data, passed on as given to the
  *   first message, under the context the system resolves for the target user (see [CaseLaunchService]). The

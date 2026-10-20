@@ -118,7 +118,8 @@ class FreeCaseLauncherTool(
             append(
                 if (allowOtherUsers) {
                     "The case runs in the current namespace, for the current user unless you pass userId " +
-                        "(the user must have access to the namespace and the agent)."
+                        "(only allowed for an administrator of the namespace; the user must have access to " +
+                        "the namespace and the agent)."
                 } else {
                     "The case runs for the current user, in the current namespace."
                 },

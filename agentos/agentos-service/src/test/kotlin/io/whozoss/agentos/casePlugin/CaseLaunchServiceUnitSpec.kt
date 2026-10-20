@@ -32,8 +32,8 @@ import java.util.UUID
  * Unit tests for [CaseLaunchService], all driven through its only entry point, [CaseLaunchService.launch]. The
  * service has five collaborators, so each test runs against a whole small world, and changes only what it is about.
  *
- * **The world of a test** (`Fixture`): a `caller` and an `other` user, both members of the namespace, both with
- * the agent `Reporter` deployed, no `UserContextProvider`, and a calling case that is top-level and was not launched.
+ * **The world of a test** (`Fixture`): a `caller` and an `other` user, both plain members of the namespace (READ,
+ * nobody is ADMIN), both with the agent `Reporter` deployed, no `UserContextProvider`, and a calling case that is top-level and was not launched.
  * A test changes a permission (`namespacePermission`), a deployment (`deployAgent`), a user lookup
  * (`userService.findById`), the provider (`resolverAnswering`, `provider`), or the cases the service can read
  * (`cases`). `request(...)` builds the launch request, from the caller's case, for the caller by default.
@@ -48,7 +48,7 @@ import java.util.UUID
  * 3. its session context: the caller's, under the one resolved for the target user;
  * 4. launch depth: a launched case cannot launch, nor can a case delegated from one;
  * 5. agent access and the calling user;
- * 6. another user: allowed by the `allowOtherUsers` switch, no administration right required;
+ * 6. another user: needs the `allowOtherUsers` switch AND the caller to be ADMIN of the namespace;
  * 7. failures: thrown, never turned into refusals.
  *
  * A refusal never creates a case.
@@ -125,9 +125,11 @@ class CaseLaunchServiceUnitSpec :
                     grantFailure?.let { throw it }
                     Unit
                 }
-                // Default world: both users read the namespace, both have 'Reporter'.
+                // Default world: both users read the namespace, nobody administers it, both have 'Reporter'.
                 namespacePermission(caller, Action.READ, true)
+                namespacePermission(caller, Action.WRITE, false)
                 namespacePermission(other, Action.READ, true)
+                namespacePermission(other, Action.WRITE, false)
                 deployAgent(caller, "Reporter")
                 deployAgent(other, "Reporter")
             }
@@ -329,6 +331,7 @@ class CaseLaunchServiceUnitSpec :
                         provider(asked) { externalId -> UserContextResult.Success(mapOf("who" to externalId)) },
                     ),
                 )
+            f.namespacePermission(caller, Action.WRITE, true)
 
             f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
 
@@ -339,6 +342,7 @@ class CaseLaunchServiceUnitSpec :
         "the preferred language of the user the case runs for is added to the context, without any provider" {
             val f = Fixture()
             every { f.userService.findById(other.id) } returns other.copy(preferredLanguage = "fr")
+            f.namespacePermission(caller, Action.WRITE, true)
 
             f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
 
@@ -484,7 +488,7 @@ class CaseLaunchServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Another user: allowed by the switch, no administration right required
+        // Another user: the switch AND ADMIN of the namespace (federation)
         // -------------------------------------------------------------------------
 
         "a refusal carries its reason and a message for the LLM, and no stack trace: it is control flow" {
@@ -507,8 +511,27 @@ class CaseLaunchServiceUnitSpec :
             verify(exactly = 0) { f.userService.findById(other.id) }
         }
 
-        "a plain member can start a case for another user, who is the one given ADMIN on it" {
+        "a plain member cannot start a case for another user, even when the switch allows other users" {
             val f = Fixture()
+
+            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
+                    CaseLaunchRefusal.FORBIDDEN
+            f.created shouldBe emptyList()
+            verify(exactly = 0) { f.userService.findById(other.id) }
+        }
+
+        "an ADMIN of the namespace cannot start a case for another user when the switch does not allow it" {
+            val f = Fixture()
+            f.namespacePermission(caller, Action.WRITE, true)
+
+            refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = false)) }.reason shouldBe
+                    CaseLaunchRefusal.OTHER_USERS_NOT_ALLOWED
+            f.created shouldBe emptyList()
+        }
+
+        "an ADMIN of the namespace can start a case for another user, who is the one given ADMIN on it" {
+            val f = Fixture()
+            f.namespacePermission(caller, Action.WRITE, true)
 
             val launched = f.service.launch(request(targetUserId = other.id, allowOtherUsers = true))
 
@@ -531,6 +554,7 @@ class CaseLaunchServiceUnitSpec :
 
         "the target user must still read the namespace" {
             val f = Fixture()
+            f.namespacePermission(caller, Action.WRITE, true)
             f.namespacePermission(other, Action.READ, false)
 
             refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
@@ -540,6 +564,7 @@ class CaseLaunchServiceUnitSpec :
 
         "the target user must still have the agent deployed to them" {
             val f = Fixture()
+            f.namespacePermission(caller, Action.WRITE, true)
             f.deployAgent(other, "SomethingElse")
 
             refusalOf { f.service.launch(request(targetUserId = other.id, allowOtherUsers = true)) }.reason shouldBe
@@ -549,6 +574,7 @@ class CaseLaunchServiceUnitSpec :
 
         "an unknown target user is refused" {
             val f = Fixture()
+            f.namespacePermission(caller, Action.WRITE, true)
             val ghost = UUID.randomUUID()
             every { f.userService.findById(ghost) } returns null
 
@@ -557,7 +583,7 @@ class CaseLaunchServiceUnitSpec :
             f.created shouldBe emptyList()
         }
 
-        "naming the caller itself is not 'another user': it needs neither the switch nor a namespace check" {
+        "naming the caller itself is not 'another user': it needs neither the switch nor an ADMIN check" {
             val f = Fixture()
 
             f.service.launch(request(targetUserId = caller.id))
