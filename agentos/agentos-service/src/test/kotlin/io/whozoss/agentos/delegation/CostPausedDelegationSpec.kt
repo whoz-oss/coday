@@ -15,7 +15,7 @@ import kotlinx.coroutines.test.runTest
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class CostPausedDelegationSpec :
     StringSpec({
-        "human confirmation outlives the execution deadline and resumes the same delegation" {
+        "human confirmation outlives the delegation budget and resumes the same delegation" {
             runTest {
                 val status = MutableStateFlow(CaseStatus.RUNNING)
                 val runtime = mockk<CaseRuntime>()

@@ -321,10 +321,11 @@ class DelegationTool(
         stopFailure?.let { err ->
             logger.warn(err) { "[DelegationTool] Failed to stop sub-case $subCaseId after timeout" }
         }
+        val stoppedStatus = if (stopFailure == null) awaitStopped(subRuntime) else null
         val silent = "Sub-case showed no activity for ${timeoutMs / 1000}s"
         return when {
             stopFailure != null -> "$silent and could not be stopped."
-            awaitStopped(subRuntime) == CaseStatus.IDLE ->
+            stoppedStatus == CaseStatus.IDLE ->
                 "$silent and was stopped. It is idle: delegate again with its subCaseId to resume it."
             else -> "$silent and was stopped."
         }
