@@ -34,7 +34,7 @@ import java.util.UUID
  */
 class ListGroupAgentUsersTool(
     private val configName: String? = null,
-    private val membersByGroupAndAgentLoader: (
+    private val membersByGroupAndAgentLoader: suspend (
         groupId: UUID,
         agentConfigId: UUID,
         namespaceId: UUID,
@@ -106,23 +106,21 @@ class ListGroupAgentUsersTool(
                     context.namespaceId,
                     context.userId,
                 )
+            }.onFailure { e ->
+                logger.warn(e) {
+                    "[listGroupAgentUsers] Failed to retrieve members for group ${input.userGroupId} " +
+                        "and agent ${input.agentConfigId}"
+                }
+            }.getOrElse {
+                return ToolExecutionResult.error(
+                    "Failed to retrieve members for group ${input.userGroupId} and agent ${input.agentConfigId}.",
+                    errorType = "RETRIEVAL_ERROR",
+                )
             }
-                .onFailure { e ->
-                    logger.warn(e) {
-                        "[listGroupAgentUsers] Failed to retrieve members for group ${input.userGroupId} " +
-                            "and agent ${input.agentConfigId}"
-                    }
-                }
-                .getOrElse {
-                    return ToolExecutionResult.error(
-                        "Failed to retrieve members for group ${input.userGroupId} and agent ${input.agentConfigId}.",
-                        errorType = "RETRIEVAL_ERROR",
-                    )
-                }
                 ?: return ToolExecutionResult.error(
-                "User group ${input.userGroupId} was not found or you do not have access to it.",
-                errorType = "NOT_FOUND",
-            )
+                    "User group ${input.userGroupId} was not found or you do not have access to it.",
+                    errorType = "NOT_FOUND",
+                )
 
         val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
         val summary =

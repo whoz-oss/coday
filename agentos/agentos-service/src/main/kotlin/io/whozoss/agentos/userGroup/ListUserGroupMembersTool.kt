@@ -9,7 +9,6 @@ import io.whozoss.agentos.util.coRunCatching
 import mu.KLogging
 import java.util.UUID
 
-
 /**
  * Tool that lists all users belonging to a user group.
  *
@@ -32,7 +31,7 @@ import java.util.UUID
  */
 class ListUserGroupMembersTool(
     private val configName: String? = null,
-    private val membersLoader: (groupId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val membersLoader: suspend (groupId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
 ) : StandardTool<ListUserGroupMembersTool.Input> {
     data class Input(
         val userGroupId: UUID,
@@ -85,11 +84,16 @@ class ListUserGroupMembersTool(
         val members =
             coRunCatching { membersLoader(input.userGroupId, context.namespaceId, context.userId) }
                 .onFailure { e -> logger.warn(e) { "[listMembers] Failed to retrieve members for group ${input.userGroupId}" } }
-                .getOrElse { return ToolExecutionResult.error("Failed to retrieve members for group ${input.userGroupId}.", errorType = "RETRIEVAL_ERROR") }
+                .getOrElse {
+                    return ToolExecutionResult.error(
+                        "Failed to retrieve members for group ${input.userGroupId}.",
+                        errorType = "RETRIEVAL_ERROR",
+                    )
+                }
                 ?: return ToolExecutionResult.error(
-                "User group ${input.userGroupId} was not found or you do not have access to it.",
-                errorType = "NOT_FOUND",
-            )
+                    "User group ${input.userGroupId} was not found or you do not have access to it.",
+                    errorType = "NOT_FOUND",
+                )
 
         val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
         val summary =

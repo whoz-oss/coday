@@ -29,7 +29,7 @@ import java.util.UUID
  */
 class ListAgentUsersTool(
     private val configName: String? = null,
-    private val usersByAgentLoader: (agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val usersByAgentLoader: suspend (agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
 ) : StandardTool<ListAgentUsersTool.Input> {
     data class Input(
         val agentConfigId: UUID,
@@ -82,11 +82,16 @@ class ListAgentUsersTool(
         val members =
             coRunCatching { usersByAgentLoader(input.agentConfigId, context.namespaceId, context.userId) }
                 .onFailure { e -> logger.warn(e) { "[listAgentUsers] Failed to retrieve users for agent ${input.agentConfigId}" } }
-                .getOrElse { return ToolExecutionResult.error("Failed to retrieve users for agent ${input.agentConfigId}.", errorType = "RETRIEVAL_ERROR") }
+                .getOrElse {
+                    return ToolExecutionResult.error(
+                        "Failed to retrieve users for agent ${input.agentConfigId}.",
+                        errorType = "RETRIEVAL_ERROR",
+                    )
+                }
                 ?: return ToolExecutionResult.error(
-                "You do not have access to list users for agent ${input.agentConfigId}.",
-                errorType = "NOT_FOUND",
-            )
+                    "You do not have access to list users for agent ${input.agentConfigId}.",
+                    errorType = "NOT_FOUND",
+                )
 
         val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
         val summary =

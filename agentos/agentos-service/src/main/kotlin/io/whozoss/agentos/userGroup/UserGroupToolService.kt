@@ -56,12 +56,22 @@ class UserGroupToolService(
      *
      * Mirrors `GET /api/user-groups/{id}/members` + @HideOnAccessDenied.
      */
-    fun getMembers(groupId: UUID, namespaceId: UUID, userId: UUID?): List<UserGroupMember>? {
+    suspend fun getMembers(
+        groupId: UUID,
+        namespaceId: UUID,
+        userId: UUID?,
+    ): List<UserGroupMember>? {
         val group = userGroupRepository.findByIds(listOf(groupId)).firstOrNull()
-        val allowed = group != null &&
-            group.namespaceId == namespaceId &&
-            userId != null &&
-            permissionService.hasPermission(userId.toString(), EntityType.USER_GROUP, groupId.toString(), Action.READ)
+        val allowed =
+            group != null &&
+                group.namespaceId == namespaceId &&
+                userId != null &&
+                permissionService.hasPermission(
+                    userId.toString(),
+                    EntityType.USER_GROUP,
+                    groupId.toString(),
+                    Action.READ,
+                )
         return if (allowed) userGroupRepository.findMembers(groupId) else null
     }
 
@@ -73,9 +83,19 @@ class UserGroupToolService(
      *
      * Namespace READ is the same floor that `GET /api/user-groups?namespaceId=` enforces.
      */
-    fun getUsersByAgent(agentConfigId: UUID, namespaceId: UUID, userId: UUID?): List<UserGroupMember>? {
-        val allowed = userId != null &&
-            permissionService.hasPermission(userId.toString(), EntityType.NAMESPACE, namespaceId.toString(), Action.READ)
+    suspend fun getUsersByAgent(
+        agentConfigId: UUID,
+        namespaceId: UUID,
+        userId: UUID?,
+    ): List<UserGroupMember>? {
+        val allowed =
+            userId != null &&
+                permissionService.hasPermission(
+                    userId.toString(),
+                    EntityType.NAMESPACE,
+                    namespaceId.toString(),
+                    Action.READ,
+                )
         return if (allowed) userGroupRepository.findUsersByAgentId(agentConfigId, namespaceId) else null
     }
 
@@ -87,17 +107,23 @@ class UserGroupToolService(
      * - [userId] is null (anonymous call)
      * - the caller lacks UserGroup READ
      */
-    fun getMembersByGroupAndAgent(
+    suspend fun getMembersByGroupAndAgent(
         groupId: UUID,
         agentConfigId: UUID,
         namespaceId: UUID,
         userId: UUID?,
     ): List<UserGroupMember>? {
         val group = userGroupRepository.findByIds(listOf(groupId)).firstOrNull()
-        val allowed = group != null &&
-            group.namespaceId == namespaceId &&
-            userId != null &&
-            permissionService.hasPermission(userId.toString(), EntityType.USER_GROUP, groupId.toString(), Action.READ)
+        val allowed =
+            group != null &&
+                group.namespaceId == namespaceId &&
+                userId != null &&
+                permissionService.hasPermission(
+                    userId.toString(),
+                    EntityType.USER_GROUP,
+                    groupId.toString(),
+                    Action.READ,
+                )
         return if (allowed) userGroupRepository.findMembersByGroupAndAgent(groupId, agentConfigId) else null
     }
 

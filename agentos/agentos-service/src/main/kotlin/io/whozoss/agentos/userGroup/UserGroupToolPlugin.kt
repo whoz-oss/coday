@@ -2,9 +2,9 @@ package io.whozoss.agentos.userGroup
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.integrationConfig.IntegrationTypeConstraints
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
-import io.whozoss.agentos.integrationConfig.IntegrationTypeConstraints
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import java.util.UUID
 
@@ -37,9 +37,14 @@ import java.util.UUID
  * No parameters are needed — all access decisions are runtime, not config-time.
  */
 class UserGroupToolPlugin(
-    private val membersLoader: (groupId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
-    private val usersByAgentLoader: (agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
-    private val membersByGroupAndAgentLoader: (groupId: UUID, agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val membersLoader: suspend (groupId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val usersByAgentLoader: suspend (agentConfigId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
+    private val membersByGroupAndAgentLoader: suspend (
+        groupId: UUID,
+        agentConfigId: UUID,
+        namespaceId: UUID,
+        userId: UUID?,
+    ) -> List<UserGroupMember>?,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
 
@@ -49,11 +54,15 @@ class UserGroupToolPlugin(
         config: JsonNode?,
         configName: String?,
         context: ToolContext?,
-    ): List<StandardTool<*>> = listOf(
-        ListUserGroupMembersTool(configName = configName, membersLoader = membersLoader),
-        ListAgentUsersTool(configName = configName, usersByAgentLoader = usersByAgentLoader),
-        ListGroupAgentUsersTool(configName = configName, membersByGroupAndAgentLoader = membersByGroupAndAgentLoader),
-    )
+    ): List<StandardTool<*>> =
+        listOf(
+            ListUserGroupMembersTool(configName = configName, membersLoader = membersLoader),
+            ListAgentUsersTool(configName = configName, usersByAgentLoader = usersByAgentLoader),
+            ListGroupAgentUsersTool(
+                configName = configName,
+                membersByGroupAndAgentLoader = membersByGroupAndAgentLoader,
+            ),
+        )
 
     companion object {
         const val INTEGRATION_TYPE = IntegrationTypeConstraints.USER_GROUP_TYPE
