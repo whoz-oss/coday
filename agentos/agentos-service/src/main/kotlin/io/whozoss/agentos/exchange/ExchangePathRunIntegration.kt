@@ -2,12 +2,14 @@ package io.whozoss.agentos.exchange
 
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.RunIntegrationCustomizer
+import io.whozoss.agentos.agent.RunIntegrationCustomizerOrder
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.util.jsonTokensPresent
 import io.whozoss.agentos.util.substituteJsonTokens
 import mu.KLogging
+import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import java.time.Instant
 import java.util.UUID
@@ -82,18 +84,22 @@ import java.util.UUID
  *
  * ## Order against the other customizer
  *
- * The customizers are folded in Spring's injection order, and this one carries no `@Order` because
- * the result does not depend on where it sits relative to
- * [io.whozoss.agentos.git.GitToolsRunIntegration]. That one only touches `GIT` configs, and on
- * those it writes its five keys with `put` on a deep copy, unconditionally, so it wins on them from
- * either side. The case that could diverge — a `GIT` config whose `workingDirectory` carries
- * [ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN] that this run cannot resolve, dropped here and
- * overwritten there — cannot arise: its gate is the stricter one, Case `WRITE` on the owning case
- * even when the run's own case owns the directory, so it cannot keep a config this one would drop,
- * and when it refuses it drops the config itself. Neither writes a `{{TOKEN}}` spelling the other
- * would then expand.
+ * This one runs **after** [io.whozoss.agentos.git.GitToolsRunIntegration], pinned by
+ * [RunIntegrationCustomizerOrder]. For almost everything the order is indifferent: that one only
+ * touches `GIT` configs, and on those it writes its five keys with `put` on a deep copy,
+ * unconditionally, so it wins on them from either side, their permission gates cannot disagree
+ * (its own is the stricter, Case `WRITE` on the owning case even where this one short-circuits),
+ * and neither writes a `{{TOKEN}}` spelling the other would then expand.
+ *
+ * One combination does depend on it. A `GIT` config whose parameters carry
+ * [ExchangeIntegrationTypes.CASE_EXCHANGE_TOKEN], on a family whose workspace is not usable yet:
+ * running first, that customizer reaches `requireUsable()` and raises a `ConflictException`, the
+ * answer it gave before these tokens existed; running second, it would never see the config,
+ * because this one drops it as unresolvable and the resolution succeeds without it. Git first keeps
+ * the louder, older answer.
  */
 @Component
+@Order(RunIntegrationCustomizerOrder.EXCHANGE_PATHS)
 class ExchangePathRunIntegration(
     private val exchangeRootResolver: ExchangeRootResolver,
     private val exchangeStorageService: ExchangeStorageService,
@@ -116,37 +122,62 @@ class ExchangePathRunIntegration(
         val used = carried.flatMapTo(mutableSetOf()) { it.second }
         return when {
             used.isEmpty() -> configs
-            else -> substituted(carried, resolveTokens(used, context))
+            else -> substituted(carried, resolveTokens(used, context), context.caseId != null)
         }
     }
 
     private fun substituted(
         carried: List<Pair<IntegrationConfig, Set<String>>>,
         resolved: Map<String, String>,
+        isRun: Boolean,
     ): List<IntegrationConfig> =
         carried.mapNotNull { (config, tokens) ->
-            val unresolved = tokens.filterNot { it in resolved }
             when {
                 // Guarding on the tokens this config carries, not on the run's: a config that
                 // mentions none is the common case and must not be rebuilt node by node, and one
                 // whose token stayed unresolved must not be rebuilt either, since nothing changes.
                 tokens.isEmpty() -> config
-                unresolved.isEmpty() -> config.copy(parameters = substituteJsonTokens(config.parameters, resolved))
                 else -> {
-                    // The one event worth a warning: an integration an operator configured is not
-                    // there any more. The three reasons below are logged at debug instead, because
-                    // this customizer sees every integration config of the namespace and cannot
-                    // tell which ones the agent references, so a refusal repeats on resolutions
-                    // that were never going to use the integration.
-                    logger.warn {
-                        "Integration '${config.name}' provides no tool on this run: " +
-                            "${unresolved.joinToString()} could not be resolved " +
-                            "(enable debug on this class for the reason)"
+                    val unresolved = tokens.filterNot { it in resolved }
+                    when {
+                        unresolved.isEmpty() ->
+                            config.copy(
+                                parameters = substituteJsonTokens(config.parameters, resolved.filterKeys { it in tokens }),
+                            )
+
+                        else -> {
+                            logDrop(config, unresolved, isRun)
+                            null
+                        }
                     }
-                    null
                 }
             }
         }
+
+    /**
+     * An integration an operator configured is not there any more, which is the event worth a
+     * warning on a real run, and the reasons behind it are logged at debug.
+     *
+     * Only on a real run. This customizer is handed every integration config of the namespace,
+     * before any filtering by what the agent declares, and it also runs where there is no run at
+     * all: a definition preview, an agent listing. One namespace holding one token-carrying config
+     * would otherwise warn on every one of those requests, about an integration nobody asked for,
+     * which is the same noise the three reasons were demoted to debug to avoid.
+     */
+    private fun logDrop(
+        config: IntegrationConfig,
+        unresolved: List<String>,
+        isRun: Boolean,
+    ) {
+        val message = {
+            "Integration '${config.name}' provides no tool: ${unresolved.joinToString()} could not be " +
+                "resolved (enable debug on this class for the reason)"
+        }
+        when {
+            isRun -> logger.warn(message)
+            else -> logger.debug(message)
+        }
+    }
 
     /**
      * What each of [used] stands for on this run, leaving out the ones that cannot be resolved.

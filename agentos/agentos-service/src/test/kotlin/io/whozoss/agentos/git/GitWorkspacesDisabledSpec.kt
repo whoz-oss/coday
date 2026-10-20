@@ -3,6 +3,7 @@ package io.whozoss.agentos.git
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.whozoss.agentos.agent.RunIntegrationCustomizer
 import io.whozoss.agentos.caseFlow.CaseLaunchGate
 import io.whozoss.agentos.caseFlow.CaseWorkspaceProvisioning
 import io.whozoss.agentos.exchange.DefaultExchangeRootResolver
@@ -79,11 +80,16 @@ class GitWorkspacesDisabledSpec : SuperAdminCallerSpec() {
             context.getBeanNamesForType(GitToolsRunIntegration::class.java).toList().shouldBeEmpty()
         }
 
-        "without agentos.git.workspaces.enabled the exchange path tokens still resolve" {
+        "without agentos.git.workspaces.enabled the exchange path tokens still resolve, and nothing else" {
             // {{CASE_EXCHANGE}} answers through ExchangeRootResolver, which DefaultExchangeRootResolver
             // serves on an instance without Git workspaces. Pointing a BASH integration at the case's
             // own directory must not require equipping anything.
             context.getBeanNamesForType(ExchangePathRunIntegration::class.java).toList().shouldHaveSize(1)
+            // The assertion this replaced was shouldBeEmpty() on every RunIntegrationCustomizer.
+            // Pinning the whole set, and not only the two classes named here, is what notices a third
+            // unconditional customizer rewriting integration parameters on an instance that
+            // deliberately runs without Git workspaces.
+            context.getBeanNamesForType(RunIntegrationCustomizer::class.java).toList().shouldHaveSize(1)
         }
 
         "without agentos.git.workspaces.enabled the workspace routes answer 404" {
