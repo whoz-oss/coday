@@ -37,7 +37,7 @@ fun substituteJsonTokens(
         node is TextNode -> TextNode.valueOf(substituteTokens(node.textValue(), tokens))
         node is ObjectNode ->
             JsonNodeFactory.instance.objectNode().also { result ->
-                node.fields().forEach { (key, value) -> result.set<JsonNode>(key, substituteJsonTokens(value, tokens)) }
+                node.properties().forEach { (key, value) -> result.set<JsonNode>(key, substituteJsonTokens(value, tokens)) }
             }
 
         node is ArrayNode ->
