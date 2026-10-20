@@ -108,7 +108,7 @@ class FreeCaseLauncherTool(
                 ToolExecutionResult.error("Both agentName and prompt are required.", errorType = "MISSING_INPUT")
 
             else ->
-                launcher.launch(
+                launcher.start(
                     context = context,
                     agentName = input.agentName,
                     prompt = input.prompt,

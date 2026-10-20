@@ -68,7 +68,7 @@ import java.util.UUID
  * The session context is resolved in every flow that starts a case through this service, so a caller such
  * as the loop hands over the entity only and does not resolve the user's context itself.
  *
- * **Refusals and failures.** [launch] returns the [LaunchedCase], or throws. A [CaseLaunchRefusedException] is a
+ * **Refusals and failures.** [start] returns the [LaunchedCase], or throws. A [CaseLaunchRefusedException] is a
  * business decision, taken before anything is written: the caller, the tool, catches it and reports it. Anything
  * else (an infrastructure failure, a bug, a calling user that vanished) is thrown as is, like any tool failure,
  * to the error boundary above the tool: the agent layer, which logs it and reports it to the LLM.
@@ -91,7 +91,7 @@ class CaseLaunchService(
      * @throws CaseLaunchRefusedException when a business rule refuses the launch, before anything is written.
      *   Any other failure is thrown as is.
      */
-    fun launch(request: CaseLaunchRequest): LaunchedCase {
+    fun start(request: CaseLaunchRequest): LaunchedCase {
         if (isInLaunchedCase(request.callerCaseId)) {
             refuse(
                 CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED,

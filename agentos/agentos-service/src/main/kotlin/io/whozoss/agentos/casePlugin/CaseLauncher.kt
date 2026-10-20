@@ -38,7 +38,7 @@ internal class CaseLauncher(
      * Starts the case, for [targetUserId] or, when it is null, for the caller. The arguments have been validated
      * by the tool that received them.
      */
-    fun launch(
+    fun start(
         context: ToolContext,
         agentName: String,
         prompt: String,
@@ -76,7 +76,7 @@ internal class CaseLauncher(
                 sessionContext = sessionContext,
             )
         return try {
-            caseLaunchService.launch(request).toToolResult()
+            caseLaunchService.start(request).toToolResult()
         } catch (refusal: CaseLaunchRefusedException) {
             ToolExecutionResult.error(refusal.message, errorType = refusal.reason.name)
         }

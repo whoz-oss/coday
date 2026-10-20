@@ -40,10 +40,10 @@ class FreeCaseLauncherForUserToolUnitSpec :
 
         fun launched() = LaunchedCase(caseId = newCaseId, userId = targetId, agentName = "Reporter")
 
-        fun service() = mockk<CaseLaunchService> { every { launch(any()) } returns launched() }
+        fun service() = mockk<CaseLaunchService> { every { start(any()) } returns launched() }
 
         fun refusingService(reason: CaseLaunchRefusal) =
-            mockk<CaseLaunchService> { every { launch(any()) } throws CaseLaunchRefusedException(reason, "No.") }
+            mockk<CaseLaunchService> { every { start(any()) } throws CaseLaunchRefusedException(reason, "No.") }
 
         fun tool(
             launcher: CaseLaunchService = service(),
@@ -79,7 +79,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
 
         "the userId is handed to the service, which owns the ADMIN and target user checks" {
             val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { launch(capture(request)) } returns launched() }
+            val launcher = mockk<CaseLaunchService> { every { start(capture(request)) } returns launched() }
 
             tool(launcher).execute(input(), context())
 
@@ -95,7 +95,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
             val launcher = service()
 
             tool(launcher).execute(input(user = "  "), context()).errorType shouldBe "MISSING_INPUT"
-            verify(exactly = 0) { launcher.launch(any()) }
+            verify(exactly = 0) { launcher.start(any()) }
         }
 
         "a userId absent from the JSON fails the deserialization, like a missing agentName or prompt, and nothing is launched" {
@@ -104,7 +104,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
             shouldThrow<Exception> {
                 tool(launcher).executeWithJson("""{"agentName": "Reporter", "prompt": "go"}""", context())
             }
-            verify(exactly = 0) { launcher.launch(any()) }
+            verify(exactly = 0) { launcher.start(any()) }
         }
 
         "a userId that is not a UUID is INVALID_INPUT, and nothing is launched" {
@@ -113,7 +113,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
             val result = tool(launcher).execute(input(user = "alice@example.com"), context())
 
             result.errorType shouldBe "INVALID_INPUT"
-            verify(exactly = 0) { launcher.launch(any()) }
+            verify(exactly = 0) { launcher.start(any()) }
         }
 
         "null input is MISSING_INPUT" {
@@ -134,7 +134,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
         }
 
         "a failure of the service is not caught by the tool: it is left to the agent layer" {
-            val launcher = mockk<CaseLaunchService> { every { launch(any()) } throws IllegalStateException("Neo4j unavailable") }
+            val launcher = mockk<CaseLaunchService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
 
             shouldThrow<IllegalStateException> { tool(launcher).execute(input(), context()) }
         }
@@ -147,7 +147,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
             val launcher = service()
 
             tool(launcher).execute(input(), context(events = emptyList())).errorType shouldBe "MISSING_CASE_CONTEXT"
-            verify(exactly = 0) { launcher.launch(any()) }
+            verify(exactly = 0) { launcher.start(any()) }
         }
 
         "an agent outside the allowed patterns, or denied, is UNAUTHORIZED_AGENT, before anything is launched" {
@@ -155,7 +155,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
 
             tool(launcher, allowedAgents = listOf("Profile*")).execute(input(), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
             tool(launcher, deniedAgents = setOf("reporter")).execute(input(), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
-            verify(exactly = 0) { launcher.launch(any()) }
+            verify(exactly = 0) { launcher.start(any()) }
         }
 
         "the output is the case id, as for the other launcher, so that a caller reads either the same way" {

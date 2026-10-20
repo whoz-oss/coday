@@ -97,7 +97,7 @@ class FreeCaseLauncherForUserTool(
         val targetUserId =
             runCatching { UUID.fromString(input.userId) }.getOrNull()
                 ?: return ToolExecutionResult.error("userId must be a valid UUID.", errorType = "INVALID_INPUT")
-        return launcher.launch(
+        return launcher.start(
             context = context,
             agentName = input.agentName,
             prompt = input.prompt,

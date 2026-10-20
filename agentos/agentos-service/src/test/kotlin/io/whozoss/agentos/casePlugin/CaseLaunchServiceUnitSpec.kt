@@ -29,7 +29,7 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [CaseLaunchService], all driven through its only entry point, [CaseLaunchService.launch]. The
+ * Unit tests for [CaseLaunchService], all driven through its only entry point, [CaseLaunchService.start]. The
  * service has five collaborators, so each test runs against a whole small world, and changes only what it is about.
  *
  * **The world of a test** (`Fixture`): a `caller` and an `other` user, both plain members of the namespace (READ,
@@ -40,7 +40,7 @@ import java.util.UUID
  *
  * **What a test observes**: the fake `CaseService` of the fixture records what the service did (`created`, `sent`,
  * `deleted`), and can make each step fail (`createFailure`, `grantFailure`, `sendFailure`, `deleteFailure`).
- * `refusalOf { ... }` runs a launch and returns the [CaseLaunchRefusedException] it throws.
+ * `refusalOf { ... }` runs a start and returns the [CaseLaunchRefusedException] it throws.
  *
  * **Sections**, in the order the service applies its rules:
  * 1. the case it creates: origin, first message, ADMIN grant;
@@ -171,8 +171,8 @@ class CaseLaunchServiceUnitSpec :
             sessionContext = sessionContext,
         )
 
-        /** Runs [launch] and returns the refusal it throws; fails if it does not refuse. */
-        fun refusalOf(launch: () -> LaunchedCase): CaseLaunchRefusedException = shouldThrow<CaseLaunchRefusedException> { launch() }
+        /** Runs [start] and returns the refusal it throws; fails if it does not refuse. */
+        fun refusalOf(start: () -> LaunchedCase): CaseLaunchRefusedException = shouldThrow<CaseLaunchRefusedException> { start() }
 
         /** A provider answering [answer] for any user; the calls it received are recorded in [asked]. */
         fun provider(
@@ -196,7 +196,7 @@ class CaseLaunchServiceUnitSpec :
         "creates the case in the calling case's namespace, with the calling case as its origin, and returns its id" {
             val f = Fixture()
 
-            val launched = f.service.launch(request())
+            val launched = f.service.start(request())
 
             val case = f.created.single()
             launched.caseId shouldBe case.id
@@ -208,7 +208,7 @@ class CaseLaunchServiceUnitSpec :
         "the new case is a top-level case, not a sub-case of the calling one" {
             val f = Fixture()
 
-            f.service.launch(request())
+            f.service.start(request())
 
             f.created.single().parentCaseId shouldBe null
         }
@@ -216,7 +216,7 @@ class CaseLaunchServiceUnitSpec :
         "the first message is the prompt addressed to the agent, sent as the user the case runs for" {
             val f = Fixture()
 
-            f.service.launch(request(prompt = "Summarise the week"))
+            f.service.start(request(prompt = "Summarise the week"))
 
             f.sent.single().also {
                 it.caseId shouldBe f.created.single().id
@@ -229,7 +229,7 @@ class CaseLaunchServiceUnitSpec :
         "the user the case runs for is given ADMIN on it" {
             val f = Fixture()
 
-            f.service.launch(request())
+            f.service.start(request())
 
             verify(exactly = 1) {
                 f.permissionService.grantPermission(
@@ -244,7 +244,7 @@ class CaseLaunchServiceUnitSpec :
         "the agent is addressed by its canonical name, whatever the case it was requested in" {
             val f = Fixture()
 
-            val launched = f.service.launch(request(agentName = "reporter"))
+            val launched = f.service.start(request(agentName = "reporter"))
 
             f.sent.single().content shouldBe listOf(MessageContent.Text("@Reporter Summarise the week"))
             launched.agentName shouldBe "Reporter"
@@ -257,7 +257,7 @@ class CaseLaunchServiceUnitSpec :
         "the title is the given one" {
             val f = Fixture()
 
-            f.service.launch(request(title = "Weekly review"))
+            f.service.start(request(title = "Weekly review"))
 
             f.created.single().title shouldBe "Weekly review"
         }
@@ -265,8 +265,8 @@ class CaseLaunchServiceUnitSpec :
         "without a title, or with a blank one, it is derived from the prompt" {
             val f = Fixture()
 
-            f.service.launch(request(prompt = "Summarise the week"))
-            f.service.launch(request(prompt = "Summarise the week", title = "   "))
+            f.service.start(request(prompt = "Summarise the week"))
+            f.service.start(request(prompt = "Summarise the week", title = "   "))
 
             f.created.map { it.title } shouldBe listOf("Summarise the week", "Summarise the week")
         }
@@ -274,8 +274,8 @@ class CaseLaunchServiceUnitSpec :
         "the title is capped at 80 characters, given or derived" {
             val f = Fixture()
 
-            f.service.launch(request(title = "t".repeat(200)))
-            f.service.launch(request(prompt = "x".repeat(200)))
+            f.service.start(request(title = "t".repeat(200)))
+            f.service.start(request(prompt = "x".repeat(200)))
 
             f.created.map { it.title } shouldBe listOf("t".repeat(80), "x".repeat(80))
         }
@@ -287,7 +287,7 @@ class CaseLaunchServiceUnitSpec :
         "without a context the first message carries no session context" {
             val f = Fixture()
 
-            f.service.launch(request())
+            f.service.start(request())
 
             f.sent.single().sessionContext shouldBe null
         }
@@ -295,7 +295,7 @@ class CaseLaunchServiceUnitSpec :
         "an empty context counts as none" {
             val f = Fixture()
 
-            f.service.launch(request(sessionContext = emptyMap()))
+            f.service.start(request(sessionContext = emptyMap()))
 
             f.sent.single().sessionContext shouldBe null
         }
@@ -305,7 +305,7 @@ class CaseLaunchServiceUnitSpec :
             val callerContext =
                 mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
-            f.service.launch(request(sessionContext = callerContext))
+            f.service.start(request(sessionContext = callerContext))
 
             f.sent.single().sessionContext shouldBe callerContext
         }
@@ -315,7 +315,7 @@ class CaseLaunchServiceUnitSpec :
             val providerContext = mapOf("userContext" to mapOf("talentId" to "t1"), "description" to "d")
             val f = Fixture(UserSessionContextResolver(provider(asked) { UserContextResult.Success(providerContext) }))
 
-            f.service.launch(request())
+            f.service.start(request())
 
             asked shouldBe listOf(caller.externalId to namespaceId)
             f.sent.single().sessionContext shouldBe providerContext
@@ -331,7 +331,7 @@ class CaseLaunchServiceUnitSpec :
                 )
             f.namespacePermission(caller, Action.WRITE, true)
 
-            f.service.launch(request(targetUserId = other.id))
+            f.service.start(request(targetUserId = other.id))
 
             asked shouldBe listOf(other.externalId to namespaceId)
             f.sent.single().sessionContext shouldBe mapOf("who" to other.externalId)
@@ -342,7 +342,7 @@ class CaseLaunchServiceUnitSpec :
             every { f.userService.findById(other.id) } returns other.copy(preferredLanguage = "fr")
             f.namespacePermission(caller, Action.WRITE, true)
 
-            f.service.launch(request(targetUserId = other.id))
+            f.service.start(request(targetUserId = other.id))
 
             f.sent.single().sessionContext shouldBe mapOf(SessionContextKeys.PREFERRED_LANGUAGE to "fr")
         }
@@ -351,7 +351,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture(resolverAnswering(UserContextResult.Success(mapOf("userContext" to "u"))))
             val entity = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
-            f.service.launch(request(sessionContext = entity))
+            f.service.start(request(sessionContext = entity))
 
             f.sent.single().sessionContext shouldBe entity + mapOf("userContext" to "u")
         }
@@ -362,7 +362,7 @@ class CaseLaunchServiceUnitSpec :
             val callerContext =
                 mapOf("userContext" to "from the caller", SessionContextKeys.PREFERRED_LANGUAGE to "de", "kept" to 1)
 
-            f.service.launch(request(sessionContext = callerContext))
+            f.service.start(request(sessionContext = callerContext))
 
             f.sent.single().sessionContext shouldBe
                     mapOf("userContext" to "real", SessionContextKeys.PREFERRED_LANGUAGE to "fr", "kept" to 1)
@@ -374,7 +374,7 @@ class CaseLaunchServiceUnitSpec :
             val callerContext =
                 mapOf("userContext" to mapOf("firstName" to "Alice"), SessionContextKeys.PREFERRED_LANGUAGE to "de")
 
-            f.service.launch(request(sessionContext = callerContext))
+            f.service.start(request(sessionContext = callerContext))
 
             f.sent.single().sessionContext shouldBe callerContext
         }
@@ -387,7 +387,7 @@ class CaseLaunchServiceUnitSpec :
                     "anything" to mapOf("nested" to listOf(1, 2)),
                 )
 
-            f.service.launch(request(sessionContext = callerContext))
+            f.service.start(request(sessionContext = callerContext))
 
             f.sent.single().sessionContext shouldBe callerContext
         }
@@ -395,7 +395,7 @@ class CaseLaunchServiceUnitSpec :
         "a provider with nothing to say and no preferred language leaves no session context" {
             val f = Fixture(resolverAnswering(UserContextResult.Success(null)))
 
-            f.service.launch(request())
+            f.service.start(request())
 
             f.sent.single().sessionContext shouldBe null
         }
@@ -405,8 +405,8 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture(UserSessionContextResolver(provider(asked) { UserContextResult.Success(null) }))
             f.deployAgent(caller, "SomethingElse")
 
-            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
-            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.FORBIDDEN
 
             asked shouldBe emptyList()
@@ -420,7 +420,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(originCaseId = UUID.randomUUID())
 
-            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
@@ -431,7 +431,7 @@ class CaseLaunchServiceUnitSpec :
             f.cases += listOf(launched, subCase).associateBy { it.id }
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = subCase.id)
 
-            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
@@ -442,7 +442,7 @@ class CaseLaunchServiceUnitSpec :
             f.cases[launched.id] = launched
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = launched.id)
 
-            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
@@ -452,7 +452,7 @@ class CaseLaunchServiceUnitSpec :
             f.cases[parent.id] = parent
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = parent.id)
 
-            f.service.launch(request())
+            f.service.start(request())
 
             f.created.size shouldBe 1
         }
@@ -461,7 +461,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.cases.clear()
 
-            shouldThrow<IllegalStateException> { f.service.launch(request()) }
+            shouldThrow<IllegalStateException> { f.service.start(request()) }
             f.created shouldBe emptyList()
         }
 
@@ -473,7 +473,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.deployAgent(caller, "Reporter-v2")
 
-            refusalOf { f.service.launch(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
 
@@ -481,19 +481,19 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             every { f.userService.findById(caller.id) } returns null
 
-            shouldThrow<IllegalStateException> { f.service.launch(request()) }
+            shouldThrow<IllegalStateException> { f.service.start(request()) }
             f.created shouldBe emptyList()
         }
 
         // -------------------------------------------------------------------------
-        // Another user: the switch AND ADMIN of the namespace (federation)
+        // Another user: the caller must be ADMIN of the namespace (federation)
         // -------------------------------------------------------------------------
 
         "a refusal carries its reason and a message for the LLM, and no stack trace: it is control flow" {
             val f = Fixture()
             f.deployAgent(caller, "SomethingElse")
 
-            val refusal = refusalOf { f.service.launch(request(agentName = "Reporter")) }
+            val refusal = refusalOf { f.service.start(request(agentName = "Reporter")) }
 
             refusal.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             refusal.message shouldContain "Reporter"
@@ -503,7 +503,7 @@ class CaseLaunchServiceUnitSpec :
         "a plain member cannot start a case for another user, and the target is not even looked up" {
             val f = Fixture()
 
-            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
+            refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.FORBIDDEN
             f.created shouldBe emptyList()
             verify(exactly = 0) { f.userService.findById(other.id) }
@@ -513,7 +513,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.namespacePermission(caller, Action.WRITE, true)
 
-            val launched = f.service.launch(request(targetUserId = other.id))
+            val launched = f.service.start(request(targetUserId = other.id))
 
             launched.userId shouldBe other.id
             f.sent.single().actor.id shouldBe other.id.toString()
@@ -537,7 +537,7 @@ class CaseLaunchServiceUnitSpec :
             f.namespacePermission(caller, Action.WRITE, true)
             f.namespacePermission(other, Action.READ, false)
 
-            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
+            refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.TARGET_NO_ACCESS
             f.created shouldBe emptyList()
         }
@@ -547,7 +547,7 @@ class CaseLaunchServiceUnitSpec :
             f.namespacePermission(caller, Action.WRITE, true)
             f.deployAgent(other, "SomethingElse")
 
-            refusalOf { f.service.launch(request(targetUserId = other.id)) }.reason shouldBe
+            refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
                     CaseLaunchRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
@@ -558,7 +558,7 @@ class CaseLaunchServiceUnitSpec :
             val ghost = UUID.randomUUID()
             every { f.userService.findById(ghost) } returns null
 
-            refusalOf { f.service.launch(request(targetUserId = ghost)) }.reason shouldBe
+            refusalOf { f.service.start(request(targetUserId = ghost)) }.reason shouldBe
                     CaseLaunchRefusal.TARGET_USER_NOT_FOUND
             f.created shouldBe emptyList()
         }
@@ -566,7 +566,7 @@ class CaseLaunchServiceUnitSpec :
         "naming the caller itself is not 'another user': it needs no ADMIN check" {
             val f = Fixture()
 
-            f.service.launch(request(targetUserId = caller.id))
+            f.service.start(request(targetUserId = caller.id))
 
             f.sent.single().actor.id shouldBe caller.id.toString()
             verify(exactly = 0) {
@@ -582,7 +582,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             every { f.userService.findById(caller.id) } throws IllegalStateException("Neo4j unavailable")
 
-            shouldThrow<IllegalStateException> { f.service.launch(request()) }.message shouldBe "Neo4j unavailable"
+            shouldThrow<IllegalStateException> { f.service.start(request()) }.message shouldBe "Neo4j unavailable"
             f.created shouldBe emptyList()
         }
 
@@ -590,7 +590,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.createFailure = IllegalStateException("boom")
 
-            shouldThrow<IllegalStateException> { f.service.launch(request()) }.message shouldBe "boom"
+            shouldThrow<IllegalStateException> { f.service.start(request()) }.message shouldBe "boom"
             f.sent shouldBe emptyList()
             verify(exactly = 0) { f.permissionService.grantPermission(any(), any(), any(), any()) }
         }
@@ -599,7 +599,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.grantFailure = RuntimeException("Neo4j unavailable")
 
-            shouldThrow<RuntimeException> { f.service.launch(request()) }.message shouldBe "Neo4j unavailable"
+            shouldThrow<RuntimeException> { f.service.start(request()) }.message shouldBe "Neo4j unavailable"
             f.deleted shouldBe listOf(f.created.single().id)
             f.sent shouldBe emptyList()
         }
@@ -608,7 +608,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.sendFailure = IllegalStateException("boom")
 
-            shouldThrow<IllegalStateException> { f.service.launch(request()) }.message shouldBe "boom"
+            shouldThrow<IllegalStateException> { f.service.start(request()) }.message shouldBe "boom"
             f.deleted shouldBe listOf(f.created.single().id)
         }
 
@@ -617,13 +617,13 @@ class CaseLaunchServiceUnitSpec :
             f.grantFailure = RuntimeException("grant failed")
             f.deleteFailure = RuntimeException("delete also failed")
 
-            shouldThrow<RuntimeException> { f.service.launch(request()) }.message shouldBe "grant failed"
+            shouldThrow<RuntimeException> { f.service.start(request()) }.message shouldBe "grant failed"
         }
 
         "a permanent failure to resolve the target user's context is thrown, before anything is created" {
             val f = Fixture(resolverAnswering(UserContextResult.PermanentFailure("404 secret upstream body")))
 
-            val failure = shouldThrow<UserContextUnavailableException> { f.service.launch(request()) }
+            val failure = shouldThrow<UserContextUnavailableException> { f.service.start(request()) }
 
             // the upstream reason is for the logs, not for the LLM, which sees the exception's message
             failure.message shouldNotContain "secret"
@@ -635,7 +635,7 @@ class CaseLaunchServiceUnitSpec :
         "a transient failure to resolve it is thrown too, and says it may succeed later" {
             val f = Fixture(resolverAnswering(UserContextResult.TransientFailure("503")))
 
-            shouldThrow<UserContextUnavailableException> { f.service.launch(request()) }.message shouldContain
+            shouldThrow<UserContextUnavailableException> { f.service.start(request()) }.message shouldContain
                     "may succeed later"
             f.created shouldBe emptyList()
         }
@@ -647,7 +647,7 @@ class CaseLaunchServiceUnitSpec :
                 }
             val f = Fixture(UserSessionContextResolver(throwing))
 
-            shouldThrow<UserContextUnavailableException> { f.service.launch(request()) }
+            shouldThrow<UserContextUnavailableException> { f.service.start(request()) }
             f.created shouldBe emptyList()
         }
     })
