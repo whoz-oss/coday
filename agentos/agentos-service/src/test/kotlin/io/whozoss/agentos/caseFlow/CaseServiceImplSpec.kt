@@ -4080,6 +4080,30 @@ class CaseServiceImplSpec :
             runtime.id shouldBe subCase.id
         }
 
+        "resumeSubCase marks the resumed turn queued until it starts, instead of leaving it IDLE" {
+            runTest {
+                // Without a launch gate the turn starts asynchronously: a delegation waiting on the sub-case
+                // must not read the IDLE left by its previous turn as the end of the resumed one.
+                val service = buildService(coroutineContext = StandardTestDispatcher(testScheduler))
+                try {
+                    val parent = service.create(Case(namespaceId = namespaceId))
+                    val subCase =
+                        service.create(
+                            Case(namespaceId = namespaceId, parentCaseId = parent.id, status = CaseStatus.IDLE),
+                        )
+
+                    val runtime =
+                        service.resumeSubCase(subCase.id, parent.id, agentName, "more work", userId, listOf(agentName))
+
+                    runtime.statusFlow.value shouldBe CaseStatus.PENDING
+                    testScheduler.advanceUntilIdle()
+                    runtime.statusFlow.value shouldBe CaseStatus.IDLE
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
             // Regression: when a case is rehydrated from persistence after a crash,
             // the last persisted event may be an AgentRunningEvent (emitted by runAgent

@@ -294,12 +294,15 @@ class CaseRuntime(
     fun isRunning(): Boolean = runInFlight.get()
 
     /**
-     * Claim the [CaseStatus.PENDING] (gated-hold) transition atomically, in memory only.
+     * Claim the [CaseStatus.PENDING] transition atomically, in memory only: a turn is queued and has not
+     * started. [GatedRunLauncher] claims it for a turn its gate holds back, then publishes it.
+     * [CaseServiceImpl.resumeSubCase] claims it without a gate and does not publish it: [run] replaces it
+     * with RUNNING as soon as the turn starts.
      *
-     * Must be called under this instance's monitor (the admission lock). Returns the
-     * [CaseStatus] to publish if the claim succeeded, or `null` if the runtime is
-     * already running or already PENDING. The caller is responsible for calling
-     * [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
+     * Takes this instance's monitor (the admission lock); a caller that claims together with its own
+     * state holds the monitor around the call. Returns the [CaseStatus] to publish if the claim succeeded,
+     * or `null` if the runtime is already running or already PENDING. The caller is responsible for
+     * calling [publishStatus] **outside** the monitor so no blocking I/O runs under the lock.
      */
     fun claimPending(): CaseStatus? = synchronized(this) {
         if (!isRunning() && _statusFlow.value != CaseStatus.PENDING) {
