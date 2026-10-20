@@ -1,6 +1,7 @@
 package io.whozoss.agentos.delegation
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -30,7 +31,7 @@ import java.util.UUID
  * Internal tool that delegates one or more tasks to sub-agents by creating child [Case]s.
  *
  * All delegations are launched in parallel and the tool suspends until every sub-case
- * reaches [CaseStatus.IDLE] or a terminal status (or its active execution deadline fires).
+ * reaches [CaseStatus.IDLE] or a terminal status (or stays silent for its whole budget).
  * Results are aggregated into a JSON array — one entry per delegation — and returned
  * as a single [ToolExecutionResult]. The overall [ToolExecutionResult.success] is `true`
  * when at least one delegation succeeded.
@@ -44,8 +45,10 @@ import java.util.UUID
  * - `options` — optional list of choices for the pending question
  * - `error` — error description when success is false
  *
- * **Timeout** applies independently to each sub-case, excluding human cost confirmation.
- * Sub-cases still running when their active-time budget expires are killed individually.
+ * **Timeout** is an inactivity budget, applied independently to each sub-case: any activity of the
+ * sub-case, or of a delegation it waits on, restarts it, and human cost confirmation does not count.
+ * A sub-case silent for the whole budget is stopped with its descendants and left IDLE, so the
+ * delegating agent can resume it.
  *
  * **Resume**: a delegation with a non-null [Delegation.subCaseId] resumes an existing
  * IDLE sub-case instead of creating a new one.
@@ -59,7 +62,8 @@ import java.util.UUID
  * @param namespaceId      Namespace both cases belong to.
  * @param allowedAgents    Allowlist of agent names this tool may delegate to.
  * @param loadCaseEvents   Lambda that loads persisted events for a case id.
- * @param timeoutMs        Max active time per delegation, including nested work and excluding cost confirmation.
+ * @param timeoutMs        Max time a delegation waits without activity from its sub-case or nested delegations,
+ *                         excluding cost confirmation.
  */
 class DelegationTool(
     private val subCaseManager: SubCaseManager,
@@ -218,8 +222,9 @@ class DelegationTool(
      * loads events, and extracts the result. Never throws — errors are captured as
      * [DelegationResult.success] = false — except a cancellation of the parent run, which unwinds.
      *
-     * The [timeoutMs] budget applies to this individual delegation. A timeout kills
-     * the sub-case and returns a failure result, leaving sibling delegations unaffected.
+     * The [timeoutMs] inactivity budget applies to this individual delegation. A timeout stops
+     * the sub-case, leaving it resumable, and returns a failure result, leaving sibling delegations
+     * unaffected.
      */
     private suspend fun runSingleDelegation(
         delegation: Delegation,
@@ -247,15 +252,18 @@ class DelegationTool(
         var outcome = SubCaseOutcome.ERROR
         var finishErrorType: String? = "DELEGATION_ERROR"
         return try {
-            val finalStatus = awaitDelegationStatus(subRuntime, timeoutMs) { subCaseManager.isCostPaused(subCaseId) }
+            val finalStatus =
+                awaitDelegationStatus(
+                    runtime = subRuntime,
+                    timeoutMs = timeoutMs,
+                    onActivity = { subCaseManager.recordActivity(parentCaseId) },
+                ) { subCaseManager.isCostPaused(subCaseId) }
             if (finalStatus == null) {
-                logger.warn { "[DelegationTool] Sub-case $subCaseId timed out after ${timeoutMs}ms of active execution, killing" }
-                runCatching { subCaseManager.killCase(subCaseId) }
-                    .onFailure { err -> logger.warn(err) { "[DelegationTool] Failed to kill sub-case $subCaseId after timeout" } }
+                val error = stopSilentSubCase(subRuntime)
                 outcome = SubCaseOutcome.TIMEOUT
                 finishErrorType = "TIMEOUT"
                 return DelegationResult(agentName, subCaseId, delegationId, toolRequestId, false,
-                    error = "Sub-case timed out after ${timeoutMs / 1000}s of active execution.", errorType = finishErrorType)
+                    error = error, errorType = finishErrorType)
             }
             if (finalStatus.isTerminal()) {
                 outcome = if (finalStatus == CaseStatus.KILLED) SubCaseOutcome.KILLED else SubCaseOutcome.ERROR
@@ -297,6 +305,28 @@ class DelegationTool(
                     toolRequestId = toolRequestId, subCaseId = subCaseId, agentName = agentName,
                     outcome = outcome, errorType = finishErrorType),
             )
+        }
+    }
+
+    /**
+     * Stops a sub-case that showed no activity for the whole budget, with its descendants, as the Stop
+     * button does, and returns the error to report. Waits for the stop to land first, so that a sub-case
+     * reported as resumable already accepts the resume.
+     */
+    private suspend fun stopSilentSubCase(subRuntime: CaseRuntime): String {
+        val subCaseId = subRuntime.id
+        logger.warn { "[DelegationTool] Sub-case $subCaseId showed no activity for ${timeoutMs}ms, stopping" }
+        runCatching { subCaseManager.interruptCase(subCaseId) }.onFailure { err ->
+            logger.warn(err) { "[DelegationTool] Failed to stop sub-case $subCaseId after timeout" }
+        }
+        val stoppedStatus =
+            withTimeoutOrNull(STOP_SETTLE_TIMEOUT_MS) {
+                subRuntime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+            }
+        val stopped = "Sub-case showed no activity for ${timeoutMs / 1000}s and was stopped."
+        return when (stoppedStatus) {
+            CaseStatus.IDLE -> "$stopped It is idle: delegate again with its subCaseId to resume it."
+            else -> stopped
         }
     }
 
@@ -344,16 +374,25 @@ class DelegationTool(
     companion object : KLogging() {
         private val objectMapper = jacksonObjectMapper()
         private const val EVENT_LOAD_TIMEOUT_MS = 10_000L
+
+        /** Upper bound on the wait for a stopped sub-case to settle; a Stop cancels its turn at once. */
+        private const val STOP_SETTLE_TIMEOUT_MS = 10_000L
     }
 }
 
-/** A human confirmation is not agent execution time. Sample pauses at most once a second. */
+/**
+ * Waits until [runtime] hands back ([CaseStatus.IDLE]) or ends, and returns that status, or null once it
+ * has shown no activity for [timeoutMs]. Any activity restarts the budget and is reported to [onActivity];
+ * a human confirmation is not inactivity. Samples activity and pauses at most once a second.
+ */
 internal suspend fun awaitDelegationStatus(
-    runtime: io.whozoss.agentos.caseFlow.CaseRuntime,
+    runtime: CaseRuntime,
     timeoutMs: Long,
+    onActivity: () -> Unit = {},
     isPaused: () -> Boolean,
 ): CaseStatus? {
     var remaining = timeoutMs
+    var lastActivity = runtime.activityCount
     while (remaining > 0) {
         val pausedBefore = isPaused()
         val slice = minOf(remaining, 1000L)
@@ -362,7 +401,14 @@ internal suspend fun awaitDelegationStatus(
                 runtime.statusFlow.filter { it == CaseStatus.IDLE || it.isTerminal() }.first()
             }
         if (status != null) return status
-        if (!pausedBefore && !isPaused()) remaining -= slice
+        val activity = runtime.activityCount
+        if (activity != lastActivity) {
+            lastActivity = activity
+            remaining = timeoutMs
+            onActivity()
+        } else if (!pausedBefore && !isPaused()) {
+            remaining -= slice
+        }
     }
     return null
 }

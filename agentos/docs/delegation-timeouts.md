@@ -1,7 +1,8 @@
 # Delegation timeouts
 
 `DELEGATE__delegate` waits for each child case to become idle or reach a terminal
-status. Its waiting budget is selected from the **delegating agent**, in seconds:
+status. It gives up only when the child shows no activity for a whole budget, selected
+from the **delegating agent**, in seconds:
 
 1. The agent's `delegationTimeoutSeconds`, when explicitly set.
 2. The server's `agentos.defaults.delegation-timeout-seconds`.
@@ -55,20 +56,32 @@ clears the override. Clients editing an unrelated property must round-trip an
 existing explicit value, as the AgentOS form does. Exports include only explicit
 overrides, keeping inherited agents portable between environments.
 
-## Nested delegations and expiration
+## Activity, nested delegations and expiration
 
-For `ProductEngineer → BmadOrchestrator → BmadBuilder`, ProductEngineer's setting
-bounds the wait for the entire Orchestrator turn, including its wait for Builder.
-Giving Orchestrator a longer budget for Builder does not extend ProductEngineer's
-budget. Configure the outer agent with enough time for the whole delegated task.
+The timer measures inactivity, not elapsed time. Every event the child case emits
+restarts it: a tool call or its result, a reasoning step, a streamed text chunk, a
+message, a status change. Activity is sampled once a second. A child that keeps
+working is never cut off by this timer; its run stays bounded by
+`agentos.limits.agent-max-iterations` and `agentos.limits.case-max-iterations`.
 
-The timer measures elapsed time, not inactivity. When usage tracking is enabled,
-time spent waiting for a human cost confirmation, on the child or on one of its
-descendants, is not counted. Each parallel delegation has its own timer, starting
-after its child case has been created or resumed. Loading the completed case's
-event history has a separate timeout.
+For `ProductEngineer → BmadOrchestrator → BmadBuilder`, Orchestrator emits nothing
+while it waits for Builder, so its delegation relays Builder's activity to
+Orchestrator's case: ProductEngineer keeps waiting as long as Builder works. Each
+delegating agent's setting only bounds the silence of its own children.
 
-On expiration, AgentOS requests termination of the child and its active
-descendants and returns `TIMEOUT`. A killed case cannot be resumed through
-`subCaseId`, which requires an idle case. When an agent becomes idle with a pending
-question before expiration, the question is returned to the parent as usual.
+When usage tracking is enabled, time spent waiting for a human cost confirmation, on
+the child or on one of its descendants, is not counted. Each parallel delegation has
+its own timer, starting after its child case has been created or resumed. Loading the
+completed case's event history has a separate timeout.
+
+A single silent step longer than the budget still expires it: an LLM call that
+streams nothing for that long (a long reasoning, a large tool call being written) or
+a long tool run. Raise the delegating agent's budget if its children legitimately
+stay silent that long.
+
+On expiration, AgentOS stops the child and its active descendants as the Stop button
+does: the call in progress is cancelled and the child ends idle. The delegation
+returns `TIMEOUT` with the child's `subCaseId`; the delegating agent resumes the child
+by delegating again with that `subCaseId`, and the child continues from its history.
+When an agent becomes idle with a pending question before expiration, the question is
+returned to the parent as usual.

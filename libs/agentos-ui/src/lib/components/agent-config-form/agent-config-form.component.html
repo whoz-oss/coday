@@ -227,8 +227,9 @@
       <div class="agent-config-form__field">
         <label class="agent-config-form__label" for="delegation-timeout">Delegation timeout (seconds)</label>
         <p class="agent-config-form__field-hint" id="delegation-timeout-hint">
-          Maximum time for each delegation launched by this agent, including nested delegations. On timeout, the
-          sub-agent and its active descendants are stopped. Leave empty to use the server default
+          How long each delegation launched by this agent waits without activity from the sub-agent, including its own
+          delegations. When it runs out, the sub-agent and its active descendants are stopped and can be resumed. Leave
+          empty to use the server default
           @if (defaultDelegationTimeoutSeconds() !== null) {
             : {{ defaultDelegationTimeoutSeconds() }} s ({{ defaultDelegationTimeoutSeconds()! / 60 }} min)
           }

@@ -22,6 +22,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionEvent
 import io.whozoss.agentos.sdk.caseEvent.QuestionType
+import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -744,6 +745,21 @@ class CaseRuntimeSpec : StringSpec() {
             runtime.addUserMessage(userActor, userMessage)
             runtime.run()
             runtime.statusFlow.value shouldBe CaseStatus.IDLE
+        }
+
+        "activityCount advances with every emitted event, stored or not, and every recorded activity" {
+            val (runtime) = buildRuntime()
+            val initial = runtime.activityCount
+
+            runtime.addUserMessage(userActor, userMessage)
+            val afterMessage = runtime.activityCount
+            runtime.emitEvent(ThinkingEvent(namespaceId = namespaceId, caseId = runtime.id))
+            val afterTransientEvent = runtime.activityCount
+            runtime.recordActivity()
+
+            (afterMessage > initial) shouldBe true
+            afterTransientEvent shouldBe afterMessage + 1
+            runtime.activityCount shouldBe afterTransientEvent + 1
         }
 
         "statusFlow reflects ERROR when max iterations are exceeded" {

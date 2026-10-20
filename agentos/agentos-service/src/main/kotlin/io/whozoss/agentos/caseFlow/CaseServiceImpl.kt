@@ -966,6 +966,10 @@ class CaseServiceImpl(
 
     override fun isCostPaused(caseId: UUID): Boolean = usageConfig.enabled && runCostService?.isPaused(caseId) == true
 
+    override fun recordActivity(caseId: UUID) {
+        activeRuntimes[caseId]?.recordActivity()
+    }
+
     override fun emitParentEvent(event: CaseEvent) {
         require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {
             "emitParentEvent is reserved for sub-case observation events; got ${event.type}."
