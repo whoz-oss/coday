@@ -5,7 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import kotlinx.coroutines.CancellationException
+import io.whozoss.agentos.util.coRunCatching
 import mu.KLogging
 import java.util.UUID
 
@@ -80,17 +80,10 @@ class ListAgentUsersTool(
             return ToolExecutionResult.error("agentConfigId is required.", errorType = "MISSING_INPUT")
         }
         val members =
-            try {
-                usersByAgentLoader(input.agentConfigId, context.namespaceId, context.userId)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.warn(e) { "[listAgentUsers] Failed to retrieve users for agent ${input.agentConfigId}" }
-                return ToolExecutionResult.error(
-                    "Failed to retrieve users for agent ${input.agentConfigId}.",
-                    errorType = "RETRIEVAL_ERROR",
-                )
-            } ?: return ToolExecutionResult.error(
+            coRunCatching { usersByAgentLoader(input.agentConfigId, context.namespaceId, context.userId) }
+                .onFailure { e -> logger.warn(e) { "[listAgentUsers] Failed to retrieve users for agent ${input.agentConfigId}" } }
+                .getOrElse { return ToolExecutionResult.error("Failed to retrieve users for agent ${input.agentConfigId}.", errorType = "RETRIEVAL_ERROR") }
+                ?: return ToolExecutionResult.error(
                 "You do not have access to list users for agent ${input.agentConfigId}.",
                 errorType = "NOT_FOUND",
             )

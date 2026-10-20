@@ -5,9 +5,10 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import kotlinx.coroutines.CancellationException
+import io.whozoss.agentos.util.coRunCatching
 import mu.KLogging
 import java.util.UUID
+
 
 /**
  * Tool that lists all users belonging to a user group.
@@ -33,8 +34,9 @@ class ListUserGroupMembersTool(
     private val configName: String? = null,
     private val membersLoader: (groupId: UUID, namespaceId: UUID, userId: UUID?) -> List<UserGroupMember>?,
 ) : StandardTool<ListUserGroupMembersTool.Input> {
-
-    data class Input(val userGroupId: UUID)
+    data class Input(
+        val userGroupId: UUID,
+    )
 
     override val name: String = configName?.let { "${it}__listMembers" } ?: "listMembers"
 
@@ -73,32 +75,30 @@ class ListUserGroupMembersTool(
 
     override fun outputSchema(): JsonNode = ListAgentUsersTool.MEMBER_ARRAY_SCHEMA
 
-    override suspend fun execute(input: Input?, context: ToolContext): ToolExecutionResult {
+    override suspend fun execute(
+        input: Input?,
+        context: ToolContext,
+    ): ToolExecutionResult {
         if (input == null) {
             return ToolExecutionResult.error("userGroupId is required.", errorType = "MISSING_INPUT")
         }
-        val members = try {
-            membersLoader(input.userGroupId, context.namespaceId, context.userId)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logger.warn(e) { "[listMembers] Failed to retrieve members for group ${input.userGroupId}" }
-            return ToolExecutionResult.error(
-                "Failed to retrieve members for group ${input.userGroupId}.",
-                errorType = "RETRIEVAL_ERROR",
+        val members =
+            coRunCatching { membersLoader(input.userGroupId, context.namespaceId, context.userId) }
+                .onFailure { e -> logger.warn(e) { "[listMembers] Failed to retrieve members for group ${input.userGroupId}" } }
+                .getOrElse { return ToolExecutionResult.error("Failed to retrieve members for group ${input.userGroupId}.", errorType = "RETRIEVAL_ERROR") }
+                ?: return ToolExecutionResult.error(
+                "User group ${input.userGroupId} was not found or you do not have access to it.",
+                errorType = "NOT_FOUND",
             )
-        } ?: return ToolExecutionResult.error(
-            "User group ${input.userGroupId} was not found or you do not have access to it.",
-            errorType = "NOT_FOUND",
-        )
 
         val structuredOutput = mapper.valueToTree<JsonNode>(members.toStructuredList())
-        val summary = if (members.isEmpty()) {
-            "User group ${input.userGroupId} has no members."
-        } else {
-            "User group ${input.userGroupId} has ${members.size} member(s): " +
-                members.joinToString(", ") { "${it.externalId} (${it.role})" }
-        }
+        val summary =
+            if (members.isEmpty()) {
+                "User group ${input.userGroupId} has no members."
+            } else {
+                "User group ${input.userGroupId} has ${members.size} member(s): " +
+                    members.joinToString(", ") { "${it.externalId} (${it.role})" }
+            }
         return ToolExecutionResult.success(output = summary, structuredOutput = structuredOutput)
     }
 

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
-import kotlinx.coroutines.CancellationException
+import io.whozoss.agentos.util.coRunCatching
 import mu.KLogging
 import java.util.UUID
 
@@ -99,25 +99,27 @@ class ListGroupAgentUsersTool(
             )
         }
         val members =
-            try {
+            coRunCatching {
                 membersByGroupAndAgentLoader(
                     input.userGroupId,
                     input.agentConfigId,
                     context.namespaceId,
                     context.userId,
                 )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.warn(e) {
-                    "[listGroupAgentUsers] Failed to retrieve members for group ${input.userGroupId} " +
-                        "and agent ${input.agentConfigId}"
+            }
+                .onFailure { e ->
+                    logger.warn(e) {
+                        "[listGroupAgentUsers] Failed to retrieve members for group ${input.userGroupId} " +
+                            "and agent ${input.agentConfigId}"
+                    }
                 }
-                return ToolExecutionResult.error(
-                    "Failed to retrieve members for group ${input.userGroupId} and agent ${input.agentConfigId}.",
-                    errorType = "RETRIEVAL_ERROR",
-                )
-            } ?: return ToolExecutionResult.error(
+                .getOrElse {
+                    return ToolExecutionResult.error(
+                        "Failed to retrieve members for group ${input.userGroupId} and agent ${input.agentConfigId}.",
+                        errorType = "RETRIEVAL_ERROR",
+                    )
+                }
+                ?: return ToolExecutionResult.error(
                 "User group ${input.userGroupId} was not found or you do not have access to it.",
                 errorType = "NOT_FOUND",
             )
