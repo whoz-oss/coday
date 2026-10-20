@@ -135,9 +135,12 @@ class CaseLaunchService(
      */
     private fun isInLaunchedCase(callerCaseId: UUID): Boolean {
         val callerCase = checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
-        return generateSequence(callerCase) { case -> case.parentCaseId?.let { caseService.findById(it, withRemoved = true) } }
-            .any { it.originCaseId != null }
+        return generateSequence(callerCase, ::findParent).any { ancestor -> ancestor.originCaseId != null }
     }
+
+    /** The case [case] was delegated from, deleted or not, or null for a top-level case. */
+    private fun findParent(case: Case): Case? =
+        case.parentCaseId?.let { parentId -> caseService.findById(parentId, withRemoved = true) }
 
     private fun resolveTargetUser(request: CaseLaunchRequest): User {
         // Null when the case runs for the caller: no userId, or the caller's own.
