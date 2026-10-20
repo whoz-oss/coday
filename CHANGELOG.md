@@ -1,3 +1,78 @@
+## 3.37.0 (2026-10-20)
+
+### 🚀 Features
+
+- wz-35442 - user group list member tool ([#1451](https://github.com/whoz-oss/coday/pull/1451))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.36.1 (2026-10-19)
+
+### 🩹 Fixes
+
+- **server:** close the client connection when AgentOS drops a proxied stream ([#1468](https://github.com/whoz-oss/coday/pull/1468))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
+## 3.36.0 (2026-10-19)
+
+### 🚀 Features
+
+- **agentos-service:** answer with more links ([#1464](https://github.com/whoz-oss/coday/pull/1464))
+
+### ❤️ Thank You
+
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.35.2 (2026-10-15)
+
+### 🩹 Fixes
+
+- **agentos-service:** #35451 transform ResponseStatusException to AgentOs <Status>Exception ([#1449](https://github.com/whoz-oss/coday/pull/1449), [#35451](https://github.com/whoz-oss/coday/issues/35451))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.1 (2026-10-15)
+
+### 🩹 Fixes
+
+- #1405 display the user's answer to a queryUser question in the case chat ([#1406](https://github.com/whoz-oss/coday/pull/1406), [#1405](https://github.com/whoz-oss/coday/issues/1405))
+
+### ❤️ Thank You
+
+- Vincent Couturier - Whoz @vincent-couturier-whoz
+
+## 3.35.0 (2026-10-14)
+
+### 🚀 Features
+
+- **agentos-service:** improve intention generation tool name ([#1448](https://github.com/whoz-oss/coday/pull/1448))
+
+### 🔥 Performance
+
+- **agentos:** share one Neo4j test harness across Spring test contexts ([#1440](https://github.com/whoz-oss/coday/pull/1440))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+- Yannick Bridé @yannick-bride-whoz
+
+## 3.34.1 (2026-10-13)
+
+### 🩹 Fixes
+
+- **agentos-service:** stop now ends the agent's turn at once ([#1442](https://github.com/whoz-oss/coday/pull/1442))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.34.0 (2026-10-13)
 
 ### 🚀 Features

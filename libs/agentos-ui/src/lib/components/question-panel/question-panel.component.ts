@@ -1,6 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal } from '@angular/core'
 import { QuestionEvent, QuestionEventQuestionTypeEnum } from '@whoz-oss/agentos-api-client'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
+
+/** DOM id of the element displaying a question's text. */
+export function questionElementId(event: QuestionEvent): string {
+  return `question-${event.id}`
+}
 
 /**
  * QuestionPanelComponent — renders an inline interactive panel for a QuestionEvent.
@@ -18,6 +23,12 @@ import { OAuthAgentosService } from '../../services/oauth-agentos.service'
  * Emits `answered` when the user submits a response (all types except OAUTH_AUTHORIZE
  * where the service handles the submission).
  * Emits `cancelled` when the user dismisses the panel.
+ *
+ * Two variants:
+ * - `panel` (default): standalone card with the agent name and the question text.
+ * - `inline`: only the answer controls, to be placed under the question's chat bubble
+ *   (which then owns the question text, so it is not rendered twice). The controls are
+ *   labelled by the element with id `question-{eventId}` (the bubble in inline mode).
  */
 @Component({
   selector: 'agentos-question-panel',
@@ -29,6 +40,18 @@ export class QuestionPanelComponent {
   private readonly oauthService = inject(OAuthAgentosService)
 
   readonly questionEvent = input.required<QuestionEvent>()
+
+  /** `inline` hides the header and question text (rendered by the host chat bubble). */
+  readonly variant = input<'panel' | 'inline'>('panel')
+
+  /**
+   * Disables the answer controls (e.g. while the answer is being posted).
+   * Does not apply to OAUTH_AUTHORIZE: the agent is running while it waits for the popup.
+   */
+  readonly disabled = input(false)
+
+  /** Id of the element holding the question text; target of the controls' aria-labelledby. */
+  readonly questionId = computed(() => questionElementId(this.questionEvent()))
 
   /** Emitted when the user submits an answer (not emitted for OAUTH_AUTHORIZE). */
   readonly answered = output<string>()
@@ -52,12 +75,14 @@ export class QuestionPanelComponent {
   }
 
   protected submitFreeText(): void {
+    if (this.disabled()) return
     const value = this.freeTextValue().trim()
     if (!value) return
     this.answered.emit(value)
   }
 
   protected selectOption(option: string): void {
+    if (this.disabled()) return
     this.answered.emit(option)
   }
 

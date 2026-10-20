@@ -1,8 +1,6 @@
 package io.whozoss.agentos.prompt
 
 import io.kotest.assertions.throwables.shouldThrow
-import io.kotest.core.spec.style.StringSpec
-import io.kotest.extensions.spring.SpringExtension
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.nulls.shouldBeNull
 import io.whozoss.agentos.exception.ConflictException
@@ -11,6 +9,7 @@ import io.whozoss.agentos.scheduledPrompt.Planning
 import io.whozoss.agentos.scheduledPrompt.Recurrence
 import io.whozoss.agentos.scheduledPrompt.ScheduledPrompt
 import io.whozoss.agentos.scheduledPrompt.ScheduledPromptRepository
+import io.whozoss.agentos.security.SuperAdminCallerSpec
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerUnit
 import io.whozoss.agentos.sdk.entity.EntityMetadata
@@ -33,8 +32,7 @@ import java.util.UUID
 @AutoConfigureMockMvc
 @ActiveProfiles("test", "embedded-neo4j")
 @Import(EmbeddedNeo4jTestConfiguration::class)
-class PromptServiceImplIntegrationSpec : StringSpec() {
-    override fun extensions() = listOf(SpringExtension)
+class PromptServiceImplIntegrationSpec : SuperAdminCallerSpec() {
 
     @Autowired lateinit var promptService: PromptService
     @Autowired lateinit var promptRepository: PromptRepository

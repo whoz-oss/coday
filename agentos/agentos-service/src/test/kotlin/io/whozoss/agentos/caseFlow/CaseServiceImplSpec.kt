@@ -72,6 +72,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
@@ -81,6 +82,8 @@ import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withTimeout
 import java.nio.file.Path
 import java.util.UUID
@@ -241,6 +244,12 @@ class CaseServiceImplSpec :
             caseEventService: CaseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository()),
             caseLaunchGate: CaseLaunchGate? = null,
             runCostService: RunCostService? = null,
+            agentService: AgentService =
+                mockk {
+                    every { resolveAgentName(any(), any(), any()) } returns agentName
+                    coEvery { findAgentByName(agentName, any(), any()) } returns agent
+                },
+            coroutineContext: kotlin.coroutines.CoroutineContext = Dispatchers.IO,
         ): CaseServiceImpl {
             val namespace =
                 Namespace(
@@ -252,11 +261,6 @@ class CaseServiceImplSpec :
                 mockk<NamespaceService> {
                     every { findById(namespaceId) } returns namespace
                     every { resolveRunCostThreshold(any()) } returns null
-                }
-            val agentService =
-                mockk<AgentService> {
-                    every { resolveAgentName(any(), any(), any()) } returns agentName
-                    coEvery { findAgentByName(agentName, any(), any()) } returns agent
                 }
             return CaseServiceImpl(
                 agentService = agentService,
@@ -275,6 +279,7 @@ class CaseServiceImplSpec :
                 usageConfig = usageConfig,
                 caseLaunchGate = caseLaunchGate,
                 runCostService = runCostService,
+                coroutineContext = coroutineContext,
             )
         }
 
@@ -3500,6 +3505,238 @@ class CaseServiceImplSpec :
 
             // The case must reach IDLE despite the usage record write failing.
             throwingService.getById(case.id).status shouldBe CaseStatus.IDLE
+        }
+
+        // -------------------------------------------------------------------------
+        // Stop / Kill of a turn whose agent is suspended (LLM call, tool)
+        // -------------------------------------------------------------------------
+
+        /** An agent that hangs in a suspended call until its run is cancelled. */
+        fun hangingAgent(
+            started: CompletableDeferred<Unit>,
+            cancelled: CompletableDeferred<Unit>,
+        ): Agent =
+            mockk<Agent> {
+                every { metadata } returns EntityMetadata(id = agentId)
+                every { name } returns agentName
+                every { id } returns agentId
+                every { llmProvider } returns "test-provider"
+                every { llmModel } returns "test-model"
+                every { run(any<List<CaseEvent>>(), any()) } answers {
+                    flow<CaseEvent> {
+                        started.complete(Unit)
+                        try {
+                            awaitCancellation()
+                        } finally {
+                            cancelled.complete(Unit)
+                        }
+                    }
+                }
+            }
+
+        suspend fun awaitStatus(
+            service: CaseServiceImpl,
+            caseId: UUID,
+            status: CaseStatus,
+        ) = withTimeout(3_000) { while (service.getById(caseId).status != status) delay(10) }
+
+        "interruptCase cancels a running agent turn and ends the case IDLE" {
+            runTest {
+                // A Stop no longer waits for the agent to return from its tool or LLM call.
+                val started = CompletableDeferred<Unit>()
+                val cancelled = CompletableDeferred<Unit>()
+                val service =
+                    buildService(
+                        agent = hangingAgent(started, cancelled),
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("long task")))
+                    withTimeout(3_000) { started.await() }
+
+                    service.interruptCase(case.id)
+
+                    withTimeout(3_000) { cancelled.await() }
+                    awaitStatus(service, case.id, CaseStatus.IDLE)
+                    // IDLE is published just before run() releases the runtime.
+                    val runtime = service.findActiveRuntime(case.id).shouldNotBeNull()
+                    withTimeout(3_000) { while (runtime.isRunning()) delay(10) }
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "interruptCase cancels a running agent turn admitted by a launch gate" {
+            runTest {
+                val started = CompletableDeferred<Unit>()
+                val cancelled = CompletableDeferred<Unit>()
+                val gate = TestLaunchGate().apply { open = true }
+                val service =
+                    buildService(
+                        agent = hangingAgent(started, cancelled),
+                        caseLaunchGate = gate,
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("long task")))
+                    withTimeout(3_000) { started.await() }
+
+                    service.interruptCase(case.id)
+
+                    withTimeout(3_000) { cancelled.await() }
+                    awaitStatus(service, case.id, CaseStatus.IDLE)
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "interruptCase cancels the running turns of the parent and its sub-cases" {
+            runTest {
+                val started = java.util.concurrent.atomic.AtomicInteger()
+                val cancelled = java.util.concurrent.atomic.AtomicInteger()
+                val agent =
+                    mockk<Agent> {
+                        every { metadata } returns EntityMetadata(id = agentId)
+                        every { name } returns agentName
+                        every { id } returns agentId
+                        every { llmProvider } returns "test-provider"
+                        every { llmModel } returns "test-model"
+                        every { run(any<List<CaseEvent>>(), any()) } answers {
+                            flow<CaseEvent> {
+                                started.incrementAndGet()
+                                try {
+                                    awaitCancellation()
+                                } finally {
+                                    cancelled.incrementAndGet()
+                                }
+                            }
+                        }
+                    }
+                val service = buildService(agent = agent, coroutineContext = StandardTestDispatcher(testScheduler))
+                try {
+                    val parent = service.create(Case(namespaceId = namespaceId))
+                    val child = service.create(Case(namespaceId = namespaceId, parentCaseId = parent.id))
+                    service.addMessage(parent.id, userActor, listOf(MessageContent.Text("delegate")))
+                    service.addMessage(child.id, userActor, listOf(MessageContent.Text("sub-task")))
+                    withTimeout(3_000) { while (started.get() < 2) delay(10) }
+
+                    service.interruptCase(parent.id)
+
+                    withTimeout(3_000) { while (cancelled.get() < 2) delay(10) }
+                    awaitStatus(service, parent.id, CaseStatus.IDLE)
+                    awaitStatus(service, child.id, CaseStatus.IDLE)
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "a stopped agent run records its usage as INTERRUPTED, not FAILED" {
+            runTest {
+                val started = CompletableDeferred<Unit>()
+                val cancelled = CompletableDeferred<Unit>()
+                val usageRepo = InMemoryUsageRecordRepository()
+                val agent = hangingAgent(started, cancelled)
+                val agentService =
+                    mockk<AgentService> {
+                        every { resolveAgentName(any(), any(), any()) } returns agentName
+                        // The LLM was called before the Stop: the accumulator has data to record.
+                        coEvery { findAgentByName(agentName, any(), any()) } answers {
+                            secondArg<AgentExecutionContext>().usageAccumulator.shouldNotBeNull()
+                                .record(LlmUsage(totalTokens = 80L, estimatedCostUsd = 0.002))
+                            agent
+                        }
+                    }
+                val service =
+                    buildService(
+                        agent = agent,
+                        usageRecordRepository = usageRepo,
+                        usageConfig = UsageConfigProperties(enabled = true),
+                        agentService = agentService,
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("long task")))
+                    withTimeout(3_000) { started.await() }
+
+                    service.interruptCase(case.id)
+
+                    awaitStatus(service, case.id, CaseStatus.IDLE)
+                    withTimeout(3_000) { while (usageRepo.findAll().isEmpty()) delay(10) }
+                    usageRepo.findAll().single().outcome shouldBe UsageOutcome.INTERRUPTED
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "killCase cancels a running agent turn and ends the case KILLED" {
+            runTest {
+                val started = CompletableDeferred<Unit>()
+                val cancelled = CompletableDeferred<Unit>()
+                val service =
+                    buildService(
+                        agent = hangingAgent(started, cancelled),
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("long task")))
+                    withTimeout(3_000) { started.await() }
+
+                    service.killCase(case.id)
+
+                    withTimeout(3_000) { cancelled.await() }
+                    awaitStatus(service, case.id, CaseStatus.KILLED)
+                } finally {
+                    service.shutdown()
+                }
+            }
+        }
+
+        "a killed agent run records its usage as INTERRUPTED, not FAILED" {
+            runTest {
+                val started = CompletableDeferred<Unit>()
+                val cancelled = CompletableDeferred<Unit>()
+                val usageRepo = InMemoryUsageRecordRepository()
+                val agent = hangingAgent(started, cancelled)
+                val agentService =
+                    mockk<AgentService> {
+                        every { resolveAgentName(any(), any(), any()) } returns agentName
+                        // The LLM was called before the Kill: the accumulator has data to record.
+                        coEvery { findAgentByName(agentName, any(), any()) } answers {
+                            secondArg<AgentExecutionContext>().usageAccumulator.shouldNotBeNull()
+                                .record(LlmUsage(totalTokens = 80L, estimatedCostUsd = 0.002))
+                            agent
+                        }
+                    }
+                val service =
+                    buildService(
+                        agent = agent,
+                        usageRecordRepository = usageRepo,
+                        usageConfig = UsageConfigProperties(enabled = true),
+                        agentService = agentService,
+                        coroutineContext = StandardTestDispatcher(testScheduler),
+                    )
+                try {
+                    val case = service.create(Case(namespaceId = namespaceId))
+                    service.addMessage(case.id, userActor, listOf(MessageContent.Text("long task")))
+                    withTimeout(3_000) { started.await() }
+
+                    service.killCase(case.id)
+
+                    awaitStatus(service, case.id, CaseStatus.KILLED)
+                    withTimeout(3_000) { while (usageRepo.findAll().isEmpty()) delay(10) }
+                    usageRepo.findAll().single().outcome shouldBe UsageOutcome.INTERRUPTED
+                } finally {
+                    service.shutdown()
+                }
+            }
         }
 
         "agent flow error still produces a UsageRecord with outcome FAILED" {

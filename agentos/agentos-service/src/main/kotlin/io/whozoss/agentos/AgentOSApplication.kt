@@ -16,6 +16,7 @@ import io.whozoss.agentos.prompt.PromptTranslationCacheProperties
 import io.whozoss.agentos.queryUser.QueryUserConfigProperties
 import io.whozoss.agentos.scheduledPrompt.SchedulerProperties
 import io.whozoss.agentos.service.config.AgentOsPluginsConfigProperties
+import io.whozoss.agentos.userGroup.UserGroupToolConfigProperties
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.boot.runApplication
@@ -46,6 +47,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
     PromptBatchTranslationProperties::class,
     PromptTranslationCacheProperties::class,
     QueryUserConfigProperties::class,
+    UserGroupToolConfigProperties::class,
     SchedulerProperties::class,
 )
 class AgentOSApplication
