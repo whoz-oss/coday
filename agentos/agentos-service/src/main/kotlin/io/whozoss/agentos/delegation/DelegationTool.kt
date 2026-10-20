@@ -17,6 +17,7 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.filter
@@ -310,25 +311,36 @@ class DelegationTool(
 
     /**
      * Stops a sub-case that showed no activity for the whole budget, with its descendants, as the Stop
-     * button does, and returns the error to report. Waits for the stop to land first, so that a sub-case
-     * reported as resumable already accepts the resume.
+     * button does, and returns the error to report. A sub-case is reported resumable only once its turn
+     * has fully ended (see [awaitStopped]), so that it already accepts the resume.
      */
     private suspend fun stopSilentSubCase(subRuntime: CaseRuntime): String {
         val subCaseId = subRuntime.id
         logger.warn { "[DelegationTool] Sub-case $subCaseId showed no activity for ${timeoutMs}ms, stopping" }
-        runCatching { subCaseManager.interruptCase(subCaseId) }.onFailure { err ->
+        val stopFailure = runCatching { subCaseManager.interruptCase(subCaseId) }.exceptionOrNull()
+        stopFailure?.let { err ->
             logger.warn(err) { "[DelegationTool] Failed to stop sub-case $subCaseId after timeout" }
         }
-        val stoppedStatus =
-            withTimeoutOrNull(STOP_SETTLE_TIMEOUT_MS) {
-                subRuntime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
-            }
-        val stopped = "Sub-case showed no activity for ${timeoutMs / 1000}s and was stopped."
-        return when (stoppedStatus) {
-            CaseStatus.IDLE -> "$stopped It is idle: delegate again with its subCaseId to resume it."
-            else -> stopped
+        val silent = "Sub-case showed no activity for ${timeoutMs / 1000}s"
+        return when {
+            stopFailure != null -> "$silent and could not be stopped."
+            awaitStopped(subRuntime) == CaseStatus.IDLE ->
+                "$silent and was stopped. It is idle: delegate again with its subCaseId to resume it."
+            else -> "$silent and was stopped."
         }
     }
+
+    /**
+     * Waits, at most [STOP_SETTLE_TIMEOUT_MS], for a stopped sub-case's turn to end, and returns its status.
+     * [CaseRuntime.statusFlow] turns IDLE before the status is persisted and before the runtime releases its
+     * turn: until [CaseRuntime.isRunning] is false, a resume could be refused or left unprocessed.
+     */
+    private suspend fun awaitStopped(subRuntime: CaseRuntime): CaseStatus? =
+        withTimeoutOrNull(STOP_SETTLE_TIMEOUT_MS) {
+            val status = subRuntime.statusFlow.first { it == CaseStatus.IDLE || it.isTerminal() }
+            while (subRuntime.isRunning()) delay(TURN_RELEASE_POLL_MS)
+            status
+        }
 
     private fun extractLastAgentMessage(events: List<CaseEvent>): String =
         events
@@ -377,6 +389,9 @@ class DelegationTool(
 
         /** Upper bound on the wait for a stopped sub-case to settle; a Stop cancels its turn at once. */
         private const val STOP_SETTLE_TIMEOUT_MS = 10_000L
+
+        /** Polling interval while a stopped sub-case's runtime releases its turn, which takes milliseconds. */
+        private const val TURN_RELEASE_POLL_MS = 20L
     }
 }
 

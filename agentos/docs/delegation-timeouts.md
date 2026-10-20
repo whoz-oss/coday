@@ -66,8 +66,11 @@ working is never cut off by this timer; its run stays bounded by
 
 For `ProductEngineer → BmadOrchestrator → BmadBuilder`, Orchestrator emits nothing
 while it waits for Builder, so its delegation relays Builder's activity to
-Orchestrator's case: ProductEngineer keeps waiting as long as Builder works. Each
-delegating agent's setting only bounds the silence of its own children.
+Orchestrator's case: ProductEngineer keeps waiting as long as Builder works. Activity
+is only relayed when it happens: while Builder is silent, Orchestrator looks silent
+too, so ProductEngineer's budget bounds the silence of the whole delegated subtree.
+Giving Orchestrator a longer budget for Builder does not extend ProductEngineer's;
+give the outer agent a budget at least as long as the longest silent step below it.
 
 When usage tracking is enabled, time spent waiting for a human cost confirmation, on
 the child or on one of its descendants, is not counted. Each parallel delegation has

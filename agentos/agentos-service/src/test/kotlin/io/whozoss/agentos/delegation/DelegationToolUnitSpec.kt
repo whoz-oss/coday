@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -384,6 +385,7 @@ class DelegationToolUnitSpec :
             every { runtime.id } returns subCaseId
             every { runtime.statusFlow } returns status
             every { runtime.activityCount } returns 7L
+            every { runtime.isRunning() } returns false
             // A Stop ends the sub-case IDLE.
             every { launcher.interruptCase(subCaseId) } answers { status.value = CaseStatus.IDLE }
             val tool = makeTool(launcher, timeoutMs = 200)
@@ -398,6 +400,57 @@ class DelegationToolUnitSpec :
             delegation.get("error").asText() shouldContain "resume it"
             // Stopped, not killed: the delegating agent can still resume it with its subCaseId.
             verify(exactly = 1) { launcher.interruptCase(subCaseId) }
+        }
+
+        "reports a sub-case that could not be stopped at once, without offering to resume it" {
+            runTest {
+                val launcher = mockk<SubCaseManager>()
+                every { launcher.isCostPaused(any()) } returns false
+                val runtime = mockk<CaseRuntime>()
+                every { runtime.id } returns subCaseId
+                every { runtime.statusFlow } returns MutableStateFlow(CaseStatus.RUNNING)
+                every { runtime.activityCount } returns 0L
+                every { launcher.interruptCase(subCaseId) } throws IllegalStateException("runtime gone")
+                every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+                val tool = makeTool(launcher, timeoutMs = 2_000)
+
+                val result = tool.execute(singleDelegation(), toolContext)
+
+                val error = jacksonObjectMapper().readTree(result.output)[0].get("error").asText()
+                error shouldContain "could not be stopped"
+                error shouldNotContain "resume"
+                // No wait for a stop that did not happen: only the budget elapsed.
+                testScheduler.currentTime shouldBe 2_000L
+            }
+        }
+
+        "reports a stopped sub-case resumable only once its runtime has released its turn" {
+            runTest {
+                val launcher = mockk<SubCaseManager>()
+                every { launcher.isCostPaused(any()) } returns false
+                val status = MutableStateFlow(CaseStatus.RUNNING)
+                var running = true
+                val runtime = mockk<CaseRuntime>()
+                every { runtime.id } returns subCaseId
+                every { runtime.statusFlow } returns status
+                every { runtime.activityCount } returns 0L
+                every { runtime.isRunning() } answers { running }
+                // The Stop publishes IDLE at once; the runtime releases its turn 300 ms later.
+                every { launcher.interruptCase(subCaseId) } answers {
+                    status.value = CaseStatus.IDLE
+                    launch {
+                        delay(300)
+                        running = false
+                    }
+                }
+                every { launcher.startSubCase(any(), any(), any(), any(), any()) } returns runtime
+                val tool = makeTool(launcher, timeoutMs = 2_000)
+
+                val result = tool.execute(singleDelegation(), toolContext)
+
+                jacksonObjectMapper().readTree(result.output)[0].get("error").asText() shouldContain "resume it"
+                (testScheduler.currentTime >= 2_300L) shouldBe true
+            }
         }
 
         "keeps waiting while the sub-case shows activity, and relays it to the delegating case" {
@@ -521,6 +574,7 @@ class DelegationToolUnitSpec :
             every { slowRuntime.id } returns subCaseId2
             every { slowRuntime.statusFlow } returns slowStatus
             every { slowRuntime.activityCount } returns 0L
+            every { slowRuntime.isRunning() } returns false
             every { launcher.interruptCase(subCaseId2) } answers { slowStatus.value = CaseStatus.IDLE }
 
             every { launcher.startSubCase(parentCaseId, namespaceId, "sub-agent", "fast task", userId) } returns fastRuntime
