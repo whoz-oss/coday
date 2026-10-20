@@ -189,7 +189,7 @@ agentos:
   # redirect a shared credential to a host the user controls. Platform and namespace-shared
   # configs are unaffected. Setting the list replaces the default entirely.
   # Override with env var: AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES
-  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,CASE
+  # user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
   # Comma-separated integration types that may set autoGrant, i.e. be handed to every agent within
   # a config's scope without any agent naming it. At platform scope that is every agent of the
   # environment at once, so the list starts closed and setting it replaces the default entirely.
@@ -229,7 +229,7 @@ agentos:
     # already-seeded configuration (a warning is logged instead).
     #
     # Restrict the startable agents for a namespace by creating a configuration named 'CASE' scoped
-    # to it (user-scoped ones are refused for this type).
+    # to it. A user may also create one for themselves, to narrow their own runs.
     # Override with env var: AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT
     enabled-by-default: true
   limits:

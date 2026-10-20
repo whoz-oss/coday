@@ -30,8 +30,7 @@ import java.util.UUID
  *
  * Seeded without parameters, so the plugin defaults apply: all agents may be started
  * (`agents = ["*"]`), technical events included in transcripts. To restrict the agents, an
- * administrator creates an override of the same name at namespace scope: a user-scoped one is refused
- * for this type.
+ * administrator creates an override of the same name at namespace scope; a user may create one for themselves.
  *
  * ## Existence, not content
  *

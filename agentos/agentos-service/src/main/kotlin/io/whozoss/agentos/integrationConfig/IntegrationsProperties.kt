@@ -14,10 +14,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * user redirect the shared credential to a host they control. Those types are therefore refused in
  * the two user scopes at the API edge; platform and namespace-shared configs are unaffected.
  *
- * `CASE` is on the list for a different reason: its `agents` and `deniedAgents` parameters (the
- * `FreeCaseLauncher` tool) bound which agents an agent may start on a user's behalf. A user-scoped
- * overlay of the shared config could widen them for the very user they are meant to constrain.
- * The same plugin provides `ReadCase`, so a user cannot overlay its parameters either.
+ * `CASE` is deliberately not on the list. Its parameters name no endpoint, credential or command, so an overlay
+ * cannot redirect anything: it can only narrow or widen which agents the launcher tools may start. That is bounded
+ * by the service, which only starts an agent deployed to the target user, and `FreeCaseLauncherForUser` requires
+ * its caller to be ADMIN of the namespace. A user may therefore define a `CASE` config of their own, for example
+ * to restrict the perimeter of their own runs.
  *
  * Override with environment variable (Spring Boot relaxed binding):
  * - `AGENTOS_INTEGRATIONS_USER_SCOPE_DENIED_TYPES` (comma-separated, replaces the default list)
@@ -26,7 +27,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * ```yaml
  * agentos:
  *   integrations:
- *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT,CASE
+ *     user-scope-denied-types: HTTP_API,MCP_STDIO,MCP_HTTP,GIT
  * ```
  */
 @ConfigurationProperties(prefix = "agentos.integrations")
@@ -36,7 +37,7 @@ data class IntegrationsProperties(
      * may create or update in a user scope. Setting the list replaces the default entirely: an
      * instance that wants to allow one of the defaults must list the others explicitly.
      */
-    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT", "CASE"),
+    val userScopeDeniedTypes: List<String> = listOf("HTTP_API", "MCP_STDIO", "MCP_HTTP", "GIT"),
     /**
      * Integration types that may set [IntegrationConfig.autoGrant], i.e. be handed to every agent
      * in the config's scope without the agent naming it. Setting the list replaces the default

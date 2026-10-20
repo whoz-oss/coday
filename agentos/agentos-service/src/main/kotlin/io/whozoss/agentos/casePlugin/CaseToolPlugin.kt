@@ -38,10 +38,9 @@ import java.util.UUID
  *
  * Starting a case for another user is not a parameter: it is a tool of its own, which an agent has to be
  * granted, and the service additionally requires the calling user to be ADMIN of the namespace.
- * `agents` / `deniedAgents` bound what an agent may start, which is why `CASE` is
- * on the list of integration types refused in user scopes
- * ([io.whozoss.agentos.integrationConfig.IntegrationsProperties.userScopeDeniedTypes]): a user overlay
- * could otherwise widen them.
+ * `agents` / `deniedAgents` bound what an agent may start. `CASE` is not among the integration types refused in
+ * user scopes ([io.whozoss.agentos.integrationConfig.IntegrationsProperties.userScopeDeniedTypes]): a user overlay
+ * names no endpoint or credential, and what it may widen is bounded by the service.
  *
  * @param caseEventsLoader Lambda injected by [CasePluginConfiguration] that loads the events of a
  *   target case. Returns null when the case does not exist, when its namespace does not match the
