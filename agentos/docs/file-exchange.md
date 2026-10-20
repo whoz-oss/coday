@@ -218,8 +218,11 @@ implicit in a way nothing else here is.
 
 Substitution is textual and positional, so a token also works mid-string (`cd
 {{CASE_EXCHANGE}}/repo && pnpm test`) and inside nested objects and arrays. Resolution is skipped
-entirely for a run whose integrations carry no token, since resolving the case one costs a read of
-the case and of its family binding.
+entirely when no integration config of the namespace carries a token, since resolving the case one
+costs a read of the case and of its family binding. The granularity is the namespace, not the agent:
+a customizer is handed every effective config before anything is filtered by what the agent
+declares, so one token-carrying config makes every agent resolution of that namespace pay the scan
+of those parameters and one token resolution.
 
 Each token asks for a permission at least as strict as the agent's own file tools on the same
 directory, because a directory handed to a shell is a write surface. `{{CASE_EXCHANGE}}`: the run's

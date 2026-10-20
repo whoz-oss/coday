@@ -53,7 +53,11 @@ import java.util.UUID
  *   — a family's shared workspace — additionally requires that user's permission on the owner.
  *   Delegation does not confer its rights. This is the rule `buildExchangeTools` applies, not the
  *   stricter one of [io.whozoss.agentos.git.GitToolsRunIntegration], which asks for Case WRITE even
- *   on the case's own directory;
+ *   on the case's own directory. A run always has that identity, whatever started it:
+ *   [io.whozoss.agentos.caseFlow.CaseServiceImpl] refuses to build a context without a user found
+ *   in the case's event history, and an existing one, so a webhook or a scheduled prompt carries
+ *   the identity its triggering event recorded. The only context with no user resolves no case
+ *   either, being a definition preview;
  * - the namespace token: Namespace WRITE, which is stricter than the Namespace READ that gets the
  *   namespace file tools granted. Those tools are read-only without WRITE, and a directory handed
  *   to a shell has no read-only mode, so the equivalent of a read-only grant is no integration at
@@ -98,9 +102,14 @@ class ExchangePathRunIntegration(
         configs: List<IntegrationConfig>,
         context: AgentExecutionContext,
     ): List<IntegrationConfig> {
-        // One walk per config, before anything is resolved: this runs on every agent resolution of
-        // every namespace, over every integration config of that namespace, and almost none of them
-        // carries a token. The per-config answer is kept so that a config found clean is handed back
+        // One walk per config, before anything is resolved. What this buys is bounded, and worth
+        // stating plainly: the walk runs on every agent resolution, over every integration config
+        // of the namespace, because that is what a RunIntegrationCustomizer is handed, before any
+        // filtering by what the agent declares. So a single token-carrying config in a namespace
+        // makes every resolution there pay the walk and one resolution of that token, a chat agent
+        // referencing no integration included. The walk itself is in-memory over trees the caller
+        // has just deserialized anyway; what it avoids is the database read behind a token nobody
+        // wrote. The per-config answer is kept so that a config found clean is handed back
         // untouched rather than rebuilt.
         val carried = configs.map { config -> config to jsonTokensPresent(config.parameters, ALL_TOKENS) }
         val used = carried.flatMapTo(mutableSetOf()) { it.second }
