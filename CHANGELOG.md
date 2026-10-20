@@ -1,3 +1,13 @@
+## 3.38.1 (2026-10-20)
+
+### 🩹 Fixes
+
+- **agentos:** fix namespace member role changes failing with a 500 ([#1342](https://github.com/whoz-oss/coday/pull/1342))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+
 ## 3.38.0 (2026-10-20)
 
 ### 🚀 Features
