@@ -34,7 +34,7 @@ class EditFilesTool(
     private val projectRoot: Path,
     private val configName: String? = null,
     private val denyPatterns: List<String> = SensitiveFilePatterns.DEFAULT_PATTERNS,
-    scopeGuidance: String? = null,
+    private val scopeGuidance: String? = null,
 ) : StandardTool<EditFilesTool.Input> {
     companion object : KLogging() {
         private const val IO_TIMEOUT = 30L
