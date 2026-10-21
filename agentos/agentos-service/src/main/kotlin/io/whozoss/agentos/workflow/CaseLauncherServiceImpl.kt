@@ -2,6 +2,7 @@ package io.whozoss.agentos.workflow
 
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -39,6 +40,7 @@ class CaseLauncherServiceImpl(
     @Lazy private val caseService: CaseService,
     private val permissionService: PermissionService,
     private val userService: UserService,
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) : CaseLauncherService {
     /**
      * Creates a standalone case owned by [onBehalfOfUserId], sends [task] to [agentName] as
@@ -75,6 +77,7 @@ class CaseLauncherServiceImpl(
                 .onFailure { killErr -> logger.warn(killErr) { "Failed to kill orphaned launched case ${case.id}" } }
             throw AccessDeniedException("Failed to grant permissions on launched case ${case.id}: ${e.message}", e)
         }
+        caseListUpdateBroadcaster.publishCaseCreated(case.namespaceId)
         val user = userService.getById(onBehalfOfUserId)
         val actor =
             Actor(

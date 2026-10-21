@@ -1,29 +1,11 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core'
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core'
 import { RouterLink } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner'
-import { FactoryApiError, FactoryApiService, WorkflowDefinition } from '../../core/factory-api.service'
+import { WorkflowDefinition } from '../../core/factory-api.service'
 import { ShellState } from '../../core/shell-state'
-
-/**
- * Defensive normalization of the `GET /api/factory/workflow-definitions`
- * payload. The registry may answer with a raw array, an `{ items }` object or a
- * nested `{ data: … }` envelope; anything unexpected degrades to `[]` (never a
- * fabricated definition).
- */
-export function extractWorkflowDefinitions(payload: unknown): WorkflowDefinition[] {
-  if (Array.isArray(payload)) return payload as WorkflowDefinition[]
-  const obj = (typeof payload === 'object' && payload !== null ? payload : {}) as {
-    items?: unknown
-    data?: unknown
-  }
-  if (Array.isArray(obj.items)) return obj.items as WorkflowDefinition[]
-  const nested = obj.data
-  if (Array.isArray(nested)) return nested as WorkflowDefinition[]
-  const nestedItems = (typeof nested === 'object' && nested !== null ? nested : {}) as { items?: unknown }
-  return Array.isArray(nestedItems.items) ? (nestedItems.items as WorkflowDefinition[]) : []
-}
+import { WorkflowDefinitionsStateService } from '../../core/workflow-definitions-state.service'
 
 /**
  * Read-only list of registered workflow definitions.
@@ -38,13 +20,16 @@ export function extractWorkflowDefinitions(payload: unknown): WorkflowDefinition
   templateUrl: './workflows-page.component.html',
   styleUrl: './workflows-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [WorkflowDefinitionsStateService],
 })
 export class WorkflowsPageComponent {
-  private readonly api = inject(FactoryApiService)
+  private readonly state = inject(WorkflowDefinitionsStateService)
 
-  protected readonly definitions = signal<WorkflowDefinition[]>([])
-  protected readonly loading = signal(false)
-  protected readonly error = signal<string | null>(null)
+  protected readonly definitions = this.state.definitions
+  protected readonly loading = this.state.loading
+  protected readonly error = computed(
+    () => this.state.error()?.message?.trim() || (this.state.error() ? 'Unable to load workflow definitions.' : null)
+  )
 
   constructor() {
     inject(ShellState).crumbs.set([{ label: 'Workflows' }])
@@ -53,19 +38,7 @@ export class WorkflowsPageComponent {
 
   /** Load the registry of workflow definitions. */
   protected load(): void {
-    this.loading.set(true)
-    this.error.set(null)
-    this.api.getWorkflowDefinitions().subscribe({
-      next: (payload) => {
-        this.definitions.set(extractWorkflowDefinitions(payload))
-        this.loading.set(false)
-      },
-      error: (err: FactoryApiError) => {
-        this.error.set(err?.message?.trim() || 'Unable to load workflow definitions.')
-        this.definitions.set([])
-        this.loading.set(false)
-      },
-    })
+    this.state.load()
   }
 
   protected definitionKey(definition: WorkflowDefinition): string {

@@ -5,6 +5,7 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.context.UserSessionContextResolver
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -139,6 +140,7 @@ class ScheduledPromptExecutor(
      * Defaults to always-open so tests and non-windowed deployments are unaffected.
      */
     private val executionWindowService: ExecutionWindowService = ExecutionWindowService(SchedulerProperties()),
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) {
     /** When true, the poller skips claimBatch and delays instead. */
     private val consumePaused = AtomicBoolean(false)
@@ -512,6 +514,7 @@ class ScheduledPromptExecutor(
             case.id.toString(),
             PermissionRelation.ADMIN,
         )
+        caseListUpdateBroadcaster.publishCaseCreated(case.namespaceId)
         caseService.addMessage(
             caseId = case.id,
             actor = context.actor,

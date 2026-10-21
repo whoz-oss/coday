@@ -8,6 +8,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseService
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
@@ -50,6 +51,7 @@ class CaseLauncherServiceImplSpec :
             caseService = caseService,
             permissionService = permissionService,
             userService = userService,
+            caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
         )
 
         // -------------------------------------------------------------------------

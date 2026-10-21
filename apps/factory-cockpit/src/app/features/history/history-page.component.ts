@@ -10,8 +10,8 @@ import { MatPaginator, MatPaginatorIntl, MatPaginatorModule } from '@angular/mat
 import { MatSelectModule } from '@angular/material/select'
 import { MatSort, MatSortModule } from '@angular/material/sort'
 import { MatTableDataSource, MatTableModule } from '@angular/material/table'
-import { FactoryApiService, NamespaceOption, extractNamespaceOptions } from '../../core/factory-api.service'
 import { FactoryStore } from '../../core/factory.store'
+import { HistoryStateService } from '../../core/history-state.service'
 import { FactoryRun } from '../../core/models'
 import { FrPaginatorIntl } from '../../core/paginator-intl.fr'
 import { ShellState } from '../../core/shell-state'
@@ -45,11 +45,11 @@ interface Row extends FactoryRun {
   ],
   templateUrl: './history-page.component.html',
   styleUrl: './history-page.component.scss',
-  providers: [{ provide: MatPaginatorIntl, useClass: FrPaginatorIntl }],
+  providers: [{ provide: MatPaginatorIntl, useClass: FrPaginatorIntl }, HistoryStateService],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HistoryPageComponent {
-  private readonly api = inject(FactoryApiService)
+  private readonly historyState = inject(HistoryStateService)
   private readonly store = inject(FactoryStore)
 
   protected readonly columns = ['run', 'namespace', 'branch', 'status', 'phases', 'cost', 'actions']
@@ -57,9 +57,9 @@ export class HistoryPageComponent {
   protected readonly status = signal<StatusFilter>('all')
   protected readonly namespaceId = signal('')
 
-  protected readonly namespaces = signal<NamespaceOption[]>([])
-  protected readonly namespacesLoading = signal(false)
-  protected readonly namespacesError = signal<string | null>(null)
+  protected readonly namespaces = this.historyState.namespaces
+  protected readonly namespacesLoading = this.historyState.loading
+  protected readonly namespacesError = computed(() => (this.historyState.error() ? 'Namespaces unavailable.' : null))
 
   /** Run-oriented history: one row per real Factory run. */
   protected readonly rows = computed<Row[]>(() =>
@@ -107,30 +107,13 @@ export class HistoryPageComponent {
 
   constructor() {
     inject(ShellState).crumbs.set([{ label: 'Run history', link: '/historique' }])
-    this.loadNamespaces()
+    this.historyState.loadNamespaces()
     effect(() => {
       this.dataSource.data = this.filtered()
     })
     effect(() => {
       this.dataSource.sort = this.sort() ?? null
       this.dataSource.paginator = this.paginator() ?? null
-    })
-  }
-
-  private loadNamespaces(): void {
-    this.namespacesLoading.set(true)
-    this.namespacesError.set(null)
-    this.api.getNamespaces().subscribe({
-      next: (payload) => {
-        this.namespaces.set(extractNamespaceOptions(payload))
-        this.namespacesLoading.set(false)
-      },
-      error: () => {
-        // Graceful fallback: without the namespace catalogue the runs remain
-        // fully usable; only the namespace filter loses its human labels.
-        this.namespacesError.set('Namespaces unavailable.')
-        this.namespacesLoading.set(false)
-      },
     })
   }
 
