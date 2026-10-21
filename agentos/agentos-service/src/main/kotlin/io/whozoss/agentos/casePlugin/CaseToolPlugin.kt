@@ -15,9 +15,9 @@ import java.util.UUID
  * with *other* cases of its namespace.
  *
  * - [ReadCaseTool] (`ReadCase`): reads the transcript of another case.
- * - [FreeCaseLauncherTool] (`FreeCaseLauncher`): starts a new, independent case with another agent, for the
+ * - [FreeCaseStarterTool] (`FreeCaseStarter`): starts a new, independent case with another agent, for the
  *   current user.
- * - [FreeCaseLauncherForUserTool] (`FreeCaseLauncherForUser`): the same, for a user named by the caller.
+ * - [FreeCaseStarterForUserTool] (`FreeCaseStarterForUser`): the same, for a user named by the caller.
  *
  * Like [io.whozoss.agentos.redirect.RedirectToolPlugin], this class is NOT annotated
  * with `@Component`: it is instantiated as a `@Bean` in [CasePluginConfiguration], so that the
@@ -28,13 +28,13 @@ import java.util.UUID
  * An admin creates an [io.whozoss.agentos.integrationConfig.IntegrationConfig] of type `CASE` and
  * assigns it to the relevant [io.whozoss.agentos.agentConfig.AgentConfig] via `integrations`.
  * The three tools are provided by every config. To grant only some of them, the agent names them in its
- * `integrations` map (`CASE_x: [ReadCase, FreeCaseLauncher]`); an agent that maps the config to `null` receives
+ * `integrations` map (`CASE_x: [ReadCase, FreeCaseStarter]`); an agent that maps the config to `null` receives
  * all three.
  *
  * ## Configuration
  *
  * - `includesTechnicalEvents`: read side, shape of the transcript returned by `ReadCase`.
- * - `agents` / `deniedAgents`: launch side, shared by both launcher tools. They have no effect on `ReadCase`.
+ * - `agents` / `deniedAgents`: launch side, shared by both starter tools. They have no effect on `ReadCase`.
  *
  * Starting a case for another user is not a parameter: it is a tool of its own, which an agent has to be
  * granted, and the service additionally requires the calling user to be ADMIN of the namespace.
@@ -45,13 +45,13 @@ import java.util.UUID
  * @param caseEventsLoader Lambda injected by [CasePluginConfiguration] that loads the events of a
  *   target case. Returns null when the case does not exist, when its namespace does not match the
  *   caller's, or when the user may not read it (fail-closed).
- * @param caseLaunchService Starts the cases for [FreeCaseLauncherTool]. It reaches `CaseService`
+ * @param caseStarterService Starts the cases for [FreeCaseStarterTool]. It reaches `CaseService`
  *   through a `@Lazy` proxy, so injecting it here does not close the
  *   `CaseService -> AgentService -> ToolRegistryService -> plugins` cycle.
  */
 class CaseToolPlugin(
     private val caseEventsLoader: (caseId: UUID, namespaceId: UUID, userId: UUID?) -> List<CaseEvent>?,
-    private val caseLaunchService: CaseLaunchService,
+    private val caseStarterService: CaseStarterService,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
     override val configSchema: JsonNode = CONFIG_SCHEMA
@@ -80,15 +80,15 @@ class CaseToolPlugin(
                 includesTechnicalEvents = includesTechnicalEvents,
                 caseEventsLoader = { caseId, ns -> caseEventsLoader(caseId, ns, userId) },
             ),
-            FreeCaseLauncherTool(
+            FreeCaseStarterTool(
                 configName = configName,
-                caseLaunchService = caseLaunchService,
+                caseStarterService = caseStarterService,
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
                 deniedAgents = config.stringList("deniedAgents").toSet(),
             ),
-            FreeCaseLauncherForUserTool(
+            FreeCaseStarterForUserTool(
                 configName = configName,
-                caseLaunchService = caseLaunchService,
+                caseStarterService = caseStarterService,
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
                 deniedAgents = config.stringList("deniedAgents").toSet(),
             ),
@@ -104,7 +104,7 @@ class CaseToolPlugin(
                 {
                   "type": "object",
                   "title": "Case Plugin Configuration",
-                  "description": "Lets an agent work with other cases of the namespace: read the transcript of a case (ReadCase) and start a new case with another agent, for yourself (FreeCaseLauncher) or for another user (FreeCaseLauncherForUser). The new case lives on its own: stopping the agent's case does not stop it. It runs in the background, in the same namespace, and its result is not returned to the caller. An agent can be granted only some of the three tools by naming them in its integrations.",
+                  "description": "Lets an agent work with other cases of the namespace: read the transcript of a case (ReadCase) and start a new case with another agent, for yourself (FreeCaseStarter) or for another user (FreeCaseStarterForUser). The new case lives on its own: stopping the agent's case does not stop it. It runs in the background, in the same namespace, and its result is not returned to the caller. An agent can be granted only some of the three tools by naming them in its integrations.",
                   "properties": {
                     "includesTechnicalEvents": {
                       "type": "boolean",
@@ -115,14 +115,14 @@ class CaseToolPlugin(
                     "agents": {
                       "type": "array",
                       "title": "Allowed Agents",
-                      "description": "FreeCaseLauncher and FreeCaseLauncherForUser: glob patterns matching the agent names this integration may start. Use \"*\" for all agents. Examples: [\"*\"], [\"Profile*\", \"Report*\"].",
+                      "description": "FreeCaseStarter and FreeCaseStarterForUser: glob patterns matching the agent names this integration may start. Use \"*\" for all agents. Examples: [\"*\"], [\"Profile*\", \"Report*\"].",
                       "items": { "type": "string" },
                       "default": ["*"]
                     },
                     "deniedAgents": {
                       "type": "array",
                       "title": "Denied Agents",
-                      "description": "FreeCaseLauncher and FreeCaseLauncherForUser: exact agent names (case-insensitive) that are never started, even if they match an allowed pattern.",
+                      "description": "FreeCaseStarter and FreeCaseStarterForUser: exact agent names (case-insensitive) that are never started, even if they match an allowed pattern.",
                       "items": { "type": "string" },
                       "uniqueItems": true
                     }

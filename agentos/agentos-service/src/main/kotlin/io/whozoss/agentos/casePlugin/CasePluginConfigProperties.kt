@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 /**
  * Platform-level policy for the built-in `CASE` integration ([CaseToolPlugin]: `ReadCase` and
- * `FreeCaseLauncher`).
+ * `FreeCaseStarter`).
  *
  * Bound from the `agentos.case-plugin` prefix in `application.yml`. A prefix of its own, because
  * `agentos.case` is already bound to [io.whozoss.agentos.caseFlow.CaseConfigProperties].
@@ -22,11 +22,11 @@ data class CasePluginConfigProperties(
      * When `true`, [CaseIntegrationConfigSeeder] ensures a platform-scoped
      * [io.whozoss.agentos.integrationConfig.IntegrationConfig] named
      * [CaseIntegrationConfigSeeder.DEFAULT_CONFIG_NAME] exists at startup, so that an agent only has to
-     * name it in its `integrations` to receive `ReadCase` and `FreeCaseLauncher`.
+     * name it in its `integrations` to receive `ReadCase` and `FreeCaseStarter`.
      *
      * The seeded configuration is **not** auto-granted: `CASE` is not an auto-grantable type
      * ([io.whozoss.agentos.integrationConfig.IntegrationsProperties.autoGrantableTypes]), and
-     * should not become one, since `FreeCaseLauncher` starts work. Each agent opts in explicitly.
+     * should not become one, since `FreeCaseStarter` starts work. Each agent opts in explicitly.
      *
      * When `false` (the code default), nothing is seeded. An administrator creates the configuration
      * explicitly, at whatever scope suits.

@@ -29,7 +29,7 @@ import io.whozoss.agentos.user.UserService
 import java.util.UUID
 
 /**
- * Unit tests for [CaseLaunchService], all driven through its only entry point, [CaseLaunchService.start]. The
+ * Unit tests for [CaseStarterService], all driven through its only entry point, [CaseStarterService.start]. The
  * service has five collaborators, so each test runs against a whole small world, and changes only what it is about.
  *
  * **The world of a test** (`Fixture`): a `caller` and an `other` user, both plain members of the namespace (READ,
@@ -40,7 +40,7 @@ import java.util.UUID
  *
  * **What a test observes**: the fake `CaseService` of the fixture records what the service did (`created`, `sent`,
  * `deleted`), and can make each step fail (`createFailure`, `grantFailure`, `sendFailure`, `deleteFailure`).
- * `refusalOf { ... }` runs a start and returns the [CaseLaunchRefusedException] it throws.
+ * `refusalOf { ... }` runs a start and returns the [CaseStarterRefusedException] it throws.
  *
  * **Sections**, in the order the service applies its rules:
  * 1. the case it creates: origin, first message, ADMIN grant;
@@ -53,7 +53,7 @@ import java.util.UUID
  *
  * A refusal never creates a case.
  */
-class CaseLaunchServiceUnitSpec :
+class CaseStarterServiceUnitSpec :
     StringSpec({
 
         val namespaceId: UUID = UUID.randomUUID()
@@ -110,7 +110,7 @@ class CaseLaunchServiceUnitSpec :
                     }
                 }
             val service =
-                CaseLaunchService(
+                CaseStarterService(
                     caseService = caseService,
                     userService = userService,
                     agentConfigService = agentConfigService,
@@ -160,7 +160,7 @@ class CaseLaunchServiceUnitSpec :
             targetUserId: UUID? = null,
             title: String? = null,
             sessionContext: Map<String, Any?>? = null,
-        ) = CaseLaunchRequest(
+        ) = CaseStarterRequest(
             callerUserId = caller.id,
             callerNamespaceId = namespaceId,
             callerCaseId = callerCaseId,
@@ -172,7 +172,7 @@ class CaseLaunchServiceUnitSpec :
         )
 
         /** Runs [start] and returns the refusal it throws; fails if it does not refuse. */
-        fun refusalOf(start: () -> LaunchedCase): CaseLaunchRefusedException = shouldThrow<CaseLaunchRefusedException> { start() }
+        fun refusalOf(start: () -> LaunchedCase): CaseStarterRefusedException = shouldThrow<CaseStarterRefusedException> { start() }
 
         /** A provider answering [answer] for any user; the calls it received are recorded in [asked]. */
         fun provider(
@@ -405,9 +405,9 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture(UserSessionContextResolver(provider(asked) { UserContextResult.Success(null) }))
             f.deployAgent(caller, "SomethingElse")
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.AGENT_NOT_AVAILABLE
             refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
-                    CaseLaunchRefusal.FORBIDDEN
+                    CaseStarterRefusal.FORBIDDEN
 
             asked shouldBe emptyList()
         }
@@ -420,7 +420,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(originCaseId = UUID.randomUUID())
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
@@ -431,7 +431,7 @@ class CaseLaunchServiceUnitSpec :
             f.cases += listOf(launched, subCase).associateBy { it.id }
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = subCase.id)
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
@@ -442,7 +442,7 @@ class CaseLaunchServiceUnitSpec :
             f.cases[launched.id] = launched
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = launched.id)
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
@@ -473,7 +473,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
             f.deployAgent(caller, "Reporter-v2")
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
 
@@ -495,7 +495,7 @@ class CaseLaunchServiceUnitSpec :
 
             val refusal = refusalOf { f.service.start(request(agentName = "Reporter")) }
 
-            refusal.reason shouldBe CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+            refusal.reason shouldBe CaseStarterRefusal.AGENT_NOT_AVAILABLE
             refusal.message shouldContain "Reporter"
             refusal.stackTrace.size shouldBe 0
         }
@@ -504,7 +504,7 @@ class CaseLaunchServiceUnitSpec :
             val f = Fixture()
 
             refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
-                    CaseLaunchRefusal.FORBIDDEN
+                    CaseStarterRefusal.FORBIDDEN
             f.created shouldBe emptyList()
             verify(exactly = 0) { f.userService.findById(other.id) }
         }
@@ -538,7 +538,7 @@ class CaseLaunchServiceUnitSpec :
             f.namespacePermission(other, Action.READ, false)
 
             refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
-                    CaseLaunchRefusal.TARGET_NO_ACCESS
+                    CaseStarterRefusal.TARGET_NO_ACCESS
             f.created shouldBe emptyList()
         }
 
@@ -548,7 +548,7 @@ class CaseLaunchServiceUnitSpec :
             f.deployAgent(other, "SomethingElse")
 
             refusalOf { f.service.start(request(targetUserId = other.id)) }.reason shouldBe
-                    CaseLaunchRefusal.AGENT_NOT_AVAILABLE
+                    CaseStarterRefusal.AGENT_NOT_AVAILABLE
             f.created shouldBe emptyList()
         }
 
@@ -559,7 +559,7 @@ class CaseLaunchServiceUnitSpec :
             every { f.userService.findById(ghost) } returns null
 
             refusalOf { f.service.start(request(targetUserId = ghost)) }.reason shouldBe
-                    CaseLaunchRefusal.TARGET_USER_NOT_FOUND
+                    CaseStarterRefusal.TARGET_USER_NOT_FOUND
             f.created shouldBe emptyList()
         }
 

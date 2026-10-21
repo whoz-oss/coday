@@ -18,12 +18,12 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
 /**
- * Unit tests for [FreeCaseLauncherTool], the launcher for the current user: input and output contract, the agent
- * allowlist, its fixed schema (no `userId`) and the hand-off to [CaseLaunchService]. The launcher for another user is
- * in [FreeCaseLauncherForUserToolUnitSpec]; the target user rules (ADMIN of the namespace, access of the target)
- * and agent access are in [CaseLaunchServiceUnitSpec].
+ * Unit tests for [FreeCaseStarterTool], the starter for the current user: input and output contract, the agent
+ * allowlist, its fixed schema (no `userId`) and the hand-off to [CaseStarterService]. The starter for another user is
+ * in [FreeCaseStarterForUserToolUnitSpec]; the target user rules (ADMIN of the namespace, access of the target)
+ * and agent access are in [CaseStarterServiceUnitSpec].
  */
-class FreeCaseLauncherToolUnitSpec :
+class FreeCaseStarterToolUnitSpec :
     StringSpec({
 
         val mapper = jacksonObjectMapper()
@@ -43,29 +43,29 @@ class FreeCaseLauncherToolUnitSpec :
 
         fun launched(agentName: String = "Reporter") = LaunchedCase(caseId = newCaseId, userId = userId, agentName = agentName)
 
-        fun service(launched: LaunchedCase = launched()) = mockk<CaseLaunchService> { every { start(any()) } returns launched }
+        fun service(launched: LaunchedCase = launched()) = mockk<CaseStarterService> { every { start(any()) } returns launched }
 
         /** A service that refuses every launch with [reason]. */
         fun refusingService(
-            reason: CaseLaunchRefusal,
+            reason: CaseStarterRefusal,
             message: String = "No.",
-        ) = mockk<CaseLaunchService> { every { start(any()) } throws CaseLaunchRefusedException(reason, message) }
+        ) = mockk<CaseStarterService> { every { start(any()) } throws CaseStarterRefusedException(reason, message) }
 
         fun tool(
-            launcher: CaseLaunchService = service(),
+            launcher: CaseStarterService = service(),
             configName: String? = null,
             allowedAgents: List<String> = listOf("*"),
             deniedAgents: Set<String> = emptySet(),
-        ) = FreeCaseLauncherTool(
+        ) = FreeCaseStarterTool(
             configName = configName,
-            caseLaunchService = launcher,
+            caseStarterService = launcher,
             allowedAgents = allowedAgents,
             deniedAgents = deniedAgents,
         )
 
-        "is named FreeCaseLauncher, prefixed by the integration config name when there is one" {
-            tool().name shouldBe "FreeCaseLauncher"
-            tool(configName = "LAUNCHER").name shouldBe "LAUNCHER__FreeCaseLauncher"
+        "is named FreeCaseStarter, prefixed by the integration config name when there is one" {
+            tool().name shouldBe "FreeCaseStarter"
+            tool(configName = "STARTER").name shouldBe "STARTER__FreeCaseStarter"
         }
 
         // -------------------------------------------------------------------------
@@ -83,15 +83,15 @@ class FreeCaseLauncherToolUnitSpec :
             val launcher = service()
             val t = tool(launcher)
 
-            t.execute(FreeCaseLauncherTool.Input(agentName = " ", prompt = "x"), context()).errorType shouldBe "MISSING_INPUT"
-            t.execute(FreeCaseLauncherTool.Input(agentName = "Reporter", prompt = ""), context()).errorType shouldBe "MISSING_INPUT"
+            t.execute(FreeCaseStarterTool.Input(agentName = " ", prompt = "x"), context()).errorType shouldBe "MISSING_INPUT"
+            t.execute(FreeCaseStarterTool.Input(agentName = "Reporter", prompt = ""), context()).errorType shouldBe "MISSING_INPUT"
             verify(exactly = 0) { launcher.start(any()) }
         }
 
         "a run without a user is refused before anything is launched" {
             val launcher = service()
 
-            val result = tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context(user = null))
+            val result = tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context(user = null))
 
             result.errorType shouldBe "MISSING_USER_CONTEXT"
             verify(exactly = 0) { launcher.start(any()) }
@@ -100,15 +100,15 @@ class FreeCaseLauncherToolUnitSpec :
         "a run whose case cannot be identified, with no case events, is refused: the origin would be unknown" {
             val launcher = service()
 
-            val result = tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context(events = emptyList()))
+            val result = tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context(events = emptyList()))
 
             result.errorType shouldBe "MISSING_CASE_CONTEXT"
             verify(exactly = 0) { launcher.start(any()) }
         }
 
         "the calling case is the one of the case events of the ToolContext, never an input of the LLM" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { start(capture(request)) } returns launched() }
+            val request = slot<CaseStarterRequest>()
+            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
             val forged = UUID.randomUUID()
 
             tool(launcher).executeWithJson(
@@ -120,8 +120,8 @@ class FreeCaseLauncherToolUnitSpec :
         }
 
         "unknown fields in the LLM's JSON are ignored, and never read as identity" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { start(capture(request)) } returns launched() }
+            val request = slot<CaseStarterRequest>()
+            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
 
             val result =
                 tool(launcher).executeWithJson(
@@ -142,7 +142,7 @@ class FreeCaseLauncherToolUnitSpec :
             val launcher = service()
             val t = tool(launcher, allowedAgents = listOf("Profile*"))
 
-            t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
+            t.execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
             verify(exactly = 0) { launcher.start(any()) }
         }
 
@@ -151,7 +151,7 @@ class FreeCaseLauncherToolUnitSpec :
 
             val result =
                 tool(launcher, allowedAgents = listOf("profile*"))
-                    .execute(FreeCaseLauncherTool.Input("ProfileCaretaker", "prompt"), context())
+                    .execute(FreeCaseStarterTool.Input("ProfileCaretaker", "prompt"), context())
 
             result.success shouldBe true
             verify(exactly = 1) { launcher.start(any()) }
@@ -161,7 +161,7 @@ class FreeCaseLauncherToolUnitSpec :
             val launcher = service()
             val t = tool(launcher, allowedAgents = listOf("*"), deniedAgents = setOf("reporter"))
 
-            t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
+            t.execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
             verify(exactly = 0) { launcher.start(any()) }
         }
 
@@ -170,8 +170,8 @@ class FreeCaseLauncherToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "a userId the LLM sends anyway is ignored: the case runs for the caller" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { start(capture(request)) } returns launched() }
+            val request = slot<CaseStarterRequest>()
+            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
 
             val result =
                 tool(launcher).executeWithJson(
@@ -188,10 +188,10 @@ class FreeCaseLauncherToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "identity, namespace and the calling case come from the ToolContext, the prompt is the first message" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { start(capture(request)) } returns launched() }
+            val request = slot<CaseStarterRequest>()
+            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
 
-            tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "Summarise"), context())
+            tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "Summarise"), context())
 
             request.captured.also {
                 it.callerUserId shouldBe userId
@@ -206,12 +206,12 @@ class FreeCaseLauncherToolUnitSpec :
         }
 
         "the title and the session context are handed over" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { start(capture(request)) } returns launched() }
+            val request = slot<CaseStarterRequest>()
+            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
             val ctx = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
             tool(launcher).execute(
-                FreeCaseLauncherTool.Input("Reporter", "Summarise", title = "Weekly review", sessionContext = ctx),
+                FreeCaseStarterTool.Input("Reporter", "Summarise", title = "Weekly review", sessionContext = ctx),
                 context(),
             )
 
@@ -224,20 +224,20 @@ class FreeCaseLauncherToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "the output is the case id, in the text, the metadata and the structured output" {
-            val result = tool().execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
+            val result = tool().execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context())
 
             result.success shouldBe true
             result.output shouldContain newCaseId.toString()
             result.metadata["caseId"] shouldBe newCaseId.toString()
             result.metadata["userId"] shouldBe userId.toString()
-            mapper.treeToValue(result.structuredOutput, CaseLauncherOutput::class.java) shouldBe
-                CaseLauncherOutput(caseId = newCaseId)
+            mapper.treeToValue(result.structuredOutput, CaseStarterOutput::class.java) shouldBe
+                CaseStarterOutput(caseId = newCaseId)
         }
 
-        "the structured output is a CaseLauncherOutput, with exactly the fields the output schema declares, all required" {
+        "the structured output is a CaseStarterOutput, with exactly the fields the output schema declares, all required" {
             val t = tool()
             val schema = t.outputSchema()!!
-            val result = t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
+            val result = t.execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context())
             val declared = schema["properties"].fieldNames().asSequence().toList()
 
             result.structuredOutput!!.fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder declared
@@ -245,9 +245,9 @@ class FreeCaseLauncherToolUnitSpec :
         }
 
         "a refusal becomes a tool error carrying its reason as errorType, and no structured output" {
-            val t = tool(refusingService(CaseLaunchRefusal.TARGET_NO_ACCESS))
+            val t = tool(refusingService(CaseStarterRefusal.TARGET_NO_ACCESS))
 
-            val result = t.execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
+            val result = t.execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context())
 
             result.success shouldBe false
             result.errorType shouldBe "TARGET_NO_ACCESS"
@@ -256,22 +256,22 @@ class FreeCaseLauncherToolUnitSpec :
         }
 
         "every refusal reason reaches the LLM as its errorType, which AgentLoop reads: the names are a contract" {
-            CaseLaunchRefusal.entries.forEach { reason ->
+            CaseStarterRefusal.entries.forEach { reason ->
                 val result =
-                    tool(refusingService(reason)).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
+                    tool(refusingService(reason)).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context())
 
                 result.errorType shouldBe reason.name
             }
             // AgentLoop counts this one as "no agent access": renaming it would silently change that.
-            CaseLaunchRefusal.AGENT_NOT_AVAILABLE.name shouldBe "AGENT_NOT_AVAILABLE"
+            CaseStarterRefusal.AGENT_NOT_AVAILABLE.name shouldBe "AGENT_NOT_AVAILABLE"
         }
 
         "a failure of the service is not caught by the tool: it is left to the agent layer" {
             val launcher =
-                mockk<CaseLaunchService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
+                mockk<CaseStarterService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
 
             shouldThrow<IllegalStateException> {
-                tool(launcher).execute(FreeCaseLauncherTool.Input("Reporter", "prompt"), context())
+                tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context())
             }
         }
 
@@ -280,7 +280,7 @@ class FreeCaseLauncherToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "the input schema declares exactly the fields of Input, and no userId" {
-            val everyField = FreeCaseLauncherTool.Input("agent", "prompt", "title", emptyMap())
+            val everyField = FreeCaseStarterTool.Input("agent", "prompt", "title", emptyMap())
             val inputFields = mapper.valueToTree<JsonNode>(everyField).fieldNames().asSequence().toList()
             val schema = mapper.readTree(tool().inputSchema)
 
@@ -294,7 +294,7 @@ class FreeCaseLauncherToolUnitSpec :
                 listOf(
                     tool(),
                     tool(allowedAgents = listOf("Profile*"), deniedAgents = setOf("x")),
-                    tool(configName = "LAUNCHER"),
+                    tool(configName = "STARTER"),
                 ).map { it.inputSchema }
 
             schemas.toSet().size shouldBe 1

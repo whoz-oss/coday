@@ -12,7 +12,7 @@ import java.util.UUID
  * for a given end-user.
  *
  * Shared by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor] and
- * [io.whozoss.agentos.casePlugin.CaseLaunchService] (the `FreeCaseLauncher` tool, hence AgentLoop) so that
+ * [io.whozoss.agentos.casePlugin.CaseStarterService] (the `FreeCaseStarter` tool, hence AgentLoop) so that
  * both code paths produce identical context enrichment:
  * 1. Call the optional [UserContextProvider] plugin — returns business context (e.g. talent profile).
  * 2. Overlay [preferredLanguage] on top: the user's stored language preference is the authoritative
@@ -38,7 +38,7 @@ class UserSessionContextResolver(
      * - [UserContextResult.Success]: call [mergePreferredLanguage] to produce the effective map.
      * - [UserContextResult.PermanentFailure] and [UserContextResult.TransientFailure]: the caller decides.
      *   The scheduler marks a permanent failure FAILED and retries a transient one (lease expiry, next tick);
-     *   `CaseLaunchService` fails the launch for both.
+     *   `CaseStarterService` fails the launch for both.
      */
     fun resolve(
         userExternalId: String,

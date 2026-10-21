@@ -18,10 +18,10 @@ class CaseToolPluginUnitSpec :
 
         val namespaceId: UUID = UUID.randomUUID()
         val noopLoader: (UUID, UUID, UUID?) -> List<CaseEvent>? = { _, _, _ -> emptyList() }
-        val launchService = mockk<CaseLaunchService>()
+        val starterService = mockk<CaseStarterService>()
         val mapper = jacksonObjectMapper()
 
-        fun plugin(loader: (UUID, UUID, UUID?) -> List<CaseEvent>? = noopLoader) = CaseToolPlugin(loader, launchService)
+        fun plugin(loader: (UUID, UUID, UUID?) -> List<CaseEvent>? = noopLoader) = CaseToolPlugin(loader, starterService)
 
         /** Anonymous context: no user, no case events. What a ReadCase caller without identity looks like. */
         fun context() =
@@ -32,7 +32,7 @@ class CaseToolPluginUnitSpec :
                 caseEvents = emptyList(),
             )
 
-        /** Context of a run: an identified user and the events of the calling case, as FreeCaseLauncher needs. */
+        /** Context of a run: an identified user and the events of the calling case, as FreeCaseStarter needs. */
         fun runContext(userId: UUID = UUID.randomUUID()) =
             ToolContext(
                 namespaceId = namespaceId,
@@ -43,9 +43,9 @@ class CaseToolPluginUnitSpec :
 
         fun List<StandardTool<*>>.readCase() = filterIsInstance<ReadCaseTool>().single()
 
-        fun List<StandardTool<*>>.launcher() = filterIsInstance<FreeCaseLauncherTool>().single()
+        fun List<StandardTool<*>>.starter() = filterIsInstance<FreeCaseStarterTool>().single()
 
-        fun List<StandardTool<*>>.launcherForUser() = filterIsInstance<FreeCaseLauncherForUserTool>().single()
+        fun List<StandardTool<*>>.starterForUser() = filterIsInstance<FreeCaseStarterForUserTool>().single()
 
         // -------------------------------------------------------------------------
         // context == null guard
@@ -64,16 +64,16 @@ class CaseToolPluginUnitSpec :
             plugin().integrationType shouldBe "CASE"
         }
 
-        "provides the three tools, ReadCase and the two launchers, when context is provided" {
+        "provides the three tools, ReadCase and the two starters, when context is provided" {
             val tools = plugin().provideTools(config = null, context = context())
 
             tools shouldHaveSize 3
             tools.readCase()
-            tools.launcher()
-            tools.launcherForUser()
+            tools.starter()
+            tools.starterForUser()
         }
 
-        "the configSchema declares the read and the launch parameters, and refuses anything else" {
+        "the configSchema declares the read and the start parameters, and refuses anything else" {
             val schema = plugin().configSchema
 
             schema["properties"].fieldNames().asSequence().toList() shouldContainExactlyInAnyOrder
@@ -129,15 +129,15 @@ class CaseToolPluginUnitSpec :
             tools.readCase().name shouldBe "CASE_prod__ReadCase"
         }
 
-        "propagates configName to FreeCaseLauncherTool" {
+        "propagates configName to FreeCaseStarterTool" {
             val tools = plugin().provideTools(config = null, configName = "CASE_prod", context = context())
-            tools.launcher().name shouldBe "CASE_prod__FreeCaseLauncher"
-            tools.launcherForUser().name shouldBe "CASE_prod__FreeCaseLauncherForUser"
+            tools.starter().name shouldBe "CASE_prod__FreeCaseStarter"
+            tools.starterForUser().name shouldBe "CASE_prod__FreeCaseStarterForUser"
         }
 
         "uses default tool names when configName is null" {
             val tools = plugin().provideTools(config = null, configName = null, context = context())
-            tools.map { it.name } shouldContainExactlyInAnyOrder listOf("ReadCase", "FreeCaseLauncher", "FreeCaseLauncherForUser")
+            tools.map { it.name } shouldContainExactlyInAnyOrder listOf("ReadCase", "FreeCaseStarter", "FreeCaseStarterForUser")
         }
 
         // -------------------------------------------------------------------------
@@ -188,45 +188,45 @@ class CaseToolPluginUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // FreeCaseLauncher
+        // FreeCaseStarter
         // -------------------------------------------------------------------------
 
-        "agents and deniedAgents from the config bound the launcher" {
+        "agents and deniedAgents from the config bound the starter" {
             val config = mapper.readTree("""{"agents": ["Profile*"], "deniedAgents": ["ProfileAdmin"]}""")
             val ctx = runContext()
             val tools = plugin().provideTools(config, "CASE_x", ctx)
             val someone = UUID.randomUUID().toString()
 
-            tools.launcher().execute(FreeCaseLauncherTool.Input("ProfileAdmin", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
-            tools.launcher().execute(FreeCaseLauncherTool.Input("Reporter", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
-            tools.launcherForUser().execute(FreeCaseLauncherForUserTool.Input("ProfileAdmin", "t", someone), ctx).errorType shouldBe
+            tools.starter().execute(FreeCaseStarterTool.Input("ProfileAdmin", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tools.starter().execute(FreeCaseStarterTool.Input("Reporter", "t"), ctx).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tools.starterForUser().execute(FreeCaseStarterForUserTool.Input("ProfileAdmin", "t", someone), ctx).errorType shouldBe
                 "UNAUTHORIZED_AGENT"
-            tools.launcherForUser().execute(FreeCaseLauncherForUserTool.Input("Reporter", "t", someone), ctx).errorType shouldBe
+            tools.starterForUser().execute(FreeCaseStarterForUserTool.Input("Reporter", "t", someone), ctx).errorType shouldBe
                 "UNAUTHORIZED_AGENT"
         }
 
-        "the schemas are fixed by the tool, not by the config or the caller: userId is in one launcher and not in the other" {
+        "the schemas are fixed by the tool, not by the config or the caller: userId is in one starter and not in the other" {
             listOf(null, mapper.readTree("""{"agents": ["Profile*"]}""")).forEach { config ->
                 listOf(context(), runContext()).forEach { ctx ->
                     val tools = plugin().provideTools(config, null, ctx)
 
-                    mapper.readTree(tools.launcher().inputSchema)["properties"].has("userId") shouldBe false
-                    mapper.readTree(tools.launcherForUser().inputSchema)["properties"].has("userId") shouldBe true
+                    mapper.readTree(tools.starter().inputSchema)["properties"].has("userId") shouldBe false
+                    mapper.readTree(tools.starterForUser().inputSchema)["properties"].has("userId") shouldBe true
                 }
             }
         }
 
-        "an anonymous run still gets the launcher, which refuses it at execution: the tool is not withheld" {
-            val tool = plugin().provideTools(config = null, context = context()).launcher()
+        "an anonymous run still gets the starter, which refuses it at execution: the tool is not withheld" {
+            val tool = plugin().provideTools(config = null, context = context()).starter()
 
-            tool.execute(FreeCaseLauncherTool.Input("Reporter", "t"), context()).errorType shouldBe "MISSING_USER_CONTEXT"
+            tool.execute(FreeCaseStarterTool.Input("Reporter", "t"), context()).errorType shouldBe "MISSING_USER_CONTEXT"
         }
 
         // -------------------------------------------------------------------------
         // Cross-tool independence
         // -------------------------------------------------------------------------
 
-        "the launch parameters do not alter ReadCase" {
+        "the start parameters do not alter ReadCase" {
             val config = mapper.readTree("""{"agents": ["Nobody"]}""")
             val ctx = runContext()
             val tool = plugin().provideTools(config, null, ctx).readCase()
@@ -234,10 +234,10 @@ class CaseToolPluginUnitSpec :
             tool.execute(ReadCaseTool.Input(caseId = UUID.randomUUID().toString()), ctx).errorType shouldBe null
         }
 
-        "includesTechnicalEvents does not alter the launcher" {
+        "includesTechnicalEvents does not alter the starter" {
             val config = mapper.readTree("""{"includesTechnicalEvents": false}""")
-            val tool = plugin().provideTools(config, null, context()).launcher()
+            val tool = plugin().provideTools(config, null, context()).starter()
 
-            tool.name shouldBe "FreeCaseLauncher"
+            tool.name shouldBe "FreeCaseStarter"
         }
     })

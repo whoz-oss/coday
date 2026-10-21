@@ -16,15 +16,15 @@ import java.util.UUID
  * [CasePluginConfigProperties.enabledByDefault].
  *
  * Mirrors [io.whozoss.agentos.queryUser.QueryUserConfigSeeder], with one deliberate difference: the
- * seeded row is **not** auto-granted (`autoGrant = false`). `FreeCaseLauncher` starts work, possibly
+ * seeded row is **not** auto-granted (`autoGrant = false`). `FreeCaseStarter` starts work, possibly
  * under another user's identity, so no agent receives it without naming the configuration in its
  * `integrations`. The seeded row only saves the administrator from creating it.
  * Setting `autoGrant = true` would be refused anyway: `CASE` is not in
  * [io.whozoss.agentos.integrationConfig.IntegrationsProperties.autoGrantableTypes].
  *
  * An agent then names `CASE` in its `integrations`, optionally narrowing it to one tool
- * (`CASE: [ReadCase]`). Tools are named `CASE__ReadCase`, `CASE__FreeCaseLauncher` (for the current user) and
- * `CASE__FreeCaseLauncherForUser` (for a user the caller names, ADMIN of the namespace only).
+ * (`CASE: [ReadCase]`). Tools are named `CASE__ReadCase`, `CASE__FreeCaseStarter` (for the current user) and
+ * `CASE__FreeCaseStarterForUser` (for a user the caller names, ADMIN of the namespace only).
  *
  * ## Parameters
  *
@@ -82,7 +82,7 @@ class CaseIntegrationConfigSeeder(
             integrationConfigService.create(defaultConfig())
             logger.info {
                 "[CaseSeeder] Created platform '$DEFAULT_CONFIG_NAME' configuration (autoGrant=false). " +
-                    "An agent receives the ReadCase and FreeCaseLauncher tools by naming it in its integrations; " +
+                    "An agent receives the ReadCase and FreeCaseStarter tools by naming it in its integrations; " +
                     "override it per namespace by creating a configuration with the same name."
             }
         } catch (e: ConflictException) {
@@ -126,14 +126,14 @@ class CaseIntegrationConfigSeeder(
          * Name of the seeded platform configuration — a **contract**, not an implementation detail. An
          * administrator types it verbatim to create the namespace-scoped override that shadows it, an
          * agent names it in its `integrations`, and it is the prefix of the tool names the LLM sees
-         * (`CASE__ReadCase`, `CASE__FreeCaseLauncher`). Renaming it silently detaches every existing
+         * (`CASE__ReadCase`, `CASE__FreeCaseStarter`). Renaming it silently detaches every existing
          * override and agent binding.
          */
         const val DEFAULT_CONFIG_NAME = "CASE"
 
         private const val DEFAULT_DESCRIPTION =
             "Lets an agent read the transcript of another case (ReadCase) and start a new case with another " +
-                "agent (FreeCaseLauncher). Created automatically from agentos.case-plugin.enabled-by-default; " +
+                "agent (FreeCaseStarter). Created automatically from agentos.case-plugin.enabled-by-default; " +
                 "override it for a namespace with a configuration of the same name."
     }
 }

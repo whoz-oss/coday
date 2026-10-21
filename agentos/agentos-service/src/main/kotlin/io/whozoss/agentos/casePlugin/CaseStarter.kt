@@ -7,24 +7,24 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import java.util.UUID
 
 /**
- * What the two launcher tools ([FreeCaseLauncherTool], [FreeCaseLauncherForUserTool]) do the same way, and nothing
+ * What the two starter tools ([FreeCaseStarterTool], [FreeCaseStarterForUserTool]) do the same way, and nothing
  * else: apply the agent allowlist of their integration config, read the caller and the calling case from the
- * [ToolContext], hand the request to [CaseLaunchService] and turn its answer into a [ToolExecutionResult].
+ * [ToolContext], hand the request to [CaseStarterService] and turn its answer into a [ToolExecutionResult].
  *
  * It has no option: whatever differs between the tools (description, schema, validation of their own fields) is
  * written in each of them. Every rule on users (who may name another user, whether that user may be served) is
- * owned by [CaseLaunchService], not here.
+ * owned by [CaseStarterService], not here.
  *
  * Who is calling, and from which case, comes from the [ToolContext], never from what the LLM sent. A refusal of the
- * service ([CaseLaunchRefusedException]) becomes the error result, its reason being the `errorType`; any other
+ * service ([CaseStarterRefusedException]) becomes the error result, its reason being the `errorType`; any other
  * failure is not caught: like any tool failure, it reaches the agent layer, which logs it and reports it to the LLM.
  *
  * @param allowedAgents Glob patterns (`*` wildcard, case-insensitive) of the agents the tools may start. An agent
  *   must match one of them and none of [deniedAgents].
  * @param deniedAgents Exact agent names (case-insensitive) that are never started.
  */
-internal class CaseLauncher(
-    private val caseLaunchService: CaseLaunchService,
+internal class CaseStarter(
+    private val caseStarterService: CaseStarterService,
     allowedAgents: List<String>,
     deniedAgents: Set<String>,
 ) {
@@ -65,7 +65,7 @@ internal class CaseLauncher(
             )
         }
         val request =
-            CaseLaunchRequest(
+            CaseStarterRequest(
                 callerUserId = callerId,
                 callerNamespaceId = context.namespaceId,
                 callerCaseId = callerCaseId,
@@ -76,8 +76,8 @@ internal class CaseLauncher(
                 sessionContext = sessionContext,
             )
         return try {
-            caseLaunchService.start(request).toToolResult()
-        } catch (refusal: CaseLaunchRefusedException) {
+            caseStarterService.start(request).toToolResult()
+        } catch (refusal: CaseStarterRefusedException) {
             ToolExecutionResult.error(refusal.message, errorType = refusal.reason.name)
         }
     }
@@ -92,7 +92,7 @@ internal class CaseLauncher(
                     "userId" to userId.toString(),
                     "agentName" to agentName,
                 ),
-            structuredOutput = objectMapper.valueToTree(CaseLauncherOutput(caseId = caseId)),
+            structuredOutput = objectMapper.valueToTree(CaseStarterOutput(caseId = caseId)),
         )
 
     private companion object {

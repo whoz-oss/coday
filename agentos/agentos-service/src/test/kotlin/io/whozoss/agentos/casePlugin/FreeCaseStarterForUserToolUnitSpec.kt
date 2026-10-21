@@ -18,12 +18,12 @@ import io.whozoss.agentos.sdk.tool.ToolContext
 import java.util.UUID
 
 /**
- * Unit tests for [FreeCaseLauncherForUserTool], the launcher for a user the caller names: its required `userId`, its
- * fixed schema and the hand-off to [CaseLaunchService]. What it shares with [FreeCaseLauncherTool] (allowlist,
- * origin case, output) lives in `CaseLauncher`, whose behaviour each tool exposes and is therefore checked in both
- * specs. The ADMIN right of the caller and the access of the target are owned by [CaseLaunchServiceUnitSpec].
+ * Unit tests for [FreeCaseStarterForUserTool], the starter for a user the caller names: its required `userId`, its
+ * fixed schema and the hand-off to [CaseStarterService]. What it shares with [FreeCaseStarterTool] (allowlist,
+ * origin case, output) lives in `CaseStarter`, whose behaviour each tool exposes and is therefore checked in both
+ * specs. The ADMIN right of the caller and the access of the target are owned by [CaseStarterServiceUnitSpec].
  */
-class FreeCaseLauncherForUserToolUnitSpec :
+class FreeCaseStarterForUserToolUnitSpec :
     StringSpec({
 
         val mapper = jacksonObjectMapper()
@@ -40,19 +40,19 @@ class FreeCaseLauncherForUserToolUnitSpec :
 
         fun launched() = LaunchedCase(caseId = newCaseId, userId = targetId, agentName = "Reporter")
 
-        fun service() = mockk<CaseLaunchService> { every { start(any()) } returns launched() }
+        fun service() = mockk<CaseStarterService> { every { start(any()) } returns launched() }
 
-        fun refusingService(reason: CaseLaunchRefusal) =
-            mockk<CaseLaunchService> { every { start(any()) } throws CaseLaunchRefusedException(reason, "No.") }
+        fun refusingService(reason: CaseStarterRefusal) =
+            mockk<CaseStarterService> { every { start(any()) } throws CaseStarterRefusedException(reason, "No.") }
 
         fun tool(
-            launcher: CaseLaunchService = service(),
+            launcher: CaseStarterService = service(),
             configName: String? = null,
             allowedAgents: List<String> = listOf("*"),
             deniedAgents: Set<String> = emptySet(),
-        ) = FreeCaseLauncherForUserTool(
+        ) = FreeCaseStarterForUserTool(
             configName = configName,
-            caseLaunchService = launcher,
+            caseStarterService = launcher,
             allowedAgents = allowedAgents,
             deniedAgents = deniedAgents,
         )
@@ -60,17 +60,17 @@ class FreeCaseLauncherForUserToolUnitSpec :
         fun input(
             user: String = targetId.toString(),
             agent: String = "Reporter",
-        ) = FreeCaseLauncherForUserTool.Input(agentName = agent, prompt = "prompt", userId = user)
+        ) = FreeCaseStarterForUserTool.Input(agentName = agent, prompt = "prompt", userId = user)
 
-        "is named FreeCaseLauncherForUser, prefixed by the integration config name when there is one" {
-            tool().name shouldBe "FreeCaseLauncherForUser"
-            tool(configName = "CASE").name shouldBe "CASE__FreeCaseLauncherForUser"
+        "is named FreeCaseStarterForUser, prefixed by the integration config name when there is one" {
+            tool().name shouldBe "FreeCaseStarterForUser"
+            tool(configName = "CASE").name shouldBe "CASE__FreeCaseStarterForUser"
         }
 
-        "its name is told apart from the launcher for the current user, whichever the prefix" {
-            FreeCaseLauncherForUserTool.isFreeCaseLauncherForUserTool("CASE__FreeCaseLauncherForUser") shouldBe true
-            FreeCaseLauncherForUserTool.isFreeCaseLauncherForUserTool("CASE__FreeCaseLauncher") shouldBe false
-            FreeCaseLauncherTool.isFreeCaseLauncherTool("CASE__FreeCaseLauncherForUser") shouldBe false
+        "its name is told apart from the starter for the current user, whichever the prefix" {
+            FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool("CASE__FreeCaseStarterForUser") shouldBe true
+            FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool("CASE__FreeCaseStarter") shouldBe false
+            FreeCaseStarterTool.isFreeCaseStarterTool("CASE__FreeCaseStarterForUser") shouldBe false
         }
 
         // -------------------------------------------------------------------------
@@ -78,8 +78,8 @@ class FreeCaseLauncherForUserToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "the userId is handed to the service, which owns the ADMIN and target user checks" {
-            val request = slot<CaseLaunchRequest>()
-            val launcher = mockk<CaseLaunchService> { every { start(capture(request)) } returns launched() }
+            val request = slot<CaseStarterRequest>()
+            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
 
             tool(launcher).execute(input(), context())
 
@@ -121,20 +121,20 @@ class FreeCaseLauncherForUserToolUnitSpec :
         }
 
         "a caller who is not an ADMIN of the namespace gets the refusal of the service" {
-            val result = tool(refusingService(CaseLaunchRefusal.FORBIDDEN)).execute(input(), context())
+            val result = tool(refusingService(CaseStarterRefusal.FORBIDDEN)).execute(input(), context())
 
             result.success shouldBe false
             result.errorType shouldBe "FORBIDDEN"
         }
 
         "every refusal reason reaches the caller as its errorType" {
-            CaseLaunchRefusal.entries.forEach { reason ->
+            CaseStarterRefusal.entries.forEach { reason ->
                 tool(refusingService(reason)).execute(input(), context()).errorType shouldBe reason.name
             }
         }
 
         "a failure of the service is not caught by the tool: it is left to the agent layer" {
-            val launcher = mockk<CaseLaunchService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
+            val launcher = mockk<CaseStarterService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
 
             shouldThrow<IllegalStateException> { tool(launcher).execute(input(), context()) }
         }
@@ -158,13 +158,13 @@ class FreeCaseLauncherForUserToolUnitSpec :
             verify(exactly = 0) { launcher.start(any()) }
         }
 
-        "the output is the case id, as for the other launcher, so that a caller reads either the same way" {
+        "the output is the case id, as for the other starter, so that a caller reads either the same way" {
             val result = tool().execute(input(), context())
 
             result.success shouldBe true
             result.metadata["caseId"] shouldBe newCaseId.toString()
-            mapper.treeToValue(result.structuredOutput, CaseLauncherOutput::class.java) shouldBe
-                CaseLauncherOutput(caseId = newCaseId)
+            mapper.treeToValue(result.structuredOutput, CaseStarterOutput::class.java) shouldBe
+                CaseStarterOutput(caseId = newCaseId)
         }
 
         // -------------------------------------------------------------------------
@@ -172,7 +172,7 @@ class FreeCaseLauncherForUserToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "the input schema declares exactly the fields of Input, and requires the userId" {
-            val everyField = FreeCaseLauncherForUserTool.Input("agent", "prompt", "user", "title", emptyMap())
+            val everyField = FreeCaseStarterForUserTool.Input("agent", "prompt", "user", "title", emptyMap())
             val inputFields = mapper.valueToTree<JsonNode>(everyField).fieldNames().asSequence().toList()
             val schema = mapper.readTree(tool().inputSchema)
 

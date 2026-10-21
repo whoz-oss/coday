@@ -5,15 +5,15 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import java.util.UUID
 
 /**
- * The whole output of the launcher tools ([FreeCaseLauncherTool], [FreeCaseLauncherForUserTool]), as [SCHEMA]
+ * The whole output of the starter tools ([FreeCaseStarterTool], [FreeCaseStarterForUserTool]), as [SCHEMA]
  * declares it: the id of the case they started. A caller that reads the structured output (AgentLoop) parses it
- * back into this class, whichever launcher it called.
+ * back into this class, whichever starter it called.
  */
-data class CaseLauncherOutput(
+data class CaseStarterOutput(
     val caseId: UUID,
 ) {
     companion object {
-        /** The `outputSchema` of both launcher tools. */
+        /** The `outputSchema` of both starter tools. */
         val SCHEMA: JsonNode =
             jacksonObjectMapper().readTree(
                 """

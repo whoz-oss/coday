@@ -15,8 +15,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * the two user scopes at the API edge; platform and namespace-shared configs are unaffected.
  *
  * `CASE` is deliberately not on the list. Its parameters name no endpoint, credential or command, so an overlay
- * cannot redirect anything: it can only narrow or widen which agents the launcher tools may start. That is bounded
- * by the service, which only starts an agent deployed to the target user, and `FreeCaseLauncherForUser` requires
+ * cannot redirect anything: it can only narrow or widen which agents the starter tools may start. That is bounded
+ * by the service, which only starts an agent deployed to the target user, and `FreeCaseStarterForUser` requires
  * its caller to be ADMIN of the namespace. A user may therefore define a `CASE` config of their own, for example
  * to restrict the perimeter of their own runs.
  *

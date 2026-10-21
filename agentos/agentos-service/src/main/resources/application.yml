@@ -228,12 +228,12 @@ agentos:
   case-plugin:
     # Declare that a platform-scoped 'CASE' integration configuration should exist. When true
     # (shipped default), CaseIntegrationConfigSeeder creates it at startup if absent, so an agent
-    # only has to name 'CASE' in its integrations to receive ReadCase, FreeCaseLauncher (cases for the
-    # current user) and FreeCaseLauncherForUser (cases for a user it names, ADMIN of the namespace only).
+    # only has to name 'CASE' in its integrations to receive ReadCase, FreeCaseStarter (cases for the
+    # current user) and FreeCaseStarterForUser (cases for a user it names, ADMIN of the namespace only).
     #
-    # Unlike QUERY_USER, the seeded configuration is NOT auto-granted: the launcher tools start work,
+    # Unlike QUERY_USER, the seeded configuration is NOT auto-granted: the starter tools start work,
     # possibly as another user, so each agent opts in explicitly (and may narrow it to some of the
-    # tools, e.g. CASE: [ReadCase, FreeCaseLauncher]).
+    # tools, e.g. CASE: [ReadCase, FreeCaseStarter]).
     #
     # This declares EXISTENCE, not content: once it exists it belongs to the administrator and
     # startup never rewrites it. It is create-only: setting this back to false does NOT delete an

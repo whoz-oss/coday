@@ -1,10 +1,10 @@
 package io.whozoss.agentos.casePlugin
 
 /**
- * Why a launch was refused: a business rule, never a failure. The name is the stable `errorType` the
- * launcher tools report.
+ * Why a start was refused: a business rule, never a failure. The name is the stable `errorType` the
+ * starter tools report.
  */
-enum class CaseLaunchRefusal {
+enum class CaseStarterRefusal {
     /**
      * The calling case was itself started by a launch, or was delegated from a case that was: a launched case
      * cannot launch another one, so launches never chain.

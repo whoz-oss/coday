@@ -11,7 +11,7 @@ import java.util.UUID
 
 /**
  * Unit tests for the wiring of [CasePluginConfiguration]: it holds no business logic, so what is checked here is
- * that the plugin it produces reads cases through [CaseToolService] and launches through [CaseLaunchService].
+ * that the plugin it produces reads cases through [CaseToolService] and starts them through [CaseStarterService].
  * The guards of the read side (existence, namespace, Case READ) are in [CaseToolServiceUnitSpec].
  */
 class CasePluginConfigurationUnitSpec :
@@ -27,7 +27,7 @@ class CasePluginConfigurationUnitSpec :
             val caseId = UUID.randomUUID()
             val caseToolService = mockk<CaseToolService>()
             every { caseToolService.findCaseEvents(caseId, namespaceId, userId) } returns emptyList<CaseEvent>()
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseLaunchService>()).caseToolPlugin() as CaseToolPlugin
+            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>()).caseToolPlugin() as CaseToolPlugin
             val ctx = context(userId)
             val readCase = plugin.provideTools(config = null, context = ctx).filterIsInstance<ReadCaseTool>().single()
 
@@ -41,7 +41,7 @@ class CasePluginConfigurationUnitSpec :
             val caseId = UUID.randomUUID()
             val caseToolService = mockk<CaseToolService>()
             every { caseToolService.findCaseEvents(any(), any(), any()) } returns null
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseLaunchService>()).caseToolPlugin() as CaseToolPlugin
+            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>()).caseToolPlugin() as CaseToolPlugin
             val ctx = context(userId)
             val readCase = plugin.provideTools(config = null, context = ctx).filterIsInstance<ReadCaseTool>().single()
 
@@ -55,7 +55,7 @@ class CasePluginConfigurationUnitSpec :
             val caseId = UUID.randomUUID()
             val caseToolService = mockk<CaseToolService>()
             every { caseToolService.findCaseEvents(caseId, namespaceId, null) } returns null
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseLaunchService>()).caseToolPlugin() as CaseToolPlugin
+            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>()).caseToolPlugin() as CaseToolPlugin
             val ctx = context(null)
             val readCase = plugin.provideTools(config = null, context = ctx).filterIsInstance<ReadCaseTool>().single()
 
@@ -66,10 +66,10 @@ class CasePluginConfigurationUnitSpec :
 
         "the plugin it produces is the CASE integration, with its three tools" {
             val caseToolService = mockk<CaseToolService>()
-            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseLaunchService>()).caseToolPlugin()
+            val plugin = CasePluginConfiguration(caseToolService, mockk<CaseStarterService>()).caseToolPlugin()
 
             plugin.integrationType shouldBe CaseToolPlugin.INTEGRATION_TYPE
             plugin.provideTools(config = null, context = context(userId)).map { it.name } shouldBe
-                listOf("ReadCase", "FreeCaseLauncher", "FreeCaseLauncherForUser")
+                listOf("ReadCase", "FreeCaseStarter", "FreeCaseStarterForUser")
         }
     })

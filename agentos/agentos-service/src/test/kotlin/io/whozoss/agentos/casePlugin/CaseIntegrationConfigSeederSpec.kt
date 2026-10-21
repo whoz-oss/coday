@@ -59,7 +59,7 @@ class CaseIntegrationConfigSeederSpec :
             created.captured.userId shouldBe null
             created.captured.name shouldBe "CASE"
             created.captured.integrationType shouldBe CaseToolPlugin.INTEGRATION_TYPE
-            // FreeCaseLauncher starts work: it is never handed to every agent without being named
+            // FreeCaseStarter starts work: it is never handed to every agent without being named
             created.captured.autoGrant shouldBe false
             created.captured.parameters shouldBe null
         }
@@ -141,7 +141,7 @@ class CaseIntegrationConfigSeederSpec :
             // Renaming it silently detaches every override and agent binding: the name is a contract.
             name shouldBe "CASE"
             "${name}__ReadCase" shouldBe ReadCaseTool.buildToolName(name)
-            "${name}__FreeCaseLauncher" shouldBe FreeCaseLauncherTool.buildToolName(name)
-            "${name}__FreeCaseLauncherForUser" shouldBe FreeCaseLauncherForUserTool.buildToolName(name)
+            "${name}__FreeCaseStarter" shouldBe FreeCaseStarterTool.buildToolName(name)
+            "${name}__FreeCaseStarterForUser" shouldBe FreeCaseStarterForUserTool.buildToolName(name)
         }
     })

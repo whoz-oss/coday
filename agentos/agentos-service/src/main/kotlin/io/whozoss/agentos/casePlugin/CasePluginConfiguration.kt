@@ -6,7 +6,7 @@ import org.springframework.context.annotation.Configuration
 
 /**
  * Spring configuration for the CASE internal integration ([CaseToolPlugin]: `ReadCase`,
- * `FreeCaseLauncher` and `FreeCaseLauncherForUser`).
+ * `FreeCaseStarter` and `FreeCaseStarterForUser`).
  *
  * Declared in a dedicated `@Configuration` class (mirroring
  * [io.whozoss.agentos.redirect.RedirectConfiguration] and
@@ -18,18 +18,18 @@ import org.springframework.context.annotation.Configuration
  * business logic, it only binds dependencies:
  * - [CaseToolService]: the read side (`ReadCase`): existence, namespace isolation and Case READ. It injects
  *   repositories rather than `CaseService`, which would close the cycle.
- * - [CaseLaunchService]: the launch side. It is safe to inject: it reaches `CaseService` through a `@Lazy`
+ * - [CaseStarterService]: the launch side. It is safe to inject: it reaches `CaseService` through a `@Lazy`
  *   proxy.
  */
 @Configuration
 class CasePluginConfiguration(
     private val caseToolService: CaseToolService,
-    private val caseLaunchService: CaseLaunchService,
+    private val caseStarterService: CaseStarterService,
 ) {
     @Bean
     fun caseToolPlugin(): ToolPlugin =
         CaseToolPlugin(
             caseEventsLoader = caseToolService::findCaseEvents,
-            caseLaunchService = caseLaunchService,
+            caseStarterService = caseStarterService,
         )
 }

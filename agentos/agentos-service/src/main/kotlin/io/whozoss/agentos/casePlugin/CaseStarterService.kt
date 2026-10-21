@@ -34,7 +34,7 @@ import java.util.UUID
  *    it: the [Case.parentCaseId] chain of the calling case is walked up, which delegation caps at a few
  *    levels. A launched case counts in no delegation depth, so without this an agent could launch itself
  *    without end. One level is all a caller like AgentLoop needs.
- * 2. **Target user.** The caller, unless [CaseLaunchRequest.targetUserId] names someone else. Then the
+ * 2. **Target user.** The caller, unless [CaseStarterRequest.targetUserId] names someone else. Then the
  *    caller must be an ADMIN of the namespace (the federation: Namespace WRITE, which super-admins also
  *    hold), and the target must exist and read the namespace. A plain member cannot run a case on behalf
  *    of someone else.
@@ -53,10 +53,10 @@ import java.util.UUID
  *
  * **Who checks what.** This service owns the rules that protect users and the platform: who the case runs
  * for (the caller being ADMIN of the namespace, the target's access to the namespace), which agent may work
- * for them (deployed to the target), and how far launches go (one level). The `FreeCaseLauncher` tool validates its input and scopes what its
+ * for them (deployed to the target), and how far launches go (one level). The `FreeCaseStarter` tool validates its input and scopes what its
  * integration instance may launch (the agent allowlist); those checks are not repeated here.
  *
- * The session context of the first message is the caller's [CaseLaunchRequest.sessionContext], passed on as
+ * The session context of the first message is the caller's [CaseStarterRequest.sessionContext], passed on as
  * given, with the context the system resolves for the target user on top: what the `UserContextProvider`
  * returns, with the user's `preferredLanguage`. On a conflicting key the resolved one wins; a key the
  * resolution does not produce is passed on as the caller gave it. This service knows nothing of the map's
@@ -68,7 +68,7 @@ import java.util.UUID
  * The session context is resolved in every flow that starts a case through this service, so a caller such
  * as the loop hands over the entity only and does not resolve the user's context itself.
  *
- * **Refusals and failures.** [start] returns the [LaunchedCase], or throws. A [CaseLaunchRefusedException] is a
+ * **Refusals and failures.** [start] returns the [LaunchedCase], or throws. A [CaseStarterRefusedException] is a
  * business decision, taken before anything is written: the caller, the tool, catches it and reports it. Anything
  * else (an infrastructure failure, a bug, a calling user that vanished) is thrown as is, like any tool failure,
  * to the error boundary above the tool: the agent layer, which logs it and reports it to the LLM.
@@ -78,7 +78,7 @@ import java.util.UUID
  * cycle. Going through the proxy also keeps `create` transactional.
  */
 @Service
-class CaseLaunchService(
+class CaseStarterService(
     @Lazy private val caseService: CaseService,
     private val userService: UserService,
     private val agentConfigService: AgentConfigService,
@@ -88,13 +88,13 @@ class CaseLaunchService(
     /**
      * Starts the case and returns it.
      *
-     * @throws CaseLaunchRefusedException when a business rule refuses the launch, before anything is written.
+     * @throws CaseStarterRefusedException when a business rule refuses the launch, before anything is written.
      *   Any other failure is thrown as is.
      */
-    fun start(request: CaseLaunchRequest): LaunchedCase {
+    fun start(request: CaseStarterRequest): LaunchedCase {
         if (isInLaunchedCase(request.callerCaseId)) {
             refuse(
-                CaseLaunchRefusal.LAUNCH_DEPTH_EXCEEDED,
+                CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED,
                 "The current case was itself started by another case, so it cannot start a new one.",
             )
         }
@@ -105,7 +105,7 @@ class CaseLaunchService(
                 namespaceId = request.callerNamespaceId,
                 userId = targetUser.id,
             )?.name ?: refuse(
-                CaseLaunchRefusal.AGENT_NOT_AVAILABLE,
+                CaseStarterRefusal.AGENT_NOT_AVAILABLE,
                 "Agent '${request.agentName}' is not available to the target user in this namespace.",
             )
 
@@ -121,7 +121,7 @@ class CaseLaunchService(
         )
 
         logger.info {
-            "[CaseLaunch] case ${case.id} launched: agent='$agentName' user=${targetUser.id} " +
+            "[CaseStarter] case ${case.id} launched: agent='$agentName' user=${targetUser.id} " +
                 "namespace=${request.callerNamespaceId} origin=${request.callerCaseId} (by user ${request.callerUserId})"
         }
         return LaunchedCase(caseId = case.id, userId = targetUser.id, agentName = agentName)
@@ -142,14 +142,14 @@ class CaseLaunchService(
     private fun findParent(case: Case): Case? =
         case.parentCaseId?.let { parentId -> caseService.findById(parentId, withRemoved = true) }
 
-    private fun resolveTargetUser(request: CaseLaunchRequest): User {
+    private fun resolveTargetUser(request: CaseStarterRequest): User {
         // Null when the case runs for the caller: no userId, or the caller's own.
         val otherUserId = request.targetUserId?.takeIf { it != request.callerUserId }
         return when {
             otherUserId == null -> resolveCaller(request.callerUserId)
             !hasNamespacePermission(request.callerUserId, request.callerNamespaceId, Action.WRITE) ->
                 refuse(
-                    CaseLaunchRefusal.FORBIDDEN,
+                    CaseStarterRefusal.FORBIDDEN,
                     "Only an administrator of the namespace can start a case for another user.",
                 )
             else -> resolveOtherUser(userId = otherUserId, namespaceId = request.callerNamespaceId)
@@ -164,9 +164,9 @@ class CaseLaunchService(
         userId: UUID,
         namespaceId: UUID,
     ): User {
-        val user = userService.findById(userId) ?: refuse(CaseLaunchRefusal.TARGET_USER_NOT_FOUND, "No such user.")
+        val user = userService.findById(userId) ?: refuse(CaseStarterRefusal.TARGET_USER_NOT_FOUND, "No such user.")
         if (!hasNamespacePermission(user.id, namespaceId, Action.READ)) {
-            refuse(CaseLaunchRefusal.TARGET_NO_ACCESS, "The target user has no access to this namespace.")
+            refuse(CaseStarterRefusal.TARGET_NO_ACCESS, "The target user has no access to this namespace.")
         }
         return user
     }
@@ -207,7 +207,7 @@ class CaseLaunchService(
             ).firstOrNull { it.name.equals(agentName, ignoreCase = true) }
 
     /**
-     * The session context of the first message: the caller's [CaseLaunchRequest.sessionContext], under the
+     * The session context of the first message: the caller's [CaseStarterRequest.sessionContext], under the
      * context resolved for [targetUser], which wins on a conflicting key. Null when both are empty.
      *
      * A failure of the provider is thrown, before anything is written. The reason the provider gives is
@@ -215,14 +215,14 @@ class CaseLaunchService(
      */
     private fun resolveSessionContext(
         targetUser: User,
-        request: CaseLaunchRequest,
+        request: CaseStarterRequest,
     ): Map<String, Any?>? {
         val resolved =
             when (val result = userSessionContextResolver.resolve(targetUser.externalId, request.callerNamespaceId)) {
                 is UserContextResult.Success -> {
                     if (result.sessionContext == null && userSessionContextResolver.hasProvider()) {
                         logger.warn {
-                            "[CaseLaunch] UserContextProvider returned Success(null) for user ${targetUser.id}" +
+                            "[CaseStarter] UserContextProvider returned Success(null) for user ${targetUser.id}" +
                                 " — no provider context will be injected. Check provider configuration."
                         }
                     }
@@ -233,7 +233,7 @@ class CaseLaunchService(
                 }
 
                 is UserContextResult.PermanentFailure -> {
-                    logger.error { "[CaseLaunch] permanent context failure for user ${targetUser.id}: ${result.reason}" }
+                    logger.error { "[CaseStarter] permanent context failure for user ${targetUser.id}: ${result.reason}" }
                     throw UserContextUnavailableException(
                         "The context of the target user could not be resolved (permanent failure): " +
                             "the case was not started.",
@@ -241,7 +241,7 @@ class CaseLaunchService(
                 }
 
                 is UserContextResult.TransientFailure -> {
-                    logger.warn { "[CaseLaunch] transient context failure for user ${targetUser.id}: ${result.reason}" }
+                    logger.warn { "[CaseStarter] transient context failure for user ${targetUser.id}: ${result.reason}" }
                     throw UserContextUnavailableException(
                         "The context of the target user could not be resolved (temporary failure, may succeed later): " +
                             "the case was not started.",
@@ -252,7 +252,7 @@ class CaseLaunchService(
     }
 
     /** Creates the case, tracing the calling one as its origin. */
-    private fun createCase(request: CaseLaunchRequest): Case =
+    private fun createCase(request: CaseStarterRequest): Case =
         caseService.create(
             Case(
                 namespaceId = request.callerNamespaceId,
@@ -271,7 +271,7 @@ class CaseLaunchService(
         targetUser: User,
         agentName: String,
         sessionContext: Map<String, Any?>?,
-        request: CaseLaunchRequest,
+        request: CaseStarterRequest,
     ) {
         try {
             permissionService.grantPermission(
@@ -289,20 +289,20 @@ class CaseLaunchService(
             )
         } catch (e: Exception) {
             // The failure itself is logged by whoever handles it; this only records the compensation.
-            logger.warn { "[CaseLaunch] starting case ${case.id} for user ${targetUser.id} failed, deleting it" }
+            logger.warn { "[CaseStarter] starting case ${case.id} for user ${targetUser.id} failed, deleting it" }
             runCatching { caseService.delete(case.id) }
-                .onFailure { logger.warn(it) { "[CaseLaunch] could not delete the half-started case ${case.id}" } }
+                .onFailure { logger.warn(it) { "[CaseStarter] could not delete the half-started case ${case.id}" } }
             throw e
         }
     }
 
     /** Logs and throws the refusal: the business rule that failed, before anything is written. */
     private fun refuse(
-        reason: CaseLaunchRefusal,
+        reason: CaseStarterRefusal,
         message: String,
     ): Nothing {
-        logger.info { "[CaseLaunch] refused ($reason): $message" }
-        throw CaseLaunchRefusedException(reason = reason, message = message)
+        logger.info { "[CaseStarter] refused ($reason): $message" }
+        throw CaseStarterRefusedException(reason = reason, message = message)
     }
 
     companion object : KLogging() {

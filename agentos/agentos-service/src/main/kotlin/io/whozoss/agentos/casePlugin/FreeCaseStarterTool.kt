@@ -8,12 +8,12 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 
 /**
  * Tool that starts a new case **for the current user** and returns its id. To start one for someone else, an
- * agent is granted [FreeCaseLauncherForUserTool] instead (or as well): the two have a fixed schema each, and can be
+ * agent is granted [FreeCaseStarterForUserTool] instead (or as well): the two have a fixed schema each, and can be
  * granted separately through the agent's `integrations`.
  *
  * Input: the agent (by name), the prompt (first message, sent on behalf of the user), an optional
  * title (name of the conversation) and an optional session context (free key/value data the new case is shown
- * with its first message). Output: the case id ([CaseLauncherOutput]).
+ * with its first message). Output: the case id ([CaseStarterOutput]).
  *
  * The target agent runs in the background with its own conversation and the tool returns at once.
  * It does not wait for a result: that is what separates it from `DELEGATE__delegate`, which awaits
@@ -30,12 +30,12 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
  * without one, such as a direct invocation through the API, is refused with `MISSING_CASE_CONTEXT`.
  * The calling case's session context is **not** inherited: [Input.sessionContext] is the only thing of the
  * caller that reaches the new case, passed on as given, so the caller hands over just the relevant part. The
- * tool knows nothing of its format. [CaseLaunchService] adds the context of the user the case runs for (what
+ * tool knows nothing of its format. [CaseStarterService] adds the context of the user the case runs for (what
  * the `UserContextProvider` returns and the user's preferred language), which wins over the caller's on a
  * conflicting key.
  *
- * The tool validates its input, then [CaseLauncher] applies the agent allowlist of its integration config and hands
- * the rest to [CaseLaunchService]. Another caller can look the tool up by name and call [executeWithJson], reading
+ * The tool validates its input, then [CaseStarter] applies the agent allowlist of its integration config and hands
+ * the rest to [CaseStarterService]. Another caller can look the tool up by name and call [executeWithJson], reading
  * the case id from its structured output, so that the integration's config applies to it too.
  *
  * There is no `userId` in the schema, and a field of that name that an LLM sends anyway is ignored: the case runs
@@ -46,12 +46,12 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
  *   may start. An agent must match one of them and none of [deniedAgents].
  * @param deniedAgents Exact agent names (case-insensitive) that are never started.
  */
-class FreeCaseLauncherTool(
+class FreeCaseStarterTool(
     configName: String?,
-    caseLaunchService: CaseLaunchService,
+    caseStarterService: CaseStarterService,
     private val allowedAgents: List<String> = listOf("*"),
     private val deniedAgents: Set<String> = emptySet(),
-) : StandardTool<FreeCaseLauncherTool.Input> {
+) : StandardTool<FreeCaseStarterTool.Input> {
     /**
      * @param agentName Name of the agent that runs the new case.
      * @param prompt The first message the agent receives, sent on behalf of the user. Must be
@@ -69,7 +69,7 @@ class FreeCaseLauncherTool(
         val sessionContext: Map<String, Any?>? = null,
     )
 
-    private val launcher = CaseLauncher(caseLaunchService, allowedAgents, deniedAgents)
+    private val starter = CaseStarter(caseStarterService, allowedAgents, deniedAgents)
 
     override val name: String = buildToolName(configName)
     override val version: String = "1.0.0"
@@ -97,7 +97,7 @@ class FreeCaseLauncherTool(
 
     override val inputSchema: String = INPUT_SCHEMA
 
-    override fun outputSchema(): JsonNode = CaseLauncherOutput.SCHEMA
+    override fun outputSchema(): JsonNode = CaseStarterOutput.SCHEMA
 
     override suspend fun execute(
         input: Input?,
@@ -108,7 +108,7 @@ class FreeCaseLauncherTool(
                 ToolExecutionResult.error("Both agentName and prompt are required.", errorType = "MISSING_INPUT")
 
             else ->
-                launcher.start(
+                starter.start(
                     context = context,
                     agentName = input.agentName,
                     prompt = input.prompt,
@@ -120,12 +120,12 @@ class FreeCaseLauncherTool(
 
     companion object {
         /** Name of the tool, bare or after the `__` that follows its integration config name. */
-        const val TOOL_NAME = "FreeCaseLauncher"
+        const val TOOL_NAME = "FreeCaseStarter"
 
         fun buildToolName(configName: String?): String = configName?.let { "${it}__$TOOL_NAME" } ?: TOOL_NAME
 
-        /** Whether [toolName] is a `FreeCaseLauncher` tool, whatever its integration config. */
-        fun isFreeCaseLauncherTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
+        /** Whether [toolName] is a `FreeCaseStarter` tool, whatever its integration config. */
+        fun isFreeCaseStarterTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
 
         private val INPUT_SCHEMA =
             """

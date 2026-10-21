@@ -8,18 +8,18 @@ import io.whozoss.agentos.sdk.tool.ToolExecutionResult
 import java.util.UUID
 
 /**
- * Tool that starts a new case **for a given user** and returns its id: the twin of [FreeCaseLauncherTool], with a
+ * Tool that starts a new case **for a given user** and returns its id: the twin of [FreeCaseStarterTool], with a
  * required `userId` in its input. It is a tool of its own so that each schema stays fixed: an agent that must only
- * start cases for the current user is granted [FreeCaseLauncherTool] alone, and the grant of this one is a
- * separate decision (`CASE: [ReadCase, FreeCaseLauncher]`).
+ * start cases for the current user is granted [FreeCaseStarterTool] alone, and the grant of this one is a
+ * separate decision (`CASE: [ReadCase, FreeCaseStarter]`).
  *
- * Everything but the user is as for [FreeCaseLauncherTool]: the agent is designated by name, the case is a
+ * Everything but the user is as for [FreeCaseStarterTool]: the agent is designated by name, the case is a
  * top-level case that lives on its own, the calling case is only its origin, the calling case's session context is
- * not inherited, and the output is a [CaseLauncherOutput]. The agent allowlist and the hand-off to
- * [CaseLaunchService] are done by [CaseLauncher].
+ * not inherited, and the output is a [CaseStarterOutput]. The agent allowlist and the hand-off to
+ * [CaseStarterService] are done by [CaseStarter].
  *
  * Naming the caller itself is accepted for anyone. Any other user requires the caller to be an ADMIN of the
- * namespace, and the target to exist and read the namespace: those rules are owned by [CaseLaunchService], which
+ * namespace, and the target to exist and read the namespace: those rules are owned by [CaseStarterService], which
  * refuses with `FORBIDDEN`, `TARGET_USER_NOT_FOUND` or `TARGET_NO_ACCESS`. The tool only checks that `userId` is
  * given and is a UUID.
  *
@@ -28,12 +28,12 @@ import java.util.UUID
  *   may start. An agent must match one of them and none of [deniedAgents].
  * @param deniedAgents Exact agent names (case-insensitive) that are never started.
  */
-class FreeCaseLauncherForUserTool(
+class FreeCaseStarterForUserTool(
     configName: String?,
-    caseLaunchService: CaseLaunchService,
+    caseStarterService: CaseStarterService,
     private val allowedAgents: List<String> = listOf("*"),
     private val deniedAgents: Set<String> = emptySet(),
-) : StandardTool<FreeCaseLauncherForUserTool.Input> {
+) : StandardTool<FreeCaseStarterForUserTool.Input> {
     /**
      * @param agentName Name of the agent that runs the new case.
      * @param prompt The first message the agent receives, sent on behalf of the user. Must be
@@ -55,7 +55,7 @@ class FreeCaseLauncherForUserTool(
         val sessionContext: Map<String, Any?>? = null,
     )
 
-    private val launcher = CaseLauncher(caseLaunchService, allowedAgents, deniedAgents)
+    private val starter = CaseStarter(caseStarterService, allowedAgents, deniedAgents)
 
     override val name: String = buildToolName(configName)
     override val version: String = "1.0.0"
@@ -85,7 +85,7 @@ class FreeCaseLauncherForUserTool(
 
     override val inputSchema: String = INPUT_SCHEMA
 
-    override fun outputSchema(): JsonNode = CaseLauncherOutput.SCHEMA
+    override fun outputSchema(): JsonNode = CaseStarterOutput.SCHEMA
 
     override suspend fun execute(
         input: Input?,
@@ -97,7 +97,7 @@ class FreeCaseLauncherForUserTool(
         val targetUserId =
             runCatching { UUID.fromString(input.userId) }.getOrNull()
                 ?: return ToolExecutionResult.error("userId must be a valid UUID.", errorType = "INVALID_INPUT")
-        return launcher.start(
+        return starter.start(
             context = context,
             agentName = input.agentName,
             prompt = input.prompt,
@@ -109,12 +109,12 @@ class FreeCaseLauncherForUserTool(
 
     companion object {
         /** Name of the tool, bare or after the `__` that follows its integration config name. */
-        const val TOOL_NAME = "FreeCaseLauncherForUser"
+        const val TOOL_NAME = "FreeCaseStarterForUser"
 
         fun buildToolName(configName: String?): String = configName?.let { "${it}__$TOOL_NAME" } ?: TOOL_NAME
 
-        /** Whether [toolName] is a `FreeCaseLauncherForUser` tool, whatever its integration config. */
-        fun isFreeCaseLauncherForUserTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
+        /** Whether [toolName] is a `FreeCaseStarterForUser` tool, whatever its integration config. */
+        fun isFreeCaseStarterForUserTool(toolName: String): Boolean = toolName == TOOL_NAME || toolName.endsWith("__$TOOL_NAME")
 
         private val INPUT_SCHEMA =
             """
