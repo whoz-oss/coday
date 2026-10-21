@@ -1,8 +1,7 @@
 import { Injectable, InjectionToken, computed, inject, signal } from '@angular/core'
 import { Observable, Subscription, catchError, finalize, forkJoin, of, switchMap, tap } from 'rxjs'
 import { FactoryApiError, FactoryApiService, NamespaceItem, extractNamespaceOptions } from './factory-api.service'
-import { AgentOsApiService } from './agentos-api.service'
-import { SupervisorCaseStoreService } from './supervisor-case-store.service'
+import { SupervisorCaseFacade } from './supervisor-case.facade'
 import {
   mapProjectionToFactoryRun,
   mapProjectionToSessionDetail,
@@ -94,10 +93,8 @@ export function buildSupervisorCaseUrl(caseId: string, namespaceId: string, base
 @Injectable({ providedIn: 'root' })
 export class FactoryStore {
   private readonly api = inject(FactoryApiService)
-  private readonly agentOs = inject(AgentOsApiService)
   private readonly sse = inject(SseService)
-  private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
-  private readonly supervisorCaseStore = inject(SupervisorCaseStoreService)
+  private readonly supervisorCases = inject(SupervisorCaseFacade)
 
   /**
    * Namespace id → human name, populated from `GET /api/agentos/api/namespaces`.
@@ -732,16 +729,7 @@ export class FactoryStore {
    * device will return `undefined` (see {@link SupervisorCaseStoreService}).
    */
   restoreSupervisorCase(run: FactoryRun): SupervisorCaseResult | undefined {
-    const namespaceId = run.namespaceId
-    const workflowId = run.id
-    if (!namespaceId || !workflowId) return undefined
-    const entry = this.supervisorCaseStore.load({ workflowId, namespaceId })
-    if (!entry) return undefined
-    return {
-      caseId: entry.caseId,
-      namespaceId: entry.namespaceId,
-      agentOsUrl: buildAgentOsCaseUrl(entry.caseId, entry.namespaceId, this.agentOsBaseUrl),
-    }
+    return this.supervisorCases.restore(run)
   }
 
   /**
@@ -766,33 +754,7 @@ export class FactoryStore {
    * then navigates it once the case id is known.
    */
   openSupervisorCase(run: FactoryRun): Observable<SupervisorCaseResult> {
-    const namespaceId = run.namespaceId!
-    const workflowId = run.id
-    const title = `Supervisor assistance — ${run.title}`
-    const initialMessage = buildSupervisorCaseMessage(run.title, workflowId, run.ticket, run.workflowType)
-    return this.agentOs.createCase({ namespaceId, title }).pipe(
-      // Persist immediately after creation, before the message POST.
-      // This guarantees the association survives a page refresh even if the
-      // message delivery fails (message failure is swallowed below).
-      tap((createdCase) => {
-        this.supervisorCaseStore.save(
-          { workflowId, namespaceId },
-          { caseId: createdCase.id, namespaceId, createdAt: new Date().toISOString() }
-        )
-      }),
-      switchMap((createdCase) =>
-        this.agentOs.addMessage(createdCase.id, initialMessage).pipe(
-          catchError(() => of(undefined)),
-          switchMap(() =>
-            of<SupervisorCaseResult>({
-              caseId: createdCase.id,
-              namespaceId,
-              agentOsUrl: buildAgentOsCaseUrl(createdCase.id, namespaceId, this.agentOsBaseUrl),
-            })
-          )
-        )
-      )
-    )
+    return this.supervisorCases.open(run)
   }
 
   /** Replace the summary attached to a run once its real cost is known. */
@@ -872,23 +834,4 @@ function sortRunsByCreation(list: FactoryRun[]): FactoryRun[] {
     // Both known: most recent first.
     return tb - ta
   })
-}
-
-/** Build the initial context message for a new supervisor case. */
-function buildSupervisorCaseMessage(
-  sandboxName: string,
-  workflowId: string,
-  ticket?: string,
-  workflowType?: string
-): string {
-  return [
-    `@Heimdall Hello. I am opening this case from the Factory Cockpit for sandbox **${sandboxName}**.`,
-    '',
-    'Available identifiers:',
-    `- Workflow ID: \`${workflowId}\``,
-    ...(ticket ? [`- Ticket: \`${ticket}\``] : []),
-    ...(workflowType ? [`- Workflow type: \`${workflowType}\``] : []),
-    '',
-    'Could you check the state of this workflow and let me know what is happening?',
-  ].join('\n')
 }
