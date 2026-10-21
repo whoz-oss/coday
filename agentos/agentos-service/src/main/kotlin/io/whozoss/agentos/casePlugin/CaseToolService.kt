@@ -43,7 +43,7 @@ import java.util.UUID
  * ```
  *
  * [CaseRepository], [CaseEventService] and [PermissionService] have no upward dependency on
- * `ToolRegistryService`. Same pattern as [io.whozoss.agentos.userGroup.UserGroupToolService]. The launch side
+ * `ToolRegistryService`. Same pattern as [io.whozoss.agentos.userGroup.UserGroupToolService]. The start side
  * does not need this: [CaseStarterService] reaches `CaseService` through a `@Lazy` proxy.
  */
 @Service

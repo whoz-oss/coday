@@ -41,24 +41,24 @@ class FreeCaseStarterToolUnitSpec :
             events: List<CaseEvent> = caseEvents(),
         ) = ToolContext(namespaceId = namespaceId, userId = user, userExternalId = "ext", caseEvents = events)
 
-        fun launched(agentName: String = "Reporter") = LaunchedCase(caseId = newCaseId, userId = userId, agentName = agentName)
+        fun started(agentName: String = "Reporter") = StartedCase(caseId = newCaseId, userId = userId, agentName = agentName)
 
-        fun service(launched: LaunchedCase = launched()) = mockk<CaseStarterService> { every { start(any()) } returns launched }
+        fun service(started: StartedCase = started()) = mockk<CaseStarterService> { every { start(any()) } returns started }
 
-        /** A service that refuses every launch with [reason]. */
+        /** A service that refuses every start with [reason]. */
         fun refusingService(
             reason: CaseStarterRefusal,
             message: String = "No.",
         ) = mockk<CaseStarterService> { every { start(any()) } throws CaseStarterRefusedException(reason, message) }
 
         fun tool(
-            launcher: CaseStarterService = service(),
+            starter: CaseStarterService = service(),
             configName: String? = null,
             allowedAgents: List<String> = listOf("*"),
             deniedAgents: Set<String> = emptySet(),
         ) = FreeCaseStarterTool(
             configName = configName,
-            caseStarterService = launcher,
+            caseStarterService = starter,
             allowedAgents = allowedAgents,
             deniedAgents = deniedAgents,
         )
@@ -79,39 +79,39 @@ class FreeCaseStarterToolUnitSpec :
             result.errorType shouldBe "MISSING_INPUT"
         }
 
-        "a blank agentName or prompt is MISSING_INPUT, and nothing is launched" {
-            val launcher = service()
-            val t = tool(launcher)
+        "a blank agentName or prompt is MISSING_INPUT, and nothing is started" {
+            val starter = service()
+            val t = tool(starter)
 
             t.execute(FreeCaseStarterTool.Input(agentName = " ", prompt = "x"), context()).errorType shouldBe "MISSING_INPUT"
             t.execute(FreeCaseStarterTool.Input(agentName = "Reporter", prompt = ""), context()).errorType shouldBe "MISSING_INPUT"
-            verify(exactly = 0) { launcher.start(any()) }
+            verify(exactly = 0) { starter.start(any()) }
         }
 
-        "a run without a user is refused before anything is launched" {
-            val launcher = service()
+        "a run without a user is refused before anything is started" {
+            val starter = service()
 
-            val result = tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context(user = null))
+            val result = tool(starter).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context(user = null))
 
             result.errorType shouldBe "MISSING_USER_CONTEXT"
-            verify(exactly = 0) { launcher.start(any()) }
+            verify(exactly = 0) { starter.start(any()) }
         }
 
         "a run whose case cannot be identified, with no case events, is refused: the origin would be unknown" {
-            val launcher = service()
+            val starter = service()
 
-            val result = tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context(events = emptyList()))
+            val result = tool(starter).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context(events = emptyList()))
 
             result.errorType shouldBe "MISSING_CASE_CONTEXT"
-            verify(exactly = 0) { launcher.start(any()) }
+            verify(exactly = 0) { starter.start(any()) }
         }
 
         "the calling case is the one of the case events of the ToolContext, never an input of the LLM" {
             val request = slot<CaseStarterRequest>()
-            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
+            val starter = mockk<CaseStarterService> { every { start(capture(request)) } returns started() }
             val forged = UUID.randomUUID()
 
-            tool(launcher).executeWithJson(
+            tool(starter).executeWithJson(
                 """{"agentName": "Reporter", "prompt": "go", "callerCaseId": "$forged", "caseId": "$forged"}""",
                 context(),
             )
@@ -121,10 +121,10 @@ class FreeCaseStarterToolUnitSpec :
 
         "unknown fields in the LLM's JSON are ignored, and never read as identity" {
             val request = slot<CaseStarterRequest>()
-            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
+            val starter = mockk<CaseStarterService> { every { start(capture(request)) } returns started() }
 
             val result =
-                tool(launcher).executeWithJson(
+                tool(starter).executeWithJson(
                     """{"agentName": "Reporter", "prompt": "go", "callerUserId": "forged", "namespaceId": "forged", "agentId": "forged"}""",
                     context(),
                 )
@@ -139,30 +139,30 @@ class FreeCaseStarterToolUnitSpec :
         // -------------------------------------------------------------------------
 
         "an agent outside the allowed patterns is UNAUTHORIZED_AGENT" {
-            val launcher = service()
-            val t = tool(launcher, allowedAgents = listOf("Profile*"))
+            val starter = service()
+            val t = tool(starter, allowedAgents = listOf("Profile*"))
 
             t.execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
-            verify(exactly = 0) { launcher.start(any()) }
+            verify(exactly = 0) { starter.start(any()) }
         }
 
-        "an agent matching a pattern is launched, whatever its casing" {
-            val launcher = service()
+        "an agent matching a pattern is started, whatever its casing" {
+            val starter = service()
 
             val result =
-                tool(launcher, allowedAgents = listOf("profile*"))
+                tool(starter, allowedAgents = listOf("profile*"))
                     .execute(FreeCaseStarterTool.Input("ProfileCaretaker", "prompt"), context())
 
             result.success shouldBe true
-            verify(exactly = 1) { launcher.start(any()) }
+            verify(exactly = 1) { starter.start(any()) }
         }
 
         "a denied agent is refused even when an allowed pattern matches it" {
-            val launcher = service()
-            val t = tool(launcher, allowedAgents = listOf("*"), deniedAgents = setOf("reporter"))
+            val starter = service()
+            val t = tool(starter, allowedAgents = listOf("*"), deniedAgents = setOf("reporter"))
 
             t.execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
-            verify(exactly = 0) { launcher.start(any()) }
+            verify(exactly = 0) { starter.start(any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -171,10 +171,10 @@ class FreeCaseStarterToolUnitSpec :
 
         "a userId the LLM sends anyway is ignored: the case runs for the caller" {
             val request = slot<CaseStarterRequest>()
-            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
+            val starter = mockk<CaseStarterService> { every { start(capture(request)) } returns started() }
 
             val result =
-                tool(launcher).executeWithJson(
+                tool(starter).executeWithJson(
                     """{"agentName": "Reporter", "prompt": "go", "userId": "$targetId"}""",
                     context(),
                 )
@@ -189,9 +189,9 @@ class FreeCaseStarterToolUnitSpec :
 
         "identity, namespace and the calling case come from the ToolContext, the prompt is the first message" {
             val request = slot<CaseStarterRequest>()
-            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
+            val starter = mockk<CaseStarterService> { every { start(capture(request)) } returns started() }
 
-            tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "Summarise"), context())
+            tool(starter).execute(FreeCaseStarterTool.Input("Reporter", "Summarise"), context())
 
             request.captured.also {
                 it.callerUserId shouldBe userId
@@ -207,10 +207,10 @@ class FreeCaseStarterToolUnitSpec :
 
         "the title and the session context are handed over" {
             val request = slot<CaseStarterRequest>()
-            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
+            val starter = mockk<CaseStarterService> { every { start(capture(request)) } returns started() }
             val ctx = mapOf("activeContext" to listOf(mapOf("type" to "TALENT", "data" to mapOf("id" to "t42"))))
 
-            tool(launcher).execute(
+            tool(starter).execute(
                 FreeCaseStarterTool.Input("Reporter", "Summarise", title = "Weekly review", sessionContext = ctx),
                 context(),
             )
@@ -267,11 +267,11 @@ class FreeCaseStarterToolUnitSpec :
         }
 
         "a failure of the service is not caught by the tool: it is left to the agent layer" {
-            val launcher =
+            val starter =
                 mockk<CaseStarterService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
 
             shouldThrow<IllegalStateException> {
-                tool(launcher).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context())
+                tool(starter).execute(FreeCaseStarterTool.Input("Reporter", "prompt"), context())
             }
         }
 

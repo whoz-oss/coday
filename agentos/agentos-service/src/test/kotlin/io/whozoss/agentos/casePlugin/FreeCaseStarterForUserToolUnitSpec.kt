@@ -38,21 +38,21 @@ class FreeCaseStarterForUserToolUnitSpec :
         fun context(events: List<CaseEvent> = caseEvents()) =
             ToolContext(namespaceId = namespaceId, userId = userId, userExternalId = "ext", caseEvents = events)
 
-        fun launched() = LaunchedCase(caseId = newCaseId, userId = targetId, agentName = "Reporter")
+        fun started() = StartedCase(caseId = newCaseId, userId = targetId, agentName = "Reporter")
 
-        fun service() = mockk<CaseStarterService> { every { start(any()) } returns launched() }
+        fun service() = mockk<CaseStarterService> { every { start(any()) } returns started() }
 
         fun refusingService(reason: CaseStarterRefusal) =
             mockk<CaseStarterService> { every { start(any()) } throws CaseStarterRefusedException(reason, "No.") }
 
         fun tool(
-            launcher: CaseStarterService = service(),
+            starter: CaseStarterService = service(),
             configName: String? = null,
             allowedAgents: List<String> = listOf("*"),
             deniedAgents: Set<String> = emptySet(),
         ) = FreeCaseStarterForUserTool(
             configName = configName,
-            caseStarterService = launcher,
+            caseStarterService = starter,
             allowedAgents = allowedAgents,
             deniedAgents = deniedAgents,
         )
@@ -79,9 +79,9 @@ class FreeCaseStarterForUserToolUnitSpec :
 
         "the userId is handed to the service, which owns the ADMIN and target user checks" {
             val request = slot<CaseStarterRequest>()
-            val launcher = mockk<CaseStarterService> { every { start(capture(request)) } returns launched() }
+            val starter = mockk<CaseStarterService> { every { start(capture(request)) } returns started() }
 
-            tool(launcher).execute(input(), context())
+            tool(starter).execute(input(), context())
 
             request.captured.also {
                 it.targetUserId shouldBe targetId
@@ -91,29 +91,29 @@ class FreeCaseStarterForUserToolUnitSpec :
             }
         }
 
-        "a blank userId is MISSING_INPUT, and nothing is launched" {
-            val launcher = service()
+        "a blank userId is MISSING_INPUT, and nothing is started" {
+            val starter = service()
 
-            tool(launcher).execute(input(user = "  "), context()).errorType shouldBe "MISSING_INPUT"
-            verify(exactly = 0) { launcher.start(any()) }
+            tool(starter).execute(input(user = "  "), context()).errorType shouldBe "MISSING_INPUT"
+            verify(exactly = 0) { starter.start(any()) }
         }
 
-        "a userId absent from the JSON fails the deserialization, like a missing agentName or prompt, and nothing is launched" {
-            val launcher = service()
+        "a userId absent from the JSON fails the deserialization, like a missing agentName or prompt, and nothing is started" {
+            val starter = service()
 
             shouldThrow<Exception> {
-                tool(launcher).executeWithJson("""{"agentName": "Reporter", "prompt": "go"}""", context())
+                tool(starter).executeWithJson("""{"agentName": "Reporter", "prompt": "go"}""", context())
             }
-            verify(exactly = 0) { launcher.start(any()) }
+            verify(exactly = 0) { starter.start(any()) }
         }
 
-        "a userId that is not a UUID is INVALID_INPUT, and nothing is launched" {
-            val launcher = service()
+        "a userId that is not a UUID is INVALID_INPUT, and nothing is started" {
+            val starter = service()
 
-            val result = tool(launcher).execute(input(user = "alice@example.com"), context())
+            val result = tool(starter).execute(input(user = "alice@example.com"), context())
 
             result.errorType shouldBe "INVALID_INPUT"
-            verify(exactly = 0) { launcher.start(any()) }
+            verify(exactly = 0) { starter.start(any()) }
         }
 
         "null input is MISSING_INPUT" {
@@ -134,28 +134,28 @@ class FreeCaseStarterForUserToolUnitSpec :
         }
 
         "a failure of the service is not caught by the tool: it is left to the agent layer" {
-            val launcher = mockk<CaseStarterService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
+            val starter = mockk<CaseStarterService> { every { start(any()) } throws IllegalStateException("Neo4j unavailable") }
 
-            shouldThrow<IllegalStateException> { tool(launcher).execute(input(), context()) }
+            shouldThrow<IllegalStateException> { tool(starter).execute(input(), context()) }
         }
 
         // -------------------------------------------------------------------------
         // What the tool still checks itself
         // -------------------------------------------------------------------------
 
-        "a run without a case to record as the origin is refused, before anything is launched" {
-            val launcher = service()
+        "a run without a case to record as the origin is refused, before anything is started" {
+            val starter = service()
 
-            tool(launcher).execute(input(), context(events = emptyList())).errorType shouldBe "MISSING_CASE_CONTEXT"
-            verify(exactly = 0) { launcher.start(any()) }
+            tool(starter).execute(input(), context(events = emptyList())).errorType shouldBe "MISSING_CASE_CONTEXT"
+            verify(exactly = 0) { starter.start(any()) }
         }
 
-        "an agent outside the allowed patterns, or denied, is UNAUTHORIZED_AGENT, before anything is launched" {
-            val launcher = service()
+        "an agent outside the allowed patterns, or denied, is UNAUTHORIZED_AGENT, before anything is started" {
+            val starter = service()
 
-            tool(launcher, allowedAgents = listOf("Profile*")).execute(input(), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
-            tool(launcher, deniedAgents = setOf("reporter")).execute(input(), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
-            verify(exactly = 0) { launcher.start(any()) }
+            tool(starter, allowedAgents = listOf("Profile*")).execute(input(), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
+            tool(starter, deniedAgents = setOf("reporter")).execute(input(), context()).errorType shouldBe "UNAUTHORIZED_AGENT"
+            verify(exactly = 0) { starter.start(any()) }
         }
 
         "the output is the case id, as for the other starter, so that a caller reads either the same way" {

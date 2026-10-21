@@ -34,7 +34,7 @@ import java.util.UUID
  * ## Configuration
  *
  * - `includesTechnicalEvents`: read side, shape of the transcript returned by `ReadCase`.
- * - `agents` / `deniedAgents`: launch side, shared by both starter tools. They have no effect on `ReadCase`.
+ * - `agents` / `deniedAgents`: start side, shared by both starter tools. They have no effect on `ReadCase`.
  *
  * Starting a case for another user is not a parameter: it is a tool of its own, which an agent has to be
  * granted, and the service additionally requires the calling user to be ADMIN of the namespace.

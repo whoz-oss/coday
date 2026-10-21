@@ -26,13 +26,13 @@ import java.util.UUID
  * The new case is a top-level case: it has no [Case.parentCaseId], so nothing waits for it, stopping
  * the calling case leaves it running, it does not count in the delegation depth, it works in its own
  * Exchange directory and Git workspace, and its spend is its own. Where it came from is recorded in
- * [Case.originCaseId], which only the launch depth rule below reads.
+ * [Case.originCaseId], which only the start depth rule below reads.
  *
  * What this adds, in the order it is applied:
  *
- * 1. **Launch depth.** A case started by a launch cannot start another one, nor can a case delegated from
+ * 1. **Start depth.** A case started by this service cannot start another one, nor can a case delegated from
  *    it: the [Case.parentCaseId] chain of the calling case is walked up, which delegation caps at a few
- *    levels. A launched case counts in no delegation depth, so without this an agent could launch itself
+ *    levels. A started case counts in no delegation depth, so without this an agent could start itself
  *    without end. One level is all a caller like AgentLoop needs.
  * 2. **Target user.** The caller, unless [CaseStarterRequest.targetUserId] names someone else. Then the
  *    caller must be an ADMIN of the namespace (the federation: Namespace WRITE, which super-admins also
@@ -42,7 +42,7 @@ import java.util.UUID
  *    condition as addressing it with an `@mention`.
  * 4. **User context.** The context of the target user is resolved by [UserSessionContextResolver], as for a
  *    scheduled prompt: what the `UserContextProvider` plugin returns, with the user's `preferredLanguage`
- *    on top. It comes last because the provider may be an external request: a refused launch never makes one.
+ *    on top. It comes last because the provider may be an external request: a refused start never makes one.
  *    A provider failure, permanent or transient, is thrown ([UserContextUnavailableException]) before
  *    anything is written.
  *
@@ -53,8 +53,8 @@ import java.util.UUID
  *
  * **Who checks what.** This service owns the rules that protect users and the platform: who the case runs
  * for (the caller being ADMIN of the namespace, the target's access to the namespace), which agent may work
- * for them (deployed to the target), and how far launches go (one level). The `FreeCaseStarter` tool validates its input and scopes what its
- * integration instance may launch (the agent allowlist); those checks are not repeated here.
+ * for them (deployed to the target), and how far starts go (one level). The `FreeCaseStarter` tool validates its input and scopes what its
+ * integration instance may start (the agent allowlist); those checks are not repeated here.
  *
  * The session context of the first message is the caller's [CaseStarterRequest.sessionContext], passed on as
  * given, with the context the system resolves for the target user on top: what the `UserContextProvider`
@@ -68,7 +68,7 @@ import java.util.UUID
  * The session context is resolved in every flow that starts a case through this service, so a caller such
  * as the loop hands over the entity only and does not resolve the user's context itself.
  *
- * **Refusals and failures.** [start] returns the [LaunchedCase], or throws. A [CaseStarterRefusedException] is a
+ * **Refusals and failures.** [start] returns the [StartedCase], or throws. A [CaseStarterRefusedException] is a
  * business decision, taken before anything is written: the caller, the tool, catches it and reports it. Anything
  * else (an infrastructure failure, a bug, a calling user that vanished) is thrown as is, like any tool failure,
  * to the error boundary above the tool: the agent layer, which logs it and reports it to the LLM.
@@ -88,13 +88,13 @@ class CaseStarterService(
     /**
      * Starts the case and returns it.
      *
-     * @throws CaseStarterRefusedException when a business rule refuses the launch, before anything is written.
+     * @throws CaseStarterRefusedException when a business rule refuses the start, before anything is written.
      *   Any other failure is thrown as is.
      */
-    fun start(request: CaseStarterRequest): LaunchedCase {
-        if (isInLaunchedCase(request.callerCaseId)) {
+    fun start(request: CaseStarterRequest): StartedCase {
+        if (isInStartedCase(request.callerCaseId)) {
             refuse(
-                CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED,
+                CaseStarterRefusal.START_DEPTH_EXCEEDED,
                 "The current case was itself started by another case, so it cannot start a new one.",
             )
         }
@@ -121,19 +121,19 @@ class CaseStarterService(
         )
 
         logger.info {
-            "[CaseStarter] case ${case.id} launched: agent='$agentName' user=${targetUser.id} " +
+            "[CaseStarter] case ${case.id} started: agent='$agentName' user=${targetUser.id} " +
                 "namespace=${request.callerNamespaceId} origin=${request.callerCaseId} (by user ${request.callerUserId})"
         }
-        return LaunchedCase(caseId = case.id, userId = targetUser.id, agentName = agentName)
+        return StartedCase(caseId = case.id, userId = targetUser.id, agentName = agentName)
     }
 
     /**
-     * Whether the calling case was started by a launch, itself or through the cases it was delegated from.
+     * Whether the calling case was started by another case, itself or through the cases it was delegated from.
      * The calling case is running: missing, it is a bug. Its ancestors are read even when deleted, since a
      * deleted case's sub-cases may still run and its origin does not go away. Delegation is capped, so this
      * reads a few cases at most.
      */
-    private fun isInLaunchedCase(callerCaseId: UUID): Boolean {
+    private fun isInStartedCase(callerCaseId: UUID): Boolean {
         val callerCase = checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
         return generateSequence(callerCase, ::findParent).any { ancestor -> ancestor.originCaseId != null }
     }
@@ -191,8 +191,8 @@ class CaseStarterService(
      * a *prefix* (autocomplete semantics, `Reporter` also returns `Reporter-v2`), so the result is narrowed to the
      * agent whose name is [agentName] in full. Unknown, disabled and not deployed look the same.
      *
-     * The launch uses the canonical name of the agent found, not the one the caller typed, for the `@mention` of
-     * the first message, the log and the [LaunchedCase].
+     * The start uses the canonical name of the agent found, not the one the caller typed, for the `@mention` of
+     * the first message, the log and the [StartedCase].
      */
     private fun findDeployedAgent(
         agentName: String,
@@ -306,7 +306,7 @@ class CaseStarterService(
     }
 
     companion object : KLogging() {
-        /** Maximum length of the title of a launched case, given or derived from its prompt. */
+        /** Maximum length of the title of a started case, given or derived from its prompt. */
         private const val MAX_TITLE_LENGTH = 80
     }
 }

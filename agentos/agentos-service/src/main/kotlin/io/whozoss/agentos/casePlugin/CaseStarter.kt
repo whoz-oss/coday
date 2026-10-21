@@ -82,7 +82,7 @@ internal class CaseStarter(
         }
     }
 
-    private fun LaunchedCase.toToolResult(): ToolExecutionResult =
+    private fun StartedCase.toToolResult(): ToolExecutionResult =
         ToolExecutionResult.success(
             "Case $caseId started for agent '$agentName'. " +
                 "It runs in the background on its own; its result is not returned here.",

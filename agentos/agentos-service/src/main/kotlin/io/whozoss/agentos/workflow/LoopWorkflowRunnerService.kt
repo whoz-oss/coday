@@ -35,7 +35,7 @@ import java.util.UUID
  * 4. ACT, for at most [LimitsConfigProperties.agentLoopMaxItems] entities:
  *    a. resolve the end-user via [UserService.findByExternalId] — skip if unknown;
  *    b. call the `FreeCaseStarterForUser` tool, **as the triggering user**, naming the end-user as the target and handing the
- *       entity over as its `sessionContext` (`activeContext`). The launch checks that the end-user has the agent
+ *       entity over as its `sessionContext` (`activeContext`). The start checks that the end-user has the agent
  *       deployed and resolves their own context (what the `UserContextProvider` returns, their preferred
  *       language); the loop does neither. Fire-and-forget: the tool returns the new case id at once. The new
  *       cases are top-level cases whose origin is the loop's own case: stopping the loop only stops the
@@ -43,11 +43,11 @@ import java.util.UUID
  *
  * ## Who is authorized
  *
- * The launches go through `FreeCaseStarterForUser`, so its rules apply: the **triggering user** must be an ADMIN of
+ * The starts go through `FreeCaseStarterForUser`, so its rules apply: the **triggering user** must be an ADMIN of
  * the namespace (federation) to start a case for someone else, and each
  * end-user must read the namespace and have the agent deployed. The loop adds no authorization of its own.
- * An end-user without the agent is refused by the launch and counted as `noAgentAccess`. An end-user whose
- * context cannot be resolved makes the launch fail, and is counted as failed.
+ * An end-user without the agent is refused by the start and counted as `noAgentAccess`. An end-user whose
+ * context cannot be resolved makes the start fail, and is counted as failed.
  *
  * Errors that prevent the whole run return [LoopRunOutcome.Aborted]; per-entity problems are
  * counted in [LoopRunOutcome.Completed] and never stop the loop.
@@ -210,7 +210,7 @@ class LoopWorkflowRunnerService(
         val endUserId = endUser.metadata.id
 
         // Only the entity travels as the context of the new case: the end-user's own context (provider,
-        // preferred language) is resolved by FreeCaseStarter, which fails the launch if it cannot be.
+        // preferred language) is resolved by FreeCaseStarter, which fails the start if it cannot be.
         val input =
             FreeCaseStarterForUserTool.Input(
                 agentName = act.agentName,
@@ -266,7 +266,7 @@ class LoopWorkflowRunnerService(
             return ItemOutcome.Failed
         }
         logger.info {
-            "[LoopWorkflowRunner] Launched case $caseId for entity '${item.entityId}' " +
+            "[LoopWorkflowRunner] Started case $caseId for entity '${item.entityId}' " +
                 "(agent=${result.metadata["agentName"]}, loopCase=${context.caseId})"
         }
         return ItemOutcome.Launched(caseId)

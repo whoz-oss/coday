@@ -38,7 +38,7 @@ class UserSessionContextResolver(
      * - [UserContextResult.Success]: call [mergePreferredLanguage] to produce the effective map.
      * - [UserContextResult.PermanentFailure] and [UserContextResult.TransientFailure]: the caller decides.
      *   The scheduler marks a permanent failure FAILED and retries a transient one (lease expiry, next tick);
-     *   `CaseStarterService` fails the launch for both.
+     *   `CaseStarterService` fails the start for both.
      */
     fun resolve(
         userExternalId: String,

@@ -33,10 +33,10 @@ import java.util.UUID
  * service has five collaborators, so each test runs against a whole small world, and changes only what it is about.
  *
  * **The world of a test** (`Fixture`): a `caller` and an `other` user, both plain members of the namespace (READ,
- * nobody is ADMIN), both with the agent `Reporter` deployed, no `UserContextProvider`, and a calling case that is top-level and was not launched.
+ * nobody is ADMIN), both with the agent `Reporter` deployed, no `UserContextProvider`, and a calling case that is top-level and was not started.
  * A test changes a permission (`namespacePermission`), a deployment (`deployAgent`), a user lookup
  * (`userService.findById`), the provider (`resolverAnswering`, `provider`), or the cases the service can read
- * (`cases`). `request(...)` builds the launch request, from the caller's case, for the caller by default.
+ * (`cases`). `request(...)` builds the start request, from the caller's case, for the caller by default.
  *
  * **What a test observes**: the fake `CaseService` of the fixture records what the service did (`created`, `sent`,
  * `deleted`), and can make each step fail (`createFailure`, `grantFailure`, `sendFailure`, `deleteFailure`).
@@ -46,7 +46,7 @@ import java.util.UUID
  * 1. the case it creates: origin, first message, ADMIN grant;
  * 2. its title;
  * 3. its session context: the caller's, under the one resolved for the target user;
- * 4. launch depth: a launched case cannot launch, nor can a case delegated from one;
+ * 4. start depth: a started case cannot start, nor can a case delegated from one;
  * 5. agent access and the calling user;
  * 6. another user: needs the caller to be ADMIN of the namespace;
  * 7. failures: thrown, never turned into refusals.
@@ -82,7 +82,7 @@ class CaseStarterServiceUnitSpec :
             var deleteFailure: Throwable? = null
 
             /**
-             * The cases `CaseService.findById` knows, by id: by default the calling case, top-level and not launched.
+             * The cases `CaseService.findById` knows, by id: by default the calling case, top-level and not started.
              * A deleted one is only found when asked for `withRemoved`.
              */
             val cases = mutableMapOf(callerCaseId to Case(metadata = EntityMetadata(id = callerCaseId), namespaceId = namespaceId))
@@ -172,7 +172,7 @@ class CaseStarterServiceUnitSpec :
         )
 
         /** Runs [start] and returns the refusal it throws; fails if it does not refuse. */
-        fun refusalOf(start: () -> LaunchedCase): CaseStarterRefusedException = shouldThrow<CaseStarterRefusedException> { start() }
+        fun refusalOf(start: () -> StartedCase): CaseStarterRefusedException = shouldThrow<CaseStarterRefusedException> { start() }
 
         /** A provider answering [answer] for any user; the calls it received are recorded in [asked]. */
         fun provider(
@@ -196,11 +196,11 @@ class CaseStarterServiceUnitSpec :
         "creates the case in the calling case's namespace, with the calling case as its origin, and returns its id" {
             val f = Fixture()
 
-            val launched = f.service.start(request())
+            val started = f.service.start(request())
 
             val case = f.created.single()
-            launched.caseId shouldBe case.id
-            launched.userId shouldBe caller.id
+            started.caseId shouldBe case.id
+            started.userId shouldBe caller.id
             case.originCaseId shouldBe callerCaseId
             case.namespaceId shouldBe namespaceId
         }
@@ -244,10 +244,10 @@ class CaseStarterServiceUnitSpec :
         "the agent is addressed by its canonical name, whatever the case it was requested in" {
             val f = Fixture()
 
-            val launched = f.service.start(request(agentName = "reporter"))
+            val started = f.service.start(request(agentName = "reporter"))
 
             f.sent.single().content shouldBe listOf(MessageContent.Text("@Reporter Summarise the week"))
-            launched.agentName shouldBe "Reporter"
+            started.agentName shouldBe "Reporter"
         }
 
         // -------------------------------------------------------------------------
@@ -400,7 +400,7 @@ class CaseStarterServiceUnitSpec :
             f.sent.single().sessionContext shouldBe null
         }
 
-        "the provider is never called for a launch refused before it: it may be an external request" {
+        "the provider is never called for a start refused before it: it may be an external request" {
             val asked = mutableListOf<Pair<String, UUID>>()
             val f = Fixture(UserSessionContextResolver(provider(asked) { UserContextResult.Success(null) }))
             f.deployAgent(caller, "SomethingElse")
@@ -413,40 +413,40 @@ class CaseStarterServiceUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Launch depth: a launched case cannot launch
+        // Start depth: a started case cannot start
         // -------------------------------------------------------------------------
 
-        "a case that was itself launched cannot launch another one" {
+        "a case that was itself started cannot start another one" {
             val f = Fixture()
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(originCaseId = UUID.randomUUID())
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.START_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
-        "nor can a case delegated from a launched case, at any depth" {
+        "nor can a case delegated from a started case, at any depth" {
             val f = Fixture()
-            val launched = Case(namespaceId = namespaceId, originCaseId = UUID.randomUUID())
-            val subCase = Case(namespaceId = namespaceId, parentCaseId = launched.id)
-            f.cases += listOf(launched, subCase).associateBy { it.id }
+            val started = Case(namespaceId = namespaceId, originCaseId = UUID.randomUUID())
+            val subCase = Case(namespaceId = namespaceId, parentCaseId = started.id)
+            f.cases += listOf(started, subCase).associateBy { it.id }
             f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = subCase.id)
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.START_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
-        "nor can a case delegated from a launched case that was deleted since: its origin does not go away" {
+        "nor can a case delegated from a started case that was deleted since: its origin does not go away" {
             val f = Fixture()
-            val launched =
+            val started =
                 Case(metadata = EntityMetadata(removed = true), namespaceId = namespaceId, originCaseId = UUID.randomUUID())
-            f.cases[launched.id] = launched
-            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = launched.id)
+            f.cases[started.id] = started
+            f.cases[callerCaseId] = f.cases.getValue(callerCaseId).copy(parentCaseId = started.id)
 
-            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.LAUNCH_DEPTH_EXCEEDED
+            refusalOf { f.service.start(request()) }.reason shouldBe CaseStarterRefusal.START_DEPTH_EXCEEDED
             f.created shouldBe emptyList()
         }
 
-        "a case delegated from a case that was not launched can launch" {
+        "a case delegated from a case that was not started can start" {
             val f = Fixture()
             val parent = Case(namespaceId = namespaceId)
             f.cases[parent.id] = parent
@@ -513,9 +513,9 @@ class CaseStarterServiceUnitSpec :
             val f = Fixture()
             f.namespacePermission(caller, Action.WRITE, true)
 
-            val launched = f.service.start(request(targetUserId = other.id))
+            val started = f.service.start(request(targetUserId = other.id))
 
-            launched.userId shouldBe other.id
+            started.userId shouldBe other.id
             f.sent.single().actor.id shouldBe other.id.toString()
             // The origin is still the calling case, whoever the new case runs for.
             f.created.single().originCaseId shouldBe callerCaseId
@@ -640,7 +640,7 @@ class CaseStarterServiceUnitSpec :
             f.created shouldBe emptyList()
         }
 
-        "a provider that throws fails the launch the same way: the resolver turns it into a transient failure" {
+        "a provider that throws fails the start the same way: the resolver turns it into a transient failure" {
             val throwing =
                 mockk<UserContextProvider> {
                     every { provideUserContext(any(), any()) } throws RuntimeException("connection reset")

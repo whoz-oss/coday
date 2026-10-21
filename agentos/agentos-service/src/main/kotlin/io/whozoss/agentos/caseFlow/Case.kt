@@ -36,9 +36,9 @@ data class Case(
      * Id of the case whose agent started this one with the `FreeCaseStarter` tool
      * ([io.whozoss.agentos.casePlugin.CaseStarterService]). Null for cases started otherwise.
      *
-     * A trace of provenance, unlike [parentCaseId]: a launched case is a top-level case in every other
+     * A trace of provenance, unlike [parentCaseId]: a started case is a top-level case in every other
      * respect (own lifecycle, workspace, cost and delegation depth). The only thing that reads it is the rule
-     * that keeps a launched case, and the cases delegated from it, from launching another one.
+     * that keeps a started case, and the cases delegated from it, from starting another one.
      */
     val originCaseId: UUID? = null,
     /**

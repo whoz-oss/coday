@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Configuration
  * business logic, it only binds dependencies:
  * - [CaseToolService]: the read side (`ReadCase`): existence, namespace isolation and Case READ. It injects
  *   repositories rather than `CaseService`, which would close the cycle.
- * - [CaseStarterService]: the launch side. It is safe to inject: it reaches `CaseService` through a `@Lazy`
+ * - [CaseStarterService]: the start side. It is safe to inject: it reaches `CaseService` through a `@Lazy`
  *   proxy.
  */
 @Configuration

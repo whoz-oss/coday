@@ -9,7 +9,7 @@ import java.util.UUID
  * @param userId The user the case runs for: the caller, or the user the caller named.
  * @param agentName The canonical name of the agent that works on it, as deployed, not as the caller typed it.
  */
-data class LaunchedCase(
+data class StartedCase(
     val caseId: UUID,
     val userId: UUID,
     val agentName: String,

@@ -6,10 +6,10 @@ package io.whozoss.agentos.casePlugin
  */
 enum class CaseStarterRefusal {
     /**
-     * The calling case was itself started by a launch, or was delegated from a case that was: a launched case
-     * cannot launch another one, so launches never chain.
+     * The calling case was itself started by another case, or was delegated from a case that was: a started case
+     * cannot start another one, so starts never chain.
      */
-    LAUNCH_DEPTH_EXCEEDED,
+    START_DEPTH_EXCEEDED,
 
     /** Only an ADMIN of the namespace (federation) can start a case for another user. */
     FORBIDDEN,
