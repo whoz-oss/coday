@@ -5,7 +5,8 @@ import { Configuration } from '../lib/configuration'
 export type NamespaceCaseListUpdateSignal = 'connected' | 'updated'
 
 /**
- * Payload-free SSE notifications that indicate a namespace's case list was updated.
+ * Metadata-free SSE notifications with a neutral `{}` data payload that indicate
+ * a namespace's case list was updated.
  *
  * EventSource fires `open` both for the initial connection and native reconnects.
  * Consumers should reload on every emitted signal to recover updates that may
