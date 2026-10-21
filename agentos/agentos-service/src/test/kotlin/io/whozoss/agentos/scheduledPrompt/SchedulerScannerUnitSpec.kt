@@ -85,6 +85,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             caseService = mockk(relaxed = true),
             permissionService = mockk(relaxed = true),
             userService = mockk(relaxed = true),
+            synthesizer = mockk(relaxed = true),
             properties = scannerProperties,
             clock = clock,
         )
@@ -125,6 +126,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
             caseService = mockk(relaxed = true),
             permissionService = mockk(relaxed = true),
             userService = mockk(relaxed = true),
+            synthesizer = mockk(relaxed = true),
             properties = properties,
             clock = clock,
         )
@@ -821,6 +823,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 }
                 every { it.hasActive(any()) } returns false
                 every { it.findOrphanedClaimed(any()) } returns emptyList()
+                every { it.findOrphanedTargeting(any()) } returns emptyList()
                 every { it.findSettledRunning() } returns emptyList()
                 every { it.findById(any()) } answers { realRunRepo.findById(firstArg()) }
                 every { it.updateStatus(any(), any(), any(), any()) } answers {
@@ -839,6 +842,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
+                synthesizer = mockk(relaxed = true),
                 properties = properties,
                 clock = clock,
             )
@@ -924,6 +928,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
+                synthesizer = mockk(relaxed = true),
                 properties = badProperties,
                 clock = clock,
             )
@@ -995,6 +1000,7 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
+                synthesizer = mockk(relaxed = true),
                 properties = goodProperties,
                 clock = clock,
             )
