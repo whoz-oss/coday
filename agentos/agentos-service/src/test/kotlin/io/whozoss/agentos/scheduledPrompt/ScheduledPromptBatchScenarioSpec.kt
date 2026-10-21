@@ -11,6 +11,7 @@ import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.context.UserSessionContextResolver
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
@@ -139,6 +140,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             userSessionContextResolver = UserSessionContextResolver(),
             properties = properties,
             clock = clock,
+            caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
         )
         val scanner = SchedulerScanner(
             scheduledPromptRepository = spRepo,
@@ -347,6 +349,7 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 userSessionContextResolver = UserSessionContextResolver(),
                 properties = smallBatchProperties,
                 clock = clock,
+                caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
             )
             val scanner = SchedulerScanner(
                 scheduledPromptRepository = spRepo,

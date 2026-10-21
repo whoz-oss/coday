@@ -33,7 +33,7 @@ describe('NamespaceCaseListUpdateSseService', () => {
     FakeEventSource.latest = null
   })
 
-  it('emits on open/reconnect and payload-free named updates, then closes', () => {
+  it('emits on open/reconnect and named updates with a neutral payload, then closes', () => {
     const injector = Injector.create({
       providers: [
         { provide: Configuration, useValue: { basePath: '/api/agentos' } },

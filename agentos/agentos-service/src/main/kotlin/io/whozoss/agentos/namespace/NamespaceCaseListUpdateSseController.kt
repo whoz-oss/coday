@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /** Authenticated namespace stream that tells clients to reload their permission-filtered case list. */
@@ -33,6 +34,7 @@ import java.util.concurrent.atomic.AtomicLong
 class NamespaceCaseListUpdateSseController(
     private val broadcaster: NamespaceCaseListUpdateBroadcaster,
     private val caseConfig: CaseConfigProperties,
+    private val parentScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
     private val heartbeatIntervalMs get() = caseConfig.sseHeartbeatIntervalMs
 
@@ -55,59 +57,70 @@ class NamespaceCaseListUpdateSseController(
     @HideOnAccessDenied
     fun streamCaseListUpdates(@PathVariable namespaceId: UUID): SseEmitter {
         val emitter = SseEmitter(0L)
-        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        val connectionJob = SupervisorJob(parentScope.coroutineContext[Job])
+        val connectionScope = CoroutineScope(parentScope.coroutineContext + connectionJob)
+        val cleaned = AtomicBoolean(false)
+        var jobs: Pair<Job, Job>? = null
+        val cleanup = {
+            if (cleaned.compareAndSet(false, true)) {
+                jobs?.first?.cancel()
+                jobs?.second?.cancel()
+                connectionJob.cancel()
+            }
+        }
 
-        startUpdateJob(scope, emitter, namespaceId)
-        startHeartbeatJob(scope, emitter, namespaceId)
-
-        emitter.onCompletion { scope.cancel() }
-        emitter.onTimeout { scope.cancel() }
-        emitter.onError { scope.cancel() }
+        jobs = startConnectionJobs(connectionScope, emitter, namespaceId, cleanup)
+        emitter.onCompletion(cleanup)
+        emitter.onTimeout(cleanup)
+        emitter.onError { cleanup() }
         return emitter
     }
 
-    private fun startUpdateJob(
+    internal fun startConnectionJobs(
         scope: CoroutineScope,
         emitter: SseEmitter,
         namespaceId: UUID,
-    ) {
-        scope.launch(start = CoroutineStart.UNDISPATCHED) {
-            try {
-                broadcaster.events(namespaceId).collect {
-                    emitter.send(
-                        SseEmitter
-                            .event()
-                            .id(sequence.incrementAndGet().toString())
-                            .name(NAMESPACE_CASE_LIST_UPDATED_EVENT)
-                            .data(NEUTRAL_PAYLOAD),
-                    )
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (error: Exception) {
-                logger.debug { "Namespace case-list update stream closed for $namespaceId: ${error.message}" }
-                emitter.completeWithError(error)
-                scope.cancel()
-            }
-        }
-    }
-
-    private fun startHeartbeatJob(
-        scope: CoroutineScope,
-        emitter: SseEmitter,
-        namespaceId: UUID,
-    ): Job =
-        scope.launch {
-            while (isActive) {
-                delay(heartbeatIntervalMs)
+        cleanup: () -> Unit,
+    ): Pair<Job, Job> {
+        val updateJob =
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
-                    emitter.send(SseEmitter.event().comment("keep-alive"))
+                    broadcaster.events(namespaceId).collect {
+                        emitter.send(
+                            SseEmitter
+                                .event()
+                                .id(sequence.incrementAndGet().toString())
+                                .name(NAMESPACE_CASE_LIST_UPDATED_EVENT)
+                                .data(NEUTRAL_PAYLOAD),
+                        )
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (error: Exception) {
+                    logger.debug { "Namespace case-list update stream closed for $namespaceId: ${error.message}" }
+                    emitter.completeWithError(error)
+                } finally {
+                    cleanup()
+                }
+            }
+        val heartbeatJob =
+            scope.launch {
+                try {
+                    while (isActive) {
+                        delay(heartbeatIntervalMs)
+                        emitter.send(SseEmitter.event().comment("keep-alive"))
+                    }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (error: Exception) {
                     logger.debug { "Namespace heartbeat failed for $namespaceId — client likely disconnected" }
-                    scope.cancel()
+                    emitter.completeWithError(error)
+                } finally {
+                    cleanup()
                 }
             }
-        }
+        return updateJob to heartbeatJob
+    }
 
     companion object : KLogging() {
         const val NAMESPACE_CASE_LIST_UPDATED_EVENT = "namespace-case-list-updated"
