@@ -29,8 +29,8 @@ import org.springframework.http.ResponseEntity
  * HTTP integration tests of the workflow REST surface against the embedded Neo4j
  * engine and a real servlet container.
  *
- * The shared integration profile runs with `factory.security.insecure-mode=true`, so
- * every call acts as the `insecure-mode-user` of the default tenant. Exercises the
+ * The shared integration profile runs in `factory.security.mode=local` with a fixed test
+ * user, so every call acts as [Neo4jIntegrationTest.TEST_USER_ID] in the default tenant. Exercises the
  * canonical `{ "data": ... }` success envelope, the `{ "error": { code, message } }`
  * failure envelope and the governed `start` / detail routes. The authentication
  * itself is covered by `AuthenticationFilterTest`.
@@ -394,7 +394,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         val controllerRequest = data(start.body)["controllerRequest"] as Map<*, *>
         assertThat(controllerRequest["text"]).isEqualTo("Implement the engineer request.")
         assertThat(controllerRequest["namespaceId"]).isEqualTo(namespace)
-        assertThat(controllerRequest["actorId"]).isEqualTo("insecure-mode-user")
+        assertThat(controllerRequest["actorId"]).isEqualTo(TEST_USER_ID)
         assertThat(controllerRequest["source"]).isEqualTo("factory-cockpit")
         assertThat(controllerRequest["observedAt"]).isNotNull
 

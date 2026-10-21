@@ -30,8 +30,8 @@ import org.springframework.http.ResponseEntity
  * HTTP integration tests of the `FACTORY_WORKSTREAM` facade.
  *
  * The facade is an ordinary authenticated API: the shared integration profile runs with
- * `factory.security.insecure-mode=true`, so these calls carry no bearer and act as the
- * insecure-mode user of the default tenant (`org-local-dev` / `ws-default`). There is no
+ * `factory.security.mode=local`, so these calls carry no bearer and act as the
+ * fixed local test user of the default tenant (`org-local-dev` / `ws-default`). There is no
  * authorization to test: what is covered here is the domain behaviour (namespace owned by
  * the registered workstream, tenant fencing, secret-free payloads, idempotent start and
  * retry request).

@@ -1,5 +1,6 @@
 package io.whozoss.factory
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.config.WebConfig
 import io.whozoss.factory.error.FactoryExceptionHandler
@@ -11,6 +12,9 @@ import io.whozoss.factory.web.CorrelationIdFilter
 import io.whozoss.factory.web.FakeIdp
 import io.whozoss.factory.web.JwtTokenVerifier
 import io.whozoss.factory.web.LocalDevMembershipResolver
+import io.whozoss.factory.web.security.AuthIdentityResolver
+import io.whozoss.factory.web.security.IdentityResolver
+import io.whozoss.factory.web.security.LocalIdentityResolver
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.matchesPattern
 import org.hamcrest.Matchers.nullValue
@@ -56,12 +60,10 @@ class HttpBoundaryIntegrationTest {
     }
 
     private val secret = "test-fake-idp-secret"
+    private val LOCAL_USER = "factory-test-user"
 
-    private fun buildMockMvc(insecureMode: Boolean): MockMvc {
-        val properties = FactoryProperties(
-            security = FactoryProperties.Security(fakeIdpSecret = secret, insecureMode = insecureMode),
-        )
-        val filter = AuthenticationFilter(properties, JwtTokenVerifier(properties), LocalDevMembershipResolver())
+    private fun buildMockMvc(identityResolver: IdentityResolver): MockMvc {
+        val filter = AuthenticationFilter(identityResolver, LocalDevMembershipResolver())
         val builder = MockMvcBuilders.standaloneSetup(BoundaryController())
         builder.setControllerAdvice(FactoryExceptionHandler())
         builder.setCustomArgumentResolvers(AuthenticatedUserArgumentResolver())
@@ -69,31 +71,36 @@ class HttpBoundaryIntegrationTest {
         return builder.build()
     }
 
-    private val insecureMockMvc: MockMvc = buildMockMvc(insecureMode = true)
+    /** Local mode with a fixed OS user, so the test never depends on the machine's user. */
+    private val localMockMvc: MockMvc = buildMockMvc(LocalIdentityResolver { LOCAL_USER })
 
-    /** Same boundary with insecure mode off: an unauthenticated request never reaches a controller. */
-    private val strictMockMvc: MockMvc = buildMockMvc(insecureMode = false)
+    /** Auth mode: an unauthenticated request never reaches a controller. */
+    private val strictMockMvc: MockMvc = buildMockMvc(
+        FactoryProperties(security = FactoryProperties.Security(fakeIdpSecret = secret)).let {
+            AuthIdentityResolver(JwtTokenVerifier(it), ObjectMapper())
+        },
+    )
 
     private fun bearer(userId: String): String =
         "Bearer " + FakeIdp.issueJwt(mapOf("sub" to userId, "exp" to System.currentTimeMillis() / 1000 + 300), secret)
 
     @Test
     fun `generates a correlation id when the header is absent`() {
-        insecureMockMvc.perform(get("/api/test/user"))
+        localMockMvc.perform(get("/api/test/user"))
             .andExpect(status().isOk)
             .andExpect(header().string("X-Correlation-Id", matchesPattern("coday-corr-.+")))
     }
 
     @Test
     fun `propagates an inbound correlation id`() {
-        insecureMockMvc.perform(get("/api/test/user").header("X-Correlation-Id", "corr-abc-123"))
+        localMockMvc.perform(get("/api/test/user").header("X-Correlation-Id", "corr-abc-123"))
             .andExpect(status().isOk)
             .andExpect(header().string("X-Correlation-Id", "corr-abc-123"))
     }
 
     @Test
     fun `uncaught exception produces the canonical error envelope`() {
-        insecureMockMvc.perform(get("/api/test/boom"))
+        localMockMvc.perform(get("/api/test/boom"))
             .andExpect(status().isInternalServerError)
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
             .andExpect(
@@ -106,7 +113,7 @@ class HttpBoundaryIntegrationTest {
 
     @Test
     fun `not-found exception produces the NOT_FOUND envelope`() {
-        insecureMockMvc.perform(get("/api/test/not-found"))
+        localMockMvc.perform(get("/api/test/not-found"))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.error.code").value("NOT_FOUND"))
             .andExpect(jsonPath("$.error.message").value("missing resource"))
@@ -115,7 +122,7 @@ class HttpBoundaryIntegrationTest {
 
     @Test
     fun `illegal argument produces a BAD_REQUEST envelope`() {
-        insecureMockMvc.perform(post("/api/test/illegal"))
+        localMockMvc.perform(post("/api/test/illegal"))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"))
             .andExpect(jsonPath("$.error.message").value("bad arg"))
@@ -143,15 +150,22 @@ class HttpBoundaryIntegrationTest {
     }
 
     @Test
-    fun `insecure mode gives the insecure user without any bearer`() {
-        insecureMockMvc.perform(get("/api/test/user"))
+    fun `local mode gives the OS user without any bearer`() {
+        localMockMvc.perform(get("/api/test/user"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.userId").value("insecure-mode-user"))
+            .andExpect(jsonPath("$.userId").value(LOCAL_USER))
+    }
+
+    @Test
+    fun `local mode refuses a system account with 403 before the controller`() {
+        buildMockMvc(LocalIdentityResolver { "root" }).perform(get("/api/test/user"))
+            .andExpect(status().isForbidden)
+            .andExpect(jsonPath("$.error.code").value("FORBIDDEN_SYSTEM_ACCOUNT"))
     }
 
     @Test
     fun `correlation id is echoed even on error responses`() {
-        val result = insecureMockMvc.perform(get("/api/test/boom").header("X-Correlation-Id", "corr-error"))
+        val result = localMockMvc.perform(get("/api/test/boom").header("X-Correlation-Id", "corr-error"))
             .andExpect(status().isInternalServerError)
             .andReturn()
         assertThat(result.response.getHeader("X-Correlation-Id")).isEqualTo("corr-error")

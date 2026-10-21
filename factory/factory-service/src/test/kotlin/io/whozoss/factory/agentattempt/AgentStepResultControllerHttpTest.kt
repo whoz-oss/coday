@@ -31,8 +31,8 @@ import org.springframework.http.ResponseEntity
  *
  * Exercises `POST /api/factory/agent-step-results` (`{ attemptId, result }` plus a
  * required `Idempotency-Key` header). The shared integration profile runs with
- * `factory.security.insecure-mode=true`, so these calls carry no bearer and act as
- * the insecure-mode user (`org-local-dev` / `ws-default`). The attempt is resolved
+ * `factory.security.mode=local`, so these calls carry no bearer and act as
+ * the fixed local test user (`org-local-dev` / `ws-default`). The attempt is resolved
  * by its id within that user's ORGANIZATION and the submission runs under the
  * attempt's OWN persisted scope; the secure-mode behaviour lives in
  * [AgentStepResultControllerSecureModeHttpTest].
@@ -189,7 +189,7 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
         val mappedAttempt = "attempt-http-mapped"
         registerAttempt(mappedScope, mappedAttempt, namespaceUuid)
 
-        // No bearer: the caller is the insecure user of ws-default, a different workstream.
+        // No bearer: the caller is the local test user of ws-default, a different workstream.
         val response = post(body(mappedAttempt), key = "key-mapped")
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
@@ -200,7 +200,7 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `an invalid static bearer in insecure mode still creates the result`() {
+    fun `an invalid static bearer in local mode still creates the result`() {
         val response = post(body(attemptId), key = "key-static-bearer", bearer = "some-old-static-token")
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)

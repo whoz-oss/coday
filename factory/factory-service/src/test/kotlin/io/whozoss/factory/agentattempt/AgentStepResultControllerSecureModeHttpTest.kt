@@ -26,16 +26,16 @@ import org.springframework.http.ResponseEntity
 import org.springframework.test.context.TestPropertySource
 
 /**
- * The worker result route with authentication ENABLED (`insecure-mode=false`).
+ * The worker result route in `auth` security mode (`factory.security.mode=auth`).
  *
  * The per-class property override gives this class its own Spring context (and its own
  * in-process Neo4j harness), exactly like `WorkflowActionsHttpTest`: the shared context of
- * the other integration tests keeps running in insecure mode.
+ * the other integration tests keeps running in local mode.
  *
  * Only the authentication filter decides here: a missing or garbage bearer is a 401 before
  * the controller runs, a valid Factory JWT reaches the route and submits.
  */
-@TestPropertySource(properties = ["factory.security.insecure-mode=false"])
+@TestPropertySource(properties = ["factory.security.mode=auth"])
 class AgentStepResultControllerSecureModeHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired

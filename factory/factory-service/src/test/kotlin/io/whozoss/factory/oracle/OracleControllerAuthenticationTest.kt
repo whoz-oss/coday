@@ -15,13 +15,13 @@ import org.springframework.test.context.TestPropertySource
 
 /**
  * Fail-closed HTTP boundary test: with authentication enabled
- * (`factory.security.insecure-mode=false`) and no credential, a guarded route must be
+ * (`factory.security.mode=auth`) and no credential, a guarded route must be
  * refused by the authentication filter before any domain work.
  *
  * The per-class property override gives this class its own Spring context, while
- * the shared integration context keeps running in insecure mode.
+ * the shared integration context keeps running in local mode.
  */
-@TestPropertySource(properties = ["factory.security.insecure-mode=false"])
+@TestPropertySource(properties = ["factory.security.mode=auth"])
 class OracleControllerAuthenticationTest : Neo4jIntegrationTest() {
 
     @Autowired

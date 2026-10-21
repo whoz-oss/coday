@@ -52,14 +52,14 @@ spring:
         options:
           model: gpt-4-turbo-preview
           temperature: 0.7
-    
+
     anthropic:
       api-key: ${ANTHROPIC_API_KEY:}
       chat:
         options:
           model: claude-3-5-sonnet-20241022
           temperature: 0.7
-    
+
     ollama:
       init:
         # Prevent the Ollama starter from pulling models at startup.
@@ -276,7 +276,7 @@ agentos:
     # local: uses the OS username; auto-creates a User record on first access.
     # auth:  decodes the Cloudflare JWT (Cf-Access-Jwt-Assertion header) or falls back
     #        to x-forwarded-email; requires the User to be pre-registered.
-    # Override with env var: AGENTOS_SECURITY_MODE
+    # Override with env var: FACTORY_SECURITY_MODE
     mode: local
   oauth:
     # Absolute redirect URI sent to the OAuth provider as redirect_uri.
