@@ -1,20 +1,17 @@
 /**
  * agentos-download.ts
  *
- * Download all 5 AgentOS JARs from GitHub Release assets, verify their
- * SHA-256 checksums, write them atomically to disk, and clean up stale JARs.
+ * Download every AgentOS JAR (see AGENTOS_ARTIFACT_IDS) from GitHub Release assets,
+ * verify their SHA-256 checksums, write them atomically to disk, and clean up stale JARs.
  *
- * Active layout:
+ * Layout:
  *   <configDir>/agentos/agentos-service-<version>.jar
- *   <configDir>/agentos/plugins/agentos-bash-plugin-<version>.jar
- *   ... (4 plugins)
+ *   <configDir>/agentos/plugins/agentos-<name>-plugin-<version>.jar
+ *   ... (one per plugin)
  *
- * Background update layout (next/):
- *   <configDir>/agentos/next/agentos-service-<version>.jar
- *   <configDir>/agentos/next/plugins/agentos-bash-plugin-<version>.jar
- *   ... (same structure)
- *
- * On next startup, checkAndSwapNext() promotes next/ to the active layout.
+ * The requested version always wins: if the JARs on disk are not at the requested
+ * version, the requested version is downloaded (blocking) and every other version is
+ * removed. There is no cache that can take precedence over the requested version.
  *
  * INVARIANTS:
  *   - Never throws. Every error is caught, logged, and returned as a structured result.
@@ -43,11 +40,8 @@ const FETCH_TIMEOUT_MS = 60_000
 export type DownloadOutcome =
   | 'skipped:all-present' // All JARs already at the expected version
   | 'skipped:dev-version' // version is 'dev' — no release to download from
-  | 'skipped:already-in-next' // next/ already contains all JARs at the target version
-  | 'error:manifest-unavailable' // checksums.sha256 returned non-2xx
-  | 'error:manifest-parse' // checksums.sha256 could not be parsed
-  | 'error:download-failed' // One or more JARs failed to download/verify/write
-  | 'success' // All needed JARs downloaded, verified, written; stale JARs cleaned
+  | 'error:download-failed' // Manifest fetch, or one or more JARs failed to download/verify/write
+  | 'success' // All JARs downloaded, verified, written; stale JARs cleaned
 
 export interface DownloadResult {
   outcome: DownloadOutcome
@@ -57,18 +51,6 @@ export interface DownloadResult {
   downloaded?: number
   /** Number of stale JARs removed. */
   cleaned?: number
-}
-
-export type SwapOutcome =
-  | 'swapped' // next/ promoted to active, old JARs cleaned
-  | 'skipped:no-next' // next/ does not exist
-  | 'skipped:incomplete' // next/ exists but missing some JARs at target version
-  | 'error' // rename/unlink failed
-
-export interface SwapResult {
-  outcome: SwapOutcome
-  message: string
-  version?: string
 }
 
 // ---------------------------------------------------------------------------
@@ -139,11 +121,11 @@ export function cleanDirectory(dir: string, allowedFilenames: Set<string>): numb
 }
 
 // ---------------------------------------------------------------------------
-// Internal: download all 5 JARs into an arbitrary target directory
+// Internal: download all JARs into an arbitrary target directory
 // ---------------------------------------------------------------------------
 
 /**
- * Download all 5 AgentOS JARs for `version` into `targetDir`.
+ * Download all AgentOS JARs for `version` into `targetDir`.
  * Creates targetDir and targetDir/plugins/ if needed.
  * Throws on any error — callers must catch.
  */
@@ -217,124 +199,15 @@ async function downloadAllToDir(targetDir: string, version: string, label: strin
 }
 
 // ---------------------------------------------------------------------------
-// Public: swap next/ into active layout
+// Public: blocking download of the requested version
 // ---------------------------------------------------------------------------
 
 /**
- * Check whether <configDir>/agentos/next/ contains all 5 JARs at targetVersion,
- * and if so promote them to the active layout via atomic renames, then clean up.
+ * Download the full AgentOS JAR set at `expectedVersion` when any artifact is absent or at
+ * another version, then remove every JAR that is not at `expectedVersion`.
  *
- * Called at startup BEFORE the inventory check.
- */
-export function checkAndSwapNext(configDir: string, targetVersion: string): SwapResult {
-  const agentosDir = path.join(configDir, 'agentos')
-  const nextDir = path.join(agentosDir, 'next')
-  const activePluginsDir = path.join(agentosDir, 'plugins')
-
-  if (!fs.existsSync(nextDir)) {
-    return { outcome: 'skipped:no-next', message: 'No next/ directory — nothing to swap' }
-  }
-
-  // Verify completeness
-  const missing = AGENTOS_ARTIFACT_IDS.filter((id) => !fs.existsSync(jarDestPath(nextDir, id, targetVersion)))
-  if (missing.length > 0) {
-    debugLog(
-      'AGENTOS',
-      `[SWAP] next/ incomplete for version ${targetVersion} — missing: ${missing.join(', ')} — skipping`
-    )
-    return { outcome: 'skipped:incomplete', message: `next/ missing: ${missing.join(', ')}` }
-  }
-
-  debugLog('AGENTOS', `[SWAP] Promoting next/ (version ${targetVersion}) to active layout...`)
-
-  try {
-    // Move service JAR
-    fs.renameSync(
-      jarDestPath(nextDir, 'agentos-service', targetVersion),
-      path.join(agentosDir, `agentos-service-${targetVersion}.jar`)
-    )
-    debugLog('AGENTOS', `[SWAP]   agentos-service-${targetVersion}.jar`)
-
-    // Move plugin JARs
-    fs.mkdirSync(activePluginsDir, { recursive: true })
-    for (const artifactId of AGENTOS_ARTIFACT_IDS.filter((id) => id !== 'agentos-service')) {
-      fs.renameSync(
-        jarDestPath(nextDir, artifactId, targetVersion),
-        path.join(activePluginsDir, `${artifactId}-${targetVersion}.jar`)
-      )
-      debugLog('AGENTOS', `[SWAP]   ${artifactId}-${targetVersion}.jar`)
-    }
-
-    // Remove next/ entirely
-    fs.rmSync(nextDir, { recursive: true, force: true })
-    debugLog('AGENTOS', `[SWAP] next/ removed`)
-
-    // Strict cleanup of old versions
-    const allowedRoot = new Set([`agentos-service-${targetVersion}.jar`])
-    const allowedPlugins = new Set(
-      AGENTOS_ARTIFACT_IDS.filter((id) => id !== 'agentos-service').map((id) => `${id}-${targetVersion}.jar`)
-    )
-    const cleaned = cleanDirectory(agentosDir, allowedRoot) + cleanDirectory(activePluginsDir, allowedPlugins)
-    if (cleaned > 0) debugLog('AGENTOS', `[SWAP] Removed ${cleaned} stale JAR(s) from previous version`)
-
-    debugLog('AGENTOS', `[SWAP] Complete — AgentOS ${targetVersion} is now active`)
-    return { outcome: 'swapped', message: `Promoted version ${targetVersion} from next/`, version: targetVersion }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    debugLog('AGENTOS', `[SWAP] Error during swap: ${msg}`)
-    return { outcome: 'error', message: msg }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Public: background pre-fetch into next/
-// ---------------------------------------------------------------------------
-
-/**
- * Download all 5 AgentOS JARs for targetVersion into <configDir>/agentos/next/.
- * Skips silently if next/ already contains all JARs at targetVersion.
- * Fire-and-forget safe — never throws.
- *
- * @param configDir     Root config directory.
- * @param targetVersion Version to pre-fetch (from getAgentosVersion()).
- */
-export async function downloadAgentosJarsToNext(configDir: string, targetVersion: string): Promise<DownloadResult> {
-  if (targetVersion === 'dev') {
-    return { outcome: 'skipped:dev-version', message: "Version is 'dev' — nothing to pre-fetch" }
-  }
-
-  const nextDir = path.join(configDir, 'agentos', 'next')
-
-  // Skip if next/ already complete
-  const alreadyComplete = AGENTOS_ARTIFACT_IDS.every((id) => fs.existsSync(jarDestPath(nextDir, id, targetVersion)))
-  if (alreadyComplete) {
-    debugLog('AGENTOS', `[UPDATE] next/ already complete for version ${targetVersion} — skipping`)
-    return { outcome: 'skipped:already-in-next', message: `next/ already complete for ${targetVersion}` }
-  }
-
-  debugLog('AGENTOS', `[UPDATE] Pre-fetching version ${targetVersion} into next/ (background)...`)
-
-  try {
-    const { downloaded } = await downloadAllToDir(nextDir, targetVersion, '[UPDATE]')
-    debugLog(
-      'AGENTOS',
-      `[UPDATE] Pre-fetch complete: ${downloaded} JAR(s) ready in next/. Will activate on next Coday startup.`
-    )
-    return { outcome: 'success', message: `Pre-fetched ${downloaded} JAR(s) to next/`, downloaded }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    debugLog('AGENTOS', `[UPDATE] Pre-fetch failed (non-fatal): ${msg}`)
-    return { outcome: 'error:download-failed', message: msg }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Public: blocking download to active layout (first-run / missing JARs)
-// ---------------------------------------------------------------------------
-
-/**
- * Download all missing AgentOS JARs directly to the active layout, then clean up stale JARs.
- * Used only on first run or when JARs are missing/corrupted.
+ * The requested version always takes precedence over whatever is on disk: callers must
+ * wait for this to finish, then start `expectedVersion` (never an older installed one).
  *
  * @param configDir        Root config directory.
  * @param expectedVersion  Version string from getAgentosVersion().
@@ -360,37 +233,43 @@ export async function downloadAgentosJars(
 
   debugLog(
     'AGENTOS',
-    `[DOWNLOAD] Starting download of ${missingArtifacts.length} artifact(s) for version ${expectedVersion}`
+    `[DOWNLOAD] Version ${expectedVersion} not fully installed — downloading all ${AGENTOS_ARTIFACT_IDS.length} artifact(s)`
   )
-  debugLog('AGENTOS', `[DOWNLOAD] Missing: ${missingArtifacts.join(', ')}`)
+  debugLog('AGENTOS', `[DOWNLOAD] Missing or at another version: ${missingArtifacts.join(', ')}`)
 
+  let downloaded: number
   try {
-    await downloadAllToDir(agentosDir, expectedVersion, '[DOWNLOAD]')
+    ;({ downloaded } = await downloadAllToDir(agentosDir, expectedVersion, '[DOWNLOAD]'))
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     debugLog('AGENTOS', `[DOWNLOAD] Download failed: ${msg}`)
     return { outcome: 'error:download-failed', message: msg }
   }
 
-  // Strict cleanup
+  // Strict cleanup: only the requested version may remain
   const allowedRoot = new Set([`agentos-service-${expectedVersion}.jar`])
   const allowedPlugins = new Set(
     AGENTOS_ARTIFACT_IDS.filter((id) => id !== 'agentos-service').map((id) => `${id}-${expectedVersion}.jar`)
   )
   debugLog('AGENTOS', '[DOWNLOAD] Running strict cleanup...')
-  const cleanedRoot = cleanDirectory(agentosDir, allowedRoot)
-  const cleanedPlugins = cleanDirectory(pluginsDir, allowedPlugins)
-  const totalCleaned = cleanedRoot + cleanedPlugins
-  if (totalCleaned > 0) {
-    debugLog('AGENTOS', `[DOWNLOAD] Cleanup: removed ${totalCleaned} stale file(s)`)
-  } else {
-    debugLog('AGENTOS', '[DOWNLOAD] Cleanup: no stale files found')
+  // Drop the leftover next/ staging directory from the former background pre-fetch flow
+  try {
+    fs.rmSync(path.join(agentosDir, 'next'), { recursive: true, force: true })
+  } catch {
+    /* ignore */
   }
+  const totalCleaned = cleanDirectory(agentosDir, allowedRoot) + cleanDirectory(pluginsDir, allowedPlugins)
+  debugLog(
+    'AGENTOS',
+    totalCleaned > 0
+      ? `[DOWNLOAD] Cleanup: removed ${totalCleaned} stale file(s)`
+      : '[DOWNLOAD] Cleanup: no stale files found'
+  )
 
   return {
     outcome: 'success',
-    message: `Downloaded ${missingArtifacts.length} JAR(s), cleaned ${totalCleaned} stale file(s)`,
-    downloaded: missingArtifacts.length,
+    message: `Downloaded ${downloaded} JAR(s), cleaned ${totalCleaned} stale file(s)`,
+    downloaded,
     cleaned: totalCleaned,
   }
 }
