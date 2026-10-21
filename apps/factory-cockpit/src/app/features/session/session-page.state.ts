@@ -8,6 +8,7 @@ export class SessionPageState {
   private readonly store = inject(FactoryStore)
   private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
   private readonly runId = signal('')
+  private readonly namespace = signal<string | undefined>(undefined)
 
   readonly selection = signal<BlockSelection | null>(null)
   readonly session = computed(() => this.store.session(this.runId()))
@@ -46,13 +47,14 @@ export class SessionPageState {
     )
   })
 
-  selectSession(runId: string): void {
-    if (runId === this.runId()) return
+  selectSession(runId: string, namespaceId?: string): void {
+    if (runId === this.runId() && namespaceId === this.namespace()) return
     const previous = this.runId()
     if (previous) this.store.clearSessionSelection(previous)
     this.runId.set(runId)
+    this.namespace.set(namespaceId)
     this.selection.set(null)
-    if (runId) this.store.selectSession(runId)
+    if (runId) this.store.selectSession(runId, namespaceId)
   }
 
   selectDefaultStep(): void {

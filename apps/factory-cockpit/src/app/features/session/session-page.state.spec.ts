@@ -25,13 +25,13 @@ describe('SessionPageState', () => {
 
   it('owns selection lifecycle and releases the previous session', () => {
     const state = TestBed.inject(SessionPageState)
-    state.selectSession('run-1')
+    state.selectSession('run-1', 'namespace-1')
     state.selection.set({ stepId: 'step-1' })
-    state.selectSession('run-2')
+    state.selectSession('run-2', 'namespace-2')
 
-    expect(store.selectSession).toHaveBeenNthCalledWith(1, 'run-1')
+    expect(store.selectSession).toHaveBeenNthCalledWith(1, 'run-1', 'namespace-1')
     expect(store.clearSessionSelection).toHaveBeenCalledWith('run-1')
-    expect(store.selectSession).toHaveBeenNthCalledWith(2, 'run-2')
+    expect(store.selectSession).toHaveBeenNthCalledWith(2, 'run-2', 'namespace-2')
     expect(state.selection()).toBeNull()
 
     state.destroy()
