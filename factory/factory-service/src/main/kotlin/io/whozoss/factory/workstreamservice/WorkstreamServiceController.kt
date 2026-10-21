@@ -39,7 +39,7 @@ import java.util.concurrent.ConcurrentHashMap
  * `get_workstream` (read), `start_workflow` and `request_agent_retry` (write).
  *
  * It is an ordinary authenticated API: the caller is whoever the
- * `AuthenticationFilter` admitted (a Factory JWT, or the insecure-mode user), and
+ * `AuthenticationFilter` admitted (the OS user in local mode, or the user a Factory JWT / proxy header identifies in auth mode), and
  * the tenant is that user's scope. The namespace is resolved exclusively from the
  * workstream registry of that scope (a domain rule, not an authorization one);
  * workflow and step identifiers supplied by the model are references.

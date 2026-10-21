@@ -9,8 +9,9 @@ server:
 
 factory:
   security:
-    # The integration tests run as the insecure-mode user (org-local-dev / ws-default).
-    insecure-mode: true
+    # Local mode: the integration tests run as the fixed test user supplied by
+    # SharedNeo4jIntegrationTestConfiguration (never the machine's OS user, which may be root on CI).
+    mode: local
   persistence:
     mode: embedded-neo4j
     data-dir: build/test-neo4j-data/

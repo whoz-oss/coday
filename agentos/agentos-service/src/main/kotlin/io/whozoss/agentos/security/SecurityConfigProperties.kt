@@ -15,7 +15,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * ```
  *
  * Override with environment variable (Spring Boot relaxed binding):
- * - AGENTOS_SECURITY_MODE
+ * - FACTORY_SECURITY_MODE
  */
 @ConfigurationProperties(prefix = "agentos.security")
 data class SecurityConfigProperties(

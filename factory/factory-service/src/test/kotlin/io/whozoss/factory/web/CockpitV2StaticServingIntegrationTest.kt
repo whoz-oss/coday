@@ -4,6 +4,7 @@ import io.whozoss.factory.config.CockpitV2Properties
 import io.whozoss.factory.config.CockpitV2WebConfig
 import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.error.FactoryExceptionHandler
+import io.whozoss.factory.web.security.SecurityConfiguration
 import org.hamcrest.Matchers.containsString
 import org.hamcrest.Matchers.not
 import org.junit.jupiter.api.Test
@@ -38,6 +39,7 @@ import java.nio.file.Path
     AuthenticationFilter::class,
     JwtTokenVerifier::class,
     LocalDevMembershipResolver::class,
+    SecurityConfiguration::class,
     FactoryExceptionHandler::class,
 )
 class CockpitV2StaticServingIntegrationTest {
