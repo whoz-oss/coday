@@ -1,52 +1,26 @@
 package io.whozoss.factory.web
 
+import io.whozoss.factory.persistence.TenantScope
 import org.springframework.stereotype.Component
 
 /**
- * Membership/entitlement data attached to a resolved principal. Never read from
- * client headers — always resolved server-side (see `membership-resolver.ts`).
+ * Resolves, server-side, the tenant a user belongs to. It is the only source of a
+ * user's [TenantScope]: nothing is read from client input.
  */
-data class MembershipInfo(
-    val organizationId: String? = null,
-    val workstreamId: String? = null,
-    val squadId: String? = null,
-    val roles: List<String> = emptyList(),
-) {
-    companion object {
-        val EMPTY: MembershipInfo = MembershipInfo()
-    }
-}
-
-/** Resolves memberships for an authenticated principal, server-side. */
 interface MembershipResolver {
-    fun resolveMembership(principalId: String?, principalType: String): MembershipInfo
+    fun resolveMembership(userId: String): TenantScope
 }
 
 /**
- * In-memory membership directory for local development and tests.
- *
- * Fail-closed: an absent principal resolves to no membership at all. Otherwise
- * the synthetic default membership of the principal type is granted (mirrors
- * `LocalDevMembershipResolver` / `defaultMembershipFor` in the Node codebase).
+ * In-memory membership directory for local development and tests: every user
+ * belongs to the synthetic `org-local-dev` / `ws-default` tenant.
  */
 @Component
 class LocalDevMembershipResolver : MembershipResolver {
 
-    override fun resolveMembership(principalId: String?, principalType: String): MembershipInfo {
-        if (principalId.isNullOrBlank()) return MembershipInfo.EMPTY
-        return defaultMembershipFor(principalType)
-    }
+    override fun resolveMembership(userId: String): TenantScope = LOCAL_DEV_SCOPE
 
     companion object {
-        fun defaultMembershipFor(principalType: String): MembershipInfo =
-            MembershipInfo(
-                organizationId = "org-local-dev",
-                workstreamId = "ws-default",
-                squadId = null,
-                roles = when (principalType) {
-                    TrustContext.PRINCIPAL_TYPE_SERVICE -> listOf(TrustContext.SERVICE_RUNNER_ROLE)
-                    else -> listOf(TrustContext.FACTORY_MEMBER_ROLE)
-                },
-            )
+        val LOCAL_DEV_SCOPE = TenantScope("org-local-dev", "ws-default")
     }
 }

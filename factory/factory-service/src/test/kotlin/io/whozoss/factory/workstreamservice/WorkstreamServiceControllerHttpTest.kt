@@ -8,6 +8,7 @@ import io.whozoss.factory.workflow.domain.WorkflowDefinitionRecord
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.hashWorkflowDefinition
+import io.whozoss.factory.workflow.persistence.WorkflowRepository
 import io.whozoss.factory.workflow.service.WorkflowService
 import io.whozoss.factory.workstream.domain.Workstream
 import io.whozoss.factory.workstream.domain.WorkstreamStatus
@@ -24,28 +25,17 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.test.context.TestPropertySource
 
 /**
- * HTTP integration tests of the `FACTORY_WORKSTREAM` facade and of its credential boundary.
+ * HTTP integration tests of the `FACTORY_WORKSTREAM` facade.
  *
- * The tenant is the one the Neo4j test harness uses (`org-local-dev` / `ws-default`), configured as the
- * workstream service tenant. Read and start are granted; `request_retry` is deliberately NOT granted so the
- * per-operation permission can be asserted.
+ * The facade is an ordinary authenticated API: the shared integration profile runs with
+ * `factory.security.insecure-mode=true`, so these calls carry no bearer and act as the
+ * insecure-mode user of the default tenant (`org-local-dev` / `ws-default`). There is no
+ * authorization to test: what is covered here is the domain behaviour (namespace owned by
+ * the registered workstream, tenant fencing, secret-free payloads, idempotent start and
+ * retry request).
  */
-@TestPropertySource(
-    properties = [
-        "factory.security.http-api-submission.enabled=true",
-        "factory.security.http-api-submission.bearer-token=worker-bearer-token-at-least-32-bytes",
-        "factory.security.http-api-submission.service-identity-id=agentos-http-api-test",
-        "factory.security.workstream-service.enabled=true",
-        "factory.security.workstream-service.bearer-token=workstream-bearer-token-at-least-32-bytes",
-        "factory.security.workstream-service.service-identity-id=agentos-workstream-test",
-        "factory.security.workstream-service.organization-id=org-local-dev",
-        "factory.security.workstream-service.workstream-id=ws-default",
-        "factory.security.workstream-service.permissions=read,start_workflow",
-    ],
-)
 class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
@@ -55,13 +45,14 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     private lateinit var workflowService: WorkflowService
 
     @Autowired
+    private lateinit var workflowRepository: WorkflowRepository
+
+    @Autowired
     private lateinit var durableAttempts: DurableAgentAttemptService
 
     @Autowired
     private lateinit var workstreamRepository: Neo4jWorkstreamRepository
 
-    private val workstreamToken = "workstream-bearer-token-at-least-32-bytes"
-    private val workerToken = "worker-bearer-token-at-least-32-bytes"
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
     private val secondNamespace = "1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
     private val base = "/api/factory/workstream-service"
@@ -83,17 +74,16 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =
         object : ParameterizedTypeReference<Map<String, Any?>>() {}
 
-    private fun headers(token: String?, key: String? = null): HttpHeaders = HttpHeaders().apply {
+    private fun headers(key: String? = null): HttpHeaders = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
-        if (token != null) setBearerAuth(token)
         if (key != null) set("Idempotency-Key", key)
     }
 
-    private fun get(path: String, token: String? = workstreamToken): ResponseEntity<Map<String, Any?>> =
-        restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headers(token)), jsonType())
+    private fun get(path: String): ResponseEntity<Map<String, Any?>> =
+        restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headers()), jsonType())
 
-    private fun post(path: String, body: Any?, token: String? = workstreamToken, key: String? = null): ResponseEntity<Map<String, Any?>> =
-        restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headers(token, key)), jsonType())
+    private fun post(path: String, body: Any?, key: String? = null): ResponseEntity<Map<String, Any?>> =
+        restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headers(key)), jsonType())
 
     @Suppress("UNCHECKED_CAST")
     private fun data(body: Map<String, Any?>?): Map<String, Any?> = body?.get("data") as? Map<String, Any?> ?: emptyMap()
@@ -154,37 +144,6 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         )
     }
 
-    // ----- authentication and credential separation ----------------------
-
-    @Test
-    fun `a missing or wrong bearer is refused before any facade logic`() {
-        listOf<String?>(null, "wrong-token-wrong-token-wrong-token-000").forEach { token ->
-            val response = get("$base/workflows", token)
-            assertThat(response.statusCode.is2xxSuccessful).describedAs("token=$token").isFalse()
-        }
-    }
-
-    @Test
-    fun `the worker credential cannot reach the workstream facade`() {
-        val response = get("$base/workflows", workerToken)
-        assertThat(response.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat(errorCode(response.body)).isEqualTo("SERVICE_ROUTE_FORBIDDEN")
-    }
-
-    @Test
-    fun `the workstream credential cannot reach the worker route or any other Factory route`() {
-        val worker = post("/api/factory/agent-step-results", mapOf("attemptId" to "x", "result" to mapOf<String, Any>()), key = "k")
-        assertThat(worker.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat(errorCode(worker.body)).isEqualTo("SERVICE_ROUTE_FORBIDDEN")
-
-        listOf("/api/factory/workflows?namespaceId=$namespace", "/api/factory/workstreams", "/api/factory/workflow-definitions")
-            .forEach { path ->
-                val response = get(path)
-                assertThat(response.statusCode).describedAs(path).isEqualTo(HttpStatus.FORBIDDEN)
-                assertThat(errorCode(response.body)).describedAs(path).isEqualTo("SERVICE_ROUTE_FORBIDDEN")
-            }
-    }
-
     // ----- reads: tenant fencing ------------------------------------------
 
     @Test
@@ -212,7 +171,7 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `get_workflow exposes blockers and never advertises a retry the credential cannot execute`() {
+    fun `get_workflow exposes blockers and advertises the retry of a failed step`() {
         publish("wf-svc-failed", namespace, stepStatus = "failed")
 
         val response = get("$base/workflows/wf-svc-failed")
@@ -220,8 +179,24 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
         val payload = data(response.body)
         assertThat(payload["state"]).isEqualTo("existing")
-        assertThat(payload["allowedActions"] as List<*>).isEmpty()
         assertThat(payload.toString()).contains("ATTEMPT_FAILED")
+        // The domain allows a retry of a root failure: the facade advertises it (and only it).
+        @Suppress("UNCHECKED_CAST")
+        val actions = payload["allowedActions"] as List<Map<String, Any?>>
+        assertThat(actions).hasSize(1)
+        assertThat(actions.single()["type"]).isEqualTo("retry")
+        assertThat(actions.single()["stepId"]).isEqualTo("gate")
+        assertThat(actions.single()["expectedRevision"]).isEqualTo(1)
+    }
+
+    @Test
+    fun `get_workflow advertises no retry when no step failed`() {
+        publish("wf-svc-ready", namespace, stepStatus = "ready")
+
+        val payload = data(get("$base/workflows/wf-svc-ready").body)
+
+        assertThat(payload["state"]).isEqualTo("existing")
+        assertThat(payload["allowedActions"] as List<*>).isEmpty()
     }
 
     @Test
@@ -277,7 +252,7 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(data(response.body)["items"] as List<*>).isEmpty()
     }
 
-    // ----- writes: permissions, scope, idempotence ------------------------
+    // ----- writes: scope, idempotence -------------------------------------
 
     @Test
     fun `start creates a run without any runtime case attribution and is idempotent`() {
@@ -356,16 +331,62 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(errorCode(response.body)).isEqualTo("WORKSTREAM_NAMESPACE_MAPPING_INVALID")
     }
 
-    @Test
-    fun `request_agent_retry is refused when the permission is not granted`() {
-        publish("wf-svc-retry", namespace, stepStatus = "blocked")
+    // ----- request_agent_retry --------------------------------------------
 
-        val response = post(
-            "$base/workflows/wf-svc-retry/retries",
+    @Test
+    fun `request_agent_retry opens one retry request per blocked step and replays it idempotently`() {
+        registerDefinition()
+        val started = post("$base/workflows", mapOf("workflowType" to "wf-svc"), key = "retry-start")
+        assertThat(started.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(started.body)["workflowId"] as String
+        val revision = blockGate(workflowId)
+        val request = mapOf("stepId" to "gate", "expectedRevision" to revision, "reasonCode" to "manual")
+
+        val first = post("$base/workflows/$workflowId/retries", request)
+        val replay = post("$base/workflows/$workflowId/retries", request)
+
+        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(first.body)["status"]).isEqualTo("pending-human")
+        assertThat(data(first.body)["idempotent"]).isEqualTo(false)
+        assertThat(data(first.body)["stepId"]).isEqualTo("gate")
+        assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(data(replay.body)["idempotent"]).isEqualTo(true)
+        assertThat(data(replay.body)["interactionId"]).isEqualTo(data(first.body)["interactionId"])
+    }
+
+    @Test
+    fun `request_agent_retry refuses a step that is not blocked and an invalid request`() {
+        registerDefinition()
+        val started = post("$base/workflows", mapOf("workflowType" to "wf-svc"), key = "retry-start-2")
+        val workflowId = data(started.body)["workflowId"] as String
+
+        // The step is `ready`, not `blocked`: the domain refuses to open a retry.
+        val notBlocked = post(
+            "$base/workflows/$workflowId/retries",
             mapOf("stepId" to "gate", "expectedRevision" to 1, "reasonCode" to "manual"),
         )
+        assertThat(notBlocked.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(errorCode(notBlocked.body)).isEqualTo("INTERACTION_STALE")
 
-        assertThat(response.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat(errorCode(response.body)).isEqualTo("FORBIDDEN")
+        val invalid = post("$base/workflows/$workflowId/retries", mapOf("stepId" to "gate", "forged" to true))
+        assertThat(invalid.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(invalid.body)).isEqualTo("INVALID_RETRY_REQUEST")
+    }
+
+    /**
+     * Moves the `gate` step of the started governed instance to `blocked` and returns the new
+     * workflow revision (the one a retry request must be fenced on).
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun blockGate(workflowId: String): Int {
+        val current = workflowRepository.findInstance(scope, namespace, workflowId)!!
+        val steps = (current.instance["steps"] as List<Map<String, Any?>>).map { step ->
+            if (step["id"] == "gate") step + ("status" to "blocked") else step
+        }
+        val next = current.copy(revision = current.revision + 1, instance = current.instance + ("steps" to steps))
+        check(workflowRepository.updateInstance(scope, namespace, workflowId, current.revision, next)) {
+            "the test fixture could not block the step"
+        }
+        return next.revision
     }
 }

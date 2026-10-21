@@ -5,7 +5,6 @@ import io.whozoss.factory.forge.port.JiraClient
 import io.whozoss.factory.forge.service.ForgeGateService
 import io.whozoss.factory.forge.service.ForgeRunService
 import io.whozoss.factory.forge.service.StoryOperationService
-import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.sdk.spi.FactoryRoute
 
 /**
@@ -22,10 +21,9 @@ object ForgeRouteContributorRoutes {
         storyService: StoryOperationService,
         jiraClient: JiraClient,
         proxy: AgentOsProxyClient,
-        tenantScopeProvider: TenantScopeProvider,
     ): List<FactoryRoute> {
-        val forge = ForgeRunController(runService, gateService, storyService, proxy, tenantScopeProvider)
-        val jira = JiraProxyController(jiraClient, tenantScopeProvider)
+        val forge = ForgeRunController(runService, gateService, storyService, proxy)
+        val jira = JiraProxyController(jiraClient)
         return ForgeRoutes.routes(forge, jira)
     }
 }

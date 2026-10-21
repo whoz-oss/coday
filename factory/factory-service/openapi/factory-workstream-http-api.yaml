@@ -3,12 +3,10 @@ info:
   title: Factory workstream HTTP API
   version: 0.1.0
   description: >-
-    Conversational Factory facade for agents of the FACTORY_WORKSTREAM integration. The service
-    credential identifies a deployment service, not the person talking to the agent and not the
-    case or agent making the call. Its organization/workstream and permissions (read, start_workflow,
-    request_retry) are configured on the Factory server. Factory resolves the single AgentOS namespace
-    from the registered workstream; the model never chooses it. Other identifiers are references resolved
-    inside that boundary, never permissions. Human validations are answered in Factory only.
+    Conversational Factory facade for agents of the FACTORY_WORKSTREAM integration. The bearer is a
+    Factory-issued JWT (optional when Factory runs in insecure mode). Factory resolves the single AgentOS
+    namespace from the workstream registered for the caller's tenant; the model never chooses it. Other
+    identifiers are references resolved inside that boundary. Human validations are answered in Factory only.
 servers:
   - url: https://factory.example.invalid
 paths:
@@ -43,7 +41,7 @@ paths:
       operationId: start_workflow
       summary: Create a workflow run. Factory owns its identity and execution context.
       description: >-
-        Starts a new Factory run in the namespace registered for the configured workstream. The run is not
+        Starts a new Factory run in the namespace registered for the caller's workstream. The run is not
         attributed to an AgentOS case. Reuse the same Idempotency-Key to retry safely; the same key with a
         different payload is refused.
       parameters:
@@ -76,7 +74,7 @@ paths:
       responses:
         '200': { description: Identical start replayed. }
         '201': { description: Run created. }
-        '403': { description: 'The service is not permitted, or its workstream namespace mapping is invalid.' }
+        '403': { description: 'The workstream namespace mapping is invalid or the workflow type is not allowed.' }
         '409': { description: Idempotency or identity conflict. }
   /api/factory/workstream-service/workflows/{workflowId}:
     get:
@@ -154,7 +152,6 @@ paths:
       responses:
         '200': { description: An open retry request already existed for this step. }
         '201': { description: Retry requested; awaiting human approval in Factory. }
-        '403': { description: The service is not permitted to request retries. }
         '409': { description: Stale revision or the step is not blocked. }
   /api/factory/workstream-service/workstreams/{workstreamId}:
     get:
@@ -164,7 +161,7 @@ paths:
         - name: workstreamId
           in: path
           required: true
-          description: Must be the workstream configured for this service; any other is refused.
+          description: Must be the caller's own workstream; any other is refused.
           schema: { type: string, maxLength: 128 }
         - name: limit
           in: query
@@ -172,4 +169,4 @@ paths:
           schema: { type: integer, minimum: 1, maximum: 50 }
       responses:
         '200': { description: Aggregated workstream projection. }
-        '403': { description: The workstream is outside the configured boundary. }
+        '403': { description: The workstream is outside the caller's boundary. }

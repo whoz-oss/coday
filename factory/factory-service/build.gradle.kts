@@ -167,12 +167,37 @@ tasks.withType<Test> {
     jvmArgs("--enable-native-access=ALL-UNNAMED")
 }
 
+// The mintToken helper is a second `main` on the classpath: pin the application entry point so
+// resolveMainClassName (bootJar, bootRun, the OpenAPI generation fork) stays unambiguous.
+springBoot {
+    mainClass.set("io.whozoss.factory.FactoryServiceApplicationKt")
+}
+
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveFileName.set("factory-service.jar")
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.run.BootRun>("bootRun") {
     workingDir = projectDir
+}
+
+// Mints a long-lived Factory JWT for an AgentOS Auth Setting:
+//   FACTORY_FAKE_IDP_SECRET=<secret> ./gradlew :factory-service:mintToken -Psub=<user> [-PexpiryDays=365]
+tasks.register<JavaExec>("mintToken") {
+    group = "factory"
+    description = "Prints a Factory HS256 JWT (-Psub=<user id>, optional -PexpiryDays=<n>)"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.whozoss.factory.tools.MintToken")
+    val sub = providers.gradleProperty("sub")
+    val expiryDays = providers.gradleProperty("expiryDays")
+    argumentProviders.add(
+        CommandLineArgumentProvider {
+            buildList {
+                sub.orNull?.let { addAll(listOf("--sub", it)) }
+                expiryDays.orNull?.let { addAll(listOf("--expiry-days", it)) }
+            }
+        },
+    )
 }
 
 // The two narrow HTTP_API contracts are versioned under openapi/ and remain the

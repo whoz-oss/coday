@@ -162,6 +162,14 @@ class Neo4jDurableAgentAttemptRepository(
             attemptId = attemptId,
         ).firstOrNull()?.toDomain()
 
+    override fun findByOrganizationAndAttemptId(
+        organizationId: String,
+        attemptId: String,
+    ): List<ScopedDurableAgentAttempt> =
+        attempts.findByOrganizationAndAttemptId(organizationId, attemptId).map { node ->
+            ScopedDurableAgentAttempt(TenantScope(node.organizationId, node.workstreamId), node.toDomain())
+        }
+
     override fun findByWorkflow(
         scope: TenantScope,
         namespaceId: String,

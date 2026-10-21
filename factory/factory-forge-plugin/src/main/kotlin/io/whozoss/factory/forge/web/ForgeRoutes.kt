@@ -6,7 +6,8 @@ import io.whozoss.factory.sdk.spi.FactoryRoute
 import io.whozoss.factory.sdk.spi.FactoryRouteHandler
 import io.whozoss.factory.sdk.spi.FactoryRouteRequest
 import io.whozoss.factory.sdk.spi.FactoryRouteResponse
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.web.AuthenticationFilter
 import org.springframework.http.ResponseEntity
 
 /**
@@ -25,29 +26,29 @@ object ForgeRoutes {
         // ---- Forge runs -----------------------------------------------------
         addAll(
             routes("GET", "/api/forge/runs", "/api/factory/forge/runs") { req ->
-                forge.list(req.query("namespaceId"), req.trust())
+                forge.list(req.query("namespaceId"), req.user())
             },
         )
         addAll(
             routes("POST", "/api/factory/forge/runs/create") { req ->
-                forge.create(req.bodyMap(), req.trust())
+                forge.create(req.bodyMap(), req.user())
             },
         )
 
         // ---- G1 / G2 --------------------------------------------------------
         addAll(
             routes("GET", "/api/forge/runs/{id}/gates/G1") { req ->
-                forge.g1(req.pathVar("id"), req.query("namespaceId"), req.trust())
+                forge.g1(req.pathVar("id"), req.query("namespaceId"), req.user())
             },
         )
         addAll(
             routes("GET", "/api/forge/runs/{id}/gates/G2", "/api/factory/forge/runs/{id}/gates/G2") { req ->
-                forge.g2(req.pathVar("id"), req.query("namespaceId"), req.trust())
+                forge.g2(req.pathVar("id"), req.query("namespaceId"), req.user())
             },
         )
         addAll(
             routes("POST", "/api/forge/runs/{id}/gates/G2", "/api/factory/forge/runs/{id}/gates/G2") { req ->
-                forge.evaluateG2(req.pathVar("id"), req.query("namespaceId"), req.bodyMap(), req.trust())
+                forge.evaluateG2(req.pathVar("id"), req.query("namespaceId"), req.bodyMap(), req.user())
             },
         )
         addAll(
@@ -56,24 +57,24 @@ object ForgeRoutes {
                 "/api/forge/runs/{id}/gates/G1/decision",
                 "/api/factory/forge/runs/{id}/gates/G1/decision",
             ) { req ->
-                forge.g1Decision(req.pathVar("id"), req.query("namespaceId"), req.bodyMap(), req.trust())
+                forge.g1Decision(req.pathVar("id"), req.query("namespaceId"), req.bodyMap(), req.user())
             },
         )
 
         // ---- Story slices ---------------------------------------------------
         addAll(
             routes("GET", "/api/forge/runs/{epicRunId}/stories/{storyRunId}/executions") { req ->
-                forge.executions(req.pathVar("epicRunId"), req.pathVar("storyRunId"), req.query("namespaceId"), req.trust())
+                forge.executions(req.pathVar("epicRunId"), req.pathVar("storyRunId"), req.query("namespaceId"), req.user())
             },
         )
         addAll(
             routes("GET", "/api/forge/runs/{epicRunId}/stories/{storyRunId}/oracles") { req ->
-                forge.oracles(req.pathVar("epicRunId"), req.pathVar("storyRunId"), req.query("namespaceId"), req.trust())
+                forge.oracles(req.pathVar("epicRunId"), req.pathVar("storyRunId"), req.query("namespaceId"), req.user())
             },
         )
         addAll(
             routes("GET", "/api/forge/runs/{epicRunId}/stories/{storyRunId}/edits") { req ->
-                forge.edits(req.pathVar("epicRunId"), req.pathVar("storyRunId"), req.query("namespaceId"), req.trust())
+                forge.edits(req.pathVar("epicRunId"), req.pathVar("storyRunId"), req.query("namespaceId"), req.user())
             },
         )
 
@@ -85,7 +86,7 @@ object ForgeRoutes {
                     req.pathVar("storyRunId"),
                     req.query("namespaceId"),
                     req.bodyMap(),
-                    req.trust(),
+                    req.user(),
                 )
             },
         )
@@ -96,7 +97,7 @@ object ForgeRoutes {
                     req.pathVar("storyRunId"),
                     req.query("namespaceId"),
                     req.bodyMap(),
-                    req.trust(),
+                    req.user(),
                 )
             },
         )
@@ -107,7 +108,7 @@ object ForgeRoutes {
                     req.pathVar("storyRunId"),
                     req.query("namespaceId"),
                     req.bodyMap(),
-                    req.trust(),
+                    req.user(),
                 )
             },
         )
@@ -115,7 +116,7 @@ object ForgeRoutes {
         // ---- Jira relay -----------------------------------------------------
         addAll(
             routes("GET", "/api/jira/{ticketId}", "/api/factory/jira/{ticketId}") { req ->
-                jira.ticket(req.pathVar("ticketId"), req.trust())
+                jira.ticket(req.pathVar("ticketId"), req.user())
             },
         )
     }
@@ -141,7 +142,10 @@ object ForgeRoutes {
 
     private fun FactoryRouteRequest.pathVar(name: String): String = pathVariables[name] ?: ""
 
-    private fun FactoryRouteRequest.trust(): TrustContext? = attributes["trustContext"] as? TrustContext
+    /** The user the host's authentication filter attached to the request (always present on guarded api routes). */
+    private fun FactoryRouteRequest.user(): AuthenticatedUser =
+        attributes[AuthenticationFilter.ATTRIBUTE] as? AuthenticatedUser
+            ?: throw io.whozoss.factory.error.UnauthenticatedException()
 
     private fun FactoryRouteRequest.bodyMap(): Map<String, Any?>? =
         body?.takeIf { it.isNotBlank() }

@@ -136,11 +136,9 @@ data class AgentStepResultCapabilityIdentity(
 /**
  * The identity a submission declares, checked against the issued capability.
  *
- * [namespaceId] is NEVER taken from model-authored arguments: the HTTP
- * boundary fills it from the verified `TrustContext` (signed JWT claims, or
- * the loopback-dev headers on a local socket). When present it must equal the
- * capability namespace, otherwise the submission is rejected with
- * `RESULT_IDENTITY_MISMATCH`.
+ * [namespaceId] is NEVER taken from model-authored arguments: it comes from the
+ * durable attempt. When present it must equal the capability namespace,
+ * otherwise the submission is rejected with `RESULT_IDENTITY_MISMATCH`.
  */
 data class AgentStepResultObservedIdentity(
     val attemptId: String?,
@@ -257,8 +255,6 @@ object AgentAttemptErrorCodes {
     const val RESULT_CAPABILITY_IDENTITY_CONFLICT = "RESULT_CAPABILITY_IDENTITY_CONFLICT"
     const val INVALID_RESULT_CAPABILITY_IDENTITY = "INVALID_RESULT_CAPABILITY_IDENTITY"
     const val INVALID_RESULT_REQUEST = "INVALID_RESULT_REQUEST"
-    const val TRUST_CONTEXT_UNAVAILABLE = "TRUST_CONTEXT_UNAVAILABLE"
-    const val RESULT_CAPABILITY_REFRESH_FORBIDDEN = "RESULT_CAPABILITY_REFRESH_FORBIDDEN"
     const val RESULT_ATTEMPT_NOT_REFRESHABLE = "RESULT_ATTEMPT_NOT_REFRESHABLE"
     const val STALE_AMENDMENT_SEQUENCE = "STALE_AMENDMENT_SEQUENCE"
 
@@ -347,16 +343,6 @@ class InvalidResultRequestException(
     message: String = "Invalid result request",
     details: Any? = null,
 ) : AgentAttemptException(AgentAttemptErrorCodes.INVALID_RESULT_REQUEST, 400, message, details)
-
-/** 401 — no verified trust context could be resolved for the caller. */
-class TrustContextUnavailableException(
-    message: String = "A verified trust context is required",
-    details: Any? = null,
-) : AgentAttemptException(AgentAttemptErrorCodes.TRUST_CONTEXT_UNAVAILABLE, 401, message, details)
-
-class ResultCapabilityRefreshForbiddenException(
-    message: String = "The caller cannot refresh this result capability",
-) : AgentAttemptException(AgentAttemptErrorCodes.RESULT_CAPABILITY_REFRESH_FORBIDDEN, 403, message)
 
 class ResultAttemptNotRefreshableException(
     message: String = "The attempt cannot receive a renewed result capability",

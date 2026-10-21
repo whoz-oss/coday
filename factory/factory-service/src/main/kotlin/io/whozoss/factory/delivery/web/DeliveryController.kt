@@ -4,12 +4,11 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.delivery.domain.DeliveryErrorCodes
-import io.whozoss.factory.delivery.domain.DeliveryException
+import io.whozoss.factory.delivery.domain.deliveryException
 import io.whozoss.factory.delivery.service.DeliveryHttpResult
 import io.whozoss.factory.delivery.service.DeliveryService
 import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -17,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 
 /** Canonical HTTP success envelope: `{ "data": ... }`. */
@@ -24,7 +24,7 @@ data class DeliveryDataEnvelope<T>(
     val data: T,
 )
 
-/** The trusted caller identity a delivery request is bound to. */
+/** The authenticated caller a delivery request is bound to. */
 data class DeliveryCaller(
     val scope: TenantScope,
     val namespaceId: String,
@@ -33,14 +33,41 @@ data class DeliveryCaller(
 )
 
 /**
+ * A delivery request: the [caller] plus the request [body] without the
+ * `namespaceId` / `caseId` selectors, which the delivery services do not accept.
+ */
+data class DeliveryRequest(
+    val caller: DeliveryCaller,
+    val body: Map<String, Any?>?,
+)
+
+/**
+ * Builds the caller of a delivery request. `namespaceId` and `caseId` are request
+ * inputs: body fields on a POST, query parameters on a GET. A missing one is
+ * `400 INVALID_DELIVERY_SCOPE`.
+ */
+fun deliveryRequest(
+    user: AuthenticatedUser,
+    body: Map<String, Any?>?,
+    namespaceQuery: String? = null,
+    caseQuery: String? = null,
+): DeliveryRequest {
+    val namespaceId = (body?.get("namespaceId") as? String ?: namespaceQuery)?.takeIf { it.isNotBlank() }
+        ?: throw deliveryException(DeliveryErrorCodes.INVALID_DELIVERY_SCOPE, "namespaceId is required")
+    val caseId = (body?.get("caseId") as? String ?: caseQuery)?.takeIf { it.isNotBlank() }
+        ?: throw deliveryException(DeliveryErrorCodes.INVALID_DELIVERY_SCOPE, "caseId is required")
+    val serviceBody = body?.filterKeys { it != "namespaceId" && it != "caseId" }
+    return DeliveryRequest(DeliveryCaller(user.scope, namespaceId, caseId, user.userId), serviceBody)
+}
+
+/**
  * Trusted Factory control-plane for deliveries.
  *
  * Port of `handleDeliveryRequest` in
  * `factory/src/application/delivery/delivery-controller.ts`. All routes live
- * under `/api/factory/workflows/{workflowId}/delivery`. The call is scoped by
- * the verified [TrustContext] resolved at the HTTP boundary; a missing or
- * unauthenticated context (or a missing namespace/case identity) fails closed
- * with 401 `TRUST_CONTEXT_UNAVAILABLE`. Success responses use the canonical
+ * under `/api/factory/workflows/{workflowId}/delivery`. The `namespaceId` and
+ * `caseId` are request inputs (body fields, or query parameters on the status
+ * GET); a missing one is a `400`. Success responses use the canonical
  * `{ "data": ... }` envelope; failures are rendered by the shared
  * `FactoryExceptionHandler`.
  */
@@ -49,16 +76,17 @@ data class DeliveryCaller(
 @Tag(name = "delivery", description = "Governed delivery control plane")
 class DeliveryController(
     private val service: DeliveryService,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Get the current delivery status of a workflow")
     fun status(
         @PathVariable workflowId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
+        @RequestParam(name = "caseId", required = false) caseId: String?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): DeliveryDataEnvelope<Any?> {
-        val caller = caller(trustContext)
+        val caller = deliveryRequest(user, null, namespaceId, caseId).caller
         return DeliveryDataEnvelope(service.status(caller.scope, caller.namespaceId, caller.caseId, workflowId))
     }
 
@@ -67,10 +95,10 @@ class DeliveryController(
     fun checkpoint(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
-        return respond(service.checkpoint(caller.scope, caller.namespaceId, caller.caseId, workflowId, body))
+        val (caller, requestBody) = deliveryRequest(user, body)
+        return respond(service.checkpoint(caller.scope, caller.namespaceId, caller.caseId, workflowId, requestBody))
     }
 
     @PostMapping(path = ["/push"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -78,10 +106,10 @@ class DeliveryController(
     fun push(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
-        return respond(service.push(caller.scope, caller.namespaceId, caller.caseId, workflowId, body))
+        val (caller, requestBody) = deliveryRequest(user, body)
+        return respond(service.push(caller.scope, caller.namespaceId, caller.caseId, workflowId, requestBody))
     }
 
     @PostMapping(path = ["/pull-request"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -89,10 +117,10 @@ class DeliveryController(
     fun pullRequest(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
-        return respond(service.pullRequest(caller.scope, caller.namespaceId, caller.caseId, workflowId, body))
+        val (caller, requestBody) = deliveryRequest(user, body)
+        return respond(service.pullRequest(caller.scope, caller.namespaceId, caller.caseId, workflowId, requestBody))
     }
 
     @PostMapping(path = ["/promote"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -100,11 +128,11 @@ class DeliveryController(
     fun promote(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
+        val (caller, requestBody) = deliveryRequest(user, body)
         return respond(
-            service.promote(caller.scope, caller.namespaceId, caller.caseId, workflowId, caller.actorId, body),
+            service.promote(caller.scope, caller.namespaceId, caller.caseId, workflowId, caller.actorId, requestBody),
         )
     }
 
@@ -113,9 +141,9 @@ class DeliveryController(
     fun recordEvidence(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
+        val (caller, requestBody) = deliveryRequest(user, body)
         return respond(
             service.recordEvidence(
                 caller.scope,
@@ -123,26 +151,10 @@ class DeliveryController(
                 caller.caseId,
                 workflowId,
                 caller.actorId,
-                body,
+                requestBody,
                 "factory-build",
             ),
         )
-    }
-
-    /** Resolves the trusted caller identity or fails closed with 401. */
-    private fun caller(trustContext: TrustContext?): DeliveryCaller {
-        val scope = tenantScopeProvider.scopeOf(trustContext)
-            ?: throw DeliveryException(
-                DeliveryErrorCodes.TRUST_CONTEXT_UNAVAILABLE,
-                "Trust context unavailable",
-                401,
-            )
-        val namespaceId = trustContext?.namespaceId?.takeIf { it.isNotBlank() }
-            ?: throw DeliveryException(DeliveryErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Namespace identity required", 401)
-        val caseId = trustContext.caseId?.takeIf { it.isNotBlank() }
-            ?: throw DeliveryException(DeliveryErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Case identity required", 401)
-        val actorId = trustContext.principalId?.takeIf { it.isNotBlank() } ?: "factory-operator"
-        return DeliveryCaller(scope, namespaceId, caseId, actorId)
     }
 
     private fun respond(result: DeliveryHttpResult): ResponseEntity<DeliveryDataEnvelope<Any?>> =

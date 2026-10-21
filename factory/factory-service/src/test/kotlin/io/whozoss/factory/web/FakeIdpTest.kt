@@ -9,7 +9,7 @@ class FakeIdpTest {
 
     @Test
     fun `verifies a freshly issued JWT`() {
-        val token = TestJwt.issueJwt(
+        val token = FakeIdp.issueJwt(
             mapOf("sub" to "abc", "exp" to (System.currentTimeMillis() / 1000 + 60)),
             secret,
         )
@@ -20,7 +20,7 @@ class FakeIdpTest {
 
     @Test
     fun `rejects a JWT signed with another secret`() {
-        val token = TestJwt.issueJwt(
+        val token = FakeIdp.issueJwt(
             mapOf("sub" to "abc", "exp" to (System.currentTimeMillis() / 1000 + 60)),
             "other-secret",
         )
@@ -34,31 +34,11 @@ class FakeIdpTest {
     }
 
     @Test
-    fun `verifies signed proxy headers`() {
-        val headers = TestJwt.signProxyHeaders(
-            "p1",
-            "human",
-            listOf("a", "b"),
-            namespaceId = "namespace-1",
-            caseId = "case-1",
-            secret = secret,
+    fun `rejects an expired token`() {
+        val token = FakeIdp.issueJwt(
+            mapOf("sub" to "abc", "exp" to (System.currentTimeMillis() / 1000 - 10)),
+            secret,
         )
-        val result = FakeIdp.verifyProxyHeaders(headers, secret)
-        assertThat(result.valid).isTrue()
-        assertThat(result.principalId).isEqualTo("p1")
-        assertThat(result.scopes).containsExactly("a", "b")
-        assertThat(result.namespaceId).isEqualTo("namespace-1")
-        assertThat(result.caseId).isEqualTo("case-1")
-    }
-
-    @Test
-    fun `rejects a stale proxy signature`() {
-        val headers = TestJwt.signProxyHeaders(
-            "p1",
-            "human",
-            timestamp = System.currentTimeMillis() - 10L * 60L * 1000L,
-            secret = secret,
-        )
-        assertThat(FakeIdp.verifyProxyHeaders(headers, secret).valid).isFalse()
+        assertThat(FakeIdp.verifyJwt(token, secret).reason).isEqualTo("expired")
     }
 }

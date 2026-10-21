@@ -6,8 +6,7 @@ import io.whozoss.factory.forge.service.CreateForgeRunCommand
 import io.whozoss.factory.forge.service.ForgeGateService
 import io.whozoss.factory.forge.service.ForgeRunService
 import io.whozoss.factory.forge.service.StoryOperationService
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.requireNamespaceQuery
 import org.springframework.http.ResponseEntity
 import java.nio.file.Path
@@ -21,9 +20,9 @@ import java.nio.file.Path
  * host's Spring-agnostic [io.whozoss.factory.sdk.spi.FactoryRouteRequest] onto
  * these methods and serializes the returned values.
  *
- * Identity is resolved from the verified [TrustContext] (`401
- * TRUST_CONTEXT_UNAVAILABLE` when missing); the AgentOS namespace is supplied by
- * the `namespaceId` query parameter exactly like the Node routes. Ledger state
+ * Handlers receive the [AuthenticatedUser] the host's authentication filter
+ * resolved; the AgentOS namespace is supplied by the `namespaceId` query
+ * parameter exactly like the Node routes. Ledger state
  * stays file-based (JSONL).
  */
 class ForgeRunController(
@@ -31,10 +30,9 @@ class ForgeRunController(
     private val gateService: ForgeGateService,
     private val storyService: StoryOperationService,
     private val proxy: AgentOsProxyClient,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
-    private fun caller(trustContext: TrustContext?): ForgeCaller = resolveForgeCaller(trustContext, tenantScopeProvider)
+    private fun caller(user: AuthenticatedUser): ForgeCaller = resolveForgeCaller(user)
 
     private fun runStoreRoot(namespaceId: String, externalUserId: String?): String =
         proxy.resolveRunStoreRoot(namespaceId, externalUserId)
@@ -46,8 +44,8 @@ class ForgeRunController(
     // GET /api/forge/runs  and  GET /api/factory/forge/runs
     // -----------------------------------------------------------------------
 
-    fun list(namespaceId: String?, trustContext: TrustContext?): Any {
-        val caller = caller(trustContext)
+    fun list(namespaceId: String?, user: AuthenticatedUser): Any {
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         return try {
             runService.listProjections(runStoreRoot(ns, caller.externalUserId))
@@ -60,8 +58,8 @@ class ForgeRunController(
     // POST /api/factory/forge/runs/create
     // -----------------------------------------------------------------------
 
-    fun create(body: Map<String, Any?>?, trustContext: TrustContext?): ResponseEntity<Any> {
-        caller(trustContext)
+    fun create(body: Map<String, Any?>?, user: AuthenticatedUser): ResponseEntity<Any> {
+        caller(user)
         val request = body ?: forgeError(400, "INVALID_FORGE_RUN_REQUEST", "Request body is required")
         val roots = asMap(request["roots"])
             ?: forgeError(400, "INVALID_FORGE_RUN_REQUEST", "roots.repoRoot is required")
@@ -99,8 +97,8 @@ class ForgeRunController(
     // Gate G1
     // -----------------------------------------------------------------------
 
-    fun g1(id: String, namespaceId: String?, trustContext: TrustContext?): Any? {
-        val caller = caller(trustContext)
+    fun g1(id: String, namespaceId: String?, user: AuthenticatedUser): Any? {
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val root = runStoreRoot(ns, caller.externalUserId)
         val projection = try {
@@ -115,8 +113,8 @@ class ForgeRunController(
     // Gate G2
     // -----------------------------------------------------------------------
 
-    fun g2(id: String, namespaceId: String?, trustContext: TrustContext?): Any? {
-        val caller = caller(trustContext)
+    fun g2(id: String, namespaceId: String?, user: AuthenticatedUser): Any? {
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val root = runStoreRoot(ns, caller.externalUserId)
         val projection = try {
@@ -132,9 +130,9 @@ class ForgeRunController(
         id: String,
         namespaceId: String?,
         body: Map<String, Any?>?,
-        trustContext: TrustContext?,
+        user: AuthenticatedUser,
     ): ResponseEntity<Any> {
-        val caller = caller(trustContext)
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val root = runStoreRoot(ns, caller.externalUserId)
         val events = runService.readEvents(mapOf("runStoreRoot" to root), id)
@@ -160,9 +158,9 @@ class ForgeRunController(
         id: String,
         namespaceId: String?,
         body: Map<String, Any?>?,
-        trustContext: TrustContext?,
+        user: AuthenticatedUser,
     ): ResponseEntity<Any> {
-        val caller = caller(trustContext)
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val root = runStoreRoot(ns, caller.externalUserId)
         val result = try {
@@ -183,23 +181,23 @@ class ForgeRunController(
     // Story executions / oracles / edits (GET slices + POST phases)
     // -----------------------------------------------------------------------
 
-    fun executions(epicRunId: String, storyRunId: String, namespaceId: String?, trustContext: TrustContext?): Any? =
-        storySlice(epicRunId, storyRunId, namespaceId, trustContext, "executions")
+    fun executions(epicRunId: String, storyRunId: String, namespaceId: String?, user: AuthenticatedUser): Any? =
+        storySlice(epicRunId, storyRunId, namespaceId, user, "executions")
 
-    fun oracles(epicRunId: String, storyRunId: String, namespaceId: String?, trustContext: TrustContext?): Any? =
-        storySlice(epicRunId, storyRunId, namespaceId, trustContext, "oracleCampaigns")
+    fun oracles(epicRunId: String, storyRunId: String, namespaceId: String?, user: AuthenticatedUser): Any? =
+        storySlice(epicRunId, storyRunId, namespaceId, user, "oracleCampaigns")
 
-    fun edits(epicRunId: String, storyRunId: String, namespaceId: String?, trustContext: TrustContext?): Any? =
-        storySlice(epicRunId, storyRunId, namespaceId, trustContext, "edits")
+    fun edits(epicRunId: String, storyRunId: String, namespaceId: String?, user: AuthenticatedUser): Any? =
+        storySlice(epicRunId, storyRunId, namespaceId, user, "edits")
 
     private fun storySlice(
         epicRunId: String,
         storyRunId: String,
         namespaceId: String?,
-        trustContext: TrustContext?,
+        user: AuthenticatedUser,
         field: String,
     ): Any? {
-        val caller = caller(trustContext)
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val root = runStoreRoot(ns, caller.externalUserId)
         val projection = try {
@@ -217,9 +215,9 @@ class ForgeRunController(
         storyRunId: String,
         namespaceId: String?,
         body: Map<String, Any?>?,
-        trustContext: TrustContext?,
+        user: AuthenticatedUser,
     ): ResponseEntity<Any> {
-        val caller = caller(trustContext)
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val allowed = setOf("namespaceId", "agentName", "expectedSpecHash", "supplement")
         val request = body ?: emptyMap()
@@ -249,9 +247,9 @@ class ForgeRunController(
         storyRunId: String,
         namespaceId: String?,
         body: Map<String, Any?>?,
-        trustContext: TrustContext?,
+        user: AuthenticatedUser,
     ): ResponseEntity<Any> {
-        val caller = caller(trustContext)
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val request = body ?: emptyMap()
         if (!io.whozoss.factory.forge.domain.ForgeStoryOperations.isAllowedStoryEditRequestBody(request)) {
@@ -281,9 +279,9 @@ class ForgeRunController(
         storyRunId: String,
         namespaceId: String?,
         body: Map<String, Any?>?,
-        trustContext: TrustContext?,
+        user: AuthenticatedUser,
     ): ResponseEntity<Any> {
-        val caller = caller(trustContext)
+        val caller = caller(user)
         val ns = requireNamespaceQuery(namespaceId)
         val request = body ?: emptyMap()
         if (!io.whozoss.factory.forge.domain.ForgeStoryOperations.isAllowedStoryOracleRequestBody(request)) {

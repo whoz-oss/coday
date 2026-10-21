@@ -8,6 +8,9 @@ server:
   port: 0 # random port for tests
 
 factory:
+  security:
+    # The integration tests run as the insecure-mode user (org-local-dev / ws-default).
+    insecure-mode: true
   persistence:
     mode: embedded-neo4j
     data-dir: build/test-neo4j-data/

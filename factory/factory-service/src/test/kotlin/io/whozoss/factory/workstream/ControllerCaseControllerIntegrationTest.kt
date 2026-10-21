@@ -2,7 +2,7 @@ package io.whozoss.factory.workstream
 
 import io.whozoss.factory.Neo4jIntegrationTest
 import io.whozoss.factory.config.FactoryProperties
-import io.whozoss.factory.web.TestJwt
+import io.whozoss.factory.web.FakeIdp
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -29,8 +29,8 @@ class ControllerCaseControllerIntegrationTest : Neo4jIntegrationTest() {
     private lateinit var factoryProperties: FactoryProperties
 
     private val token: String
-        get() = TestJwt.issueJwt(
-            mapOf("principalId" to "controller-tester", "principalType" to "human"),
+        get() = FakeIdp.issueJwt(
+            mapOf("principalId" to "controller-tester"),
             factoryProperties.security.fakeIdpSecret,
         )
 

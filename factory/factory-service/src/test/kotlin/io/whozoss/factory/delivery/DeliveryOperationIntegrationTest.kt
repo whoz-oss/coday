@@ -18,7 +18,7 @@ import org.springframework.http.ResponseEntity
 
 /**
  * HTTP integration tests of the delivery-operation control plane (deployments,
- * rollbacks and their approvals) against a real PostgreSQL instance.
+ * rollbacks and their approvals) against the embedded Neo4j engine.
  *
  * Exercises trusted-target binding, the target-registry-unavailable 503 path
  * and the rollback request/approval lifecycle.
@@ -134,19 +134,23 @@ class DeliveryOperationIntegrationTest : Neo4jDomainIntegrationTest() {
         }
     """.trimIndent()
 
+    /** POSTs [body] (a JSON object) with the namespace and case selectors merged in. */
     private fun post(workflowId: String, suffix: String, body: String?): ResponseEntity<Map<String, Any?>> =
         restTemplate.exchange(
             "/api/factory/workflows/$workflowId/delivery$suffix",
             HttpMethod.POST,
-            HttpEntity(body, headers()),
+            HttpEntity(withScope(body), headers()),
             jsonType(),
         )
 
+    private fun withScope(body: String?): String {
+        val fields = body?.trim()?.removePrefix("{")?.removeSuffix("}")?.takeIf { it.isNotBlank() }
+        val scope = "\"namespaceId\":\"$NAMESPACE\",\"caseId\":\"$CASE\""
+        return "{$scope${fields?.let { ",$it" } ?: ""}}"
+    }
+
     private fun headers(): HttpHeaders = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
-        set("x-factory-namespace-id", NAMESPACE)
-        set("x-factory-case-id", CASE)
-        set("x-factory-actor-id", "tester")
     }
 
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =

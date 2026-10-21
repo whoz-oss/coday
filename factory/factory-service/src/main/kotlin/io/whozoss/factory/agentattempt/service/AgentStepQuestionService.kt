@@ -59,10 +59,9 @@ data class AgentStepQuestionAnswered(
  * Application service of the Phase 4 ask-step-question channel.
  *
  * ## Design decision (Requirement 2)
- * This is a DEDICATED channel — a capability-bound
- * `POST /api/factory/agent-step-questions` endpoint served here, plus the
- * `FACTORY_WORKER__ask_step_question` worker tool — deliberately NOT an overload of
- * the structured step result. A `PASS`/`FAIL` result is a terminal business
+ * This is a DEDICATED channel, deliberately NOT an overload of the structured
+ * step result. It has no HTTP endpoint of its own any more: a worker reaches the
+ * result route (`POST /api/factory/agent-step-results`) only. A `PASS`/`FAIL` result is a terminal business
  * verdict guarded by a single-use capability budget; asking a question is not
  * a verdict and must neither consume the result capability nor terminalize
  * the attempt. [io.whozoss.factory.agentattempt.domain.AgentStepResultStatus]
@@ -96,8 +95,8 @@ data class AgentStepQuestionAnswered(
  *
  * ## Identities
  * `attemptId`, `caseId`, `namespaceId` come from the verified capability
- * binding / `TrustContext`; `actorId` from the authenticated human principal.
- * None is ever read from model-authored prompt strings.
+ * binding; `actorId` from the authenticated user. None is ever read from
+ * model-authored prompt strings.
  *
  * ## Notifications
  * The ask notification is enqueued inside the transaction and a best-effort SSE hint is published

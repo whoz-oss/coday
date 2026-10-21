@@ -12,7 +12,6 @@ import io.whozoss.factory.agentattempt.domain.IssuedCapability
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
-import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.ResponsibilityKind
 import io.whozoss.factory.workflow.domain.WorkflowStepDefinition
@@ -74,7 +73,7 @@ class CapabilityExecutionCapabilityIssuanceTest {
         assertThat(brief).contains("Name: Step step-1")
         assertThat(brief).contains("Scope: Work only on this step.")
         assertThat(brief).contains("call queryUser, wait for the answer, then continue")
-        assertThat(brief).contains("FACTORY_WORKER__submit_step_result")
+        assertThat(brief).contains("FACTORY_WORKER__submitStepResult")
         assertThat(brief).contains("Use PASS or FAIL according to this step's criteria")
         assertThat(brief).contains("Do not return free-form JSON")
         assertThat(brief).contains("correct the tool payload and retry")
@@ -82,20 +81,9 @@ class CapabilityExecutionCapabilityIssuanceTest {
     }
 
     @Test
-    fun `HTTP API opt in puts only public Factory identifiers in the brief`() {
+    fun `the brief carries the attempt id and submission id and never a secret`() {
         val turns = mutableListOf<AgentTurnRequest>()
-        val markerSecret = "must-never-enter-the-brief"
-        val service = service(
-            turns,
-            FactoryProperties(
-                security = FactoryProperties.Security(
-                    httpApiSubmission = FactoryProperties.HttpApiSubmission(
-                        enabled = true,
-                        bearerToken = markerSecret,
-                    ),
-                ),
-            ),
-        )
+        val service = service(turns)
 
         val execution = service.resolveAndRecord(scope, namespaceId, workflowId, agentStep, repoRoot)
 
@@ -103,7 +91,6 @@ class CapabilityExecutionCapabilityIssuanceTest {
         assertThat(brief).contains("FACTORY_WORKER__submitStepResult")
         assertThat(brief).contains(execution.attemptId)
         assertThat(brief).contains("factory:${execution.attemptId}:result")
-        assertThat(brief).doesNotContain(markerSecret)
         assertThat(brief).doesNotContain("clear-token")
     }
 
@@ -180,10 +167,7 @@ class CapabilityExecutionCapabilityIssuanceTest {
         assertThat(turns.single().caseId).isNotBlank()
     }
 
-    private fun service(
-        turns: MutableList<AgentTurnRequest>,
-        factoryProperties: FactoryProperties = FactoryProperties(),
-    ): CapabilityExecutionService =
+    private fun service(turns: MutableList<AgentTurnRequest>): CapabilityExecutionService =
         CapabilityExecutionService(
             CapabilityResolver(
                 object : AgentTurnCapability {
@@ -201,6 +185,5 @@ class CapabilityExecutionCapabilityIssuanceTest {
             agentOsExecutionAdapter = adapter,
             agentStepResultService = issuer,
             agentOsAdapterProperties = pollingProperties,
-            factoryProperties = factoryProperties,
         )
 }

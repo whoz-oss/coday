@@ -1,12 +1,16 @@
 package io.whozoss.factory
 
 import io.whozoss.factory.config.FactoryProperties
+import io.whozoss.factory.config.WebConfig
 import io.whozoss.factory.error.FactoryExceptionHandler
-import io.whozoss.factory.web.BoundaryTestController
+import io.whozoss.factory.error.ResourceNotFoundException
+import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.web.AuthenticatedUserArgumentResolver
+import io.whozoss.factory.web.AuthenticationFilter
 import io.whozoss.factory.web.CorrelationIdFilter
+import io.whozoss.factory.web.FakeIdp
+import io.whozoss.factory.web.JwtTokenVerifier
 import io.whozoss.factory.web.LocalDevMembershipResolver
-import io.whozoss.factory.web.TrustContextExtractor
-import io.whozoss.factory.web.TrustContextFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.hamcrest.Matchers.matchesPattern
 import org.hamcrest.Matchers.nullValue
@@ -22,60 +26,74 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPat
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import org.springframework.test.web.servlet.setup.StandaloneMockMvcBuilder
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RestController
 
 /**
  * Web-layer boundary tests. They exercise the real servlet filter chain
- * ([CorrelationIdFilter] then [TrustContextFilter]), the
- * [FactoryExceptionHandler] advice and a test controller — without a database,
- * so they run on any machine (no Docker required).
+ * ([CorrelationIdFilter] then [AuthenticationFilter]), the argument resolver that
+ * injects the [AuthenticatedUser], the [FactoryExceptionHandler] advice and a test
+ * controller — without a database, so they run on any machine (no Docker).
  */
 class HttpBoundaryIntegrationTest {
 
-    private val properties = FactoryProperties(
-        security = FactoryProperties.Security(
-            allowLoopbackDev = true,
-            fakeIdpSecret = "test-fake-idp-secret",
-        ),
-    )
+    /** Test-only controller, instantiated directly (never registered in the real context). */
+    @RestController
+    class BoundaryController {
+        @GetMapping("/api/test/user", produces = [MediaType.APPLICATION_JSON_VALUE])
+        fun user(user: AuthenticatedUser): Map<String, Any?> =
+            mapOf("userId" to user.userId, "organizationId" to user.scope.organizationId, "workstreamId" to user.scope.workstreamId)
 
-    private val mockMvc: MockMvc = buildMockMvc(properties)
+        @GetMapping("/api/test/boom", produces = [MediaType.APPLICATION_JSON_VALUE])
+        fun boom(): Nothing = throw IllegalStateException("boom")
 
-    /** Same boundary but with loopback-dev disabled (fail-closed anonymous). */
-    private val strictMockMvc: MockMvc = buildMockMvc(
-        FactoryProperties(
-            security = FactoryProperties.Security(
-                allowLoopbackDev = false,
-                fakeIdpSecret = "test-fake-idp-secret",
-            ),
-        ),
-    )
+        @GetMapping("/api/test/not-found", produces = [MediaType.APPLICATION_JSON_VALUE])
+        fun notFound(): Nothing = throw ResourceNotFoundException("missing resource")
 
-    private fun buildMockMvc(properties: FactoryProperties): MockMvc {
-        val extractor = TrustContextExtractor(properties, LocalDevMembershipResolver())
-        val builder = MockMvcBuilders.standaloneSetup(BoundaryTestController())
+        @PostMapping("/api/test/illegal", produces = [MediaType.APPLICATION_JSON_VALUE])
+        fun illegal(): Nothing = throw IllegalArgumentException("bad arg")
+    }
+
+    private val secret = "test-fake-idp-secret"
+
+    private fun buildMockMvc(insecureMode: Boolean): MockMvc {
+        val properties = FactoryProperties(
+            security = FactoryProperties.Security(fakeIdpSecret = secret, insecureMode = insecureMode),
+        )
+        val filter = AuthenticationFilter(properties, JwtTokenVerifier(properties), LocalDevMembershipResolver())
+        val builder = MockMvcBuilders.standaloneSetup(BoundaryController())
         builder.setControllerAdvice(FactoryExceptionHandler())
-        builder.addFilters<StandaloneMockMvcBuilder>(CorrelationIdFilter(), TrustContextFilter(extractor))
+        builder.setCustomArgumentResolvers(AuthenticatedUserArgumentResolver())
+        builder.addFilters<StandaloneMockMvcBuilder>(CorrelationIdFilter(), filter)
         return builder.build()
     }
 
+    private val insecureMockMvc: MockMvc = buildMockMvc(insecureMode = true)
+
+    /** Same boundary with insecure mode off: an unauthenticated request never reaches a controller. */
+    private val strictMockMvc: MockMvc = buildMockMvc(insecureMode = false)
+
+    private fun bearer(userId: String): String =
+        "Bearer " + FakeIdp.issueJwt(mapOf("sub" to userId, "exp" to System.currentTimeMillis() / 1000 + 300), secret)
+
     @Test
     fun `generates a correlation id when the header is absent`() {
-        mockMvc.perform(get("/test/context"))
+        insecureMockMvc.perform(get("/api/test/user"))
             .andExpect(status().isOk)
             .andExpect(header().string("X-Correlation-Id", matchesPattern("coday-corr-.+")))
     }
 
     @Test
     fun `propagates an inbound correlation id`() {
-        mockMvc.perform(get("/test/context").header("X-Correlation-Id", "corr-abc-123"))
+        insecureMockMvc.perform(get("/api/test/user").header("X-Correlation-Id", "corr-abc-123"))
             .andExpect(status().isOk)
             .andExpect(header().string("X-Correlation-Id", "corr-abc-123"))
-            .andExpect(jsonPath("$.correlationId").value("corr-abc-123"))
     }
 
     @Test
     fun `uncaught exception produces the canonical error envelope`() {
-        mockMvc.perform(get("/test/boom"))
+        insecureMockMvc.perform(get("/api/test/boom"))
             .andExpect(status().isInternalServerError)
             .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
             .andExpect(
@@ -88,7 +106,7 @@ class HttpBoundaryIntegrationTest {
 
     @Test
     fun `not-found exception produces the NOT_FOUND envelope`() {
-        mockMvc.perform(get("/test/not-found"))
+        insecureMockMvc.perform(get("/api/test/not-found"))
             .andExpect(status().isNotFound)
             .andExpect(jsonPath("$.error.code").value("NOT_FOUND"))
             .andExpect(jsonPath("$.error.message").value("missing resource"))
@@ -97,55 +115,53 @@ class HttpBoundaryIntegrationTest {
 
     @Test
     fun `illegal argument produces a BAD_REQUEST envelope`() {
-        mockMvc.perform(post("/test/illegal"))
+        insecureMockMvc.perform(post("/api/test/illegal"))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"))
             .andExpect(jsonPath("$.error.message").value("bad arg"))
     }
 
     @Test
-    fun `anonymous caller gets a zero-privilege context`() {
-        strictMockMvc.perform(get("/test/context"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.authenticationMethod").value("anonymous"))
-            .andExpect(jsonPath("$.principalId").value(nullValue()))
-            .andExpect(jsonPath("$.roles").isEmpty)
-            .andExpect(jsonPath("$.scopes").isEmpty)
-    }
-
-    @Test
-    fun `loopback-dev caller gets the wildcard context`() {
-        mockMvc.perform(get("/test/context"))
-            .andExpect(status().isOk)
-            .andExpect(jsonPath("$.authenticationMethod").value("loopback-dev"))
-            .andExpect(jsonPath("$.principalId").value("local-dev-user"))
-            .andExpect(jsonPath("$.scopes[0]").value("*"))
-    }
-
-    @Test
-    fun `admin guard rejects an unauthorized caller with 403 FORBIDDEN_ADMIN_REQUIRED`() {
-        strictMockMvc.perform(get("/test/admin"))
-            .andExpect(status().isForbidden)
+    fun `an unauthenticated request is refused with 401 UNAUTHENTICATED before the controller`() {
+        strictMockMvc.perform(get("/api/test/user"))
+            .andExpect(status().isUnauthorized)
             .andExpect(
                 content().json(
-                    """{"error":{"code":"FORBIDDEN_ADMIN_REQUIRED","message":"Admin authorization required (UNAUTHENTICATED)","details":null}}""",
+                    """{"error":{"code":"UNAUTHENTICATED","message":"Authentication required","details":null}}""",
                     JsonCompareMode.STRICT,
                 ),
             )
     }
 
     @Test
-    fun `admin guard authorizes the loopback-dev wildcard`() {
-        mockMvc.perform(get("/test/admin"))
+    fun `a valid JWT reaches the controller as an AuthenticatedUser`() {
+        strictMockMvc.perform(get("/api/test/user").header("Authorization", bearer("alice")))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.authorized").value(true))
+            .andExpect(jsonPath("$.userId").value("alice"))
+            .andExpect(jsonPath("$.organizationId").value("org-local-dev"))
+            .andExpect(jsonPath("$.workstreamId").value("ws-default"))
+    }
+
+    @Test
+    fun `insecure mode gives the insecure user without any bearer`() {
+        insecureMockMvc.perform(get("/api/test/user"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.userId").value("insecure-mode-user"))
     }
 
     @Test
     fun `correlation id is echoed even on error responses`() {
-        val result = mockMvc.perform(get("/test/boom").header("X-Correlation-Id", "corr-error"))
+        val result = insecureMockMvc.perform(get("/api/test/boom").header("X-Correlation-Id", "corr-error"))
             .andExpect(status().isInternalServerError)
             .andReturn()
         assertThat(result.response.getHeader("X-Correlation-Id")).isEqualTo("corr-error")
+    }
+
+    @Test
+    fun `the web configuration registers the user argument resolver`() {
+        val resolvers = mutableListOf<org.springframework.web.method.support.HandlerMethodArgumentResolver>()
+        WebConfig().addArgumentResolvers(resolvers)
+
+        assertThat(resolvers).hasAtLeastOneElementOfType(AuthenticatedUserArgumentResolver::class.java)
     }
 }

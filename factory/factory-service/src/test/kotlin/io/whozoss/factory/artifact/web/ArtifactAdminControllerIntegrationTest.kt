@@ -6,7 +6,7 @@ import io.whozoss.factory.artifact.port.ArtifactStore
 import io.whozoss.factory.artifact.port.PutArtifactParams
 import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.web.TestJwt
+import io.whozoss.factory.web.FakeIdp
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,13 +20,13 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 
 /**
- * Integration tests for the admin artifact governance HTTP boundary.
+ * Integration tests for the artifact governance HTTP boundary.
  *
- * They exercise the real servlet filter chain (correlation id, trust context)
- * against the embedded Neo4j engine, asserting the exact Node contracts: the
- * `FORBIDDEN_ADMIN_REQUIRED` 403 for non-admins, the `{ "data": ... }` success
+ * They exercise the real servlet filter chain (correlation id, authentication)
+ * against the embedded Neo4j engine, asserting the `{ "data": ... }` success
  * envelope, the machine error codes of the purge / legal-hold refusals and the
- * `METHOD_NOT_ALLOWED` 405 for non-POST calls.
+ * `METHOD_NOT_ALLOWED` 405 for non-POST calls. Any authenticated user may run
+ * these commands.
  */
 class ArtifactAdminControllerIntegrationTest : Neo4jIntegrationTest() {
 
@@ -51,40 +51,10 @@ class ArtifactAdminControllerIntegrationTest : Neo4jIntegrationTest() {
     }
 
     private val adminToken: String
-        get() = TestJwt.issueJwt(
-            mapOf("principalId" to "admin-user", "principalType" to "human", "scopes" to listOf("admin:*")),
+        get() = FakeIdp.issueJwt(
+            mapOf("principalId" to "admin-user"),
             factoryProperties.security.fakeIdpSecret,
         )
-
-    private val memberToken: String
-        get() = TestJwt.issueJwt(
-            mapOf("principalId" to "member-user", "principalType" to "human"),
-            factoryProperties.security.fakeIdpSecret,
-        )
-
-    @Test
-    fun `non-admin callers get 403 FORBIDDEN_ADMIN_REQUIRED on every admin route`() {
-        val seed = seedArtifact(retentionDays = 0)
-
-        val gc = post("/api/factory/admin/artifacts/gc", memberToken)
-        assertThat(gc.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(gc)).isEqualTo("FORBIDDEN_ADMIN_REQUIRED")
-
-        val purge = post("/api/factory/admin/artifacts/${seed.id}/purge", memberToken, mapOf("reason" to "x"))
-        assertThat(purge.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(purge)).isEqualTo("FORBIDDEN_ADMIN_REQUIRED")
-
-        val legalHold = post(
-            "/api/factory/admin/artifacts/${seed.id}/legal-hold",
-            memberToken,
-            mapOf("legalHold" to true),
-        )
-        assertThat(legalHold.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(legalHold)).isEqualTo("FORBIDDEN_ADMIN_REQUIRED")
-
-        // The store was never touched.
-        assertThat(artifactStore.getArtifactMetadata(scope, seed.id)!!.legalHold).isFalse()
-    }
 
     @Test
     fun `GC reclaims staging uploads and audits blob anomalies`() {

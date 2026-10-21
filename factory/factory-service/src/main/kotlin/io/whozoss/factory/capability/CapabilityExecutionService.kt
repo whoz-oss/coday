@@ -12,14 +12,11 @@ import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
-import io.whozoss.factory.agentattempt.domain.DurableAttemptIntegrationBinding
-import io.whozoss.factory.agentattempt.persistence.DurableAttemptIntegrationBindingRepository
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.environment.persistence.WorkEnvironmentRepository
-import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workflow.domain.HumanInteractionEventRecord
 import io.whozoss.factory.workflow.domain.HumanInteractionRecord
@@ -152,14 +149,6 @@ class CapabilityExecutionService(
     private val workEnvironmentRepository: WorkEnvironmentRepository? = null,
     /** Factory-authoritative PR file scope used by scoped review agents. */
     private val pullRequestReviewScopeResolver: PullRequestReviewScopeResolver? = null,
-    /**
-     * Experimental, opt-in HTTP_API callback contract. The service bearer stays
-     * in AgentOS Auth Settings; only Factory-owned public identifiers enter the
-     * brief. Existing bridge tools remain the default when disabled.
-     */
-    private val factoryProperties: FactoryProperties = FactoryProperties(),
-    /** Durable per-attempt authorization for the opt-in HTTP_API result channel. */
-    private val integrationBindingRepository: DurableAttemptIntegrationBindingRepository? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -546,16 +535,13 @@ class CapabilityExecutionService(
         .replace("{{FACTORY_ATTEMPT_ID}}", attemptId)
         .replace("{{FACTORY_SUBMISSION_ID}}", "factory:$attemptId:result")
 
-    private fun resultSubmissionInstruction(): String {
-        val enabled = factoryProperties.security.httpApiSubmission.enabled
-        return if (enabled) {
-            "- Call FACTORY_WORKER__submitStepResult only when the work is complete. " +
-                "Use Factory attemptId '{{FACTORY_ATTEMPT_ID}}' and Idempotency-Key '{{FACTORY_SUBMISSION_ID}}'."
-        } else {
-            "- Call FACTORY_WORKER__submit_step_result only when the analysis, editing, or review work is complete, " +
-                "or when a justified terminal failure prevents completion."
-        }
-    }
+    /**
+     * The worker submits its result through the standard `FACTORY_WORKER` HTTP_API
+     * integration, identified by the Factory attempt id and an Idempotency-Key.
+     */
+    private fun resultSubmissionInstruction(): String =
+        "- Call FACTORY_WORKER__submitStepResult only when the work is complete. " +
+            "Use Factory attemptId '{{FACTORY_ATTEMPT_ID}}' and Idempotency-Key '{{FACTORY_SUBMISSION_ID}}'."
 
     /**
      * Builds the frozen context envelope (Lot D) of an attempt together with
@@ -1083,7 +1069,7 @@ class CapabilityExecutionService(
             val capabilityToken = issueDurableCapability(
                 scope, namespaceId, workflowId, step, attemptId, family.caseId, agentId, brief,
             )
-            val persisted = attempts.register(
+            attempts.register(
                 scope,
                 DurableAgentAttempt(
                     attemptId = attemptId,
@@ -1103,23 +1089,6 @@ class CapabilityExecutionService(
                     parentCaseId = family.parentCaseId,
                 ),
             )
-            if (factoryProperties.security.httpApiSubmission.enabled) {
-                val serviceIdentityId = factoryProperties.security.httpApiSubmission.serviceIdentityId.takeIf { it.isNotBlank() }
-                    ?: error("HTTP_API submission requires a non-blank service identity id")
-                val bindings = integrationBindingRepository
-                    ?: error("HTTP_API submission is enabled without a durable integration binding repository")
-                bindings.bind(
-                    scope,
-                    DurableAttemptIntegrationBinding(
-                        attemptId = persisted.attemptId,
-                        serviceIdentityId = serviceIdentityId,
-                        namespaceId = persisted.namespaceId,
-                        workflowId = persisted.workflowId,
-                        stepId = persisted.stepId,
-                        briefHash = CanonicalJsonHash.sha256(persisted.brief ?: error("Frozen brief is required")),
-                    ),
-                )
-            }
         }
         val turnStarted = existing?.status in setOf(
             AgentAttemptStatus.STARTING,
