@@ -5,12 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode
 /**
  * Request body of `POST /api/factory/agent-step-results`.
  *
- * Two wire shapes are accepted so both the Node dashboard contract
- * (`{ attemptId, result }` + `X-AgentOS-*` headers) and the newer explicit shape
- * (`{ business, observed: { attemptId, caseId, agentName } }`) are served:
- *
- *   * [result] / [business] — the structured business result (required);
- *   * [attemptId] / [observed] — the declared attempt identity.
+ * The only accepted shape is `{ attemptId, result }` (plus the optional
+ * `expected_amendment_seq` / `expectedAmendmentSeq`); the controller rejects every
+ * other field with a 400 `INVALID_RESULT_REQUEST`. The remaining properties are
+ * declared only so such a body is parsed and refused explicitly.
  *
  * All fields are nullable so a malformed body surfaces as a 400
  * `INVALID_RESULT_REQUEST` rather than a deserialization failure.

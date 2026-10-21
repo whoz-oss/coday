@@ -3,12 +3,9 @@ package io.whozoss.factory.delivery.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.delivery.domain.DeliveryErrorCodes
-import io.whozoss.factory.delivery.domain.DeliveryException
 import io.whozoss.factory.delivery.service.DeliveryHttpResult
 import io.whozoss.factory.delivery.service.DeliveryOperationService
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
@@ -26,14 +23,14 @@ import org.springframework.web.bind.annotation.RestController
  * rejection, request normalization, delivery resolution, trusted-target binding
  * and pure policy evaluation) before it is durably created and executed through
  * the configured adapters. All routes live under
- * `/api/factory/workflows/{workflowId}/delivery`.
+ * `/api/factory/workflows/{workflowId}/delivery`. The `namespaceId` and `caseId`
+ * are body fields; a missing one is a `400`.
  */
 @RestController
 @RequestMapping("/api/factory/workflows/{workflowId}/delivery")
 @Tag(name = "delivery-operations", description = "Delivery deployment, verification and rollback control plane")
 class DeliveryOperationController(
     private val service: DeliveryOperationService,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @PostMapping(path = ["/deploy"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -41,10 +38,12 @@ class DeliveryOperationController(
     fun deploy(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
-        return respond(service.deploy(caller.scope, caller.namespaceId, caller.caseId, workflowId, caller.actorId, body))
+        val (caller, requestBody) = deliveryRequest(user, body)
+        return respond(
+            service.deploy(caller.scope, caller.namespaceId, caller.caseId, workflowId, caller.actorId, requestBody),
+        )
     }
 
     @PostMapping(path = ["/verify"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -52,10 +51,12 @@ class DeliveryOperationController(
     fun verify(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
-        return respond(service.verify(caller.scope, caller.namespaceId, caller.caseId, workflowId, caller.actorId, body))
+        val (caller, requestBody) = deliveryRequest(user, body)
+        return respond(
+            service.verify(caller.scope, caller.namespaceId, caller.caseId, workflowId, caller.actorId, requestBody),
+        )
     }
 
     @PostMapping(path = ["/deployment/reconcile"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -63,10 +64,10 @@ class DeliveryOperationController(
     fun reconcile(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
-        return respond(service.reconcile(caller.scope, caller.namespaceId, caller.caseId, workflowId, body))
+        val (caller, requestBody) = deliveryRequest(user, body)
+        return respond(service.reconcile(caller.scope, caller.namespaceId, caller.caseId, workflowId, requestBody))
     }
 
     @PostMapping(path = ["/rollbacks"], produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -74,11 +75,18 @@ class DeliveryOperationController(
     fun requestRollback(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
+        val (caller, requestBody) = deliveryRequest(user, body)
         return respond(
-            service.requestRollback(caller.scope, caller.namespaceId, caller.caseId, workflowId, caller.actorId, body),
+            service.requestRollback(
+                caller.scope,
+                caller.namespaceId,
+                caller.caseId,
+                workflowId,
+                caller.actorId,
+                requestBody,
+            ),
         )
     }
 
@@ -88,9 +96,9 @@ class DeliveryOperationController(
         @PathVariable workflowId: String,
         @PathVariable rollbackRequestId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
+        val (caller, requestBody) = deliveryRequest(user, body)
         return respond(
             service.approveRollback(
                 caller.scope,
@@ -99,7 +107,7 @@ class DeliveryOperationController(
                 workflowId,
                 caller.actorId,
                 rollbackRequestId,
-                body,
+                requestBody,
             ),
         )
     }
@@ -110,9 +118,9 @@ class DeliveryOperationController(
         @PathVariable workflowId: String,
         @PathVariable rollbackRequestId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
+        val (caller, requestBody) = deliveryRequest(user, body)
         return respond(
             service.executeRollback(
                 caller.scope,
@@ -121,7 +129,7 @@ class DeliveryOperationController(
                 workflowId,
                 caller.actorId,
                 rollbackRequestId,
-                body,
+                requestBody,
             ),
         )
     }
@@ -132,9 +140,9 @@ class DeliveryOperationController(
         @PathVariable workflowId: String,
         @PathVariable rollbackRequestId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DeliveryDataEnvelope<Any?>> {
-        val caller = caller(trustContext)
+        val (caller, requestBody) = deliveryRequest(user, body)
         return respond(
             service.verifyRollback(
                 caller.scope,
@@ -143,20 +151,9 @@ class DeliveryOperationController(
                 workflowId,
                 caller.actorId,
                 rollbackRequestId,
-                body,
+                requestBody,
             ),
         )
-    }
-
-    private fun caller(trustContext: TrustContext?): DeliveryCaller {
-        val scope = tenantScopeProvider.scopeOf(trustContext)
-            ?: throw DeliveryException(DeliveryErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Trust context unavailable", 401)
-        val namespaceId = trustContext?.namespaceId?.takeIf { it.isNotBlank() }
-            ?: throw DeliveryException(DeliveryErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Namespace identity required", 401)
-        val caseId = trustContext.caseId?.takeIf { it.isNotBlank() }
-            ?: throw DeliveryException(DeliveryErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Case identity required", 401)
-        val actorId = trustContext.principalId?.takeIf { it.isNotBlank() } ?: "factory-operator"
-        return DeliveryCaller(scope, namespaceId, caseId, actorId)
     }
 
     private fun respond(result: DeliveryHttpResult): ResponseEntity<DeliveryDataEnvelope<Any?>> =

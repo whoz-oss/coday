@@ -26,13 +26,14 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 
 /**
- * HTTP integration tests of the workflow REST surface against a real PostgreSQL
- * instance and a real servlet container.
+ * HTTP integration tests of the workflow REST surface against the embedded Neo4j
+ * engine and a real servlet container.
  *
- * Exercises the trusted boundary (401 `TRUST_CONTEXT_UNAVAILABLE` for a
- * non-loopback anonymous caller), the canonical `{ "data": ... }` success
- * envelope, the `{ "error": { code, message } }` failure envelope and the
- * governed `start` / detail routes.
+ * The shared integration profile runs with `factory.security.insecure-mode=true`, so
+ * every call acts as the `insecure-mode-user` of the default tenant. Exercises the
+ * canonical `{ "data": ... }` success envelope, the `{ "error": { code, message } }`
+ * failure envelope and the governed `start` / detail routes. The authentication
+ * itself is covered by `AuthenticationFilterTest`.
  */
 class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
@@ -54,9 +55,8 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =
         object : ParameterizedTypeReference<Map<String, Any?>>() {}
 
-    private fun headers(withForward: Boolean = false): HttpHeaders = HttpHeaders().apply {
+    private fun headers(): HttpHeaders = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
-        if (withForward) add("X-Forwarded-For", "203.0.113.9")
     }
 
     private fun registerWorkstream(
@@ -250,19 +250,6 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         )
 
     @Test
-    fun `anonymous non-loopback caller yields 401 TRUST_CONTEXT_UNAVAILABLE`() {
-        val response = restTemplate.exchange(
-            "/api/factory/workflow-definitions",
-            HttpMethod.GET,
-            HttpEntity<Void>(headers(withForward = true)),
-            jsonType(),
-        )
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        val error = response.body?.get("error") as? Map<*, *>
-        assertThat(error?.get("code")).isEqualTo("TRUST_CONTEXT_UNAVAILABLE")
-    }
-
-    @Test
     fun `definition list uses the data envelope`() {
         registerDefinition()
         val response = restTemplate.exchange(
@@ -364,19 +351,6 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(workstreamRepository.findDomainsByNamespace("org-other", namespace)).hasSize(1)
     }
 
-    @Test
-    fun `create run requires the authenticated human boundary`() {
-        val requestHeaders = headers(withForward = true).apply { set("Idempotency-Key", "anonymous-create") }
-        val response = restTemplate.exchange(
-            "/api/factory/workflows",
-            HttpMethod.POST,
-            HttpEntity(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), requestHeaders),
-            jsonType(),
-        )
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("TRUST_CONTEXT_UNAVAILABLE")
-    }
-
     private fun createRun(body: Map<String, Any?>, key: String): ResponseEntity<Map<String, Any?>> =
         restTemplate.exchange(
             "/api/factory/workflows",
@@ -420,7 +394,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
         val controllerRequest = data(start.body)["controllerRequest"] as Map<*, *>
         assertThat(controllerRequest["text"]).isEqualTo("Implement the engineer request.")
         assertThat(controllerRequest["namespaceId"]).isEqualTo(namespace)
-        assertThat(controllerRequest["actorId"]).isEqualTo("local-dev-user")
+        assertThat(controllerRequest["actorId"]).isEqualTo("insecure-mode-user")
         assertThat(controllerRequest["source"]).isEqualTo("factory-cockpit")
         assertThat(controllerRequest["observedAt"]).isNotNull
 
@@ -579,7 +553,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             HttpEntity<Void>(headers()),
             jsonType(),
         )
-        // A loopback-dev trust context carries no namespace: the scope-wide list
+        // An authenticated user carries no namespace: the scope-wide list
         // must succeed (200) and never fail closed with 401 INVALID_NAMESPACE_ID.
         assertThat(response.statusCode).isNotEqualTo(HttpStatus.UNAUTHORIZED)
         assertThat(response.statusCode).isEqualTo(HttpStatus.OK)

@@ -3,8 +3,7 @@ package io.whozoss.factory.proxy
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.factoryError
 import io.whozoss.factory.web.resolveFactoryCaller
 import org.springframework.web.bind.annotation.GetMapping
@@ -17,23 +16,22 @@ import org.springframework.web.bind.annotation.RestController
  * AgentOS relay endpoints.
  *
  * Preserves the `/api/agents` and `/api/cases/:caseId/events` relay contract
- * used by Cockpit V2. The trusted `X-External-User-Id` is
- * propagated from the verified trust context.
+ * used by Cockpit V2. The authenticated user id is propagated as the
+ * `X-External-User-Id`.
  */
 @RestController
 @RequestMapping("/api")
 @Tag(name = "agentos-proxy", description = "AgentOS relay endpoints")
 class AgentOsProxyController(
     private val proxy: AgentOsProxyClient,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @GetMapping(path = ["/namespaces"])
     @Operation(summary = "List AgentOS namespaces visible to the trusted caller.")
     fun namespaces(
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): Any? {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         return proxy.fetchNamespaces(caller.externalUserId)
     }
 
@@ -41,9 +39,9 @@ class AgentOsProxyController(
     @Operation(summary = "List AgentOS agent configs for a namespace.")
     fun agents(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): Any? {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val ns = namespaceId?.takeIf { it.isNotBlank() }
             ?: factoryError(400, "MISSING_NAMESPACE_ID", "namespaceId requis")
         return proxy.fetchAgents(ns, caller.externalUserId)
@@ -53,9 +51,9 @@ class AgentOsProxyController(
     @Operation(summary = "Relay the events of an AgentOS case.")
     fun caseEvents(
         @PathVariable caseId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): Any? {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         return proxy.fetchCaseEvents(caseId, caller.externalUserId)
     }
 }

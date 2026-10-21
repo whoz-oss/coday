@@ -4,8 +4,8 @@ import io.whozoss.factory.Neo4jIntegrationTest
 import io.whozoss.factory.agentattempt.persistence.AgentStepResultRepository
 import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.agentattempt.service.WorkerResultSubmissionService
 import io.whozoss.factory.agentattempt.web.AgentStepResultController
-import io.whozoss.factory.agentattempt.web.FactoryStepResultBindingController
 import io.whozoss.factory.capability.CapabilityExecutionService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -18,10 +18,10 @@ import org.springframework.test.util.AopTestUtils
  *
  * There must be exactly ONE shared instance of [AgentStepResultService],
  * [AgentStepResultRepository] and [IdempotencyRepository] between the runner
- * ([CapabilityExecutionService]) and the HTTP controllers
- * ([AgentStepResultController], [FactoryStepResultBindingController]): no
+ * ([CapabilityExecutionService]) and the HTTP worker route
+ * ([AgentStepResultController] via [WorkerResultSubmissionService]): no
  * secondary dependency may re-instantiate the store or the business logic of
- * the result/capability aggregate. All four types are Spring stereotypes
+ * the result/capability aggregate. All these types are Spring stereotypes
  * scanned once under `io.whozoss.factory`; this test pins that invariant so a
  * future refactor cannot silently fork the channel.
  */
@@ -38,15 +38,15 @@ class AgentStepResultWiringTest : Neo4jIntegrationTest() {
     }
 
     @Test
-    fun `the runner and both http controllers share the single result service`() {
+    fun `the runner and the worker http route share the single result service`() {
         val service = context.getBean(AgentStepResultService::class.java)
 
         val submissionController = context.getBean(AgentStepResultController::class.java)
-        val bindingController = context.getBean(FactoryStepResultBindingController::class.java)
+        val submissions = context.getBean(WorkerResultSubmissionService::class.java)
         val runner = context.getBean(CapabilityExecutionService::class.java)
 
-        assertThat(injected(submissionController, "service")).isSameAs(service)
-        assertThat(injected(bindingController, "service")).isSameAs(service)
+        assertThat(injected(submissionController, "submissions")).isSameAs(submissions)
+        assertThat(injected(submissions, "results")).isSameAs(service)
         assertThat(injected(runner, "agentStepResultService")).isSameAs(service)
     }
 

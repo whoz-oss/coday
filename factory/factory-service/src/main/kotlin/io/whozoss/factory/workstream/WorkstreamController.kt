@@ -4,8 +4,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.error.ResourceNotFoundException
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.requireNamespaceQuery
 import io.whozoss.factory.web.resolveFactoryCaller
 import io.whozoss.factory.workstream.domain.ControllerCaseStatus
@@ -45,15 +44,14 @@ class WorkstreamController(
     private val service: WorkstreamService,
     private val projectionService: WorkstreamProjectionService,
     private val controllerCaseService: ControllerCaseService,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @GetMapping
     @Operation(summary = "List workstreams for the caller's tenant.")
     fun list(
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): List<Map<String, Any?>> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         // Transitional organization-wide registry view. The Cockpit intersects
         // this with AgentOS' user-filtered namespaces; this list is not itself
         // a Factory-native human membership authorization.
@@ -64,9 +62,9 @@ class WorkstreamController(
     @Operation(summary = "Create a workstream entry.")
     fun create(
         @RequestBody(required = false) body: CreateWorkstreamRequest?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<Map<String, Any?>> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val request = body ?: CreateWorkstreamRequest()
         requireNamespaceQuery(request.namespaceId)
         val created = service.create(caller.scope, request)
@@ -77,9 +75,9 @@ class WorkstreamController(
     @Operation(summary = "Read one workstream registry entry of the caller's trusted workstream.")
     fun get(
         @PathVariable workstreamId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): Map<String, Any?> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         service.assertWithinWorkstream(caller, workstreamId)
         return service.get(caller.scope, workstreamId)
     }
@@ -90,9 +88,9 @@ class WorkstreamController(
         @PathVariable workstreamId: String,
         @RequestBody(required = false) body: UpdateWorkstreamRequest?,
         @RequestHeader(name = "If-Match", required = false) ifMatch: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): Map<String, Any?> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         service.assertWithinWorkstream(caller, workstreamId)
         val request = body ?: UpdateWorkstreamRequest()
         val expectedRevision = request.expectedRevision ?: parseIfMatch(ifMatch)
@@ -105,9 +103,9 @@ class WorkstreamController(
         @PathVariable workstreamId: String,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestParam(name = "limit", required = false) limit: Int?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkstreamProjectionResponse> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val dto = projectionService.getAggregatedProjection(caller, workstreamId, namespaceId, limit)
         return ResponseEntity
             .ok()
@@ -124,9 +122,9 @@ class WorkstreamController(
     @Operation(summary = "Read the active controller case of the caller's trusted workstream.")
     fun activeControllerCase(
         @PathVariable workstreamId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerCaseResponse {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val active = controllerCaseService.getActiveCase(caller, workstreamId)
             ?: throw ResourceNotFoundException(
                 "Le workstream '$workstreamId' n'a aucun case contrôleur actif",
@@ -139,9 +137,9 @@ class WorkstreamController(
     @Operation(summary = "List the controller case history (active + archived) of the caller's trusted workstream.")
     fun controllerCaseHistory(
         @PathVariable workstreamId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerCaseHistoryResponse {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val history = controllerCaseService.listHistory(caller, workstreamId)
         return ControllerCaseHistoryResponse(
             workstreamId = workstreamId,
@@ -161,9 +159,9 @@ class WorkstreamController(
         @PathVariable workstreamId: String,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestParam(name = "limit", required = false) limit: Int?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerResumptionPackage {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         return controllerCaseService.getContextPackage(caller, workstreamId, namespaceId, limit)
     }
 
@@ -172,9 +170,9 @@ class WorkstreamController(
     fun startControllerCase(
         @PathVariable workstreamId: String,
         @RequestBody(required = false) body: StartControllerCaseRequest?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<ControllerCaseResponse> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val started = controllerCaseService.startControllerCase(caller, workstreamId, body ?: StartControllerCaseRequest())
         return ResponseEntity.status(201).body(started.toResponse())
     }
@@ -190,9 +188,9 @@ class WorkstreamController(
     fun compactControllerCase(
         @PathVariable workstreamId: String,
         @RequestBody(required = false) body: CompactControllerCaseRequest?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerCaseResponse {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         return controllerCaseService
             .compactControllerCase(caller, workstreamId, body ?: CompactControllerCaseRequest())
             .toResponse()

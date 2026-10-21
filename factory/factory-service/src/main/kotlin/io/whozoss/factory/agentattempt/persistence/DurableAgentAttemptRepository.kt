@@ -58,6 +58,16 @@ interface DurableAgentAttemptRepository {
     ): DurableAgentAttempt?
 
     /**
+     * Every attempt carrying [attemptId] in an organization, each with the tenant
+     * scope it is persisted under (an attempt is stored under its own workstream,
+     * which is not necessarily the caller's).
+     */
+    fun findByOrganizationAndAttemptId(
+        organizationId: String,
+        attemptId: String,
+    ): List<ScopedDurableAgentAttempt>
+
+    /**
      * Every attempt of a workflow, across all its steps. Used by the workflow
      * real-cost aggregation to resolve the case ids the workflow produced.
      */

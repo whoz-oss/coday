@@ -8,41 +8,15 @@ import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
 /**
- * Fake Identity Provider — HS256 JWT and HMAC-signed proxy headers.
+ * Fake Identity Provider — HS256 JWT.
  *
- * Port of `factory/src/domain/identity/fake-idp.ts`. Deliberately offline and
- * dependency-free: it lets the HTTP boundary be exercised end-to-end without an
- * external OIDC provider. Only *signatures* are trusted; an identity header
- * supplied without a valid signature is ignored.
+ * Deliberately offline and dependency-free: it lets the HTTP boundary be exercised
+ * end-to-end without an external OIDC provider. Only *signatures* are trusted.
  */
 object FakeIdp {
 
     /** Secret used when none is configured (local dev only). */
     const val DEFAULT_SECRET = "coday-fake-idp-dev-secret"
-
-    const val FAKE_IDP_ISSUER = "coday-fake-idp"
-
-    const val DEFAULT_PROXY_SIGNATURE_TTL_MS = 5L * 60L * 1000L
-
-    const val PROXY_SIGNATURE_HEADER = "x-proxy-signature"
-    const val PROXY_TIMESTAMP_HEADER = "x-proxy-timestamp"
-    const val PROXY_PRINCIPAL_ID_HEADER = "x-proxy-principal-id"
-    const val PROXY_PRINCIPAL_TYPE_HEADER = "x-proxy-principal-type"
-    const val PROXY_SERVICE_IDENTITY_ID_HEADER = "x-proxy-service-identity-id"
-    const val PROXY_SCOPES_HEADER = "x-proxy-scopes"
-    const val PROXY_NAMESPACE_ID_HEADER = "x-proxy-namespace-id"
-    const val PROXY_CASE_ID_HEADER = "x-proxy-case-id"
-
-    /** Header names covered by the proxy signature, in canonical order. */
-    private val SIGNED_PROXY_HEADERS = listOf(
-        PROXY_PRINCIPAL_ID_HEADER,
-        PROXY_PRINCIPAL_TYPE_HEADER,
-        PROXY_SERVICE_IDENTITY_ID_HEADER,
-        PROXY_SCOPES_HEADER,
-        PROXY_NAMESPACE_ID_HEADER,
-        PROXY_CASE_ID_HEADER,
-        PROXY_TIMESTAMP_HEADER,
-    )
 
     private val json = ObjectMapper()
     private val claimsType = object : TypeReference<Map<String, Any?>>() {}
@@ -50,17 +24,6 @@ object FakeIdp {
     data class JwtVerification(
         val valid: Boolean,
         val claims: Map<String, Any?> = emptyMap(),
-        val reason: String? = null,
-    )
-
-    data class ProxyVerification(
-        val valid: Boolean,
-        val principalId: String? = null,
-        val principalType: String? = null,
-        val serviceIdentityId: String? = null,
-        val scopes: List<String> = emptyList(),
-        val namespaceId: String? = null,
-        val caseId: String? = null,
         val reason: String? = null,
     )
 
@@ -76,8 +39,18 @@ object FakeIdp {
     private fun constantTimeEquals(left: String, right: String): Boolean =
         MessageDigest.isEqual(left.toByteArray(Charsets.UTF_8), right.toByteArray(Charsets.UTF_8))
 
+    private fun base64Url(value: String): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray(Charsets.UTF_8))
+
     private fun decodeBase64Url(value: String): String =
         String(Base64.getUrlDecoder().decode(value), Charsets.UTF_8)
+
+    /** Mint a compact HS256 JWT carrying [claims]. */
+    fun issueJwt(claims: Map<String, Any?>, secret: String?): String {
+        val header = base64Url("""{"alg":"HS256","typ":"JWT"}""")
+        val payload = base64Url(json.writeValueAsString(claims))
+        return "$header.$payload.${hmac("$header.$payload", secret)}"
+    }
 
     /**
      * Verify a compact JWT: structure, HMAC signature, expiry (`exp`), not-before
@@ -109,71 +82,5 @@ object FakeIdp {
         val nbf = (claims["nbf"] as? Number)?.toLong()
         if (nbf != null && nowSeconds < nbf) return JwtVerification(false, reason = "not-yet-valid")
         return JwtVerification(true, claims = claims)
-    }
-
-    fun hasProxySignature(headers: Map<String, String>): Boolean =
-        headers[PROXY_SIGNATURE_HEADER] != null
-
-    /** Deterministic payload signed by the proxy: `name:value` lines in canonical order. */
-    private fun canonicalProxyPayload(headers: Map<String, String>): String =
-        SIGNED_PROXY_HEADERS
-            .filter { headers[it] != null }
-            .map { "$it:${headers[it]}" }
-            .joinToString("\n")
-
-    private fun parseScopes(value: String?): List<String> {
-        if (value.isNullOrEmpty()) return emptyList()
-        return value.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-    }
-
-    /**
-     * Verify signed proxy headers: presence, timestamp freshness (replay window)
-     * and HMAC signature.
-     */
-    fun verifyProxyHeaders(
-        headers: Map<String, String>,
-        secret: String?,
-        now: Long = System.currentTimeMillis(),
-        ttlMs: Long = DEFAULT_PROXY_SIGNATURE_TTL_MS,
-    ): ProxyVerification {
-        val signature = headers[PROXY_SIGNATURE_HEADER]
-            ?: return ProxyVerification(false, reason = "missing-signature")
-
-        val timestampRaw = headers[PROXY_TIMESTAMP_HEADER]
-            ?: return ProxyVerification(false, reason = "missing-timestamp")
-        val timestamp = timestampRaw.toLongOrNull()
-            ?: return ProxyVerification(false, reason = "invalid-timestamp")
-        if (kotlin.math.abs(now - timestamp) > ttlMs) {
-            return ProxyVerification(false, reason = "stale-timestamp")
-        }
-
-        val principalId = headers[PROXY_PRINCIPAL_ID_HEADER]
-            ?: return ProxyVerification(false, reason = "missing-principal-id")
-        val principalType = headers[PROXY_PRINCIPAL_TYPE_HEADER]
-            ?: return ProxyVerification(false, reason = "missing-principal-type")
-        val namespaceId = headers[PROXY_NAMESPACE_ID_HEADER]
-            ?: return ProxyVerification(false, reason = "missing-namespace-id")
-        val caseId = headers[PROXY_CASE_ID_HEADER]
-            ?: return ProxyVerification(false, reason = "missing-case-id")
-
-        val signed = SIGNED_PROXY_HEADERS
-            .mapNotNull { name -> headers[name]?.let { name to it } }
-            .toMap()
-        val expected = hmac(canonicalProxyPayload(signed), secret)
-        if (!constantTimeEquals(signature, expected)) return ProxyVerification(false, reason = "invalid-signature")
-
-        return ProxyVerification(
-            valid = true,
-            principalId = principalId,
-            principalType = if (principalType == TrustContext.PRINCIPAL_TYPE_SERVICE) {
-                TrustContext.PRINCIPAL_TYPE_SERVICE
-            } else {
-                TrustContext.PRINCIPAL_TYPE_HUMAN
-            },
-            serviceIdentityId = headers[PROXY_SERVICE_IDENTITY_ID_HEADER],
-            scopes = parseScopes(headers[PROXY_SCOPES_HEADER]),
-            namespaceId = namespaceId,
-            caseId = caseId,
-        )
     }
 }

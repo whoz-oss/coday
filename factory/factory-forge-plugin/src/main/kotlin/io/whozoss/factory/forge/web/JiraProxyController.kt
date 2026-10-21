@@ -2,8 +2,7 @@ package io.whozoss.factory.forge.web
 
 import io.whozoss.factory.forge.port.JiraClient
 import io.whozoss.factory.forge.port.JiraNotConfiguredException
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import java.time.Instant
 
 /**
@@ -17,11 +16,10 @@ import java.time.Instant
  */
 class JiraProxyController(
     private val jira: JiraClient,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
-    fun ticket(ticketId: String, trustContext: TrustContext?): Map<String, Any?> {
-        resolveForgeCaller(trustContext, tenantScopeProvider)
+    @Suppress("UNUSED_PARAMETER")
+    fun ticket(ticketId: String, user: AuthenticatedUser): Map<String, Any?> {
         if (!jira.isConfigured()) throw JiraNotConfiguredException(jira.missingCredentials())
         val fetched = jira.fetchTicket(ticketId)
         return linkedMapOf(

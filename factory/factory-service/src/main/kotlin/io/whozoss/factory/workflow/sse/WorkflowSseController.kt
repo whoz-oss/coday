@@ -3,8 +3,7 @@ package io.whozoss.factory.workflow.sse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.workflow.web.resolveWorkflowCaller
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
@@ -29,10 +28,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
  *
  * ## Explicit scope contract
  *
- * The subscription is always partitioned by the *verified* tenant scope derived
- * from the trust context ([resolveWorkflowCaller]) — the scope is never read
- * from client input. `namespaceId` is an optional filter that only narrows the
- * subscription *within* that tenant:
+ * The subscription is always partitioned by the authenticated user's tenant
+ * scope ([resolveWorkflowCaller]) — the scope is never read from client input.
+ * `namespaceId` is an optional query filter that only narrows the subscription
+ * *within* that tenant:
  *
  *  - a concrete namespace → that namespace's invalidations (plus the tenant-wide
  *    invalidation feed);
@@ -40,29 +39,27 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
  *    `(organizationId, workstreamId)` — never an unpartitioned, cross-tenant
  *    global bucket.
  *
- * A missing/unauthorized trust context fails closed with `401` before any SSE
- * response is opened, so no connection is ever registered without a scope.
+ * An unauthenticated request is answered `401` by the authentication filter
+ * before any SSE response is opened, so no connection is ever registered without
+ * a scope.
  */
 @RestController
 @RequestMapping("/api/factory/workflows")
 @Tag(name = "workflows", description = "Workflow projections and lifecycle")
 class WorkflowSseController(
     private val hub: WorkflowSseHub,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @GetMapping(path = ["/stream"], produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
     @Operation(hidden = true)
     fun stream(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
         response: HttpServletResponse,
     ): SseEmitter {
-        // Identity + tenant scope are resolved from the verified trust context; a
-        // missing context fails closed with 401 before any SSE response is opened.
         // `namespaceId` is an OPTIONAL filter: absent/blank subscribes to the
         // whole tenant scope (a scoped key, not the shared global `""` bucket).
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, namespaceId, requireNamespace = false)
+        val caller = resolveWorkflowCaller(user, namespaceId, requireNamespace = false)
         // SSE framing headers: disable intermediary buffering/caching so events
         // reach the client immediately (byte-for-byte parity with the Node hub).
         response.setHeader("Cache-Control", "no-cache, no-transform")

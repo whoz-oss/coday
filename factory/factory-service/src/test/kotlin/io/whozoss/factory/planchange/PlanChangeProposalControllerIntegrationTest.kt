@@ -2,7 +2,7 @@ package io.whozoss.factory.planchange
 
 import io.whozoss.factory.Neo4jIntegrationTest
 import io.whozoss.factory.config.FactoryProperties
-import io.whozoss.factory.web.TestJwt
+import io.whozoss.factory.web.FakeIdp
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -19,7 +19,7 @@ import java.util.UUID
  * HTTP boundary tests of the governed replanning surface
  * `/api/factory/plan-change-proposals`.
  *
- * Exercises the real servlet filter chain (trust context) against the embedded
+ * Exercises the real servlet filter chain (authentication) against the embedded
  * Neo4j engine, asserting the deterministic classification, the idempotent
  * submission contract, the immutable decision projection, the governance gates
  * (Rules 1–3) and the stable error envelope.
@@ -33,8 +33,8 @@ class PlanChangeProposalControllerIntegrationTest : Neo4jIntegrationTest() {
     private lateinit var factoryProperties: FactoryProperties
 
     private val token: String
-        get() = TestJwt.issueJwt(
-            mapOf("principalId" to "plan-change-tester", "principalType" to "human"),
+        get() = FakeIdp.issueJwt(
+            mapOf("principalId" to "plan-change-tester"),
             factoryProperties.security.fakeIdpSecret,
         )
 
@@ -263,18 +263,6 @@ class PlanChangeProposalControllerIntegrationTest : Neo4jIntegrationTest() {
         assertThat(errorCode(response)).isEqualTo("INVALID_PLAN_CHANGE_PROPOSAL")
     }
 
-    @Test
-    fun `an anonymous non-loopback caller is a TRUST_CONTEXT_UNAVAILABLE`() {
-        val response = exchange(
-            HttpMethod.GET,
-            "/api/factory/plan-change-proposals?workflowId=wf-x&namespaceId=$NAMESPACE_ID",
-            authenticated = false,
-            forwardedFor = "203.0.113.9",
-        )
-        assertThat(response.statusCode.value()).isEqualTo(401)
-        assertThat(errorCode(response)).isEqualTo("TRUST_CONTEXT_UNAVAILABLE")
-    }
-
     private fun submit(body: Map<String, Any?>): ResponseEntity<Map<String, Any?>> =
         exchange(HttpMethod.POST, "/api/factory/plan-change-proposals", body)
 
@@ -293,13 +281,10 @@ class PlanChangeProposalControllerIntegrationTest : Neo4jIntegrationTest() {
         method: HttpMethod,
         path: String,
         body: Map<String, Any?>? = null,
-        authenticated: Boolean = true,
-        forwardedFor: String? = null,
     ): ResponseEntity<Map<String, Any?>> {
         val httpHeaders = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
-            if (authenticated) setBearerAuth(token)
-            forwardedFor?.let { set("X-Forwarded-For", it) }
+            setBearerAuth(token)
         }
         return restTemplate.exchange(path, method, HttpEntity(body, httpHeaders), mapType())
     }

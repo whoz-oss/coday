@@ -3,16 +3,14 @@ package io.whozoss.factory.agentattempt
 import io.whozoss.factory.Neo4jDomainIntegrationTest
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AgentStepAttemptRecord
-import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
-import io.whozoss.factory.agentattempt.domain.DurableAttemptIntegrationBinding
-import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.AgentStepResultCapabilityIdentity
+import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
+import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
-import io.whozoss.factory.agentattempt.persistence.DurableAttemptIntegrationBindingRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
-import io.whozoss.factory.config.FactoryProperties
-import io.whozoss.factory.web.TestJwt
+import io.whozoss.factory.persistence.TenantScope
+import io.whozoss.factory.workstream.WorkstreamService
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -25,25 +23,20 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
-import org.springframework.test.context.TestPropertySource
 
 /**
  * HTTP integration tests of
  * [io.whozoss.factory.agentattempt.web.AgentStepResultController] against the
  * embedded Neo4j engine (in-process harness, no Docker).
  *
- * Exercises `POST /api/factory/agent-step-results`, asserting the canonical
- * `{ "data": ... }` success envelope and the `{ "error": { code, ... } }`
- * failure envelope, together with the exact Node status-code contract. The
- * trust context is the loopback-dev principal (`org-local-dev` / `ws-default`).
+ * Exercises `POST /api/factory/agent-step-results` (`{ attemptId, result }` plus a
+ * required `Idempotency-Key` header). The shared integration profile runs with
+ * `factory.security.insecure-mode=true`, so these calls carry no bearer and act as
+ * the insecure-mode user (`org-local-dev` / `ws-default`). The attempt is resolved
+ * by its id within that user's ORGANIZATION and the submission runs under the
+ * attempt's OWN persisted scope; the secure-mode behaviour lives in
+ * [AgentStepResultControllerSecureModeHttpTest].
  */
-@TestPropertySource(
-    properties = [
-        "factory.security.http-api-submission.enabled=true",
-        "factory.security.http-api-submission.bearer-token=http-api-integration-token",
-        "factory.security.http-api-submission.service-identity-id=agentos-http-api-test",
-    ],
-)
 class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
@@ -59,10 +52,7 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     private lateinit var durableAttempts: DurableAgentAttemptService
 
     @Autowired
-    private lateinit var properties: FactoryProperties
-
-    @Autowired
-    private lateinit var integrationBindings: DurableAttemptIntegrationBindingRepository
+    private lateinit var workstreamService: WorkstreamService
 
     private val namespace = "ns-http-a7"
     private val workflow = "wf-http-a7"
@@ -71,265 +61,20 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     private val agentName = "Agent"
     private val frozenBrief = "frozen-http-api-brief"
     private val briefHash = CanonicalJsonHash.sha256(frozenBrief)
+    private val attemptId = "attempt-http-1"
 
     @BeforeEach
-    fun seedAttempt() {
-        attempts.insert(
-            scope,
-            AgentStepAttemptRecord(
-                namespaceId = namespace,
-                workflowId = workflow,
-                stepId = step,
-                attemptId = "attempt-http-1",
-                agentId = "agent-1",
-                status = "running",
-                revision = 1,
-                payload = "{}",
-            ),
-        )
+    fun seedDefaultAttempt() {
+        registerAttempt(scope, attemptId, namespace)
     }
 
-    @Test
-    fun `HTTP API service bearer submits by Factory attempt id without runtime AgentOS identity`() {
-        val token = issueToken("attempt-http-1")
-        durableAttempts.register(
-            scope,
-            DurableAgentAttempt(
-                attemptId = "attempt-http-1", caseId = caseId, namespaceId = namespace,
-                workflowId = workflow, stepId = step, attemptNumber = 1, agentName = agentName,
-                capabilityToken = token, status = AgentAttemptStatus.RUNNING, brief = frozenBrief,
-            ),
-        )
-        bind("attempt-http-1")
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            setBearerAuth("http-api-integration-token")
-            set("Idempotency-Key", "submission-1")
-        }
-
-        val response = restTemplate.exchange(
-            "/api/factory/agent-step-results",
-            HttpMethod.POST,
-            HttpEntity(body("attempt-http-1"), headers),
-            jsonType(),
-        )
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(data(response.body)!!["idempotent"]).isEqualTo(false)
-    }
-
-    @Test
-    fun `HTTP API service bearer supports another namespace only when explicitly bound`() {
-        val foreignNamespace = "ns-not-authorized"
-        val foreignAttempt = "attempt-http-foreign"
-        attempts.insert(
-            scope,
-            AgentStepAttemptRecord(foreignNamespace, workflow, step, foreignAttempt, "agent-1", "running", 1, "{}"),
-        )
-        val token = service.issue(
-            scope,
-            AgentStepResultCapabilityIdentity(
-                foreignAttempt, workflow, step, foreignNamespace, caseId, agentName, briefHash,
-            ),
-        ).token
-        durableAttempts.register(
-            scope,
-            DurableAgentAttempt(
-                attemptId = foreignAttempt, caseId = caseId, namespaceId = foreignNamespace,
-                workflowId = workflow, stepId = step, attemptNumber = 1, agentName = agentName,
-                capabilityToken = token, status = AgentAttemptStatus.RUNNING, brief = frozenBrief,
-            ),
-        )
-        bind(foreignAttempt, foreignNamespace)
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            setBearerAuth("http-api-integration-token")
-            set("Idempotency-Key", "foreign-submission")
-        }
-
-        val response = restTemplate.exchange(
-            "/api/factory/agent-step-results", HttpMethod.POST,
-            HttpEntity(body(foreignAttempt), headers), jsonType(),
-        )
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(data(response.body)!!["idempotent"]).isEqualTo(false)
-    }
-
-    @Test
-    fun `HTTP API service bearer rejects a terminal attempt after retry or stop`() {
-        val token = issueToken("attempt-http-1")
-        durableAttempts.register(
-            scope,
-            DurableAgentAttempt(
-                attemptId = "attempt-http-1", caseId = caseId, namespaceId = namespace,
-                workflowId = workflow, stepId = step, attemptNumber = 1, agentName = agentName,
-                capabilityToken = token, brief = frozenBrief,
-            ),
-        )
-        bind("attempt-http-1")
-        val persisted = durableAttempts.find(scope, namespace, workflow, step, "attempt-http-1")!!
-        durableAttempts.requestCancel(
-            scope, namespace, workflow, step, "attempt-http-1", persisted.revision,
-        )
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            setBearerAuth("http-api-integration-token")
-            set("Idempotency-Key", "late-submission")
-        }
-
-        val response = restTemplate.exchange(
-            "/api/factory/agent-step-results", HttpMethod.POST,
-            HttpEntity(body("attempt-http-1"), headers), jsonType(),
-        )
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(data(response.body)!!["idempotent"]).isEqualTo(false)
-    }
-
-    @Test
-    fun `HTTP API service submission is idempotent and rejects divergent replay`() {
-        val token = issueToken("attempt-http-1")
-        durableAttempts.register(
-            scope,
-            DurableAgentAttempt(
-                attemptId = "attempt-http-1", caseId = caseId, namespaceId = namespace,
-                workflowId = workflow, stepId = step, attemptNumber = 1, agentName = agentName,
-                capabilityToken = token, status = AgentAttemptStatus.RUNNING, brief = frozenBrief,
-            ),
-        )
-        bind("attempt-http-1")
-        fun submit(summary: String): ResponseEntity<Map<String, Any?>> {
-            val headers = HttpHeaders().apply {
-                contentType = MediaType.APPLICATION_JSON
-                setBearerAuth("http-api-integration-token")
-                set("Idempotency-Key", "stable-submission")
-            }
-            return restTemplate.exchange(
-                "/api/factory/agent-step-results", HttpMethod.POST,
-                HttpEntity(body("attempt-http-1", summary), headers), jsonType(),
-            )
-        }
-
-        assertThat(submit("ok").statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(submit("ok").statusCode).isEqualTo(HttpStatus.OK)
-        val collision = submit("different")
-        assertThat(collision.statusCode).isEqualTo(HttpStatus.CONFLICT)
-        assertThat(errorCode(collision.body)).isEqualTo("IDEMPOTENCY_KEY_COLLISION")
-    }
-
-    @Test
-    fun `signed AgentOS service submission resolves the active attempt from namespace and case`() {
-        val token = issueToken("attempt-http-1")
-        durableAttempts.register(
-            scope,
-            DurableAgentAttempt(
-                attemptId = "attempt-http-1",
-                caseId = caseId,
-                namespaceId = namespace,
-                workflowId = workflow,
-                stepId = step,
-                attemptNumber = 1,
-                agentName = agentName,
-                capabilityToken = token,
-                status = AgentAttemptStatus.RUNNING,
-            ),
-        )
-        val signed = TestJwt.signProxyHeaders(
-            principalId = "agentos-worker",
-            principalType = "service",
-            serviceIdentityId = "agentos-factory-bridge",
-            scopes = listOf("workflow:write"),
-            namespaceId = namespace,
-            caseId = caseId,
-            secret = properties.security.fakeIdpSecret,
-        )
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            signed.forEach(::set)
-            set("X-AgentOS-Agent-Name", agentName)
-            set("Idempotency-Key", "agentos:$caseId:request-1")
-        }
-
-        val response = restTemplate.exchange(
-            "/api/factory/agent-step-results",
-            HttpMethod.POST,
-            HttpEntity("""{"result":{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]}}}""", headers),
-            jsonType(),
-        )
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(data(response.body)!!["idempotent"]).isEqualTo(false)
-    }
-
-    @Test
-    fun `signed AgentOS submission persists and round trips delivery analysis`() {
-        val token = issueToken("attempt-http-1")
-        durableAttempts.register(
-            scope,
-            DurableAgentAttempt(
-                attemptId = "attempt-http-1", caseId = caseId, namespaceId = namespace,
-                workflowId = workflow, stepId = step, attemptNumber = 1, agentName = agentName,
-                capabilityToken = token, status = AgentAttemptStatus.RUNNING,
-            ),
-        )
-        val signed = TestJwt.signProxyHeaders(
-            principalId = "agentos-worker", principalType = "service",
-            namespaceId = namespace, caseId = caseId, secret = properties.security.fakeIdpSecret,
-        )
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            signed.forEach(::set)
-            set("X-AgentOS-Agent-Name", agentName)
-            set("Idempotency-Key", "agentos:$caseId:delivery")
-        }
-        val payload = """{"result":{"status":"PASS","summary":"done","claims":{"modifiedFiles":[],"deliveryAnalysis":{"baseBranch":"sprint","changeType":"bugfix","ticket":"WZ-33157","title":"Complete RAWeb 5.4 accessible table names"}},"artifacts":[{"kind":"run-brief","encoding":"markdown","content":"# Run brief"}],"findings":[{"severity":"blocking","code":"A11Y","summary":"Needs verification"}]}}"""
-
-        val response = restTemplate.exchange(
-            "/api/factory/agent-step-results", HttpMethod.POST, HttpEntity(payload, headers), jsonType(),
-        )
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
-        val stored = service.acceptedResult(scope, namespace, workflow, step, "attempt-http-1")!!
-        assertThat(stored.claims.modifiedFiles).isEmpty()
-        assertThat(stored.claims.deliveryAnalysis?.baseBranch).isEqualTo("sprint")
-        assertThat(stored.claims.deliveryAnalysis?.changeType).isEqualTo("bugfix")
-        assertThat(stored.claims.deliveryAnalysis?.ticket).isEqualTo("WZ-33157")
-        assertThat(stored.claims.deliveryAnalysis?.title).isEqualTo("Complete RAWeb 5.4 accessible table names")
-        assertThat(stored.artifacts.single().kind).isEqualTo("run-brief")
-    }
-
-    @Test
-    fun `signed AgentOS service submission rejects a body attempt id`() {
-        val signed = TestJwt.signProxyHeaders(
-            principalId = "agentos-worker",
-            principalType = "service",
-            namespaceId = namespace,
-            caseId = caseId,
-            secret = properties.security.fakeIdpSecret,
-        )
-        val headers = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_JSON
-            signed.forEach(::set)
-            set("Idempotency-Key", "agentos:$caseId:request-2")
-        }
-
-        val response = restTemplate.exchange(
-            "/api/factory/agent-step-results",
-            HttpMethod.POST,
-            HttpEntity(body("attempt-http-1"), headers),
-            jsonType(),
-        )
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(errorCode(response.body)).isEqualTo("INVALID_RESULT_REQUEST")
-    }
+    // ------------------------------------------------------------------
+    // Contract
+    // ------------------------------------------------------------------
 
     @Test
     fun `creates a result and returns the canonical data envelope`() {
-        val token = issueToken("attempt-http-1")
-
-        val response = post(body("attempt-http-1"), token)
+        val response = post(body(attemptId), key = "key-create")
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
         val data = data(response.body)!!
@@ -339,11 +84,10 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `an identical replay returns 200 with the same result id`() {
-        val token = issueToken("attempt-http-1")
-        val first = post(body("attempt-http-1"), token)
+    fun `an identical replay with the same idempotency key returns 200 with the same result id`() {
+        val first = post(body(attemptId), key = "key-replay")
 
-        val replay = post(body("attempt-http-1"), token)
+        val replay = post(body(attemptId), key = "key-replay")
 
         assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
         assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
@@ -352,97 +96,30 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `a divergent result for the same attempt yields 409 RESULT_SEMANTIC_COLLISION`() {
-        val token = issueToken("attempt-http-1")
-        post(body("attempt-http-1"), token)
+    fun `a divergent payload with the same idempotency key yields 409 IDEMPOTENCY_KEY_COLLISION`() {
+        post(body(attemptId), key = "key-collision")
 
-        val response = post(body("attempt-http-1", summary = "divergent"), token)
+        val response = post(body(attemptId, summary = "divergent"), key = "key-collision")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
+        assertThat(errorCode(response.body)).isEqualTo("IDEMPOTENCY_KEY_COLLISION")
+    }
+
+    @Test
+    fun `a divergent payload with a different idempotency key yields 409 RESULT_SEMANTIC_COLLISION`() {
+        post(body(attemptId), key = "key-first")
+
+        val response = post(body(attemptId, summary = "divergent"), key = "key-second")
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.CONFLICT)
         assertThat(errorCode(response.body)).isEqualTo("RESULT_SEMANTIC_COLLISION")
     }
 
     @Test
-    fun `an unknown capability token yields 401 RESULT_CAPABILITY_INVALID`() {
-        val response = post(body("attempt-http-1"), "unknown-token-0000000000000000000000000")
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(errorCode(response.body)).isEqualTo("RESULT_CAPABILITY_INVALID")
-    }
-
-    @Test
-    fun `a missing bearer token yields 401`() {
-        val response = post(body("attempt-http-1"), null)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-    }
-
-    @Test
-    fun `an invalid business schema yields 400 RESULT_SCHEMA_INVALID`() {
-        val token = issueToken("attempt-http-1")
-
-        val response = post(body("attempt-http-1", summary = ""), token)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(errorCode(response.body)).isEqualTo("RESULT_SCHEMA_INVALID")
-    }
-
-    @Test
-    fun `a mismatched observed case id yields 400 RESULT_IDENTITY_MISMATCH`() {
-        val token = issueToken("attempt-http-1")
-
-        val response = post(body("attempt-http-1"), token, caseId = "wrong-case")
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(errorCode(response.body)).isEqualTo("RESULT_IDENTITY_MISMATCH")
-    }
-
-    @Test
-    fun `a trusted namespace diverging from the capability yields 400 RESULT_IDENTITY_MISMATCH`() {
-        val token = issueToken("attempt-http-1")
-
-        val response = post(body("attempt-http-1"), token, trustedNamespace = "other-namespace")
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(errorCode(response.body)).isEqualTo("RESULT_IDENTITY_MISMATCH")
-    }
-
-    @Test
-    fun `a trusted namespace matching the capability is accepted`() {
-        val token = issueToken("attempt-http-1")
-
-        val response = post(body("attempt-http-1"), token, trustedNamespace = namespace)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
-    }
-
-    @Test
-    fun `a trusted case id contradicting the declared case yields 400 RESULT_IDENTITY_MISMATCH`() {
-        val token = issueToken("attempt-http-1")
-
-        val response = post(body("attempt-http-1"), token, trustedCaseId = "other-case")
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
-        assertThat(errorCode(response.body)).isEqualTo("RESULT_IDENTITY_MISMATCH")
-    }
-
-    @Test
-    fun `a trusted case id overrides the declared case and is accepted when coherent`() {
-        val token = issueToken("attempt-http-1")
-
-        // No X-AgentOS-Case-Id header: the submission inherits the trusted case.
-        val response = post(body("attempt-http-1"), token, caseId = null, trustedCaseId = caseId)
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
-    }
-
-    @Test
-    fun `a missing attempt id yields 400 INVALID_RESULT_REQUEST`() {
-        val token = issueToken("attempt-http-1")
-
+    fun `an extra body field yields 400 INVALID_RESULT_REQUEST`() {
         val response = post(
-            """{"result":{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]}}}""",
-            token,
+            """{"attemptId":"$attemptId","caseId":"forged-case","result":$RESULT_OK}""",
+            key = "key-extra",
         )
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
@@ -450,87 +127,165 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `an idempotency key caches the response and rejects a divergent replay`() {
-        val token = issueToken("attempt-http-1")
-        val first = post(body("attempt-http-1"), token, idempotencyKey = "http-key-1")
+    fun `a missing attempt id yields 400 INVALID_RESULT_REQUEST`() {
+        val response = post("""{"result":$RESULT_OK}""", key = "key-no-attempt")
 
-        val replay = post(body("attempt-http-1"), token, idempotencyKey = "http-key-1")
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("INVALID_RESULT_REQUEST")
+    }
 
-        val collision = post(body("attempt-http-1", summary = "divergent"), token, idempotencyKey = "http-key-1")
+    @Test
+    fun `a missing idempotency key yields 400 INVALID_RESULT_REQUEST`() {
+        val response = post(body(attemptId), key = null)
 
-        assertThat(first.statusCode).isEqualTo(HttpStatus.CREATED)
-        assertThat(replay.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(data(replay.body)!!["idempotent"]).isEqualTo(true)
-        assertThat(collision.statusCode).isEqualTo(HttpStatus.CONFLICT)
-        assertThat(errorCode(collision.body)).isEqualTo("IDEMPOTENCY_KEY_COLLISION")
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("INVALID_RESULT_REQUEST")
+    }
+
+    @Test
+    fun `an empty summary yields 400 RESULT_SCHEMA_INVALID`() {
+        val response = post(body(attemptId, summary = ""), key = "key-schema")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("RESULT_SCHEMA_INVALID")
+    }
+
+    @Test
+    fun `an unknown attempt id yields 404`() {
+        val response = post(body("attempt-http-unknown"), key = "key-unknown")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+    }
+
+    @Test
+    fun `a submission persists and round trips delivery analysis and artifacts`() {
+        val payload = """{"attemptId":"$attemptId","result":{"status":"PASS","summary":"done","claims":{"modifiedFiles":[],"deliveryAnalysis":{"baseBranch":"sprint","changeType":"bugfix","ticket":"WZ-33157","title":"Complete RAWeb 5.4 accessible table names"}},"artifacts":[{"kind":"run-brief","encoding":"markdown","content":"# Run brief"}],"findings":[{"severity":"blocking","code":"A11Y","summary":"Needs verification"}]}}"""
+
+        val response = post(payload, key = "key-delivery")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        val stored = service.acceptedResult(scope, namespace, workflow, step, attemptId)!!
+        assertThat(stored.claims.modifiedFiles).isEmpty()
+        assertThat(stored.claims.deliveryAnalysis?.baseBranch).isEqualTo("sprint")
+        assertThat(stored.claims.deliveryAnalysis?.changeType).isEqualTo("bugfix")
+        assertThat(stored.claims.deliveryAnalysis?.ticket).isEqualTo("WZ-33157")
+        assertThat(stored.claims.deliveryAnalysis?.title).isEqualTo("Complete RAWeb 5.4 accessible table names")
+        assertThat(stored.artifacts.single().kind).isEqualTo("run-brief")
+    }
+
+    // ------------------------------------------------------------------
+    // Scope: the attempt's own persisted scope, organization fencing
+    // ------------------------------------------------------------------
+
+    @Test
+    fun `an attempt stored under the workstream mapped from its namespace is submitted under that scope`() {
+        // WorkflowController.createRun stores a run under the workstream mapped from
+        // its namespace (namespace-<uuid>), NOT under the caller's own ws-default scope.
+        val namespaceUuid = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
+        val mappedWorkstream = workstreamService.findOrInitializeForNamespace(scope.organizationId, namespaceUuid)
+        val mappedScope = TenantScope(scope.organizationId, mappedWorkstream.workstreamId)
+        assertThat(mappedScope.workstreamId).isEqualTo("namespace-$namespaceUuid")
+        assertThat(mappedScope).isNotEqualTo(scope)
+        val mappedAttempt = "attempt-http-mapped"
+        registerAttempt(mappedScope, mappedAttempt, namespaceUuid)
+
+        // No bearer: the caller is the insecure user of ws-default, a different workstream.
+        val response = post(body(mappedAttempt), key = "key-mapped")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(response.body)!!["idempotent"]).isEqualTo(false)
+        assertThat(service.acceptedResult(mappedScope, namespaceUuid, workflow, step, mappedAttempt)).isNotNull
+        // The result is not stored under the caller's own scope.
+        assertThat(service.acceptedResult(scope, namespaceUuid, workflow, step, mappedAttempt)).isNull()
+    }
+
+    @Test
+    fun `an invalid static bearer in insecure mode still creates the result`() {
+        val response = post(body(attemptId), key = "key-static-bearer", bearer = "some-old-static-token")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.CREATED)
+        assertThat(data(response.body)!!["idempotent"]).isEqualTo(false)
+    }
+
+    @Test
+    fun `an attempt of another organization is not found`() {
+        val otherScope = TenantScope("org-other", "ws-other")
+        val foreignAttempt = "attempt-http-foreign-org"
+        registerAttempt(otherScope, foreignAttempt, namespace)
+
+        val response = post(body(foreignAttempt), key = "key-foreign-org")
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(service.acceptedResult(otherScope, namespace, workflow, step, foreignAttempt)).isNull()
     }
 
     // ------------------------------------------------------------------
     // Fixtures
     // ------------------------------------------------------------------
 
-    private fun bind(attemptId: String, namespaceId: String = namespace) {
-        integrationBindings.bind(
-            scope,
-            DurableAttemptIntegrationBinding(
-                attemptId = attemptId,
-                serviceIdentityId = "agentos-http-api-test",
+    /**
+     * Registers a durable attempt under [target] with its frozen brief, together with
+     * the legacy attempt record and the capability token `submitTrusted` redeems.
+     */
+    private fun registerAttempt(target: TenantScope, id: String, namespaceId: String) {
+        attempts.insert(
+            target,
+            AgentStepAttemptRecord(
                 namespaceId = namespaceId,
                 workflowId = workflow,
                 stepId = step,
-                briefHash = briefHash,
+                attemptId = id,
+                agentId = "agent-1",
+                status = "running",
+                revision = 1,
+                payload = "{}",
             ),
         )
-    }
-
-    private fun issueToken(attemptId: String): String =
-        service.issue(
-            scope,
+        val token = service.issue(
+            target,
             AgentStepResultCapabilityIdentity(
-                attemptId = attemptId,
+                attemptId = id,
                 workflowId = workflow,
                 stepId = step,
-                namespaceId = namespace,
+                namespaceId = namespaceId,
                 caseId = caseId,
                 agentName = agentName,
                 briefHash = briefHash,
             ),
         ).token
+        durableAttempts.register(
+            target,
+            DurableAgentAttempt(
+                attemptId = id,
+                caseId = caseId,
+                namespaceId = namespaceId,
+                workflowId = workflow,
+                stepId = step,
+                attemptNumber = 1,
+                agentName = agentName,
+                capabilityToken = token,
+                status = AgentAttemptStatus.RUNNING,
+                brief = frozenBrief,
+            ),
+        )
+    }
 
-    private fun body(attemptId: String, summary: String = "ok", status: String = "PASS"): String =
-        """{"attemptId":"$attemptId","result":{"status":"$status","summary":"$summary",
-            "claims":{"modifiedFiles":[]}}}"""
+    private fun body(id: String, summary: String = "ok"): String =
+        """{"attemptId":"$id","result":{"status":"PASS","summary":"$summary","claims":{"modifiedFiles":[]}}}"""
 
-    private fun post(
-        body: String,
-        token: String?,
-        caseId: String? = this.caseId,
-        agentName: String? = this.agentName,
-        idempotencyKey: String? = null,
-        trustedNamespace: String? = null,
-        trustedCaseId: String? = null,
-    ): ResponseEntity<Map<String, Any?>> {
+    private fun post(body: String, key: String?, bearer: String? = null): ResponseEntity<Map<String, Any?>> {
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
-            if (token != null) set("Authorization", "Bearer $token")
-            if (caseId != null) set("X-AgentOS-Case-Id", caseId)
-            if (agentName != null) set("X-AgentOS-Agent-Name", agentName)
-            if (idempotencyKey != null) set("X-Idempotency-Key", idempotencyKey)
-            // Loopback-dev trust boundary: the verified TrustContext reads the
-            // trusted execution identity from these headers on a loopback socket.
-            if (trustedNamespace != null) set("x-factory-namespace-id", trustedNamespace)
-            if (trustedCaseId != null) set("x-factory-case-id", trustedCaseId)
+            if (key != null) set("Idempotency-Key", key)
+            if (bearer != null) setBearerAuth(bearer)
         }
         return restTemplate.exchange(
             "/api/factory/agent-step-results",
             HttpMethod.POST,
             HttpEntity(body, headers),
-            jsonType(),
+            object : ParameterizedTypeReference<Map<String, Any?>>() {},
         )
     }
-
-    private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =
-        object : ParameterizedTypeReference<Map<String, Any?>>() {}
 
     @Suppress("UNCHECKED_CAST")
     private fun data(body: Map<String, Any?>?): Map<String, Any?>? = body?.get("data") as? Map<String, Any?>
@@ -538,4 +293,8 @@ class AgentStepResultControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Suppress("UNCHECKED_CAST")
     private fun errorCode(body: Map<String, Any?>?): String? =
         (body?.get("error") as? Map<String, Any?>)?.get("code") as? String
+
+    private companion object {
+        const val RESULT_OK = """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]}}"""
+    }
 }

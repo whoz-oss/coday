@@ -3,14 +3,13 @@ package io.whozoss.factory.planchange.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.persistence.TenantScopeProvider
 import io.whozoss.factory.planchange.domain.PlanChangeDecisionStatus
 import io.whozoss.factory.planchange.domain.PlanChangeValidation
 import io.whozoss.factory.planchange.domain.invalidPlanChangeProposal
 import io.whozoss.factory.planchange.domain.invalidPlanChangeQuery
 import io.whozoss.factory.planchange.service.PlanChangeProposalService
 import io.whozoss.factory.web.FactoryDataEnvelope
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.resolveFactoryCaller
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
@@ -32,10 +31,9 @@ import org.springframework.web.bind.annotation.RestController
  * Rules 1–3 and persists immutable, append-only records. Nothing on this surface
  * ever rewrites an active workflow instance silently.
  *
- * The call is scoped by the verified [TrustContext] resolved at the boundary
- * (`resolveFactoryCaller`, failing closed with 401 `TRUST_CONTEXT_UNAVAILABLE`) —
- * the organization/workstream scope is never read from client input; the
- * `namespaceId` is supplied by the request and strictly validated. Success
+ * The call is scoped by the authenticated user's tenant; the organization and
+ * workstream are never read from client input. The `namespaceId` is supplied by
+ * the request (a query parameter) and strictly validated. Success
  * responses use the canonical `{ "data": ... }` envelope; failures are rendered
  * by [io.whozoss.factory.error.FactoryExceptionHandler].
  */
@@ -44,7 +42,6 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "plan-change-proposals", description = "Governed replanning plan-change proposals")
 class PlanChangeProposalController(
     private val service: PlanChangeProposalService,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @PostMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -56,9 +53,9 @@ class PlanChangeProposalController(
     )
     fun submit(
         @RequestBody(required = false) body: SubmitPlanChangeRequest?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<FactoryDataEnvelope<PlanChangeProposalResponse>> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val request = body ?: invalidPlanChangeProposal("A JSON body is required")
         val result = service.submit(caller.scope, caller.actorId, request.toCommand())
         val status = if (result.idempotent) HttpStatus.OK else HttpStatus.CREATED
@@ -71,9 +68,9 @@ class PlanChangeProposalController(
         @RequestParam(name = "workflowId", required = false) workflowId: String?,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestParam(name = "status", required = false) status: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): FactoryDataEnvelope<List<PlanChangeProposalResponse>> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val scopedNamespaceId = PlanChangeValidation.requireNamespaceId(namespaceId)
         val scopedWorkflowId = requireWorkflowQuery(workflowId)
         val statusFilter = status?.takeIf { it.isNotBlank() }?.let {
@@ -95,9 +92,9 @@ class PlanChangeProposalController(
         @PathVariable proposalId: String,
         @RequestParam(name = "workflowId", required = false) workflowId: String?,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): FactoryDataEnvelope<PlanChangeProposalResponse> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val scopedNamespaceId = PlanChangeValidation.requireNamespaceId(namespaceId)
         val scopedWorkflowId = requireWorkflowQuery(workflowId)
         val result = service.get(caller.scope, scopedNamespaceId, scopedWorkflowId, proposalId)
@@ -116,9 +113,9 @@ class PlanChangeProposalController(
         @RequestParam(name = "workflowId", required = false) workflowId: String?,
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestBody(required = false) body: DecidePlanChangeRequest?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): FactoryDataEnvelope<PlanChangeProposalResponse> {
-        val caller = resolveFactoryCaller(trustContext, tenantScopeProvider)
+        val caller = resolveFactoryCaller(user)
         val scopedNamespaceId = PlanChangeValidation.requireNamespaceId(namespaceId)
         val scopedWorkflowId = requireWorkflowQuery(workflowId)
         val request = body ?: invalidPlanChangeProposal("A JSON body is required")

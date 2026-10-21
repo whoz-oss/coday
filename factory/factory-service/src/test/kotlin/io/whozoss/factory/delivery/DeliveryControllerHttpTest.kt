@@ -20,8 +20,8 @@ import org.springframework.http.ResponseEntity
  * (`/api/factory/workflows/{workflowId}/delivery`) against a real PostgreSQL
  * instance.
  *
- * Exercises the trusted boundary (namespace/case identity from the trust
- * context headers), the canonical `{ "data": ... }` success envelope, the
+ * Exercises the request boundary (namespace/case identity from the body, or the
+ * query on GET), the canonical `{ "data": ... }` success envelope, the
  * `{ "error": { code, ... } }` failure envelope, delivery resolution against a
  * provisioned work environment, git checkpointing and evidence-gated promotion.
  */
@@ -47,15 +47,15 @@ class DeliveryControllerHttpTest : Neo4jDomainIntegrationTest() {
     ).let { }
 
     @Test
-    fun `get without namespace and case identity yields 401 TRUST_CONTEXT_UNAVAILABLE`() {
+    fun `get without namespace and case identity yields 400 INVALID_DELIVERY_SCOPE`() {
         val response = restTemplate.exchange(
             "/api/factory/workflows/wf-delivery-noctx/delivery",
             HttpMethod.GET,
             HttpEntity<Void>(HttpHeaders().apply { contentType = MediaType.APPLICATION_JSON }),
             jsonType(),
         )
-        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(errorCode(response.body)).isEqualTo("TRUST_CONTEXT_UNAVAILABLE")
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("INVALID_DELIVERY_SCOPE")
     }
 
     @Test
@@ -128,25 +128,29 @@ class DeliveryControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     private fun get(workflowId: String): ResponseEntity<Map<String, Any?>> = restTemplate.exchange(
-        "/api/factory/workflows/$workflowId/delivery",
+        "/api/factory/workflows/$workflowId/delivery?namespaceId=$NAMESPACE&caseId=$CASE",
         HttpMethod.GET,
         HttpEntity<Void>(headers()),
         jsonType(),
     )
 
+    /** POSTs [body] (a JSON object, or null) with the namespace and case selectors merged in. */
     private fun post(workflowId: String, suffix: String, body: String?): ResponseEntity<Map<String, Any?>> =
         restTemplate.exchange(
             "/api/factory/workflows/$workflowId/delivery$suffix",
             HttpMethod.POST,
-            HttpEntity(body, headers()),
+            HttpEntity(withScope(body), headers()),
             jsonType(),
         )
 
+    private fun withScope(body: String?): String {
+        val fields = body?.trim()?.removePrefix("{")?.removeSuffix("}")?.takeIf { it.isNotBlank() }
+        val scope = "\"namespaceId\":\"$NAMESPACE\",\"caseId\":\"$CASE\""
+        return "{$scope${fields?.let { ",$it" } ?: ""}}"
+    }
+
     private fun headers(): HttpHeaders = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
-        set("x-factory-namespace-id", NAMESPACE)
-        set("x-factory-case-id", CASE)
-        set("x-factory-actor-id", "tester")
     }
 
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =

@@ -80,8 +80,8 @@ data class WorkflowActionsResponseDto(
 /**
  * Optional command body of the cost-control pass-through endpoints.
  *
- * Identity and namespace are NEVER read from it: the caller's [TrustContext]
- * and the persisted workflow state are authoritative. `expectedThreshold` and
+ * Identity is NEVER read from it: the authenticated user and the persisted
+ * workflow state are authoritative. `expectedThreshold` and
  * `expectedRevision` are optional command preconditions relayed verbatim;
  * `caseId` is only honoured when it is one of the workflow's persisted case
  * ids.

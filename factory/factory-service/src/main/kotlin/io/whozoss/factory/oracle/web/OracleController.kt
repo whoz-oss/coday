@@ -3,12 +3,10 @@ package io.whozoss.factory.oracle.web
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.error.UnauthenticatedException
 import io.whozoss.factory.oracle.domain.InvalidOracleRunRequestException
 import io.whozoss.factory.oracle.service.OracleExecutionService
 import io.whozoss.factory.oracle.service.OracleRunCommand
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -26,8 +24,7 @@ import org.springframework.web.bind.annotation.RestController
  * `factory/dashboard/workflow-oracle-routes.mjs`:
  * `POST /api/factory/workflows/{workflowId}/steps/{stepId}/oracles/{oracleId}/runs`.
  *
- * The call is scoped by the verified [TrustContext] resolved at the HTTP
- * boundary (never by client headers). Success responses use the canonical
+ * The call is scoped by the authenticated user's tenant. Success responses use the canonical
  * `{ "data": ... }` envelope; failures are rendered by
  * [io.whozoss.factory.error.FactoryExceptionHandler] as
  * `{ "error": { "code", "message", "details" } }`.
@@ -37,7 +34,6 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "oracles", description = "Oracle definitions and execution runs")
 class OracleController(
     private val service: OracleExecutionService,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @PostMapping(
@@ -54,10 +50,8 @@ class OracleController(
         @PathVariable oracleId: String,
         @RequestBody(required = false) request: OracleRunRequest?,
         @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKeyHeader: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<DataEnvelope<OracleRunResponse>> {
-        val scope = tenantScopeProvider.scopeOf(trustContext) ?: throw UnauthenticatedException()
-
         val body = request ?: throw InvalidOracleRunRequestException("A JSON body with 'namespaceId' is required")
         val namespaceId = body.namespaceId?.trim().orEmpty()
         if (namespaceId.isEmpty()) {
@@ -72,7 +66,7 @@ class OracleController(
         }
 
         val result = service.run(
-            scope = scope,
+            scope = user.scope,
             command = OracleRunCommand(
                 workflowId = workflowId,
                 stepId = stepId,

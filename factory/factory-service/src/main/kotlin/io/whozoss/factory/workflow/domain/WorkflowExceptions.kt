@@ -64,6 +64,7 @@ object WorkflowErrorCodes {
     const val INTERACTION_SCOPE_MISMATCH = "INTERACTION_SCOPE_MISMATCH"
     const val INVALID_INTERACTION = "INVALID_INTERACTION"
     const val INVALID_REPLY = "INVALID_REPLY"
+    const val INVALID_RETRY_REQUEST = "INVALID_RETRY_REQUEST"
     const val ACTION_NOT_ALLOWED = "ACTION_NOT_ALLOWED"
     const val UNAUTHENTICATED_ACTOR = "UNAUTHENTICATED_ACTOR"
     const val TRUST_CONTEXT_UNAVAILABLE = "TRUST_CONTEXT_UNAVAILABLE"
@@ -105,6 +106,7 @@ fun workflowStatusCode(code: String): Int = when (code) {
     WorkflowErrorCodes.INVALID_EVIDENCE,
     WorkflowErrorCodes.INVALID_INTERACTION,
     WorkflowErrorCodes.INVALID_REPLY,
+    WorkflowErrorCodes.INVALID_RETRY_REQUEST,
     WorkflowErrorCodes.ACTION_NOT_ALLOWED,
     WorkflowErrorCodes.WORKFLOW_DEFINITION_INVALID,
     WorkflowDefinitionErrorCodes.INVALID_DEFINITION,

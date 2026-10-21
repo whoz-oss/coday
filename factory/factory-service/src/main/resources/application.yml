@@ -58,32 +58,14 @@ factory:
     organization-id: ${FACTORY_ORGANIZATION_ID:default}
     workstream-id: ${FACTORY_WORKSTREAM_ID:default}
   security:
-    allow-loopback-dev: ${FACTORY_ALLOW_LOOPBACK_DEV:true}
+    # Secret the HS256 JWTs of the Factory users are signed with. Mint a token with
+    # `./gradlew :factory-service:mintToken` (see factory/tools/FACTORY_WORKSTREAM_HTTP_API.md).
     fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
-    http-api-submission:
-      # FACTORY_WORKER result submission via standard HTTP_API. Disabled by default.
-      # The bearer is configured in an AgentOS BEARER_TOKEN Auth Setting; it must
-      # never appear in an agent brief or OpenAPI document. It proves only the
-      # deployment integration identity, not an AgentOS case or agent. Factory
-      # creates a durable authorization for each entrusted attempt. One identity
-      # may access multiple explicitly bound attempts across namespaces, but this
-      # grants no other Factory endpoint and no runtime isolation per attempt.
-      enabled: ${FACTORY_WORKER_API_SUBMISSION_ENABLED:false}
-      bearer-token: ${FACTORY_WORKER_API_SUBMISSION_BEARER_TOKEN:}
-      service-identity-id: ${FACTORY_WORKER_API_SUBMISSION_SERVICE_IDENTITY:agentos-http-api}
-    workstream-service:
-      # Conversational FACTORY_WORKSTREAM HTTP_API identity (read, start, retry).
-      # Disabled by default and fully independent from the worker submission
-      # credential above. When enabled, every field is validated at startup and
-      # an invalid value refuses to start. The tenant and the permissions are
-      # server configuration, never request data. All agents the integration is
-      # attached to share these service rights.
-      enabled: ${FACTORY_WORKSTREAM_SERVICE_ENABLED:false}
-      bearer-token: ${FACTORY_WORKSTREAM_SERVICE_BEARER_TOKEN:}
-      service-identity-id: ${FACTORY_WORKSTREAM_SERVICE_IDENTITY:agentos-workstream}
-      organization-id: ${FACTORY_WORKSTREAM_SERVICE_ORGANIZATION_ID:}
-      workstream-id: ${FACTORY_WORKSTREAM_SERVICE_WORKSTREAM_ID:}
-      permissions: ${FACTORY_WORKSTREAM_SERVICE_PERMISSIONS:}
+    # WARNING: INSECURE. When true, authentication is disabled: any caller (local
+    # or remote) without a valid JWT, or with an invalid one, becomes the fixed
+    # `insecure-mode-user`, a full user of the default tenant. Never enable in a
+    # shared or production deployment. Default: false.
+    insecure-mode: ${FACTORY_INSECURE_MODE:false}
   runs:
     dir: ${FACTORY_RUNS_DIR:factory/runs}
     agentos-url: ${AGENTOS_URL:http://localhost:8080}

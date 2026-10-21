@@ -8,10 +8,7 @@ import io.whozoss.factory.environment.domain.WorkEnvironmentState
 import io.whozoss.factory.environment.service.EnvironmentInspection
 import io.whozoss.factory.environment.service.ProvisionEnvironmentCommand
 import io.whozoss.factory.environment.service.WorkUnitEnvironmentService
-import io.whozoss.factory.error.UnauthenticatedException
-import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -33,10 +30,9 @@ import org.springframework.web.bind.annotation.RestController
  *   * `POST   /api/factory/workflows/{workflowId}/environment/reconcile`
  *   * `POST   /api/factory/workflows/{workflowId}/environment/release`
  *
- * The call is scoped by the verified [TrustContext] resolved at the HTTP
- * boundary (never client headers for tenant identity): the namespace/case of an
- * AgentOS execution context come from the trusted context, falling back to the
- * request body only for local/loopback development. Success responses use the
+ * The call is scoped by the authenticated user's tenant. The namespace and the
+ * parent case of an AgentOS execution context are request body fields. Success
+ * responses use the
  * canonical `{ "data": ... }` envelope; failures are rendered by
  * [io.whozoss.factory.error.FactoryExceptionHandler] as
  * `{ "error": { "code", "message", "details" } }`.
@@ -46,18 +42,15 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "work-environments", description = "Work-unit environment provisioning control plane")
 class WorkUnitEnvironmentController(
     private val service: WorkUnitEnvironmentService,
-    private val tenantScopeProvider: TenantScopeProvider,
 ) {
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Get the current environment of a workflow")
     fun getEnvironment(
         @PathVariable workflowId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
-    ): EnvironmentDataEnvelope<EnvironmentResponse> {
-        val scope = requireScope(trustContext)
-        return EnvironmentDataEnvelope(service.inspect(scope, workflowId).toResponse())
-    }
+        @Parameter(hidden = true) user: AuthenticatedUser,
+    ): EnvironmentDataEnvelope<EnvironmentResponse> =
+        EnvironmentDataEnvelope(service.inspect(user.scope, workflowId).toResponse())
 
     @PostMapping(
         path = ["/provision"],
@@ -67,23 +60,18 @@ class WorkUnitEnvironmentController(
     fun provision(
         @PathVariable workflowId: String,
         @RequestBody(required = false) request: ProvisionEnvironmentRequest?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<EnvironmentDataEnvelope<EnvironmentResponse>> {
-        val scope = requireScope(trustContext)
         val workUnitId = request?.workUnitId?.takeIf { it.isNotBlank() }
             ?: throw InvalidEnvironmentRequestException("'workUnitId' is required")
         val branch = request.branch?.takeIf { it.isNotBlank() }
             ?: throw InvalidEnvironmentRequestException("'branch' is required")
         val integrationBranch = request.integrationBranch?.takeIf { it.isNotBlank() } ?: DEFAULT_INTEGRATION_BRANCH
-        val namespaceId = trustContext?.namespaceId?.takeIf { it.isNotBlank() }
-            ?: request.namespaceId?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_NAMESPACE
-        val parentCaseId = trustContext?.caseId?.takeIf { it.isNotBlank() }
-            ?: request.parentCaseId?.takeIf { it.isNotBlank() }
-        val createdBy = trustContext?.principalId?.takeIf { it.isNotBlank() } ?: UNKNOWN_ACTOR
+        val namespaceId = request.namespaceId?.takeIf { it.isNotBlank() } ?: DEFAULT_NAMESPACE
+        val parentCaseId = request.parentCaseId?.takeIf { it.isNotBlank() }
 
         val outcome = service.provision(
-            scope = scope,
+            scope = user.scope,
             command = ProvisionEnvironmentCommand(
                 workflowId = workflowId,
                 workUnitId = workUnitId,
@@ -91,7 +79,7 @@ class WorkUnitEnvironmentController(
                 parentCaseId = parentCaseId,
                 integrationBranch = integrationBranch,
                 branch = branch,
-                createdBy = createdBy,
+                createdBy = user.userId,
                 repoRoot = request.repoRoot,
             ),
         )
@@ -114,11 +102,9 @@ class WorkUnitEnvironmentController(
     @Operation(summary = "Reconcile the workflow environment against its Git worktree")
     fun reconcile(
         @PathVariable workflowId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
-    ): EnvironmentDataEnvelope<EnvironmentResponse> {
-        val scope = requireScope(trustContext)
-        return EnvironmentDataEnvelope(service.inspect(scope, workflowId).toResponse())
-    }
+        @Parameter(hidden = true) user: AuthenticatedUser,
+    ): EnvironmentDataEnvelope<EnvironmentResponse> =
+        EnvironmentDataEnvelope(service.inspect(user.scope, workflowId).toResponse())
 
     @PostMapping(
         path = ["/release"],
@@ -128,16 +114,12 @@ class WorkUnitEnvironmentController(
     fun release(
         @PathVariable workflowId: String,
         @RequestBody(required = false) request: ReleaseEnvironmentRequest?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): EnvironmentDataEnvelope<EnvironmentResponse> {
-        val scope = requireScope(trustContext)
         requireReleaseState(request?.state)
-        val released = service.release(scope, workflowId, WorkEnvironmentState.DECOMMISSIONED)
+        val released = service.release(user.scope, workflowId, WorkEnvironmentState.DECOMMISSIONED)
         return EnvironmentDataEnvelope(released.toResponse())
     }
-
-    private fun requireScope(trustContext: TrustContext?): TenantScope =
-        tenantScopeProvider.scopeOf(trustContext) ?: throw UnauthenticatedException()
 
     private fun requireReleaseState(state: String?) {
         if (state == null) return
@@ -152,7 +134,6 @@ class WorkUnitEnvironmentController(
     private companion object {
         const val DEFAULT_INTEGRATION_BRANCH = "main"
         const val DEFAULT_NAMESPACE = "default"
-        const val UNKNOWN_ACTOR = "unknown"
 
         /** `decommissioned` is the native vocabulary; `completed`/`abandoned` are accepted aliases. */
         val ACCEPTED_RELEASE_STATES = setOf("decommissioned", "completed", "abandoned")
