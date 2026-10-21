@@ -65,7 +65,7 @@ class LoopWorkflowRunnerService(
     ): LoopRunOutcome {
         val triggerUser =
             context.triggerUser
-                ?: return LoopRunOutcome.Aborted("An AgentLoop must be launched by an identified user.")
+                ?: return LoopRunOutcome.Aborted("An AgentLoop must be triggered by an identified user.")
 
         val starterTool =
             context.tools.find { FreeCaseStarterForUserTool.isFreeCaseStarterForUserTool(it.name) }
@@ -101,15 +101,15 @@ class LoopWorkflowRunnerService(
                 }
             }
 
-        val launchedCaseIds = outcomes.filterIsInstance<ItemOutcome.Launched>().map { it.caseId }
-        val countByFailureType = outcomes.filter { it !is ItemOutcome.Launched }.groupingBy { it }.eachCount()
+        val startedCaseIds = outcomes.filterIsInstance<ItemOutcome.Started>().map { it.caseId }
+        val countByFailureType = outcomes.filter { it !is ItemOutcome.Started }.groupingBy { it }.eachCount()
 
         return LoopRunOutcome.Completed(
             searchTool = payload.search.tool,
             returned = search.data.size,
             totalCount = search.metadata?.totalCount,
             hasMorePages = search.metadata?.next != null,
-            launchedCaseIds = launchedCaseIds,
+            startedCaseIds = startedCaseIds,
             unknownUser = countByFailureType[ItemOutcome.UnknownUser] ?: 0,
             noAgentAccess = countByFailureType[ItemOutcome.NoAgentAccess] ?: 0,
             failed = countByFailureType[ItemOutcome.Failed] ?: 0,
@@ -225,7 +225,7 @@ class LoopWorkflowRunnerService(
                     objectMapper.writeValueAsString(input),
                     toolContext(context = context, triggerUser = triggerUser),
                 )
-            launchOutcome(result = result, item = item, context = context)
+            startOutcome(result = result, item = item, context = context)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -241,7 +241,7 @@ class LoopWorkflowRunnerService(
      * the allowlist) hits every entity alike: it shows in
      * the log with its reason, and in the summary as failures.
      */
-    private fun launchOutcome(
+    private fun startOutcome(
         result: ToolExecutionResult,
         item: SearchResultItem,
         context: LoopRunContext,
@@ -257,7 +257,7 @@ class LoopWorkflowRunnerService(
             }
             return ItemOutcome.Failed
         }
-        val caseId = launchedCaseId(result)
+        val caseId = startedCaseId(result)
         if (caseId == null) {
             logger.error {
                 "[LoopWorkflowRunner] '${FreeCaseStarterForUserTool.TOOL_NAME}' reported success without a case id " +
@@ -269,17 +269,17 @@ class LoopWorkflowRunnerService(
             "[LoopWorkflowRunner] Started case $caseId for entity '${item.entityId}' " +
                 "(agent=${result.metadata["agentName"]}, loopCase=${context.caseId})"
         }
-        return ItemOutcome.Launched(caseId)
+        return ItemOutcome.Started(caseId)
     }
 
     /** The new case id, from the structured output of the tool ([CaseStarterOutput]); null if unreadable. */
-    private fun launchedCaseId(result: ToolExecutionResult): UUID? =
+    private fun startedCaseId(result: ToolExecutionResult): UUID? =
         result.structuredOutput
             ?.let { runCatching { objectMapper.treeToValue(it, CaseStarterOutput::class.java) }.getOrNull() }
             ?.caseId
 
     private sealed interface ItemOutcome {
-        data class Launched(
+        data class Started(
             val caseId: UUID,
         ) : ItemOutcome
 

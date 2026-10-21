@@ -66,7 +66,7 @@ class AgentLoopUnitSpec :
                 returned = 1,
                 totalCount = 1,
                 hasMorePages = false,
-                launchedCaseIds = listOf(UUID.randomUUID()),
+                startedCaseIds = listOf(UUID.randomUUID()),
                 unknownUser = 0,
                 noAgentAccess = 0,
                 failed = 0,
@@ -128,7 +128,7 @@ class AgentLoopUnitSpec :
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             val summary = emitted[1].shouldBeInstanceOf<MessageEvent>()
             summary.actor.role shouldBe ActorRole.AGENT
-            (summary.content.single() as MessageContent.Text).content shouldContain "Launched 1 case(s)"
+            (summary.content.single() as MessageContent.Text).content shouldContain "Started 1 case(s)"
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
         }
 

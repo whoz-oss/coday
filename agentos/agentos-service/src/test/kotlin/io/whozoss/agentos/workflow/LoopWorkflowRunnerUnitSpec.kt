@@ -80,10 +80,10 @@ class LoopWorkflowRunnerUnitSpec :
         ) {
             val userService = mockk<UserService>()
             val calls = mutableListOf<Call>()
-            val launchedIds = mutableListOf<UUID>()
+            val startedIds = mutableListOf<UUID>()
 
             /** What the stand-in answers; set a refusal or a throw to test the loop's reading of it. */
-            var answer: (Call) -> ToolExecutionResult = { success(UUID.randomUUID().also { launchedIds += it }) }
+            var answer: (Call) -> ToolExecutionResult = { success(UUID.randomUUID().also { startedIds += it }) }
 
             /** Stands in for the `FreeCaseStarter` tool: records the call, answers like the real one. */
             val starterTool: StandardTool<*> =
@@ -219,7 +219,7 @@ class LoopWorkflowRunnerUnitSpec :
                     .run(payload, context(listOf(searchTool(listOf("alice")), prefixed))) { true }
                     .shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 1
+            outcome.started shouldBe 1
         }
 
         // -------------------------------------------------------------------------
@@ -291,8 +291,8 @@ class LoopWorkflowRunnerUnitSpec :
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launchedCaseIds shouldBe f.launchedIds
-            outcome.summary() shouldContain f.launchedIds.single().toString()
+            outcome.startedCaseIds shouldBe f.startedIds
+            outcome.summary() shouldContain f.startedIds.single().toString()
             f.calls.single().also { call ->
                 call.agentName shouldBe "ProfileCaretaker"
                 call.prompt shouldBe prompt
@@ -350,7 +350,7 @@ class LoopWorkflowRunnerUnitSpec :
 
             val outcome = f.run(tool).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 1
+            outcome.started shouldBe 1
             f.calls.single().userId shouldBe alice.metadata.id
             f.calls.single().prompt shouldBe prompt
         }
@@ -371,7 +371,7 @@ class LoopWorkflowRunnerUnitSpec :
             val outcome = f.run(tool).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.unknownUser shouldBe 1
-            outcome.launched shouldBe 0
+            outcome.started shouldBe 0
             f.calls shouldBe emptyList()
         }
 
@@ -391,7 +391,7 @@ class LoopWorkflowRunnerUnitSpec :
             val outcome = f.run(tool).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.unknownUser shouldBe 1
-            outcome.launched shouldBe 0
+            outcome.started shouldBe 0
             f.calls shouldBe emptyList()
         }
 
@@ -403,7 +403,7 @@ class LoopWorkflowRunnerUnitSpec :
             val outcome = f.run(searchTool(listOf("ghost"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.unknownUser shouldBe 1
-            outcome.launched shouldBe 0
+            outcome.started shouldBe 0
             f.calls shouldBe emptyList()
         }
 
@@ -435,14 +435,14 @@ class LoopWorkflowRunnerUnitSpec :
                         errorType = "FORBIDDEN",
                     )
                 } else {
-                    f.success(UUID.randomUUID().also { f.launchedIds += it })
+                    f.success(UUID.randomUUID().also { f.startedIds += it })
                 }
             }
 
             val outcome = f.run(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.failed shouldBe 1
-            outcome.launched shouldBe 1
+            outcome.started shouldBe 1
             f.calls.size shouldBe 2
         }
 
@@ -456,7 +456,7 @@ class LoopWorkflowRunnerUnitSpec :
                     first = false
                     error("boom")
                 } else {
-                    f.success(UUID.randomUUID().also { f.launchedIds += it })
+                    f.success(UUID.randomUUID().also { f.startedIds += it })
                 }
             }
 
@@ -464,11 +464,11 @@ class LoopWorkflowRunnerUnitSpec :
 
             outcome.failed shouldBe 1
             outcome.noAgentAccess shouldBe 0
-            outcome.launched shouldBe 1
+            outcome.started shouldBe 1
             f.calls.size shouldBe 2
         }
 
-        "a success without a readable case id is counted as failed, not as launched" {
+        "a success without a readable case id is counted as failed, not as started" {
             val f = Fixture(objectMapper)
             f.knownUser("alice")
             f.answer = { ToolExecutionResult.success("started, apparently") }
@@ -476,7 +476,7 @@ class LoopWorkflowRunnerUnitSpec :
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.failed shouldBe 1
-            outcome.launched shouldBe 0
+            outcome.started shouldBe 0
         }
 
         "the case id is read from the structured output only: one found in the metadata alone counts as failed" {
@@ -486,7 +486,7 @@ class LoopWorkflowRunnerUnitSpec :
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launchedCaseIds shouldBe emptyList()
+            outcome.startedCaseIds shouldBe emptyList()
             outcome.failed shouldBe 1
         }
 
@@ -500,7 +500,7 @@ class LoopWorkflowRunnerUnitSpec :
 
             val outcome = f.run(searchTool(listOf("a", "b", "c"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 2
+            outcome.started shouldBe 2
             outcome.overLimit shouldBe 1
             outcome.summary() shouldContain "over the limit of 2"
             verify(exactly = 0) { f.userService.findByExternalId("c") }
@@ -515,14 +515,14 @@ class LoopWorkflowRunnerUnitSpec :
             outcome.summary() shouldContain "only the first page"
         }
 
-        "stops launching when interrupted" {
+        "stops starting cases when interrupted" {
             val f = Fixture(objectMapper)
             f.knownUser("alice")
 
             val outcome = f.run(searchTool(listOf("alice"))) { false }.shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.interrupted shouldBe true
-            outcome.launched shouldBe 0
+            outcome.started shouldBe 0
             f.calls shouldBe emptyList()
         }
 
@@ -535,7 +535,7 @@ class LoopWorkflowRunnerUnitSpec :
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 1
+            outcome.started shouldBe 1
             f.calls.single().userId shouldBe alice.metadata.id
             verify(exactly = 0) { f.userService.findByExternalId("task-alice") }
             verify(exactly = 1) { f.userService.findByExternalId("alice") }
@@ -551,7 +551,7 @@ class LoopWorkflowRunnerUnitSpec :
 
             val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 1
+            outcome.started shouldBe 1
             val ctx = f.calls.single().context
             ctx.fieldNames().asSequence().toList() shouldBe listOf("activeContext")
             ctx["activeContext"].single()["type"].asText() shouldBe "TALENT"
