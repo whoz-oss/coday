@@ -2658,6 +2658,92 @@ class CaseServiceImplSpec :
             messageEvent.sessionContext shouldBe sessionCtx
         }
 
+        // -------------------------------------------------------------------------
+        // reopenCase: terminal -> IDLE transitions
+        // -------------------------------------------------------------------------
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminalStatus ->
+            "reopenCase transitions a $terminalStatus case back to IDLE and persists a CaseStatusEvent" {
+                val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val service = buildService(caseEventService = caseEventService)
+                val case = service.create(Case(namespaceId = namespaceId))
+                // Force terminal status directly via repository so we skip the kill machinery
+                service.killCase(case.id)
+                if (terminalStatus == CaseStatus.ERROR) {
+                    service.update(case.copy(status = CaseStatus.ERROR))
+                }
+                service.getById(case.id).status shouldBe (if (terminalStatus == CaseStatus.ERROR) CaseStatus.ERROR else CaseStatus.KILLED)
+
+                val reopened = service.reopenCase(case.id)
+
+                reopened.status shouldBe CaseStatus.IDLE
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                // A CaseStatusEvent with IDLE must have been persisted
+                caseEventService
+                    .findByParent(case.id)
+                    .filterIsInstance<CaseStatusEvent>()
+                    .last()
+                    .status shouldBe CaseStatus.IDLE
+            }
+        }
+
+        "reopenCase of a non-terminal case throws ConflictException" {
+            val service = buildService()
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Case starts in CREATED status — not terminal
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an IDLE case throws ConflictException" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseEventService = caseEventService)
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Drive to IDLE via a normal message + agent run
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+            awaiter.join()
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an unknown case throws ResourceNotFoundException" {
+            val service = buildService()
+            shouldThrow<ResourceNotFoundException> {
+                service.reopenCase(UUID.randomUUID())
+            }
+        }
+
+        "reopenCase is blocked when the launch gate vetoes it" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val blockingGate =
+                object : CaseLaunchGate {
+                    override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Admit
+
+                    override fun requireReopenable(caseId: UUID) {
+                        throw io.whozoss.agentos.exception.ConflictException("The workspace is being removed or has been removed")
+                    }
+                }
+            val service = buildService(caseEventService = caseEventService, caseLaunchGate = blockingGate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            service.killCase(case.id)
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+            // Status must not have changed
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
+        }
+
+        // -------------------------------------------------------------------------
         "killing a parent case also kills its active sub-cases" {
             // Verifies that killCase propagates depth-first to sub-cases created by
             // delegation. The parent is killed; both sub-cases must reach KILLED status

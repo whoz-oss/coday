@@ -79,5 +79,20 @@ class GitCaseLaunchGate(
         }
     }
 
+    /**
+     * Rejects reopening only when the workspace binding exists AND its removal has started.
+     *
+     * Deliberately omits the terminal-status check: that is exactly the condition we are
+     * undoing when reopening a killed case. A case whose worktree is gone cannot meaningfully
+     * run again, so we block only on the resource lifecycle — not on the case status.
+     */
+    override fun requireReopenable(caseId: UUID) {
+        exchangeRootResolver.resolveGit(caseId).binding?.let { binding ->
+            if (binding.status.isRemovalStarted) {
+                throw ConflictException("The workspace is being removed or has been removed")
+            }
+        }
+    }
+
     companion object : KLogging()
 }
