@@ -112,6 +112,24 @@ interface SpringDataNeo4jDurableAgentAttemptRepository : Neo4jRepository<Durable
     ): List<DurableAgentAttemptNode>
 
     /**
+     * Locate an attempt by its `attemptId` anywhere in an organization, whatever
+     * its workstream, namespace or workflow. Used by the worker result route,
+     * whose caller knows only the attempt id.
+     */
+    @Query(
+        """
+        MATCH (a:DurableAgentAttempt)
+        WHERE a.organizationId = ${'$'}organizationId
+          AND a.attemptId = ${'$'}attemptId
+        RETURN a
+        """,
+    )
+    fun findByOrganizationAndAttemptId(
+        organizationId: String,
+        attemptId: String,
+    ): List<DurableAgentAttemptNode>
+
+    /**
      * Every attempt of a workflow, across all its steps. Used by the workflow
      * real-cost aggregation to collect the case ids the workflow produced.
      */

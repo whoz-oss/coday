@@ -1,8 +1,7 @@
 package io.whozoss.factory.forge.web
 
-import io.whozoss.factory.persistence.TenantScopeProvider
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.FactoryCaller
-import io.whozoss.factory.web.TrustContext
 import io.whozoss.factory.web.factoryError
 import io.whozoss.factory.web.factoryStorageFailure
 import io.whozoss.factory.web.resolveFactoryCaller
@@ -17,9 +16,8 @@ typealias ForgeCaller = FactoryCaller
 fun forgeError(statusCode: Int, code: String, message: String, details: Any? = null): Nothing =
     factoryError(statusCode, code, message, details)
 
-/** Resolve the trusted caller from the host boundary [TrustContext]. */
-fun resolveForgeCaller(trustContext: TrustContext?, tenantScopeProvider: TenantScopeProvider): ForgeCaller =
-    resolveFactoryCaller(trustContext, tenantScopeProvider)
+/** Map the authenticated user of the host boundary onto the Forge caller. */
+fun resolveForgeCaller(user: AuthenticatedUser): ForgeCaller = resolveFactoryCaller(user)
 
 /** Map a storage failure to the Node `FORGE_STORAGE_FAILURE` (500). */
 fun forgeStorageFailure(error: Throwable): Nothing = factoryStorageFailure(error)

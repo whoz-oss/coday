@@ -11,19 +11,17 @@ import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
+import org.springframework.test.context.TestPropertySource
 
 /**
- * Fail-closed HTTP boundary test: with no credential, the oracle run endpoint
- * must refuse the caller before any domain work.
+ * Fail-closed HTTP boundary test: with authentication enabled
+ * (`factory.security.insecure-mode=false`) and no credential, a guarded route must be
+ * refused by the authentication filter before any domain work.
  *
- * The suite runs with `factory.security.allow-loopback-dev` enabled (the shared
- * integration configuration), so a genuine localhost request would be promoted
- * to the loopback-dev wildcard. To exercise the anonymous path without splitting
- * the Spring context with a per-class property override, the request carries an
- * `X-Forwarded-For` header: `server.forward-headers-strategy=framework` installs
- * the [org.springframework.web.filter.ForwardedHeaderFilter], which rewrites
- * `request.remoteAddr` to the forwarded (non-loopback) address.
+ * The per-class property override gives this class its own Spring context, while
+ * the shared integration context keeps running in insecure mode.
  */
+@TestPropertySource(properties = ["factory.security.insecure-mode=false"])
 class OracleControllerAuthenticationTest : Neo4jIntegrationTest() {
 
     @Autowired
@@ -37,8 +35,6 @@ class OracleControllerAuthenticationTest : Neo4jIntegrationTest() {
     fun `anonymous caller is refused with 401`() {
         val headers = HttpHeaders()
         headers.contentType = MediaType.APPLICATION_JSON
-        // Force a non-loopback remote address so loopback-dev does not apply.
-        headers.set("X-Forwarded-For", "203.0.113.195")
         val response = restTemplate.exchange(
             "/api/factory/workflows/wf/steps/step/oracles/smoke/runs",
             HttpMethod.POST,
@@ -48,5 +44,26 @@ class OracleControllerAuthenticationTest : Neo4jIntegrationTest() {
 
         assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
         assertThat(errorCode(response.body)).isEqualTo("UNAUTHENTICATED")
+    }
+
+    /**
+     * The 401 of an unauthenticated SSE open must be a regular `application/json` error envelope,
+     * not an event stream: the filter answers it before the `produces = text/event-stream`
+     * endpoint is reached, so no converter has to write an `ErrorResponse` as an event stream.
+     */
+    @Test
+    fun `an unauthenticated stream open is a json 401 and registers no connection`() {
+        val headers = HttpHeaders().apply { accept = listOf(MediaType.TEXT_EVENT_STREAM) }
+
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/stream",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers),
+            String::class.java,
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.UNAUTHORIZED)
+        assertThat(response.headers.contentType?.toString().orEmpty()).contains("application/json")
+        assertThat(response.body).contains("UNAUTHENTICATED").contains("\"error\"")
     }
 }

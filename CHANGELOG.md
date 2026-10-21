@@ -1,3 +1,23 @@
+## 3.38.1 (2026-10-20)
+
+### 🩹 Fixes
+
+- **agentos:** fix namespace member role changes failing with a 500 ([#1342](https://github.com/whoz-oss/coday/pull/1342))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz @selimbensenouciep-prog
+
+## 3.38.0 (2026-10-20)
+
+### 🚀 Features
+
+- #35527 bind Forge Agents to the case worktree for files and commands ([#1463](https://github.com/whoz-oss/coday/pull/1463), [#35527](https://github.com/whoz-oss/coday/issues/35527))
+
+### ❤️ Thank You
+
+- selim-bensenouci-ep-whoz
+
 ## 3.37.0 (2026-10-20)
 
 ### 🚀 Features

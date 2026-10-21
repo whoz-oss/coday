@@ -15,13 +15,14 @@ import org.springframework.http.ResponseEntity
 
 /**
  * HTTP integration tests of
- * [io.whozoss.factory.environment.web.WorkUnitEnvironmentController] against a
- * real PostgreSQL instance.
+ * [io.whozoss.factory.environment.web.WorkUnitEnvironmentController] against the
+ * embedded Neo4j engine.
  *
  * Exercises `/api/factory/workflows/{workflowId}/environment` (GET, provision,
  * reconcile, release), asserting the canonical `{ "data": ... }` success
  * envelope and the `{ "error": { code, ... } }` failure envelope of the Node
- * control plane. The trust context is the loopback-dev principal.
+ * control plane. The caller is the insecure-mode user; the namespace and parent
+ * case of a provision are body fields.
  */
 class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
 
@@ -128,16 +129,13 @@ class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
 
     private fun headers(): HttpHeaders = HttpHeaders().apply {
         contentType = MediaType.APPLICATION_JSON
-        set("x-factory-namespace-id", "ns-http")
-        set("x-factory-case-id", "case-http")
-        set("x-factory-actor-id", "tester")
     }
 
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =
         object : ParameterizedTypeReference<Map<String, Any?>>() {}
 
     private fun provisionBody(workUnitId: String): String =
-        """{"workUnitId":"$workUnitId","integrationBranch":"main","branch":"feature/http"}"""
+        """{"workUnitId":"$workUnitId","namespaceId":"ns-http","parentCaseId":"case-http","integrationBranch":"main","branch":"feature/http"}"""
 
     @Suppress("UNCHECKED_CAST")
     private fun data(body: Map<String, Any?>?): Map<String, Any?>? = body?.get("data") as? Map<String, Any?>

@@ -196,6 +196,18 @@ class DurableAgentAttemptService(
     ): DurableAgentAttempt? = repository.findByAttemptId(scope, namespaceId, workflowId, attemptId)
 
     /**
+     * Every attempt carrying [attemptId] in an organization, each with the scope it
+     * is persisted under. The worker result route resolves its attempt this way:
+     * a run is stored under the workstream mapped from its namespace, which is
+     * not the workstream of the caller's own scope.
+     */
+    @Transactional(readOnly = true)
+    fun findByOrganizationAndAttemptId(
+        organizationId: String,
+        attemptId: String,
+    ): List<ScopedDurableAgentAttempt> = repository.findByOrganizationAndAttemptId(organizationId, attemptId)
+
+    /**
      * Every attempt of a workflow, across all its steps. Used by the workflow
      * real-cost aggregation to resolve the case ids the workflow produced.
      */

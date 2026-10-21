@@ -13,24 +13,22 @@ tags:
   description: "Workflow projections, transitions and interactions"
 - name: agentos-proxy
   description: AgentOS relay endpoints
-- name: step-result-bindings
-  description: Verify a capability-bound agent step result submission
 - name: delivery
   description: Governed delivery control plane
-- name: agent-step-results
-  description: Capability-bound agent step result submission
+- name: workstream-service
+  description: FACTORY_WORKSTREAM HTTP_API facade
 - name: delivery-operations
   description: "Delivery deployment, verification and rollback control plane"
 - name: plan-change-proposals
   description: Governed replanning plan-change proposals
+- name: agent-step-results
+  description: Agent step result submission
 - name: workflows
   description: Workflow definitions
 - name: workstreams
   description: Factory workstreams
 - name: oracles
   description: Oracle definitions and execution runs
-- name: agent-step-questions
-  description: Capability-bound worker step questions (ask-step-question)
 paths:
   /api/factory/workstreams/{workstreamId}:
     get:
@@ -135,12 +133,6 @@ paths:
       - workstreams
       summary: List workstreams for the caller's tenant.
       operationId: listWorkstream
-      parameters:
-      - name: namespaceId
-        in: query
-        required: false
-        schema:
-          type: string
       responses:
         "200":
           description: OK
@@ -235,6 +227,85 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ControllerCaseResponse"
+  /api/factory/workstream-service/workflows:
+    get:
+      tags:
+      - workstream-service
+      summary: List the workflows of the configured workstream.
+      operationId: listWorkflowsWorkstreamService
+      parameters:
+      - name: state
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: workflowType
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+    post:
+      tags:
+      - workstream-service
+      summary: Create a workflow run. Factory owns its identity and execution.
+      operationId: startWorkflowWorkstreamService
+      parameters:
+      - name: Idempotency-Key
+        in: header
+        required: false
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workstream-service/workflows/{workflowId}/retries:
+    post:
+      tags:
+      - workstream-service
+      summary: Request a governed retry of a blocked step.
+      operationId: requestRetryWorkstreamService
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows:
     get:
       tags:
@@ -1374,44 +1445,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
-  /api/factory/step-result-bindings:
-    post:
-      tags:
-      - step-result-bindings
-      summary: Verify a step-result capability and resolve its binding.
-      description: "Requires an `Authorization: Bearer <capability>` token (or the\
-        \ token in the body). Never redeems the capability."
-      operationId: verifyFactoryStepResultBinding
-      parameters:
-      - name: Authorization
-        in: header
-        required: false
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/FactoryStepResultBindingRequest"
-      responses:
-        "200":
-          description: The capability is valid and the binding is resolved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FactoryStepResultBindingEnvelopeFactoryStepResultBindingData"
-        "401":
-          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "400":
-          description: RESULT_IDENTITY_MISMATCH
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
   /api/factory/plan-change-proposals:
     get:
       tags:
@@ -1503,27 +1536,10 @@ paths:
     post:
       tags:
       - agent-step-results
-      summary: Submit a capability-bound agent step result.
-      description: "Requires an `Authorization: Bearer <capability>` token issued\
-        \ by the Factory."
+      summary: Submit the structured result of an agent step attempt.
       operationId: submitAgentStepResult
       parameters:
-      - name: Authorization
-        in: header
-        required: false
-        schema:
-          type: string
-      - name: X-AgentOS-Case-Id
-        in: header
-        required: false
-        schema:
-          type: string
-      - name: X-AgentOS-Agent-Name
-        in: header
-        required: false
-        schema:
-          type: string
-      - name: X-Idempotency-Key
+      - name: Idempotency-Key
         in: header
         required: false
         schema:
@@ -1547,109 +1563,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/AgentStepResultEnvelopeAgentStepResultData"
         "400":
-          description: "RESULT_SCHEMA_INVALID, RESULT_IDENTITY_MISMATCH or INVALID_RESULT_REQUEST"
+          description: RESULT_SCHEMA_INVALID or INVALID_RESULT_REQUEST
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
-          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
+          description: UNAUTHENTICATED
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "409":
           description: "RESULT_SEMANTIC_COLLISION, IDEMPOTENCY_KEY_COLLISION or STALE_AMENDMENT_SEQUENCE"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "410":
-          description: RESULT_CAPABILITY_EXPIRED
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-  /api/factory/agent-step-results/capability/refresh:
-    post:
-      tags:
-      - agent-step-result-refresh-controller
-      operationId: refreshAgentStepResultRefresh
-      parameters:
-      - name: trustContext
-        in: query
-        required: false
-        schema:
-          $ref: "#/components/schemas/TrustContext"
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/Request"
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/EnvelopeData"
-  /api/factory/agent-step-questions:
-    post:
-      tags:
-      - agent-step-questions
-      summary: Ask a durable human step question and park the attempt in waiting_human.
-      description: "Requires an `Authorization: Bearer <capability>` token issued\
-        \ by the Factory. Returns as soon as the question is durably recorded — the\
-        \ answer never blocks the worker call."
-      operationId: askAgentStepQuestion
-      parameters:
-      - name: Authorization
-        in: header
-        required: false
-        schema:
-          type: string
-      - name: X-AgentOS-Case-Id
-        in: header
-        required: false
-        schema:
-          type: string
-      - name: X-AgentOS-Agent-Name
-        in: header
-        required: false
-        schema:
-          type: string
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AgentStepQuestionRequest"
-      responses:
-        "202":
-          description: Question durably recorded (or idempotent replay)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AgentStepQuestionEnvelopeAgentStepQuestionData"
-        "400":
-          description: "QUESTION_SCHEMA_INVALID, RESULT_IDENTITY_MISMATCH or INVALID_RESULT_REQUEST"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "401":
-          description: RESULT_CAPABILITY_INVALID or TRUST_CONTEXT_UNAVAILABLE
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: QUESTION_ATTEMPT_NOT_WAITABLE or QUESTION_ALREADY_ASKED
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "410":
-          description: RESULT_CAPABILITY_EXPIRED
           content:
             application/json:
               schema:
@@ -1811,6 +1737,113 @@ paths:
             '*/*':
               schema:
                 $ref: "#/components/schemas/ControllerResumptionPackage"
+  /api/factory/workstream-service/workstreams/{workstreamId}:
+    get:
+      tags:
+      - workstream-service
+      summary: Read the bounded aggregated projection of the configured workstream.
+      operationId: getWorkstreamWorkstreamService
+      parameters:
+      - name: workstreamId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkstreamProjectionResponse"
+  /api/factory/workstream-service/workflows/{workflowId}:
+    get:
+      tags:
+      - workstream-service
+      summary: Read the authoritative state of one workflow.
+      operationId: getWorkflowWorkstreamService
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workstream-service/workflows/{workflowId}/human-actions:
+    get:
+      tags:
+      - workstream-service
+      summary: "List the pending human decisions of a workflow. Information only:\
+        \ they are answered in Factory."
+      operationId: getRequiredHumanActionsWorkstreamService
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workstream-service/workflows/{workflowId}/blockers:
+    get:
+      tags:
+      - workstream-service
+      summary: List the active blockers of a workflow.
+      operationId: getBlockersWorkstreamService
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
+  /api/factory/workstream-service/workflows/{workflowId}/attempts:
+    get:
+      tags:
+      - workstream-service
+      summary: "List the durable attempts of a workflow, optionally of one step."
+      operationId: getStepAttemptsWorkstreamService
+      parameters:
+      - name: workflowId
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: stepId
+        in: query
+        required: false
+        schema:
+          type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowDataEnvelopeMapStringObject"
   /api/factory/workflows/{workflowId}:
     get:
       tags:
@@ -1964,6 +1997,16 @@ paths:
       - name: workflowId
         in: path
         required: true
+        schema:
+          type: string
+      - name: namespaceId
+        in: query
+        required: false
+        schema:
+          type: string
+      - name: caseId
+        in: query
+        required: false
         schema:
           type: string
       responses:
@@ -2126,6 +2169,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/FactoryDataEnvelopePlanChangeProposalResponse"
+  /api/factory/openapi/factory-workstream.yaml:
+    get:
+      tags:
+      - factory-open-api-controller
+      operationId: workstreamFactoryOpenApi
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+                format: binary
+  /api/factory/openapi/factory-worker.yaml:
+    get:
+      tags:
+      - factory-open-api-controller
+      operationId: workerFactoryOpenApi
+      responses:
+        "200":
+          description: OK
+          content:
+            application/yaml:
+              schema:
+                type: string
+                format: binary
   /api/cases/{caseId}/events:
     get:
       tags:
@@ -2256,6 +2325,14 @@ components:
           type: string
         compactionReason:
           type: string
+    WorkflowDataEnvelopeMapStringObject:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties: {}
+      required:
+      - data
     OracleRunRequest:
       type: object
       properties:
@@ -2306,14 +2383,6 @@ components:
       - status
       - stepId
       - workflowId
-    WorkflowDataEnvelopeMapStringObject:
-      type: object
-      properties:
-        data:
-          type: object
-          additionalProperties: {}
-      required:
-      - data
     ReleaseEnvironmentRequest:
       type: object
       properties:
@@ -2446,73 +2515,6 @@ components:
       type: object
       properties:
         data: {}
-      required:
-      - data
-    FactoryStepResultBindingRequest:
-      type: object
-      properties:
-        capabilityToken:
-          type: string
-        attemptId:
-          type: string
-    ErrorDetail:
-      type: object
-      properties:
-        code:
-          type: string
-        message:
-          type: string
-        details: {}
-      required:
-      - code
-      - message
-    ErrorResponse:
-      type: object
-      properties:
-        error:
-          $ref: "#/components/schemas/ErrorDetail"
-      required:
-      - error
-    FactoryStepResultBindingData:
-      type: object
-      properties:
-        attemptId:
-          type: string
-        workflowId:
-          type: string
-        stepId:
-          type: string
-        namespaceId:
-          type: string
-        caseId:
-          type: string
-        agentName:
-          type: string
-        issuedAt:
-          type: string
-        expiresAt:
-          type: string
-        submissionBudget:
-          type: integer
-          format: int32
-        verified:
-          type: boolean
-      required:
-      - agentName
-      - attemptId
-      - caseId
-      - expiresAt
-      - issuedAt
-      - namespaceId
-      - stepId
-      - submissionBudget
-      - verified
-      - workflowId
-    FactoryStepResultBindingEnvelopeFactoryStepResultBindingData:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/FactoryStepResultBindingData"
       required:
       - data
     DependencyChangeDto:
@@ -2716,6 +2718,24 @@ components:
           type: string
         agentName:
           type: string
+    ErrorDetail:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details: {}
+      required:
+      - code
+      - message
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+      required:
+      - error
     AgentStepResultData:
       type: object
       properties:
@@ -2734,114 +2754,6 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/AgentStepResultData"
-      required:
-      - data
-    Request:
-      type: object
-      properties:
-        attemptId:
-          type: string
-        runtimeId:
-          type: string
-        agentName:
-          type: string
-    TrustContext:
-      type: object
-      properties:
-        principalId:
-          type: string
-        principalType:
-          type: string
-        organizationId:
-          type: string
-        workstreamId:
-          type: string
-        squadId:
-          type: string
-        roles:
-          type: array
-          items:
-            type: string
-        scopes:
-          type: array
-          items:
-            type: string
-        correlationId:
-          type: string
-        authenticationMethod:
-          type: string
-        serviceIdentityId:
-          type: string
-        loopback:
-          type: boolean
-        namespaceId:
-          type: string
-        caseId:
-          type: string
-        authenticated:
-          type: boolean
-      required:
-      - authenticated
-      - authenticationMethod
-      - loopback
-      - principalType
-      - roles
-      - scopes
-    Data:
-      type: object
-      properties:
-        attemptId:
-          type: string
-        capabilityToken:
-          type: string
-        expiresAt:
-          type: string
-      required:
-      - attemptId
-      - capabilityToken
-      - expiresAt
-    EnvelopeData:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/Data"
-      required:
-      - data
-    AgentStepQuestionRequest:
-      type: object
-      properties:
-        attemptId:
-          type: string
-        question:
-          $ref: "#/components/schemas/JsonNode"
-    AgentStepQuestionData:
-      type: object
-      properties:
-        attemptId:
-          type: string
-        interactionId:
-          type: string
-        status:
-          type: string
-        idempotent:
-          type: boolean
-        revision:
-          type: integer
-          format: int32
-        workflowId:
-          type: string
-      required:
-      - attemptId
-      - idempotent
-      - interactionId
-      - revision
-      - status
-      - workflowId
-    AgentStepQuestionEnvelopeAgentStepQuestionData:
-      type: object
-      properties:
-        data:
-          $ref: "#/components/schemas/AgentStepQuestionData"
       required:
       - data
     AttemptSummary:

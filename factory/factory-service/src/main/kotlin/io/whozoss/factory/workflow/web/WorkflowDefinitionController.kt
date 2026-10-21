@@ -5,9 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
-import io.whozoss.factory.persistence.TenantScopeProvider
-import io.whozoss.factory.web.AdminGuard
-import io.whozoss.factory.web.TrustContext
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidation
 import io.whozoss.factory.workflow.domain.WorkflowDefinitionValidator
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
@@ -40,17 +38,15 @@ import org.springframework.web.multipart.MultipartFile
 @Tag(name = "workflows", description = "Workflow definitions")
 class WorkflowDefinitionController(
     private val service: WorkflowService,
-    private val tenantScopeProvider: TenantScopeProvider,
-    private val adminGuard: AdminGuard,
     private val objectMapper: ObjectMapper,
 ) {
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "List registered workflow definitions.")
     fun list(
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, requireNamespace = false)
+        val caller = resolveWorkflowCaller(user, requireNamespace = false)
         return WorkflowDataEnvelope(service.listDefinitions(caller.scope))
     }
 
@@ -59,9 +55,9 @@ class WorkflowDefinitionController(
     fun detail(
         @PathVariable workflowType: String,
         @PathVariable version: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, requireNamespace = false)
+        val caller = resolveWorkflowCaller(user, requireNamespace = false)
         val definition = service.getDefinition(caller.scope, workflowType, version)
             ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_DEFINITION_NOT_FOUND, "Workflow definition was not found.")
         return WorkflowDataEnvelope(definition)
@@ -71,10 +67,9 @@ class WorkflowDefinitionController(
     @Operation(summary = "Register or update a workflow definition.")
     fun register(
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        adminGuard.requireAdminRole(trustContext)
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, requireNamespace = false)
+        val caller = resolveWorkflowCaller(user, requireNamespace = false)
         return registerParsedDefinition(caller, body)
     }
 
@@ -86,10 +81,9 @@ class WorkflowDefinitionController(
     @Operation(summary = "Upload and register a workflow definition JSON file.")
     fun uploadDefinition(
         @RequestPart("file") file: MultipartFile,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        adminGuard.requireAdminRole(trustContext)
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, requireNamespace = false)
+        val caller = resolveWorkflowCaller(user, requireNamespace = false)
         if (file.isEmpty) {
             throw workflowException(
                 WorkflowErrorCodes.WORKFLOW_DEFINITION_INVALID,
@@ -112,10 +106,9 @@ class WorkflowDefinitionController(
     fun deleteDefinition(
         @PathVariable workflowType: String,
         @PathVariable version: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        adminGuard.requireAdminRole(trustContext)
-        val caller = resolveWorkflowCaller(trustContext, tenantScopeProvider, requireNamespace = false)
+        val caller = resolveWorkflowCaller(user, requireNamespace = false)
         val deleted = service.deleteDefinition(caller.scope, workflowType, version)
         if (!deleted) {
             throw workflowException(

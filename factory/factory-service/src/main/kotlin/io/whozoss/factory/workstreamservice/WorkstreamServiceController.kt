@@ -6,12 +6,9 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.agentattempt.domain.toDto
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
 import io.whozoss.factory.config.SessionProperties
-import io.whozoss.factory.error.ForbiddenException
 import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.persistence.TenantScopeProvider
+import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.FactoryCaller
-import io.whozoss.factory.web.TrustContext
-import io.whozoss.factory.web.WorkstreamServicePermissions
 import io.whozoss.factory.web.factoryError
 import io.whozoss.factory.workflow.domain.WorkflowActionTypes
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
@@ -41,17 +38,11 @@ import java.util.concurrent.ConcurrentHashMap
  * `get_workflow`, `get_step_attempts`, `get_blockers`, `get_required_human_actions`,
  * `get_workstream` (read), `start_workflow` and `request_agent_retry` (write).
  *
- * Authorization model (see `factory.security.workstream-service`):
- *  - only the dedicated static `FACTORY_WORKSTREAM` credential may call this facade;
- *  - the tenant (organization/workstream) comes from server configuration, never
- *    from the request;
- *  - every operation checks its own permission (`read`, `start_workflow`,
- *    `request_retry`) derived from that configuration;
- *  - the namespace is resolved exclusively from the configured workstream registry;
- *    workflow and step identifiers supplied by the model are references, never permissions;
- *  - the credential is a service identity: it does not carry the rights of the
- *    person talking to the agent, and it does not prove which case or agent
- *    issued the call.
+ * It is an ordinary authenticated API: the caller is whoever the
+ * `AuthenticationFilter` admitted (a Factory JWT, or the insecure-mode user), and
+ * the tenant is that user's scope. The namespace is resolved exclusively from the
+ * workstream registry of that scope (a domain rule, not an authorization one);
+ * workflow and step identifiers supplied by the model are references.
  *
  * Human validations stay in Factory: this facade lists pending human actions for
  * information only and can never answer them.
@@ -60,7 +51,6 @@ import java.util.concurrent.ConcurrentHashMap
 @RequestMapping("/api/factory/workstream-service")
 @Tag(name = "workstream-service", description = "FACTORY_WORKSTREAM HTTP_API facade")
 class WorkstreamServiceController(
-    private val tenantScopeProvider: TenantScopeProvider,
     private val workflowService: WorkflowService,
     private val durableAttempts: DurableAgentAttemptService,
     private val projectionService: WorkstreamProjectionService,
@@ -68,8 +58,6 @@ class WorkstreamServiceController(
     private val createWorkflowRunService: CreateWorkflowRunService,
     private val sessionProperties: SessionProperties,
 ) {
-
-    private data class ServiceCaller(val scope: TenantScope, val identityId: String)
 
     private val retryLocks = ConcurrentHashMap<String, Any>()
 
@@ -81,9 +69,9 @@ class WorkstreamServiceController(
         @RequestParam(name = "state", required = false) state: String?,
         @RequestParam(name = "workflowType", required = false) workflowType: String?,
         @RequestParam(name = "limit", required = false) limit: Int?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.READ_SCOPE)
+        val caller = user
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val resolvedState = state?.takeIf { it.isNotBlank() } ?: "active"
         if (resolvedState !in setOf("active", "removed")) {
@@ -117,9 +105,9 @@ class WorkstreamServiceController(
     @Operation(operationId = "get_workflow", summary = "Read the authoritative state of one workflow.")
     fun getWorkflow(
         @PathVariable workflowId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.READ_SCOPE)
+        val caller = user
         val id = requireWorkflowId(workflowId)
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val state = workflowService.getProjection(caller.scope, namespace, id)
@@ -131,7 +119,6 @@ class WorkstreamServiceController(
             mapOf("id" to step["id"], "name" to step["name"], "status" to step["status"])
         }
         val actions = workflowService.workflowActions(caller.scope, namespace, id, canReply = false)
-        val canRetry = WorkstreamServicePermissions.RETRY_SCOPE in grantedScopes(trustContext)
         val attempts = durableAttempts.findByWorkflow(caller.scope, namespace, id)
         return WorkflowDataEnvelope(
             linkedMapOf(
@@ -144,9 +131,9 @@ class WorkstreamServiceController(
                 "status" to projection?.get("status"),
                 "steps" to steps,
                 "blockers" to actions.blockers.take(MAX_ITEMS).map(::blockerView),
-                // Only the actions this credential may actually execute are advertised.
+                // Only retry is advertised: it is the one action this facade can execute.
                 "allowedActions" to actions.allowedActions
-                    .filter { canRetry && it.type == WorkflowActionTypes.RETRY }
+                    .filter { it.type == WorkflowActionTypes.RETRY }
                     .take(MAX_ITEMS)
                     .map { mapOf("type" to it.type, "stepId" to it.stepId, "expectedRevision" to it.expectedRevision) },
                 "attempts" to attempts.take(MAX_ITEMS).map { it.toDto() },
@@ -160,9 +147,9 @@ class WorkstreamServiceController(
     fun getStepAttempts(
         @PathVariable workflowId: String,
         @RequestParam(name = "stepId", required = false) stepId: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.READ_SCOPE)
+        val caller = user
         val id = requireWorkflowId(workflowId)
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val step = stepId?.takeIf { it.isNotBlank() }?.also { requireStepId(it) }
@@ -177,9 +164,9 @@ class WorkstreamServiceController(
     @Operation(operationId = "get_blockers", summary = "List the active blockers of a workflow.")
     fun getBlockers(
         @PathVariable workflowId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.READ_SCOPE)
+        val caller = user
         val blockers = workflowService
             .workflowActions(caller.scope, workstreamService.requireConfiguredNamespace(caller.scope), requireWorkflowId(workflowId), canReply = false)
             .blockers
@@ -195,9 +182,9 @@ class WorkstreamServiceController(
     )
     fun getRequiredHumanActions(
         @PathVariable workflowId: String,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.READ_SCOPE)
+        val caller = user
         val interactions = openInteractions(
             caller.scope,
             workstreamService.requireConfiguredNamespace(caller.scope),
@@ -226,12 +213,11 @@ class WorkstreamServiceController(
     fun getWorkstream(
         @PathVariable workstreamId: String,
         @RequestParam(name = "limit", required = false) limit: Int?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkstreamProjectionResponse> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.READ_SCOPE)
-        val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
-        // The boundary check rejects any workstream other than the configured one.
-        val factoryCaller = FactoryCaller(caller.scope, caller.identityId, caller.identityId, null)
+        val namespace = workstreamService.requireConfiguredNamespace(user.scope)
+        // The boundary check rejects any workstream other than the user's own.
+        val factoryCaller = FactoryCaller(user.scope, user.userId, user.userId, null)
         return ResponseEntity.ok(projectionService.getAggregatedProjection(factoryCaller, workstreamId, namespace, limit))
     }
 
@@ -242,9 +228,9 @@ class WorkstreamServiceController(
     fun startWorkflow(
         @RequestBody(required = false) body: Map<String, Any?>?,
         @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.START_SCOPE)
+        val caller = user
         val request = body ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         if (request.keys.any { it !in START_FIELDS }) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
@@ -263,13 +249,13 @@ class WorkstreamServiceController(
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "A valid Idempotency-Key is required.")
         assertWorkflowTypeAllowed(caller.scope, workflowType)
 
-        // The key is namespaced by the verified service identity, so two callers
-        // can never collide, and an identical key with a different payload is
-        // rejected by the existing command-hash identity check.
+        // The key is namespaced by the user, so two callers can never collide, and
+        // an identical key with a different payload is rejected by the existing
+        // command-hash identity check.
         val result = createWorkflowRunService.create(
             scope = caller.scope,
             namespaceId = namespace,
-            actorId = caller.identityId,
+            actorId = caller.userId,
             // No runtime case is invented: this run is not attributed to an AgentOS case.
             caseId = null,
             command = CreateWorkflowRunService.Command(
@@ -277,7 +263,7 @@ class WorkstreamServiceController(
                 title = title,
                 initialRequest = null,
                 parameters = ticket?.let { mapOf("ticket" to it) } ?: emptyMap(),
-                idempotencyKey = "svc:${caller.identityId}:$key",
+                idempotencyKey = "svc:${caller.userId}:$key",
             ),
             repoRoot = sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() },
         )
@@ -301,19 +287,21 @@ class WorkstreamServiceController(
     fun requestRetry(
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
-        @Parameter(hidden = true) trustContext: TrustContext?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        val caller = authorize(trustContext, WorkstreamServicePermissions.RETRY_SCOPE)
+        val caller = user
         val id = requireWorkflowId(workflowId)
-        val request = body ?: throw workflowException("INVALID_RETRY_REQUEST", "Retry request is invalid.")
-        if (request.keys.any { it !in RETRY_FIELDS }) throw workflowException("INVALID_RETRY_REQUEST", "Retry request is invalid.")
+        val request = body ?: throw workflowException(WorkflowErrorCodes.INVALID_RETRY_REQUEST, "Retry request is invalid.")
+        if (request.keys.any { it !in RETRY_FIELDS }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_RETRY_REQUEST, "Retry request is invalid.")
+        }
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val stepId = (request["stepId"] as? String)?.also { requireStepId(it) }
-            ?: throw workflowException("INVALID_RETRY_REQUEST", "stepId is required.")
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_RETRY_REQUEST, "stepId is required.")
         val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
-            ?: throw workflowException("INVALID_RETRY_REQUEST", "expectedRevision is required.")
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_RETRY_REQUEST, "expectedRevision is required.")
         val reasonCode = (request["reasonCode"] as? String)?.takeIf { REASON_PATTERN.matches(it) }
-            ?: throw workflowException("INVALID_RETRY_REQUEST", "reasonCode is invalid.")
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_RETRY_REQUEST, "reasonCode is invalid.")
 
         // Factory-owned idempotence: at most one open retry request per step. A
         // repeated call returns the existing request instead of opening another.
@@ -334,24 +322,6 @@ class WorkstreamServiceController(
     }
 
     // ----- helpers -------------------------------------------------------
-
-    private fun authorize(trustContext: TrustContext?, requiredScope: String): ServiceCaller {
-        val context = trustContext
-            ?: throw workflowException(WorkflowErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Trust context unavailable")
-        val scope = tenantScopeProvider.scopeOf(context)
-            ?: throw workflowException(WorkflowErrorCodes.TRUST_CONTEXT_UNAVAILABLE, "Trust context unavailable")
-        if (context.authenticationMethod != TrustContext.AUTH_STATIC_WORKSTREAM_BEARER) {
-            throw ForbiddenException("This route requires the FACTORY_WORKSTREAM service credential")
-        }
-        if (requiredScope !in context.scopes) {
-            throw ForbiddenException("The service credential does not hold the required permission")
-        }
-        val identity = context.serviceIdentityId?.takeIf { it.isNotBlank() }
-            ?: throw ForbiddenException("The verified service identity is unavailable")
-        return ServiceCaller(scope, identity)
-    }
-
-    private fun grantedScopes(trustContext: TrustContext?): List<String> = trustContext?.scopes.orEmpty()
 
     private fun assertWorkflowTypeAllowed(scope: TenantScope, workflowType: String) {
         val workstream = workstreamService.findDomain(scope, scope.workstreamId)

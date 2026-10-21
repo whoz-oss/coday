@@ -12,11 +12,8 @@ paths:
       description: >-
         Submit only after completing the current Factory step. Use the Factory-issued
         attemptId and Idempotency-Key from the execution brief. Neither value is a secret.
-        The deployment service credential authenticates the integration, not a case or
-        agent. Authorization is limited to attempts durably entrusted to that service
-        identity; one credential may therefore access multiple explicitly bound attempts
-        across namespaces, but provides no runtime isolation per attempt and authorizes
-        no other Factory endpoint.
+        The bearer is a Factory-issued JWT (optional when Factory runs in insecure mode).
+        The workflow, step and namespace are resolved by Factory from the attempt.
       parameters:
         - name: Idempotency-Key
           in: header
@@ -72,10 +69,10 @@ paths:
         '201':
           description: Result accepted
         '400':
-          description: Invalid schema or inconsistent authorized attempt data
+          description: Invalid schema or inconsistent attempt data
         '401':
-          description: Missing or invalid service bearer
-        '403':
-          description: The verified service identity is not bound to this attempt
+          description: Missing or invalid bearer (never returned in insecure mode)
+        '404':
+          description: No such attempt
         '409':
           description: Idempotency or semantic collision

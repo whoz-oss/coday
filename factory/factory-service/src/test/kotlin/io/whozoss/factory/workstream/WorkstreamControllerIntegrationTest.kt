@@ -2,7 +2,7 @@ package io.whozoss.factory.workstream
 
 import io.whozoss.factory.Neo4jIntegrationTest
 import io.whozoss.factory.config.FactoryProperties
-import io.whozoss.factory.web.TestJwt
+import io.whozoss.factory.web.FakeIdp
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -18,7 +18,7 @@ import org.springframework.http.ResponseEntity
  * HTTP boundary tests of the versioned workstream registry and its read-only
  * aggregated projection endpoint.
  *
- * Exercises the real servlet filter chain (trust context) against the embedded
+ * Exercises the real servlet filter chain (authentication) against the embedded
  * Neo4j engine, asserting the enriched CRUD contract, the optimistic-locking
  * `REVISION_CONFLICT`, the ETag/`workstreamRevision` coherence, the strict
  * bounds and the `WORKSTREAM_BOUNDARY_VIOLATION` trust enforcement.
@@ -32,8 +32,8 @@ class WorkstreamControllerIntegrationTest : Neo4jIntegrationTest() {
     private lateinit var factoryProperties: FactoryProperties
 
     private val token: String
-        get() = TestJwt.issueJwt(
-            mapOf("principalId" to "workstream-tester", "principalType" to "human"),
+        get() = FakeIdp.issueJwt(
+            mapOf("principalId" to "workstream-tester"),
             factoryProperties.security.fakeIdpSecret,
         )
 

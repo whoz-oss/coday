@@ -2,12 +2,11 @@ package io.whozoss.factory.web
 
 import io.whozoss.factory.error.FactoryException
 import io.whozoss.factory.persistence.TenantScope
-import io.whozoss.factory.persistence.TenantScopeProvider
 
 /** Canonical HTTP success envelope `{ "data": ... }` for the surfaces that use it. */
 data class FactoryDataEnvelope<T>(val data: T)
 
-/** The trusted caller identity + optional AgentOS relay identity. */
+/** The authenticated caller: its tenant scope and the id it acts as. */
 data class FactoryCaller(
     val scope: TenantScope,
     val actorId: String,
@@ -28,18 +27,9 @@ class FactoryHttpException(
 fun factoryError(statusCode: Int, code: String, message: String, details: Any? = null): Nothing =
     throw FactoryHttpException(statusCode, code, message, details)
 
-/**
- * Resolves the trusted caller from the verified [TrustContext], failing closed
- * with `401 TRUST_CONTEXT_UNAVAILABLE`. The organization/workstream scope and
- * the relay identity are never read from client input.
- */
-fun resolveFactoryCaller(trustContext: TrustContext?, tenantScopeProvider: TenantScopeProvider): FactoryCaller {
-    val scope = tenantScopeProvider.scopeOf(trustContext)
-        ?: factoryError(401, "TRUST_CONTEXT_UNAVAILABLE", "Trust context unavailable")
-    val actorId = trustContext?.principalId?.takeIf { it.isNotBlank() } ?: "factory-operator"
-    val authorityId = trustContext?.serviceIdentityId?.takeIf { it.isNotBlank() } ?: actorId
-    return FactoryCaller(scope, actorId, authorityId, trustContext?.principalId)
-}
+/** Maps the authenticated user onto the caller shape the services expect. No decision is taken here. */
+fun resolveFactoryCaller(user: AuthenticatedUser): FactoryCaller =
+    FactoryCaller(user.scope, user.userId, user.userId, user.userId)
 
 /** Require the `namespaceId` query parameter exactly like the Node routes. */
 fun requireNamespaceQuery(namespaceId: String?): String =

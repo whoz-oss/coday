@@ -1,5 +1,6 @@
 package io.whozoss.agentos.permissions
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.Runs
@@ -475,13 +476,15 @@ class PermissionServiceImplSpec :
             permissionService.listRelationsForUsers(entityType, entityId, listOf(id1)) shouldBe emptyMap()
         }
 
-        "listRelationsForUsers returns empty map (fail-closed) when the repository throws" {
+        "listRelationsForUsers rethrows when the repository throws instead of reporting no relation" {
             val id1 = UUID.randomUUID().toString()
             every {
                 mockPermissionRepository.listRelationsForUsers(any(), any(), any())
             } throws RuntimeException("Cypher failure")
 
-            permissionService.listRelationsForUsers(entityType, entityId, listOf(id1)) shouldBe emptyMap()
+            shouldThrow<RuntimeException> {
+                permissionService.listRelationsForUsers(entityType, entityId, listOf(id1))
+            }.message shouldBe "Cypher failure"
         }
 
         "filterVisibleIds delegates to the repository for super-admin (no service-level bypass)" {

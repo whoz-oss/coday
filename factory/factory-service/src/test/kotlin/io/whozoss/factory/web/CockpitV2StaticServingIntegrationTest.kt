@@ -35,7 +35,8 @@ import java.nio.file.Path
 @Import(
     CockpitV2Assets::class,
     CockpitV2WebConfig::class,
-    TrustContextExtractor::class,
+    AuthenticationFilter::class,
+    JwtTokenVerifier::class,
     LocalDevMembershipResolver::class,
     FactoryExceptionHandler::class,
 )

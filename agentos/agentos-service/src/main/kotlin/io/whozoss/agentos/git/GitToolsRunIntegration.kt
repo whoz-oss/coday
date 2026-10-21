@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
 import io.whozoss.agentos.agent.AgentExecutionContext
 import io.whozoss.agentos.agent.RunIntegrationCustomizer
+import io.whozoss.agentos.agent.RunIntegrationCustomizerOrder
 import io.whozoss.agentos.exchange.ExchangeCapabilityService
 import io.whozoss.agentos.exchange.ExchangeStorageService
 import io.whozoss.agentos.git.core.GitToolParameters
 import io.whozoss.agentos.integrationConfig.IntegrationConfig
 import io.whozoss.agentos.permissions.Action
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import java.util.UUID
 
@@ -24,6 +26,7 @@ import java.util.UUID
  * without `agentos.git.workspaces.enabled`, where this customizer is not installed.
  */
 @Component
+@Order(RunIntegrationCustomizerOrder.GIT_TOOLS)
 @ConditionalOnProperty(prefix = "agentos.git.workspaces", name = ["enabled"], havingValue = "true")
 class GitToolsRunIntegration(
     private val resolver: GitExchangeRootResolver,
