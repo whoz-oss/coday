@@ -9,6 +9,9 @@ import io.whozoss.factory.environment.service.EnvironmentInspection
 import io.whozoss.factory.environment.service.ProvisionEnvironmentCommand
 import io.whozoss.factory.environment.service.WorkUnitEnvironmentService
 import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.workflow.web.resolveWorkflowCaller
+import io.whozoss.factory.workstream.WorkstreamService
+import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -42,15 +45,17 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "work-environments", description = "Work-unit environment provisioning control plane")
 class WorkUnitEnvironmentController(
     private val service: WorkUnitEnvironmentService,
+    private val workstreamService: WorkstreamService,
 ) {
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Get the current environment of a workflow")
     fun getEnvironment(
         @PathVariable workflowId: String,
+        @RequestParam namespaceId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): EnvironmentDataEnvelope<EnvironmentResponse> =
-        EnvironmentDataEnvelope(service.inspect(user.scope, workflowId).toResponse())
+        EnvironmentDataEnvelope(service.inspect(resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService).scope, workflowId).toResponse())
 
     @PostMapping(
         path = ["/provision"],
@@ -67,15 +72,15 @@ class WorkUnitEnvironmentController(
         val branch = request.branch?.takeIf { it.isNotBlank() }
             ?: throw InvalidEnvironmentRequestException("'branch' is required")
         val integrationBranch = request.integrationBranch?.takeIf { it.isNotBlank() } ?: DEFAULT_INTEGRATION_BRANCH
-        val namespaceId = request.namespaceId?.takeIf { it.isNotBlank() } ?: DEFAULT_NAMESPACE
+        val caller = resolveWorkflowCaller(user, request.namespaceId, workstreamService = workstreamService)
         val parentCaseId = request.parentCaseId?.takeIf { it.isNotBlank() }
 
         val outcome = service.provision(
-            scope = user.scope,
+            scope = caller.scope,
             command = ProvisionEnvironmentCommand(
                 workflowId = workflowId,
                 workUnitId = workUnitId,
-                namespaceId = namespaceId,
+                namespaceId = caller.namespaceId,
                 parentCaseId = parentCaseId,
                 integrationBranch = integrationBranch,
                 branch = branch,
@@ -102,9 +107,10 @@ class WorkUnitEnvironmentController(
     @Operation(summary = "Reconcile the workflow environment against its Git worktree")
     fun reconcile(
         @PathVariable workflowId: String,
+        @RequestParam namespaceId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): EnvironmentDataEnvelope<EnvironmentResponse> =
-        EnvironmentDataEnvelope(service.inspect(user.scope, workflowId).toResponse())
+        EnvironmentDataEnvelope(service.inspect(resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService).scope, workflowId).toResponse())
 
     @PostMapping(
         path = ["/release"],
@@ -113,11 +119,13 @@ class WorkUnitEnvironmentController(
     @Operation(summary = "Release (decommission) the workflow environment")
     fun release(
         @PathVariable workflowId: String,
+        @RequestParam namespaceId: String,
         @RequestBody(required = false) request: ReleaseEnvironmentRequest?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): EnvironmentDataEnvelope<EnvironmentResponse> {
         requireReleaseState(request?.state)
-        val released = service.release(user.scope, workflowId, WorkEnvironmentState.DECOMMISSIONED)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
+        val released = service.release(caller.scope, workflowId, WorkEnvironmentState.DECOMMISSIONED)
         return EnvironmentDataEnvelope(released.toResponse())
     }
 
@@ -133,7 +141,6 @@ class WorkUnitEnvironmentController(
 
     private companion object {
         const val DEFAULT_INTEGRATION_BRANCH = "main"
-        const val DEFAULT_NAMESPACE = "default"
 
         /** `decommissioned` is the native vocabulary; `completed`/`abandoned` are accepted aliases. */
         val ACCEPTED_RELEASE_STATES = setOf("decommissioned", "completed", "abandoned")

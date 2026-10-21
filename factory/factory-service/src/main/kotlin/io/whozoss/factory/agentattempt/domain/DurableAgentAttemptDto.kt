@@ -42,6 +42,12 @@ data class DurableAgentAttemptDto(
     val revision: Int,
     val createdAt: Instant,
     val startedAt: Instant? = null,
+    /** Closed RUNNING intervals only; add now-activeSince while status is running. */
+    val activeDurationMs: Long = 0,
+    val activeSince: Instant? = null,
+    /** Closed WAITING_HUMAN intervals only; add now-waitingSince while waiting. */
+    val waitingDurationMs: Long = 0,
+    val waitingSince: Instant? = null,
     val completedAt: Instant? = null,
     /**
      * Phase 10 observability: `true` when [status] is a sealed terminal
@@ -76,6 +82,10 @@ fun DurableAgentAttempt.toDto(): DurableAgentAttemptDto = DurableAgentAttemptDto
     revision = revision,
     createdAt = createdAt,
     startedAt = startedAt,
+    activeDurationMs = activeDurationMs,
+    activeSince = activeSince,
+    waitingDurationMs = waitingDurationMs,
+    waitingSince = waitingSince,
     completedAt = completedAt,
     terminal = status.terminal,
     sealingClass = AgentOsRuntimeStateMapping.classify(status).name,

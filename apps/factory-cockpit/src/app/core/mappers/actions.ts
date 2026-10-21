@@ -163,6 +163,14 @@ export function extractAttempts(payload: unknown): AgentAttempt[] {
     if (startedAt) attempt.startedAt = startedAt
     const completedAt = getString(obj, 'completedAt')
     if (completedAt) attempt.completedAt = completedAt
+    const activeDurationMs = getNumber(obj, 'activeDurationMs')
+    if (activeDurationMs !== undefined) attempt.activeDurationMs = activeDurationMs
+    const activeSince = getString(obj, 'activeSince')
+    if (activeSince) attempt.activeSince = activeSince
+    const waitingDurationMs = getNumber(obj, 'waitingDurationMs')
+    if (waitingDurationMs !== undefined) attempt.waitingDurationMs = waitingDurationMs
+    const waitingSince = getString(obj, 'waitingSince')
+    if (waitingSince) attempt.waitingSince = waitingSince
     return attempt
   })
 }

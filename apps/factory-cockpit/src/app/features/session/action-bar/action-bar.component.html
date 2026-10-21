@@ -42,6 +42,19 @@
         }
       </div>
     }
+    <!-- Information or access needed outside the cockpit -->
+    @for (blocker of blockerGroups().research; track $index) {
+      <div class="blocker blocker--research">
+        <mat-icon aria-hidden="true">info</mat-icon>
+        <div class="blocker-body">
+          <span class="blocker-label">Informations ou accès nécessaires</span>
+          @if (blocker.stepId) {
+            <span class="blocker-step sf-mono">{{ blocker.stepId }}</span>
+          }
+        </div>
+        <span class="blocker-code sf-mono">{{ blocker.code }}</span>
+      </div>
+    }
     <!-- Human gate -->
     @for (blocker of blockerGroups().waiting; track $index) {
       <div class="blocker blocker--waiting">
@@ -234,6 +247,66 @@
             <button mat-flat-button class="sf-primary" (click)="requestRetry(action)">Retry step</button>
           </div>
         </div>
+      }
+
+      @for (action of researchResumptionActions(); track action.stepId ?? $index) {
+        @if (action.stepId && action.expectedRevision !== undefined) {
+          <form
+            class="action-card research-resumption"
+            (submit)="$event.preventDefault(); submitResearchResumption(action)"
+          >
+            <div class="action-title">
+              <mat-icon aria-hidden="true">manage_search</mat-icon>
+              <span>{{ action.label ?? 'Complete and resume' }}</span>
+            </div>
+            <p class="action-prompt sf-muted">
+              Décrivez les informations ou accès que vous avez corrigés hors bande. Cette action relance une nouvelle
+              tentative de la même étape; elle ne répare pas automatiquement les outils.
+            </p>
+            <label class="research-label" [for]="'research-context-' + action.stepId">Contexte complémentaire</label>
+            <textarea
+              class="research-context"
+              [id]="'research-context-' + action.stepId"
+              rows="5"
+              minlength="1"
+              maxlength="4000"
+              required
+              [attr.aria-describedby]="'research-help-' + action.stepId"
+              [disabled]="resumingResearchStepId() !== null"
+              [value]="draftFor(action.stepId)"
+              (input)="setDraft(action.stepId!, $any($event.target).value)"
+              (blur)="markResearchTouched(action.stepId!)"
+            ></textarea>
+            <span class="research-help" [id]="'research-help-' + action.stepId">
+              {{ draftFor(action.stepId).length }} / 4000 caractères
+            </span>
+            @if (researchTouched()[action.stepId] && !researchContextValid(action.stepId)) {
+              <p class="action-feedback action-feedback--error" role="alert">Saisissez entre 1 et 4000 caractères.</p>
+            }
+            @if (researchResumptionFeedback(); as feedback) {
+              @if (feedback.stepId === action.stepId) {
+                <p
+                  class="action-feedback"
+                  [class.action-feedback--conflict]="feedback.kind === 'conflict'"
+                  [class.action-feedback--error]="feedback.kind !== 'conflict'"
+                  role="alert"
+                >
+                  {{ feedback.message }}
+                </p>
+              }
+            }
+            <div class="action-row">
+              <button
+                mat-flat-button
+                class="sf-primary"
+                type="submit"
+                [disabled]="resumingResearchStepId() !== null || !researchContextValid(action.stepId)"
+              >
+                {{ resumingResearchStepId() === action.stepId ? 'Send…' : 'Complete and resume' }}
+              </button>
+            </div>
+          </form>
+        }
       }
 
       @for (action of cancelActions(); track $index) {

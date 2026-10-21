@@ -96,6 +96,14 @@ data class DurableAgentAttempt(
     val revision: Int = 1,
     val createdAt: Instant = Instant.now(),
     val startedAt: Instant? = null,
+    /** Milliseconds of completed RUNNING intervals. Open interval is added from activeSince by readers. */
+    val activeDurationMs: Long = 0,
+    /** Start of the currently open RUNNING interval; null while waiting or terminal. */
+    val activeSince: Instant? = null,
+    /** Milliseconds of completed WAITING_HUMAN intervals. */
+    val waitingDurationMs: Long = 0,
+    /** Start of the currently open WAITING_HUMAN interval; null otherwise. */
+    val waitingSince: Instant? = null,
     val updatedAt: Instant = Instant.now(),
     val completedAt: Instant? = null,
     val leaseExpiresAt: Instant? = null,

@@ -27,9 +27,21 @@ class FactoryHttpException(
 fun factoryError(statusCode: Int, code: String, message: String, details: Any? = null): Nothing =
     throw FactoryHttpException(statusCode, code, message, details)
 
-/** Maps the authenticated user onto the caller shape the services expect. No decision is taken here. */
-fun resolveFactoryCaller(user: AuthenticatedUser): FactoryCaller =
-    FactoryCaller(user.scope, user.userId, user.userId, user.userId)
+/** Build a business caller only after a concrete workstream was resolved. */
+fun resolveFactoryCaller(user: AuthenticatedUser, scope: TenantScope): FactoryCaller {
+    require(scope.organizationId == user.organizationId) { "Resolved scope belongs to another organization" }
+    return FactoryCaller(scope, user.userId, user.userId, user.userId)
+}
+
+/** Organization-only caller used by relays and organization-level definitions. */
+fun resolveOrganizationCaller(user: AuthenticatedUser): OrganizationCaller =
+    OrganizationCaller(user.organizationId, user.userId, user.userId)
+
+data class OrganizationCaller(
+    val organizationId: String,
+    val actorId: String,
+    val externalUserId: String?,
+)
 
 /** Require the `namespaceId` query parameter exactly like the Node routes. */
 fun requireNamespaceQuery(namespaceId: String?): String =

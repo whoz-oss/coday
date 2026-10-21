@@ -566,7 +566,7 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
     // 5. Controller case renewal (P9)
     // ==================================================================
 
-    private val controllerNamespace = "ns-p12-controller"
+    private val controllerNamespace = "972b7265-1d4d-49a6-9c04-6dc26db4ccbf"
 
     /**
      * Invariant: compacting the controller case renews it with the SAME
@@ -578,7 +578,7 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
     fun `controller case renewal keeps the controller identity with a bounded recovery packet`() {
         workstreamService.create(
             scope,
-            CreateWorkstreamRequest(slug = WORKSTREAM_ID, name = "P12 WS", status = "active", controllerAgentRef = "agent://controller"),
+            CreateWorkstreamRequest(slug = WORKSTREAM_ID, name = "P12 WS", status = "active", namespaceId = controllerNamespace, controllerAgentRef = "agent://controller"),
         )
         // Stress the resumption package beyond every per-section cap.
         repeat(15) { index -> publishProjectionWorkflow(controllerNamespace, "wf-p12-ctx-$index", listOf("running", "blocked")) }
@@ -877,7 +877,7 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
     // 8. Workstream read-only tools (P6) + gate via command tool (P7)
     // ==================================================================
 
-    private val projectionNamespace = "ns-p12-projection"
+    private val projectionNamespace = "2874a340-17c5-4f78-b90a-87411eb3a551"
     private val gateNamespace = "ns-p12-gate"
 
     /**
@@ -887,7 +887,7 @@ class Phase12ResilienceSmokesTest : Neo4jDomainIntegrationTest() {
      */
     @Test
     fun `workstream read only answers are correct stable and never mutate the underlying state`() {
-        workstreamService.create(scope, CreateWorkstreamRequest(slug = WORKSTREAM_ID, name = "P12 WS", status = "active"))
+        workstreamService.create(scope, CreateWorkstreamRequest(slug = WORKSTREAM_ID, name = "P12 WS", status = "active", namespaceId = projectionNamespace))
         publishProjectionWorkflow(projectionNamespace, "wf-p12-read", listOf("running", "waiting_human", "blocked"))
         registerDurableAttempt(projectionNamespace, "wf-p12-read", "attempt-p12-read-1", 1)
         registerDurableAttempt(projectionNamespace, "wf-p12-read", "attempt-p12-read-2", 2)

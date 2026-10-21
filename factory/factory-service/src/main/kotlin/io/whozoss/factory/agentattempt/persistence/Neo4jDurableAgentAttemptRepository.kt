@@ -286,6 +286,28 @@ class Neo4jDurableAgentAttemptRepository(
     }
 
     @Transactional
+    override fun replaceCapability(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        expectedCapabilityToken: String,
+        capabilityToken: String,
+        now: Instant,
+    ): DurableAgentAttempt? {
+        val id = DurableAgentAttemptNode.compositeId(
+            scope.organizationId, scope.workstreamId, attempt.namespaceId,
+            attempt.workflowId, attempt.stepId, attempt.attemptId,
+        )
+        val updated = attempts.replaceCapability(
+            id, attempt.revision, expectedCapabilityToken, capabilityToken, now,
+        )
+        return if (updated > 0L) {
+            requireNode(scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId).toDomain()
+        } else {
+            null
+        }
+    }
+
+    @Transactional
     override fun finalize(
         scope: TenantScope,
         namespaceId: String,

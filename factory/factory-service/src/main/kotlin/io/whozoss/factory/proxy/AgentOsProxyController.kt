@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.factoryError
-import io.whozoss.factory.web.resolveFactoryCaller
+import io.whozoss.factory.web.resolveOrganizationCaller
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -31,7 +31,7 @@ class AgentOsProxyController(
     fun namespaces(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): Any? {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveOrganizationCaller(user)
         return proxy.fetchNamespaces(caller.externalUserId)
     }
 
@@ -41,7 +41,7 @@ class AgentOsProxyController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): Any? {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveOrganizationCaller(user)
         val ns = namespaceId?.takeIf { it.isNotBlank() }
             ?: factoryError(400, "MISSING_NAMESPACE_ID", "namespaceId requis")
         return proxy.fetchAgents(ns, caller.externalUserId)
@@ -53,7 +53,7 @@ class AgentOsProxyController(
         @PathVariable caseId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): Any? {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveOrganizationCaller(user)
         return proxy.fetchCaseEvents(caseId, caller.externalUserId)
     }
 }

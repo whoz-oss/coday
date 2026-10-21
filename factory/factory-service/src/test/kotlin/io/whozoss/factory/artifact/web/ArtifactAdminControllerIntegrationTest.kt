@@ -59,8 +59,15 @@ class ArtifactAdminControllerIntegrationTest : Neo4jIntegrationTest() {
     @Test
     fun `GC reclaims staging uploads and audits blob anomalies`() {
         seedArtifact(retentionDays = 30, owner = "ns")
-        blobClient.putObject("uploads/orphan.part", "leftover".toByteArray())
-        blobClient.putObject("objects/orphan-blob", "orphan".toByteArray())
+        val prefix = io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobKeys.organizationPrefix("uploads", ORGANIZATION_ID)
+        val orphan = prefix + "1/orphan.part"
+        val recent = prefix + System.currentTimeMillis() + "/inflight.part"
+        val foreign = io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobKeys.organizationPrefix("uploads", "other-org") + "1/foreign.part"
+        val orphanBlob = io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobKeys.organizationPrefix("objects", ORGANIZATION_ID) + "orphan-blob"
+        blobClient.putObject(orphan, "leftover".toByteArray())
+        blobClient.putObject(recent, "uploading".toByteArray())
+        blobClient.putObject(foreign, "foreign".toByteArray())
+        blobClient.putObject(orphanBlob, "orphan".toByteArray())
 
         val response = post("/api/factory/admin/artifacts/gc", adminToken)
 
@@ -68,14 +75,16 @@ class ArtifactAdminControllerIntegrationTest : Neo4jIntegrationTest() {
         val data = data(response)
         @Suppress("UNCHECKED_CAST")
         val reclaimed = data["reclaimedStagingKeys"] as List<String>
-        assertThat(reclaimed).contains("uploads/orphan.part")
-        assertThat(blobClient.headObject("uploads/orphan.part")).isFalse()
+        assertThat(reclaimed).containsExactly(orphan)
+        assertThat(blobClient.headObject(orphan)).isFalse()
+        assertThat(blobClient.headObject(recent)).isTrue()
+        assertThat(blobClient.headObject(foreign)).isTrue()
 
         @Suppress("UNCHECKED_CAST")
         val anomalies = data["anomalies"] as List<Map<String, Any?>>
         assertThat(anomalies).anySatisfy {
             assertThat(it["type"]).isEqualTo("blob_without_pg_row")
-            assertThat(it["storageKey"]).isEqualTo("objects/orphan-blob")
+            assertThat(it["storageKey"]).isEqualTo(orphanBlob)
         }
     }
 
@@ -201,6 +210,6 @@ class ArtifactAdminControllerIntegrationTest : Neo4jIntegrationTest() {
 
     companion object {
         private const val ORGANIZATION_ID = "org-local-dev"
-        private const val WORKSTREAM_ID = "ws-default"
+        private const val WORKSTREAM_ID = "artifact-test"
     }
 }

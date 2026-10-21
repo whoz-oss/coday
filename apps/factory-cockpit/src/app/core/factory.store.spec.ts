@@ -96,22 +96,88 @@ describe('FactoryStore', () => {
     http = TestBed.inject(HttpTestingController)
   })
 
-  afterEach(() => http.verify())
+  afterEach(() => http.verify({ ignoreCancelled: true }))
 
   function flushNamespaces(items: unknown = []): void {
     http.expectOne((r) => r.url === '/api/agentos/api/namespaces').flush({ data: items })
   }
 
+  it('loads all accessible namespaces by default without opening multiple SSE connections', () => {
+    flushNamespaces([
+      { namespaceId: 'ns-a', name: 'Alpha' },
+      { namespaceId: 'ns-b', name: 'Beta' },
+    ])
+    const requests = http.match((r) => r.url === '/api/factory/workflows')
+    expect(requests).toHaveLength(4)
+    expect(new Set(requests.map((r) => r.request.params.get('namespaceId')))).toEqual(new Set(['ns-a', 'ns-b']))
+    requests.forEach((r) => r.flush({ data: { items: [] } }))
+    expect(store.selectedNamespaceId()).toBeNull()
+    expect(FakeEventSource.instances).toHaveLength(0)
+  })
+
+  it('cancels the previous namespace requests and ignores late responses', () => {
+    flushNamespaces([
+      { namespaceId: 'ns-a', name: 'Alpha' },
+      { namespaceId: 'ns-b', name: 'Beta' },
+    ])
+    http.match((r) => r.url === '/api/factory/workflows').forEach((r) => r.flush({ data: { items: [] } }))
+    store.selectNamespace('ns-a')
+    const stale = http.match((r) => r.url === '/api/factory/workflows' && r.params.get('namespaceId') === 'ns-a')
+    expect(stale).toHaveLength(2)
+
+    store.selectNamespace('ns-b')
+    expect(stale.every((request) => request.cancelled)).toBe(true)
+    expect(FakeEventSource.instances[0]?.closed).toBe(true)
+    expect(FakeEventSource.instances[1]?.url).toContain('namespaceId=ns-b')
+
+    const current = http.match((r) => r.url === '/api/factory/workflows' && r.params.get('namespaceId') === 'ns-b')
+    current.find((r) => r.request.params.get('state') === 'active')?.flush({ data: { items: [] } })
+    current.find((r) => r.request.params.get('state') === 'removed')?.flush({ data: { items: [] } })
+    expect(store.selectedNamespaceId()).toBe('ns-b')
+    expect(store.runs()).toEqual([])
+  })
+
+  it('distinguishes an empty mapped workstream from the documented missing-mapping error', () => {
+    store.selectNamespace('ns-a')
+    flushNamespaces([{ namespaceId: 'ns-a', name: 'Alpha' }])
+    const requests = http.match((r) => r.url === '/api/factory/workflows' && !r.params.has('unused'))
+    requests.find((r) => r.request.params.get('state') === 'active')?.flush({ data: { items: [] } })
+    requests.find((r) => r.request.params.get('state') === 'removed')?.flush({ data: { items: [] } })
+    expect(store.workstreamMappingMissing()).toBe(false)
+
+    store.selectNamespace(null)
+    store.selectNamespace('ns-a')
+    const missing = http.match((r) => r.url === '/api/factory/workflows').filter((r) => !r.cancelled)
+    missing[0]?.flush(
+      { error: { code: 'WORKFLOW_NOT_FOUND', message: 'No workstream is mapped to the requested namespace.' } },
+      { status: 404, statusText: 'Not Found' }
+    )
+    expect(store.workstreamMappingMissing()).toBe(true)
+    expect(FakeEventSource.instances.at(-1)?.closed).toBe(true)
+    for (const request of missing.slice(1)) if (!request.cancelled) request.flush({ data: { items: [] } })
+  })
+
   function flushInitialWorkflows(items: unknown[] = [], removed: unknown[] = [], namespaces: unknown = []): void {
+    const pendingNamespaces = http.match((r) => r.url === '/api/agentos/api/namespaces')
+    const firstNamespace = items
+      .map((item) => (item as { namespaceId?: string } | null)?.namespaceId)
+      .find((value): value is string => typeof value === 'string' && value.length > 0)
+    if (!store.selectedNamespaceId()) store.selectNamespace(firstNamespace ?? 'ns-1')
+    for (const request of pendingNamespaces) request.flush({ data: namespaces })
     const activeRequest = http.expectOne(
       (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active'
     )
     const removedRequest = http.expectOne(
       (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed'
     )
-    activeRequest.flush({ data: { namespaceId: '', state: 'active', items } })
-    removedRequest.flush({ data: { namespaceId: '', state: 'removed', items: removed } })
-    flushNamespaces(namespaces)
+    activeRequest.flush({ data: { namespaceId: store.selectedNamespaceId(), state: 'active', items } })
+    removedRequest.flush({ data: { namespaceId: store.selectedNamespaceId(), state: 'removed', items: removed } })
+  }
+
+  function ensureNamespaceSelected(namespaceId = 'ns-1'): void {
+    const pendingNamespaces = http.match((r) => r.url === '/api/agentos/api/namespaces')
+    if (!store.selectedNamespaceId()) store.selectNamespace(namespaceId)
+    for (const request of pendingNamespaces) request.flush({ data: [{ namespaceId, name: namespaceId }] })
   }
 
   function flushEnrichment(
@@ -132,6 +198,7 @@ describe('FactoryStore', () => {
 
   /** Flush the 7 enrichment requests issued for an arbitrary active run. */
   function flushRunEnrichment(wfId: string, select = true): void {
+    ensureNamespaceSelected()
     if (select) store.selectSession(wfId)
     http.expectOne((r) => r.url.endsWith(`/${wfId}/timing`)).flush({ data: { workflowId: wfId, startedAt } })
     http.expectOne((r) => r.url.endsWith(`/${wfId}/evidence`)).flush({ data: { workflowId: wfId, items: [] } })
@@ -156,7 +223,7 @@ describe('FactoryStore', () => {
   })
 
   it('loads bounded enrichment for every visible run so cards and detail share truth', () => {
-    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-1', 'Second')])
 
     expect(store.runs()).toHaveLength(2)
     flushRunEnrichment('wf-1', false)
@@ -180,7 +247,7 @@ describe('FactoryStore', () => {
   })
 
   it('does not duplicate fetches when selecting a run; other runs only get their bounded overview enrichment', () => {
-    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-1', 'Second')])
 
     // Selecting wf-1 adopts its in-flight overview enrichment: expectOne inside
     // flushEnrichment proves a single set of requests, and nothing else follows.
@@ -240,7 +307,7 @@ describe('FactoryStore', () => {
   })
 
   it('cancels A detail when switching to B and prevents late A overwrite', () => {
-    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
+    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-1', 'Second')])
 
     store.selectSession('wf-1')
     const oldEvidence = http.expectOne((request) => request.url.endsWith('/wf-1/evidence'))
@@ -274,7 +341,7 @@ describe('FactoryStore', () => {
   })
 
   it('updates the affected card from enriched SSE state without corrupting another run', () => {
-    const second = snapshotFor('wf-2', 'ns-2', 'Second')
+    const second = snapshotFor('wf-2', 'ns-1', 'Second')
     flushInitialWorkflows([snapshot, second])
     flushRunEnrichment('wf-1', false)
     flushRunEnrichment('wf-2', false)
@@ -314,14 +381,10 @@ describe('FactoryStore', () => {
 
     FakeEventSource.instances[0]?.emit(
       'workflow-projection-updated',
-      JSON.stringify({ workflowId: 'wf-2', namespaceId: 'ns-2' })
+      JSON.stringify({ workflowId: 'wf-2', namespaceId: 'other-ns' })
     )
-    flushInitialWorkflows([snapshot, snapshotFor('wf-2', 'ns-2', 'Second')])
 
-    http.expectNone((request) => request.url.includes('/wf-1/evidence'))
-    // wf-2: its first overview enrichment, then the single trailing refresh the SSE queued meanwhile.
-    flushRunEnrichment('wf-2', false)
-    flushRunEnrichment('wf-2', false)
+    http.expectNone((request) => request.url === '/api/factory/workflows')
     http.expectNone((request) => request.url.includes('/wf-1/'))
   })
 
@@ -435,7 +498,7 @@ describe('FactoryStore', () => {
 
   it('groups runs into workstreams strictly by namespaceId', () => {
     flushInitialWorkflows(
-      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-b', 'Run B')],
+      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-a', 'Run B')],
       [],
       [
         { namespaceId: 'ns-a', name: 'Alpha' },
@@ -446,14 +509,14 @@ describe('FactoryStore', () => {
     flushRunEnrichment('wf-b')
 
     const workstreams = store.workstreams()
-    expect(workstreams.map((ws) => ws.namespaceId).sort()).toEqual(['ns-a', 'ns-b'])
-    expect(workstreams.find((ws) => ws.namespaceId === 'ns-a')?.title).toBe('Alpha')
-    expect(workstreams.find((ws) => ws.namespaceId === 'ns-b')?.runs.map((r) => r.id)).toEqual(['wf-b'])
+    expect(workstreams.map((ws) => ws.namespaceId)).toEqual(['ns-a'])
+    expect(workstreams[0]?.title).toBe('Alpha')
+    expect(workstreams[0]?.runs.map((r) => r.id)).toEqual(['wf-a', 'wf-b'])
   })
 
   it('keeps homonym namespace titles in distinct workstreams (never grouped by title)', () => {
     flushInitialWorkflows(
-      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-b', 'Run B')],
+      [snapshotFor('wf-a', 'ns-a', 'Run A'), snapshotFor('wf-b', 'ns-a', 'Run B')],
       [],
       [
         { namespaceId: 'ns-a', name: 'Same name' },
@@ -464,19 +527,19 @@ describe('FactoryStore', () => {
     flushRunEnrichment('wf-b')
 
     const workstreams = store.workstreams()
-    expect(workstreams).toHaveLength(2)
-    expect(workstreams.every((ws) => ws.title === 'Same name')).toBe(true)
-    expect(workstreams.map((ws) => ws.namespaceId).sort()).toEqual(['ns-a', 'ns-b'])
+    expect(workstreams).toHaveLength(1)
+    expect(workstreams[0]?.title).toBe('Same name')
+    expect(workstreams[0]?.namespaceId).toBe('ns-a')
   })
 
-  it('puts runs without a namespaceId in an explicit unassigned workstream', () => {
+  it('does not enrich a malformed run without a namespaceId', () => {
     const orphan = {
       workflowId: 'wf-orphan',
       relations: { rootWorkflowId: 'wf-orphan', ticket: 'T-orphan' },
       projection: { schemaVersion: '2', title: 'Orphan run', status: 'running', steps: [] },
     }
     flushInitialWorkflows([orphan])
-    flushRunEnrichment('wf-orphan')
+    http.expectNone((request) => request.url.includes('/wf-orphan/'))
 
     const [workstream] = store.workstreams()
     expect(workstream?.namespaceId).toBe('unassigned')
@@ -493,6 +556,7 @@ describe('FactoryStore', () => {
   })
 
   it('scopes a deep-linked workflow detail GET with the route namespace', () => {
+    store.selectNamespace('ns-deep')
     store.selectSession('wf-deep', 'ns-deep')
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-deep')
@@ -510,29 +574,13 @@ describe('FactoryStore', () => {
     http.expectNone((r) => r.url === '/api/factory/workflows/wf-legacy')
   })
 
-  it('degrades gracefully when getNamespaces fails: runs still load and group', () => {
-    const activeRequest = http.expectOne(
-      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active'
-    )
-    const removedRequest = http.expectOne(
-      (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed'
-    )
-    activeRequest.flush({ data: { items: [snapshotFor('wf-a', 'ns-a', 'Run A')] } })
-    removedRequest.flush({ data: { items: [] } })
+  it('does not issue workflow requests when namespace discovery fails', () => {
     http
       .expectOne((r) => r.url === '/api/agentos/api/namespaces')
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
-
-    // Namespace catalogue failure must not discard the already authorized
-    // workflow snapshot or its namespace-scoped overview enrichment. Selecting
-    // adopts that in-flight request instead of starting a second enrichment.
-    store.selectSession('wf-a')
-    http.expectNone((r) => r.url === '/api/factory/workflows/wf-a')
-    flushRunEnrichment('wf-a', false)
-
-    expect(store.runs()).toHaveLength(1)
-    expect(store.namespaces().size).toBe(0)
-    expect(store.workstreams()[0]?.title).toBe('ns-a')
+    http.expectNone((r) => r.url === '/api/factory/workflows')
+    expect(store.runs()).toEqual([])
+    expect(store.namespaceOptionsError()?.code).toBe('BOOM')
   })
 
   // ---------------------------------------------------------------------------
@@ -773,9 +821,8 @@ describe('FactoryStore', () => {
     // must still carry the previously enriched data (not wiped to projection-only).
     const activeReq = http.expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
     const removedReq = http.expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
-    activeReq.flush({ data: { namespaceId: '', state: 'active', items: [snapshot] } })
-    removedReq.flush({ data: { namespaceId: '', state: 'removed', items: [] } })
-    http.expectOne((r) => r.url === '/api/agentos/api/namespaces').flush({ data: [] })
+    activeReq.flush({ data: { namespaceId: 'ns-1', state: 'active', items: [snapshot] } })
+    removedReq.flush({ data: { namespaceId: 'ns-1', state: 'removed', items: [] } })
 
     // Immediately after the reload (before new enrichment arrives), the session
     // must still reflect the previous enrichment (caseId from attempt preserved).
@@ -821,13 +868,13 @@ describe('FactoryStore', () => {
   })
 
   it('degrades to an empty list (never the mock fleet) when the REST backend fails', () => {
-    http
-      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
-      .flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
-    http
-      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
-      .flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
-    flushNamespaces()
+    flushNamespaces([{ namespaceId: 'ns-1', name: 'Namespace' }])
+    store.selectNamespace('ns-1')
+    const pending = http.match((r) => r.url === '/api/factory/workflows').filter((r) => !r.cancelled)
+    const active = pending.find((r) => r.request.params.get('state') === 'active')!
+    const removed = pending.find((r) => r.request.params.get('state') === 'removed')!
+    active.flush({ error: { code: 'UNAVAILABLE' } }, { status: 503, statusText: 'Service Unavailable' })
+    expect(removed.cancelled).toBe(true)
 
     expect(store.runs()).toEqual([])
     expect(store.activeRuns()).toEqual([])
@@ -955,7 +1002,7 @@ describe('FactoryStore', () => {
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions/i-1/reply')
     expect(request.request.method).toBe('POST')
-    expect(request.request.body).toEqual({ actionId: 'approve', text: 'ok', expectedRevision: 3 })
+    expect(request.request.body).toEqual({ actionId: 'approve', text: 'ok', expectedRevision: 3, namespaceId: 'ns-1' })
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
@@ -971,10 +1018,69 @@ describe('FactoryStore', () => {
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/retries')
     expect(request.request.method).toBe('POST')
-    expect(request.request.body).toEqual({ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+    expect(request.request.body).toEqual({
+      stepId: 'build',
+      expectedRevision: 7,
+      reasonCode: 'human_retry',
+      namespaceId: 'ns-1',
+    })
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('resumes research with a stable key after an ambiguous transport failure', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    const payload = { stepId: 'build', expectedRevision: 7, additionalContext: 'VPN access granted' }
+    store.resumeResearch('wf-1', payload)
+    const first = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/research-resumptions'))
+    const idempotencyKey = first.request.headers.get('Idempotency-Key')
+    expect(idempotencyKey).toBeTruthy()
+    expect(first.request.body).toEqual({
+      namespaceId: 'ns-1',
+      expectedRevision: 7,
+      additionalContext: 'VPN access granted',
+    })
+    first.error(new ProgressEvent('error'))
+
+    store.resumeResearch('wf-1', payload)
+    const replay = http.expectOne((r) => r.url.endsWith('/wf-1/steps/build/research-resumptions'))
+    expect(replay.request.headers.get('Idempotency-Key')).toBe(idempotencyKey)
+    replay.flush({
+      data: {
+        workflowId: 'wf-1',
+        stepId: 'build',
+        attemptId: 'a-2',
+        revision: 8,
+        idempotent: true,
+        submissionId: 'sub-1',
+        queued: true,
+      },
+    })
+
+    flushRunEnrichment('wf-1', false)
+    flushInitialWorkflows([])
+  })
+
+  it('prevents double submit and refetches after a revision conflict', () => {
+    flushInitialWorkflows([snapshot])
+    flushEnrichment()
+
+    const payload = { stepId: 'build', expectedRevision: 7, additionalContext: 'Credentials added' }
+    store.resumeResearch('wf-1', payload)
+    store.resumeResearch('wf-1', payload)
+    const requests = http.match((r) => r.url.endsWith('/wf-1/steps/build/research-resumptions'))
+    expect(requests).toHaveLength(1)
+    requests[0]!.flush(
+      { error: { code: 'WORKFLOW_REVISION_CONFLICT', message: 'Revision changed' } },
+      { status: 409, statusText: 'Conflict' }
+    )
+
+    expect(store.researchResumptionFeedback()).toEqual(expect.objectContaining({ stepId: 'build', kind: 'conflict' }))
     flushRunEnrichment('wf-1', false)
     flushInitialWorkflows([])
   })
@@ -987,7 +1093,7 @@ describe('FactoryStore', () => {
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-2/cancel')
     expect(request.request.method).toBe('POST')
-    expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator' })
+    expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator', namespaceId: 'ns-1' })
     request.flush({ data: { ok: true } })
 
     flushRunEnrichment('wf-1', false)
@@ -1050,18 +1156,19 @@ describe('FactoryStore', () => {
     expect(store.visibleRuns()).toHaveLength(2)
   })
 
-  it('keeps active runs when the removed fetch fails (partial degradation)', () => {
-    http
-      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active')
+  it('clears the scoped overview when one list fetch fails', () => {
+    flushNamespaces([{ namespaceId: 'ns-1', name: 'Namespace' }])
+    store.selectNamespace('ns-1')
+    const current = http.match((r) => r.url === '/api/factory/workflows').filter((r) => !r.cancelled)
+    current
+      .find((r) => r.request.params.get('state') === 'active')!
       .flush({ data: { namespaceId: '', state: 'active', items: [snapshot] } })
-    http
-      .expectOne((r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'removed')
+    current
+      .find((r) => r.request.params.get('state') === 'removed')!
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
-    flushNamespaces()
-    flushEnrichment()
 
-    expect(store.activeRuns()).toHaveLength(1)
-    expect(store.destroyedRuns()).toEqual([])
+    expect(store.activeRuns()).toEqual([])
+    expect(store.overviewError()?.code).toBe('BOOM')
   })
 
   // ---------------------------------------------------------------------------
@@ -1081,7 +1188,7 @@ describe('FactoryStore', () => {
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-1/cancel')
     expect(request.request.method).toBe('POST')
-    expect(request.request.body).toEqual({ expectedRevision: 5, reason: 'stop' })
+    expect(request.request.body).toEqual({ expectedRevision: 5, reason: 'stop', namespaceId: 'ns-1' })
     expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { ok: true } })
 
@@ -1114,7 +1221,7 @@ describe('FactoryStore', () => {
     store.stop('wf-1')
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/attempts/a-9/cancel')
-    expect(request.request.body).toEqual({ expectedRevision: 3, reason: 'stop' })
+    expect(request.request.body).toEqual({ expectedRevision: 3, reason: 'stop', namespaceId: 'ns-1' })
     request.flush({ data: { ok: true } })
 
     flushRunEnrichment('wf-1', false)

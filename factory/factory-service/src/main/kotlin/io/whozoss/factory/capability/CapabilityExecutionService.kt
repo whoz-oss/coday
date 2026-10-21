@@ -13,6 +13,8 @@ import io.whozoss.factory.agentattempt.domain.AttemptContextEnvelope
 import io.whozoss.factory.agentattempt.domain.CanonicalJsonHash
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
 import io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException
+import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
+import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableException
 import io.whozoss.factory.agentattempt.persistence.AgentStepAttemptRepository
 import io.whozoss.factory.agentattempt.service.AgentStepResultService
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
@@ -1238,11 +1240,12 @@ class CapabilityExecutionService(
                         newTransaction {
                             val current = attempts.find(scope, namespaceId, workflowId, step.id, reservation.attemptId)
                             if (current?.status == AgentAttemptStatus.WAITING_HUMAN) {
-                                attempts.transition(
+                                val running = attempts.transition(
                                     scope, namespaceId, workflowId, step.id, reservation.attemptId,
                                     reservation.ownerToken, AgentAttemptStatus.RUNNING,
                                     lastObservedEventId = answer.eventId,
                                 )
+                                refreshCapabilityAfterHumanWait(scope, attempts, running, question)
                                 onAgentObservation(AgentObservationUpdate(status = "running"))
                             }
                         }
@@ -1266,11 +1269,12 @@ class CapabilityExecutionService(
                             it.answeredQuestionId == waitingQuestion
                     }
                     if (persistedAnswer != null) {
-                        attempts.transition(
+                        val running = attempts.transition(
                             scope, namespaceId, workflowId, step.id, reservation.attemptId,
                             reservation.ownerToken, AgentAttemptStatus.RUNNING,
                             lastObservedEventId = persistedAnswer.eventId,
                         )
+                        refreshCapabilityAfterHumanWait(scope, attempts, running, waitingQuestion!!)
                         onAgentObservation(AgentObservationUpdate(status = "running"))
                     }
                 }
@@ -1327,6 +1331,48 @@ class CapabilityExecutionService(
             observationEscalation.escalate(adapter, caseId, reservation.attemptId, observed).verdict
         } else {
             observed
+        }
+    }
+
+    /**
+     * Restarts the fixed 15-minute active capability budget only when the same
+     * AgentOS attempt actually resumes from a persisted human wait. The question
+     * id is the durable generation key: retries/restarts of the same answer do
+     * not repeatedly extend the budget. Rotation and clear-token replacement are
+     * both fenced; terminal/cancelled/superseded attempts remain closed.
+     */
+    private fun refreshCapabilityAfterHumanWait(
+        scope: TenantScope,
+        attempts: DurableAgentAttemptService,
+        attempt: DurableAgentAttempt,
+        questionId: String,
+    ) {
+        val resultService = agentStepResultService ?: return
+        val oldToken = attempt.capabilityToken?.takeIf { it.isNotBlank() } ?: return
+        val refreshKey = "agentos-query-user:${attempt.attemptId}:$questionId"
+        val currentCapability = resultService.resolveCapability(scope, oldToken)
+        if (currentCapability?.refreshKey == refreshKey) return
+        val issued = try {
+            resultService.refresh(
+                scope = scope,
+                observed = AgentStepResultObservedIdentity(
+                    attemptId = attempt.attemptId,
+                    caseId = attempt.caseId,
+                    agentName = attempt.agentName,
+                    namespaceId = attempt.namespaceId,
+                ),
+                runtimeId = AGENTOS_RUNTIME_ID,
+                refreshKey = refreshKey,
+            )
+        } catch (_: ResultAttemptNotRefreshableException) {
+            return
+        }
+        val replaced = attempts.replaceCapability(scope, attempt, oldToken, issued.token)
+        if (replaced == null) {
+            logger.info {
+                "Result capability rotated but attempt ${attempt.attemptId} changed concurrently; " +
+                    "the stale execution will remain fenced"
+            }
         }
     }
 
@@ -1801,5 +1847,6 @@ class CapabilityExecutionService(
         private const val MAX_QUESTION_TYPE = 100
         private const val MAX_QUESTION_OPTIONS = 20
         private const val MAX_QUESTION_OPTION = 500
+        private const val AGENTOS_RUNTIME_ID = "agentos-primary"
     }
 }

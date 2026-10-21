@@ -3,7 +3,13 @@ import { provideHttpClientTesting } from '@angular/common/http/testing'
 import { ComponentFixture, TestBed } from '@angular/core/testing'
 import { provideRouter } from '@angular/router'
 import { AgentQuestion, AllowedAction, HumanInteraction, WorkflowBlocker } from '../../../core/models'
-import { ActionBarComponent, CancelIntent, ReplyIntent, RetryIntent } from './action-bar.component'
+import {
+  ActionBarComponent,
+  CancelIntent,
+  ReplyIntent,
+  ResearchResumptionIntent,
+  RetryIntent,
+} from './action-bar.component'
 
 const interaction: HumanInteraction = {
   interactionId: 'i-1',
@@ -171,6 +177,50 @@ describe('ActionBarComponent', () => {
     buttons(host)[0]?.click()
 
     expect(emitted).toEqual([{ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }])
+  })
+
+  it('renders NEEDS_RESEARCH as information/access needed, not as a failure or unknown runtime', () => {
+    const host = render([], [{ code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Agent needs research' }])
+
+    expect(host.textContent).toContain('Informations ou accès nécessaires')
+    expect(host.querySelector('.blocker--research')).not.toBeNull()
+    expect(host.querySelector('.blocker--failure')).toBeNull()
+    expect(host.querySelector('.blocker--indeterminate')).toBeNull()
+  })
+
+  it('shows and submits research resumption only for the server allowed action', () => {
+    const emitted: ResearchResumptionIntent[] = []
+    fixture.componentInstance.researchResumptionRequested.subscribe((intent) => emitted.push(intent))
+    const host = render([{ type: 'resume_research', stepId: 'research', expectedRevision: 12 }])
+    const textarea = host.querySelector('textarea') as HTMLTextAreaElement
+    const submit = host.querySelector('button[type="submit"]') as HTMLButtonElement
+
+    expect(textarea).not.toBeNull()
+    expect(textarea.maxLength).toBe(4000)
+    expect(submit.disabled).toBe(true)
+    textarea.value = '  Repository access granted  '
+    textarea.dispatchEvent(new Event('input'))
+    fixture.detectChanges()
+    expect(submit.disabled).toBe(false)
+    submit.click()
+
+    expect(emitted).toEqual([
+      { stepId: 'research', expectedRevision: 12, additionalContext: 'Repository access granted' },
+    ])
+  })
+
+  it('disables research resumption while a submission is in flight', () => {
+    fixture.componentRef.setInput('resumingResearchStepId', 'research')
+    const host = render([{ type: 'resume_research', stepId: 'research', expectedRevision: 12 }])
+
+    expect((host.querySelector('textarea') as HTMLTextAreaElement).disabled).toBe(true)
+    expect((host.querySelector('button[type="submit"]') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('does not show a research form from the blocker alone', () => {
+    const host = render([], [{ code: 'NEEDS_RESEARCH', stepId: 'research', label: 'Need input' }])
+    expect(host.querySelector('textarea')).toBeNull()
+    expect(host.querySelector('button[type="submit"]')).toBeNull()
   })
 
   it('emits a CancelIntent carrying the attempt and the expected revision', () => {

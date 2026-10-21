@@ -71,9 +71,14 @@ export class SseService implements OnDestroy {
   /** Emits `true`/`false` as the connection opens/closes. */
   readonly connectionState$: Observable<boolean> = this.connectionSubject.asObservable()
 
-  /** Open (or re-open) the stream, optionally filtering by namespace. */
-  connect(namespaceId?: string): void {
-    this.namespaceId = namespaceId
+  /** Open (or re-open) the stream for one explicit namespace. */
+  connect(namespaceId: string): void {
+    const namespace = namespaceId.trim()
+    if (!namespace) {
+      this.close()
+      return
+    }
+    this.namespaceId = namespace
     this.open()
   }
 
@@ -118,7 +123,8 @@ export class SseService implements OnDestroy {
 
   private buildUrl(): string {
     const namespace = this.namespaceId?.trim()
-    return namespace ? `${STREAM_PATH}?namespaceId=${encodeURIComponent(namespace)}` : STREAM_PATH
+    if (!namespace) throw new Error('Factory workflow SSE requires namespaceId')
+    return `${STREAM_PATH}?namespaceId=${encodeURIComponent(namespace)}`
   }
 
   private handleOpen(): void {

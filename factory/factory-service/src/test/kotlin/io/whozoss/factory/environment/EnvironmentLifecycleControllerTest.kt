@@ -25,6 +25,17 @@ import org.springframework.http.ResponseEntity
  * case of a provision are body fields.
  */
 class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
+    private val namespace = "15bce78d-b1e6-4e34-8f15-655de3e422f3"
+
+    @Autowired
+    private lateinit var workstreams: io.whozoss.factory.workstream.WorkstreamService
+
+    @org.junit.jupiter.api.BeforeEach
+    fun registerNamespaceMapping() {
+        workstreams.create(scope, io.whozoss.factory.workstream.web.CreateWorkstreamRequest(
+            slug = scope.workstreamId, name = "Environment fixture", status = "active", namespaceId = namespace,
+        ))
+    }
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -61,7 +72,7 @@ class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
         post("wf-http-get", "/provision", provisionBody("wu-1"))
 
         val get = restTemplate.exchange(
-            "/api/factory/workflows/wf-http-get/environment",
+            "/api/factory/workflows/wf-http-get/environment?namespaceId=$namespace",
             HttpMethod.GET,
             HttpEntity<Void>(headers()),
             jsonType(),
@@ -91,7 +102,7 @@ class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `get on an unknown workflow yields 404 ENVIRONMENT_NOT_FOUND`() {
         val response = restTemplate.exchange(
-            "/api/factory/workflows/wf-unknown/environment",
+            "/api/factory/workflows/wf-unknown/environment?namespaceId=$namespace",
             HttpMethod.GET,
             HttpEntity<Void>(headers()),
             jsonType(),
@@ -119,9 +130,19 @@ class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
         assertThat(errorCode(response.body)).isEqualTo("INVALID_ENVIRONMENT_REQUEST")
     }
 
+    @Test
+    fun `environment read requires namespace and returns a client error`() {
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/wf-missing-scope/environment", HttpMethod.GET,
+            HttpEntity<Void>(headers()), jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("MISSING_REQUEST_PARAMETER")
+    }
+
     private fun post(workflowId: String, suffix: String, body: String?): ResponseEntity<Map<String, Any?>> =
         restTemplate.exchange(
-            "/api/factory/workflows/$workflowId/environment$suffix",
+            "/api/factory/workflows/$workflowId/environment$suffix?namespaceId=$namespace",
             HttpMethod.POST,
             HttpEntity(body, headers()),
             jsonType(),
@@ -135,7 +156,7 @@ class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {
         object : ParameterizedTypeReference<Map<String, Any?>>() {}
 
     private fun provisionBody(workUnitId: String): String =
-        """{"workUnitId":"$workUnitId","namespaceId":"ns-http","parentCaseId":"case-http","integrationBranch":"main","branch":"feature/http"}"""
+        """{"workUnitId":"$workUnitId","namespaceId":"$namespace","parentCaseId":"case-http","integrationBranch":"main","branch":"feature/http"}"""
 
     @Suppress("UNCHECKED_CAST")
     private fun data(body: Map<String, Any?>?): Map<String, Any?>? = body?.get("data") as? Map<String, Any?>

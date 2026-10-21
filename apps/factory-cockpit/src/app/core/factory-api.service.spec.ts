@@ -19,11 +19,12 @@ describe('FactoryApiService', () => {
 
   it('unwraps the { data } envelope for the workflow list', () => {
     let result: unknown[] | undefined
-    service.getWorkflows('active').subscribe((items) => (result = items))
+    service.getWorkflows('active', 'ns-1').subscribe((items) => (result = items))
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows')
     expect(request.request.method).toBe('GET')
     expect(request.request.params.get('state')).toBe('active')
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { namespaceId: '', state: 'active', items: [{ workflowId: 'wf-1' }] } })
 
     expect(result).toEqual([{ workflowId: 'wf-1' }])
@@ -31,7 +32,7 @@ describe('FactoryApiService', () => {
 
   it('returns raw arrays that are not wrapped in an envelope', () => {
     let result: unknown[] | undefined
-    service.getWorkflows('removed').subscribe((items) => (result = items))
+    service.getWorkflows('removed', 'ns-1').subscribe((items) => (result = items))
 
     http.expectOne((r) => r.url === '/api/factory/workflows').flush([{ workflowId: 'wf-removed' }])
 
@@ -84,7 +85,7 @@ describe('FactoryApiService', () => {
 
   it('returns an empty list when the payload carries no items', () => {
     let result: unknown[] | undefined
-    service.getWorkflows().subscribe((items) => (result = items))
+    service.getWorkflows('active', 'ns-1').subscribe((items) => (result = items))
 
     http.expectOne((r) => r.url === '/api/factory/workflows').flush({ data: { state: 'active' } })
 
@@ -363,7 +364,7 @@ describe('FactoryApiService', () => {
 
       const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1/agent-questions/q%2F1/answer')
       expect(request.request.method).toBe('POST')
-      expect(request.request.body).toEqual({ stepId: 'build', answer: 'Option A' })
+      expect(request.request.body).toEqual({ stepId: 'build', answer: 'Option A', namespaceId: 'ns-1' })
       expect(request.request.params.get('namespaceId')).toBe('ns-1')
       expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
       expect(request.request.body.attemptId).toBeUndefined()
@@ -380,7 +381,12 @@ describe('FactoryApiService', () => {
 
       const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/interactions/i%2F1/reply')
       expect(request.request.method).toBe('POST')
-      expect(request.request.body).toEqual({ actionId: 'approve', text: 'ok', expectedRevision: 3 })
+      expect(request.request.body).toEqual({
+        actionId: 'approve',
+        text: 'ok',
+        expectedRevision: 3,
+        namespaceId: 'ns-1',
+      })
       expect(request.request.params.get('namespaceId')).toBe('ns-1')
       expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
       expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
@@ -389,16 +395,59 @@ describe('FactoryApiService', () => {
       expect(result).toEqual({ interactionId: 'i/1' })
     })
 
+    it('posts a research resumption with the exact body, namespace and idempotency key', () => {
+      let result: unknown
+      service
+        .resumeResearch(
+          'wf/1',
+          'research/step',
+          { namespaceId: 'ns-1', expectedRevision: 8, additionalContext: 'VPN access granted' },
+          'research-key-1'
+        )
+        .subscribe((value) => (result = value))
+
+      const request = http.expectOne(
+        (r) => r.url === '/api/factory/workflows/wf%2F1/steps/research%2Fstep/research-resumptions'
+      )
+      expect(request.request.method).toBe('POST')
+      expect(request.request.body).toEqual({
+        namespaceId: 'ns-1',
+        expectedRevision: 8,
+        additionalContext: 'VPN access granted',
+      })
+      expect(request.request.headers.get('Idempotency-Key')).toBe('research-key-1')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
+      request.flush({
+        data: {
+          workflowId: 'wf/1',
+          stepId: 'research/step',
+          attemptId: 'attempt-2',
+          revision: 9,
+          idempotent: false,
+          submissionId: 'submission-1',
+          queued: true,
+        },
+      })
+
+      expect(result).toEqual(expect.objectContaining({ attemptId: 'attempt-2', queued: true, idempotent: false }))
+    })
+
     it('openRetry posts to /retries', () => {
       let result: unknown
       service
-        .openRetry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
+        .openRetry('wf-1', { stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' }, 'ns-1')
         .subscribe((r) => (result = r))
 
       const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1/retries')
       expect(request.request.method).toBe('POST')
-      expect(request.request.body).toEqual({ stepId: 'build', expectedRevision: 7, reasonCode: 'human_retry' })
-      expect(request.request.params.has('namespaceId')).toBe(false)
+      expect(request.request.body).toEqual({
+        stepId: 'build',
+        expectedRevision: 7,
+        reasonCode: 'human_retry',
+        namespaceId: 'ns-1',
+      })
+      expect(request.request.params.get('namespaceId')).toBe('ns-1')
       request.flush({ data: { ok: true } })
 
       expect(result).toEqual({ ok: true })
@@ -409,7 +458,7 @@ describe('FactoryApiService', () => {
 
       const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf%2F1/attempts/a%2F2/cancel')
       expect(request.request.method).toBe('POST')
-      expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator' })
+      expect(request.request.body).toEqual({ expectedRevision: 4, reason: 'operator', namespaceId: 'ns-1' })
       expect(request.request.params.get('namespaceId')).toBe('ns-1')
       request.flush({ data: { status: 'interrupted' } })
     })
@@ -686,8 +735,8 @@ describe('FactoryApiService', () => {
         parameters: { ticket: 'ABC-1' },
       })
       expect(request.request.headers.get('Idempotency-Key')).toBe('request-1')
-      expect(request.request.params.has('namespaceId')).toBe(false)
-      expect(request.request.headers.has('X-Namespace-Id')).toBe(false)
+      expect(request.request.params.get('namespaceId')).toBe('0d4bd471-df37-43d8-a8f7-c989f95e71d7')
+      expect(request.request.headers.get('X-Namespace-Id')).toBe('0d4bd471-df37-43d8-a8f7-c989f95e71d7')
       expect(request.request.body.workflowId).toBeUndefined()
       expect(request.request.body.namespaceId).toBe('0d4bd471-df37-43d8-a8f7-c989f95e71d7')
       expect(Object.keys(request.request.body).sort()).toEqual(['namespaceId', 'parameters', 'title', 'workflowType'])

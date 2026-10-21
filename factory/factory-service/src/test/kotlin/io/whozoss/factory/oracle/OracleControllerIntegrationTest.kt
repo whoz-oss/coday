@@ -17,10 +17,20 @@ import org.springframework.http.ResponseEntity
  * HTTP integration tests of [io.whozoss.factory.oracle.web.OracleController]
  * against the embedded Neo4j engine (in-process harness, no Docker).
  *
- * The trust context is the loopback-dev principal granted by
- * `LocalDevMembershipResolver` (`org-local-dev` / `ws-default`).
+ * Authentication supplies the organization; the explicit namespace registry supplies the workstream.
  */
 class OracleControllerIntegrationTest : Neo4jIntegrationTest() {
+    @Autowired
+    private lateinit var workstreams: io.whozoss.factory.workstream.WorkstreamService
+
+    @org.junit.jupiter.api.BeforeEach
+    fun registerNamespaceMapping() {
+        workstreams.create(io.whozoss.factory.persistence.TenantScope(ORG, WS),
+            io.whozoss.factory.workstream.web.CreateWorkstreamRequest(
+                slug = WS, name = "Oracle fixture", status = "active", namespaceId = NAMESPACE,
+            ))
+    }
+
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -95,8 +105,8 @@ class OracleControllerIntegrationTest : Neo4jIntegrationTest() {
 
     companion object {
         private const val ORG = "org-local-dev"
-        private const val WS = "ws-default"
-        private const val NAMESPACE = "ns-controller-test"
+        private const val WS = "oracle-test"
+        private const val NAMESPACE = "6c7238cc-4823-42ca-b6c2-f5fd1fd303cc"
         private const val WORKFLOW = "wf-controller-test"
     }
 }

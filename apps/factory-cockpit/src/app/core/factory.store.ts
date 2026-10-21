@@ -1,5 +1,19 @@
-import { Injectable, InjectionToken, computed, inject, signal } from '@angular/core'
-import { Observable, Subscription, catchError, finalize, forkJoin, of, switchMap, tap } from 'rxjs'
+import { Injectable, InjectionToken, OnDestroy, computed, inject, signal } from '@angular/core'
+import {
+  Observable,
+  Subscription,
+  catchError,
+  finalize,
+  forkJoin,
+  of,
+  switchMap,
+  tap,
+  from,
+  mergeMap,
+  toArray,
+  timer,
+  map,
+} from 'rxjs'
 import { FactoryApiError, FactoryApiService, NamespaceItem, extractNamespaceOptions } from './factory-api.service'
 import { SupervisorCaseFacade } from './supervisor-case.facade'
 import {
@@ -91,7 +105,7 @@ export function buildSupervisorCaseUrl(caseId: string, namespaceId: string, base
  * so the Angular application never crashes on a cold/offline backend.
  */
 @Injectable({ providedIn: 'root' })
-export class FactoryStore {
+export class FactoryStore implements OnDestroy {
   private readonly api = inject(FactoryApiService)
   private readonly sse = inject(SseService)
   private readonly supervisorCases = inject(SupervisorCaseFacade)
@@ -101,6 +115,13 @@ export class FactoryStore {
    * Used to title workstreams; a missing id falls back to the id itself.
    */
   readonly namespaces = signal<Map<string, string>>(new Map())
+  readonly namespaceOptions = signal<NamespaceItem[]>([])
+  readonly selectedNamespaceId = signal<string | null>(null)
+  readonly namespaceOptionsLoading = signal(true)
+  readonly namespaceOptionsError = signal<FactoryApiError | null>(null)
+  readonly workstreamMappingMissing = signal(false)
+  readonly overviewError = signal<FactoryApiError | null>(null)
+  readonly namespaceSelectionRequired = computed(() => false)
 
   /** Factory runs derived from the real active/removed workflows (empty until loaded). */
   readonly runs = signal<FactoryRun[]>([])
@@ -111,6 +132,13 @@ export class FactoryStore {
   readonly questionFeedback = signal<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(
     null
   )
+  readonly resumingResearchStepId = signal<string | null>(null)
+  readonly researchResumptionFeedback = signal<{
+    stepId: string
+    kind: 'conflict' | 'collision' | 'error'
+    message: string
+  } | null>(null)
+  private readonly researchResumptionKeys = new Map<string, { payload: string; key: string }>()
 
   /** @deprecated Use {@link runs}. Kept as an alias for compatibility. */
   readonly sandboxes = computed(() => this.runs())
@@ -192,17 +220,26 @@ export class FactoryStore {
   private detailRequest: Subscription | null = null
   private detailRefreshPending = false
   private selectedWorkflowId: string | null = null
-  private selectedNamespaceId: string | null = null
+  private detailNamespaceId: string | null = null
+  private namespaceGeneration = 0
   /** One coalesced enrichment request per overview run; avoids duplicate N+1 bursts. */
   private readonly overviewEnrichmentRequests = new Map<string, Subscription>()
   private readonly overviewEnrichmentPending = new Set<string>()
 
   constructor() {
-    this.load()
+    this.loadNamespaceOptions()
+    // All-namespace overview uses bounded polling instead of one SSE connection per namespace.
+    this.subscriptions.add(
+      timer(15000, 15000).subscribe(() => {
+        if (this.selectedNamespaceId() === null) this.refresh()
+      })
+    )
     // SSE carries invalidations only. Refresh the overview, and only refresh
     // expensive detail data when the invalidation targets the visible run.
     this.subscriptions.add(
       this.sse.invalidations$.subscribe((invalidation) => {
+        const namespaceId = this.selectedNamespaceId()
+        if (!namespaceId || (invalidation.namespaceId && invalidation.namespaceId !== namespaceId)) return
         this.load()
         if (invalidation.workflowId) this.queueOverviewEnrichment(invalidation.workflowId)
         else this.queueAllOverviewEnrichment()
@@ -213,12 +250,53 @@ export class FactoryStore {
     )
     this.subscriptions.add(
       this.sse.reconnected$.subscribe(() => {
+        if (!this.selectedNamespaceId()) return
         this.load()
         this.queueAllOverviewEnrichment()
         this.refreshSelectedSession()
       })
     )
-    this.sse.connect()
+  }
+
+  ngOnDestroy(): void {
+    this.subscriptions.unsubscribe()
+    this.cancelNamespaceRequests()
+    this.sse.close()
+  }
+
+  selectNamespace(namespaceId: string | null): void {
+    const namespace = namespaceId?.trim() || null
+    if (namespace === this.selectedNamespaceId()) return
+    this.namespaceGeneration += 1
+    this.cancelNamespaceRequests()
+    this.selectedNamespaceId.set(namespace)
+    this.workstreamMappingMissing.set(false)
+    this.overviewError.set(null)
+    this.clearScopedState()
+    if (!namespace) {
+      this.sse.close()
+      this.load()
+      return
+    }
+    this.sse.connect(namespace)
+    this.load()
+  }
+
+  private loadNamespaceOptions(): void {
+    this.namespaceOptionsLoading.set(true)
+    this.namespaceOptionsError.set(null)
+    this.api
+      .getNamespaces()
+      .pipe(finalize(() => this.namespaceOptionsLoading.set(false)))
+      .subscribe({
+        next: (items) => {
+          this.namespaceOptions.set(items)
+          this.applyNamespaces(items)
+          this.namespaceOptionsLoading.set(false)
+          this.load()
+        },
+        error: (error: FactoryApiError) => this.namespaceOptionsError.set(error),
+      })
   }
 
   session(runId: string): SessionDetail | undefined {
@@ -233,13 +311,15 @@ export class FactoryStore {
   selectSession(workflowId: string, namespaceId?: string): void {
     const id = workflowId.trim()
     const namespace = namespaceId?.trim() || null
+    if (namespace && this.selectedNamespaceId() !== null && namespace !== this.selectedNamespaceId())
+      this.selectNamespace(namespace)
     if (!id) {
       this.clearSessionSelection()
       return
     }
     if (id === this.selectedWorkflowId) {
-      if (namespace && namespace !== this.selectedNamespaceId) {
-        this.selectedNamespaceId = namespace
+      if (namespace && namespace !== this.detailNamespaceId) {
+        this.detailNamespaceId = namespace
         this.cancelDetailRequest()
         this.startDetailRequest(id)
         return
@@ -248,7 +328,7 @@ export class FactoryStore {
       return
     }
     this.selectedWorkflowId = id
-    this.selectedNamespaceId = namespace
+    this.detailNamespaceId = namespace
     this.cancelDetailRequest()
     this.startDetailRequest(id)
   }
@@ -257,7 +337,7 @@ export class FactoryStore {
   clearSessionSelection(workflowId?: string): void {
     if (workflowId && workflowId !== this.selectedWorkflowId) return
     this.selectedWorkflowId = null
-    this.selectedNamespaceId = null
+    this.detailNamespaceId = null
     this.cancelDetailRequest()
   }
 
@@ -270,6 +350,7 @@ export class FactoryStore {
 
   /** Coalesce overview invalidations, retaining one trailing refresh while active. */
   private load(): void {
+    if (this.namespaceOptionsLoading() && this.namespaceOptions().length === 0) return
     if (this.overviewRequest) {
       this.overviewRefreshPending = true
       return
@@ -289,14 +370,62 @@ export class FactoryStore {
 
   /** Re-fetch projections without aborting an active same-scope request. */
   private loadOverview(): Observable<void> {
+    const namespaceId = this.selectedNamespaceId()
+    if (!namespaceId) return this.loadAllNamespaces()
+    const generation = this.namespaceGeneration
     return forkJoin({
-      active: this.api.getWorkflows('active').pipe(catchError(() => of([] as unknown[]))),
-      removed: this.api.getWorkflows('removed').pipe(catchError(() => of([] as unknown[]))),
-      namespaces: this.api.getNamespaces().pipe(catchError(() => of([] as NamespaceItem[]))),
+      active: this.api.getWorkflows('active', namespaceId),
+      removed: this.api.getWorkflows('removed', namespaceId),
     }).pipe(
-      tap(({ active, removed, namespaces }) => {
-        this.applyNamespaces(namespaces)
+      tap(({ active, removed }) => {
+        if (generation !== this.namespaceGeneration || namespaceId !== this.selectedNamespaceId()) return
+        this.workstreamMappingMissing.set(false)
+        this.overviewError.set(null)
         this.applyWorkflows(active, removed)
+      }),
+      catchError((error: FactoryApiError) => {
+        if (generation !== this.namespaceGeneration || namespaceId !== this.selectedNamespaceId()) return of(undefined)
+        const mappingMissing = isMissingWorkstreamMapping(error)
+        this.workstreamMappingMissing.set(mappingMissing)
+        this.overviewError.set(mappingMissing ? null : error)
+        this.clearScopedState()
+        if (mappingMissing) this.sse.close()
+        return of(undefined)
+      }),
+      switchMap(() => of(undefined))
+    )
+  }
+
+  private loadAllNamespaces(): Observable<void> {
+    const generation = this.namespaceGeneration
+    const namespaces = extractNamespaceOptions(this.namespaceOptions())
+    return from(namespaces).pipe(
+      mergeMap(
+        ({ id }) =>
+          forkJoin({
+            active: this.api.getWorkflows('active', id),
+            removed: this.api.getWorkflows('removed', id),
+          }).pipe(
+            map((result) => ({ ...result, error: null as FactoryApiError | null })),
+            catchError((error: FactoryApiError) =>
+              of({
+                active: [] as unknown[],
+                removed: [] as unknown[],
+                error: isMissingWorkstreamMapping(error) ? null : error,
+              })
+            )
+          ),
+        4
+      ),
+      toArray(),
+      tap((results) => {
+        if (generation !== this.namespaceGeneration || this.selectedNamespaceId() !== null) return
+        this.overviewError.set(results.find((result) => result.error)?.error ?? null)
+        this.workstreamMappingMissing.set(false)
+        this.applyWorkflows(
+          results.flatMap((result) => result.active),
+          results.flatMap((result) => result.removed)
+        )
       }),
       switchMap(() => of(undefined))
     )
@@ -439,7 +568,7 @@ export class FactoryStore {
       return
     }
     const snapshot = this.workflowSnapshot(workflowId)
-    const namespaceId = snapshot ? namespaceOf(snapshot) : this.selectedNamespaceId
+    const namespaceId = snapshot ? namespaceOf(snapshot) : this.detailNamespaceId
     // A copied legacy URL may not carry namespaceId. In that case wait for the
     // authorized overview to resolve the workflow; never issue an unscoped detail GET.
     if (!snapshot && !namespaceId) return
@@ -477,8 +606,14 @@ export class FactoryStore {
   }
 
   private loadSelectedWorkflow(workflowId: string, namespaceId: string): Observable<void> {
+    const generation = this.namespaceGeneration
     return this.api.getWorkflow(workflowId, namespaceId).pipe(
       switchMap((snapshot) => {
+        if (
+          generation !== this.namespaceGeneration ||
+          (this.selectedNamespaceId() !== null && namespaceId !== this.selectedNamespaceId())
+        )
+          return of(undefined)
         if (workflowIdOf(snapshot) !== workflowId) return of(undefined)
         const current = this.workflows()
         if (!current.some((item) => workflowIdOf(item) === workflowId)) {
@@ -497,6 +632,9 @@ export class FactoryStore {
     const id = workflowIdOf(snapshot)
     if (!id) return of(undefined)
     const namespaceId = namespaceOf(snapshot)
+    const selectedNamespaceId = this.selectedNamespaceId()
+    if (!namespaceId || (selectedNamespaceId !== null && namespaceId !== selectedNamespaceId)) return of(undefined)
+    const generation = this.namespaceGeneration
     // The snapshot may be refreshed while the requests are in flight (an SSE
     // reload lands before they complete): always merge onto the latest one so
     // an obsolete snapshot can never overwrite a newer card/detail state.
@@ -511,6 +649,11 @@ export class FactoryStore {
       agentQuestions?: AgentQuestion[]
       agentQuestionsError?: SessionDetail['agentQuestionsError']
     }): void => {
+      if (
+        generation !== this.namespaceGeneration ||
+        (this.selectedNamespaceId() !== null && namespaceId !== this.selectedNamespaceId())
+      )
+        return
       const next = { ...(this.enrichment.get(id) ?? {}), ...partial }
       this.enrichment.set(id, next)
       const current = latestSnapshot()
@@ -605,6 +748,27 @@ export class FactoryStore {
     this.overviewEnrichmentRequests.set(workflowId, request)
   }
 
+  private cancelNamespaceRequests(): void {
+    this.overviewRefreshPending = false
+    this.overviewRequest?.unsubscribe()
+    this.overviewRequest = null
+    this.cancelDetailRequest()
+    for (const request of this.overviewEnrichmentRequests.values()) request.unsubscribe()
+    this.overviewEnrichmentRequests.clear()
+    this.overviewEnrichmentPending.clear()
+  }
+
+  private clearScopedState(): void {
+    this.workflows.set([])
+    this.runs.set([])
+    this.sessions.set(new Map())
+    this.enrichment.clear()
+    if (this.detailNamespaceId !== this.selectedNamespaceId()) {
+      this.selectedWorkflowId = null
+      this.detailNamespaceId = null
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Governed actions: only ever triggered from `allowedActions`
   // ---------------------------------------------------------------------------
@@ -612,7 +776,12 @@ export class FactoryStore {
   /** Resolve the namespace bound to a loaded workflow snapshot, when known. */
   private namespaceFor(workflowId: string): string | undefined {
     const snapshot = this.workflows().find((item) => workflowIdOf(item) === workflowId)
-    return snapshot ? namespaceOf(snapshot) : undefined
+    const namespace = snapshot
+      ? namespaceOf(snapshot)
+      : (this.detailNamespaceId ?? this.selectedNamespaceId() ?? undefined)
+    return namespace && (this.selectedNamespaceId() === null || namespace === this.selectedNamespaceId())
+      ? namespace
+      : undefined
   }
 
   /** Reply to a human interaction, then re-fetch the authoritative state. */
@@ -623,6 +792,7 @@ export class FactoryStore {
     namespaceId?: string
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
+    if (!ns) return
     this.api.replyInteraction(workflowId, interactionId, payload, ns).subscribe({
       next: () => this.refreshAfterAction(workflowId),
       error: () => undefined,
@@ -635,6 +805,10 @@ export class FactoryStore {
     this.answeringQuestionId.set(question.questionEventId)
     this.questionFeedback.set(null)
     const namespaceId = this.namespaceFor(workflowId)
+    if (!namespaceId) {
+      this.answeringQuestionId.set(null)
+      return
+    }
     this.api
       .answerAgentQuestion(workflowId, question.questionEventId, { stepId: question.stepId, answer }, namespaceId)
       .subscribe({
@@ -664,9 +838,69 @@ export class FactoryStore {
     namespaceId?: string
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
+    if (!ns) return
     this.api
       .openRetry(workflowId, payload, ns)
       .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
+  }
+
+  /**
+   * Submit additional operator context for an explicitly authorized
+   * `resume_research` action. A stable idempotency key is retained for the same
+   * workflow/step/revision/context payload so transport-ambiguous retries replay
+   * the original command. A changed payload receives a fresh key.
+   */
+  resumeResearch(
+    workflowId: string,
+    payload: { stepId: string; expectedRevision: number; additionalContext: string },
+    namespaceId?: string
+  ): void {
+    if (this.resumingResearchStepId()) return
+    const ns = namespaceId ?? this.namespaceFor(workflowId)
+    const additionalContext = payload.additionalContext.trim()
+    if (!ns || !additionalContext || additionalContext.length > 4000) return
+
+    const fingerprint = JSON.stringify({
+      namespaceId: ns,
+      expectedRevision: payload.expectedRevision,
+      additionalContext,
+    })
+    const target = `${workflowId}:${payload.stepId}`
+    const previous = this.researchResumptionKeys.get(target)
+    const idempotencyKey = previous?.payload === fingerprint ? previous.key : generateResearchResumptionKey()
+    this.researchResumptionKeys.set(target, { payload: fingerprint, key: idempotencyKey })
+    this.resumingResearchStepId.set(payload.stepId)
+    this.researchResumptionFeedback.set(null)
+
+    this.api
+      .resumeResearch(
+        workflowId,
+        payload.stepId,
+        { namespaceId: ns, expectedRevision: payload.expectedRevision, additionalContext },
+        idempotencyKey
+      )
+      .subscribe({
+        next: () => {
+          this.resumingResearchStepId.set(null)
+          this.researchResumptionKeys.delete(target)
+          this.refreshAfterAction(workflowId)
+        },
+        error: (error: FactoryApiError) => {
+          this.resumingResearchStepId.set(null)
+          const conflict = error.status === 409
+          const collision = conflict && /idempot/i.test(`${error.code} ${error.message}`)
+          this.researchResumptionFeedback.set({
+            stepId: payload.stepId,
+            kind: collision ? 'collision' : conflict ? 'conflict' : 'error',
+            message: collision
+              ? 'La clé de soumission existe déjà avec un contenu différent. La reprise n’a pas été renvoyée.'
+              : conflict
+                ? 'Le workflow a changé. Les actions autorisées ont été actualisées; vérifiez le nouvel état.'
+                : error.message,
+          })
+          if (conflict) this.refreshAfterAction(workflowId)
+        },
+      })
   }
 
   /** Cancel a durable agent attempt, then re-fetch the authoritative state. */
@@ -677,6 +911,7 @@ export class FactoryStore {
     namespaceId?: string
   ): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
+    if (!ns) return
     this.api.cancelAttempt(workflowId, attemptId, payload, ns).subscribe({
       next: () => this.refreshAfterAction(workflowId),
       error: () => undefined,
@@ -686,6 +921,7 @@ export class FactoryStore {
   /** Continue a paused run cost, then re-fetch the authoritative state. */
   continueCost(workflowId: string, payload?: { expectedThreshold?: number }, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
+    if (!ns) return
     this.api
       .continueCost(workflowId, payload, ns)
       .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
@@ -694,6 +930,7 @@ export class FactoryStore {
   /** Stop a paused run cost, then re-fetch the authoritative state. */
   stopCost(workflowId: string, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
+    if (!ns) return
     this.api
       .stopCost(workflowId, ns)
       .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
@@ -719,6 +956,7 @@ export class FactoryStore {
   /** Soft-remove a workflow, then re-fetch the authoritative state. */
   remove(workflowId: string, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
+    if (!ns) return
     this.api
       .removeWorkflow(workflowId, ns)
       .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
@@ -727,6 +965,7 @@ export class FactoryStore {
   /** Restore a removed workflow, then re-fetch the authoritative state. */
   restore(workflowId: string, namespaceId?: string): void {
     const ns = namespaceId ?? this.namespaceFor(workflowId)
+    if (!ns) return
     this.api
       .restoreWorkflow(workflowId, ns)
       .subscribe({ next: () => this.refreshAfterAction(workflowId), error: () => undefined })
@@ -803,6 +1042,16 @@ export class FactoryStore {
       )
     )
   }
+}
+
+function generateResearchResumptionKey(): string {
+  const cryptoRef = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+  if (typeof cryptoRef?.randomUUID === 'function') return cryptoRef.randomUUID()
+  return `research-resumption-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
+function isMissingWorkstreamMapping(error: FactoryApiError): boolean {
+  return error.code === 'WORKFLOW_NOT_FOUND' && error.message === 'No workstream is mapped to the requested namespace.'
 }
 
 function snapshotRevision(snapshot: unknown): number {

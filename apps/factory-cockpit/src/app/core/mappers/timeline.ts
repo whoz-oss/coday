@@ -134,6 +134,7 @@ function compareAttempts(left: AgentAttempt, right: AgentAttempt): number {
 
 function attemptStepStatus(attempt: AgentAttempt): TimelineStepStatus {
   const status = attempt.status.toLowerCase()
+  if (attempt.failureCode?.toUpperCase() === 'AGENT_NEEDS_RESEARCH') return 'waiting_human'
   if (status === 'succeeded' || status === 'completed' || status === 'superseded') return 'completed'
   if (status === 'interrupted' || status === 'cancelled') return 'cancelled'
   if (status === 'failed' || status === 'indeterminate' || status === 'running' || status === 'waiting_human')
@@ -183,6 +184,10 @@ export function timelineSteps(steps: unknown[], attempts: AgentAttempt[]): unkno
         status: attemptStepStatus(attempt),
         startedAt: attempt.startedAt,
         completedAt: terminal ? attempt.completedAt : undefined,
+        activeDurationMs: attempt.activeDurationMs,
+        activeSince: attempt.activeSince,
+        waitingDurationMs: attempt.waitingDurationMs,
+        waitingSince: attempt.waitingSince,
         durationMs: undefined,
       }
     })
@@ -253,8 +258,15 @@ export function resolveTimelineOriginMs(input: unknown, timing?: unknown, attemp
     .filter((value): value is number => value !== null)
   const requestStartMs = toEpochMs(controllerRequest?.observedAt)
   if (requestStartMs !== null) starts.push(requestStartMs)
+  const creationMs = workflowCreationMs(snapshot, projection)
+  if (creationMs !== null) starts.push(creationMs)
   if (starts.length > 0) return Math.min(...starts)
   return toEpochMs(asObject(timing)?.['startedAt']) ?? Date.now()
+}
+
+function workflowCreationMs(snapshot: Record<string, unknown>, projection: Record<string, unknown>): number | null {
+  const instance = asObject(snapshot['instance'])
+  return toEpochMs(snapshot['createdAt'] ?? projection['createdAt'] ?? instance?.['createdAt'])
 }
 
 /** Persisted terminal end priority: finishedAt → completedAt → endedAt. */
@@ -284,7 +296,8 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
   const projection = asObject(snapshot['projection']) ?? snapshot
   const steps = timelineSteps(asArray(projection['steps']), extractAttempts(attempts))
   const controllerRequest = readControllerRequest(snapshot, projection)
-  if (steps.length === 0 && !controllerRequest) return []
+  const creationMs = workflowCreationMs(snapshot, projection)
+  if (steps.length === 0 && !controllerRequest && creationMs === null) return []
 
   const stepStarts = steps
     .map((step) => toEpochMs(asObject(step)?.['startedAt']))
@@ -343,13 +356,15 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
     const contextPct = getNumber(entry.obj, 'contextPct')
     const lane = ensureLane(descriptor, contextPct)
     const status = resolveStepState(entry.obj)
+    const isAttempt = getString(entry.obj, 'attemptId') !== undefined
     const isVisibleExecution =
       status === 'running' ||
       status === 'completed' ||
       status === 'failed' ||
       status === 'indeterminate' ||
       status === 'cancelled' ||
-      (status === 'waiting_human' && entry.start !== null)
+      (status === 'waiting_human' && entry.start !== null) ||
+      (status === 'pending' && isAttempt)
     if (!isVisibleExecution) continue
 
     const stepIdForWindow = getString(entry.obj, 'sourceStepId') ?? getString(entry.obj, 'id')
@@ -361,12 +376,38 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
       entry.start !== null && entry.terminalEnd !== null && entry.terminalEnd >= entry.start
         ? Math.max((entry.terminalEnd - t0) / 1000, startSec)
         : null
-    const fallbackEndSec = startSec + Math.max(entry.duration ?? 0, MIN_BLOCK_SEC)
-    // Running uses reconstructible wall time immediately after refresh. Waiting-human
-    // and terminal states remain frozen on persisted/fallback geometry.
-    const runningEndSec =
+    const activeDurationMs = getNumber(entry.obj, 'activeDurationMs')
+    const waitingDurationMs = getNumber(entry.obj, 'waitingDurationMs')
+    const activeSinceMs = toEpochMs(entry.obj['activeSince'])
+    const waitingSinceMs = toEpochMs(entry.obj['waitingSince'])
+    const hasAuthoritativeDurations = activeDurationMs !== undefined || waitingDurationMs !== undefined
+    const authoritativeWallEndMs =
+      status === 'running' && activeSinceMs !== null
+        ? Date.now()
+        : status === 'waiting_human' && waitingSinceMs !== null
+          ? Date.now()
+          : entry.terminalEnd
+    const authoritativeWallEndSec =
+      hasAuthoritativeDurations && authoritativeWallEndMs !== null
+        ? Math.max((authoritativeWallEndMs - t0) / 1000, startSec)
+        : null
+    // A not-yet-started successor attempt must remain visible and selectable,
+    // but has no elapsed time to display. Its zero-width geometry is rendered
+    // by the timeline as a pending marker; never invent a minimum duration.
+    const fallbackEndSec =
+      status === 'pending' && entry.start === null ? startSec : startSec + Math.max(entry.duration ?? 0, MIN_BLOCK_SEC)
+    // Only genuinely running work may advance from wall time. `waiting_human`
+    // is a suspension state: without a persisted transition timestamp or an
+    // authoritative active duration, extending it to Date.now() would count the
+    // human wait as execution. Keep the durable duration lower bound instead.
+    const observedRunningEndSec =
       status === 'running' && entry.start !== null ? Math.max((Date.now() - t0) / 1000, startSec) : null
-    const endSec = Math.max(runningEndSec ?? persistedEndSec ?? fallbackEndSec, startSec)
+    // Geometry remains wall-clock based. The authoritative active/waiting
+    // counters are displayed separately and never used to shrink the bar.
+    const endSec = Math.max(
+      authoritativeWallEndSec ?? persistedEndSec ?? observedRunningEndSec ?? fallbackEndSec,
+      startSec
+    )
     cursorSec = Math.max(cursorSec, endSec)
     if (stepIdForWindow) syntheticEnds.set(stepIdForWindow, endSec)
 
@@ -395,6 +436,13 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
     if (blockCaseId) block.caseId = blockCaseId
     const blockFailureCode = getString(entry.obj, 'failureCode')
     if (blockFailureCode) block.failureCode = blockFailureCode
+    if (hasAuthoritativeDurations) {
+      const openActiveMs = status === 'running' && activeSinceMs !== null ? Math.max(Date.now() - activeSinceMs, 0) : 0
+      const openWaitingMs =
+        status === 'waiting_human' && waitingSinceMs !== null ? Math.max(Date.now() - waitingSinceMs, 0) : 0
+      block.activeDurationSec = Math.max((activeDurationMs ?? 0) + openActiveMs, 0) / 1000
+      block.waitingDurationSec = Math.max((waitingDurationMs ?? 0) + openWaitingMs, 0) / 1000
+    }
 
     const stepId = getString(entry.obj, 'id')
     const isRequest = stepId === 'request' || block.label === 'request'
@@ -405,13 +453,13 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
     }
   }
 
-  if (controllerRequest) {
+  if (controllerRequest || creationMs !== null) {
     let lane = lanes.get('engineer')
     if (!lane) {
       lane = {
         id: 'engineer',
         label: 'engineer',
-        subtitle: controllerRequest.actorId ?? 'engineer',
+        subtitle: controllerRequest?.actorId ?? 'human',
         kind: 'human',
         tone: 'amber',
         blocks: [],
@@ -419,17 +467,24 @@ export function mapProjectionToLanes(input: unknown, timing?: unknown, attempts?
       lanes.set('engineer', lane)
     }
     if (!lane.request) {
+      const requestOriginMs = requestStartMs ?? creationMs
       const firstStepStart = stepStarts.length > 0 ? Math.min(...stepStarts) : null
       const endSec =
-        requestStartMs !== null && firstStepStart !== null && firstStepStart > requestStartMs
+        requestOriginMs !== null && firstStepStart !== null && firstStepStart > requestOriginMs
           ? Math.max((firstStepStart - t0) / 1000, MIN_BLOCK_SEC)
           : MIN_BLOCK_SEC
-      const requestBlock: TimelineBlock = { label: 'request', startSec: 0, endSec, status: 'completed' }
-      const requestText = controllerRequest.text ?? controllerRequest.prompt
+      const requestBlock: TimelineBlock = {
+        label: 'launch request',
+        kind: 'launch_request',
+        startSec: 0,
+        endSec,
+        status: 'completed',
+      }
+      const requestText = controllerRequest?.text ?? controllerRequest?.prompt
       if (requestText) requestBlock.description = requestText
       lane.request = requestBlock
     }
-    if (controllerRequest.actorId && (!lane.subtitle || lane.subtitle === 'workspace')) {
+    if (controllerRequest?.actorId && (!lane.subtitle || lane.subtitle === 'workspace' || lane.subtitle === 'human')) {
       lane.subtitle = controllerRequest.actorId
     }
   }

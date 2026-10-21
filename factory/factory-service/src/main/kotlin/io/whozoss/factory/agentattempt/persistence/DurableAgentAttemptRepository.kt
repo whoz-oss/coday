@@ -145,6 +145,15 @@ interface DurableAgentAttemptRepository {
         now: Instant,
     ): DurableAgentAttempt
 
+    /** Fenced replacement of the server-side clear result capability token. */
+    fun replaceCapability(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        expectedCapabilityToken: String,
+        capabilityToken: String,
+        now: Instant,
+    ): DurableAgentAttempt?
+
     /**
      * Finalize the attempt to a terminal [target], fenced on [ownerToken]: a
      * worker whose lease token diverged (expired, revoked or preempted) is

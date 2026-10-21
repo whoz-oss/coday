@@ -125,6 +125,7 @@ export class LaunchPageComponent {
         next: (response) => {
           const submissionId = response?.submissionId
           this.successMessage.set(submissionId ? `Launch accepted (id: ${submissionId})` : 'Launch accepted.')
+          this.store.selectNamespace(namespaceId)
           this.store.refresh()
           void this.router.navigate(['/sessions', response.workflowId], { queryParams: { namespaceId } })
         },

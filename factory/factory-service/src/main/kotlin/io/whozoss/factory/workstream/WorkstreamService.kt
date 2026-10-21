@@ -30,7 +30,20 @@ class WorkstreamService(
 
     private val slugPattern = Regex("^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
-    fun list(scope: TenantScope): List<Map<String, Any?>> = repository.list(scope)
+    fun listByOrganization(organizationId: String): List<Map<String, Any?>> =
+        repository.listByOrganization(organizationId)
+
+
+    fun requireScope(organizationId: String, workstreamId: String): TenantScope {
+        val scope = TenantScope(organizationId, workstreamId)
+        if (repository.findDomain(scope, workstreamId) == null) {
+            throw ResourceNotFoundException(
+                "Le workstream '$workstreamId' n'existe pas",
+                mapOf("code" to "WORKSTREAM_NOT_FOUND"),
+            )
+        }
+        return scope
+    }
 
     /** The enriched registry view of [slug], or 404 when absent in [scope]. */
     fun get(scope: TenantScope, slug: String): Map<String, Any?> =
@@ -48,28 +61,41 @@ class WorkstreamService(
      * launch. The deterministic UUID-derived slug plus Neo4j node id makes two
      * concurrent first launches converge without resetting an existing entry.
      */
-    @Synchronized
     fun findOrInitializeForNamespace(organizationId: String, namespaceId: String): Workstream {
-        val matches = repository.findDomainsByNamespace(organizationId, namespaceId)
-        if (matches.size > 1) throw ConflictException(
-            "Multiple workstreams map to namespace '$namespaceId'",
-            mapOf("code" to "AMBIGUOUS_WORKSTREAM_NAMESPACE"),
-        )
-        matches.singleOrNull()?.let { return it }
-        val slug = "namespace-${namespaceId.lowercase()}"
-        val initialized = repository.mergeInitialNamespaceMapping(
-            organizationId,
-            slug,
-            namespaceId,
-            "Namespace $namespaceId",
-        )
-        if (initialized.organizationId != organizationId || initialized.namespaceId != namespaceId) {
+        val normalizedNamespace = normalizeOptionalNamespace(namespaceId)
+            ?: throw BadRequestException("namespaceId is invalid", mapOf("code" to "INVALID_WORKSTREAM_NAMESPACE"))
+        findByNamespace(organizationId, normalizedNamespace)?.let { return it }
+        val slug = "namespace-$normalizedNamespace"
+        return try {
+            val initialized = repository.mergeInitialNamespaceMapping(
+                organizationId,
+                slug,
+                normalizedNamespace,
+                "Namespace $normalizedNamespace",
+            )
+            if (initialized.organizationId != organizationId || initialized.namespaceId != normalizedNamespace) {
+                throw namespaceConflict(normalizedNamespace)
+            }
+            initialized
+        } catch (conflict: ConflictException) {
+            // Another application instance may have won the unique namespace
+            // constraint between the read and MERGE. Resolve that winner. A
+            // business conflict without a winner remains explicit.
+            findByNamespace(organizationId, normalizedNamespace) ?: throw conflict
+        }
+    }
+
+    /** Pure organization-scoped namespace lookup. Never creates a workstream. */
+    fun findByNamespace(organizationId: String, namespaceId: String): Workstream? {
+        val normalizedNamespace = normalizeOptionalNamespace(namespaceId) ?: return null
+        val matches = repository.findDomainsByNamespace(organizationId, normalizedNamespace)
+        if (matches.size > 1) {
             throw ConflictException(
-                "The initial workstream id is already assigned",
-                mapOf("code" to "WORKSTREAM_NAMESPACE_CONFLICT"),
+                "Multiple workstreams map to namespace '$normalizedNamespace'",
+                mapOf("code" to "AMBIGUOUS_WORKSTREAM_NAMESPACE"),
             )
         }
-        return initialized
+        return matches.singleOrNull()
     }
 
     fun create(scope: TenantScope, slug: String?, name: String?, status: String?): Map<String, Any?> =
@@ -94,6 +120,8 @@ class WorkstreamService(
         val status = request.status?.takeIf { it.isNotBlank() }?.let { WorkstreamStatus.fromDbValue(it) }
             ?: throw BadRequestException("status est requis", mapOf("code" to "INVALID_WORKSTREAM_REQUEST"))
         val allowedWorkflowTypes = validateAllowedWorkflowTypes(request.allowedWorkflowTypes)
+        val namespaceId = requireNamespace(request.namespaceId)
+        assertNamespaceAvailable(scope.organizationId, namespaceId)
         if (repository.findById(scope, slug) != null) {
             throw ConflictException("Le workstream '$slug' existe déjà", mapOf("code" to "WORKSTREAM_ALREADY_EXISTS"))
         }
@@ -102,7 +130,7 @@ class WorkstreamService(
             Workstream(
                 organizationId = scope.organizationId,
                 workstreamId = slug,
-                namespaceId = request.namespaceId?.takeIf { it.isNotBlank() },
+                namespaceId = namespaceId,
                 name = name,
                 status = status,
                 controllerAgentRef = request.controllerAgentRef?.takeIf { it.isNotBlank() },
@@ -140,10 +168,13 @@ class WorkstreamService(
         }
         val nextStatus = request.status?.takeIf { it.isNotBlank() }?.let { WorkstreamStatus.fromDbValue(it) }
             ?: current.status
+        val requestedNamespace = normalizeOptionalNamespace(request.namespaceId)
+        val nextNamespace = requestedNamespace ?: requireNamespace(current.namespaceId)
+        assertNamespaceAvailable(scope.organizationId, nextNamespace, current.workstreamId)
         val next = current.copy(
             name = (request.name ?: request.title)?.takeIf { it.isNotBlank() } ?: current.name,
             status = nextStatus,
-            namespaceId = request.namespaceId?.takeIf { it.isNotBlank() } ?: current.namespaceId,
+            namespaceId = nextNamespace,
             controllerAgentRef = request.controllerAgentRef?.takeIf { it.isNotBlank() } ?: current.controllerAgentRef,
             allowedWorkflowTypes = request.allowedWorkflowTypes?.let { validateAllowedWorkflowTypes(it) }
                 ?: current.allowedWorkflowTypes,
@@ -153,10 +184,7 @@ class WorkstreamService(
         return get(scope, saved.workstreamId)
     }
 
-    /**
-     * Trust-boundary enforcement: the path/body workstream identifier must be
-     * the caller's trusted tenant workstream — never an untrusted input.
-     */
+    /** Verify a path workstream against the already-resolved business scope. */
     fun assertWithinWorkstream(caller: FactoryCaller, pathWorkstreamId: String) {
         if (pathWorkstreamId != caller.scope.workstreamId) {
             factoryError(
@@ -167,21 +195,6 @@ class WorkstreamService(
             )
         }
     }
-
-    /**
-     * Explicit workstream <-> namespace resolution (Lot D).
-     *
-     * Returns the effective namespace of a workstream-scoped execution: the
-     * caller-requested [requestedNamespaceId] when present, otherwise the
-     * namespace declared by the workstream registry entry, otherwise the
-     * [DEFAULT_NAMESPACE_ID] fallback. Centralizing this mapping removes the
-     * implicit `namespaceId ?: workstream.namespaceId ?: ...` scattered across
-     * call sites.
-     */
-    fun resolveNamespaceId(scope: TenantScope, requestedNamespaceId: String?): String =
-        requestedNamespaceId?.takeIf { it.isNotBlank() }
-            ?: declaredNamespaceId(scope)
-            ?: DEFAULT_NAMESPACE_ID
 
     /**
      * Resolve the single namespace configured for the caller's workstream.
@@ -205,6 +218,27 @@ class WorkstreamService(
     fun declaredNamespaceId(scope: TenantScope, workstreamId: String = scope.workstreamId): String? =
         findDomain(scope, workstreamId)?.namespaceId?.takeIf { it.isNotBlank() }
 
+    private fun normalizeNamespace(namespaceId: String?): String? =
+        namespaceId?.trim()?.takeIf { it.isNotEmpty() }?.lowercase()
+
+    private fun normalizeOptionalNamespace(namespaceId: String?): String? =
+        namespaceId?.let { io.whozoss.factory.workstream.domain.WorkstreamNamespace.require(it) }
+
+    private fun requireNamespace(namespaceId: String?): String =
+        io.whozoss.factory.workstream.domain.WorkstreamNamespace.require(namespaceId)
+
+    private fun assertNamespaceAvailable(organizationId: String, namespaceId: String?, excludingWorkstreamId: String? = null) {
+        if (namespaceId == null) return
+        val existing = findByNamespace(organizationId, namespaceId)
+        if (existing != null && existing.workstreamId != excludingWorkstreamId) throw namespaceConflict(namespaceId)
+    }
+
+    private fun namespaceConflict(namespaceId: String): ConflictException =
+        ConflictException(
+            "Namespace '$namespaceId' is already assigned to another workstream",
+            mapOf("code" to "WORKSTREAM_NAMESPACE_CONFLICT", "namespaceId" to namespaceId),
+        )
+
     private fun validateAllowedWorkflowTypes(raw: List<String>?): List<String> {
         val types = raw.orEmpty().map { it.trim() }
         if (types.size > WorkstreamBounds.MAX_LIMIT) {
@@ -223,8 +257,6 @@ class WorkstreamService(
     }
 
     companion object {
-        /** Namespace used when neither the request nor the workstream declares one. */
-        const val DEFAULT_NAMESPACE_ID = "default"
         private val NAMESPACE_ID = Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$")
     }
 }

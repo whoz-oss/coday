@@ -21,7 +21,6 @@ data class WorkflowDefinitionNode(
     @Id
     val id: String,
     val organizationId: String,
-    val workstreamId: String,
     val workflowType: String,
     val version: String,
     val definitionHash: String,
@@ -47,13 +46,12 @@ data class WorkflowDefinitionNode(
             "$organizationId|$workflowType|$version"
 
         fun fromDomain(
-            scope: TenantScope,
+            scope: io.whozoss.factory.persistence.OrganizationScope,
             record: WorkflowDefinitionRecord,
             objectMapper: ObjectMapper,
         ): WorkflowDefinitionNode = WorkflowDefinitionNode(
             id = compositeId(scope.organizationId, record.workflowType, record.version),
             organizationId = scope.organizationId,
-            workstreamId = scope.workstreamId,
             workflowType = record.workflowType,
             version = record.version,
             definitionHash = record.definitionHash,

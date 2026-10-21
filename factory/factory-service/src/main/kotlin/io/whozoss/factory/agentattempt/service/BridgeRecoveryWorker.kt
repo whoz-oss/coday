@@ -7,6 +7,8 @@ import io.whozoss.factory.adapter.agentos.TrustedCaseBinding
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.domain.AttemptClaimConflictException
 import io.whozoss.factory.agentattempt.domain.DurableAgentAttempt
+import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
+import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableException
 import io.whozoss.factory.agentattempt.persistence.ScopedDurableAgentAttempt
 import io.whozoss.factory.workflow.domain.WorkflowEvidenceItem
 import io.whozoss.factory.workflow.persistence.WorkflowEvidenceRepository
@@ -61,6 +63,7 @@ class BridgeRecoveryWorker(
     private val adapter: AgentOsExecutionAdapter,
     private val evidenceRepository: WorkflowEvidenceRepository? = null,
     private val sseHub: WorkflowSseHub? = null,
+    private val resultService: AgentStepResultService? = null,
     private val observationTimeoutMs: Long = DEFAULT_OBSERVATION_TIMEOUT_MS,
     private val leaseTtlMs: Long = DEFAULT_LEASE_TTL_MS,
 ) {
@@ -223,16 +226,41 @@ class BridgeRecoveryWorker(
             candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId,
             owner, AgentAttemptStatus.STARTING,
         )
-        attempts.transition(
+        val running = attempts.transition(
             candidate.scope, attempt.namespaceId, attempt.workflowId, attempt.stepId, attempt.attemptId,
             owner, AgentAttemptStatus.RUNNING, lastObservedEventId = answer.eventId,
         )
+        refreshCapabilityAfterHumanWait(candidate.scope, running, question.eventId)
         sseHub?.publish(
             candidate.scope,
             attempt.namespaceId,
             mapOf("workflowId" to attempt.workflowId, "namespaceId" to attempt.namespaceId),
         )
         return Outcome.RESUMED
+    }
+
+    private fun refreshCapabilityAfterHumanWait(
+        scope: io.whozoss.factory.persistence.TenantScope,
+        attempt: DurableAgentAttempt,
+        questionId: String,
+    ) {
+        val service = resultService ?: return
+        val oldToken = attempt.capabilityToken?.takeIf { it.isNotBlank() } ?: return
+        val refreshKey = "agentos-query-user:${attempt.attemptId}:$questionId"
+        if (service.resolveCapability(scope, oldToken)?.refreshKey == refreshKey) return
+        val issued = try {
+            service.refresh(
+                scope,
+                AgentStepResultObservedIdentity(
+                    attempt.attemptId, attempt.caseId, attempt.agentName, attempt.namespaceId,
+                ),
+                AGENTOS_RUNTIME_ID,
+                refreshKey,
+            )
+        } catch (_: ResultAttemptNotRefreshableException) {
+            return
+        }
+        attempts.replaceCapability(scope, attempt, oldToken, issued.token)
     }
 
     private fun ensureWaiting(candidate: ScopedDurableAgentAttempt): Outcome {
@@ -382,6 +410,7 @@ class BridgeRecoveryWorker(
         const val AGENT_RESULT_EVIDENCE_KIND = "agent-result"
         const val DEFAULT_OBSERVATION_TIMEOUT_MS = 600_000L
         const val DEFAULT_LEASE_TTL_MS = 3_600_000L
+        private const val AGENTOS_RUNTIME_ID = "agentos-primary"
 
         /**
          * Returns true when [value] is a syntactically valid UUID. Used to

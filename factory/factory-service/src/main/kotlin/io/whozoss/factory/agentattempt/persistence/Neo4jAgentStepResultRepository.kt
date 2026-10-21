@@ -157,6 +157,10 @@ class Neo4jAgentStepResultRepository(
             throw ResultAttemptNotRefreshableException()
         }
         if (refreshKey.isBlank()) throw ResultIdentityMismatchException()
+        // Same durable generation after a timeout/restart: return the already
+        // active token only to the trusted bridge path that supplied it through
+        // runtime state; the repository itself never stores or reconstructs the
+        // clear token, so callers handle convergence before invoking refresh.
         val attempt = attempts.find(scope, namespaceId, current.workflowId, current.stepId, attemptId)
         if (attempt == null || attempt.status in TERMINAL_REFRESH_STATUSES) {
             throw ResultAttemptNotRefreshableException()
@@ -167,6 +171,7 @@ class Neo4jAgentStepResultRepository(
             issuedAt = now.toString(),
             expiresAt = now.plusSeconds(ttlSeconds).toString(),
             submissionBudget = AgentStepResultLimits.SUBMISSION_BUDGET,
+            refreshKey = refreshKey,
         )
         val updated = capabilities.rotateIfRefreshable(
             id = node.id,

@@ -98,7 +98,7 @@
           <sf-metric icon="paid" label="Run cost" [unknownCostCount]="summary.unknownCostCount ?? 0">{{
             summary.costUsd | usd: 4 : summary.unknownCostCount
           }}</sf-metric>
-          <sf-metric icon="timer" label="Duration">{{ summary.durationSec | duration }}</sf-metric>
+          <sf-metric icon="timer" label="Active time">{{ summary.durationSec | duration }}</sf-metric>
           <sf-metric icon="link" label="Tokens">{{ summary.tokens | tokens }}</sf-metric>
         </div>
       </div>

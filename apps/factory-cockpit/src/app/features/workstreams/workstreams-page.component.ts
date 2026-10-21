@@ -3,6 +3,8 @@ import { RouterLink } from '@angular/router'
 import { MatButtonModule } from '@angular/material/button'
 import { MatDialog } from '@angular/material/dialog'
 import { MatIconModule } from '@angular/material/icon'
+import { MatFormFieldModule } from '@angular/material/form-field'
+import { MatSelectModule } from '@angular/material/select'
 import { FactoryStore } from '../../core/factory.store'
 import { ShellState } from '../../core/shell-state'
 import { UsdPipe } from '../../shared/pipes/format.pipes'
@@ -11,7 +13,15 @@ import { WorkstreamActionEvent, WorkstreamCardComponent } from './workstream-car
 
 @Component({
   selector: 'sf-workstreams-page',
-  imports: [RouterLink, MatButtonModule, MatIconModule, WorkstreamCardComponent, UsdPipe],
+  imports: [
+    RouterLink,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatSelectModule,
+    WorkstreamCardComponent,
+    UsdPipe,
+  ],
   templateUrl: './workstreams-page.component.html',
   styleUrl: './workstreams-page.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -22,6 +32,10 @@ export class WorkstreamsPageComponent {
 
   constructor() {
     inject(ShellState).crumbs.set([{ label: 'Workstreams', link: '/workstreams' }])
+  }
+
+  protected selectNamespace(namespaceId: string): void {
+    this.store.selectNamespace(namespaceId || null)
   }
 
   /** Actions are always targeted by the exact run identity, never a display name. */

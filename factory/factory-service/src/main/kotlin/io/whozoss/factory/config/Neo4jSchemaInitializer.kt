@@ -137,6 +137,18 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.debug { "[Neo4jSchemaInitializer] Constraint workstream_id_unique ensured" }
 
+        // A namespace can belong to at most one workstream inside an organization.
+        // Neo4j uniqueness constraints ignore nodes where namespaceId is absent,
+        // which preserves unbound workstreams. Constraint creation intentionally
+        // fails at startup when existing data violates the invariant: this
+        // initializer never repairs or deletes business data.
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT workstream_namespace_unique IF NOT EXISTS " +
+                    "FOR (w:Workstream) REQUIRE (w.organizationId, w.namespaceId) IS UNIQUE",
+            ).run()
+        logger.debug { "[Neo4jSchemaInitializer] Constraint workstream_namespace_unique ensured" }
+
         neo4jClient
             .query(
                 "CREATE INDEX workstream_scope IF NOT EXISTS " +

@@ -21,6 +21,9 @@ import org.springframework.http.ResponseEntity
  * and the `WORKSTREAM_BOUNDARY_VIOLATION` trust enforcement.
  */
 class ControllerCaseControllerIntegrationTest : Neo4jIntegrationTest() {
+    @Autowired
+    private lateinit var foreignWorkstreams: io.whozoss.factory.workstream.persistence.Neo4jWorkstreamRepository
+
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -42,7 +45,7 @@ class ControllerCaseControllerIntegrationTest : Neo4jIntegrationTest() {
                 "slug" to WORKSTREAM_ID,
                 "name" to "Controller HTTP WS",
                 "status" to "active",
-                "namespaceId" to "ns-controller-http",
+                "namespaceId" to "341a1628-285a-4f68-a192-8d330a3626bf",
             ) + extra,
         )
 
@@ -167,28 +170,36 @@ class ControllerCaseControllerIntegrationTest : Neo4jIntegrationTest() {
     }
 
     @Test
-    fun `a workstream outside the trusted scope is a 403 WORKSTREAM_BOUNDARY_VIOLATION`() {
+    fun `a foreign organization controller case cannot be read or mutated`() {
         createWorkstream(mapOf("controllerAgentRef" to "agent://controller"))
+        foreignWorkstreams.create(
+            io.whozoss.factory.persistence.TenantScope("other-org", "ws-untrusted"),
+            io.whozoss.factory.workstream.domain.Workstream(
+                organizationId = "other-org", workstreamId = "ws-untrusted",
+                namespaceId = "d4a5108f-169b-4cd5-8c5a-12b57309d37c",
+                name = "Foreign", status = io.whozoss.factory.workstream.domain.WorkstreamStatus.ACTIVE,
+            ),
+        )
 
         val read = exchange(HttpMethod.GET, "/api/factory/workstreams/ws-untrusted/controller-case")
-        assertThat(read.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(read)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
+        assertThat(read.statusCode.value()).isEqualTo(404)
+        assertThat(errorCode(read)).isEqualTo("NOT_FOUND")
 
         val history = exchange(HttpMethod.GET, "/api/factory/workstreams/ws-untrusted/controller-case/history")
-        assertThat(history.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(history)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
+        assertThat(history.statusCode.value()).isEqualTo(404)
+        assertThat(errorCode(history)).isEqualTo("NOT_FOUND")
 
         val context = exchange(HttpMethod.GET, "/api/factory/workstreams/ws-untrusted/controller-case/context")
-        assertThat(context.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(context)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
+        assertThat(context.statusCode.value()).isEqualTo(404)
+        assertThat(errorCode(context)).isEqualTo("NOT_FOUND")
 
         val start = exchange(HttpMethod.POST, "/api/factory/workstreams/ws-untrusted/controller-case", emptyMap())
-        assertThat(start.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(start)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
+        assertThat(start.statusCode.value()).isEqualTo(404)
+        assertThat(errorCode(start)).isEqualTo("NOT_FOUND")
 
         val compact = exchange(HttpMethod.POST, "/api/factory/workstreams/ws-untrusted/controller-case/compact", emptyMap())
-        assertThat(compact.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(compact)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
+        assertThat(compact.statusCode.value()).isEqualTo(404)
+        assertThat(errorCode(compact)).isEqualTo("NOT_FOUND")
     }
 
     private fun exchange(

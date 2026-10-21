@@ -37,14 +37,19 @@ sealed interface EvidenceAppendResult {
 interface WorkflowRepository {
 
     // ----- definitions ----------------------------------------------------
-    fun findDefinition(scope: TenantScope, workflowType: String, version: String): WorkflowDefinitionRecord?
+    fun findDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): WorkflowDefinitionRecord?
+    fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): List<WorkflowDefinitionRecord>
+    fun saveDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord)
+    fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean
 
-    fun listDefinitions(scope: TenantScope): List<WorkflowDefinitionRecord>
-
-    fun saveDefinition(scope: TenantScope, record: WorkflowDefinitionRecord)
-
-    /** Deletes a definition by `(workflowType, version)`; `false` when absent. */
-    fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean
+    fun findDefinition(scope: TenantScope, workflowType: String, version: String): WorkflowDefinitionRecord? =
+        findDefinition(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId), workflowType, version)
+    fun listDefinitions(scope: TenantScope): List<WorkflowDefinitionRecord> =
+        listDefinitions(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId))
+    fun saveDefinition(scope: TenantScope, record: WorkflowDefinitionRecord) =
+        saveDefinition(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId), record)
+    fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean =
+        deleteDefinition(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId), workflowType, version)
 
     // ----- governed instances --------------------------------------------
     fun findInstance(scope: TenantScope, namespaceId: String, workflowId: String): WorkflowInstanceRecord?

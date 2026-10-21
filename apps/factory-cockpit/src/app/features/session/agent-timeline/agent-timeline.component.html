@@ -89,7 +89,14 @@
                   <span class="planned-dot" aria-hidden="true"></span>
                 }
                 <span class="sf-spacer-inline">{{ b.label }}</span>
-                <span class="block-dur sf-mono">{{ b.endSec - b.startSec | duration }}</span>
+                @if (b.activeDurationSec !== undefined) {
+                  <span class="block-dur sf-mono">active {{ b.activeDurationSec | duration }}</span>
+                  @if (b.waitingDurationSec) {
+                    <span class="block-dur sf-mono">waiting {{ b.waitingDurationSec | duration }}</span>
+                  }
+                } @else {
+                  <span class="block-dur sf-mono">elapsed {{ b.endSec - b.startSec | duration }}</span>
+                }
               </span>
               @if (b.description) {
                 <span class="block-desc">{{ b.description }}</span>

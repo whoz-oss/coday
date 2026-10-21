@@ -3,7 +3,8 @@ package io.whozoss.factory.artifact.web
 import io.swagger.v3.oas.annotations.Parameter
 import io.whozoss.factory.artifact.error.ArtifactAdminException
 import io.whozoss.factory.artifact.service.ArtifactAdminPurgeStatus
-import io.whozoss.factory.artifact.service.ArtifactAdminService
+import io.whozoss.factory.artifact.service.OrganizationArtifactAdminService
+import io.whozoss.factory.persistence.OrganizationScope
 import io.whozoss.factory.web.AuthenticatedUser
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.PathVariable
@@ -25,13 +26,13 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/api/factory/admin/artifacts")
 class ArtifactAdminController(
-    private val adminService: ArtifactAdminService,
+    private val adminService: OrganizationArtifactAdminService,
 ) {
 
     /** Reclaims orphaned staging uploads and audits blobs against metadata rows. */
     @PostMapping("/gc", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun collectAndAuditGarbage(@Parameter(hidden = true) user: AuthenticatedUser): Map<String, Any?> =
-        mapOf("data" to adminService.collectAndAuditGarbage(user.scope))
+        mapOf("data" to adminService.collectAndAuditGarbage(OrganizationScope(user.organizationId)))
 
     /** Purges an expired-retention artifact without an active legal hold. */
     @PostMapping("/{artifactId}/purge", produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -41,7 +42,7 @@ class ArtifactAdminController(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): Map<String, Any?> {
         val reason = (body?.get("reason") as? String)?.takeIf { it.isNotBlank() } ?: DEFAULT_PURGE_REASON
-        val result = adminService.purgeArtifactAdmin(user.scope, artifactId, reason)
+        val result = adminService.purgeArtifactAdmin(OrganizationScope(user.organizationId), artifactId, reason)
         if (!result.success) {
             val statusCode = if (result.status == ArtifactAdminPurgeStatus.NOT_FOUND) 404 else 409
             throw ArtifactAdminException(
@@ -69,7 +70,7 @@ class ArtifactAdminController(
             )
         }
         val reason = (body["reason"] as? String)?.takeIf { it.isNotBlank() }
-        val metadata = adminService.setLegalHoldAdmin(user.scope, artifactId, legalHold, reason)
+        val metadata = adminService.setLegalHoldAdmin(OrganizationScope(user.organizationId), artifactId, legalHold, reason)
         return mapOf("data" to metadata)
     }
 

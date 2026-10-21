@@ -2,7 +2,6 @@ package io.whozoss.factory.web
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.factory.config.FactoryProperties
-import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.web.security.AuthIdentityResolver
 import io.whozoss.factory.web.security.IdentityResolver
 import io.whozoss.factory.web.security.LocalIdentityResolver
@@ -85,7 +84,7 @@ class AuthenticationFilterTest {
         val outcome = run(localFilter())
 
         assertThat(outcome.reachedController).isTrue()
-        assertThat(outcome.user).isEqualTo(AuthenticatedUser(osUser, LocalDevMembershipResolver.LOCAL_DEV_SCOPE))
+        assertThat(outcome.user).isEqualTo(AuthenticatedUser(osUser, LocalDevMembershipResolver.LOCAL_DEV_ORGANIZATION_ID))
     }
 
     @Test
@@ -169,7 +168,7 @@ class AuthenticationFilterTest {
         val outcome = run(authFilter(), bearer = validJwt("alice"))
 
         assertThat(outcome.reachedController).isTrue()
-        assertThat(outcome.user).isEqualTo(AuthenticatedUser("alice", LocalDevMembershipResolver.LOCAL_DEV_SCOPE))
+        assertThat(outcome.user).isEqualTo(AuthenticatedUser("alice", LocalDevMembershipResolver.LOCAL_DEV_ORGANIZATION_ID))
     }
 
     @Test
@@ -298,15 +297,15 @@ class AuthenticationFilterTest {
 
     @Test
     fun `every user of every mode resolves its scope through the membership resolver`() {
-        val custom = TenantScope("org-custom", "ws-custom")
+        val custom = "org-custom"
         val membership = object : MembershipResolver {
-            override fun resolveMembership(userId: String): TenantScope = custom
+            override fun resolveOrganizationId(userId: String): String = custom
         }
 
-        assertThat(run(localFilter(membership = membership)).user?.scope).isEqualTo(custom)
-        assertThat(run(localFilter(membership = membership), bearer = "garbage").user?.scope).isEqualTo(custom)
-        assertThat(run(authFilter(membership), bearer = validJwt()).user?.scope).isEqualTo(custom)
-        assertThat(run(authFilter(membership), headers = mapOf("x-forwarded-email" to "a@b.c")).user?.scope).isEqualTo(custom)
+        assertThat(run(localFilter(membership = membership)).user?.organizationId).isEqualTo(custom)
+        assertThat(run(localFilter(membership = membership), bearer = "garbage").user?.organizationId).isEqualTo(custom)
+        assertThat(run(authFilter(membership), bearer = validJwt()).user?.organizationId).isEqualTo(custom)
+        assertThat(run(authFilter(membership), headers = mapOf("x-forwarded-email" to "a@b.c")).user?.organizationId).isEqualTo(custom)
     }
 
     // ----- which paths are guarded ---------------------------------------

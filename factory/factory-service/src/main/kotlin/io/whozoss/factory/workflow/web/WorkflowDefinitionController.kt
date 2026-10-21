@@ -125,9 +125,15 @@ class WorkflowDefinitionController(
         )
     }
 
+    private data class DefinitionCaller(val scope: io.whozoss.factory.persistence.OrganizationScope)
+
+    // Definitions are organization-owned; no namespace or workstream lookup is performed.
+    private fun resolveWorkflowCaller(user: AuthenticatedUser, requireNamespace: Boolean): DefinitionCaller =
+        DefinitionCaller(io.whozoss.factory.persistence.OrganizationScope(user.organizationId))
+
     /** Validates, canonicalizes and persists a parsed definition payload. */
     private fun registerParsedDefinition(
-        caller: WorkflowCaller,
+        caller: DefinitionCaller,
         body: Map<String, Any?>?,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
         val validation = WorkflowDefinitionValidator.validate(body)

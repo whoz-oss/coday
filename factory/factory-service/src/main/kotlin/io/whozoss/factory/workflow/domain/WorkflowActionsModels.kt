@@ -19,6 +19,7 @@ package io.whozoss.factory.workflow.domain
 object WorkflowActionTypes {
     const val REPLY = "reply"
     const val RETRY = "retry"
+    const val RESUME_RESEARCH = "resume_research"
     const val CANCEL_ATTEMPT = "cancel_attempt"
     const val CONTINUE_COST = "continue_cost"
     const val STOP_COST = "stop_cost"
@@ -32,6 +33,7 @@ object WorkflowBlockerCodes {
     const val REAL_COST_PAUSED = "REAL_COST_PAUSED"
     const val VERIFICATION_FAILED = "VERIFICATION_FAILED"
     const val UNKNOWN_RUNTIME = "UNKNOWN_RUNTIME"
+    const val NEEDS_RESEARCH = "NEEDS_RESEARCH"
 }
 
 /**

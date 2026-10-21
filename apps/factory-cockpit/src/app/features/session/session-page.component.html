@@ -54,7 +54,7 @@
         <sf-metric icon="paid" label="Cost" [unknownCostCount]="s.unknownCostCount ?? 0">{{
           s.costUsd | usd: 2 : s.unknownCostCount
         }}</sf-metric>
-        <sf-metric icon="timer" label="Duration">{{ s.durationSec | duration }}</sf-metric>
+        <sf-metric icon="timer" label="Active time">{{ s.durationSec | duration }}</sf-metric>
         <sf-metric icon="link" label="Context tokens">{{ s.tokens | tokens }}</sf-metric>
         <sf-metric icon="menu_book" label="Tokens read">{{ s.tokensRead | tokens }}</sf-metric>
         <sf-metric icon="edit" label="Tokens written">{{ s.tokensWritten | tokens }}</sf-metric>
@@ -72,9 +72,12 @@
       [agentQuestionsError]="s.agentQuestionsError ?? null"
       [answeringQuestionId]="store.answeringQuestionId()"
       [questionFeedback]="store.questionFeedback()"
+      [resumingResearchStepId]="store.resumingResearchStepId()"
+      [researchResumptionFeedback]="store.researchResumptionFeedback()"
       (reply)="onReply($event)"
       (agentQuestionAnswered)="onAgentQuestionAnswered($event)"
       (retryRequested)="onRetry($event)"
+      (researchResumptionRequested)="onResearchResumption($event)"
       (cancelAttempt)="onCancelAttempt($event)"
       (continueCost)="onContinueCost()"
       (stopCost)="onStopCost()"

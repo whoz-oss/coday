@@ -38,6 +38,16 @@ class WorkflowActionsHttpTest : Neo4jDomainIntegrationTest() {
 
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
 
+    @Autowired
+    private lateinit var workstreams: io.whozoss.factory.workstream.WorkstreamService
+
+    @org.junit.jupiter.api.BeforeEach
+    fun registerNamespaceMapping() {
+        workstreams.create(scope, io.whozoss.factory.workstream.web.CreateWorkstreamRequest(
+            slug = scope.workstreamId, name = "Actions fixture", status = "active", namespaceId = namespace,
+        ))
+    }
+
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =
         object : ParameterizedTypeReference<Map<String, Any?>>() {}
 

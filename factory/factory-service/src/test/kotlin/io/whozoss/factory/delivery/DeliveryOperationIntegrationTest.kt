@@ -26,6 +26,16 @@ import org.springframework.http.ResponseEntity
 class DeliveryOperationIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Autowired
+    private lateinit var workstreams: io.whozoss.factory.workstream.WorkstreamService
+
+    @org.junit.jupiter.api.BeforeEach
+    fun registerNamespaceMapping() {
+        workstreams.create(scope, io.whozoss.factory.workstream.web.CreateWorkstreamRequest(
+            slug = scope.workstreamId, name = "Delivery operations fixture", status = "active", namespaceId = NAMESPACE,
+        ))
+    }
+
+    @Autowired
     private lateinit var restTemplate: TestRestTemplate
 
     @Autowired

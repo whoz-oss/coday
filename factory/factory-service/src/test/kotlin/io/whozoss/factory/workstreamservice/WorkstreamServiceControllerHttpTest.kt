@@ -79,11 +79,15 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
         if (key != null) set("Idempotency-Key", key)
     }
 
+    private fun scopedPath(path: String): String =
+        if (path.contains("namespaceId=")) path
+        else path + (if (path.contains('?')) "&" else "?") + "namespaceId=" + namespace
+
     private fun get(path: String): ResponseEntity<Map<String, Any?>> =
-        restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headers()), jsonType())
+        restTemplate.exchange(scopedPath(path), HttpMethod.GET, HttpEntity<Void>(headers()), jsonType())
 
     private fun post(path: String, body: Any?, key: String? = null): ResponseEntity<Map<String, Any?>> =
-        restTemplate.exchange(path, HttpMethod.POST, HttpEntity(body, headers(key)), jsonType())
+        restTemplate.exchange(scopedPath(path), HttpMethod.POST, HttpEntity(body, headers(key)), jsonType())
 
     @Suppress("UNCHECKED_CAST")
     private fun data(body: Map<String, Any?>?): Map<String, Any?> = body?.get("data") as? Map<String, Any?> ?: emptyMap()
@@ -200,13 +204,12 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `a caller supplied namespace never influences the configured namespace`() {
+    fun `an unmapped requested namespace is rejected without creating a workstream`() {
         publish("wf-svc-a", namespace)
-        publish("wf-svc-b", secondNamespace)
         val response = get("$base/workflows?namespaceId=$secondNamespace")
-        @Suppress("UNCHECKED_CAST")
-        val ids = (data(response.body)["items"] as List<Map<String, Any?>>).map { it["workflowId"] }
-        assertThat(ids).contains("wf-svc-a").doesNotContain("wf-svc-b")
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat(errorCode(response.body)).isEqualTo("WORKFLOW_NOT_FOUND")
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).isEmpty()
     }
 
     @Test
@@ -306,16 +309,18 @@ class WorkstreamServiceControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `the facade fails closed when the registered namespace mapping is invalid`() {
-        workstreamRepository.save(
-            scope,
-            workstreamRepository.findDomain(scope, scope.workstreamId)!!.copy(namespaceId = "not-a-uuid"),
+    fun `the facade rejects a malformed namespace before accessing workflows`() {
+        val response = get("$base/workflows?namespaceId=not-a-uuid")
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat(errorCode(response.body)).isEqualTo("INVALID_NAMESPACE_ID")
+    }
+
+    @Test
+    fun `the facade requires an explicit namespace`() {
+        val response = restTemplate.exchange(
+            "$base/workflows", HttpMethod.GET, HttpEntity<Void>(headers()), jsonType(),
         )
-
-        val response = get("$base/workflows")
-
-        assertThat(response.statusCode).isEqualTo(HttpStatus.FORBIDDEN)
-        assertThat(errorCode(response.body)).isEqualTo("WORKSTREAM_NAMESPACE_MAPPING_INVALID")
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
     }
 
     @Test

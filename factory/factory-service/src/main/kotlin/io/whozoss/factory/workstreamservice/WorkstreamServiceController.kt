@@ -9,6 +9,7 @@ import io.whozoss.factory.config.SessionProperties
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.web.FactoryCaller
+import io.whozoss.factory.workflow.web.resolveWorkflowCaller
 import io.whozoss.factory.web.factoryError
 import io.whozoss.factory.workflow.domain.WorkflowActionTypes
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
@@ -66,12 +67,13 @@ class WorkstreamServiceController(
     @GetMapping("/workflows", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "list_workflows", summary = "List the workflows of the configured workstream.")
     fun listWorkflows(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @RequestParam(name = "state", required = false) state: String?,
         @RequestParam(name = "workflowType", required = false) workflowType: String?,
         @RequestParam(name = "limit", required = false) limit: Int?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = user
+        val caller = resolveCaller(user, namespaceId)
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val resolvedState = state?.takeIf { it.isNotBlank() } ?: "active"
         if (resolvedState !in setOf("active", "removed")) {
@@ -104,10 +106,11 @@ class WorkstreamServiceController(
     @GetMapping("/workflows/{workflowId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "get_workflow", summary = "Read the authoritative state of one workflow.")
     fun getWorkflow(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @PathVariable workflowId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = user
+        val caller = resolveCaller(user, namespaceId)
         val id = requireWorkflowId(workflowId)
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val state = workflowService.getProjection(caller.scope, namespace, id)
@@ -145,11 +148,12 @@ class WorkstreamServiceController(
     @GetMapping("/workflows/{workflowId}/attempts", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "get_step_attempts", summary = "List the durable attempts of a workflow, optionally of one step.")
     fun getStepAttempts(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @PathVariable workflowId: String,
         @RequestParam(name = "stepId", required = false) stepId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = user
+        val caller = resolveCaller(user, namespaceId)
         val id = requireWorkflowId(workflowId)
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
         val step = stepId?.takeIf { it.isNotBlank() }?.also { requireStepId(it) }
@@ -163,10 +167,11 @@ class WorkstreamServiceController(
     @GetMapping("/workflows/{workflowId}/blockers", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "get_blockers", summary = "List the active blockers of a workflow.")
     fun getBlockers(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @PathVariable workflowId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = user
+        val caller = resolveCaller(user, namespaceId)
         val blockers = workflowService
             .workflowActions(caller.scope, workstreamService.requireConfiguredNamespace(caller.scope), requireWorkflowId(workflowId), canReply = false)
             .blockers
@@ -181,10 +186,11 @@ class WorkstreamServiceController(
         summary = "List the pending human decisions of a workflow. Information only: they are answered in Factory.",
     )
     fun getRequiredHumanActions(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @PathVariable workflowId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = user
+        val caller = resolveCaller(user, namespaceId)
         val interactions = openInteractions(
             caller.scope,
             workstreamService.requireConfiguredNamespace(caller.scope),
@@ -211,13 +217,15 @@ class WorkstreamServiceController(
     @GetMapping("/workstreams/{workstreamId}", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "get_workstream", summary = "Read the bounded aggregated projection of the configured workstream.")
     fun getWorkstream(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @PathVariable workstreamId: String,
         @RequestParam(name = "limit", required = false) limit: Int?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkstreamProjectionResponse> {
-        val namespace = workstreamService.requireConfiguredNamespace(user.scope)
-        // The boundary check rejects any workstream other than the user's own.
-        val factoryCaller = FactoryCaller(user.scope, user.userId, user.userId, null)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
+        val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
+        // The projection checks the requested workstream against the resolved namespace mapping.
+        val factoryCaller = FactoryCaller(caller.scope, user.userId, user.userId, null)
         return ResponseEntity.ok(projectionService.getAggregatedProjection(factoryCaller, workstreamId, namespace, limit))
     }
 
@@ -226,11 +234,12 @@ class WorkstreamServiceController(
     @PostMapping("/workflows", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "start_workflow", summary = "Create a workflow run. Factory owns its identity and execution.")
     fun startWorkflow(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
         @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        val caller = user
+        val caller = resolveCaller(user, namespaceId)
         val request = body ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         if (request.keys.any { it !in START_FIELDS }) throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         val namespace = workstreamService.requireConfiguredNamespace(caller.scope)
@@ -285,11 +294,12 @@ class WorkstreamServiceController(
     @PostMapping("/workflows/{workflowId}/retries", produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(operationId = "request_agent_retry", summary = "Request a governed retry of a blocked step.")
     fun requestRetry(
+        @RequestParam(name = "namespaceId") namespaceId: String,
         @PathVariable workflowId: String,
         @RequestBody(required = false) body: Map<String, Any?>?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkflowDataEnvelope<Map<String, Any?>>> {
-        val caller = user
+        val caller = resolveCaller(user, namespaceId)
         val id = requireWorkflowId(workflowId)
         val request = body ?: throw workflowException(WorkflowErrorCodes.INVALID_RETRY_REQUEST, "Retry request is invalid.")
         if (request.keys.any { it !in RETRY_FIELDS }) {
@@ -322,6 +332,13 @@ class WorkstreamServiceController(
     }
 
     // ----- helpers -------------------------------------------------------
+
+    private data class ScopedCaller(val scope: TenantScope, val userId: String)
+
+    private fun resolveCaller(user: AuthenticatedUser, namespaceId: String): ScopedCaller {
+        val resolved = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
+        return ScopedCaller(resolved.scope, user.userId)
+    }
 
     private fun assertWorkflowTypeAllowed(scope: TenantScope, workflowType: String) {
         val workstream = workstreamService.findDomain(scope, scope.workstreamId)

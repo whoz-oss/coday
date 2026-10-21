@@ -33,6 +33,16 @@ class WorkflowSseHttpTest : Neo4jDomainIntegrationTest() {
 
     private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
 
+    @Autowired
+    private lateinit var workstreams: io.whozoss.factory.workstream.WorkstreamService
+
+    @org.junit.jupiter.api.BeforeEach
+    fun registerNamespaceMapping() {
+        workstreams.create(scope, io.whozoss.factory.workstream.web.CreateWorkstreamRequest(
+            slug = scope.workstreamId, name = "SSE fixture", status = "active", namespaceId = namespace,
+        ))
+    }
+
     @Test
     fun `stream emits the named projection event through the servlet stack`() {
         val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
@@ -77,14 +87,9 @@ class WorkflowSseHttpTest : Neo4jDomainIntegrationTest() {
         assertThat(lines).anyMatch { it.startsWith("data: {\"workflowId\":\"wf-sse-http\"") }
     }
 
-    /**
-     * A stream opened without `namespaceId` must subscribe to the whole tenant
-     * scope of the authenticated user (a *scoped* tenant key, never the
-     * unpartitioned global `""` bucket) instead of failing closed with
-     * `INVALID_NAMESPACE_ID`.
-     */
+    /** No implicit subscription is allowed when the namespace is missing. */
     @Test
-    fun `stream without namespaceId subscribes to the whole tenant scope`() {
+    fun `stream without namespaceId is rejected before subscription`() {
         val client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()
         val request = HttpRequest.newBuilder(URI.create("http://localhost:$port/api/factory/workflows/stream"))
             .header("Accept", "text/event-stream")
@@ -92,37 +97,10 @@ class WorkflowSseHttpTest : Neo4jDomainIntegrationTest() {
             .GET()
             .build()
 
-        val future = client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
-
-        val deadline = System.currentTimeMillis() + 5_000
-        while (hub.size(scope, null) == 0 && System.currentTimeMillis() < deadline) {
-            Thread.sleep(20)
-        }
-        // The blank namespace is keyed by the caller's tenant scope, not `""`.
-        assertThat(hub.size(scope, null)).isGreaterThan(0)
-        assertThat(hub.size("")).isEqualTo(0)
-
-        hub.publish(
-            scope,
-            null,
-            linkedMapOf("workflowId" to "wf-sse-namespace-less", "revision" to 1),
-            WorkflowProjectionEvents.UPDATED,
-        )
-
-        val response = future.get(10, TimeUnit.SECONDS)
-        assertThat(response.statusCode()).isEqualTo(200)
-        assertThat(response.headers().firstValue("content-type").orElse("")).contains("text/event-stream")
-
-        val lines = mutableListOf<String>()
-        BufferedReader(InputStreamReader(response.body(), Charsets.UTF_8)).use { reader ->
-            val readDeadline = System.currentTimeMillis() + 5_000
-            while (System.currentTimeMillis() < readDeadline) {
-                val line = reader.readLine() ?: break
-                lines.add(line)
-                if (line.isEmpty() && lines.any { it.startsWith("data:") }) break
-            }
-        }
-        assertThat(lines).contains("event: workflow-projection-updated")
-        assertThat(lines).anyMatch { it.startsWith("data: {\"workflowId\":\"wf-sse-namespace-less\"") }
+        val response = client.send(request, HttpResponse.BodyHandlers.ofString())
+        assertThat(response.statusCode()).isEqualTo(400)
+        assertThat(response.body()).contains("INVALID_NAMESPACE_ID")
+        assertThat(hub.size(scope, null)).isZero()
+        assertThat(hub.size("")).isZero()
     }
 }

@@ -78,7 +78,7 @@ export class AgentTimelineComponent {
   }
 
   protected widthPct(b: TimelineBlock): number {
-    return Math.max(this.pct(b.endSec - b.startSec), 3.5)
+    return Math.min(Math.max(this.pct(b.endSec - b.startSec), 3.5), 100)
   }
 
   protected trackBlock(block: TimelineBlock): string {

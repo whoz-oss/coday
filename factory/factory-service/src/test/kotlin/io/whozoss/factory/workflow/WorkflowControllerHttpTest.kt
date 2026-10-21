@@ -103,6 +103,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `attempts lists bounded attempts of a workflow and never exposes sensitive fields`() {
+        registerWorkstream()
         val workflowId = "wf-attempts-http"
         val secretOwner = "owner-token-secret"
         // attempt-1 goes through claim + transition so ownerToken, leaseExpiresAt
@@ -160,7 +161,8 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             setOf(
                 "attemptId", "stepId", "attemptNumber", "agentName", "status", "caseId",
                 "failureCode", "resultEvidenceId", "environmentRef", "expectedEnvironmentRevision",
-                "resumptionContext", "expectedAmendmentSeq", "revision", "createdAt", "startedAt", "completedAt",
+                "resumptionContext", "expectedAmendmentSeq", "revision", "createdAt", "startedAt",
+                "activeDurationMs", "activeSince", "waitingDurationMs", "waitingSince", "completedAt",
                 "terminal", "sealingClass",
             ),
         )
@@ -184,6 +186,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `attempts filters by stepId and keeps the bounded secret-free shape`() {
+        registerWorkstream()
         val workflowId = "wf-attempts-step-filter"
         durableAgentAttemptService.register(scope, attempt("attempt-s1", workflowId, "step-1"))
         durableAgentAttemptService.register(scope, attempt("attempt-s2", workflowId, "step-2"))
@@ -222,6 +225,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `attempts degrades to an empty data array when the workflow has no attempt`() {
+        registerWorkstream()
         val response = restTemplate.exchange(
             "/api/factory/workflows/wf-without-attempts/attempts?namespaceId=$namespace",
             HttpMethod.GET,
@@ -325,13 +329,34 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `create run rejects inactive and ambiguous namespace mappings`() {
+    fun `create run rejects inactive mappings and the database prevents duplicate ownership`() {
         registerDefinition()
         registerWorkstream(workstreamId = "inactive", status = WorkstreamStatus.PAUSED)
         assertInvalidStart(createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "inactive"))
-        registerWorkstream(workstreamId = "ambiguous", namespaceId = namespace)
-        assertThat(createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "ambiguous").statusCode)
-            .isEqualTo(HttpStatus.CONFLICT)
+        org.assertj.core.api.Assertions.assertThatThrownBy {
+            registerWorkstream(workstreamId = "ambiguous", namespaceId = namespace)
+        }.isInstanceOf(RuntimeException::class.java)
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, namespace)
+            .map { it.workstreamId }).containsExactly("inactive")
+    }
+
+    @Test
+    fun `create run normalizes uppercase namespace for mapping and workflow storage`() {
+        registerDefinition()
+        val created = createRun(mapOf("namespaceId" to namespace.uppercase(), "workflowType" to "wf-http"), "uppercase")
+
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(created.body)["workflowId"] as String
+        val mapped = workstreamRepository.findDomainsByNamespace(scope.organizationId, namespace).single()
+        val detail = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(mapped.namespaceId).isEqualTo(namespace)
+        assertThat(detail.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(data(detail.body)["state"]).isEqualTo("existing")
     }
 
     @Test
@@ -365,7 +390,107 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `workflow created in mapped workstream is absent from ws default but visible through scoped reads`() {
+        registerDefinition()
+        val created = createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "mapped-scope")
+        val workflowId = data(created.body)["workflowId"] as String
+
+        assertThat(service.getProjection(scope, namespace, workflowId)["state"]).isEqualTo("absent")
+        val detail = restTemplate.exchange(
+            "/api/factory/workflows/$workflowId?namespaceId=$namespace",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+        assertThat(detail.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(data(detail.body)["state"]).isEqualTo("existing")
+    }
+
+    @Test
+    fun `namespace scoped cockpit reads use the mapped workstream instead of ws default`() {
+        registerDefinition()
+        val created = createRun(mapOf("namespaceId" to namespace, "workflowType" to "wf-http"), "mapped-reads")
+        assertThat(created.statusCode).isEqualTo(HttpStatus.CREATED)
+        val workflowId = data(created.body)["workflowId"] as String
+
+        val paths = listOf(
+            "/api/factory/workflows/$workflowId?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/projection?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/actions?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/attempts?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/session?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/timing?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/retries?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/metrics?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/evidence?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/interactions?namespaceId=$namespace",
+            "/api/factory/workflows/$workflowId/agent-questions?namespaceId=$namespace",
+        )
+        paths.forEach { path ->
+            val response = restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headers()), jsonType())
+            assertThat(response.statusCode).describedAs(path).isEqualTo(HttpStatus.OK)
+        }
+    }
+
+    @Test
+    fun `list returns empty collections for an unmapped namespace without creating it`() {
+        val unmapped = "5e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
+        listOf("active", "removed").forEach { state ->
+            val response = restTemplate.exchange(
+                "/api/factory/workflows?namespaceId=${unmapped.uppercase()}&state=$state",
+                HttpMethod.GET, HttpEntity<Void>(headers()), jsonType(),
+            )
+            assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+            assertThat(data(response.body)).containsEntry("namespaceId", unmapped)
+                .containsEntry("state", state).containsEntry("truncated", false)
+            assertThat(data(response.body)["items"] as List<*>).isEmpty()
+        }
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, unmapped)).isEmpty()
+    }
+
+    @Test
+    fun `empty collection handling does not bypass namespace or state validation`() {
+        listOf(
+            "/api/factory/workflows?namespaceId=invalid",
+            "/api/factory/workflows?namespaceId=$secondNamespace&state=invalid",
+        ).forEach { path ->
+            val response = restTemplate.exchange(path, HttpMethod.GET, HttpEntity<Void>(headers()), jsonType())
+            assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        }
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).isEmpty()
+    }
+
+    @Test
+    fun `list does not disclose mappings from another organization`() {
+        registerWorkstream(workstreamId = "foreign", namespaceId = secondNamespace, organizationId = "org-other")
+        val response = restTemplate.exchange(
+            "/api/factory/workflows?namespaceId=$secondNamespace",
+            HttpMethod.GET, HttpEntity<Void>(headers()), jsonType(),
+        )
+        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
+        assertThat(data(response.body)["items"] as List<*>).isEmpty()
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, secondNamespace)).isEmpty()
+        assertThat(workstreamRepository.findDomainsByNamespace("org-other", secondNamespace)).hasSize(1)
+    }
+
+    @Test
+    fun `namespace scoped read does not initialize a missing mapping`() {
+        val unmapped = "5e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
+        val response = restTemplate.exchange(
+            "/api/factory/workflows/unknown?namespaceId=$unmapped",
+            HttpMethod.GET,
+            HttpEntity<Void>(headers()),
+            jsonType(),
+        )
+
+        assertThat(response.statusCode).isEqualTo(HttpStatus.NOT_FOUND)
+        assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("WORKFLOW_NOT_FOUND")
+        assertThat(workstreamRepository.findDomainsByNamespace(scope.organizationId, unmapped)).isEmpty()
+    }
+
+    @Test
     fun `start returns 201 with the created snapshot and detail returns existing`() {
+        registerWorkstream()
         registerDefinition()
         val startBody = mapOf(
             "workflow" to mapOf(
@@ -411,6 +536,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     @Suppress("UNCHECKED_CAST")
     @Test
     fun `start propagates an optional ticket into the instance and its relations`() {
+        registerWorkstream()
         registerDefinition()
         val startBody = mapOf(
             "workflow" to mapOf(
@@ -443,6 +569,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `start requires a bounded controller request`() {
+        registerWorkstream()
         registerDefinition()
         val startBody = mapOf(
             "workflow" to mapOf(
@@ -510,6 +637,12 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     private fun publishWithType(workflowId: String, namespaceId: String, workflowType: String) {
+        if (workstreamRepository.findDomainsByNamespace(scope.organizationId, namespaceId).isEmpty()) {
+            registerWorkstream(
+                workstreamId = if (namespaceId == namespace) scope.workstreamId else "second-workstream",
+                namespaceId = namespaceId,
+            )
+        }
         val body = mapOf(
             "execution" to mapOf(
                 "namespaceId" to namespaceId,
@@ -543,7 +676,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
-    fun `list without namespaceId returns workflows of every namespace in the tenant scope`() {
+    fun `list without namespaceId is rejected rather than aggregating workstreams`() {
         publish("wf-list-a", namespace)
         publish("wf-list-b", secondNamespace)
 
@@ -553,17 +686,9 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
             HttpEntity<Void>(headers()),
             jsonType(),
         )
-        // An authenticated user carries no namespace: the scope-wide list
-        // must succeed (200) and never fail closed with 401 INVALID_NAMESPACE_ID.
-        assertThat(response.statusCode).isNotEqualTo(HttpStatus.UNAUTHORIZED)
-        assertThat(response.statusCode).isEqualTo(HttpStatus.OK)
-        assertThat(response.body?.get("error")).isNull()
-        val items = (data(response.body)["items"] as? List<*>)
-            ?.filterIsInstance<Map<String, Any?>>()
-            ?: emptyList()
-        assertThat(items.mapNotNull { it["workflowId"] as? String }).contains("wf-list-a", "wf-list-b")
-        // Each item carries its namespace so the cockpit can open its detail.
-        assertThat(items.mapNotNull { it["namespaceId"] as? String }).contains(namespace, secondNamespace)
+        assertThat(response.statusCode).isEqualTo(HttpStatus.BAD_REQUEST)
+        assertThat((response.body?.get("error") as? Map<*, *>)?.get("code")).isEqualTo("INVALID_NAMESPACE_ID")
+        assertThat(response.body).doesNotContainKey("data")
     }
 
     @Test
@@ -667,6 +792,7 @@ class WorkflowControllerHttpTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `explicit cancellation is wired by default since the SSE cutover and reports an unknown attempt`() {
+        registerWorkstream()
         // Since the final cutover the durable SSE bridge is enabled by default, so
         // the cancellation service is wired and the route no longer answers
         // BRIDGE_CANCELLATION_UNAVAILABLE; an unknown attempt is reported as not found.

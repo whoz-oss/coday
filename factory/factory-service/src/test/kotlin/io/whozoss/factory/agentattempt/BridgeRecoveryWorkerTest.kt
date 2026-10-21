@@ -256,6 +256,46 @@ class BridgeRecoveryWorkerTest : Neo4jDomainIntegrationTest() {
     }
 
     @Test
+    fun `active and waiting durations survive reload and terminal replay without double counting`() {
+        val id = "attempt-timing"
+        val base = java.time.Instant.parse("2026-10-21T21:00:00Z")
+        attempts.register(scope, attempt(id), now = base)
+        attempts.claim(scope, namespace, "wf-recovery", "step-1", id, "owner", leaseTtlMs = 2_000_000, now = base)
+        attempts.transition(scope, namespace, "wf-recovery", "step-1", id, "owner", AgentAttemptStatus.STARTING, now = base)
+        attempts.transition(scope, namespace, "wf-recovery", "step-1", id, "owner", AgentAttemptStatus.RUNNING, now = base)
+        attempts.transition(scope, namespace, "wf-recovery", "step-1", id, "owner", AgentAttemptStatus.WAITING_HUMAN, now = base.plusSeconds(40))
+
+        val waitingReload = attempts.find(scope, namespace, "wf-recovery", "step-1", id)!!
+        assertThat(waitingReload.activeDurationMs).isEqualTo(40_000)
+        assertThat(waitingReload.activeSince).isNull()
+        assertThat(waitingReload.waitingSince).isEqualTo(base.plusSeconds(40))
+
+        attempts.transition(scope, namespace, "wf-recovery", "step-1", id, "owner", AgentAttemptStatus.RUNNING, now = base.plusSeconds(1_240))
+        val runningReload = attempts.find(scope, namespace, "wf-recovery", "step-1", id)!!
+        assertThat(runningReload.activeDurationMs).isEqualTo(40_000)
+        assertThat(runningReload.waitingDurationMs).isEqualTo(1_200_000)
+        assertThat(runningReload.activeSince).isEqualTo(base.plusSeconds(1_240))
+        assertThat(runningReload.startedAt).isEqualTo(base)
+
+        val terminal = attempts.finalize(
+            scope, namespace, "wf-recovery", "step-1", id, "owner",
+            AgentAttemptStatus.SUCCEEDED, now = base.plusSeconds(1_250),
+        )
+        assertThat(terminal.activeDurationMs).isEqualTo(50_000)
+        assertThat(terminal.waitingDurationMs).isEqualTo(1_200_000)
+        assertThat(terminal.activeSince).isNull()
+        assertThat(terminal.waitingSince).isNull()
+
+        val replay = attempts.finalize(
+            scope, namespace, "wf-recovery", "step-1", id, "owner",
+            AgentAttemptStatus.SUCCEEDED, now = base.plusSeconds(1_300),
+        )
+        assertThat(replay.activeDurationMs).isEqualTo(50_000)
+        assertThat(replay.waitingDurationMs).isEqualTo(1_200_000)
+        assertThat(replay.revision).isEqualTo(terminal.revision)
+    }
+
+    @Test
     fun `a worker that lost its lease is fenced out of finalization`() {
         attempts.register(scope, attempt("attempt-fenced"))
         claimToRunning("attempt-fenced", "crashed-worker", leaseTtlMs = 0)

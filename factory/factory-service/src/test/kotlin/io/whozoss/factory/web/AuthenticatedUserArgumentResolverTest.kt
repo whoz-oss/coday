@@ -1,7 +1,6 @@
 package io.whozoss.factory.web
 
 import io.whozoss.factory.error.UnauthenticatedException
-import io.whozoss.factory.persistence.TenantScope
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -32,7 +31,7 @@ class AuthenticatedUserArgumentResolverTest {
     @Test
     fun `resolves the user attached by the filter`() {
         val request = MockHttpServletRequest()
-        val user = AuthenticatedUser("alice", TenantScope("org", "ws"))
+        val user = AuthenticatedUser("alice", "org")
         request.setAttribute(AuthenticationFilter.ATTRIBUTE, user)
 
         val resolved = resolver.resolveArgument(

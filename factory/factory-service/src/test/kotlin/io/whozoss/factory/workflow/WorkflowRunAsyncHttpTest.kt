@@ -64,7 +64,17 @@ class WorkflowRunAsyncHttpTest : Neo4jDomainIntegrationTest() {
     @TempDir
     lateinit var repoRoot: Path
 
-    private val namespace = "3c7a9e3a-9e2b-4c1d-8f7a-run-async-http"
+    private val namespace = "3c7a9e3a-9e2b-4c1d-8f7a-123456789abc"
+
+    @Autowired
+    private lateinit var workstreams: io.whozoss.factory.workstream.WorkstreamService
+
+    @org.junit.jupiter.api.BeforeEach
+    fun registerNamespaceMapping() {
+        workstreams.create(scope, io.whozoss.factory.workstream.web.CreateWorkstreamRequest(
+            slug = scope.workstreamId, name = "Async fixture", status = "active", namespaceId = namespace,
+        ))
+    }
 
     private fun jsonType(): ParameterizedTypeReference<Map<String, Any?>> =
         object : ParameterizedTypeReference<Map<String, Any?>>() {}

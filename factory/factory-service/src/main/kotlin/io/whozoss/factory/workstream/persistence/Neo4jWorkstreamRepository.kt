@@ -7,7 +7,9 @@ import io.whozoss.factory.workstream.domain.Workstream
 import io.whozoss.factory.workstream.domain.WorkstreamStatus
 import io.whozoss.factory.workstream.domain.toDomain
 import io.whozoss.factory.workstream.domain.toNode
+import org.neo4j.driver.exceptions.ClientException
 import org.springframework.context.annotation.Primary
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Repository
 import java.time.Instant
 
@@ -36,18 +38,22 @@ class Neo4jWorkstreamRepository(
         repository.findAllByOrganizationAndNamespace(organizationId, namespaceId).map { it.toDomain() }
 
     fun mergeInitialNamespaceMapping(organizationId: String, workstreamId: String, namespaceId: String, name: String): Workstream =
-        repository.mergeInitialMapping(
-            WorkstreamNode.compositeId(organizationId, workstreamId),
-            organizationId,
-            workstreamId,
-            namespaceId,
-            name,
-        ).toDomain()
+        try {
+            repository.mergeInitialMapping(
+                WorkstreamNode.compositeId(organizationId, workstreamId),
+                organizationId,
+                workstreamId,
+                io.whozoss.factory.workstream.domain.WorkstreamNamespace.require(namespaceId),
+                name,
+            ).toDomain()
+        } catch (failure: RuntimeException) {
+            throw translateNamespaceConstraint(failure, namespaceId)
+        }
 
-    /** List the workstreams visible to [scope], ordered by their stable id. */
-    fun list(scope: TenantScope): List<Map<String, Any?>> =
+    /** Organization-level registry listing; no workstream sentinel is involved. */
+    fun listByOrganization(organizationId: String): List<Map<String, Any?>> =
         repository
-            .findAllByOrganization(scope.organizationId)
+            .findAllByOrganization(organizationId)
             .map { it.toView() }
 
     /** Create a workstream node and return its enriched registry view. */
@@ -75,7 +81,7 @@ class Neo4jWorkstreamRepository(
             workstreamId = workstream.workstreamId,
             name = workstream.name,
             status = workstream.status.dbValue,
-            namespaceId = workstream.namespaceId,
+            namespaceId = io.whozoss.factory.workstream.domain.WorkstreamNamespace.require(workstream.namespaceId),
             controllerAgentRef = workstream.controllerAgentRef,
             allowedWorkflowTypes = workstream.allowedWorkflowTypes,
             governancePolicyRef = workstream.governancePolicyRef,
@@ -83,7 +89,11 @@ class Neo4jWorkstreamRepository(
             createdAt = now,
             updatedAt = now,
         )
-        return repository.save(node).toDomain()
+        return try {
+            repository.save(node).toDomain()
+        } catch (failure: RuntimeException) {
+            throw translateNamespaceConstraint(failure, node.namespaceId)
+        }
     }
 
     /**
@@ -98,19 +108,23 @@ class Neo4jWorkstreamRepository(
                 "Le workstream '${workstream.workstreamId}' n'existe pas",
                 mapOf("code" to "WORKSTREAM_NOT_FOUND"),
             )
-        val persisted = repository.save(
-            existing.copy(
-                name = workstream.name,
-                status = workstream.status.dbValue,
-                namespaceId = workstream.namespaceId,
-                controllerAgentRef = workstream.controllerAgentRef,
-                allowedWorkflowTypes = workstream.allowedWorkflowTypes,
-                governancePolicyRef = workstream.governancePolicyRef,
-                revision = existing.revision + 1,
-                createdAt = existing.createdAt,
-                updatedAt = Instant.now(),
-            ),
-        )
+        val persisted = try {
+            repository.save(
+                existing.copy(
+                    name = workstream.name,
+                    status = workstream.status.dbValue,
+                    namespaceId = io.whozoss.factory.workstream.domain.WorkstreamNamespace.require(workstream.namespaceId),
+                    controllerAgentRef = workstream.controllerAgentRef,
+                    allowedWorkflowTypes = workstream.allowedWorkflowTypes,
+                    governancePolicyRef = workstream.governancePolicyRef,
+                    revision = existing.revision + 1,
+                    createdAt = existing.createdAt,
+                    updatedAt = Instant.now(),
+                ),
+            )
+        } catch (failure: RuntimeException) {
+            throw translateNamespaceConstraint(failure, workstream.namespaceId)
+        }
         return persisted.toDomain()
     }
 
@@ -118,6 +132,21 @@ class Neo4jWorkstreamRepository(
         if (findById(scope, id) == null) return false
         repository.deleteById(WorkstreamNode.compositeId(scope.organizationId, id))
         return true
+    }
+
+    private fun translateNamespaceConstraint(failure: RuntimeException, namespaceId: String?): RuntimeException {
+        val isConstraintFailure = generateSequence<Throwable>(failure) { it.cause }
+            .any { cause ->
+                (cause is ClientException || cause is DataIntegrityViolationException) &&
+                    cause.message?.contains("workstream_namespace_unique") == true
+            }
+        if (isConstraintFailure) {
+            return io.whozoss.factory.error.ConflictException(
+                "Namespace '$namespaceId' is already assigned to another workstream",
+                mapOf("code" to "WORKSTREAM_NAMESPACE_CONFLICT", "namespaceId" to namespaceId),
+            )
+        }
+        return failure
     }
 
     private fun findNode(scope: TenantScope, slug: String): WorkstreamNode? =

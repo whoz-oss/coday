@@ -63,9 +63,11 @@ class WorkflowDefinitionSeeder(
     private val catalog: SessionDefinitionCatalog,
 ) {
 
+    fun seed(scope: TenantScope): List<String> = seed(io.whozoss.factory.persistence.OrganizationScope(scope.organizationId))
+
     /** Registers every bundled definition missing from [scope]; returns the seeded `type@version` keys. */
     @Transactional
-    fun seed(scope: TenantScope): List<String> {
+    fun seed(scope: io.whozoss.factory.persistence.OrganizationScope): List<String> {
         val existing = repository.listDefinitions(scope).map { it.workflowType to it.version }.toSet()
         val seeded = mutableListOf<String>()
         for (record in catalog.load()) {

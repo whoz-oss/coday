@@ -59,13 +59,13 @@ class WorkstreamProjectionIntegrationTest : Neo4jDomainIntegrationTest() {
     private val caller: FactoryCaller
         get() = FactoryCaller(scope, "projection-tester", "projection-tester", "projection-tester")
 
-    private val namespace = "ns-projection"
+    private val namespace = "df4181bb-1dad-4574-8caf-2537926100fb"
 
     private fun uniqueSlug(prefix: String) = "$prefix-${UUID.randomUUID().toString().take(8)}"
 
     private fun createRegistryEntry(
         slug: String = WORKSTREAM_ID,
-        namespaceId: String? = null,
+        namespaceId: String = namespace,
         allowedWorkflowTypes: List<String>? = null,
     ) {
         workstreamService.create(
@@ -275,9 +275,9 @@ class WorkstreamProjectionIntegrationTest : Neo4jDomainIntegrationTest() {
 
     @Test
     fun `a namespace outside the declared workstream namespace is a boundary violation`() {
-        createRegistryEntry(namespaceId = "ns-declared")
+        createRegistryEntry(namespaceId = namespace)
 
-        assertThatThrownBy { projection(namespaceId = "ns-other") }
+        assertThatThrownBy { projection(namespaceId = "8edf5267-83cb-4c65-ae70-79a6dc40fcf5") }
             .isInstanceOf(FactoryHttpException::class.java)
             .satisfies({ error ->
                 assertThat((error as FactoryHttpException).errorCode).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
@@ -285,7 +285,7 @@ class WorkstreamProjectionIntegrationTest : Neo4jDomainIntegrationTest() {
             })
 
         // The declared namespace itself is accepted.
-        assertThat(projection(namespaceId = "ns-declared").namespaceId).isEqualTo("ns-declared")
+        assertThat(projection(namespaceId = namespace).namespaceId).isEqualTo(namespace)
     }
 
     @Test

@@ -24,6 +24,9 @@ import org.springframework.http.ResponseEntity
  * bounds and the `WORKSTREAM_BOUNDARY_VIOLATION` trust enforcement.
  */
 class WorkstreamControllerIntegrationTest : Neo4jIntegrationTest() {
+    @Autowired
+    private lateinit var foreignWorkstreams: io.whozoss.factory.workstream.persistence.Neo4jWorkstreamRepository
+
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -45,7 +48,7 @@ class WorkstreamControllerIntegrationTest : Neo4jIntegrationTest() {
                 "slug" to slug,
                 "name" to "HTTP Workstream",
                 "status" to "active",
-                "namespaceId" to "ns-http",
+                "namespaceId" to "6216d259-28bc-4d85-818e-405338878f2c",
             ) + extra,
         )
 
@@ -74,7 +77,7 @@ class WorkstreamControllerIntegrationTest : Neo4jIntegrationTest() {
         val fetched = exchange(HttpMethod.GET, "/api/factory/workstreams/$WORKSTREAM_ID")
         assertThat(fetched.statusCode.value()).isEqualTo(200)
         assertThat(fetched.body!!["slug"]).isEqualTo(WORKSTREAM_ID)
-        assertThat(fetched.body!!["namespaceId"]).isEqualTo("ns-http")
+        assertThat(fetched.body!!["namespaceId"]).isEqualTo("6216d259-28bc-4d85-818e-405338878f2c")
     }
 
     @Test
@@ -148,20 +151,26 @@ class WorkstreamControllerIntegrationTest : Neo4jIntegrationTest() {
     }
 
     @Test
-    fun `a path workstream outside the trusted scope is a WORKSTREAM_BOUNDARY_VIOLATION`() {
+    fun `a workstream outside the authenticated organization is not disclosed`() {
         createWorkstream()
-
+        foreignWorkstreams.create(
+            io.whozoss.factory.persistence.TenantScope("other-org", "ws-untrusted"),
+            io.whozoss.factory.workstream.domain.Workstream(
+                organizationId = "other-org", workstreamId = "ws-untrusted",
+                namespaceId = "d4a5108f-169b-4cd5-8c5a-12b57309d37c",
+                name = "Foreign", status = io.whozoss.factory.workstream.domain.WorkstreamStatus.ACTIVE,
+            ),
+        )
         val projection = exchange(HttpMethod.GET, "/api/factory/workstreams/ws-untrusted/projection")
-        assertThat(projection.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(projection)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
-
         val read = exchange(HttpMethod.GET, "/api/factory/workstreams/ws-untrusted")
-        assertThat(read.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(read)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
-
         val write = exchange(HttpMethod.PUT, "/api/factory/workstreams/ws-untrusted", mapOf("status" to "paused"))
-        assertThat(write.statusCode.value()).isEqualTo(403)
-        assertThat(errorCode(write)).isEqualTo("WORKSTREAM_BOUNDARY_VIOLATION")
+        listOf(projection, read, write).forEach {
+            assertThat(it.statusCode.value()).isEqualTo(404)
+            assertThat(errorCode(it)).isEqualTo("NOT_FOUND")
+        }
+        assertThat(foreignWorkstreams.findDomain(
+            io.whozoss.factory.persistence.TenantScope("other-org", "ws-untrusted"), "ws-untrusted",
+        )!!.status).isEqualTo(io.whozoss.factory.workstream.domain.WorkstreamStatus.ACTIVE)
     }
 
     @Test

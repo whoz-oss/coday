@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.delivery.service.DeliveryHttpResult
 import io.whozoss.factory.delivery.service.DeliveryOperationService
 import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.workstream.WorkstreamService
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
@@ -31,7 +32,11 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "delivery-operations", description = "Delivery deployment, verification and rollback control plane")
 class DeliveryOperationController(
     private val service: DeliveryOperationService,
+    private val workstreamService: WorkstreamService,
 ) {
+    private fun deliveryRequest(user: AuthenticatedUser, body: Map<String, Any?>?): DeliveryRequest =
+        deliveryRequest(workstreamService, user, body)
+
 
     @PostMapping(path = ["/deploy"], produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Create and execute a deployment operation")
