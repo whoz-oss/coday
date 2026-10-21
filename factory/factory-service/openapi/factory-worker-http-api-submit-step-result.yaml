@@ -39,7 +39,7 @@ paths:
                 result:
                   type: object
                   additionalProperties: false
-                  required: [status, summary]
+                  required: [status, summary, claims]
                   properties:
                     status:
                       type: string
@@ -47,22 +47,56 @@ paths:
                     summary:
                       type: string
                       minLength: 1
+                      maxLength: 2000
                     claims:
                       type: object
-                      additionalProperties: true
+                      additionalProperties: false
+                      required: [modifiedFiles]
+                      properties:
+                        modifiedFiles:
+                          type: array
+                          maxItems: 1000
+                          items: { type: string, minLength: 1, maxLength: 1024 }
+                        deliveryAnalysis:
+                          type: object
+                          additionalProperties: false
+                          required: [changeType, ticket, title]
+                          properties:
+                            changeType: { type: string, enum: [feature, bugfix] }
+                            ticket:
+                              type: string
+                              pattern: '^(#[1-9][0-9]*|[A-Z][A-Z0-9]{1,15}-[1-9][0-9]*)$'
+                              description: GitHub issue shorthand such as #123 or Jira-style key such as ABC-123.
+                            title: { type: string, minLength: 1, maxLength: 200 }
+                            baseBranch: { type: string, minLength: 1, maxLength: 255 }
                     artifacts:
                       type: array
+                      maxItems: 8
                       items:
                         type: object
-                        additionalProperties: true
+                        additionalProperties: false
+                        required: [kind, encoding, content]
+                        properties:
+                          kind: { type: string, minLength: 1, maxLength: 128 }
+                          encoding: { type: string, enum: [markdown] }
+                          content: { type: string, minLength: 1, maxLength: 262144 }
                     findings:
                       type: array
+                      maxItems: 100
                       items:
                         type: object
-                        additionalProperties: true
+                        additionalProperties: false
+                        required: [severity, code, summary]
+                        properties:
+                          severity: { type: string, enum: [info, warning, error, blocking] }
+                          code: { type: string, minLength: 1, maxLength: 128 }
+                          summary: { type: string, minLength: 1, maxLength: 1000 }
+                          file: { type: string, minLength: 1, maxLength: 1024 }
+                          line: { type: integer, minimum: 1 }
                     expected_amendment_seq:
                       type: integer
                       format: int64
+                      minimum: 0
       responses:
         '200':
           description: Identical idempotent replay accepted

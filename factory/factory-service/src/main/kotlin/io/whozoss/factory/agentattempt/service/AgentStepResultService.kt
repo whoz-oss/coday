@@ -164,7 +164,10 @@ class AgentStepResultService(
             }
         }
 
-        if (!AgentStepResultValidation.validateBusiness(business)) throw ResultSchemaInvalidException()
+        val violations = AgentStepResultValidation.violations(business)
+        if (violations.isNotEmpty()) {
+            throw ResultSchemaInvalidException(details = mapOf("violations" to violations))
+        }
 
         val outcome = results.submit(scope, token, business!!, observed, now)
         val submission = outcome.toSubmission()
