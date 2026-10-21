@@ -37,7 +37,7 @@ import { resolveUsername } from './lib/resolve-username'
 import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
 import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion, getFactoryVersion } from './lib/version'
-import { downloadAgentosJars, checkAndSwapNext, downloadAgentosJarsToNext } from './lib/agentos-download'
+import { downloadAgentosJars } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
 import {
   checkAndSwapNextFactory,
@@ -532,7 +532,8 @@ let cleanupService: ThreadCleanupService | null = null
  * Single entry point called after app.listen() to provision and start AgentOS.
  *
  * In EXTERNAL mode (AGENTOS_URL defined): logs and returns immediately.
- * In MANAGED mode: checks JAR inventory → downloads missing → starts the process.
+ * In MANAGED mode: checks JAR inventory → downloads the requested version if any JAR is
+ * missing or at another version (never starts an older cached version) → starts the process.
  *
  * Never throws — any error is logged and the function returns gracefully.
  * The Express server stays up regardless of AgentOS provisioning outcome.
@@ -550,71 +551,31 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   try {
     const agentosVersion = getAgentosVersion()
 
-    // --- 1. Apply pending update from next/ (swap before inventory check) ---
-    const swapResult = checkAndSwapNext(codayOptions.configDir, agentosVersion)
-    if (swapResult.outcome === 'swapped') {
-      debugLog('AGENTOS', `[PROVISION] Swap applied: ${swapResult.message}`)
-    }
-
-    // --- 2. Check JAR inventory ---
+    // --- 1. Check JAR inventory against the requested version ---
     const jarStatus = checkAgentosJars(codayOptions.configDir, agentosVersion)
 
-    // Derive the version currently on disk (from the service JAR, first artifact).
-    // null means no JAR present at all — first run.
-    const activeVersion = jarStatus.artifacts[0]?.foundVersion ?? null
-    const hasUsableJars = activeVersion !== null && jarStatus.artifacts.every((a) => a.foundVersion === activeVersion)
+    // --- 2. Download the requested version when any JAR is missing or at another version ---
+    // The requested version always wins over what is cached on disk: no older version is
+    // started in the meantime, and every other version is removed after the download.
+    const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion, jarStatus.missing)
+    debugLog('AGENTOS', `[PROVISION] Download outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
 
-    if (!jarStatus.allPresent && hasUsableJars) {
-      // --- 3a. We have a coherent set of JARs at a different version ---
-      // Spawn immediately with what we have, pre-fetch the target version in background.
-      debugLog(
-        'AGENTOS',
-        `[PROVISION] Active version ${activeVersion} differs from target ${agentosVersion} — spawning current, pre-fetching target in background`
-      )
+    if (
+      downloadResult.outcome !== 'success' &&
+      downloadResult.outcome !== 'skipped:all-present' &&
+      downloadResult.outcome !== 'skipped:dev-version'
+    ) {
+      debugLog('AGENTOS', '[PROVISION] Download failed — AgentOS will not be started. The proxy will return errors.')
+      return
+    }
 
-      // --- 4a. Start with current version ---
-      debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
-      agentosProcess = await startAgentos(codayOptions.configDir, activeVersion, expressPort)
+    // --- 3. Start the requested version ---
+    debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
+    agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
 
-      if (!agentosProcess) {
-        debugLog(
-          'AGENTOS',
-          '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.'
-        )
-        return
-      }
-
-      // --- 5a. Pre-fetch target version into next/ ---
-      downloadAgentosJarsToNext(codayOptions.configDir, agentosVersion).catch((err) =>
-        debugLog('AGENTOS', '[UPDATE] Unhandled error in background pre-fetch:', err)
-      )
-    } else {
-      // --- 3b. JARs missing or already at target version ---
-      // Download blocking only if something is actually missing.
-      const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion, jarStatus.missing)
-      debugLog('AGENTOS', `[PROVISION] Download outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
-
-      if (
-        downloadResult.outcome !== 'success' &&
-        downloadResult.outcome !== 'skipped:all-present' &&
-        downloadResult.outcome !== 'skipped:dev-version'
-      ) {
-        debugLog('AGENTOS', '[PROVISION] Download failed — AgentOS will not be started. The proxy will return errors.')
-        return
-      }
-
-      // --- 4b. Start with target version ---
-      debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
-      agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
-
-      if (!agentosProcess) {
-        debugLog(
-          'AGENTOS',
-          '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.'
-        )
-        return
-      }
-      // No background pre-fetch needed — already at target version
+    if (!agentosProcess) {
+      debugLog('AGENTOS', '[PROVISION] AgentOS did not start. The proxy will return errors until AgentOS is available.')
+      return
     }
 
     // Update the proxy target (always localhost:8124 in managed mode, but kept

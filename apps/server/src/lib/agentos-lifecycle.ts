@@ -11,6 +11,7 @@
  *   <configDir>/agentos/plugins/agentos-mcp-plugin-<version>.jar
  *   <configDir>/agentos/plugins/agentos-http-plugin-<version>.jar
  *   <configDir>/agentos/plugins/agentos-tmux-plugin-<version>.jar
+ *   <configDir>/agentos/plugins/agentos-git-plugin-<version>.jar
  *
  * THIS MODULE HAS NO SIDE EFFECTS AT IMPORT TIME.
  */
@@ -37,9 +38,11 @@ import { debugLog } from './log'
 export const AGENTOS_ARTIFACT_IDS = [
   'agentos-service',
   'agentos-bash-plugin',
+  'agentos-datetime-plugin',
   'agentos-file-plugin',
-  'agentos-mcp-plugin',
+  'agentos-git-plugin',
   'agentos-http-plugin',
+  'agentos-mcp-plugin',
   'agentos-tmux-plugin',
 ] as const
 
@@ -140,7 +143,7 @@ export interface AgentosJarStatus {
 // ---------------------------------------------------------------------------
 
 /**
- * Check <configDir>/agentos for the 5 expected AgentOS JARs at the expected version.
+ * Check <configDir>/agentos for the expected AgentOS JARs (see AGENTOS_ARTIFACT_IDS) at the expected version.
  *
  * - Never throws: all I/O errors are caught and logged.
  * - No network access, no process spawn.
