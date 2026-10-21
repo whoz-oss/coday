@@ -69,6 +69,16 @@ interface ScheduledPromptRunRepository {
     fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun>
 
     /**
+     * Find all Runs in TARGETING status created before [olderThan].
+     *
+     * These are presumed orphaned — the loop case either crashed or ran beyond the
+     * [SchedulerProperties.targetingOrphanThresholdMinutes] window. The caller decides
+     * what to do with them (typically mark FAILED). Uses a longer threshold than
+     * [findOrphanedClaimed] because a loop case legitimately runs for minutes.
+     */
+    fun findOrphanedTargeting(olderThan: Instant): List<ScheduledPromptRun>
+
+    /**
      * Find RUNNING Runs whose UserRuns are ALL in a terminal status (DONE, TIMEOUT, or FAILED).
      *
      * A Run is "settled" when none of its UserRuns are in PENDING or RUNNING status.

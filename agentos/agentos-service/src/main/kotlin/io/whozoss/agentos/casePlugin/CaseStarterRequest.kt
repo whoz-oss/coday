@@ -16,6 +16,13 @@ import java.util.UUID
  * @param sessionContext What the caller hands to the new case: free key/value data, passed on as given to the
  *   first message, under the context the system resolves for the target user (see [CaseStarterService]). The
  *   calling case's own session context is never inherited.
+ * @param translateFrom BCP-47 source language of [prompt] and [title]. When non-null and the target user has
+ *   a different [io.whozoss.agentos.user.User.preferredLanguage], both are translated before the case is
+ *   created. Null (the default) disables translation entirely — existing LLM callers are unaffected.
+ *   This field is NOT exposed in the JSON schema of any LLM-facing tool.
+ * @param scheduledPromptId Id of the [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt] that triggered
+ *   this start, written to [io.whozoss.agentos.caseFlow.Case.scheduledPromptId]. Null for non-scheduled starts.
+ *   This field is NOT exposed in the JSON schema of any LLM-facing tool.
  */
 data class CaseStarterRequest(
     val callerUserId: UUID,
@@ -26,4 +33,6 @@ data class CaseStarterRequest(
     val targetUserId: UUID? = null,
     val title: String? = null,
     val sessionContext: Map<String, Any?>? = null,
+    val translateFrom: String? = null,
+    val scheduledPromptId: UUID? = null,
 )

@@ -2,6 +2,7 @@ package io.whozoss.agentos.casePlugin
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -52,6 +53,7 @@ import java.util.UUID
 class CaseToolPlugin(
     private val caseEventsLoader: (caseId: UUID, namespaceId: UUID, userId: UUID?) -> List<CaseEvent>?,
     private val caseStarterService: CaseStarterService,
+    private val limitsConfig: LimitsConfigProperties,
 ) : ToolPlugin {
     override val integrationType: String = INTEGRATION_TYPE
     override val configSchema: JsonNode = CONFIG_SCHEMA
@@ -91,6 +93,11 @@ class CaseToolPlugin(
                 caseStarterService = caseStarterService,
                 allowedAgents = config.stringList("agents").ifEmpty { listOf("*") },
                 deniedAgents = config.stringList("deniedAgents").toSet(),
+            ),
+            BatchCaseStarterTool(
+                configName = configName,
+                caseStarterService = caseStarterService,
+                limitsConfig = limitsConfig,
             ),
         )
     }

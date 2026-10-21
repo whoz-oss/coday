@@ -73,6 +73,7 @@ data class ScheduledPromptNode(
     @LastModifiedBy val modifiedBy: String? = null,
     val removed: Boolean? = null,
     val externalMetadataJson: String? = null,
+    val loopConfigJson: String? = null,
 ) {
     fun toDomain(): ScheduledPrompt =
         ScheduledPrompt(
@@ -106,6 +107,7 @@ data class ScheduledPromptNode(
             nextRunAt = nextRunAt,
             lastRunAt = lastRunAt,
             externalMetadata = externalMetadataJson?.let { MAPPER.readValue(it, EXTERNAL_METADATA_TYPE) },
+            loopConfig = loopConfigJson?.let { MAPPER.readTree(it) },
         )
 
     companion object {
@@ -144,6 +146,7 @@ data class ScheduledPromptNode(
                 modifiedBy = scheduledPrompt.metadata.modifiedBy,
                 removed = scheduledPrompt.metadata.removed.takeIf { it },
                 externalMetadataJson = scheduledPrompt.externalMetadata?.let { MAPPER.writeValueAsString(it) },
+                loopConfigJson = scheduledPrompt.loopConfig?.let { MAPPER.writeValueAsString(it) },
             )
     }
 }

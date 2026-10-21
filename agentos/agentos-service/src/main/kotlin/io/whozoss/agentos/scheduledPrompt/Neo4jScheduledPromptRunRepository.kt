@@ -55,6 +55,10 @@ open class Neo4jScheduledPromptRunRepository(
         neo4jRepository.findByStatusAndCreatedBefore(RunStatus.CLAIMED.name, olderThan)
             .map { it.toDomain() }
 
+    override fun findOrphanedTargeting(olderThan: Instant): List<ScheduledPromptRun> =
+        neo4jRepository.findByStatusAndCreatedBefore(RunStatus.TARGETING.name, olderThan)
+            .map { it.toDomain() }
+
     override fun findSettledRunning(): List<ScheduledPromptRun> =
         neo4jRepository.findSettledRunning().map { it.toDomain() }
 

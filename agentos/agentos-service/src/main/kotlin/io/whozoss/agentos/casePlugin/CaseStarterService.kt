@@ -9,6 +9,8 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptTranslationService
+import io.whozoss.agentos.prompt.TextKind
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -84,6 +86,7 @@ class CaseStarterService(
     private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
     private val userSessionContextResolver: UserSessionContextResolver,
+    private val promptTranslationService: PromptTranslationService,
 ) {
     /**
      * Starts the case and returns it.
@@ -111,13 +114,19 @@ class CaseStarterService(
 
         val sessionContext = resolveSessionContext(targetUser = targetUser, request = request)
 
-        val case = createCase(request)
+        val (effectivePrompt, effectiveTitle) = maybeTranslate(
+            request = request,
+            targetLanguage = targetUser.preferredLanguage?.takeIf { it.isNotBlank() },
+            namespaceId = request.callerNamespaceId,
+        )
+
+        val case = createCase(request, effectiveTitle ?: effectivePrompt)
         startConversation(
             case = case,
             targetUser = targetUser,
             agentName = agentName,
             sessionContext = sessionContext,
-            request = request,
+            prompt = effectivePrompt,
         )
 
         logger.info {
@@ -251,13 +260,63 @@ class CaseStarterService(
         return ((request.sessionContext ?: emptyMap()) + (resolved ?: emptyMap())).takeIf { it.isNotEmpty() }
     }
 
-    /** Creates the case, tracing the calling one as its origin. */
-    private fun createCase(request: CaseStarterRequest): Case =
+    /**
+     * Translates [CaseStarterRequest.prompt] and [CaseStarterRequest.title] when translation is opted in.
+     * Returns originals unchanged on any failure or when conditions are not met.
+     */
+    private fun maybeTranslate(
+        request: CaseStarterRequest,
+        targetLanguage: String?,
+        namespaceId: UUID,
+    ): Pair<String, String?> {
+        val sourceLanguage = request.translateFrom
+        if (sourceLanguage == null ||
+            targetLanguage == null ||
+            targetLanguage.equals(sourceLanguage, ignoreCase = true)
+        ) {
+            return request.prompt to request.title
+        }
+        val translatedPrompt =
+            runCatching {
+                promptTranslationService.translateText(
+                    text = request.prompt,
+                    sourceLanguage = sourceLanguage,
+                    targetLanguage = targetLanguage,
+                    namespaceId = namespaceId,
+                    kind = TextKind.CONTENT,
+                )
+            }.onFailure { e ->
+                logger.warn(e) { "[CaseStarter] translation failed for prompt — using original" }
+            }.getOrElse { request.prompt }
+
+        val translatedTitle =
+            request.title?.let { titleText ->
+                runCatching {
+                    promptTranslationService.translateText(
+                        text = titleText,
+                        sourceLanguage = sourceLanguage,
+                        targetLanguage = targetLanguage,
+                        namespaceId = namespaceId,
+                        kind = TextKind.TITLE,
+                    )
+                }.onFailure { e ->
+                    logger.warn(e) { "[CaseStarter] translation failed for title — using original" }
+                }.getOrElse { titleText }
+            }
+        return translatedPrompt to translatedTitle
+    }
+
+    /** Creates the case, tracing the calling one as its origin. [effectiveTitle] is already translated. */
+    private fun createCase(
+        request: CaseStarterRequest,
+        effectiveTitle: String,
+    ): Case =
         caseService.create(
             Case(
                 namespaceId = request.callerNamespaceId,
-                title = (request.title?.takeIf { it.isNotBlank() } ?: request.prompt).take(MAX_TITLE_LENGTH),
+                title = effectiveTitle.take(MAX_TITLE_LENGTH),
                 originCaseId = request.callerCaseId,
+                scheduledPromptId = request.scheduledPromptId,
             ),
         )
 
@@ -265,13 +324,15 @@ class CaseStarterService(
      * Gives the target user ADMIN on [case] and sends the first message as them. The case exists by now, so
      * a failure soft-deletes it rather than leaving an empty conversation, then is rethrown for the caller
      * to report. An ADMIN grant already made is not revoked.
+     *
+     * [prompt] is the already-translated (or original) prompt text.
      */
     private fun startConversation(
         case: Case,
         targetUser: User,
         agentName: String,
         sessionContext: Map<String, Any?>?,
-        request: CaseStarterRequest,
+        prompt: String,
     ) {
         try {
             permissionService.grantPermission(
@@ -284,7 +345,7 @@ class CaseStarterService(
             caseService.addMessage(
                 caseId = case.id,
                 actor = Actor(id = targetUser.id.toString(), displayName = targetUser.displayName(), role = ActorRole.USER),
-                content = listOf(MessageContent.Text("@$agentName ${request.prompt}")),
+                content = listOf(MessageContent.Text("@$agentName $prompt")),
                 sessionContext = sessionContext,
             )
         } catch (e: Exception) {

@@ -31,7 +31,7 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
     override fun hasActive(scheduledPromptId: UUID): Boolean =
         store.values.any {
             it.scheduledPromptId == scheduledPromptId &&
-                (it.status == RunStatus.CLAIMED || it.status == RunStatus.RUNNING)
+                (it.status == RunStatus.CLAIMED || it.status == RunStatus.TARGETING || it.status == RunStatus.RUNNING)
         }
 
     override fun updateStatus(
@@ -59,6 +59,11 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
     override fun findOrphanedClaimed(olderThan: Instant): List<ScheduledPromptRun> =
         store.values.filter {
             it.status == RunStatus.CLAIMED && it.metadata.created.isBefore(olderThan)
+        }.sortedBy { it.metadata.created }
+
+    override fun findOrphanedTargeting(olderThan: Instant): List<ScheduledPromptRun> =
+        store.values.filter {
+            it.status == RunStatus.TARGETING && it.metadata.created.isBefore(olderThan)
         }.sortedBy { it.metadata.created }
 
     override fun findSettledRunning(): List<ScheduledPromptRun> {

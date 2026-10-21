@@ -11,13 +11,16 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
 
     /**
      * Returns true if there is at least one run for [scheduledPromptId] in an active status
-     * (CLAIMED or RUNNING).
+     * (CLAIMED, TARGETING, or RUNNING).
+     *
+     * TARGETING is included because the converged path holds the run in TARGETING while the
+     * loop case executes — without it, a second tick would claim a new run concurrently.
      */
     @Query(
         $$"""
         MATCH (r:ScheduledPromptRun)
         WHERE r.scheduledPromptId = $scheduledPromptId
-        AND r.status IN ['CLAIMED', 'RUNNING']
+        AND r.status IN ['CLAIMED', 'TARGETING', 'RUNNING']
         AND NOT COALESCE(r.removed, false)
         RETURN count(r) > 0
         """,
@@ -79,6 +82,12 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
      *
      * Runs with zero UserRuns never reach RUNNING status (they are transitioned directly
      * to DONE in [ScheduledPromptExecutor.materialize]).
+     *
+     * **TARGETING is excluded by design and must never be added to this query.**
+     * The converged path writes NO UserRun rows, so the NOT EXISTS sub-query is always
+     * true for TARGETING runs — adding them here would close every live converged run
+     * as DONE within ~30s of starting. Orphaned TARGETING runs are swept by
+     * [SchedulerScanner.recoverOrphanedTargetingRuns] using its own threshold.
      */
     @Query(
         """

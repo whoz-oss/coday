@@ -24,8 +24,7 @@ import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
-import io.whozoss.agentos.workflow.AgentLoopAct
-import io.whozoss.agentos.workflow.AgentLoopPayload
+import io.whozoss.agentos.workflow.LoopConfig
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
@@ -47,34 +46,20 @@ class AgentLoopUnitSpec :
         val namespaceId: UUID = UUID.randomUUID()
         val caseId: UUID = UUID.randomUUID()
 
-        val validPayloadJson =
+        val validLoopConfigJson =
             """
             {
-                "search": {
-                    "tool": "SearchTalents",
-                    "params": {"talentId": ["6ac76692a909eaaae0b078d6"], "resolveTargets": ["MANAGER"], "next": null}
-                },
-                "act": {"agentName": "ProfileCaretaker", "promptTemplate": "This talent has not completed their profile. As their manager, I need you to help me review and improve it."}
+                "version": 1,
+                "steps": [
+                    {"id": "search", "tool": "SearchTalents", "input": {"params": {"resolveTargets": ["OWNER"]}}},
+                    {"id": "act", "tool": "FreeCaseStarterForUser", "input": {"from": "search"}}
+                ]
             }
             """.trimIndent()
 
-        val validLoopConfig: JsonNode = objectMapper.readTree(validPayloadJson)
+        val validLoopConfig: JsonNode = objectMapper.readTree(validLoopConfigJson)
 
-        val completed =
-            LoopRunOutcome.Completed(
-                searchTool = "SearchTalents",
-                returned = 1,
-                totalCount = 1,
-                hasMorePages = false,
-                startedCaseIds = listOf(UUID.randomUUID()),
-                unknownUser = 0,
-                noAgentAccess = 0,
-                failed = 0,
-                overLimit = 0,
-                maxItems = 50,
-                targetAgent = "ProfileCaretaker",
-                interrupted = false,
-            )
+        val completed = LoopRunOutcome.Completed(lastStepOutput = "done")
 
         // -------------------------------------------------------------------------
         // Helpers
@@ -107,14 +92,6 @@ class AgentLoopUnitSpec :
                 content = listOf(MessageContent.Text(text)),
             )
 
-        fun agentMessage(text: String) =
-            MessageEvent(
-                namespaceId = namespaceId,
-                caseId = caseId,
-                actor = Actor(id = "agent-1", displayName = "loop-agent", role = ActorRole.AGENT),
-                content = listOf(MessageContent.Text(text)),
-            )
-
         fun List<CaseEvent>.warnMessage(): String = filterIsInstance<WarnEvent>().single().message
 
         // -------------------------------------------------------------------------
@@ -128,36 +105,44 @@ class AgentLoopUnitSpec :
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             val summary = emitted[1].shouldBeInstanceOf<MessageEvent>()
             summary.actor.role shouldBe ActorRole.AGENT
-            (summary.content.single() as MessageContent.Text).content shouldContain "Started 1 case(s)"
+            (summary.content.single() as MessageContent.Text).content shouldBe "done"
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
         }
 
-        "payload from loopConfig is passed to the runner with the case context" {
+        "completed run with null lastStepOutput emits a fallback summary" {
+            val emitted =
+                agent(runner = runnerReturning(LoopRunOutcome.Completed(lastStepOutput = null)))
+                    .run(listOf(userMessage()))
+                    .toList()
+
+            emitted[1].shouldBeInstanceOf<MessageEvent>().let {
+                (it.content.single() as MessageContent.Text).content shouldContain "completed"
+            }
+        }
+
+        "config is passed to the runner" {
             val runner = runnerReturning(completed)
-            val user =
-                User(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    externalId = "ext-trigger",
-                    email = "t@example.com",
-                )
-            val payloadSlot = slot<AgentLoopPayload>()
+            val configSlot = slot<LoopConfig>()
+            coEvery { runner.run(capture(configSlot), any(), any()) } returns completed
+
+            agent(runner = runner).run(listOf(userMessage())).toList()
+
+            configSlot.captured.version shouldBe 1
+            configSlot.captured.steps.size shouldBe 2
+            configSlot.captured.steps[0].id shouldBe "search"
+            configSlot.captured.steps[1].id shouldBe "act"
+        }
+
+        "context carries namespaceId, caseId, agentName and emitEvent" {
+            val runner = runnerReturning(completed)
             val contextSlot = slot<LoopRunContext>()
+            coEvery { runner.run(any(), capture(contextSlot), any()) } returns completed
 
-            agent(runner = runner, name = "my-loop", triggerUser = user)
-                .run(listOf(userMessage()))
-                .toList()
+            agent(runner = runner, name = "my-loop").run(listOf(userMessage())).toList()
 
-            coVerify { runner.run(capture(payloadSlot), capture(contextSlot), any()) }
-            payloadSlot.captured.search.tool shouldBe "SearchTalents"
-            payloadSlot.captured.act shouldBe
-                AgentLoopAct(
-                    "ProfileCaretaker",
-                    "This talent has not completed their profile. As their manager, I need you to help me review and improve it.",
-                )
             contextSlot.captured.namespaceId shouldBe namespaceId
             contextSlot.captured.caseId shouldBe caseId
             contextSlot.captured.agentName shouldBe "my-loop"
-            contextSlot.captured.triggerUser shouldBe user
         }
 
         "unknown fields in loopConfig are ignored" {
@@ -165,22 +150,13 @@ class AgentLoopUnitSpec :
             val withExtraFields =
                 objectMapper.readTree(
                     """
-                    {"search": {"tool": "SearchTalents", "params": {}, "version": 0},
-                     "act": {"agentName": "ProfileCaretaker", "promptTemplate": "This talent has not completed their profile. As their manager, I need you to help me review and improve it.", "note": "x"}}
+                    {"version": 1, "steps": [{"id": "s1", "tool": "MyTool", "extra": "x"}], "note": "ignored"}
                     """.trimIndent(),
                 )
 
             agent(runner = runner, loopConfig = withExtraFields).run(listOf(userMessage())).toList()
 
-            coVerify(
-                exactly = 1,
-            ) {
-                runner.run(
-                    match { it.search.tool == "SearchTalents" && it.act.agentName == "ProfileCaretaker" },
-                    any(),
-                    any(),
-                )
-            }
+            coVerify(exactly = 1) { runner.run(match { it.steps.size == 1 }, any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -189,14 +165,29 @@ class AgentLoopUnitSpec :
 
         "aborted run emits a WarnEvent carrying the reason" {
             val emitted =
-                agent(runner = runnerReturning(LoopRunOutcome.Aborted("Search tool 'X' is not available")))
+                agent(runner = runnerReturning(LoopRunOutcome.Aborted("something went wrong")))
                     .run(listOf(userMessage()))
                     .toList()
 
             emitted shouldHaveSize 3
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
-            emitted.warnMessage() shouldContain "Search tool 'X' is not available"
+            emitted.warnMessage() shouldContain "something went wrong"
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+        }
+
+        // -------------------------------------------------------------------------
+        // Interrupted outcome
+        // -------------------------------------------------------------------------
+
+        "interrupted run emits only AgentRunningEvent and AgentFinishedEvent (no extra event)" {
+            val emitted =
+                agent(runner = runnerReturning(LoopRunOutcome.Interrupted))
+                    .run(listOf(userMessage()))
+                    .toList()
+
+            emitted shouldHaveSize 2
+            emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
+            emitted[1].shouldBeInstanceOf<AgentFinishedEvent>()
         }
 
         // -------------------------------------------------------------------------
@@ -216,16 +207,25 @@ class AgentLoopUnitSpec :
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
 
-        "invalid loopConfig emits a WarnEvent and does not call the runner" {
+        "loopConfig with version != 1 emits a WarnEvent" {
             val runner = runnerReturning(completed)
-            val invalid = objectMapper.readTree("""{"note": "not a payload"}""")
+            val badVersion = objectMapper.readTree("""{"version": 2, "steps": [{"id": "s1", "tool": "T"}]}""")
 
-            val emitted = agent(runner = runner, loopConfig = invalid).run(listOf(userMessage())).toList()
+            val emitted = agent(runner = runner, loopConfig = badVersion).run(listOf(userMessage())).toList()
 
-            emitted shouldHaveSize 3
-            emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             emitted[1].shouldBeInstanceOf<WarnEvent>()
-            emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
+            emitted.warnMessage() shouldContain "version"
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "loopConfig with empty steps emits a WarnEvent" {
+            val runner = runnerReturning(completed)
+            val noSteps = objectMapper.readTree("""{"version": 1, "steps": []}""")
+
+            val emitted = agent(runner = runner, loopConfig = noSteps).run(listOf(userMessage())).toList()
+
+            emitted[1].shouldBeInstanceOf<WarnEvent>()
+            emitted.warnMessage() shouldContain "step"
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
 
@@ -274,10 +274,10 @@ class AgentLoopUnitSpec :
             running.llmModel shouldBe null
         }
 
-        "llmProvider and llmModel are sentinel values signalling no LLM usage" {
+        "llmProvider and llmModel are null (no LLM usage)" {
             val loop = agent()
 
-            loop.llmProvider shouldBe AgentLoop.PROVIDER_NAME
-            loop.llmModel shouldBe AgentLoop.MODEL_NAME
+            loop.llmProvider shouldBe null
+            loop.llmModel shouldBe null
         }
     })
