@@ -76,7 +76,7 @@ class BashToolProvider : ToolPlugin {
                     "workingDirectory": {
                         "type": "string",
                         "title": "Working Directory",
-                        "description": "Absolute path to the base directory from which all commands run."
+                        "description": "Absolute path to the base directory from which all commands run. Write {{CASE_EXCHANGE}} to run in the current case's own directory, or {{NAMESPACE_EXCHANGE}} for the namespace shared one, which asks the user running the agent for Namespace WRITE. In a Git workspace the worktree is {{CASE_EXCHANGE}}/repo. A token this run cannot resolve removes this integration from the run."
                     },
                     "defaultTimeoutSeconds": {
                         "type": "integer",

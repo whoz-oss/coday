@@ -13,8 +13,8 @@ import java.util.UUID
  * resulting [ExchangeCapability].
  *
  * Consumed both by the REST layer ([ExchangeController] — the manifest's server-computed capability)
- * and by the agent tool-grant path ([io.whozoss.agentos.agent.AgentServiceImpl.buildExchangeTools] —
- * the namespace grant's READ gate and its `readOnly` flag), so the two never diverge: the rules are
+ * and by the agent tool-grant path ([io.whozoss.agentos.agent.AgentServiceImpl.resolveNamespaceScope]
+ * — the namespace grant's READ gate and its `readOnly` flag), so the two never diverge: the rules are
  * defined here once. Read == the entity's READ permission, write == the entity's WRITE permission
  * (Case/Namespace ADMIN, super-admin included), per the permission model.
  */

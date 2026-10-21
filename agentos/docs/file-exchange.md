@@ -140,8 +140,9 @@ and the user leaves the row on *Enabled*, the original list is written back unch
 silently widened to "all tools", and the restriction is surfaced as read-only text under the row (the
 form edits enablement, not the list).
 
-Per-run tools are built by `AgentServiceImpl.buildExchangeTools`, which keeps what only it knows (the
-run's `caseId`, the invoking user's Namespace `READ` and `WRITE` rights) and delegates the decision,
+Per-run tools are settled by `AgentServiceImpl.resolveCaseScope` and `resolveNamespaceScope`, then
+built by `grantExchangeTools`. Those keep what only they know (the run's `caseId`, the invoking
+user's Namespace `READ` and `WRITE` rights) and delegate the decision,
 the plugin configuration and the `ToolResolverService.isToolAllowed` filtering to
 `ExchangeToolGrantService`. The platform default is a decision local to that service and never a
 mutation of `AgentConfig.integrations`, which would otherwise leak into the persisted config, the
@@ -151,6 +152,118 @@ in turn round-trips the agent's own choice in both directions: a built-in key ma
 re-importing an agent keeps its exchange stance. Granted tool names follow `<configName>__<tool>`
 (for example `case-exchange__editFiles`).
 
+### Telling the two scopes apart
+
+An agent granted **both** scopes sees two sets of file tools whose names differ only by their prefix
+and whose descriptions, produced by the same file-plugin tool classes, are identical. Nothing else in
+the prompt says what a case or a namespace is, so the only thing arbitrating between them is the
+model's bias towards the first matching tool of its list — which is how files shared by a whole
+namespace get rewritten by a run that only meant to produce its own.
+
+`ExchangeScopeGuidance` closes that with two carriers:
+
+| Carrier | Where it lands | Why |
+|---|---|---|
+| `buildBlock` | a `## File scopes` block in the agent's instructions | the advanced intention prompt explicitly orders the model to reason from `<instructions>`, and prose can afford to say what a case and a namespace are |
+| `CASE_TOOL_GUIDANCE` / `NAMESPACE_TOOL_GUIDANCE` | appended to the description of `editFiles`, `moveFile` and `remove` | restates the decision where the choice is actually made |
+
+Both carriers are written **only when both scopes are granted**: one file surface cannot be confused
+with another, so a single-scope agent pays neither the tokens nor the risk of being told about a
+scope it does not have, and its write tools keep the file-plugin's own descriptions byte for byte
+— and with them the provider's cached prompt prefix, which a changed description would invalidate
+once. That is why both scopes are decided before either is granted. The block also follows the
+invoking user's rights: a namespace member without Namespace `WRITE` is told the namespace scope is
+read-only rather than offered it as a write target.
+
+Only the write tools carry the per-tool sentence. Providers cap a tool description (OpenAI rejects
+one past 1024 characters) and `readSpreadsheet`, `readDocument` and `readAsImage` are already close
+enough to that ceiling that appending to them would break a run on those providers; the read side is
+covered by the instructions block instead. The sentences are constants for the same reason the
+redirect guideline is sorted: tool definitions sit in the provider's cached prompt prefix, so a text
+varying per run would miss that cache on every turn.
+
+The service passes the sentence to the plugin as the `scopeGuidance` key of the plugin config, and
+writes the key only when it has one. Nothing about the key is specific to the exchange: it is part
+of the published FILE_ACCESS config schema, so an agent holding several ordinary file integrations
+can be told which is which the same way. The sentences below are the exchange's own use of it. The
+plugin reads the key only when it holds a string: an explicit JSON null, which is what a config form
+sends for a cleared optional field, would otherwise reach three descriptions as the text `null`.
+
+## Pointing an integration at an exchange
+
+An integration that runs commands or opens files names its directory as a fixed absolute path:
+`workingDirectory` for BASH and TMUX, `cwd` for MCP_STDIO, `rootPath` for a FILE_ACCESS. None of
+them has any notion of a case, so a command configured once runs in the same directory for every
+case of the namespace — which is how an agent ends up editing the files of its own case and building
+somewhere else entirely.
+
+Two tokens, resolved per run by `ExchangePathRunIntegration`, let an operator name an exchange
+instead of a path, anywhere in an integration's parameters:
+
+| Token | Resolves to | Available |
+|---|---|---|
+| `{{CASE_EXCHANGE}}` | the running case's exchange directory | only within a run (a definition preview has no case). No permission query when the run's own case owns the directory, and the owner's Case `WRITE` when it is a family's shared one, owned by another case |
+| `{{NAMESPACE_EXCHANGE}}` | the namespace's shared directory | only for a user who holds Namespace `WRITE` |
+
+```yaml
+# BASH, running the case's own checkout
+workingDirectory: "{{CASE_EXCHANGE}}/repo"
+```
+
+They are the upper-case spelling of the `case-exchange` / `namespace-exchange` tool prefixes on
+purpose: `{{CASE_EXCHANGE}}` designates exactly the directory the agent's own `case-exchange__*`
+tools are rooted at. They name the exchange root itself and say nothing about Git — in an equipped
+family the worktree is `repo/` underneath (see [git-workspaces.md](git-workspaces.md)), hence the
+`/repo` above. A token whose meaning changed with `agentos.git.workspaces.enabled` would be
+implicit in a way nothing else here is.
+
+Substitution is textual and positional, so a token also works mid-string (`cd
+{{CASE_EXCHANGE}}/repo && pnpm test`) and inside nested objects and arrays. Resolution is skipped
+entirely when no integration config of the namespace carries a token, since resolving the case one
+costs a read of the case and of its family binding. The granularity is the namespace, not the agent:
+a customizer is handed every effective config before anything is filtered by what the agent
+declares, so one token-carrying config makes every agent resolution of that namespace pay the scan
+of those parameters and one token resolution.
+
+Each token asks for a permission at least as strict as the agent's own file tools on the same
+directory, because a directory handed to a shell is a write surface. `{{CASE_EXCHANGE}}`: the run's
+own directory needs no gate, since the invoking user holds Case `WRITE` on that case to have reached
+this point, but a directory owned by *another* case — a family's shared workspace — additionally
+requires that user's permission on the owner, because delegation does not confer its rights.
+`{{NAMESPACE_EXCHANGE}}`: Namespace `WRITE`, which is stricter than the Namespace `READ` that gets
+the namespace file tools granted, since those tools are read-only without `WRITE` and a shell has no
+read-only mode.
+
+**A token that cannot be resolved removes its integration from the run** — no tool and no
+exception. The drop is logged at `warn` on a real run, naming the integration and the token, and the
+reason it could not be resolved at `debug`: this runs over every integration config of the
+namespace, and also where there is no run at all (a definition preview, an agent listing), so both
+would otherwise be noisy about an integration nobody asked for. Only the integration that carries
+the token is affected, every other one reaches the run untouched.
+
+A resolved token names a directory that exists: it is created if it does not yet, and a creation
+that fails drops the integration like any other unresolvable token.
+
+The alternative, substituting nothing and letting the plugin reading the parameter refuse it, is
+what this mechanism did at first, and it only works on BASH: `BashConfigParser` requires an absolute
+path, but TMUX passes the literal to `tmux new-session -c` and
+[discards the failure](../agentos-tmux-plugin/src/main/kotlin/io/whozoss/agentos/plugins/tmux/TmuxTool.kt),
+so the command lands in whatever session already holds that name; FILE_ACCESS turns the literal into
+a *relative* path and roots its tools under the service's working directory; MCP_STDIO puts it in
+its connection pool key. Each of those runs or writes somewhere nobody looks, and quietly. Deciding
+in the customizer costs no per-plugin knowledge, which is the whole reason this is a token rather
+than a rebinding of each plugin's own parameter names.
+
+A case whose workspace is still being prepared or has failed is one more unresolvable token, not an
+exception: the customizer sees every integration config of the namespace rather than the ones the
+agent declares, so raising from there would abort the resolution of every agent of that namespace,
+including one that references no integration at all.
+
+This shares the `{{TOKEN}}` spelling of `{{NAMESPACE_CONFIG_PATH}}`
+([plugin-system.md](plugin-system.md)) but not its lifecycle: that one is resolved once, when a
+filesystem YAML config is loaded, and only for those; these are resolved on every run, for configs
+of every origin.
+
 ## Safety
 
 - **Create-only writes**: written straight to the target with an atomic create-new open. A concurrent
@@ -158,12 +271,30 @@ re-importing an agent keeps its exchange stance. Granted tool names follow `<con
 - **Path containment**: the resolved path must stay within the scope root. Traversal (`../`) and
   symlink escapes are rejected.
 - **No phantom directories**: reads and deletes on a never-written scope return 404 without
-  materializing empty shard directories. The agent grant is the one exception — the file plugin
-  canonicalizes `rootPath` at construction, so granting a scope creates its directory. Turning
-  `case-enabled-by-default` on therefore materializes a case exchange directory for every case a
-  granted agent runs in; an agent that opts out with `[]` creates nothing.
+  materializing empty shard directories. The agent path is the exception, twice over. Granting a
+  scope creates its directory, because the file plugin canonicalizes `rootPath` at construction, so
+  turning `case-enabled-by-default` on materializes a case exchange directory for every case a
+  granted agent runs in. Resolving a token creates it too: `ProcessBuilder.directory` fails on a
+  missing directory, so an integration pointed at a case that has never been written would answer an
+  `IOException` on every command, and an agent can carry the token without holding the matching
+  scope. An agent that opts out with `[]` and carries no token creates nothing.
 - **Upload allow-list**: user uploads are restricted to a configurable set of file extensions
   (`agentos.exchange.allowed-upload-extensions`); a disallowed type is rejected with 400.
+- **`{{NAMESPACE_EXCHANGE}}` asks for Namespace `WRITE`, and what it hands over is unguarded**:
+  the rule is one query, Namespace `WRITE` on the run's namespace, and the integration is dropped
+  for anyone else. It is deliberately stricter than the `READ` that gets the namespace file tools
+  granted: those are read-only without `WRITE`, while a shell or an MCP server rooted at that
+  directory writes and has no read-only mode, so a plain member would otherwise reach through one
+  integration the write surface the file tools and the REST endpoints both refuse them. Past that
+  one check nothing else applies — the integration runs as the service user, the deny-list does not
+  cover it, and the per-tool allowlist says nothing about a shell command. The token adds no
+  capability, the namespace directory having one fixed path per namespace that the same integration
+  could always be handed verbatim, but it makes that path easy enough to write that it must stay a
+  deliberate choice.
+- **MCP_STDIO is reachable but unadvised**: `cwd` accepts the tokens like any other parameter, and
+  `McpConfigHash` includes `cwd` in the connection pool key, so one child process is spawned and
+  pooled per case with nothing bounding the count. Point an MCP server at a case directory only if
+  you have sized that.
 
 ## Related
 
