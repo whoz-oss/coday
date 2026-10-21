@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: >-
     Conversational Factory facade for agents of the FACTORY_WORKSTREAM integration. The bearer is a
-    Factory-issued JWT (optional when Factory runs in insecure mode). Factory resolves the single AgentOS
+    Factory-issued JWT (optional when Factory runs in local security mode, FACTORY_SECURITY_MODE=local). Factory resolves the single AgentOS
     namespace from the workstream registered for the caller's tenant; the model never chooses it. Other
     identifiers are references resolved inside that boundary. Human validations are answered in Factory only.
 servers:

@@ -10,8 +10,8 @@ factory:
     data-dir: build/openapi-neo4j-data/
   security:
     # Spec generation boots the real application and fetches /v3/api-docs, which
-    # needs no authentication; insecure mode keeps the profile self-contained.
-    insecure-mode: true
+    # needs no authentication; local mode keeps the profile self-contained.
+    mode: local
   outbox:
     # Spec generation must never schedule a background drain.
     drain-enabled: false

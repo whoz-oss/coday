@@ -6,20 +6,31 @@ configured by this document; it lists what you do yourself.**
 
 ## One credential for both
 
-Factory authenticates every `/api/**` call with one concept: `Authorization: Bearer <HS256 JWT>`, signed with
-`FACTORY_FAKE_IDP_SECRET` (`factory.security.fake-idp-secret`). The two integrations therefore need no dedicated
-token or server setting: the AgentOS Auth Setting of each simply holds a Factory JWT. There is no authorization on
-top: any authenticated user can use every route.
+Factory resolves the caller of every `/api/**` call according to its security mode, the same `FACTORY_SECURITY_MODE`
+variable (`local` by default, or `auth`) that AgentOS reads. In `auth` mode the credential is
+`Authorization: Bearer <HS256 JWT>`, signed with `FACTORY_FAKE_IDP_SECRET` (`factory.security.fake-idp-secret`). The
+two integrations therefore need no dedicated token or server setting: the AgentOS Auth Setting of each simply holds
+a Factory JWT. There is no authorization on top: any authenticated user can use every route.
 
 | Integration | Purpose | Credential | Attached to |
 |---|---|---|---|
 | `FACTORY_WORKER` | Worker submits one step result | a Factory JWT | Factory workers |
 | `FACTORY_WORKSTREAM` | Read workflows, start a workflow, request a retry | a Factory JWT | **Only the steering agents you choose** |
 
-**Insecure mode** (`FACTORY_INSECURE_MODE=true`) removes the need for a credential: a missing, expired or invalid
-bearer is treated as the fixed `insecure-mode-user`, never as a `401`, so an Auth Setting that still holds an old
-static token keeps working. A valid JWT still gives its own user. Never enable it on a shared deployment. With
-insecure mode off, a missing or invalid bearer is answered `401 UNAUTHENTICATED` before any controller runs.
+**Security modes** (`FACTORY_SECURITY_MODE`, default `local`):
+
+- **`local`**: no credential is needed. Every header and bearer is ignored, so an Auth Setting that still holds an old
+  static token keeps working, and the caller is always the OS user running Factory (never a `401`). A system account
+  (`root`, `daemon`, `www-data`, ...) is refused with `403 FORBIDDEN_SYSTEM_ACCOUNT`: start Factory under a personal
+  user. Meant for a single-user machine; Factory logs a warning when it is bound to a non-loopback address.
+- **`auth`**: the caller comes from, in order, a valid Factory JWT (the Auth Setting of these integrations),
+  `X-External-User-Id`, the `email` of `Cf-Access-Jwt-Assertion`, the `preferred_username` of any other bearer, or
+  `x-forwarded-email`. The last four are decoded, not signature-checked (as in AgentOS), so run Factory behind a proxy
+  that authenticates callers and strips these headers. Without any of them the answer is
+  `401 UNAUTHENTICATED`, before any controller runs.
+
+`FACTORY_INSECURE_MODE` / `factory.security.insecure-mode` no longer exist: if either is set, Factory refuses to
+start.
 
 Attaching an integration to an agent is explicit in the AgentOS UI. Creating `FACTORY_WORKSTREAM` makes it
 available; it does not add it to any agent.
@@ -91,8 +102,8 @@ allow-list):
 
 In the AgentOS UI:
 
-1. **Auth Setting**: new `BEARER_TOKEN` setting holding the Factory JWT (no `Bearer ` prefix). With insecure mode
-   on, it may be left empty or hold anything.
+1. **Auth Setting**: new `BEARER_TOKEN` setting holding the Factory JWT (no `Bearer ` prefix). In `auth` mode it is
+   what identifies the worker. In `local` mode it may be left empty or hold anything: the caller is the OS user.
 2. **Integration**: Name `FACTORY_WORKSTREAM` (exactly), Type `http api`, Auth Setting = the one above,
    Document URL = `http://127.0.0.1:8141/api/factory/openapi/factory-workstream.yaml`, inline document and
    spec file empty, Base URL `http://127.0.0.1:8141`, **Allow mutations** checked, every filter list empty
@@ -107,6 +118,7 @@ In the AgentOS UI:
 ```bash
 ./factory/gradlew -p factory :factory-service:test \
   --tests '*AuthenticationFilterTest' \
+  --tests '*SecurityModeBannerTest' \
   --tests '*WorkstreamServiceControllerHttpTest' \
   --tests '*AgentStepResultControllerHttpTest' \
   --tests '*FactoryOpenApiControllerHttpTest' \

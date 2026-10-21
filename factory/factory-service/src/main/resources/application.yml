@@ -58,14 +58,16 @@ factory:
     organization-id: ${FACTORY_ORGANIZATION_ID:default}
     workstream-id: ${FACTORY_WORKSTREAM_ID:default}
   security:
+    # Identity resolution mode, SHARED with AgentOS (same variable, same values):
+    #  - local (default): every caller is the OS user running Factory; headers and
+    #    bearers are ignored. Single-user machines only.
+    #  - auth: identity comes from a Factory JWT (Authorization: Bearer) or from the
+    #    headers of an authenticating proxy (X-External-User-Id, Cf-Access-Jwt-Assertion,
+    #    x-forwarded-email); no identity gives 401.
+    mode: ${FACTORY_SECURITY_MODE:local}
     # Secret the HS256 JWTs of the Factory users are signed with. Mint a token with
     # `./gradlew :factory-service:mintToken` (see factory/tools/FACTORY_WORKSTREAM_HTTP_API.md).
     fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
-    # WARNING: INSECURE. When true, authentication is disabled: any caller (local
-    # or remote) without a valid JWT, or with an invalid one, becomes the fixed
-    # `insecure-mode-user`, a full user of the default tenant. Never enable in a
-    # shared or production deployment. Default: false.
-    insecure-mode: ${FACTORY_INSECURE_MODE:false}
   runs:
     dir: ${FACTORY_RUNS_DIR:factory/runs}
     agentos-url: ${AGENTOS_URL:http://localhost:8080}

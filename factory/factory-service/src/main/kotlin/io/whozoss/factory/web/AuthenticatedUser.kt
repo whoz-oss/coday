@@ -5,9 +5,9 @@ import io.whozoss.factory.persistence.TenantScope
 /**
  * The one identity type of the Factory HTTP boundary.
  *
- * It exists only for a request that [AuthenticationFilter] admitted: either the
- * holder of a valid HS256 JWT, or the fixed insecure-mode user when
- * `factory.security.insecure-mode` is enabled. There is no role, scope or
+ * It exists only for a request that [AuthenticationFilter] admitted: the OS user in
+ * `local` security mode, or the user a Factory JWT / proxy header identifies in `auth`
+ * mode (`factory.security.mode`). There is no role, scope or
  * principal type: every authenticated user can do everything.
  *
  * [scope] is the tenant (organization + workstream) the user belongs to, resolved

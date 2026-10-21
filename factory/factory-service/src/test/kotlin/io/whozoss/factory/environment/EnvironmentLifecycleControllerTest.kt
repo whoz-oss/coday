@@ -21,7 +21,7 @@ import org.springframework.http.ResponseEntity
  * Exercises `/api/factory/workflows/{workflowId}/environment` (GET, provision,
  * reconcile, release), asserting the canonical `{ "data": ... }` success
  * envelope and the `{ "error": { code, ... } }` failure envelope of the Node
- * control plane. The caller is the insecure-mode user; the namespace and parent
+ * control plane. The caller is the fixed local test user; the namespace and parent
  * case of a provision are body fields.
  */
 class EnvironmentLifecycleControllerTest : Neo4jDomainIntegrationTest() {

@@ -7,13 +7,17 @@ import io.whozoss.factory.oracle.publisher.OracleArtifactPublisher
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.persistence.neo4j.EmbeddedNeo4jTestConfiguration
 import io.whozoss.factory.persistence.neo4j.Neo4jTestSupport
+import io.whozoss.factory.web.security.IdentityResolver
+import io.whozoss.factory.web.security.LocalIdentityResolver
 import org.junit.jupiter.api.BeforeEach
 import org.neo4j.driver.Driver
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import org.springframework.test.context.ActiveProfiles
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
@@ -48,6 +52,13 @@ abstract class Neo4jIntegrationTest {
     }
 
     companion object {
+        /**
+         * The caller of every integration test running in `local` security mode. Fixed, so the
+         * tests never depend on the machine's OS user (a CI container may run as root, which
+         * `local` mode refuses).
+         */
+        const val TEST_USER_ID = "factory-test-user"
+
         /** Fake IdP secret shared by every integration test. */
         private const val SHARED_FAKE_IDP_SECRET = "artifact-admin-test-secret"
 
@@ -98,6 +109,16 @@ abstract class Neo4jIntegrationTest {
  */
 @TestConfiguration
 class SharedNeo4jIntegrationTestConfiguration {
+
+    /**
+     * Replaces the OS-username resolver of `local` mode with a fixed user. Absent when a test
+     * class selects `auth` (`factory.security.mode=auth`): it then gets the real resolver.
+     */
+    @Bean
+    @Primary
+    @ConditionalOnProperty(name = ["factory.security.mode"], havingValue = "local", matchIfMissing = true)
+    fun fixedLocalIdentityResolver(): IdentityResolver =
+        LocalIdentityResolver { Neo4jIntegrationTest.TEST_USER_ID }
 
     @Bean
     fun oracleArtifactPublisher(

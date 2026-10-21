@@ -8,7 +8,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * Mirrors the environment variables the Node Factory reads:
  *   - `FACTORY_BIND_HOST` / `FACTORY_UNSAFE_ALLOW_REMOTE_BIND`
  *   - `FACTORY_ORGANIZATION_ID` / `FACTORY_WORKSTREAM_ID`
- *   - `FACTORY_FAKE_IDP_SECRET` / `FACTORY_INSECURE_MODE`
+ *   - `FACTORY_FAKE_IDP_SECRET` / `FACTORY_SECURITY_MODE`
  */
 @ConfigurationProperties(prefix = "factory")
 data class FactoryProperties(
@@ -30,12 +30,11 @@ data class FactoryProperties(
         /** Secret the HS256 JWTs of the Factory users are signed with. */
         val fakeIdpSecret: String = "coday-fake-idp-dev-secret",
         /**
-         * INSECURE opt-in (`FACTORY_INSECURE_MODE`). Disables authentication
-         * entirely: every caller without a valid JWT, from ANY network address,
-         * becomes the fixed `insecure-mode-user`, and an invalid token is treated
-         * like a missing one. A valid JWT still gives its own user. Must never be
-         * enabled in a shared or production deployment.
+         * Identity resolution mode (`FACTORY_SECURITY_MODE`, the same variable as AgentOS).
+         * [SecurityMode.LOCAL] (default): every caller is the OS user running Factory.
+         * [SecurityMode.AUTH]: identity is read from a Factory JWT or the upstream proxy headers.
+         * See `io.whozoss.factory.web.security`.
          */
-        val insecureMode: Boolean = false,
+        val mode: SecurityMode = SecurityMode.LOCAL,
     )
 }

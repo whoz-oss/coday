@@ -12,7 +12,7 @@ paths:
       description: >-
         Submit only after completing the current Factory step. Use the Factory-issued
         attemptId and Idempotency-Key from the execution brief. Neither value is a secret.
-        The bearer is a Factory-issued JWT (optional when Factory runs in insecure mode).
+        The bearer is a Factory-issued JWT (optional when Factory runs in local security mode, FACTORY_SECURITY_MODE=local).
         The workflow, step and namespace are resolved by Factory from the attempt.
       parameters:
         - name: Idempotency-Key
@@ -71,7 +71,7 @@ paths:
         '400':
           description: Invalid schema or inconsistent attempt data
         '401':
-          description: Missing or invalid bearer (never returned in insecure mode)
+          description: Missing or invalid credential in auth security mode (never returned in local mode)
         '404':
           description: No such attempt
         '409':
