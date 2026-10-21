@@ -94,7 +94,10 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
         { provide: AGENTOS_BASE_URL, useValue: '' },
         {
           provide: ActivatedRoute,
-          useValue: { paramMap: of(new Map([['runId', runId]])) },
+          useValue: {
+            paramMap: of(new Map([['runId', runId]])),
+            queryParamMap: of(new Map<string, string>()),
+          },
         },
         {
           provide: ShellState,
@@ -193,23 +196,28 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
 
   it('switches scoped store selection from route A to B and clears on destroy', () => {
     const routeIds = new BehaviorSubject(new Map([['runId', 'wf-a']]))
+    const routeQuery = new BehaviorSubject(new Map([['namespaceId', 'ns-a']]))
     const store = makeStore([], undefined)
     TestBed.configureTestingModule({
       providers: [
         { provide: FactoryStore, useValue: store },
         { provide: AGENTOS_BASE_URL, useValue: '' },
-        { provide: ActivatedRoute, useValue: { paramMap: routeIds.asObservable() } },
+        {
+          provide: ActivatedRoute,
+          useValue: { paramMap: routeIds.asObservable(), queryParamMap: routeQuery.asObservable() },
+        },
         { provide: ShellState, useValue: { crumbs: signal([]) } },
       ],
     })
     const fixture = TestBed.createComponent(SessionPageComponent)
     fixture.componentRef.setInput('runId', '')
     fixture.detectChanges()
-    expect(store.selectSession).toHaveBeenLastCalledWith('wf-a')
+    expect(store.selectSession).toHaveBeenLastCalledWith('wf-a', 'ns-a')
 
     routeIds.next(new Map([['runId', 'wf-b']]))
+    routeQuery.next(new Map([['namespaceId', 'ns-b']]))
     fixture.detectChanges()
-    expect(store.selectSession).toHaveBeenLastCalledWith('wf-b')
+    expect(store.selectSession).toHaveBeenLastCalledWith('wf-b', 'ns-b')
 
     fixture.destroy()
     expect(store.clearSessionSelection).toHaveBeenCalledWith('wf-b')

@@ -132,7 +132,7 @@ describe('LaunchPageComponent namespace launch', () => {
       initialRequest: 'Build',
       parameters: { ticket: 'ABC-1' },
     })
-    expect(navigate).toHaveBeenCalledWith(['/sessions', 'generated-id'])
+    expect(navigate).toHaveBeenCalledWith(['/sessions', 'generated-id'], { queryParams: { namespaceId: NS2 } })
   })
 
   it('surfaces Factory rejection and does not navigate', async () => {

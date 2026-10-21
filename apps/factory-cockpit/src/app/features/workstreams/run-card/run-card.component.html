@@ -11,7 +11,7 @@
   <!-- Header: title, status, workflow type -->
   <header class="head">
     <h3 class="name">
-      <a [routerLink]="['/sessions', r.id]">{{ r.title }}</a>
+      <a [routerLink]="['/sessions', r.id]" [queryParams]="{ namespaceId: r.namespaceId }">{{ r.title }}</a>
     </h3>
 
     @if (r.status === 'destroyed') {
@@ -59,7 +59,9 @@
       >
     }
     <span class="sf-spacer"></span>
-    <a class="service-link" [routerLink]="['/sessions', r.id]"><span class="dot"></span>Factory trace</a>
+    <a class="service-link" [routerLink]="['/sessions', r.id]" [queryParams]="{ namespaceId: r.namespaceId }"
+      ><span class="dot"></span>Factory trace</a
+    >
   </div>
 
   <!-- Creation date -->
