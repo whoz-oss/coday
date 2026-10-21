@@ -7,6 +7,7 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -21,7 +22,7 @@ class CaseToolPluginUnitSpec :
         val starterService = mockk<CaseStarterService>()
         val mapper = jacksonObjectMapper()
 
-        fun plugin(loader: (UUID, UUID, UUID?) -> List<CaseEvent>? = noopLoader) = CaseToolPlugin(loader, starterService)
+        fun plugin(loader: (UUID, UUID, UUID?) -> List<CaseEvent>? = noopLoader) = CaseToolPlugin(loader, starterService, LimitsConfigProperties())
 
         /** Anonymous context: no user, no case events. What a ReadCase caller without identity looks like. */
         fun context() =
