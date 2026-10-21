@@ -1,3 +1,13 @@
+## 3.39.0 (2026-10-21)
+
+### 🚀 Features
+
+- **agentos-service:** #WZ-35441 FreeCaseStarter Tool ([#1450](https://github.com/whoz-oss/coday/pull/1450))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.38.1 (2026-10-20)
 
 ### 🩹 Fixes
