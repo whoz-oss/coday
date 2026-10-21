@@ -216,7 +216,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
 
         "explicit sp.loopConfig is used verbatim and synthesizer is NOT called" {
             val explicitConfig = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
-                .readTree("""{"version":1,"steps":[]}""")!
+                .readTree("""{"version":1,"steps":[]}""")!!
             val sp = makeScheduledPrompt(loopConfig = explicitConfig)
             val run = makeRun(sp)
             val runRepo = InMemoryScheduledPromptRunRepository().also { it.insert(run) }
@@ -272,7 +272,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 every { it.findActiveRuntime(caseId) } returns makeIdleRuntime()
             }
             val synthesizedConfig = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
-                .readTree("""{"version":1,"steps":[{"id":"synthesized"}]}""")!
+                .readTree("""{"version":1,"steps":[{"id":"synthesized"}]}""")!!
             val synthesizer = mockk<ScheduledPromptLoopConfigSynthesizer>().also {
                 every { it.synthesize(any(), any(), any(), any(), any()) } returns synthesizedConfig
             }
