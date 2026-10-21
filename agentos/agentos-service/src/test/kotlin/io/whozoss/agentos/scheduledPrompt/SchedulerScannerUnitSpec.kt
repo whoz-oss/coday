@@ -12,7 +12,6 @@ import io.mockk.verify
 import io.whozoss.agentos.agentConfig.AgentConfig
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.api.scheduledPrompt.SchedulerEndType
@@ -86,7 +85,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
             caseService = mockk(relaxed = true),
             permissionService = mockk(relaxed = true),
             userService = mockk(relaxed = true),
-            userSessionContextResolver = UserSessionContextResolver(),
             properties = scannerProperties,
             clock = clock,
         )
@@ -95,6 +93,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
             runRepository = runRepo,
             userRunRepository = userRunRepo,
             agentConfigService = agentConfigService,
+            userService = mockk(relaxed = true),
+            permissionService = mockk(relaxed = true),
             properties = scannerProperties,
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -125,7 +125,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
             caseService = mockk(relaxed = true),
             permissionService = mockk(relaxed = true),
             userService = mockk(relaxed = true),
-            userSessionContextResolver = UserSessionContextResolver(),
             properties = properties,
             clock = clock,
         )
@@ -134,6 +133,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
             runRepository = runRepo,
             userRunRepository = userRunRepo,
             agentConfigService = agentConfigService,
+            userService = mockk(relaxed = true),
+            permissionService = mockk(relaxed = true),
             properties = properties,
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -838,7 +839,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
-                userSessionContextResolver = UserSessionContextResolver(),
                 properties = properties,
                 clock = clock,
             )
@@ -847,6 +847,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 runRepository = throwingRunRepo,
                 userRunRepository = userRunRepo,
                 agentConfigService = defaultAgentConfigService(),
+                userService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
                 properties = properties,
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -922,7 +924,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
-                userSessionContextResolver = UserSessionContextResolver(),
                 properties = badProperties,
                 clock = clock,
             )
@@ -931,6 +932,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
                 agentConfigService = defaultAgentConfigService(),
+                userService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
                 properties = badProperties,
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -992,7 +995,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 caseService = mockk(relaxed = true),
                 permissionService = mockk(relaxed = true),
                 userService = mockk(relaxed = true),
-                userSessionContextResolver = UserSessionContextResolver(),
                 properties = goodProperties,
                 clock = clock,
             )
@@ -1001,6 +1003,8 @@ class SchedulerScannerUnitSpec : StringSpec() {
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
                 agentConfigService = defaultAgentConfigService(),
+                userService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
                 properties = goodProperties,
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -1091,58 +1095,6 @@ class SchedulerScannerUnitSpec : StringSpec() {
             runRepo.all() shouldHaveSize 1
         }
 
-        // -------------------------------------------------------------------------
-        // Watchdog
-        // -------------------------------------------------------------------------
-
-        "tickWatchdog: executor running → no restart" {
-            // Build a scanner with a mocked executor that reports isRunning() = true
-            val scheduledPromptRepo = makeScheduledPromptRepo()
-            val runRepo = makeRunRepo()
-            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
-            val mockExecutor = mockk<ScheduledPromptExecutor>(relaxed = true).also {
-                every { it.isRunning() } returns true
-            }
-            val sc = SchedulerScanner(
-                scheduledPromptRepository = scheduledPromptRepo,
-                runRepository = runRepo,
-                userRunRepository = userRunRepo,
-                agentConfigService = defaultAgentConfigService(),
-                properties = properties,
-                clock = clock,
-                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
-                executor = mockExecutor,
-                executionWindowService = ExecutionWindowService(properties),
-            )
-
-            sc.tickWatchdog()
-
-            verify(exactly = 0) { mockExecutor.restart() }
-        }
-
-        "tickWatchdog: executor dead → restart called" {
-            // Build a scanner with a mocked executor that reports isRunning() = false
-            val scheduledPromptRepo = makeScheduledPromptRepo()
-            val runRepo = makeRunRepo()
-            val userRunRepo = InMemoryScheduledPromptUserRunRepository()
-            val mockExecutor = mockk<ScheduledPromptExecutor>(relaxed = true).also {
-                every { it.isRunning() } returns false
-            }
-            val sc = SchedulerScanner(
-                scheduledPromptRepository = scheduledPromptRepo,
-                runRepository = runRepo,
-                userRunRepository = userRunRepo,
-                agentConfigService = defaultAgentConfigService(),
-                properties = properties,
-                clock = clock,
-                nextRunCalculatorService = NextRunCalculatorService(clock = clock),
-                executor = mockExecutor,
-                executionWindowService = ExecutionWindowService(properties),
-            )
-
-            sc.tickWatchdog()
-
-            verify(exactly = 1) { mockExecutor.restart() }
-        }
+        // (tickWatchdog removed: executor.isRunning() / restart() no longer exist on the converged path)
     }
 }
