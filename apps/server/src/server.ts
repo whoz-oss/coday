@@ -35,17 +35,10 @@ import { ProjectFileRepository } from '@coday/repository'
 import { McpInstancePool } from '@coday/mcp'
 import { resolveUsername } from './lib/resolve-username'
 import { applyProxyIdentity, decideProxyIdentity } from './lib/proxy-identity'
-import { checkAgentosJars } from './lib/agentos-lifecycle'
 import { getAgentosVersion, getFactoryVersion } from './lib/version'
 import { downloadAgentosJars } from './lib/agentos-download'
 import { startAgentos, AgentosProcess } from './lib/agentos-runtime'
-import {
-  checkAndSwapNextFactory,
-  downloadFactoryJars,
-  downloadFactoryJarsToNext,
-  findInstalledFactoryVersion,
-  findMissingFactoryJars,
-} from './lib/factory-download'
+import { downloadFactoryJars } from './lib/factory-download'
 import { startFactory, FactoryProcess } from './lib/factory-runtime'
 import { validateAgentOsUrl } from './lib/validate-agentos-url'
 import { createAgentOsProxy } from './lib/agentos-proxy'
@@ -532,8 +525,8 @@ let cleanupService: ThreadCleanupService | null = null
  * Single entry point called after app.listen() to provision and start AgentOS.
  *
  * In EXTERNAL mode (AGENTOS_URL defined): logs and returns immediately.
- * In MANAGED mode: checks JAR inventory → downloads the requested version if any JAR is
- * missing or at another version (never starts an older cached version) → starts the process.
+ * In MANAGED mode: downloads the requested version unless its JAR set (derived from the
+ * release manifest) is already complete — never starts an older cached version → starts the process.
  *
  * Never throws — any error is logged and the function returns gracefully.
  * The Express server stays up regardless of AgentOS provisioning outcome.
@@ -551,13 +544,11 @@ async function provisionAgentos(expressPort: number): Promise<void> {
   try {
     const agentosVersion = getAgentosVersion()
 
-    // --- 1. Check JAR inventory against the requested version ---
-    const jarStatus = checkAgentosJars(codayOptions.configDir, agentosVersion)
-
-    // --- 2. Download the requested version when any JAR is missing or at another version ---
-    // The requested version always wins over what is cached on disk: no older version is
-    // started in the meantime, and every other version is removed after the download.
-    const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion, jarStatus.missing)
+    // --- 1. Download the requested version unless its JAR set is already complete ---
+    // The set of JARs comes from the release manifest, nothing is listed by hand. The requested
+    // version always wins over what is cached on disk: no older version is started in the
+    // meantime, and every other version is removed after the download.
+    const downloadResult = await downloadAgentosJars(codayOptions.configDir, agentosVersion)
     debugLog('AGENTOS', `[PROVISION] Download outcome: ${downloadResult.outcome} — ${downloadResult.message}`)
 
     if (
@@ -569,7 +560,7 @@ async function provisionAgentos(expressPort: number): Promise<void> {
       return
     }
 
-    // --- 3. Start the requested version ---
+    // --- 2. Start the requested version ---
     debugLog('AGENTOS', '[PROVISION] Starting AgentOS process...')
     agentosProcess = await startAgentos(codayOptions.configDir, agentosVersion, expressPort)
 
@@ -600,9 +591,8 @@ async function provisionAgentos(expressPort: number): Promise<void> {
  * `currentAgentosUrl` is the final AgentOS URL.
  *
  * EXTERNAL mode (FACTORY_URL defined): returns immediately.
- * MANAGED mode, same upgrade flow as AgentOS: promote a complete next/ → start the target
- * version if present, else start the older installed set and pre-fetch the target into
- * next/ in the background, else (nothing installed) download blocking → spawn.
+ * MANAGED mode, same flow as AgentOS: download the requested version (blocking) unless its
+ * JAR set is already complete, never starting an older cached version → spawn.
  * With the 'dev' version sentinel nothing is downloaded: the Factory only starts if
  * its JARs were placed by hand in <configDir>/factory/.
  *
@@ -618,48 +608,22 @@ async function provisionFactory(): Promise<void> {
   try {
     const factoryVersion = getFactoryVersion()
 
-    // --- 1. Apply pending update from next/ (swap before inventory check) ---
-    const swapResult = checkAndSwapNextFactory(codayOptions.configDir, factoryVersion)
-    if (swapResult.outcome === 'swapped') {
-      debugLog('FACTORY', `[PROVISION] Swap applied: ${swapResult.message}`)
-    }
-
-    // --- 2. Pick the version to start ---
-    let versionToStart = factoryVersion
-    let prefetchTarget = false
-    if (findMissingFactoryJars(codayOptions.configDir, factoryVersion).length > 0) {
-      const installedVersion = findInstalledFactoryVersion(codayOptions.configDir)
-
-      if (installedVersion !== null) {
-        // A coherent older set is on disk: start it now, pre-fetch the target for next startup.
-        debugLog(
-          'FACTORY',
-          `[PROVISION] Installed version ${installedVersion} differs from target ${factoryVersion} — starting installed, pre-fetching target in background`
-        )
-        versionToStart = installedVersion
-        prefetchTarget = true
-      } else {
-        // Nothing usable installed (first run): blocking download.
-        const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
-        debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
-        if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
-          debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
-          return
-        }
-      }
-    }
-
-    factoryProcess = await startFactory(codayOptions.configDir, versionToStart, currentAgentosUrl)
-    if (!factoryProcess) {
-      debugLog('FACTORY', '[PROVISION] Factory did not start. The proxy will return errors until it is available.')
+    // --- 1. Download the requested version unless its JAR set is already complete ---
+    // The set of JARs comes from the release manifest, nothing is listed by hand. The requested
+    // version always wins over what is cached on disk: no older version is started in the
+    // meantime, and every other version is removed after the download.
+    const result = await downloadFactoryJars(codayOptions.configDir, factoryVersion)
+    debugLog('FACTORY', `[PROVISION] Download outcome: ${result.outcome} — ${result.message}`)
+    if (result.outcome !== 'success' && result.outcome !== 'skipped:all-present') {
+      debugLog('FACTORY', '[PROVISION] Factory will not be started. The proxy will return errors.')
       return
     }
 
-    // --- 3. Pre-fetch the target version into next/ (only once the current one is running) ---
-    if (prefetchTarget) {
-      downloadFactoryJarsToNext(codayOptions.configDir, factoryVersion).catch((err) =>
-        debugLog('FACTORY', '[UPDATE] Unhandled error in background pre-fetch:', err)
-      )
+    // --- 2. Start the requested version ---
+    factoryProcess = await startFactory(codayOptions.configDir, factoryVersion, currentAgentosUrl)
+    if (!factoryProcess) {
+      debugLog('FACTORY', '[PROVISION] Factory did not start. The proxy will return errors until it is available.')
+      return
     }
 
     currentFactoryUrl = `http://localhost:${factoryProcess.port}`
