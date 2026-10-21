@@ -2665,14 +2665,13 @@ class CaseServiceImplSpec :
         listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminalStatus ->
             "reopenCase transitions a $terminalStatus case back to IDLE and persists a CaseStatusEvent" {
                 val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
-                val service = buildService(caseEventService = caseEventService)
+                val caseRepository = InMemoryCaseRepository()
+                val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
                 val case = service.create(Case(namespaceId = namespaceId))
-                // Force terminal status directly via repository so we skip the kill machinery
-                service.killCase(case.id)
-                if (terminalStatus == CaseStatus.ERROR) {
-                    service.update(case.copy(status = CaseStatus.ERROR))
-                }
-                service.getById(case.id).status shouldBe (if (terminalStatus == CaseStatus.ERROR) CaseStatus.ERROR else CaseStatus.KILLED)
+                // Drive to the target terminal status via the repository directly so the
+                // test does not depend on the kill machinery or any other service path.
+                caseRepository.save(caseRepository.findByIds(listOf(case.id)).single().copy(status = terminalStatus))
+                service.getById(case.id).status shouldBe terminalStatus
 
                 val reopened = service.reopenCase(case.id)
 
@@ -2743,7 +2742,6 @@ class CaseServiceImplSpec :
             service.getById(case.id).status shouldBe CaseStatus.KILLED
         }
 
-        // -------------------------------------------------------------------------
         "killing a parent case also kills its active sub-cases" {
             // Verifies that killCase propagates depth-first to sub-cases created by
             // delegation. The parent is killed; both sub-cases must reach KILLED status

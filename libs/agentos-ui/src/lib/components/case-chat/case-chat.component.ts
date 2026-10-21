@@ -45,7 +45,13 @@ import {
   WarnEvent,
 } from '@whoz-oss/agentos-api-client'
 import { AgentConfig, Prompt } from '@whoz-oss/agentos-api-client'
-import { BlueprintDirective, CopyButtonComponent, DrawerComponent, IconButtonComponent } from '@whoz-oss/design-system'
+import {
+  BlueprintDirective,
+  ConfirmDialogComponent,
+  CopyButtonComponent,
+  DrawerComponent,
+  IconButtonComponent,
+} from '@whoz-oss/design-system'
 import { CaseStatusGlyphComponent } from '../case-status-glyph/case-status-glyph.component'
 import { CaseStateService } from '../../services/case-state.service'
 import { OAuthAgentosService } from '../../services/oauth-agentos.service'
@@ -148,6 +154,7 @@ function hasActiveSelection(): boolean {
     ComposerAttachmentsComponent,
     QuestionPanelComponent,
     DelegationCardComponent,
+    ConfirmDialogComponent,
   ],
   providers: [ComposerAttachmentsService, ComposerAutocompleteService],
   templateUrl: './case-chat.component.html',
@@ -266,6 +273,9 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** Whether the delete confirmation inline is showing. */
   protected readonly confirmingDelete = signal(false)
+
+  /** Whether the kill confirmation dialog is showing. */
+  protected readonly confirmingKill = signal(false)
 
   /** Which panel is active in the right drawer: files exchange or case members. */
   protected readonly drawerPanel = signal<'files' | 'members'>('files')
@@ -1061,6 +1071,24 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/interrupt`, {}).subscribe({
       // Server transitions to IDLE; SSE stays open. We'll update isRunning on CaseStatusEvent.
       error: (err) => console.error('[CaseChat] Failed to interrupt case', err),
+    })
+  }
+
+  protected kill(): void {
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/kill`, {}).subscribe({
+      // Server transitions to KILLED; SSE handler will close the EventSource on CaseStatusEvent.
+      error: (err) => console.error('[CaseChat] Failed to kill case', err),
+    })
+    this.confirmingKill.set(false)
+  }
+
+  protected reopen(): void {
+    this.http.post(`${this.config.basePath}/api/cases/${this.caseId}/reopen`, {}).subscribe({
+      next: () => {
+        this.caseState.updateCaseStatus(this.caseId, 'IDLE')
+        this.reinitialise()
+      },
+      error: (err) => console.error('[CaseChat] Failed to reopen case', err),
     })
   }
 
