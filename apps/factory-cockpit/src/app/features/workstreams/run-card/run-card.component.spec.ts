@@ -99,6 +99,15 @@ describe('RunCardComponent', () => {
     expect(host.textContent).toContain('$1.5000')
   })
 
+  it('preserves the namespace in session navigation links', async () => {
+    await setup()
+    const host = render()
+    const links = Array.from(host.querySelectorAll<HTMLAnchorElement>('a[href^="/sessions/wf-1"]'))
+
+    expect(links).toHaveLength(2)
+    expect(links.every((link) => link.getAttribute('href') === '/sessions/wf-1?namespaceId=ns-uuid-1')).toBe(true)
+  })
+
   it('exposes an aria-label on the run card', async () => {
     await setup()
     const host = render()

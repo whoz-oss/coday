@@ -195,6 +195,7 @@ export class FactoryStore {
   private detailRequest: Subscription | null = null
   private detailRefreshPending = false
   private selectedWorkflowId: string | null = null
+  private selectedNamespaceId: string | null = null
   /** One coalesced enrichment request per overview run; avoids duplicate N+1 bursts. */
   private readonly overviewEnrichmentRequests = new Map<string, Subscription>()
   private readonly overviewEnrichmentPending = new Set<string>()
@@ -232,17 +233,25 @@ export class FactoryStore {
   }
 
   /** Select the only workflow whose expensive detail endpoints may be loaded. */
-  selectSession(workflowId: string): void {
+  selectSession(workflowId: string, namespaceId?: string): void {
     const id = workflowId.trim()
+    const namespace = namespaceId?.trim() || null
     if (!id) {
       this.clearSessionSelection()
       return
     }
     if (id === this.selectedWorkflowId) {
+      if (namespace && namespace !== this.selectedNamespaceId) {
+        this.selectedNamespaceId = namespace
+        this.cancelDetailRequest()
+        this.startDetailRequest(id)
+        return
+      }
       this.queueDetailRefresh(id)
       return
     }
     this.selectedWorkflowId = id
+    this.selectedNamespaceId = namespace
     this.cancelDetailRequest()
     this.startDetailRequest(id)
   }
@@ -251,6 +260,7 @@ export class FactoryStore {
   clearSessionSelection(workflowId?: string): void {
     if (workflowId && workflowId !== this.selectedWorkflowId) return
     this.selectedWorkflowId = null
+    this.selectedNamespaceId = null
     this.cancelDetailRequest()
   }
 
@@ -285,7 +295,7 @@ export class FactoryStore {
     return forkJoin({
       active: this.api.getWorkflows('active').pipe(catchError(() => of([] as unknown[]))),
       removed: this.api.getWorkflows('removed').pipe(catchError(() => of([] as unknown[]))),
-      namespaces: this.api.getNamespaces(),
+      namespaces: this.api.getNamespaces().pipe(catchError(() => of([] as NamespaceItem[]))),
     }).pipe(
       tap(({ active, removed, namespaces }) => {
         this.applyNamespaces(namespaces)
@@ -432,8 +442,15 @@ export class FactoryStore {
       return
     }
     const snapshot = this.workflowSnapshot(workflowId)
+    const namespaceId = snapshot ? namespaceOf(snapshot) : this.selectedNamespaceId
+    // A copied legacy URL may not carry namespaceId. In that case wait for the
+    // authorized overview to resolve the workflow; never issue an unscoped detail GET.
+    if (!snapshot && !namespaceId) return
     let request: Subscription | null = null
-    request = (snapshot ? this.enrichSession(snapshot) : this.loadSelectedWorkflow(workflowId))
+    const detailLoad = snapshot
+      ? this.enrichSession(snapshot)
+      : this.loadSelectedWorkflow(workflowId, namespaceId as string)
+    request = detailLoad
       .pipe(
         finalize(() => {
           if (this.detailRequest !== request) return
@@ -462,8 +479,8 @@ export class FactoryStore {
     else this.queueOverviewEnrichment(workflowId)
   }
 
-  private loadSelectedWorkflow(workflowId: string): Observable<void> {
-    return this.api.getWorkflow(workflowId).pipe(
+  private loadSelectedWorkflow(workflowId: string, namespaceId: string): Observable<void> {
+    return this.api.getWorkflow(workflowId, namespaceId).pipe(
       switchMap((snapshot) => {
         if (workflowIdOf(snapshot) !== workflowId) return of(undefined)
         const current = this.workflows()

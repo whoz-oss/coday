@@ -199,8 +199,8 @@ export class FactoryApiService {
     )
   }
 
-  /** GET `/api/factory/workflows/:id[?namespaceId=…]`. */
-  getWorkflow(workflowId: string, namespaceId?: string): Observable<unknown> {
+  /** GET `/api/factory/workflows/:id?namespaceId=…`. Workflow detail reads are always namespace-scoped. */
+  getWorkflow(workflowId: string, namespaceId: string): Observable<unknown> {
     return this.request<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, {}, namespaceId)
   }
 

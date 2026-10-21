@@ -38,13 +38,13 @@ describe('FactoryApiService', () => {
     expect(result).toEqual([{ workflowId: 'wf-removed' }])
   })
 
-  it('always sends an X-Correlation-Id header', () => {
-    service.getWorkflow('wf-1').subscribe()
+  it('always scopes workflow detail reads by namespace', () => {
+    service.getWorkflow('wf-1', '  ns-1  ').subscribe()
 
     const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-1')
     expect(request.request.headers.get('X-Correlation-Id')).toBeTruthy()
-    expect(request.request.headers.has('X-Namespace-Id')).toBe(false)
-    expect(request.request.params.has('namespaceId')).toBe(false)
+    expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-1')
+    expect(request.request.params.get('namespaceId')).toBe('ns-1')
     request.flush({ data: { workflowId: 'wf-1' } })
   })
 

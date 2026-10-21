@@ -492,6 +492,24 @@ describe('FactoryStore', () => {
     expect(store.workstreams()[0]?.title).toBe('ns-unknown')
   })
 
+  it('scopes a deep-linked workflow detail GET with the route namespace', () => {
+    store.selectSession('wf-deep', 'ns-deep')
+
+    const request = http.expectOne((r) => r.url === '/api/factory/workflows/wf-deep')
+    expect(request.request.params.get('namespaceId')).toBe('ns-deep')
+    expect(request.request.headers.get('X-Namespace-Id')).toBe('ns-deep')
+    request.flush({ data: snapshotFor('wf-deep', 'ns-deep', 'Deep link') })
+    flushRunEnrichment('wf-deep', false)
+    flushInitialWorkflows([])
+  })
+
+  it('never issues an unscoped workflow detail GET for a legacy session URL', () => {
+    store.selectSession('wf-legacy')
+    http.expectNone((r) => r.url === '/api/factory/workflows/wf-legacy')
+    flushInitialWorkflows([])
+    http.expectNone((r) => r.url === '/api/factory/workflows/wf-legacy')
+  })
+
   it('degrades gracefully when getNamespaces fails: runs still load and group', () => {
     const activeRequest = http.expectOne(
       (r) => r.url === '/api/factory/workflows' && r.params.get('state') === 'active'
@@ -505,8 +523,11 @@ describe('FactoryStore', () => {
       .expectOne((r) => r.url === '/api/agentos/api/namespaces')
       .flush({ error: { code: 'BOOM' } }, { status: 500, statusText: 'Server Error' })
 
+    // Namespace catalogue failure must not discard the already authorized
+    // workflow snapshot or its namespace-scoped overview enrichment. Selecting
+    // adopts that in-flight request instead of starting a second enrichment.
     store.selectSession('wf-a')
-    http.expectOne((r) => r.url === '/api/factory/workflows/wf-a').flush({ data: snapshotFor('wf-a', 'ns-a', 'Run A') })
+    http.expectNone((r) => r.url === '/api/factory/workflows/wf-a')
     flushRunEnrichment('wf-a', false)
 
     expect(store.runs()).toHaveLength(1)
