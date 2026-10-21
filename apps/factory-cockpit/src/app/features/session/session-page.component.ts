@@ -13,7 +13,7 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop'
 import { MatButtonModule } from '@angular/material/button'
 import { MatExpansionModule } from '@angular/material/expansion'
 import { ActivatedRoute } from '@angular/router'
-import { distinctUntilChanged, map, tap } from 'rxjs'
+import { combineLatest, distinctUntilChanged, map, tap } from 'rxjs'
 import { FactoryStore } from '../../core/factory.store'
 import { TimelineBlock } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
@@ -80,12 +80,15 @@ export class SessionPageComponent implements OnDestroy {
   // Declared AFTER `selection`: toSignal subscribes synchronously and the `tap`
   // below writes to it, so it must already be initialised (field order matters).
   private readonly routeRunId = toSignal(
-    this.route.paramMap.pipe(
-      map((p) => p.get('runId') ?? ''),
-      distinctUntilChanged(),
-      tap((runId) => {
-        this.pageState.selectSession(runId)
+    combineLatest([this.route.paramMap, this.route.queryParamMap]).pipe(
+      map(([params, query]) => ({ runId: params.get('runId') ?? '', namespaceId: query.get('namespaceId') ?? '' })),
+      distinctUntilChanged(
+        (previous, current) => previous.runId === current.runId && previous.namespaceId === current.namespaceId
+      ),
+      tap(({ runId, namespaceId }) => {
+        this.pageState.selectSession(runId, namespaceId || undefined)
       }),
+      map(({ runId }) => runId),
       takeUntilDestroyed(this.destroyRef)
     ),
     { initialValue: '' }
