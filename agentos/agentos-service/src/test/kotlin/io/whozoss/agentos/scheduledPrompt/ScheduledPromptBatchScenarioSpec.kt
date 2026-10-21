@@ -10,7 +10,6 @@ import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.context.UserSessionContextResolver
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
 import io.whozoss.agentos.prompt.PromptService
@@ -136,7 +135,6 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             caseService = caseService,
             permissionService = mockk<PermissionService>(relaxed = true),
             userService = userService,
-            userSessionContextResolver = UserSessionContextResolver(),
             properties = properties,
             clock = clock,
         )
@@ -145,6 +143,8 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
             runRepository = runRepo,
             userRunRepository = userRunRepo,
             agentConfigService = agentConfigService,
+            userService = mockk(relaxed = true),
+            permissionService = mockk(relaxed = true),
             properties = properties,
             clock = clock,
             nextRunCalculatorService = NextRunCalculatorService(clock = clock),
@@ -186,9 +186,16 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
     /**
      * Drive Phase B for all PENDING UserRuns: claim each one and call processUserRun.
      *
+     * This simulates what the converged path does via the coroutine loop, but synchronously
+     * for deterministic tests.
+     *
      * Run (parent) completion is NOT handled here. A second [SchedulerScanner.tickClaim]
      * call in each test drives [SchedulerScanner.recoverOrphanedRunningRuns], which closes
      * settled RUNNING Runs — mirroring the production flow.
+     *
+     * NOTE: On the converged path, Phase B (UserRun poller) has been removed. These tests
+     * are retained as scenario coverage but call processUserRun directly (internal) rather
+     * than via the live coroutine loop.
      */
     private suspend fun drivePhaseB(
         executor: ScheduledPromptExecutor,
@@ -344,7 +351,6 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 caseService = eventuallyIdleCaseService(),
                 permissionService = mockk(relaxed = true),
                 userService = userService,
-                userSessionContextResolver = UserSessionContextResolver(),
                 properties = smallBatchProperties,
                 clock = clock,
             )
@@ -353,6 +359,8 @@ class ScheduledPromptBatchScenarioSpec : StringSpec() {
                 runRepository = runRepo,
                 userRunRepository = userRunRepo,
                 agentConfigService = agentConfigService,
+                userService = mockk(relaxed = true),
+                permissionService = mockk(relaxed = true),
                 properties = smallBatchProperties,
                 clock = clock,
                 nextRunCalculatorService = NextRunCalculatorService(clock = clock),
