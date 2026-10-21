@@ -6,6 +6,7 @@ import { AGENTOS_BASE_URL, FactoryStore } from '../../core/factory.store'
 import { AgentQuestion, FactoryRun, SessionDetail } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
 import { SessionPageComponent } from './session-page.component'
+import { SessionPageState } from './session-page.state'
 
 /**
  * Focused unit tests for `currentNamespaceId()` — the namespace resolution
@@ -90,6 +91,7 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
     const store = makeStore(runs, session)
     TestBed.configureTestingModule({
       providers: [
+        SessionPageState,
         { provide: FactoryStore, useValue: store },
         { provide: AGENTOS_BASE_URL, useValue: '' },
         {
