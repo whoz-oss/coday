@@ -16,13 +16,16 @@ import {
 import {
   mapProjectionToLanes,
   mapProjectionToRunSummary,
+  readControllerRequest,
   mapWorkflowStateToRunStatus,
   resolveTimelineOriginMs,
 } from './timeline'
 import {
+  buildLaunchRequestDetail,
   buildPhaseDetail,
   filterEventsForSelection,
   mapProjectionToPhaseByStepId,
+  mapProjectionToPhaseByAttemptId,
   mapEvidenceToEvents,
   mapInteractionsToEvents,
   sumFacts,
@@ -169,6 +172,28 @@ export function mapProjectionToSessionDetail(
 
   const durations = steps.map((step) => stepDurationSec(step)).filter((value): value is number => value !== null)
   const summedDuration = durations.reduce((sum, value) => sum + value, 0)
+  const attemptsHaveAuthoritativeDuration = mappedAttempts.some(
+    (attempt) => attempt.activeDurationMs !== undefined || attempt.activeSince !== undefined
+  )
+  const authoritativeAttemptDurationSec = mappedAttempts.reduce((sum, attempt) => {
+    const closedMs = Math.max(attempt.activeDurationMs ?? 0, 0)
+    const activeSinceMs = Date.parse(attempt.activeSince ?? '')
+    const openMs =
+      attempt.status === 'running' && Number.isFinite(activeSinceMs) ? Math.max(Date.now() - activeSinceMs, 0) : 0
+    return sum + (closedMs + openMs) / 1000
+  }, 0)
+  const legacyRunningDuration: number = activelyRunning
+    ? steps.reduce<number>((sum, step) => {
+        if (resolveStepState(step) !== 'running') return sum
+        const startedAtMs = Date.parse(getString(asObject(step), 'startedAt') ?? '')
+        return Number.isFinite(startedAtMs) ? sum + Math.max((Date.now() - startedAtMs) / 1000, 0) : sum
+      }, 0)
+    : 0
+  // Attempts are authoritative when their duration contract is present — even
+  // when the value is zero. This avoids double-counting the matching steps.
+  const activeDurationSec = Math.round(
+    attemptsHaveAuthoritativeDuration ? authoritativeAttemptDurationSec : summedDuration + legacyRunningDuration
+  )
   const tokensRead = sumFacts(evidenceItems, 'tokensRead')
   const tokensWritten = sumFacts(evidenceItems, 'tokensWritten')
   const liveTokens = realCost?.liveTokens && realCost.liveTokens > 0 ? realCost.liveTokens : undefined
@@ -176,6 +201,30 @@ export function mapProjectionToSessionDetail(
     getNumber(projection, 'tokens') ?? liveTokens ?? getNumber(metricsObj, 'tokens') ?? tokensRead + tokensWritten
 
   const phaseByStepId = mapProjectionToPhaseByStepId(steps, status, mappedInteractions, mappedAttempts, evidenceItems)
+  const controllerRequest = readControllerRequest(snapshot, projection)
+  const instance = asObject(snapshot['instance'])
+  const createdAt =
+    getString(snapshot, 'createdAt') ??
+    getString(projection, 'createdAt') ??
+    getString(instance, 'createdAt') ??
+    controllerRequest?.observedAt ??
+    timelineOriginAt
+  const launchRequest = buildLaunchRequestDetail({
+    title: getString(projection, 'title') ?? id,
+    createdAt,
+    namespaceId: controllerRequest?.namespaceId ?? namespaceOf(snapshot),
+    workflowId: id,
+    workflowType: getString(projection, 'workflowType'),
+    author: controllerRequest?.actorId,
+    text: controllerRequest?.text ?? controllerRequest?.prompt,
+  })
+  const phaseByAttemptId = mapProjectionToPhaseByAttemptId(
+    steps,
+    status,
+    mappedInteractions,
+    mappedAttempts,
+    evidenceItems
+  )
 
   // Pre-compute per-step and per-attempt event slices so the UI can show
   // filtered events without re-scanning evidence on every selection change.
@@ -224,7 +273,7 @@ export function mapProjectionToSessionDetail(
       getNumber(snapshot, 'costUsd') ??
       0,
     unknownCostCount: realCost?.unknownCostCount ?? 0,
-    durationSec: Math.max(Math.round(summedDuration), Math.round(laneEnd)),
+    durationSec: activeDurationSec,
     tokens,
     tokensRead,
     tokensWritten,
@@ -235,7 +284,9 @@ export function mapProjectionToSessionDetail(
     ),
     events: [...mapEvidenceToEvents(evidenceItems, steps), ...mapInteractionsToEvents(mappedInteractions)],
     phase: buildPhaseDetail(steps, status, mappedInteractions, mappedAttempts, evidenceItems),
+    launchRequest,
     phaseByStepId,
+    phaseByAttemptId,
     interactions: mappedInteractions,
     attempts: mappedAttempts,
     allowedActions: mappedAllowedActions,

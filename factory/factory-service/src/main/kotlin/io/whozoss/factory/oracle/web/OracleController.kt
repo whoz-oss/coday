@@ -7,6 +7,8 @@ import io.whozoss.factory.oracle.domain.InvalidOracleRunRequestException
 import io.whozoss.factory.oracle.service.OracleExecutionService
 import io.whozoss.factory.oracle.service.OracleRunCommand
 import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.workflow.web.resolveWorkflowCaller
+import io.whozoss.factory.workstream.WorkstreamService
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -34,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "oracles", description = "Oracle definitions and execution runs")
 class OracleController(
     private val service: OracleExecutionService,
+    private val workstreamService: WorkstreamService,
 ) {
 
     @PostMapping(
@@ -65,13 +68,14 @@ class OracleController(
             )
         }
 
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         val result = service.run(
-            scope = user.scope,
+            scope = caller.scope,
             command = OracleRunCommand(
                 workflowId = workflowId,
                 stepId = stepId,
                 oracleId = oracleId,
-                namespaceId = namespaceId,
+                namespaceId = caller.namespaceId,
                 idempotencyKey = idempotencyKey,
             ),
         )

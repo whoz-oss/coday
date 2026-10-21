@@ -5,11 +5,42 @@
       <h1>Workstreams</h1>
       <p class="sf-muted">Runs grouped by namespace, derived from the real workflows exposed by factory-service.</p>
     </div>
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-label>Namespace</mat-label>
+      <mat-select
+        [value]="store.selectedNamespaceId() ?? ''"
+        (selectionChange)="selectNamespace($event.value)"
+        data-workstreams-namespace="true"
+      >
+        <mat-option value="">Tous les namespaces</mat-option>
+        @for (namespace of store.namespaceOptions(); track namespace.namespaceId ?? namespace.id) {
+          @let id = namespace.namespaceId ?? namespace.id ?? '';
+          @if (id) {
+            <mat-option [value]="id">{{ namespace.name ?? id }}</mat-option>
+          }
+        }
+      </mat-select>
+      @if (store.namespaceOptionsLoading()) {
+        <mat-hint>Loading namespaces…</mat-hint>
+      } @else if (store.namespaceOptionsError()) {
+        <mat-hint>Namespaces unavailable.</mat-hint>
+      }
+    </mat-form-field>
     <a mat-flat-button class="sf-primary" routerLink="/launch" data-workstreams-launch="true">
       <mat-icon>play_arrow</mat-icon>
       Launch a run
     </a>
   </header>
+
+  @if (store.namespaceSelectionRequired()) {
+    <p class="empty sf-panel sf-muted" data-workstreams-namespace-required>
+      Select a namespace to load its Factory workstream. A namespace without a first run has no mapping yet.
+    </p>
+  }
+
+  @if (store.overviewError() && store.runs().length > 0) {
+    <p role="alert" class="sf-muted">Some namespaces could not be loaded. Results are incomplete.</p>
+  }
 
   <!-- KPIs -->
   @let c = store.costs();
@@ -36,7 +67,15 @@
     @for (ws of store.workstreams(); track ws.namespaceId) {
       <sf-workstream-card [workstream]="ws" (action)="onAction($event)" />
     } @empty {
-      <p class="empty sf-panel sf-muted">No active workflows.</p>
+      @if (store.workstreamMappingMissing()) {
+        <p class="empty sf-panel sf-muted" data-workstreams-no-mapping>
+          No Factory workstream is mapped to this namespace yet. Launch its first run to create it.
+        </p>
+      } @else if (store.overviewError()) {
+        <p class="empty sf-panel sf-muted" role="alert">Unable to load workflows for this namespace.</p>
+      } @else {
+        <p class="empty sf-panel sf-muted">No workflows in the selected namespaces.</p>
+      }
     }
   </section>
 </div>

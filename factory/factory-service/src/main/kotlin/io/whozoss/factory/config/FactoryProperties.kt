@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  *
  * Mirrors the environment variables the Node Factory reads:
  *   - `FACTORY_BIND_HOST` / `FACTORY_UNSAFE_ALLOW_REMOTE_BIND`
- *   - `FACTORY_ORGANIZATION_ID` / `FACTORY_WORKSTREAM_ID`
+ *   - `FACTORY_ORGANIZATION_ID` (definition bootstrap organization)
  *   - `FACTORY_FAKE_IDP_SECRET` / `FACTORY_SECURITY_MODE`
  */
 @ConfigurationProperties(prefix = "factory")
@@ -22,8 +22,7 @@ data class FactoryProperties(
     )
 
     data class Tenant(
-        val organizationId: String = "default",
-        val workstreamId: String = "default",
+        val organizationId: String = "org-local-dev",
     )
 
     data class Security(

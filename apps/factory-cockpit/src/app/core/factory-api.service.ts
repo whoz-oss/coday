@@ -137,6 +137,24 @@ export interface CreateWorkflowRunResponse {
   revision: number
 }
 
+/** Body of a governed research-resumption command. */
+export interface ResearchResumptionRequest {
+  namespaceId: string
+  expectedRevision: number
+  additionalContext: string
+}
+
+/** Accepted durable submission for a new attempt of the same step. */
+export interface ResearchResumptionResponse {
+  workflowId: string
+  stepId: string
+  attemptId: string
+  revision: number
+  idempotent: boolean
+  submissionId: string
+  queued: boolean
+}
+
 /** @deprecated Compatibility request for callers still using the old start route. */
 export interface StartWorkflowRequest {
   workflow: { workflowId: string; workflowType: string; title: string; ticket?: string }
@@ -188,9 +206,9 @@ export function isWorkflowConflict(error: FactoryApiError | null | undefined): b
 export class FactoryApiService {
   private readonly http = inject(HttpClient)
 
-  /** GET `/api/factory/workflows?state=active|removed[&namespaceId=…]` → snapshot items. */
-  getWorkflows(state: WorkflowState = 'active', namespaceId?: string): Observable<unknown[]> {
-    return this.request<unknown>('/api/factory/workflows', { state }, namespaceId).pipe(
+  /** GET `/api/factory/workflows?state=active|removed&namespaceId=…` → snapshot items. */
+  getWorkflows(state: WorkflowState, namespaceId: string): Observable<unknown[]> {
+    return this.request<unknown>('/api/factory/workflows', { state }, requireNamespaceId(namespaceId)).pipe(
       map((payload) => {
         if (Array.isArray(payload)) return payload
         const items = (payload as WorkflowListPayload | null)?.items
@@ -201,7 +219,11 @@ export class FactoryApiService {
 
   /** GET `/api/factory/workflows/:id?namespaceId=…`. Workflow detail reads are always namespace-scoped. */
   getWorkflow(workflowId: string, namespaceId: string): Observable<unknown> {
-    return this.request<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}`, {}, namespaceId)
+    return this.request<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}`,
+      {},
+      requireNamespaceId(namespaceId)
+    )
   }
 
   /** GET `/api/factory/workflows/:id/timing[?namespaceId=…]`. */
@@ -291,7 +313,14 @@ export class FactoryApiService {
 
   /** Canonical Factory-owned creation and durable submission for an explicit AgentOS namespace. */
   createWorkflowRun(payload: CreateWorkflowRunRequest, idempotencyKey: string): Observable<CreateWorkflowRunResponse> {
-    return this.post<CreateWorkflowRunResponse>('/api/factory/workflows', payload, undefined, undefined, idempotencyKey)
+    const namespaceId = requireNamespaceId(payload.namespaceId)
+    return this.post<CreateWorkflowRunResponse>(
+      '/api/factory/workflows',
+      { ...payload, namespaceId },
+      namespaceId,
+      undefined,
+      idempotencyKey
+    )
   }
 
   /**
@@ -307,7 +336,7 @@ export class FactoryApiService {
   ): Observable<unknown> {
     return this.post<unknown>(
       `/api/factory/workflows/${encodeURIComponent(workflowId)}/interactions/${encodeURIComponent(interactionId)}/reply`,
-      payload,
+      { ...payload, namespaceId: requireNamespaceId(namespaceId ?? '') },
       namespaceId
     )
   }
@@ -325,7 +354,7 @@ export class FactoryApiService {
   ): Observable<unknown> {
     return this.post<unknown>(
       `/api/factory/workflows/${encodeURIComponent(workflowId)}/agent-questions/${encodeURIComponent(questionEventId)}/answer`,
-      payload,
+      { ...payload, namespaceId: requireNamespaceId(namespaceId ?? '') },
       namespaceId
     )
   }
@@ -334,11 +363,14 @@ export class FactoryApiService {
   answerAgentStepQuestion(
     workflowId: string,
     interactionId: string,
-    payload: { expectedRevision: number; answer: string }
+    payload: { expectedRevision: number; answer: string },
+    namespaceId: string
   ): Observable<unknown> {
+    const namespace = requireNamespaceId(namespaceId)
     return this.post<unknown>(
       `/api/factory/workflows/${encodeURIComponent(workflowId)}/agent-step-questions/${encodeURIComponent(interactionId)}/answer`,
-      payload
+      { ...payload, namespaceId: namespace },
+      namespace
     )
   }
 
@@ -356,13 +388,39 @@ export class FactoryApiService {
     ).pipe(map((payload) => (Array.isArray(payload) ? (payload as AgentQuestion[]) : [])))
   }
 
+  /**
+   * POST `/api/factory/workflows/:workflowId/steps/:stepId/research-resumptions`.
+   * Starts a new attempt of the same step after the operator supplies information
+   * or access outside the cockpit. The idempotency key is caller-owned so an
+   * ambiguous transport failure can be retried without duplicating the attempt.
+   */
+  resumeResearch(
+    workflowId: string,
+    stepId: string,
+    payload: ResearchResumptionRequest,
+    idempotencyKey: string
+  ): Observable<ResearchResumptionResponse> {
+    const namespaceId = requireNamespaceId(payload.namespaceId)
+    return this.post<ResearchResumptionResponse>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/steps/${encodeURIComponent(stepId)}/research-resumptions`,
+      { ...payload, namespaceId },
+      namespaceId,
+      undefined,
+      idempotencyKey
+    )
+  }
+
   /** POST `/api/factory/workflows/:id/retries` (opens a retry for a blocked step). */
   openRetry(
     workflowId: string,
     payload: { stepId: string; expectedRevision?: number; reasonCode?: string },
     namespaceId?: string
   ): Observable<unknown> {
-    return this.post<unknown>(`/api/factory/workflows/${encodeURIComponent(workflowId)}/retries`, payload, namespaceId)
+    return this.post<unknown>(
+      `/api/factory/workflows/${encodeURIComponent(workflowId)}/retries`,
+      { ...payload, namespaceId: requireNamespaceId(namespaceId ?? '') },
+      namespaceId
+    )
   }
 
   /** POST `/api/factory/workflows/:id/attempts/:attemptId/cancel`. */
@@ -374,7 +432,7 @@ export class FactoryApiService {
   ): Observable<unknown> {
     return this.post<unknown>(
       `/api/factory/workflows/${encodeURIComponent(workflowId)}/attempts/${encodeURIComponent(attemptId)}/cancel`,
-      payload,
+      { ...payload, namespaceId: requireNamespaceId(namespaceId ?? '') },
       namespaceId
     )
   }
@@ -601,6 +659,12 @@ export class FactoryApiService {
       catchError((error: unknown) => throwError(() => normalizeError(error)))
     )
   }
+}
+
+function requireNamespaceId(namespaceId: string): string {
+  const namespace = namespaceId.trim()
+  if (!namespace) throw new Error('Factory workflow request requires namespaceId')
+  return namespace
 }
 
 /** Generate a correlation id without assuming `crypto.randomUUID` is available. */

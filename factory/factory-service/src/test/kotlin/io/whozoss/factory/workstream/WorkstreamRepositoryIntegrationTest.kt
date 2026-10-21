@@ -16,6 +16,8 @@ import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import java.util.UUID
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 
 /**
  * Integration tests of the tenant-scoped Neo4j repository backing the
@@ -32,10 +34,14 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
     @Autowired
     private lateinit var service: WorkstreamService
 
+    private fun request(slug: String, name: String) = CreateWorkstreamRequest(
+        slug = slug, name = name, status = "active", namespaceId = UUID.randomUUID().toString(),
+    )
+
     @Test
     fun `create then read a workstream within the tenant scope`() {
         val slug = "ws-${UUID.randomUUID().toString().take(8)}"
-        val created = repository.create(scope, slug, "My Workstream", "active")
+        val created = service.create(scope, request(slug, "My Workstream"))
         assertThat(created["slug"]).isEqualTo(slug)
         assertThat(created["name"]).isEqualTo("My Workstream")
         assertThat(created["status"]).isEqualTo("active")
@@ -46,24 +52,24 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(found["name"]).isEqualTo("My Workstream")
         assertThat(found["status"]).isEqualTo("active")
 
-        assertThat(repository.list(scope).map { it["slug"] }).contains(slug)
+        assertThat(repository.listByOrganization(scope.organizationId).map { it["slug"] }).contains(slug)
     }
 
     @Test
     fun `reads are constrained by the tenant scope`() {
         val slug = "ws-${UUID.randomUUID().toString().take(8)}"
-        repository.create(scope, slug, "Scoped", "active")
+        service.create(scope, request(slug, "Scoped"))
 
         val otherOrg = repository.findById(TenantScope("other-org", WORKSTREAM_ID), slug)
         assertThat(otherOrg).isNull()
 
-        assertThat(repository.list(TenantScope("other-org", WORKSTREAM_ID))).isEmpty()
+        assertThat(repository.listByOrganization("other-org")).isEmpty()
     }
 
     @Test
     fun `delete removes a workstream only within its tenant scope`() {
         val slug = "ws-${UUID.randomUUID().toString().take(8)}"
-        repository.create(scope, slug, "Doomed", "active")
+        service.create(scope, request(slug, "Doomed"))
 
         assertThat(repository.deleteById(TenantScope("other-org", WORKSTREAM_ID), slug)).isFalse()
         assertThat(repository.findById(scope, slug)).isNotNull
@@ -74,9 +80,9 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `the service rejects a duplicate slug`() {
         val slug = "ws-${UUID.randomUUID().toString().take(8)}"
-        service.create(scope, slug, "First", "active")
+        service.create(scope, request(slug, "First"))
 
-        assertThatThrownBy { service.create(scope, slug, "Second", "active") }
+        assertThatThrownBy { service.create(scope, request(slug, "Second")) }
             .isInstanceOf(ConflictException::class.java)
     }
 
@@ -95,7 +101,7 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
                 slug = slug,
                 name = "Enriched",
                 status = "paused",
-                namespaceId = "ns-enriched",
+                namespaceId = "82a43806-3a78-4e56-96c4-cf3039989452",
                 controllerAgentRef = "agent://controller",
                 allowedWorkflowTypes = listOf("wf-allowed", "wf-other"),
                 governancePolicyRef = "policy://gov",
@@ -105,7 +111,7 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThat(created["workstreamId"]).isEqualTo(slug)
         assertThat(created["title"]).isEqualTo("Enriched")
         assertThat(created["status"]).isEqualTo("paused")
-        assertThat(created["namespaceId"]).isEqualTo("ns-enriched")
+        assertThat(created["namespaceId"]).isEqualTo("82a43806-3a78-4e56-96c4-cf3039989452")
         assertThat(created["controllerAgentRef"]).isEqualTo("agent://controller")
         assertThat(created["allowedWorkflowTypes"]).isEqualTo(listOf("wf-allowed", "wf-other"))
         assertThat(created["governancePolicyRef"]).isEqualTo("policy://gov")
@@ -130,6 +136,7 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
                 organizationId = scope.organizationId,
                 workstreamId = slug,
                 name = "Versioned",
+                namespaceId = UUID.randomUUID().toString(),
                 status = WorkstreamStatus.ACTIVE,
             ),
         )
@@ -158,7 +165,7 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `update applies changes and bumps the revision`() {
         val slug = "ws-${UUID.randomUUID().toString().take(8)}"
-        service.create(scope, slug, "Updatable", "active")
+        service.create(scope, request(slug, "Updatable"))
 
         val updated = service.update(
             scope,
@@ -175,7 +182,7 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
     @Test
     fun `update with a stale expected revision is a REVISION_CONFLICT`() {
         val slug = "ws-${UUID.randomUUID().toString().take(8)}"
-        service.create(scope, slug, "Conflicted", "active")
+        service.create(scope, request(slug, "Conflicted"))
         service.update(scope, slug, UpdateWorkstreamRequest(name = "Second"), expectedRevision = 1)
 
         assertThatThrownBy {
@@ -189,9 +196,101 @@ class WorkstreamRepositoryIntegrationTest : Neo4jDomainIntegrationTest() {
         assertThatThrownBy { service.create(scope, slug, "Bad status", "doomed") }
             .isInstanceOf(BadRequestException::class.java)
 
-        service.create(scope, slug, "Good status", "active")
+        service.create(scope, request(slug, "Good status"))
         assertThatThrownBy { service.update(scope, slug, UpdateWorkstreamRequest(status = "doomed")) }
             .isInstanceOf(BadRequestException::class.java)
+    }
+
+    @Test
+    fun `create rejects a namespace already assigned in the same organization`() {
+        val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
+        service.create(scope, CreateWorkstreamRequest(slug = "ws-first", name = "First", status = "active", namespaceId = namespace))
+
+        assertThatThrownBy {
+            service.create(scope, CreateWorkstreamRequest(slug = "ws-second", name = "Second", status = "active", namespaceId = namespace.uppercase()))
+        }.isInstanceOf(ConflictException::class.java)
+    }
+
+    @Test
+    fun `update rejects reassignment of a namespace already owned by another workstream`() {
+        val namespace = "1e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
+        service.create(scope, CreateWorkstreamRequest(slug = "ws-owner", name = "Owner", status = "active", namespaceId = namespace))
+        service.create(scope, request("ws-target", "Target"))
+
+        assertThatThrownBy {
+            service.update(scope, "ws-target", UpdateWorkstreamRequest(namespaceId = namespace), expectedRevision = 1)
+        }.isInstanceOf(ConflictException::class.java)
+    }
+
+    @Test
+    fun `namespace uniqueness is isolated by organization`() {
+        val namespace = "2e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
+        val otherScope = TenantScope("other-org", "ws-other")
+        service.create(scope, CreateWorkstreamRequest(slug = "ws-local", name = "Local", status = "active", namespaceId = namespace))
+        service.create(otherScope, CreateWorkstreamRequest(slug = "ws-foreign", name = "Foreign", status = "active", namespaceId = namespace))
+
+        assertThat(service.findByNamespace(scope.organizationId, namespace)?.workstreamId).isEqualTo("ws-local")
+        assertThat(service.findByNamespace(otherScope.organizationId, namespace)?.workstreamId).isEqualTo("ws-foreign")
+    }
+
+    @Test
+    fun `read only namespace resolution never initializes a workstream`() {
+        val namespace = "3e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
+
+        assertThat(service.findByNamespace(scope.organizationId, namespace)).isNull()
+        assertThat(repository.findById(scope, "namespace-$namespace")).isNull()
+    }
+
+    @Test
+    fun `concurrent namespace initialization converges on one workstream`() {
+        val namespace = "4e5ce582-ea48-49e9-b9f8-d0a0b6f82e28"
+        val ready = CountDownLatch(2)
+        val start = CountDownLatch(1)
+        val executor = Executors.newFixedThreadPool(2)
+        try {
+            val futures = (1..2).map {
+                executor.submit<String> {
+                    ready.countDown()
+                    start.await()
+                    service.findOrInitializeForNamespace(scope.organizationId, namespace).workstreamId
+                }
+            }
+            ready.await()
+            start.countDown()
+
+            assertThat(futures.map { it.get() }).containsOnly("namespace-$namespace")
+            assertThat(repository.findDomainsByNamespace(scope.organizationId, namespace)).hasSize(1)
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    @Test
+    fun `direct repository writes reject missing or malformed namespaces without persisting`() {
+        listOf(null, "", "ns-invalid").forEach { invalid ->
+            val workstream = Workstream(scope.organizationId, "invalid", invalid, "Invalid", WorkstreamStatus.ACTIVE)
+            assertThatThrownBy { repository.create(scope, workstream) }.isInstanceOf(BadRequestException::class.java)
+            assertThat(repository.findDomain(scope, "invalid")).isNull()
+            assertThatThrownBy {
+                repository.mergeInitialNamespaceMapping(scope.organizationId, "invalid", invalid.orEmpty(), "Invalid")
+            }.isInstanceOf(BadRequestException::class.java)
+        }
+    }
+
+    @Test
+    fun `direct repository save validates and normalizes namespace before writing`() {
+        val namespace = "ae3c175a-24b1-4bd6-946f-f533ef901fac"
+        val created = repository.create(scope, Workstream(
+            scope.organizationId, "direct", " ${namespace.uppercase()} ", "Direct", WorkstreamStatus.ACTIVE,
+        ))
+        assertThat(created.namespaceId).isEqualTo(namespace)
+        listOf(null, "", "invalid").forEach { invalid ->
+            assertThatThrownBy { repository.save(scope, created.copy(namespaceId = invalid)) }
+                .isInstanceOf(BadRequestException::class.java)
+            assertThat(repository.findDomain(scope, "direct")!!.namespaceId).isEqualTo(namespace)
+        }
+        val saved = repository.save(scope, created.copy(namespaceId = namespace.uppercase()))
+        assertThat(saved.namespaceId).isEqualTo(namespace)
     }
 
     @Test

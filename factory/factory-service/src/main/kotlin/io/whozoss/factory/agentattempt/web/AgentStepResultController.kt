@@ -87,7 +87,7 @@ class AgentStepResultController(
             throw InvalidResultRequestException("'Idempotency-Key' must be at most $MAX_IDEMPOTENCY_KEY_LENGTH characters")
         }
 
-        val submission = submissions.submit(user.scope.organizationId, attemptId, result, idempotencyKey)
+        val submission = submissions.submit(user.organizationId, attemptId, result, idempotencyKey)
         val status = if (submission.created) HttpStatus.CREATED else HttpStatus.OK
         return ResponseEntity.status(status).body(
             AgentStepResultEnvelope(

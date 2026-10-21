@@ -8,7 +8,6 @@ import io.whozoss.factory.artifact.infrastructure.persistence.SpringDataNeo4jArt
 import io.whozoss.factory.artifact.port.ArtifactGcMetadataLister
 import io.whozoss.factory.artifact.service.ArtifactAdminService
 import io.whozoss.factory.artifact.service.ArtifactService
-import io.whozoss.factory.persistence.TenantScopeProvider
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
@@ -75,8 +74,5 @@ class ArtifactConfiguration {
     }
 
     @Bean
-    fun artifactService(
-        artifactStore: Neo4jArtifactStore,
-        tenantScopeProvider: TenantScopeProvider,
-    ): ArtifactService = ArtifactService(store = artifactStore, tenantScopeProvider = tenantScopeProvider)
+    fun artifactService(artifactStore: Neo4jArtifactStore): ArtifactService = ArtifactService(store = artifactStore)
 }

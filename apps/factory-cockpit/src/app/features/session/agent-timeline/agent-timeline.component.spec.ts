@@ -8,6 +8,7 @@ interface TimelineInternals {
   axisEnd: () => number
   effectiveLanes: () => TimelineLane[]
   blockTooltip: (block: TimelineBlock) => string
+  widthPct: (block: TimelineBlock) => number
   isSelected: (block: TimelineBlock) => boolean
 }
 
@@ -133,6 +134,34 @@ describe('AgentTimelineComponent', () => {
     expect(component.effectiveNowSec()).toBe(20)
     expect(component.effectiveLanes()[0]?.blocks[0]?.endSec).toBe(20)
     expect(fixture.nativeElement.querySelector('.block--waiting')).not.toBeNull()
+  })
+
+  it('keeps visual minimum width separate from the displayed duration', () => {
+    const short = lane({
+      blocks: [{ label: 'short', startSec: 0, endSec: 3, status: 'completed' }],
+    })
+    const component = render({ lanes: [short], nowSec: 120, activelyRunning: false })
+
+    expect(component.widthPct(short.blocks[0]!)).toBe(3.5)
+    expect(fixture.nativeElement.querySelector('.block')?.getAttribute('aria-label')).toBe('short, completed')
+  })
+
+  it('contains a long waiting-human label without changing its elapsed duration', () => {
+    const waiting = lane({
+      blocks: [
+        {
+          label: 'An intentionally very long agent attempt label that must stay inside its bar',
+          startSec: 0,
+          endSec: 41.2,
+          status: 'waiting_human',
+        },
+      ],
+    })
+    const component = render({ lanes: [waiting], nowSec: 41.2, activelyRunning: false })
+
+    expect(component.effectiveLanes()[0]?.blocks[0]?.endSec).toBe(41.2)
+    expect(fixture.nativeElement.querySelector('.block-dur')?.textContent?.trim()).toBe('elapsed 41.20s')
+    expect(fixture.nativeElement.querySelector('.sf-spacer-inline')).not.toBeNull()
   })
 
   describe('blockTooltip', () => {

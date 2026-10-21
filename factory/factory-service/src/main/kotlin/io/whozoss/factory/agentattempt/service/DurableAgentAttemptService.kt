@@ -141,6 +141,22 @@ class DurableAgentAttemptService(
     )
 
     /**
+     * Persists a freshly rotated server-side capability without changing the
+     * attempt lifecycle. A concurrent lifecycle/token change wins and returns
+     * null; terminal, cancelled or superseded attempts are never reactivated.
+     */
+    @Transactional
+    fun replaceCapability(
+        scope: TenantScope,
+        attempt: DurableAgentAttempt,
+        expectedCapabilityToken: String,
+        capabilityToken: String,
+        now: Instant = Instant.now(),
+    ): DurableAgentAttempt? = repository.replaceCapability(
+        scope, attempt, expectedCapabilityToken, capabilityToken, now,
+    )
+
+    /**
      * Finalize the attempt to a terminal [target], fenced on [ownerToken]: a
      * worker whose lease token diverged (expired, revoked or preempted) is
      * rejected with `ATTEMPT_LEASE_FENCED`. `succeeded` is reachable only from

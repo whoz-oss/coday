@@ -10,6 +10,7 @@ import {
   mapProjectionToFactoryRun,
   mapProjectionToLanes,
   mapProjectionToPhaseByStepId,
+  mapProjectionToPhaseByAttemptId,
   mapProjectionToRunSummary,
   mapProjectionToSessionDetail,
   mapStepsToPhaseSegments,
@@ -383,6 +384,43 @@ describe('mappers', () => {
       ])
     })
 
+    it('renders AGENT_NEEDS_RESEARCH as a human-wait block instead of a failed block', () => {
+      const lanes = mapProjectionToLanes(
+        {
+          projection: {
+            steps: [
+              {
+                id: 'research',
+                name: 'Research',
+                status: 'failed',
+                responsibility: { kind: 'agent', name: 'researcher' },
+              },
+            ],
+          },
+        },
+        { startedAt },
+        [
+          {
+            attemptId: 'attempt-research',
+            stepId: 'research',
+            attemptNumber: 1,
+            agentName: 'researcher',
+            status: 'failed',
+            caseId: 'case-research',
+            failureCode: 'AGENT_NEEDS_RESEARCH',
+            startedAt,
+            completedAt: isoOffset(30),
+          },
+        ]
+      )
+
+      expect(lanes[0]?.blocks[0]).toMatchObject({
+        stepId: 'research',
+        failureCode: 'AGENT_NEEDS_RESEARCH',
+        status: 'waiting_human',
+      })
+    })
+
     it('renders each agent attempt as a distinct ordered timeline block', () => {
       const lanes = mapProjectionToLanes(
         {
@@ -432,6 +470,68 @@ describe('mappers', () => {
         }),
         expect.objectContaining({ label: 'Plan \u00b7 attempt 2', stepId: 'plan', startSec: 15, status: 'running' }),
       ])
+    })
+
+    it('keeps a NEEDS_RESEARCH predecessor frozen and exposes its pending successor without invented time', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(680)))
+      try {
+        const input = {
+          projection: {
+            steps: [
+              {
+                id: 'technical-design',
+                name: 'Architect Frontend technical design',
+                status: 'running',
+                responsibility: { kind: 'agent', name: 'Architect' },
+              },
+            ],
+          },
+        }
+        const first = {
+          attemptId: 'attempt-1',
+          stepId: 'technical-design',
+          attemptNumber: 1,
+          agentName: 'Architect',
+          status: 'indeterminate',
+          caseId: 'shared-case',
+          failureCode: 'AGENT_NEEDS_RESEARCH',
+          startedAt,
+          completedAt: isoOffset(545),
+          activeDurationMs: 125_000,
+          waitingDurationMs: 420_000,
+        }
+        const pending = {
+          attemptId: 'attempt-2',
+          stepId: 'technical-design',
+          attemptNumber: 2,
+          agentName: 'Architect',
+          status: 'pending',
+          caseId: 'shared-case',
+          activeDurationMs: 0,
+          waitingDurationMs: 0,
+        }
+
+        const pendingLanes = mapProjectionToLanes(input, { startedAt }, [first, pending])
+        expect(pendingLanes[0]?.blocks).toEqual([
+          expect.objectContaining({ attemptId: 'attempt-1', status: 'waiting_human', startSec: 0, endSec: 545 }),
+          expect.objectContaining({ attemptId: 'attempt-2', status: 'pending', startSec: 545, endSec: 545 }),
+        ])
+
+        const runningLanes = mapProjectionToLanes(input, { startedAt }, [
+          first,
+          { ...pending, status: 'running', startedAt: isoOffset(600), activeSince: isoOffset(670) },
+        ])
+        expect(runningLanes[0]?.blocks[0]).toMatchObject({ attemptId: 'attempt-1', endSec: 545 })
+        expect(runningLanes[0]?.blocks[1]).toMatchObject({
+          attemptId: 'attempt-2',
+          status: 'running',
+          startSec: 600,
+          endSec: 680,
+          activeDurationSec: 10,
+        })
+      } finally {
+        jest.useRealTimers()
+      }
     })
 
     it('propagates attempt metadata (agentName, attemptId, attemptNumber, caseId, failureCode) onto timeline blocks', () => {
@@ -537,25 +637,51 @@ describe('mappers', () => {
       expect(lanes[0]?.blocks.map((block) => block.endSec - block.startSec)).toEqual([7, 9])
     })
 
-    it('reconstructs running wall time but keeps waiting-human frozen', () => {
-      jest.useFakeTimers().setSystemTime(new Date(isoOffset(100)))
+    it('reconstructs running wall time but never counts waiting-human wall time as active execution', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(1_240)))
       try {
-        const lanes = mapProjectionToLanes({
+        const input = {
           projection: {
             steps: [
               { id: 'running', status: 'running', startedAt, responsibility: { kind: 'code' } },
               {
                 id: 'waiting',
                 status: 'waiting_human',
-                startedAt: isoOffset(20),
-                durationMs: 5_000,
+                startedAt,
+                durationMs: 40_000,
+                responsibility: { kind: 'agent', name: 'reviewer' },
+              },
+            ],
+          },
+        }
+        const lanes = mapProjectionToLanes(input)
+        expect(lanes.find((lane) => lane.id === 'code')?.blocks[0]?.endSec).toBe(1_240)
+        expect(lanes.find((lane) => lane.id === 'agent:reviewer')?.blocks[0]?.endSec).toBe(40)
+
+        // A reload of the exact same durable snapshot must reconstruct the same
+        // frozen active duration; no mapper-local cache is involved.
+        expect(mapProjectionToLanes(input)).toEqual(lanes)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('does not invent elapsed wall time when an open interval has no valid start timestamp', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(100)))
+      try {
+        const lanes = mapProjectionToLanes({
+          projection: {
+            steps: [
+              {
+                id: 'waiting',
+                status: 'waiting_human',
+                durationMs: 3_000,
                 responsibility: { kind: 'agent', name: 'reviewer' },
               },
             ],
           },
         })
-        expect(lanes.find((lane) => lane.id === 'code')?.blocks[0]?.endSec).toBe(100)
-        expect(lanes.find((lane) => lane.id === 'agent:reviewer')?.blocks[0]?.endSec).toBe(25)
+        expect(lanes[0]?.blocks).toHaveLength(0)
       } finally {
         jest.useRealTimers()
       }
@@ -574,10 +700,44 @@ describe('mappers', () => {
 
       const engineer = lanes.find((candidate) => candidate.id === 'engineer')
       expect(engineer).toMatchObject({ kind: 'human', label: 'engineer', tone: 'amber', subtitle: 'benjamin' })
-      expect(engineer?.request).toMatchObject({ label: 'request', startSec: 0, status: 'completed' })
+      expect(engineer?.request).toMatchObject({
+        label: 'launch request',
+        kind: 'launch_request',
+        startSec: 0,
+        status: 'completed',
+      })
       expect(engineer?.request?.description).toBe('Ship the feature safely')
       expect(engineer?.request?.endSec).toBeGreaterThanOrEqual(2)
       expect(engineer?.blocks).toHaveLength(0)
+    })
+
+    it('creates a neutral launch request from run creation when initialRequest is absent', () => {
+      const lanes = mapProjectionToLanes({
+        workflowId: 'wf-created',
+        createdAt: startedAt,
+        projection: {
+          status: 'running',
+          steps: [
+            {
+              id: 'plan',
+              status: 'running',
+              startedAt: isoOffset(10),
+              responsibility: { kind: 'agent', name: 'planner' },
+            },
+          ],
+        },
+      })
+
+      const engineer = lanes.find((candidate) => candidate.id === 'engineer')
+      expect(engineer).toMatchObject({ subtitle: 'human' })
+      expect(engineer?.request).toMatchObject({
+        label: 'launch request',
+        kind: 'launch_request',
+        startSec: 0,
+        endSec: 10,
+        status: 'completed',
+      })
+      expect(engineer?.request?.description).toBeUndefined()
     })
 
     it('accepts a legacy string controllerRequest', () => {
@@ -673,6 +833,10 @@ describe('mappers', () => {
           createdAt: startedAt,
           startedAt,
           completedAt: isoOffset(10),
+          activeDurationMs: 10_000,
+          activeSince: isoOffset(10),
+          waitingDurationMs: 20_000,
+          waitingSince: isoOffset(30),
         },
       ])
 
@@ -690,6 +854,10 @@ describe('mappers', () => {
           createdAt: startedAt,
           startedAt,
           completedAt: isoOffset(10),
+          activeDurationMs: 10_000,
+          activeSince: isoOffset(10),
+          waitingDurationMs: 20_000,
+          waitingSince: isoOffset(30),
         },
       ])
     })
@@ -750,6 +918,63 @@ describe('mappers', () => {
       expect(session.timelineOriginAt).toBe(startedAt)
     })
 
+    it('builds a dedicated launch-request detail with the real run metadata', () => {
+      const session = mapProjectionToSessionDetail({
+        ...snapshotWithControllerRequest,
+        createdAt: isoOffset(-5),
+        projection: { ...snapshotWithControllerRequest.projection, workflowType: 'delivery' },
+      })
+
+      expect(session.launchRequest).toMatchObject({
+        name: 'Deliver the AgentOS adapter',
+        kind: 'demande lancement',
+        owner: 'benjamin',
+        stepStatus: 'completed',
+      })
+      expect(session.launchRequest?.caseId).toBeUndefined()
+      expect(session.launchRequest?.sections).toEqual([
+        {
+          label: 'Demande de lancement',
+          items: expect.arrayContaining([
+            { title: 'Type', subtitle: 'demande lancement' },
+            { title: 'Run', subtitle: 'Deliver the AgentOS adapter' },
+            { title: 'Créée le', subtitle: isoOffset(-5) },
+            { title: 'Namespace', subtitle: 'ns-1' },
+            { title: 'Workflow', subtitle: 'delivery' },
+            { title: 'Auteur', subtitle: 'benjamin' },
+          ]),
+        },
+        { label: 'Commentaire initial', body: 'Ship the feature safely' },
+      ])
+    })
+
+    it('builds launch-request detail without an initial comment or author', () => {
+      const session = mapProjectionToSessionDetail({
+        workflowId: 'wf-created',
+        namespaceId: 'ns-created',
+        createdAt: startedAt,
+        projection: { title: 'Created run', workflowType: 'delivery', status: 'running', steps: [] },
+      })
+
+      expect(session.launchRequest).toMatchObject({
+        name: 'Created run',
+        kind: 'demande lancement',
+        owner: 'non renseigné',
+      })
+      expect(session.launchRequest?.sections).toEqual([
+        {
+          label: 'Demande de lancement',
+          items: expect.arrayContaining([
+            { title: 'Créée le', subtitle: startedAt },
+            { title: 'Namespace', subtitle: 'ns-created' },
+            { title: 'Workflow', subtitle: 'delivery' },
+            { title: 'Auteur', subtitle: 'non renseigné' },
+          ]),
+        },
+        { label: 'Commentaire initial', body: 'Aucun commentaire initial' },
+      ])
+    })
+
     it('freezes terminal session nowSec on the persisted end instead of wall time', () => {
       jest.useFakeTimers().setSystemTime(new Date(isoOffset(1_000)))
       try {
@@ -769,6 +994,159 @@ describe('mappers', () => {
           },
         })
         expect(session.nowSec).toBe(25)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('uses authoritative attempt counters across waiting and resume with unchanged historical startedAt', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(1_250)))
+      try {
+        const baseAttempt = {
+          attemptId: 'same-attempt',
+          stepId: 'review',
+          attemptNumber: 1,
+          agentName: 'reviewer',
+          caseId: 'case-review',
+          startedAt,
+          activeDurationMs: 40_000,
+          waitingDurationMs: 1_200_000,
+        }
+        const workflow = {
+          workflowId: 'authoritative-duration',
+          projection: {
+            status: 'running',
+            steps: [
+              {
+                id: 'review',
+                status: 'running',
+                startedAt,
+                responsibility: { kind: 'agent', name: 'reviewer' },
+              },
+            ],
+          },
+        }
+        const attempts = [{ ...baseAttempt, status: 'running', activeSince: isoOffset(1_240) }]
+        const session = mapProjectionToSessionDetail(workflow, undefined, undefined, undefined, undefined, attempts)
+        const refreshed = mapProjectionToSessionDetail(workflow, undefined, undefined, undefined, undefined, attempts)
+        const block = session.lanes[0]?.blocks[0]
+
+        expect(session.durationSec).toBe(50)
+        expect(refreshed.durationSec).toBe(50)
+        expect(block).toMatchObject({ activeDurationSec: 50, waitingDurationSec: 1_200 })
+        expect(block?.endSec).toBe(1_250)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('keeps authoritative active duration zero instead of falling back to wall time', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(1_240)))
+      try {
+        const session = mapProjectionToSessionDetail(
+          {
+            workflowId: 'zero-duration',
+            projection: {
+              status: 'waiting_human',
+              steps: [
+                {
+                  id: 'review',
+                  status: 'waiting_human',
+                  startedAt,
+                  durationMs: 40_000,
+                  responsibility: { kind: 'agent', name: 'reviewer' },
+                },
+              ],
+            },
+          },
+          undefined,
+          undefined,
+          undefined,
+          undefined,
+          [
+            {
+              attemptId: 'same-attempt',
+              stepId: 'review',
+              attemptNumber: 1,
+              agentName: 'reviewer',
+              status: 'waiting_human',
+              caseId: 'case-review',
+              startedAt,
+              activeDurationMs: 0,
+              waitingDurationMs: 0,
+              waitingSince: isoOffset(40),
+            },
+          ]
+        )
+
+        expect(session.durationSec).toBe(0)
+        expect(session.lanes[0]?.blocks[0]).toMatchObject({ activeDurationSec: 0, waitingDurationSec: 1_200 })
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('keeps active duration frozen while waiting-human instead of counting wall time', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(1_240)))
+      try {
+        const waitingSnapshot = {
+          workflowId: 'waiting-duration',
+          projection: {
+            status: 'waiting_human',
+            steps: [
+              {
+                id: 'review',
+                status: 'waiting_human',
+                startedAt,
+                durationMs: 40_000,
+                responsibility: { kind: 'agent', name: 'reviewer' },
+              },
+            ],
+          },
+        }
+        const firstLoad = mapProjectionToSessionDetail(waitingSnapshot)
+        const refreshed = mapProjectionToSessionDetail(waitingSnapshot)
+
+        expect(firstLoad).toMatchObject({
+          activelyRunning: false,
+          executionState: 'waiting_human',
+          durationSec: 40,
+          nowSec: 40,
+        })
+        expect(refreshed.durationSec).toBe(firstLoad.durationSec)
+        expect(refreshed.nowSec).toBe(firstLoad.nowSec)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('accumulates a durable resumed interval without adding the preceding human wait', () => {
+      jest.useFakeTimers().setSystemTime(new Date(isoOffset(1_250)))
+      try {
+        const session = mapProjectionToSessionDetail({
+          workflowId: 'resumed-duration',
+          projection: {
+            status: 'running',
+            steps: [
+              {
+                id: 'before-wait',
+                status: 'completed',
+                startedAt,
+                completedAt: isoOffset(40),
+                responsibility: { kind: 'agent', name: 'reviewer' },
+              },
+              {
+                id: 'after-wait',
+                status: 'running',
+                startedAt: isoOffset(1_240),
+                responsibility: { kind: 'agent', name: 'reviewer' },
+              },
+            ],
+          },
+        })
+
+        expect(session.durationSec).toBe(50)
+        expect(session.activelyRunning).toBe(true)
       } finally {
         jest.useRealTimers()
       }
@@ -1180,6 +1558,45 @@ describe('mappers', () => {
     it('returns an empty map for an empty steps list', () => {
       const map = mapProjectionToPhaseByStepId([], 'queued')
       expect(map.size).toBe(0)
+    })
+  })
+
+  describe('mapProjectionToPhaseByAttemptId', () => {
+    it('builds exact retry details rather than silently using the latest attempt', () => {
+      const attempts = [
+        {
+          attemptId: 'a-1',
+          stepId: 'build',
+          attemptNumber: 1,
+          agentName: 'engineer',
+          status: 'failed',
+          caseId: 'case-1',
+          failureCode: 'FIRST_FAILED',
+        },
+        {
+          attemptId: 'a-2',
+          stepId: 'build',
+          attemptNumber: 2,
+          agentName: 'architect',
+          status: 'waiting_human',
+          caseId: 'case-2',
+        },
+      ]
+      const map = mapProjectionToPhaseByAttemptId(projection.steps, 'running', [], attempts)
+
+      expect(map.get('a-1')).toMatchObject({
+        stepId: 'build',
+        currentAttemptNumber: 1,
+        agentName: 'engineer',
+        caseId: 'case-1',
+        failureCode: 'FIRST_FAILED',
+      })
+      expect(map.get('a-2')).toMatchObject({
+        stepId: 'build',
+        currentAttemptNumber: 2,
+        agentName: 'architect',
+        caseId: 'case-2',
+      })
     })
   })
 

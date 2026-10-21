@@ -1,64 +1,49 @@
 package io.whozoss.factory.workstream
 
 import io.whozoss.factory.Neo4jDomainIntegrationTest
-import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.workstream.web.CreateWorkstreamRequest
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 
-/**
- * Lot D — explicit workstream <-> namespace resolution.
- *
- * The mapping is centralized in [WorkstreamService.resolveNamespaceId]: an
- * explicit request namespace wins, otherwise the namespace declared by the
- * workstream registry entry, otherwise the documented `default` fallback.
- */
+/** Namespace mappings are explicit, organization-bound and never synthesized by reads. */
 class WorkstreamNamespaceResolutionTest : Neo4jDomainIntegrationTest() {
-
     @Autowired
     private lateinit var workstreamService: WorkstreamService
 
-    @Test
-    fun `an explicit requested namespace wins over the declared one`() {
-        workstreamService.create(
-            scope,
-            CreateWorkstreamRequest(slug = scope.workstreamId, name = "Default WS", status = "active", namespaceId = "ns-declared"),
-        )
+    private val namespace = "0d4bd471-df37-43d8-a8f7-c989f95e71d7"
 
-        assertThat(workstreamService.resolveNamespaceId(scope, "ns-explicit")).isEqualTo("ns-explicit")
+    @Test
+    fun `lookup normalizes an existing namespace without changing its owner`() {
+        workstreamService.create(scope, CreateWorkstreamRequest(
+            slug = scope.workstreamId, name = "Mapped workstream", status = "active", namespaceId = namespace,
+        ))
+        val mapped = workstreamService.findByNamespace(scope.organizationId, " ${namespace.uppercase()} ")
+        assertThat(mapped?.workstreamId).isEqualTo(scope.workstreamId)
+        assertThat(workstreamService.requireConfiguredNamespace(scope)).isEqualTo(namespace)
     }
 
     @Test
-    fun `a blank requested namespace falls back to the declared workstream namespace`() {
-        workstreamService.create(
-            scope,
-            CreateWorkstreamRequest(slug = scope.workstreamId, name = "Default WS", status = "active", namespaceId = "ns-declared"),
-        )
-
-        assertThat(workstreamService.resolveNamespaceId(scope, null)).isEqualTo("ns-declared")
-        assertThat(workstreamService.resolveNamespaceId(scope, "   ")).isEqualTo("ns-declared")
-        assertThat(workstreamService.declaredNamespaceId(scope)).isEqualTo("ns-declared")
+    fun `lookup without mapping never initializes one`() {
+        assertThat(workstreamService.findByNamespace(scope.organizationId, namespace)).isNull()
+        assertThat(workstreamService.listByOrganization(scope.organizationId)).isEmpty()
+        assertThatThrownBy { workstreamService.requireConfiguredNamespace(scope) }.isInstanceOf(RuntimeException::class.java)
     }
 
     @Test
-    fun `an undeclared workstream namespace falls back to the default namespace`() {
-        workstreamService.create(
-            scope,
-            CreateWorkstreamRequest(slug = scope.workstreamId, name = "Default WS", status = "active"),
-        )
-
-        assertThat(workstreamService.declaredNamespaceId(scope)).isNull()
-        assertThat(workstreamService.resolveNamespaceId(scope, null))
-            .isEqualTo(WorkstreamService.DEFAULT_NAMESPACE_ID)
+    fun `a workstream cannot be created without a namespace`() {
+        assertThatThrownBy {
+            workstreamService.create(scope, CreateWorkstreamRequest(slug = "unbound", name = "Unbound", status = "active"))
+        }.isInstanceOf(RuntimeException::class.java)
+        assertThat(workstreamService.listByOrganization(scope.organizationId)).isEmpty()
     }
 
     @Test
-    fun `a scope without a registry entry resolves to the default namespace`() {
-        val unregistered = TenantScope(scope.organizationId, "ws-no-registry")
-
-        assertThat(workstreamService.declaredNamespaceId(unregistered)).isNull()
-        assertThat(workstreamService.resolveNamespaceId(unregistered, null))
-            .isEqualTo(WorkstreamService.DEFAULT_NAMESPACE_ID)
+    fun `lookup cannot cross the authenticated organization`() {
+        workstreamService.create(scope, CreateWorkstreamRequest(
+            slug = scope.workstreamId, name = "Mapped workstream", status = "active", namespaceId = namespace,
+        ))
+        assertThat(workstreamService.findByNamespace("other-organization", namespace)).isNull()
     }
 }

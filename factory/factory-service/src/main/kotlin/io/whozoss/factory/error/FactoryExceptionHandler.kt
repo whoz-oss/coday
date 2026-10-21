@@ -91,6 +91,16 @@ class FactoryExceptionHandler {
                 ),
             )
 
+    @ExceptionHandler(org.springframework.web.bind.MissingServletRequestParameterException::class)
+    fun handleMissingParameter(exception: org.springframework.web.bind.MissingServletRequestParameterException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(400).contentType(MediaType.APPLICATION_JSON).body(
+            ErrorResponse(ErrorDetail(
+                code = "MISSING_REQUEST_PARAMETER",
+                message = "Required query parameter is missing",
+                details = mapOf("parameter" to exception.parameterName),
+            )),
+        )
+
     @ExceptionHandler(Exception::class)
     fun handleGenericException(exception: Exception): ResponseEntity<ErrorResponse> {
         logger.error(exception) { "Unhandled exception" }

@@ -47,7 +47,7 @@ class HttpBoundaryIntegrationTest {
     class BoundaryController {
         @GetMapping("/api/test/user", produces = [MediaType.APPLICATION_JSON_VALUE])
         fun user(user: AuthenticatedUser): Map<String, Any?> =
-            mapOf("userId" to user.userId, "organizationId" to user.scope.organizationId, "workstreamId" to user.scope.workstreamId)
+            mapOf("userId" to user.userId, "organizationId" to user.organizationId)
 
         @GetMapping("/api/test/boom", produces = [MediaType.APPLICATION_JSON_VALUE])
         fun boom(): Nothing = throw IllegalStateException("boom")
@@ -146,7 +146,7 @@ class HttpBoundaryIntegrationTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.userId").value("alice"))
             .andExpect(jsonPath("$.organizationId").value("org-local-dev"))
-            .andExpect(jsonPath("$.workstreamId").value("ws-default"))
+            .andExpect(jsonPath("$.workstreamId").doesNotExist())
     }
 
     @Test

@@ -60,12 +60,12 @@ describe('SseService', () => {
 
   afterEach(() => jest.useRealTimers())
 
-  it('connects to the base stream and subscribes to every named event', () => {
-    service.connect()
+  it('connects to the namespace-scoped stream and subscribes to every named event', () => {
+    service.connect('ns-1')
 
     expect(FakeEventSource.instances).toHaveLength(1)
     const source = FakeEventSource.instances[0]
-    expect(source.url).toBe('/api/factory/workflows/stream')
+    expect(source.url).toBe('/api/factory/workflows/stream?namespaceId=ns-1')
 
     const received: SseInvalidation[] = []
     service.invalidations$.subscribe((event) => received.push(event))
@@ -84,13 +84,13 @@ describe('SseService', () => {
     expect(received[0]).toMatchObject({ workflowId: 'wf-1', namespaceId: 'ns-1', revision: 3 })
   })
 
-  it('appends the namespace filter only when provided', () => {
-    service.connect('ns-7')
-    expect(FakeEventSource.instances[0].url).toBe('/api/factory/workflows/stream?namespaceId=ns-7')
+  it('does not open an unscoped stream', () => {
+    service.connect('   ')
+    expect(FakeEventSource.instances).toHaveLength(0)
   })
 
   it('tolerates non-JSON payloads', () => {
-    service.connect()
+    service.connect('ns-1')
     const received: SseInvalidation[] = []
     service.invalidations$.subscribe((event) => received.push(event))
 
@@ -105,7 +105,7 @@ describe('SseService', () => {
     const reconnects: number[] = []
     service.reconnected$.subscribe(() => reconnects.push(1))
 
-    service.connect()
+    service.connect('ns-1')
     const first = FakeEventSource.instances[0]
     first.open()
     expect(reconnects).toHaveLength(0)
@@ -121,7 +121,7 @@ describe('SseService', () => {
   })
 
   it('cancels any pending reconnect on close', () => {
-    service.connect()
+    service.connect('ns-1')
     FakeEventSource.instances[0].fail()
 
     service.close()

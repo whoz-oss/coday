@@ -25,6 +25,7 @@ import {
   AgentQuestionAnswerIntent,
   CancelIntent,
   ReplyIntent,
+  ResearchResumptionIntent,
   RetryIntent,
 } from './action-bar/action-bar.component'
 import { AgentTimelineComponent } from './agent-timeline/agent-timeline.component'
@@ -165,6 +166,8 @@ export class SessionPageComponent implements OnDestroy {
       // After that, the user's selection is preserved through SSE refreshes.
       if (s?.phase.stepId && !this.selection()) {
         this.pageState.selectDefaultStep()
+      } else if (s) {
+        this.pageState.reconcileSelection()
       }
       const run = this.run()
       const namespaceId = run?.namespaceId
@@ -243,6 +246,12 @@ export class SessionPageComponent implements OnDestroy {
       expectedRevision: intent.expectedRevision,
       reasonCode: intent.reasonCode,
     })
+  }
+
+  protected onResearchResumption(intent: ResearchResumptionIntent): void {
+    const id = this.effectiveRunId()
+    if (!id) return
+    this.store.resumeResearch(id, intent, this.currentNamespaceId())
   }
 
   protected onCancelAttempt(intent: CancelIntent): void {

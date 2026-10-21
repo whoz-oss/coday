@@ -4,6 +4,11 @@ import io.whozoss.factory.adapter.agentos.AgentOsExecutionAdapter
 import io.whozoss.factory.adapter.agentos.CaseEventView
 import io.whozoss.factory.agentattempt.domain.AgentAttemptStatus
 import io.whozoss.factory.agentattempt.service.DurableAgentAttemptService
+import io.whozoss.factory.agentattempt.service.AgentStepResultService
+import io.whozoss.factory.agentattempt.persistence.IdempotencyRepository
+import com.fasterxml.jackson.databind.ObjectMapper
+import io.whozoss.factory.agentattempt.domain.AgentStepResultObservedIdentity
+import io.whozoss.factory.agentattempt.domain.ResultAttemptNotRefreshableException
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.proxy.AgentOsProxyClient
 import io.whozoss.factory.proxy.AgentOsUnavailableException
@@ -102,6 +107,8 @@ class WorkflowService(
     private val transactionManager: PlatformTransactionManager? = null,
     private val durableAgentAttemptService: DurableAgentAttemptService? = null,
     private val agentOsExecutionAdapter: AgentOsExecutionAdapter? = null,
+    /** Result capability rotation used only for standard AgentOS queryUser resume. */
+    private val agentStepResultService: AgentStepResultService? = null,
     /** Durable runner submission used by start_workflow; absent only in narrow unit tests. */
     private val sessionRunSubmissionService: SessionRunSubmissionService? = null,
     /**
@@ -111,6 +118,9 @@ class WorkflowService(
      * plugin is refused when the manager is unavailable.
      */
     private val pluginManager: PluginManager? = null,
+    private val needsResearchRouter: io.whozoss.factory.capability.NeedsResearchRouter? = null,
+    private val idempotencyRepository: IdempotencyRepository? = null,
+    private val objectMapper: ObjectMapper? = null,
 ) {
 
     private val logger = KotlinLogging.logger {}
@@ -153,6 +163,23 @@ class WorkflowService(
 
     @Transactional(readOnly = true)
     fun getDefinition(scope: TenantScope, workflowType: String, version: String): Map<String, Any?>? =
+        repository.findDefinition(scope, workflowType, version)?.let { definitionJson(it) }
+
+    @Transactional
+    fun registerDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord) {
+        repository.saveDefinition(scope, record)
+    }
+
+    @Transactional
+    fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean =
+        repository.deleteDefinition(scope, workflowType, version)
+
+    @Transactional(readOnly = true)
+    fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): Map<String, Any?> =
+        mapOf("items" to repository.listDefinitions(scope).map { definitionJson(it) })
+
+    @Transactional(readOnly = true)
+    fun getDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Map<String, Any?>? =
         repository.findDefinition(scope, workflowType, version)?.let { definitionJson(it) }
 
     private fun definitionJson(record: WorkflowDefinitionRecord): Map<String, Any?> = mapOf(
@@ -759,6 +786,11 @@ class WorkflowService(
             )
             else -> throw workflowException("UNSUPPORTED_AGENT_QUESTION_TYPE", "Unsupported AgentOS question type.")
         }
+        // Renew immediately before AgentOS resumes the same attempt. This closes
+        // the race where the worker submits its result before the SSE answer
+        // callback is observed. The durable question id is the refresh generation,
+        // so an HTTP retry does not repeatedly extend the active-time budget.
+        refreshResultCapabilityForAgentAnswer(scope, attempt, questionEventId)
         adapter.answerQuestion(attempt.caseId, questionEventId, normalized, attemptId, actorId)
         return WorkflowHttpResult(
             202,
@@ -770,6 +802,30 @@ class WorkflowService(
                 "status" to "accepted",
             ),
         )
+    }
+
+    private fun refreshResultCapabilityForAgentAnswer(
+        scope: TenantScope,
+        attempt: io.whozoss.factory.agentattempt.domain.DurableAgentAttempt,
+        questionEventId: String,
+    ) {
+        val service = agentStepResultService ?: return
+        val oldToken = attempt.capabilityToken?.takeIf { it.isNotBlank() } ?: return
+        val refreshKey = "agentos-query-user:${attempt.attemptId}:$questionEventId"
+        if (service.resolveCapability(scope, oldToken)?.refreshKey == refreshKey) return
+        val issued = try {
+            service.refresh(
+                scope,
+                AgentStepResultObservedIdentity(
+                    attempt.attemptId, attempt.caseId, attempt.agentName, attempt.namespaceId,
+                ),
+                AGENTOS_RUNTIME_ID,
+                refreshKey,
+            )
+        } catch (_: ResultAttemptNotRefreshableException) {
+            return
+        }
+        durableAgentAttemptService?.replaceCapability(scope, attempt, oldToken, issued.token)
     }
 
     // ------------------------------------------------------------------
@@ -1127,6 +1183,142 @@ class WorkflowService(
         return WorkflowHttpResult(201, mapOf("workflowId" to workflowId, "interaction" to interaction.toJson()))
     }
 
+    @Transactional
+    fun resumeResearch(
+        scope: TenantScope,
+        namespaceId: String,
+        workflowId: String,
+        stepId: String,
+        expectedRevision: Int,
+        additionalContext: String,
+        actorId: String,
+        idempotencyKey: String,
+    ): WorkflowHttpResult {
+        val normalized = additionalContext.trim()
+        val idempotency = idempotencyRepository ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Research resumption idempotency store is unavailable.")
+        val mapper = objectMapper ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Research resumption serialization is unavailable.")
+        // The key is scoped to the exact tenant/namespace/workflow/step so the same client key can never
+        // alias another run; the request fingerprint is a structured JSON (no ambiguous delimiter).
+        val scopedKey = "research-resumption:${scope.workstreamId}:$namespaceId:$workflowId:$stepId:$idempotencyKey"
+        val requestHash = CanonicalHash.sha256Hex(
+            mapper.writeValueAsString(
+                linkedMapOf(
+                    "workflowId" to workflowId,
+                    "namespaceId" to namespaceId,
+                    "stepId" to stepId,
+                    "expectedRevision" to expectedRevision,
+                    "additionalContext" to normalized,
+                    "actorId" to actorId,
+                ),
+            ),
+        )
+        idempotency.find(scope, scopedKey)?.let { cached ->
+            if (cached.requestHash != requestHash) throw io.whozoss.factory.agentattempt.domain.IdempotencyKeyCollisionException()
+            val response = mapper.readValue(cached.responsePayload, Map::class.java).entries.associate { it.key.toString() to it.value }
+            return WorkflowHttpResult(200, response + ("idempotent" to true))
+        }
+        if (normalized.length !in 1..MAX_RESEARCH_CONTEXT_LENGTH) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "additionalContext must contain 1 to $MAX_RESEARCH_CONTEXT_LENGTH characters.")
+        }
+        val instance = activeInstance(scope, namespaceId, workflowId)
+        assertNotSealed(instance)
+        if (instance.revision != expectedRevision) throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
+        val definition = resolveDefinition(scope, instance)
+        val step = definition.steps.firstOrNull { it.id == stepId }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Unknown stepId.")
+        if (instance.toSnapshot().stepStatus(stepId) != WorkflowStatuses.NEEDS_RESEARCH) {
+            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "Only a NEEDS_RESEARCH step can be resumed.")
+        }
+        val predecessor = durableAgentAttemptService?.findLatestForStep(scope, namespaceId, workflowId, stepId)
+            ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "No durable predecessor attempt is available.")
+        if (predecessor.failureCode != "AGENT_NEEDS_RESEARCH") {
+            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The authoritative predecessor did not end with NEEDS_RESEARCH.")
+        }
+        // A resumed attempt replays its frozen brief/envelope pair (replay integrity). A legacy predecessor
+        // without that pair cannot be resumed faithfully, and silently re-deriving it would collide at run time.
+        if (predecessor.brief == null || predecessor.contextEnvelope == null) {
+            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The predecessor attempt has no frozen context and cannot be resumed.")
+        }
+        val accepted = agentStepResultService?.acceptedResult(scope, namespaceId, workflowId, stepId, predecessor.attemptId)
+            ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "No accepted NEEDS_RESEARCH result is available for the authoritative predecessor.")
+        if (accepted.status != io.whozoss.factory.agentattempt.domain.AgentStepResultStatus.NEEDS_RESEARCH) {
+            throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The authoritative predecessor result is not NEEDS_RESEARCH.")
+        }
+        val result = evidenceRepository.list(scope, namespaceId, workflowId, stepId)
+            .singleOrNull { it.kind == io.whozoss.factory.capability.NeedsResearchRouter.NEEDS_RESEARCH_EVIDENCE_KIND && it.facts["attemptId"] == predecessor.attemptId && it.facts["resultId"] == accepted.resultId }
+            ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The accepted NEEDS_RESEARCH proof is missing or ambiguous.")
+        val facts = result.facts
+        @Suppress("UNCHECKED_CAST")
+        val persona = (result.source?.get("persona") as? String) ?: step.responsibility.name
+        if (persona == null) throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The research step has no assigned agent.")
+        val outcome = io.whozoss.factory.capability.CapabilityOutcome.AgentNeedsResearch(
+            stepId = stepId,
+            persona = persona,
+            attemptId = facts["attemptId"] as? String,
+            resultId = facts["resultId"] as? String,
+            summary = facts["summary"] as? String
+                ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The accepted NEEDS_RESEARCH result has no summary."),
+            findings = facts["findings"] as? List<Map<String, Any?>> ?: emptyList(),
+            artifacts = facts["artifacts"] as? List<Map<String, Any?>> ?: emptyList(),
+            claims = facts["claims"] as? Map<String, Any?> ?: emptyMap(),
+        )
+        val successorId = (needsResearchRouter ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Research resumption is unavailable."))
+            .resume(scope, namespaceId, workflowId, step, outcome, normalized, actorId)
+        val nextInstanceMap = instance.instance.toMutableMap()
+        // Transitive dependants of the resumed step (breadth-first over the reverse dependsOn edges).
+        val descendants = LinkedHashSet<String>()
+        val frontier = ArrayDeque(listOf(stepId))
+        while (frontier.isNotEmpty()) {
+            val parent = frontier.removeFirst()
+            definition.steps.filter { parent in it.dependsOn }.forEach { child ->
+                if (descendants.add(child.id)) frontier.addLast(child.id)
+            }
+        }
+        val storedStates = repository.findStepStates(scope, namespaceId, workflowId).associateBy { it.stepId }
+        val resetIds = descendants.filter { id ->
+            val state = storedStates[id]
+            state?.status == WorkflowStatuses.BLOCKED && state.payload["rootStepId"] == stepId && state.payload["cause"] == "dependency_non_success"
+        }.toSet()
+        fun replaceResumedStatuses(raw: Any?): List<Map<String, Any?>> = (raw as? List<*>).orEmpty().mapNotNull { item ->
+            val map = (item as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value }?.toMutableMap() ?: return@mapNotNull null
+            when (map["id"]) {
+                stepId -> map["status"] = WorkflowStatuses.READY
+                in resetIds -> map["status"] = WorkflowStatuses.PENDING
+            }
+            map
+        }
+        nextInstanceMap["steps"] = replaceResumedStatuses(nextInstanceMap["steps"])
+        nextInstanceMap["status"] = WorkflowStatuses.PENDING
+        val nextProjection = instance.projection.toMutableMap()
+        nextProjection["steps"] = replaceResumedStatuses(nextProjection["steps"])
+        nextProjection["status"] = WorkflowStatuses.PENDING
+        val next = instance.copy(revision = instance.revision + 1, instance = nextInstanceMap, projection = nextProjection)
+        nextInstanceMap["revision"] = next.revision
+        if (!repository.updateInstance(scope, namespaceId, workflowId, expectedRevision, next)) {
+            throw workflowException(WorkflowErrorCodes.REVISION_CONFLICT, "The expected revision is stale.")
+        }
+        val targetState = storedStates[stepId] ?: throw workflowException(WorkflowErrorCodes.INTERACTION_STALE, "The NEEDS_RESEARCH step state is missing.")
+        repository.upsertStepState(scope, targetState.copy(status = WorkflowStatuses.READY, payload = targetState.payload - "completedAt"))
+        resetIds.forEach { id -> storedStates[id]?.let { state -> repository.upsertStepState(scope, state.copy(status = WorkflowStatuses.PENDING, payload = state.payload - "completedAt")) } }
+        val previousProjection = repository.findProjection(scope, namespaceId, workflowId)
+        repository.publishProjection(scope, WorkflowProjectionRecord(
+            namespaceId, workflowId, (nextProjection["schemaVersion"] as? String) ?: "2", 0,
+            CanonicalHash.workflowProjectionHash(nextProjection), WorkflowStatuses.PENDING, nextProjection,
+            nextInstanceMap, previousProjection?.governanceMode ?: "governed", previousProjection?.definitionVersion,
+            previousProjection?.definitionHash, previousProjection?.relations, previousProjection?.controllerExecution, "active",
+        ), null)
+        // Same resolution as the other runner submissions; no repository root means the run cannot be
+        // queued faithfully, so the whole (transactional) resumption is refused rather than guessed.
+        val repoRoot = agentOsProxyClient?.let { runCatching { it.resolveRepoRoot(namespaceId, actorId) }.getOrNull() }?.takeIf { it.isNotBlank() }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The namespace repository root could not be resolved; the resumption was not queued.")
+        val submission = sessionRunSubmissionService?.submit(scope, namespaceId, workflowId, repoRoot, "resume-research:$successorId", null)
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "The durable workflow runner is unavailable.")
+        val response = mapOf("workflowId" to workflowId, "stepId" to stepId, "attemptId" to successorId, "revision" to next.revision, "idempotent" to false, "submissionId" to submission.submissionId, "queued" to submission.queued)
+        idempotency.save(scope, scopedKey, requestHash, mapper.writeValueAsString(response))
+        sseHub.publish(scope, namespaceId, mapOf("workflowId" to workflowId, "namespaceId" to namespaceId, "revision" to next.revision))
+        return WorkflowHttpResult(201, response)
+    }
+
     // ------------------------------------------------------------------
     // Lifecycle
     // ------------------------------------------------------------------
@@ -1370,6 +1562,11 @@ class WorkflowService(
         val projectionState = getProjection(scope, namespaceId, workflowId)
         requireExistingWorkflow(projectionState)
         val revision = (projectionState["revision"] as? Number)?.toInt() ?: 0
+        // resume_research is fenced on the INSTANCE revision (the one resumeResearch compares). The projection
+        // row revision advances independently on DAG runs, so it must not be exposed for this action.
+        val governedInstance = repository.findInstance(scope, namespaceId, workflowId)
+        val instanceRevision = governedInstance?.revision ?: revision
+        val runSealed = WorkflowStatuses.isTerminal(governedInstance?.instance?.get("status") as? String)
         val steps = ((projectionState["projection"] as? Map<*, *>)?.get("steps") as? List<*>)
             .orEmpty()
             .mapNotNull { entry -> (entry as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } }
@@ -1420,6 +1617,21 @@ class WorkflowService(
                     "Waiting for a human decision on step '$stepId'.",
                 )
 
+                WorkflowStatuses.NEEDS_RESEARCH -> {
+                    blocker(WorkflowBlockerCodes.NEEDS_RESEARCH, stepId, "Step '$stepId' needs additional research or repository access.")
+                    // A sealed (terminal) run is never reopened: the blocker stays visible, the action does not.
+                    if (!runSealed) {
+                        actions.add(
+                            AllowedActionDto(
+                                type = WorkflowActionTypes.RESUME_RESEARCH,
+                                stepId = stepId,
+                                expectedRevision = instanceRevision,
+                                label = "Resume research for step '$stepId'",
+                            ),
+                        )
+                    }
+                }
+
                 WorkflowStatuses.FAILED -> {
                     blocker(WorkflowBlockerCodes.ATTEMPT_FAILED, stepId, "Step '$stepId' failed.")
                     actions.add(
@@ -1437,7 +1649,9 @@ class WorkflowService(
         }
 
         // Durable attempts -> active attempts are cancellable, terminal ones are blockers.
+        val latestAttempts = attempts.groupBy { it.stepId }.mapValues { (_, values) -> values.maxByOrNull { it.attemptNumber } }
         attempts.forEach { attempt ->
+            if (latestAttempts[attempt.stepId]?.attemptId != attempt.attemptId) return@forEach
             if (!attempt.status.terminal) {
                 actions.add(
                     AllowedActionDto(
@@ -1463,7 +1677,13 @@ class WorkflowService(
                     "Execution attempt '${attempt.attemptId}' failed (${attempt.failureCode ?: "unknown"}).",
                 )
 
-                AgentAttemptStatus.INDETERMINATE -> blocker(
+                AgentAttemptStatus.INDETERMINATE -> if (attempt.failureCode == "AGENT_NEEDS_RESEARCH") {
+                    blocker(
+                        WorkflowBlockerCodes.NEEDS_RESEARCH,
+                        attempt.stepId,
+                        "Execution attempt '${attempt.attemptId}' needs additional research or corrected repository access.",
+                    )
+                } else blocker(
                     WorkflowBlockerCodes.UNKNOWN_RUNTIME,
                     attempt.stepId,
                     "Execution attempt '${attempt.attemptId}' has an indeterminate outcome.",
@@ -1684,6 +1904,8 @@ class WorkflowService(
         /** Interaction type of a DAG-owned human checkpoint (opened by the capability resolver). */
         const val CHECKPOINT_INTERACTION_TYPE = "checkpoint"
         const val MAX_AGENT_ANSWER_LENGTH = 2_000
+        const val MAX_RESEARCH_CONTEXT_LENGTH = 4_000
+        const val AGENTOS_RUNTIME_ID = "agentos-primary"
 
         /** Upper bound of the read-only `limit` filter of [listProjections] (contract §6.1). */
         const val MAX_LIST_LIMIT = 200

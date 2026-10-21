@@ -92,7 +92,7 @@ class WorkflowController(
     // ----- collection / detail ------------------------------------------
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
-    @Operation(summary = "List workflow projections of the caller's tenant scope (optionally filtered by namespace).")
+    @Operation(summary = "List workflow projections in an explicit namespace; an unmapped namespace returns an empty collection.")
     fun list(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @RequestParam(name = "state", required = false) state: String?,
@@ -100,11 +100,22 @@ class WorkflowController(
         @RequestParam(name = "limit", required = false) limit: Int?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        // `namespaceId` is an OPTIONAL filter: absent/blank lists every namespace
-        // of the caller's tenant scope.
-        val caller = resolveWorkflowCaller(user, namespaceId, requireNamespace = false)
+        val namespace = requireNamespaceId(namespaceId?.trim()?.lowercase())
+        val lifecycleState = state ?: "active"
+        if (lifecycleState !in setOf("active", "removed")) {
+            throw workflowException(WorkflowErrorCodes.UNSUPPORTED_STATE, "state must be active or removed.")
+        }
+        // A namespace may exist in AgentOS before its first Factory run. Do not
+        // create a mapping, invent a scope, or swallow lookup errors on this GET.
+        val workstream = workstreamService.findByNamespace(user.organizationId, namespace)
+            ?: return WorkflowDataEnvelope(mapOf(
+                "namespaceId" to namespace,
+                "state" to lifecycleState,
+                "items" to emptyList<Any>(),
+                "truncated" to false,
+            ))
         return WorkflowDataEnvelope(
-            service.listProjections(caller.scope, caller.namespaceId, state ?: "active", workflowType, limit),
+            service.listProjections(TenantScope(user.organizationId, workstream.workstreamId), namespace, lifecycleState, workflowType, limit),
         )
     }
 
@@ -115,7 +126,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.getProjection(caller.scope, caller.namespaceId, workflowId))
     }
 
@@ -127,7 +138,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.remove(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
     }
 
@@ -140,7 +151,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.getProjection(caller.scope, caller.namespaceId, workflowId))
     }
 
@@ -157,7 +168,7 @@ class WorkflowController(
             throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain projection and execution.")
         }
         val execution = requireExecution(request["execution"] as? Map<*, *>)
-        val caller = resolveWorkflowCaller(user, execution.namespaceId)
+        val caller = resolveWorkflowCaller(user, execution.namespaceId, workstreamService = workstreamService)
         val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
         return respond(
             service.publishProjection(
@@ -185,7 +196,7 @@ class WorkflowController(
         if (request.keys.any { it !in allowedFields }) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         }
-        val namespace = (request["namespaceId"] as? String)?.trim()?.takeIf { isValidNamespaceId(it) }
+        val namespace = (request["namespaceId"] as? String)?.trim()?.lowercase()?.takeIf { isValidNamespaceId(it) }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID, "A valid namespaceId is required.")
         val workflowType = request["workflowType"] as? String
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
@@ -193,11 +204,11 @@ class WorkflowController(
             ?: throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "Idempotency-Key is required.")
         val parameters = (request["parameters"] as? Map<*, *>)?.entries?.associate { it.key.toString() to it.value } ?: emptyMap()
         // The registry mapping of the namespace selects the workstream the run is stored under.
-        val selectedWorkstream = workstreamService.findOrInitializeForNamespace(user.scope.organizationId, namespace)
+        val selectedWorkstream = workstreamService.findOrInitializeForNamespace(user.organizationId, namespace)
         if (selectedWorkstream.status != WorkstreamStatus.ACTIVE) {
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST, "The namespace workstream is inactive.")
         }
-        val selectedScope = TenantScope(user.scope.organizationId, selectedWorkstream.workstreamId)
+        val selectedScope = TenantScope(user.organizationId, selectedWorkstream.workstreamId)
         val repoRoot = resolveRepoRoot(namespace, user.userId)
             ?: sessionProperties.defaultRepoRoot?.takeIf { it.isNotBlank() }
         return respond(
@@ -261,7 +272,7 @@ class WorkflowController(
             throw workflowException(WorkflowErrorCodes.INVALID_START_REQUEST)
         }
         val execution = requireExecution(request["execution"] as? Map<*, *>)
-        val caller = resolveWorkflowCaller(user, execution.namespaceId)
+        val caller = resolveWorkflowCaller(user, execution.namespaceId, workstreamService = workstreamService)
         // The optional ticket may be carried by the workflow object (preferred) or
         // the top-level request. It is mirrored into `relations` so the branch
         // naming / session context can read it from the persisted instance.
@@ -360,6 +371,7 @@ class WorkflowController(
         val caller = resolveWorkflowCaller(
             user,
             (request["execution"] as? Map<*, *>)?.get("namespaceId") as? String,
+            workstreamService = workstreamService,
         )
         val result = if (code) {
             service.codeTransition(caller.scope, caller.namespaceId, workflowId, request["transition"])
@@ -404,7 +416,7 @@ class WorkflowController(
         sync: Boolean,
     ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
         val request = requireBody(body)
-        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String)
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
         val projection = service.getProjection(caller.scope, caller.namespaceId, workflowId)
         if (projection["state"] != "existing") {
             throw workflowException(
@@ -500,7 +512,7 @@ class WorkflowController(
         @RequestParam(name = "stepId", required = false) stepId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<List<DurableAgentAttemptDto>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         val attempts = durableAgentAttemptService.findByWorkflow(caller.scope, caller.namespaceId, workflowId).map { it.toDto() }
         // Optional read-only step filter (Phase 6 Workstream Agent reads): a pure
         // in-memory filter over the bounded DTO list; an unknown step degrades to
@@ -531,7 +543,7 @@ class WorkflowController(
         }
         val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
-        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String)
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
         val cancellation = bridgeCancellationService
             ?: throw WorkflowException(
                 "BRIDGE_CANCELLATION_UNAVAILABLE",
@@ -567,7 +579,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         val result = sessionRunService.sessionState(caller.scope, caller.namespaceId, workflowId)
             ?: throw workflowException(WorkflowErrorCodes.WORKFLOW_NOT_FOUND)
         return WorkflowDataEnvelope(
@@ -595,8 +607,31 @@ class WorkflowController(
         if (request.keys.any { it !in allowed } || stepId == null || expectedRevision == null || reasonCode == null) {
             throw workflowException(WorkflowErrorCodes.INVALID_RETRY_REQUEST, "Retry request is invalid.")
         }
-        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String)
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
         return respond(service.openRetry(caller.scope, caller.namespaceId, workflowId, stepId, expectedRevision, reasonCode))
+    }
+
+    @PostMapping(path = ["/{workflowId}/steps/{stepId}/research-resumptions"], produces = [MediaType.APPLICATION_JSON_VALUE])
+    @Operation(summary = "Resume a NEEDS_RESEARCH step as a new attempt.")
+    fun resumeResearch(
+        @PathVariable workflowId: String,
+        @PathVariable stepId: String,
+        @RequestBody(required = false) body: Map<String, Any?>?,
+        @RequestHeader(name = "Idempotency-Key", required = false) idempotencyKey: String?,
+        @Parameter(hidden = true) user: AuthenticatedUser,
+    ): ResponseEntity<WorkflowDataEnvelope<Any?>> {
+        val request = requireBody(body)
+        if (request.keys.any { it !in setOf("namespaceId", "expectedRevision", "additionalContext") }) {
+            throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Only namespaceId, expectedRevision and additionalContext are accepted.")
+        }
+        val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
+        val additionalContext = request["additionalContext"] as? String
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "additionalContext is required.")
+        val key = idempotencyKey?.trim()?.takeIf { it.isNotEmpty() && it.length <= 128 }
+            ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Idempotency-Key is required and must not exceed 128 characters.")
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
+        return respond(service.resumeResearch(caller.scope, caller.namespaceId, workflowId, stepId, expectedRevision, additionalContext, caller.actorId, key))
     }
 
     // ----- lifecycle -----------------------------------------------------
@@ -609,7 +644,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.restore(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
     }
 
@@ -635,7 +670,7 @@ class WorkflowController(
         namespaceId: String?,
         user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.purge(caller.scope, caller.namespaceId, workflowId).data as Map<String, Any?>)
     }
 
@@ -648,7 +683,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.timing(caller.scope, caller.namespaceId, workflowId))
     }
 
@@ -659,7 +694,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.retries(caller.scope, caller.namespaceId, workflowId))
     }
 
@@ -671,7 +706,7 @@ class WorkflowController(
         @RequestParam(name = "scope", required = false) scope: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Map<String, Any?>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         val resolvedScope = scope ?: "self"
         if (resolvedScope !in setOf("self", "descendants")) {
             throw workflowException("INVALID_METRICS_SCOPE", "scope must be self or descendants.")
@@ -689,7 +724,7 @@ class WorkflowController(
         @RequestParam(name = "stepId", required = false) stepId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Any?> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.listEvidence(caller.scope, caller.namespaceId, workflowId, stepId).data)
     }
 
@@ -705,7 +740,7 @@ class WorkflowController(
             throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Request body must contain evidence and execution.")
         }
         val execution = requireExecution(request["execution"] as? Map<*, *>)
-        val caller = resolveWorkflowCaller(user, execution.namespaceId)
+        val caller = resolveWorkflowCaller(user, execution.namespaceId, workstreamService = workstreamService)
         val evidence = parseEvidence(request["evidence"], workflowId, execution.namespaceId!!)
         return respond(service.appendEvidence(caller.scope, caller.namespaceId, workflowId, evidence))
     }
@@ -719,7 +754,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<List<Map<String, Any?>>> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.listAgentQuestions(caller.scope, caller.namespaceId, workflowId))
     }
 
@@ -739,7 +774,7 @@ class WorkflowController(
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "stepId is required.")
         val answer = request["answer"] as? String
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "answer is required.")
-        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String)
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
         return respond(
             service.submitAgentQuestionAnswer(
                 caller.scope,
@@ -761,7 +796,7 @@ class WorkflowController(
         @RequestParam(name = "state", required = false) state: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<Any?> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(
             service.listInteractions(caller.scope, caller.namespaceId, workflowId, openOnly = state != "all").data,
         )
@@ -794,12 +829,14 @@ class WorkflowController(
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "expectedRevision is required.")
         val answer = request["answer"] as? String
             ?: throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "answer is required.")
-        // The durable interaction owns the authoritative namespace; a body namespace
-        // remains an optional legacy hint whose mismatch is handled by the service.
-        val caller = resolveWorkflowCaller(user, requireNamespace = false)
+        val caller = resolveWorkflowCaller(
+            user,
+            request["namespaceId"] as? String,
+            workstreamService = workstreamService,
+        )
         val answered = agentStepQuestionService.answer(
             caller.scope,
-            request["namespaceId"] as? String,
+            caller.namespaceId,
             workflowId,
             interactionId,
             expectedRevision,
@@ -856,7 +893,7 @@ class WorkflowController(
         if (normalizedActions.size != 2 || normalizedActions.map { it["id"] }.distinct().size != 2) {
             throw workflowException(WorkflowErrorCodes.INVALID_INTERACTION)
         }
-        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String)
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
         return respond(
             service.openInteraction(
                 caller.scope,
@@ -889,7 +926,7 @@ class WorkflowController(
         ) {
             throw workflowException(WorkflowErrorCodes.INVALID_REPLY)
         }
-        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String)
+        val caller = resolveWorkflowCaller(user, request["namespaceId"] as? String, workstreamService = workstreamService)
         return WorkflowDataEnvelope(
             service.replyInteraction(
                 caller.scope,
@@ -919,7 +956,7 @@ class WorkflowController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): WorkflowDataEnvelope<WorkflowActionsResponseDto> {
-        val caller = resolveWorkflowCaller(user, namespaceId)
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         return WorkflowDataEnvelope(service.workflowActions(caller.scope, caller.namespaceId, workflowId, canReply = true))
     }
 
@@ -961,7 +998,11 @@ class WorkflowController(
             throw workflowException(WorkflowErrorCodes.INVALID_REQUEST, "Unsupported cost-control request fields.")
         }
         val bodyNamespaceId = (request["namespaceId"] as? String)?.takeIf { it.isNotBlank() }
-        val caller = resolveWorkflowCaller(user, queryNamespaceId?.takeIf { it.isNotBlank() } ?: bodyNamespaceId)
+        val caller = resolveWorkflowCaller(
+            user,
+            queryNamespaceId?.takeIf { it.isNotBlank() } ?: bodyNamespaceId,
+            workstreamService = workstreamService,
+        )
         val expectedThreshold = (request["expectedThreshold"] as? Number)?.toDouble()
         val caseId = (request["caseId"] as? String)?.takeIf { it.isNotBlank() }
         val expectedRevision = (request["expectedRevision"] as? Number)?.toInt()
@@ -996,7 +1037,7 @@ class WorkflowController(
     private fun requireExecution(raw: Map<*, *>?): ControllerExecutionInput {
         val execution = raw?.entries?.associate { it.key.toString() to it.value }
             ?: throw workflowException(WorkflowErrorCodes.INVALID_EXECUTION)
-        val namespaceId = execution["namespaceId"] as? String
+        val namespaceId = (execution["namespaceId"] as? String)?.trim()?.lowercase()
         if (!isValidNamespaceId(namespaceId)) {
             throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID)
         }

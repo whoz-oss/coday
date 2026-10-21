@@ -1,6 +1,7 @@
 package io.whozoss.factory.workflow.service
 
-import io.whozoss.factory.persistence.TenantScopeProvider
+import io.whozoss.factory.config.FactoryProperties
+import io.whozoss.factory.persistence.OrganizationScope
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -21,13 +22,13 @@ import org.springframework.stereotype.Component
 @ConditionalOnProperty(name = ["factory.workflow.seed.enabled"], havingValue = "true", matchIfMissing = true)
 class SessionDefinitionSeedRunner(
     private val seeder: WorkflowDefinitionSeeder,
-    private val tenantScopeProvider: TenantScopeProvider,
+    private val properties: FactoryProperties,
 ) : ApplicationRunner {
 
     private val log = LoggerFactory.getLogger(SessionDefinitionSeedRunner::class.java)
 
     override fun run(args: ApplicationArguments) {
-        runCatching { seeder.seed(tenantScopeProvider.defaultScope()) }
+        runCatching { seeder.seed(OrganizationScope(properties.tenant.organizationId)) }
             .onSuccess { seeded ->
                 if (seeded.isNotEmpty()) log.info("Seeded {} declarative session definition(s): {}", seeded.size, seeded)
             }

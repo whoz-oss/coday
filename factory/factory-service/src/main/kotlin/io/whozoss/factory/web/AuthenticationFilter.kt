@@ -48,7 +48,7 @@ class AuthenticationFilter(
         when (val identity = identityResolver.resolve(request)) {
             is IdentityResult.Authenticated -> {
                 val userId = identity.userId
-                request.setAttribute(ATTRIBUTE, AuthenticatedUser(userId, membershipResolver.resolveMembership(userId)))
+                request.setAttribute(ATTRIBUTE, AuthenticatedUser(userId, membershipResolver.resolveOrganizationId(userId)))
                 filterChain.doFilter(request, response)
             }
             IdentityResult.Unauthenticated ->

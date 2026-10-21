@@ -162,6 +162,12 @@ data class AgentStepResultCapability(
     val issuedAt: String,
     val expiresAt: String,
     val submissionBudget: Int,
+    /**
+     * Stable generation of the last controlled rotation. Persisting it makes a
+     * retry/restart of the same human-resume operation converge without issuing
+     * another token or extending the active-time budget again.
+     */
+    val refreshKey: String? = null,
 )
 
 /** A freshly issued submission capability (the clear token is returned once). */

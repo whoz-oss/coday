@@ -14,9 +14,8 @@ import org.springframework.stereotype.Service
  * The worker only knows the Factory `attemptId`. The workflow, step, namespace
  * and tenant are never taken from the caller: the attempt is resolved within the
  * caller's ORGANIZATION and the submission then runs under the attempt's OWN
- * persisted scope. That matters because a run is stored under the workstream
- * mapped from its namespace (for example `namespace-xxxx`), which is not the
- * `ws-default` workstream the caller's own scope resolves to.
+ * persisted scope. Authentication establishes only the organization; the
+ * attempt owns the authoritative workstream and namespace.
  */
 @Service
 class WorkerResultSubmissionService(

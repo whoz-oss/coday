@@ -25,6 +25,17 @@ import java.util.UUID
  * (Rules 1–3) and the stable error envelope.
  */
 class PlanChangeProposalControllerIntegrationTest : Neo4jIntegrationTest() {
+    @Autowired
+    private lateinit var workstreams: io.whozoss.factory.workstream.WorkstreamService
+
+    @org.junit.jupiter.api.BeforeEach
+    fun registerNamespaceMapping() {
+        workstreams.create(io.whozoss.factory.persistence.TenantScope("org-local-dev", WORKSTREAM_ID),
+            io.whozoss.factory.workstream.web.CreateWorkstreamRequest(
+                slug = WORKSTREAM_ID, name = "Plan change fixture", status = "active", namespaceId = NAMESPACE_ID,
+            ))
+    }
+
 
     @Autowired
     private lateinit var restTemplate: TestRestTemplate
@@ -308,7 +319,7 @@ class PlanChangeProposalControllerIntegrationTest : Neo4jIntegrationTest() {
     private fun newKey(): String = "key-${UUID.randomUUID().toString().take(8)}"
 
     companion object {
-        private const val NAMESPACE_ID = "ns-planchange"
-        private const val WORKSTREAM_ID = "ws-default"
+        private const val NAMESPACE_ID = "98b55121-a3ed-4317-9ba7-ff82686cfa2f"
+        private const val WORKSTREAM_ID = "plan-change-test"
     }
 }

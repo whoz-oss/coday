@@ -1,26 +1,18 @@
 package io.whozoss.factory.web
 
-import io.whozoss.factory.persistence.TenantScope
 import org.springframework.stereotype.Component
 
-/**
- * Resolves, server-side, the tenant a user belongs to. It is the only source of a
- * user's [TenantScope]: nothing is read from client input.
- */
+/** Resolves the organization trusted for an authenticated user. */
 interface MembershipResolver {
-    fun resolveMembership(userId: String): TenantScope
+    fun resolveOrganizationId(userId: String): String
 }
 
-/**
- * In-memory membership directory for local development and tests: every user
- * belongs to the synthetic `org-local-dev` / `ws-default` tenant.
- */
+/** Local development identity belongs to one explicit organization only. */
 @Component
 class LocalDevMembershipResolver : MembershipResolver {
-
-    override fun resolveMembership(userId: String): TenantScope = LOCAL_DEV_SCOPE
+    override fun resolveOrganizationId(userId: String): String = LOCAL_DEV_ORGANIZATION_ID
 
     companion object {
-        val LOCAL_DEV_SCOPE = TenantScope("org-local-dev", "ws-default")
+        const val LOCAL_DEV_ORGANIZATION_ID = "org-local-dev"
     }
 }

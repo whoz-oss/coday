@@ -5,12 +5,15 @@ info:
   description: >-
     Conversational Factory facade for agents of the FACTORY_WORKSTREAM integration. The bearer is a
     Factory-issued JWT (optional when Factory runs in local security mode, FACTORY_SECURITY_MODE=local). Factory resolves the single AgentOS
-    namespace from the workstream registered for the caller's tenant; the model never chooses it. Other
-    identifiers are references resolved inside that boundary. Human validations are answered in Factory only.
+    workstream from the explicit namespaceId within the authenticated organization. Every operation requires
+    the namespaceId from the assignment; reads never initialize a missing mapping. Other identifiers are
+    references resolved inside that boundary. Human validations are answered in Factory only.
 servers:
   - url: https://factory.example.invalid
 paths:
   /api/factory/workstream-service/workflows:
+    parameters:
+      - $ref: '#/components/parameters/NamespaceId'
     get:
       operationId: list_workflows
       summary: List the workflows of the configured workstream (read-only).
@@ -77,6 +80,8 @@ paths:
         '403': { description: 'The workstream namespace mapping is invalid or the workflow type is not allowed.' }
         '409': { description: Idempotency or identity conflict. }
   /api/factory/workstream-service/workflows/{workflowId}:
+    parameters:
+      - $ref: '#/components/parameters/NamespaceId'
     get:
       operationId: get_workflow
       summary: Read the authoritative state of one workflow (read-only).
@@ -88,6 +93,8 @@ paths:
       responses:
         '200': { description: 'Workflow state with steps, blockers, allowed actions and bounded attempts.' }
   /api/factory/workstream-service/workflows/{workflowId}/attempts:
+    parameters:
+      - $ref: '#/components/parameters/NamespaceId'
     get:
       operationId: get_step_attempts
       summary: List the durable attempts of a workflow, optionally of one step (read-only).
@@ -103,6 +110,8 @@ paths:
       responses:
         '200': { description: 'Bounded, secret-free attempts.' }
   /api/factory/workstream-service/workflows/{workflowId}/blockers:
+    parameters:
+      - $ref: '#/components/parameters/NamespaceId'
     get:
       operationId: get_blockers
       summary: List the active blockers of a workflow (read-only).
@@ -114,6 +123,8 @@ paths:
       responses:
         '200': { description: Blockers calculated by Factory. }
   /api/factory/workstream-service/workflows/{workflowId}/human-actions:
+    parameters:
+      - $ref: '#/components/parameters/NamespaceId'
     get:
       operationId: get_required_human_actions
       summary: List the pending human decisions of a workflow (read-only, information only).
@@ -126,6 +137,8 @@ paths:
       responses:
         '200': { description: Pending human actions. }
   /api/factory/workstream-service/workflows/{workflowId}/retries:
+    parameters:
+      - $ref: '#/components/parameters/NamespaceId'
     post:
       operationId: request_agent_retry
       summary: Request a governed retry of a blocked step.
@@ -154,6 +167,8 @@ paths:
         '201': { description: Retry requested; awaiting human approval in Factory. }
         '409': { description: Stale revision or the step is not blocked. }
   /api/factory/workstream-service/workstreams/{workstreamId}:
+    parameters:
+      - $ref: '#/components/parameters/NamespaceId'
     get:
       operationId: get_workstream
       summary: Read the bounded aggregated projection of the configured workstream (read-only).
@@ -161,7 +176,7 @@ paths:
         - name: workstreamId
           in: path
           required: true
-          description: Must be the caller's own workstream; any other is refused.
+          description: Must match the workstream mapped to namespaceId within the authenticated organization.
           schema: { type: string, maxLength: 128 }
         - name: limit
           in: query
@@ -170,3 +185,13 @@ paths:
       responses:
         '200': { description: Aggregated workstream projection. }
         '403': { description: The workstream is outside the caller's boundary. }
+components:
+  parameters:
+    NamespaceId:
+      name: namespaceId
+      in: query
+      required: true
+      description: AgentOS namespace UUID from the assignment, mapped to an existing Factory workstream in the authenticated organization.
+      schema:
+        type: string
+        format: uuid

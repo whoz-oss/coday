@@ -1,19 +1,13 @@
 package io.whozoss.factory.web
 
-import io.whozoss.factory.persistence.TenantScope
-
 /**
- * The one identity type of the Factory HTTP boundary.
+ * Identity admitted by the Factory HTTP boundary.
  *
- * It exists only for a request that [AuthenticationFilter] admitted: the OS user in
- * `local` security mode, or the user a Factory JWT / proxy header identifies in `auth`
- * mode (`factory.security.mode`). There is no role, scope or
- * principal type: every authenticated user can do everything.
- *
- * [scope] is the tenant (organization + workstream) the user belongs to, resolved
- * once at authentication time by the [MembershipResolver].
+ * Authentication establishes only a user and an organization. A workstream is
+ * business context and must be resolved explicitly from a namespace or a
+ * persisted entity before constructing a TenantScope.
  */
 data class AuthenticatedUser(
     val userId: String,
-    val scope: TenantScope,
+    val organizationId: String,
 )

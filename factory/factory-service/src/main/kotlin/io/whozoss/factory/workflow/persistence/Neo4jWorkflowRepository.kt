@@ -40,20 +40,20 @@ class Neo4jWorkflowRepository(
     // Definitions
     // ------------------------------------------------------------------
 
-    override fun findDefinition(scope: TenantScope, workflowType: String, version: String): WorkflowDefinitionRecord? =
+    override fun findDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): WorkflowDefinitionRecord? =
         definitions
             .findById(WorkflowDefinitionNode.compositeId(scope.organizationId, workflowType, version))
             .orElse(null)
             ?.toDomain(objectMapper)
 
-    override fun listDefinitions(scope: TenantScope): List<WorkflowDefinitionRecord> =
+    override fun listDefinitions(scope: io.whozoss.factory.persistence.OrganizationScope): List<WorkflowDefinitionRecord> =
         definitions.findAllByOrganization(scope.organizationId).map { it.toDomain(objectMapper) }
 
-    override fun saveDefinition(scope: TenantScope, record: WorkflowDefinitionRecord) {
+    override fun saveDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, record: WorkflowDefinitionRecord) {
         definitions.save(WorkflowDefinitionNode.fromDomain(scope, record, objectMapper))
     }
 
-    override fun deleteDefinition(scope: TenantScope, workflowType: String, version: String): Boolean {
+    override fun deleteDefinition(scope: io.whozoss.factory.persistence.OrganizationScope, workflowType: String, version: String): Boolean {
         val id = WorkflowDefinitionNode.compositeId(scope.organizationId, workflowType, version)
         if (!definitions.existsById(id)) return false
         definitions.deleteById(id)

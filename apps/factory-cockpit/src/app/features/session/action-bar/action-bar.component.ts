@@ -23,6 +23,12 @@ export interface RetryIntent {
   reasonCode?: string
 }
 
+export interface ResearchResumptionIntent {
+  stepId: string
+  expectedRevision: number
+  additionalContext: string
+}
+
 export interface CancelIntent {
   attemptId: string
   expectedRevision?: number
@@ -66,10 +72,17 @@ export class ActionBarComponent {
   } | null>(null)
   readonly answeringQuestionId = input<string | null>(null)
   readonly questionFeedback = input<{ interactionId: string; kind: 'conflict' | 'error'; message: string } | null>(null)
+  readonly resumingResearchStepId = input<string | null>(null)
+  readonly researchResumptionFeedback = input<{
+    stepId: string
+    kind: 'conflict' | 'collision' | 'error'
+    message: string
+  } | null>(null)
 
   readonly reply = output<ReplyIntent>()
   readonly agentQuestionAnswered = output<AgentQuestionAnswerIntent>()
   readonly retryRequested = output<RetryIntent>()
+  readonly researchResumptionRequested = output<ResearchResumptionIntent>()
   readonly cancelAttempt = output<CancelIntent>()
   readonly continueCost = output<ContinueCostIntent>()
   readonly stopCost = output<void>()
@@ -83,6 +96,9 @@ export class ActionBarComponent {
     this.agentQuestionsInput().filter((question) => !question.answered)
   )
   protected readonly retryActions = computed(() => this.allowedActions().filter((action) => action.type === 'retry'))
+  protected readonly researchResumptionActions = computed(() =>
+    this.allowedActions().filter((action) => action.type === 'resume_research')
+  )
   protected readonly cancelActions = computed(() =>
     this.allowedActions().filter((action) => action.type === 'cancel_attempt')
   )
@@ -98,8 +114,9 @@ export class ActionBarComponent {
   )
   protected readonly hasBlockers = computed(() => this.blockers().length > 0)
 
-  /** Draft reply texts, keyed by interaction id (only used when a field shows). */
+  /** Draft texts, keyed by interaction or step id. */
   private readonly drafts = signal<Record<string, string>>({})
+  protected readonly researchTouched = signal<Record<string, boolean>>({})
 
   protected draftFor(interactionId: string): string {
     return this.drafts()[interactionId] ?? ''
@@ -128,10 +145,12 @@ export class ActionBarComponent {
    */
   protected blockerKind(
     blocker: WorkflowBlocker
-  ): 'waiting' | 'failure' | 'consequence' | 'cost' | 'indeterminate' | 'unknown' {
+  ): 'waiting' | 'research' | 'failure' | 'consequence' | 'cost' | 'indeterminate' | 'unknown' {
     switch (blocker.code) {
       case 'WAITING_HUMAN_INTERACTION':
         return 'waiting'
+      case 'NEEDS_RESEARCH':
+        return 'research'
       case 'ATTEMPT_FAILED':
       case 'VERIFICATION_FAILED':
         return 'failure'
@@ -156,6 +175,7 @@ export class ActionBarComponent {
       failures: blockers.filter((b) => this.blockerKind(b) === 'failure'),
       consequences: blockers.filter((b) => this.blockerKind(b) === 'consequence'),
       waiting: blockers.filter((b) => this.blockerKind(b) === 'waiting'),
+      research: blockers.filter((b) => this.blockerKind(b) === 'research'),
       cost: blockers.filter((b) => this.blockerKind(b) === 'cost'),
       indeterminate: blockers.filter((b) => this.blockerKind(b) === 'indeterminate'),
       unknown: blockers.filter(
@@ -163,6 +183,7 @@ export class ActionBarComponent {
           this.blockerKind(b) !== 'failure' &&
           this.blockerKind(b) !== 'consequence' &&
           this.blockerKind(b) !== 'waiting' &&
+          this.blockerKind(b) !== 'research' &&
           this.blockerKind(b) !== 'cost' &&
           this.blockerKind(b) !== 'indeterminate'
       ),
@@ -173,6 +194,8 @@ export class ActionBarComponent {
     switch (this.blockerKind(blocker)) {
       case 'waiting':
         return 'person_alert'
+      case 'research':
+        return 'info'
       case 'failure':
         return 'error'
       case 'consequence':
@@ -238,6 +261,27 @@ export class ActionBarComponent {
     const intent: RetryIntent = { stepId: action.stepId, reasonCode: 'human_retry' }
     if (action.expectedRevision !== undefined) intent.expectedRevision = action.expectedRevision
     this.retryRequested.emit(intent)
+  }
+
+  protected markResearchTouched(stepId: string): void {
+    this.researchTouched.update((current) => ({ ...current, [stepId]: true }))
+  }
+
+  protected researchContextValid(stepId: string): boolean {
+    const length = this.draftFor(stepId).trim().length
+    return length >= 1 && length <= 4000
+  }
+
+  protected submitResearchResumption(action: AllowedAction): void {
+    if (!action.stepId || action.expectedRevision === undefined || this.resumingResearchStepId()) return
+    this.researchTouched.update((current) => ({ ...current, [action.stepId!]: true }))
+    const additionalContext = this.draftFor(action.stepId).trim()
+    if (!additionalContext || additionalContext.length > 4000) return
+    this.researchResumptionRequested.emit({
+      stepId: action.stepId,
+      expectedRevision: action.expectedRevision,
+      additionalContext,
+    })
   }
 
   protected requestCancel(action: AllowedAction): void {

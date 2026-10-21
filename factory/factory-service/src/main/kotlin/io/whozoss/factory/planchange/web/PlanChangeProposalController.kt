@@ -10,7 +10,8 @@ import io.whozoss.factory.planchange.domain.invalidPlanChangeQuery
 import io.whozoss.factory.planchange.service.PlanChangeProposalService
 import io.whozoss.factory.web.FactoryDataEnvelope
 import io.whozoss.factory.web.AuthenticatedUser
-import io.whozoss.factory.web.resolveFactoryCaller
+import io.whozoss.factory.workflow.web.resolveWorkflowCaller
+import io.whozoss.factory.workstream.WorkstreamService
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -42,6 +43,7 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "plan-change-proposals", description = "Governed replanning plan-change proposals")
 class PlanChangeProposalController(
     private val service: PlanChangeProposalService,
+    private val workstreamService: WorkstreamService,
 ) {
 
     @PostMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
@@ -55,9 +57,9 @@ class PlanChangeProposalController(
         @RequestBody(required = false) body: SubmitPlanChangeRequest?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<FactoryDataEnvelope<PlanChangeProposalResponse>> {
-        val caller = resolveFactoryCaller(user)
         val request = body ?: invalidPlanChangeProposal("A JSON body is required")
-        val result = service.submit(caller.scope, caller.actorId, request.toCommand())
+        val caller = resolveWorkflowCaller(user, request.namespaceId, workstreamService = workstreamService)
+        val result = service.submit(caller.scope, caller.actorId, request.toCommand().copy(namespaceId = caller.namespaceId))
         val status = if (result.idempotent) HttpStatus.OK else HttpStatus.CREATED
         return ResponseEntity.status(status).body(FactoryDataEnvelope(result.toResponse()))
     }
@@ -70,9 +72,9 @@ class PlanChangeProposalController(
         @RequestParam(name = "status", required = false) status: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): FactoryDataEnvelope<List<PlanChangeProposalResponse>> {
-        val caller = resolveFactoryCaller(user)
-        val scopedNamespaceId = PlanChangeValidation.requireNamespaceId(namespaceId)
         val scopedWorkflowId = requireWorkflowQuery(workflowId)
+        val caller = resolveCaller(user, namespaceId)
+        val scopedNamespaceId = caller.namespaceId
         val statusFilter = status?.takeIf { it.isNotBlank() }?.let {
             PlanChangeDecisionStatus.parse(it)
                 ?: invalidPlanChangeQuery(
@@ -94,9 +96,9 @@ class PlanChangeProposalController(
         @RequestParam(name = "namespaceId", required = false) namespaceId: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): FactoryDataEnvelope<PlanChangeProposalResponse> {
-        val caller = resolveFactoryCaller(user)
-        val scopedNamespaceId = PlanChangeValidation.requireNamespaceId(namespaceId)
         val scopedWorkflowId = requireWorkflowQuery(workflowId)
+        val caller = resolveCaller(user, namespaceId)
+        val scopedNamespaceId = caller.namespaceId
         val result = service.get(caller.scope, scopedNamespaceId, scopedWorkflowId, proposalId)
         return FactoryDataEnvelope(result.toResponse())
     }
@@ -115,9 +117,9 @@ class PlanChangeProposalController(
         @RequestBody(required = false) body: DecidePlanChangeRequest?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): FactoryDataEnvelope<PlanChangeProposalResponse> {
-        val caller = resolveFactoryCaller(user)
-        val scopedNamespaceId = PlanChangeValidation.requireNamespaceId(namespaceId)
         val scopedWorkflowId = requireWorkflowQuery(workflowId)
+        val caller = resolveCaller(user, namespaceId)
+        val scopedNamespaceId = caller.namespaceId
         val request = body ?: invalidPlanChangeProposal("A JSON body is required")
         val result = service.decide(
             caller.scope,
@@ -129,6 +131,9 @@ class PlanChangeProposalController(
         )
         return FactoryDataEnvelope(result.toResponse())
     }
+
+    private fun resolveCaller(user: AuthenticatedUser, namespaceId: String?) =
+        resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
 
     /** Require the `workflowId` query parameter (400 `INVALID_PLAN_CHANGE_QUERY`). */
     private fun requireWorkflowQuery(workflowId: String?): String =

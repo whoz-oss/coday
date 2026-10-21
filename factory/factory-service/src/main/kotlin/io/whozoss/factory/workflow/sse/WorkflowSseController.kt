@@ -5,6 +5,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.workflow.web.resolveWorkflowCaller
+import io.whozoss.factory.workstream.WorkstreamService
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
 import org.springframework.web.bind.annotation.GetMapping
@@ -48,6 +49,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 @Tag(name = "workflows", description = "Workflow projections and lifecycle")
 class WorkflowSseController(
     private val hub: WorkflowSseHub,
+    private val workstreamService: WorkstreamService,
 ) {
 
     @GetMapping(path = ["/stream"], produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
@@ -57,9 +59,8 @@ class WorkflowSseController(
         @Parameter(hidden = true) user: AuthenticatedUser,
         response: HttpServletResponse,
     ): SseEmitter {
-        // `namespaceId` is an OPTIONAL filter: absent/blank subscribes to the
-        // whole tenant scope (a scoped key, not the shared global `""` bucket).
-        val caller = resolveWorkflowCaller(user, namespaceId, requireNamespace = false)
+        // A stream is always bound to one concrete workstream namespace.
+        val caller = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
         // SSE framing headers: disable intermediary buffering/caching so events
         // reach the client immediately (byte-for-byte parity with the Node hub).
         response.setHeader("Cache-Control", "no-cache, no-transform")

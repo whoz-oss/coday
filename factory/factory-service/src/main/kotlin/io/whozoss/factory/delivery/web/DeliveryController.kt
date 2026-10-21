@@ -9,6 +9,8 @@ import io.whozoss.factory.delivery.service.DeliveryHttpResult
 import io.whozoss.factory.delivery.service.DeliveryService
 import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.web.AuthenticatedUser
+import io.whozoss.factory.workflow.web.resolveWorkflowCaller
+import io.whozoss.factory.workstream.WorkstreamService
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -47,6 +49,7 @@ data class DeliveryRequest(
  * `400 INVALID_DELIVERY_SCOPE`.
  */
 fun deliveryRequest(
+    workstreamService: WorkstreamService,
     user: AuthenticatedUser,
     body: Map<String, Any?>?,
     namespaceQuery: String? = null,
@@ -57,7 +60,8 @@ fun deliveryRequest(
     val caseId = (body?.get("caseId") as? String ?: caseQuery)?.takeIf { it.isNotBlank() }
         ?: throw deliveryException(DeliveryErrorCodes.INVALID_DELIVERY_SCOPE, "caseId is required")
     val serviceBody = body?.filterKeys { it != "namespaceId" && it != "caseId" }
-    return DeliveryRequest(DeliveryCaller(user.scope, namespaceId, caseId, user.userId), serviceBody)
+    val resolved = resolveWorkflowCaller(user, namespaceId, workstreamService = workstreamService)
+    return DeliveryRequest(DeliveryCaller(resolved.scope, resolved.namespaceId, caseId, user.userId), serviceBody)
 }
 
 /**
@@ -76,7 +80,15 @@ fun deliveryRequest(
 @Tag(name = "delivery", description = "Governed delivery control plane")
 class DeliveryController(
     private val service: DeliveryService,
+    private val workstreamService: WorkstreamService,
 ) {
+    private fun deliveryRequest(
+        user: AuthenticatedUser,
+        body: Map<String, Any?>?,
+        namespaceQuery: String? = null,
+        caseQuery: String? = null,
+    ): DeliveryRequest = deliveryRequest(workstreamService, user, body, namespaceQuery, caseQuery)
+
 
     @GetMapping(produces = [MediaType.APPLICATION_JSON_VALUE])
     @Operation(summary = "Get the current delivery status of a workflow")

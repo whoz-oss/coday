@@ -1074,6 +1074,11 @@ class SessionRunService(
         } ?: return
         projection["steps"] = projectedSteps
         projection["status"] = when {
+            progress.statuses.values.any { it == WorkflowStatuses.NEEDS_RESEARCH } &&
+                progress.statuses.values.none {
+                    it == WorkflowStatuses.FAILED || it == WorkflowStatuses.CANCELLED ||
+                        it == WorkflowStatuses.RUNNING || it == WorkflowStatuses.WAITING_HUMAN
+                } -> WorkflowStatuses.NEEDS_RESEARCH
             progress.statuses.values.any { it == WorkflowStatuses.FAILED || it == WorkflowStatuses.BLOCKED } -> WorkflowStatuses.FAILED
             progress.statuses.values.any { it == WorkflowStatuses.WAITING_HUMAN } -> WorkflowStatuses.WAITING_HUMAN
             progress.statuses.values.any { it == WorkflowStatuses.RUNNING } -> WorkflowStatuses.RUNNING

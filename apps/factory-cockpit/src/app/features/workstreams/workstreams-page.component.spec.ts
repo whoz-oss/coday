@@ -9,6 +9,14 @@ import { ConfirmDialogComponent } from '../admin/confirm-dialog.component'
 import { WorkstreamsPageComponent } from './workstreams-page.component'
 
 interface StoreStub {
+  selectedNamespaceId: WritableSignal<string | null>
+  namespaceOptions: WritableSignal<Array<{ namespaceId?: string; id?: string; name?: string }>>
+  namespaceOptionsLoading: WritableSignal<boolean>
+  namespaceOptionsError: WritableSignal<unknown>
+  namespaceSelectionRequired: WritableSignal<boolean>
+  workstreamMappingMissing: WritableSignal<boolean>
+  overviewError: WritableSignal<unknown>
+  selectNamespace: jest.Mock
   costs: WritableSignal<CostSummary>
   workstreams: WritableSignal<WorkstreamView[]>
   recentTasks: WritableSignal<RecentTask[]>
@@ -66,6 +74,14 @@ function createStore(
     ? ({ id: sessionId, activeAttemptId: overrides.activeAttemptId } as SessionDetail)
     : undefined
   return {
+    selectedNamespaceId: signal<string | null>('ns-1'),
+    namespaceOptions: signal([{ namespaceId: 'ns-1', name: 'Namespace 1' }]),
+    namespaceOptionsLoading: signal(false),
+    namespaceOptionsError: signal(null),
+    namespaceSelectionRequired: signal(false),
+    workstreamMappingMissing: signal(false),
+    overviewError: signal(null),
+    selectNamespace: jest.fn(),
     costs: signal<CostSummary>(overrides.costs ?? { active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 }),
     workstreams: signal<WorkstreamView[]>(overrides.workstreams ?? []),
     recentTasks: signal<RecentTask[]>(overrides.recentTasks ?? []),
@@ -114,7 +130,7 @@ describe('WorkstreamsPageComponent', () => {
   it('shows a neutral empty state when there is no active workflow', async () => {
     const { host } = await setup(createStore())
 
-    expect(host.textContent).toContain('No active workflows.')
+    expect(host.textContent).toContain('No workflows in the selected namespaces.')
     expect(host.querySelectorAll('sf-workstream-card')).toHaveLength(0)
   })
 

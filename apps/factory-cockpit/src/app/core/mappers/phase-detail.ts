@@ -45,6 +45,41 @@ function evidenceToItems(evidenceItems: unknown[]): PhaseSectionItem[] {
 // Core builder
 // ---------------------------------------------------------------------------
 
+export interface LaunchRequestDetailInput {
+  title: string
+  createdAt: string
+  namespaceId?: string
+  workflowId: string
+  workflowType?: string
+  author?: string
+  text?: string
+}
+
+/** Build the real run-creation request detail without borrowing step/attempt data. */
+export function buildLaunchRequestDetail(input: LaunchRequestDetailInput): PhaseDetail {
+  const identityItems: PhaseSectionItem[] = [
+    { title: 'Type', subtitle: 'demande lancement' },
+    { title: 'Run', subtitle: input.title },
+    { title: 'Créée le', subtitle: input.createdAt },
+    { title: 'Namespace', subtitle: input.namespaceId ?? 'non renseigné' },
+    { title: 'Workflow', subtitle: input.workflowType ?? input.workflowId },
+    { title: 'Auteur', subtitle: input.author ?? 'non renseigné' },
+  ]
+  return {
+    name: input.title,
+    status: 'succeeded',
+    stepStatus: 'completed',
+    durationSec: 0,
+    owner: input.author ?? 'non renseigné',
+    kind: 'demande lancement',
+    attempt: '—',
+    sections: [
+      { label: 'Demande de lancement', items: identityItems },
+      { label: 'Commentaire initial', body: input.text ?? 'Aucun commentaire initial' },
+    ],
+  }
+}
+
 /**
  * Build a {@link PhaseDetail} for a step.
  *
@@ -58,7 +93,8 @@ export function buildPhaseDetail(
   interactions: HumanInteraction[] = [],
   attempts: AgentAttempt[] = [],
   evidenceItems: unknown[] = [],
-  targetStepId?: string
+  targetStepId?: string,
+  targetAttemptId?: string
 ): PhaseDetail {
   // Resolve the target step
   let active: unknown
@@ -84,7 +120,9 @@ export function buildPhaseDetail(
   const kind = getString(responsibility, 'kind') ?? classifyActorKind(obj)
 
   const stepAttempts = stepId ? attempts.filter((attempt) => attempt.stepId === stepId) : []
-  const currentAttempt = pickCurrentAttempt(stepAttempts)
+  const currentAttempt = targetAttemptId
+    ? stepAttempts.find((attempt) => attempt.attemptId === targetAttemptId)
+    : pickCurrentAttempt(stepAttempts)
 
   const detail: PhaseDetail = {
     name: getString(obj, 'name') ?? getString(obj, 'id') ?? 'phase',
@@ -172,6 +210,25 @@ export function mapProjectionToPhaseByStepId(
     const stepId = getString(obj, 'id') ?? getString(obj, 'key')
     if (!stepId) continue
     result.set(stepId, buildPhaseDetail(steps, fallbackStatus, interactions, attempts, evidenceItems, stepId))
+  }
+  return result
+}
+
+/** Build exact attempt details without falling back to another attempt. */
+export function mapProjectionToPhaseByAttemptId(
+  steps: unknown[],
+  fallbackStatus: RunStatus,
+  interactions: HumanInteraction[] = [],
+  attempts: AgentAttempt[] = [],
+  evidenceItems: unknown[] = []
+): Map<string, PhaseDetail> {
+  const result = new Map<string, PhaseDetail>()
+  for (const attempt of attempts) {
+    if (!attempt.attemptId || !attempt.stepId) continue
+    result.set(
+      attempt.attemptId,
+      buildPhaseDetail(steps, fallbackStatus, interactions, attempts, evidenceItems, attempt.stepId, attempt.attemptId)
+    )
   }
   return result
 }

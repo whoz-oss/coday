@@ -50,7 +50,7 @@ describe('LaunchPageComponent namespace launch', () => {
       providers: [
         provideRouter([]),
         { provide: FactoryApiService, useValue: service },
-        { provide: FactoryStore, useValue: { refresh: jest.fn() } },
+        { provide: FactoryStore, useValue: { refresh: jest.fn(), selectNamespace: jest.fn() } },
       ],
     }).compileComponents()
     fixture = TestBed.createComponent(LaunchPageComponent)

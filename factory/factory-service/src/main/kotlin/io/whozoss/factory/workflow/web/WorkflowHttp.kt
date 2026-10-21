@@ -4,6 +4,7 @@ import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.web.AuthenticatedUser
 import io.whozoss.factory.workflow.domain.WorkflowErrorCodes
 import io.whozoss.factory.workflow.domain.workflowException
+import io.whozoss.factory.workstream.WorkstreamService
 
 /** Canonical HTTP success envelope: `{ "data": ... }`. */
 data class WorkflowDataEnvelope<T>(
@@ -32,12 +33,21 @@ fun resolveWorkflowCaller(
     user: AuthenticatedUser,
     namespaceId: String? = null,
     requireNamespace: Boolean = true,
+    workstreamService: WorkstreamService? = null,
 ): WorkflowCaller {
-    val resolvedNamespace = namespaceId?.takeIf { it.isNotBlank() }
-    if (requireNamespace && resolvedNamespace == null) {
+    val resolvedNamespace = namespaceId?.trim()?.takeIf { it.isNotEmpty() }?.lowercase()
+    if (!isValidNamespaceId(resolvedNamespace)) {
         throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID, "A valid namespaceId is required.")
     }
-    return WorkflowCaller(user.scope, resolvedNamespace ?: "", user.userId)
+    if (resolvedNamespace == null || workstreamService == null) {
+        throw workflowException(WorkflowErrorCodes.INVALID_NAMESPACE_ID, "A valid namespaceId is required.")
+    }
+    val workstream = workstreamService.findByNamespace(user.organizationId, resolvedNamespace)
+        ?: throw workflowException(
+            WorkflowErrorCodes.WORKFLOW_NOT_FOUND,
+            "No workstream is mapped to the requested namespace.",
+        )
+    return WorkflowCaller(TenantScope(user.organizationId, workstream.workstreamId), resolvedNamespace, user.userId)
 }
 
 /** Validates a required namespace query parameter. */

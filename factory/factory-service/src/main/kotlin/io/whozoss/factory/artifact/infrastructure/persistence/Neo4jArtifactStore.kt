@@ -50,8 +50,9 @@ class Neo4jArtifactStore(
             retentionDays = retentionDays,
             now = nowInstant,
         )
-        val stagingKey = "$uploadPrefix/$id.part"
-        val contentKey = contentKey(hash)
+        val stagingKey = io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobKeys.organizationPrefix(uploadPrefix, scope.organizationId) + nowInstant.toEpochMilli() + "/" + id + ".part"
+        // Each artifact owns its object, so purging one never deletes another artifact's identical bytes.
+        val contentKey = io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobKeys.organizationPrefix(objectPrefix, scope.organizationId) + ArtifactHash.digest(hash) + "/" + id
 
         // 1. Upload the payload to the staging key.
         blobClient.putObject(stagingKey, params.data, "application/octet-stream")
@@ -106,7 +107,11 @@ class Neo4jArtifactStore(
     }
 
     override fun collectOrphanedUploads(scope: TenantScope): List<String> {
-        val keys = blobClient.listObjectKeys("$uploadPrefix/")
+        val prefix = io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobKeys.organizationPrefix(uploadPrefix, scope.organizationId)
+        val cutoff = now().minusSeconds(86_400).toEpochMilli()
+        val keys = blobClient.listObjectKeys(prefix).filter { key ->
+            key.removePrefix(prefix).substringBefore('/').toLongOrNull()?.let { it < cutoff } == true
+        }
         val reclaimed = mutableListOf<String>()
         for (key in keys) {
             if (bestEffortDelete(key)) reclaimed.add(key)
@@ -200,24 +205,21 @@ class Neo4jArtifactStore(
             false
         }
 
-    private fun contentKey(hash: String): String = "$objectPrefix/${ArtifactHash.digest(hash)}"
-
     companion object {
         const val DEFAULT_UPLOAD_PREFIX = "uploads"
         const val DEFAULT_OBJECT_PREFIX = "objects"
-        const val DEFAULT_NAMESPACE_ID = "default"
-        const val DEFAULT_WORKFLOW_ID = "default"
 
         /**
          * Derives the namespace / workflow scope from an owner structured as
          * `namespace/workflow`. A bare owner is used as the namespace and the
-         * workflow defaults to [DEFAULT_WORKFLOW_ID].
+         * workflow is absent. An empty owner has neither namespace nor workflow;
+         * no synthetic business identity is persisted.
          */
         fun scopeFor(scope: TenantScope, owner: String): ArtifactRowScope = parseOwnerScope(owner, scope)
 
         private fun parseOwnerScope(owner: String, scope: TenantScope): ArtifactRowScope {
             if (owner.isEmpty()) {
-                return ArtifactRowScope(scope.organizationId, scope.workstreamId, DEFAULT_NAMESPACE_ID, DEFAULT_WORKFLOW_ID)
+                return ArtifactRowScope(scope.organizationId, scope.workstreamId, null, null)
             }
             val separator = owner.indexOf('/')
             return if (separator > 0 && separator < owner.length - 1) {
@@ -228,7 +230,7 @@ class Neo4jArtifactStore(
                     owner.substring(separator + 1),
                 )
             } else {
-                ArtifactRowScope(scope.organizationId, scope.workstreamId, owner, DEFAULT_WORKFLOW_ID)
+                ArtifactRowScope(scope.organizationId, scope.workstreamId, owner, null)
             }
         }
     }
@@ -238,6 +240,6 @@ class Neo4jArtifactStore(
 data class ArtifactRowScope(
     val organizationId: String,
     val workstreamId: String,
-    val namespaceId: String,
-    val workflowId: String,
+    val namespaceId: String?,
+    val workflowId: String?,
 )

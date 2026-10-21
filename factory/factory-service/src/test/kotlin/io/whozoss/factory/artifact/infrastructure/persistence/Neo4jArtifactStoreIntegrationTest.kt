@@ -69,7 +69,7 @@ class Neo4jArtifactStoreIntegrationTest : Neo4jIntegrationTest() {
         assertThat(metadata.hash).isEqualTo(ArtifactHash.compute(payload))
 
         // Upload-then-commit: the content-addressed object exists, staging is gone.
-        assertThat(blobClient.headObject("objects/${ArtifactHash.digest(metadata.hash)}")).isTrue()
+        assertThat(blobClient.headObject(repository.findById(metadata.id).orElseThrow().storageKey)).isTrue()
         assertThat(blobClient.headObject("uploads/${metadata.id}.part")).isFalse()
 
         val found = store.getArtifactMetadata(scope, metadata.id)
@@ -104,6 +104,18 @@ class Neo4jArtifactStoreIntegrationTest : Neo4jIntegrationTest() {
         assertThat(node.workflowId).isEqualTo("flow")
         assertThat(node.owner).isEqualTo("team/flow")
         assertThat(store.getArtifactMetadata(scope, metadata.id)!!.owner).isEqualTo("team/flow")
+    }
+
+    @Test
+    fun `unattributed artifacts do not persist synthetic namespace or workflow identifiers`() {
+        val metadata = store.putArtifact(scope, PutArtifactParams(
+            owner = "", contentType = "text/plain", data = "unattributed".toByteArray(),
+        ))
+        val node = repository.findById(metadata.id).orElseThrow()
+        assertThat(node.namespaceId).isNull()
+        assertThat(node.workflowId).isNull()
+        assertThat(node.organizationId).isEqualTo(scope.organizationId)
+        assertThat(node.workstreamId).isEqualTo(scope.workstreamId)
     }
 
     @Test
@@ -184,15 +196,16 @@ class Neo4jArtifactStoreIntegrationTest : Neo4jIntegrationTest() {
             scope,
             PutArtifactParams(owner = "ns", contentType = "text/plain", data = "missing-blob".toByteArray(), retentionDays = 30),
         )
-        blobClient.deleteObject("objects/${ArtifactHash.digest(missing.hash)}")
+        blobClient.deleteObject(repository.findById(missing.id).orElseThrow().storageKey)
         // Orphans.
-        blobClient.putObject("uploads/orphan.part", "leftover".toByteArray())
+        val orphanUpload = io.whozoss.factory.artifact.infrastructure.blob.ArtifactBlobKeys.organizationPrefix("uploads", ORGANIZATION_ID) + "1/orphan.part"
+        blobClient.putObject(orphanUpload, "leftover".toByteArray())
         blobClient.putObject("objects/orphan-blob", "orphan".toByteArray())
 
         val report = adminService.collectAndAuditGarbage(scope)
 
-        assertThat(report.reclaimedStagingKeys).containsExactly("uploads/orphan.part")
-        assertThat(blobClient.headObject("uploads/orphan.part")).isFalse()
+        assertThat(report.reclaimedStagingKeys).containsExactly(orphanUpload)
+        assertThat(blobClient.headObject(orphanUpload)).isFalse()
         assertThat(report.scannedMetadataRows).isEqualTo(3)
         assertThat(report.scannedBlobKeys).contains("objects/orphan-blob")
 

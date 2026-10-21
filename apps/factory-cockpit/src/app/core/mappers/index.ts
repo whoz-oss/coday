@@ -45,6 +45,7 @@ export {
 export {
   buildPhaseDetail,
   mapProjectionToPhaseByStepId,
+  mapProjectionToPhaseByAttemptId,
   mapEvidenceToEvents,
   mapInteractionsToEvents,
   sumFacts,

@@ -51,11 +51,7 @@ class WorkstreamController(
     fun list(
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): List<Map<String, Any?>> {
-        val caller = resolveFactoryCaller(user)
-        // Transitional organization-wide registry view. The Cockpit intersects
-        // this with AgentOS' user-filtered namespaces; this list is not itself
-        // a Factory-native human membership authorization.
-        return service.list(caller.scope)
+        return service.listByOrganization(user.organizationId)
     }
 
     @PostMapping
@@ -64,10 +60,12 @@ class WorkstreamController(
         @RequestBody(required = false) body: CreateWorkstreamRequest?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<Map<String, Any?>> {
-        val caller = resolveFactoryCaller(user)
         val request = body ?: CreateWorkstreamRequest()
         requireNamespaceQuery(request.namespaceId)
-        val created = service.create(caller.scope, request)
+        val workstreamId = request.slug?.takeIf { it.isNotBlank() }
+            ?: throw io.whozoss.factory.error.BadRequestException("slug is required")
+        val scope = io.whozoss.factory.persistence.TenantScope(user.organizationId, workstreamId)
+        val created = service.create(scope, request)
         return ResponseEntity.status(201).body(created)
     }
 
@@ -77,7 +75,7 @@ class WorkstreamController(
         @PathVariable workstreamId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): Map<String, Any?> {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         service.assertWithinWorkstream(caller, workstreamId)
         return service.get(caller.scope, workstreamId)
     }
@@ -90,7 +88,7 @@ class WorkstreamController(
         @RequestHeader(name = "If-Match", required = false) ifMatch: String?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): Map<String, Any?> {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         service.assertWithinWorkstream(caller, workstreamId)
         val request = body ?: UpdateWorkstreamRequest()
         val expectedRevision = request.expectedRevision ?: parseIfMatch(ifMatch)
@@ -105,7 +103,7 @@ class WorkstreamController(
         @RequestParam(name = "limit", required = false) limit: Int?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<WorkstreamProjectionResponse> {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         val dto = projectionService.getAggregatedProjection(caller, workstreamId, namespaceId, limit)
         return ResponseEntity
             .ok()
@@ -124,7 +122,7 @@ class WorkstreamController(
         @PathVariable workstreamId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerCaseResponse {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         val active = controllerCaseService.getActiveCase(caller, workstreamId)
             ?: throw ResourceNotFoundException(
                 "Le workstream '$workstreamId' n'a aucun case contrôleur actif",
@@ -139,7 +137,7 @@ class WorkstreamController(
         @PathVariable workstreamId: String,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerCaseHistoryResponse {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         val history = controllerCaseService.listHistory(caller, workstreamId)
         return ControllerCaseHistoryResponse(
             workstreamId = workstreamId,
@@ -161,7 +159,7 @@ class WorkstreamController(
         @RequestParam(name = "limit", required = false) limit: Int?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerResumptionPackage {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         return controllerCaseService.getContextPackage(caller, workstreamId, namespaceId, limit)
     }
 
@@ -172,7 +170,7 @@ class WorkstreamController(
         @RequestBody(required = false) body: StartControllerCaseRequest?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ResponseEntity<ControllerCaseResponse> {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         val started = controllerCaseService.startControllerCase(caller, workstreamId, body ?: StartControllerCaseRequest())
         return ResponseEntity.status(201).body(started.toResponse())
     }
@@ -190,7 +188,7 @@ class WorkstreamController(
         @RequestBody(required = false) body: CompactControllerCaseRequest?,
         @Parameter(hidden = true) user: AuthenticatedUser,
     ): ControllerCaseResponse {
-        val caller = resolveFactoryCaller(user)
+        val caller = resolveFactoryCaller(user, service.requireScope(user.organizationId, workstreamId))
         return controllerCaseService
             .compactControllerCase(caller, workstreamId, body ?: CompactControllerCaseRequest())
             .toResponse()

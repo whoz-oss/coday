@@ -161,6 +161,8 @@ export type TimelineStepStatus =
 
 export interface TimelineBlock {
   label: string
+  /** Identifies the real run-creation request independently from workflow steps. */
+  kind?: 'launch_request'
   /**
    * Stable step id (source step, not the attempt-suffixed composite id).
    * Used as the selection key so clicking any attempt of the same step
@@ -183,6 +185,10 @@ export interface TimelineBlock {
   caseId?: string
   /** Failure code of the attempt, when it failed. */
   failureCode?: string
+  /** Authoritative active execution duration; independent from wall-clock geometry. */
+  activeDurationSec?: number
+  /** Authoritative human-wait duration; independent from wall-clock geometry. */
+  waitingDurationSec?: number
 }
 
 export interface TimelineLane {
@@ -241,6 +247,14 @@ export interface AgentAttempt {
   createdAt?: string
   startedAt?: string
   completedAt?: string
+  /** Authoritative cumulative active execution time for closed running intervals. */
+  activeDurationMs?: number
+  /** Start of the currently open running interval, absent/null while not running. */
+  activeSince?: string
+  /** Authoritative cumulative human-wait time for closed waiting intervals. */
+  waitingDurationMs?: number
+  /** Start of the currently open waiting interval, absent/null while not waiting. */
+  waitingSince?: string
 }
 
 /**
@@ -257,7 +271,9 @@ export interface AgentAttempt {
  * user clicked an older retry bar.
  */
 export interface BlockSelection {
-  /** Stable step id — used as the panel key and SSE-refresh anchor. */
+  /** Distinguishes the run-creation request from workflow step selections. */
+  kind?: 'launch_request'
+  /** Stable selection id — used as the panel key and SSE-refresh anchor. */
   stepId: string
   /** Specific attempt id of the clicked block, when known. */
   attemptId?: string
@@ -376,7 +392,7 @@ export interface HumanInteraction {
 /* ───── Governed actions & blockers (backend authority) ───── */
 
 /** Stable `type` values of an {@link AllowedAction} (backend `WorkflowActionTypes`). */
-export type AllowedActionType = 'reply' | 'retry' | 'cancel_attempt' | 'continue_cost' | 'stop_cost'
+export type AllowedActionType = 'reply' | 'retry' | 'resume_research' | 'cancel_attempt' | 'continue_cost' | 'stop_cost'
 
 /**
  * One action the backend explicitly authorizes from the workflow's current
@@ -399,6 +415,7 @@ export interface AllowedAction {
 /** Stable `code` values of a {@link WorkflowBlocker} (backend `WorkflowBlockerCodes`). */
 export type BlockerCode =
   | 'WAITING_HUMAN_INTERACTION'
+  | 'NEEDS_RESEARCH'
   | 'STEP_BLOCKED'
   | 'ATTEMPT_FAILED'
   | 'REAL_COST_PAUSED'
@@ -455,6 +472,8 @@ export interface SessionDetail {
   nowSec: number
   events: RunEvent[]
   phase: PhaseDetail
+  /** Detail of the real run-creation request, independent from AgentOS attempts. */
+  launchRequest?: PhaseDetail
   /**
    * Human interactions (gates/approvals/checkpoints) attached to the workflow,
    * surfaced read-only. Absent when the backend exposes none (or when the
@@ -506,6 +525,9 @@ export interface SessionDetail {
    * selected step instead of always showing the "active" phase.
    */
   phaseByStepId?: Map<string, PhaseDetail>
+
+  /** Attempt-specific phase details, keyed by durable attempt id. */
+  phaseByAttemptId?: Map<string, PhaseDetail>
 
   /**
    * Events filtered by stepId, pre-computed from evidence + interactions.

@@ -242,13 +242,20 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
   font-size: 14px;
   font-weight: 800;
 }
 .sf-spacer-inline {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .block-dur {
+  flex: none;
   font-size: 12px;
   font-weight: 500;
 }

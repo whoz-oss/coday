@@ -6,7 +6,6 @@ import io.whozoss.factory.forge.domain.JiraDomain
 import io.whozoss.factory.forge.infrastructure.HttpJiraClient
 import io.whozoss.factory.forge.port.JiraNotConfiguredException
 import io.whozoss.factory.forge.web.JiraProxyController
-import io.whozoss.factory.persistence.TenantScope
 import io.whozoss.factory.web.AuthenticatedUser
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
@@ -21,7 +20,7 @@ import java.net.InetSocketAddress
  */
 class JiraProxyHttpTest {
 
-    private val user = AuthenticatedUser("user-1", TenantScope("org-1", "ws-1"))
+    private val user = AuthenticatedUser("user-1", "org-1")
 
     private fun unconfiguredController() = JiraProxyController(
         HttpJiraClient(RestClient.builder(), null, null, null),

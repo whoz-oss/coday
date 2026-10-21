@@ -84,7 +84,7 @@ class ControllerCaseServiceIntegrationTest : Neo4jDomainIntegrationTest() {
     private val caller: FactoryCaller
         get() = FactoryCaller(scope, "controller-tester", "controller-tester", "controller-tester")
 
-    private val namespace = "ns-controller"
+    private val namespace = "82a43806-3a78-4e56-96c4-cf3039989452"
 
     private fun createRegistryEntry(controllerAgentRef: String? = null) {
         workstreamService.create(
@@ -93,6 +93,7 @@ class ControllerCaseServiceIntegrationTest : Neo4jDomainIntegrationTest() {
                 slug = WORKSTREAM_ID,
                 name = "Controller WS",
                 status = "active",
+                namespaceId = namespace,
                 controllerAgentRef = controllerAgentRef,
             ),
         )
