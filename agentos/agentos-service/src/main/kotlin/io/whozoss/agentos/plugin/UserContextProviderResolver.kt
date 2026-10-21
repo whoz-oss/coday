@@ -3,20 +3,18 @@ package io.whozoss.agentos.plugin
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import mu.KLogging
 import org.pf4j.PluginManager
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 
 /**
  * Discovers [UserContextProvider] implementations registered by PF4J plugins.
  *
  * Only the first registered provider is used. If no plugin provides an implementation,
- * [resolve] returns null and the scheduled-prompt executor skips context enrichment.
+ * [resolve] returns null and the callers (scheduled prompts, `FreeCaseStarter`) skip context enrichment.
  *
- * Gated on `agentos.prompt.scheduler.enabled=true` so it is only active when the
- * scheduler is enabled (same condition as [ScheduledPromptExecutor]).
+ * Always active: it is not gated on the scheduler, since `FreeCaseStarter` resolves the context of the
+ * user it starts a case for whether or not the scheduler is enabled.
  */
 @Component
-@ConditionalOnProperty(name = ["agentos.prompt.scheduler.enabled"], havingValue = "true")
 class UserContextProviderResolver(
     private val pluginManager: PluginManager,
 ) {
