@@ -64,6 +64,82 @@ class AgentStepResultValidationTest {
     }
 
     @Test
+    fun `reports safe actionable violations without payload values`() {
+        val node = json("""{"status":"PASS","summary":"secret-value","claims":{"modifiedFiles":[""]}}""")
+
+        val violations = AgentStepResultValidation.violations(node)
+
+        assertThat(violations).containsExactly(
+            AgentStepResultValidation.Violation(
+                "result.claims.modifiedFiles[0]",
+                "MIN_LENGTH",
+                "must not be empty",
+            ),
+        )
+        assertThat(violations.toString()).doesNotContain("secret-value")
+    }
+
+    @Test
+    fun `reports required nested claims fields`() {
+        assertThat(AgentStepResultValidation.violations(json("""{"status":"PASS","summary":"ok","claims":{}}""")))
+            .containsExactly(
+                AgentStepResultValidation.Violation(
+                    "result.claims.modifiedFiles",
+                    "REQUIRED",
+                    "is required",
+                ),
+            )
+    }
+
+    @Test
+    fun `reports nested artifact finding and delivery diagnostics`() {
+        val node = json(
+            """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[],"deliveryAnalysis":{"changeType":"other","ticket":"private","title":""}},"artifacts":[{"kind":"","encoding":"json","content":""}],"findings":[{"severity":"critical","code":"","summary":"","line":0}]}""",
+        )
+
+        assertThat(AgentStepResultValidation.violations(node).map { it.path }).contains(
+            "result.claims.deliveryAnalysis.changeType",
+            "result.claims.deliveryAnalysis.ticket",
+            "result.claims.deliveryAnalysis.title",
+            "result.artifacts[0].kind",
+            "result.artifacts[0].encoding",
+            "result.artifacts[0].content",
+            "result.findings[0].severity",
+            "result.findings[0].code",
+            "result.findings[0].summary",
+            "result.findings[0].line",
+        )
+    }
+
+    @Test
+    fun `unknown field diagnostics do not echo attacker controlled names`() {
+        val unknown = "sensitive-" + "x".repeat(5000)
+        val node = json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"$unknown":true}""")
+
+        val violations = AgentStepResultValidation.violations(node)
+
+        assertThat(violations).containsExactly(
+            AgentStepResultValidation.Violation("result", "UNKNOWN_FIELD", "contains one or more fields that are not allowed"),
+        )
+        assertThat(violations.toString()).doesNotContain(unknown)
+    }
+
+    @Test
+    fun `boolean validation is exactly equivalent to absence of violations`() {
+        val samples = listOf(
+            valid(),
+            json("null"),
+            json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]}}"""),
+            json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"artifacts":[{"kind":"x","encoding":"json","content":"x"}]}"""),
+            json("""{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[]},"findings":[{"severity":"info","code":"x","summary":"x","line":0}]}"""),
+        )
+        samples.forEach { sample ->
+            assertThat(AgentStepResultValidation.validateBusiness(sample))
+                .isEqualTo(AgentStepResultValidation.violations(sample).isEmpty())
+        }
+    }
+
+    @Test
     fun `rejects an invalid status`() {
         val node = json("""{"status":"MAYBE","summary":"ok","claims":{"modifiedFiles":[]}}""")
         assertThat(AgentStepResultValidation.validateBusiness(node)).isFalse()
@@ -172,10 +248,25 @@ class AgentStepResultValidationTest {
     }
 
     @Test
+    fun `accepts GitHub and generic Jira ticket identifiers`() {
+        listOf("#1234", "WZ-123", "ABC-123").forEach { ticket ->
+            val node = json(
+                """{"status":"PASS","summary":"ok","claims":{"modifiedFiles":[],"deliveryAnalysis":{"changeType":"bugfix","ticket":"$ticket","title":"title"}}}""",
+            )
+            assertThat(AgentStepResultValidation.validateBusiness(node)).withFailMessage(ticket).isTrue()
+            assertThat(AgentStepResultValidation.parseBusiness(node).claims.deliveryAnalysis?.ticket).isEqualTo(ticket)
+        }
+    }
+
+    @Test
     fun `rejects invalid delivery analysis fields types bounds and unknown keys`() {
         val invalid = listOf(
             """{"changeType":"chore","ticket":"WZ-33157","title":"title"}""",
-            """{"changeType":"bugfix","ticket":"ABC-1","title":"title"}""",
+            """{"changeType":"bugfix","ticket":"#0","title":"title"}""",
+            """{"changeType":"bugfix","ticket":"ABC-0","title":"title"}""",
+            """{"changeType":"bugfix","ticket":"abc-123","title":"title"}""",
+            """{"changeType":"bugfix","ticket":"1234","title":"title"}""",
+            """{"changeType":"bugfix","ticket":"#123x","title":"title"}""",
             """{"changeType":"bugfix","ticket":33157,"title":"title"}""",
             """{"changeType":"bugfix","ticket":"WZ-33157","title":""}""",
             """{"changeType":"bugfix","ticket":"WZ-33157","title":"${"x".repeat(201)}"}""",

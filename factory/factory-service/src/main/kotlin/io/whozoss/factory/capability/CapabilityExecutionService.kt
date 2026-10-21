@@ -479,7 +479,8 @@ class CapabilityExecutionService(
             appendLine("  - Review: provide prioritized findings with locations/evidence and residual risks; do not modify code unless requested.")
             appendLine("- If clarification is required, call queryUser, wait for the answer, then continue the same step. If that tool is unavailable, do not guess or bypass the clarification requirement.")
             appendLine(resultSubmissionInstruction())
-            appendLine("- Use PASS or FAIL according to this step's criteria. Do not invent criteria.")
+            appendLine("- Submit NEEDS_RESEARCH only when missing research blocks a reliable PASS/FAIL decision; identify the missing business information and useful references in the summary/findings.")
+            appendLine("- Otherwise use PASS or FAIL according to this step's criteria. Do not invent criteria.")
             appendLine("- Call the tool with its structured arguments. Do not return free-form JSON as the result.")
             appendLine("- If Factory rejects the result schema, correct the tool payload and retry; that rejection is not a step verdict.")
             append("- Once Factory accepts the result, stop working on this step.")
@@ -541,7 +542,9 @@ class CapabilityExecutionService(
      */
     private fun resultSubmissionInstruction(): String =
         "- Call FACTORY_WORKER__submitStepResult only when the work is complete. " +
-            "Use Factory attemptId '{{FACTORY_ATTEMPT_ID}}' and Idempotency-Key '{{FACTORY_SUBMISSION_ID}}'."
+            "Use Factory attemptId '{{FACTORY_ATTEMPT_ID}}' and Idempotency-Key '{{FACTORY_SUBMISSION_ID}}'. " +
+            "Provide status, a concise business summary, claims.modifiedFiles, and only the relevant findings/artifacts; " +
+            "the tool schema is authoritative for field constraints."
 
     /**
      * Builds the frozen context envelope (Lot D) of an attempt together with
