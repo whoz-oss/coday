@@ -1,5 +1,6 @@
 import { NgZone } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
+import { of } from 'rxjs'
 import { Configuration, NamespaceCaseInvalidationSseService } from '@whoz-oss/agentos-api-client'
 
 class FakeEventSource {
@@ -34,6 +35,10 @@ describe('NamespaceCaseInvalidationSseService', () => {
         {
           provide: NgZone,
           useValue: {
+            onUnstable: of(),
+            onMicrotaskEmpty: of(),
+            onStable: of(),
+            onError: of(),
             runOutsideAngular: (callback: () => unknown) => callback(),
             run: (callback: () => unknown) => callback(),
           },
