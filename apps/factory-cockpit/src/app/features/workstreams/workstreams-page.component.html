@@ -6,13 +6,13 @@
       <p class="sf-muted">Runs grouped by namespace, derived from the real workflows exposed by factory-service.</p>
     </div>
     <mat-form-field appearance="outline" subscriptSizing="dynamic">
-      <mat-label>Namespace</mat-label>
+      <mat-label>Workstream</mat-label>
       <mat-select
         [value]="store.selectedNamespaceId() ?? ''"
         (selectionChange)="selectNamespace($event.value)"
         data-workstreams-namespace="true"
       >
-        <mat-option value="">Tous les namespaces</mat-option>
+        <mat-option value="">All workstreams</mat-option>
         @for (namespace of store.namespaceOptions(); track namespace.namespaceId ?? namespace.id) {
           @let id = namespace.namespaceId ?? namespace.id ?? '';
           @if (id) {
