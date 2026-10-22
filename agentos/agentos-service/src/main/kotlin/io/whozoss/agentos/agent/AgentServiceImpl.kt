@@ -51,6 +51,7 @@ import io.whozoss.agentos.tool.ToolResolverService
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import io.whozoss.agentos.util.IdCompressorService
+import io.whozoss.agentos.workflow.LoopConfigResolver
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -97,6 +98,7 @@ class AgentServiceImpl(
     /** Feature-specific adjustments of a run's integrations; none unless a feature installs one. */
     private val runIntegrationCustomizers: List<RunIntegrationCustomizer> = emptyList(),
     private val loopWorkflowRunnerService: LoopWorkflowRunnerService,
+    private val loopConfigResolver: LoopConfigResolver,
 ) : AgentService {
     /**
      * Resolves an agent by name for a given [context].
@@ -435,7 +437,6 @@ class AgentServiceImpl(
             namespaceId = context.namespaceId,
             userId = context.userId,
             redirectGuideline = redirectGuideline,
-            loopConfig = agentConfig.loopConfig,
         )
     }
 
@@ -505,7 +506,6 @@ class AgentServiceImpl(
             resolvedTools = definition.tools,
             resolvedUser = resolvedUser,
             redirectGuideline = definition.redirectGuideline,
-            loopConfig = definition.loopConfig,
         )
     }
 
@@ -572,7 +572,6 @@ class AgentServiceImpl(
         resolvedTools: Collection<StandardTool<*>>,
         resolvedUser: User?,
         redirectGuideline: String? = null,
-        loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
     ): CaseWorker {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
@@ -585,11 +584,10 @@ class AgentServiceImpl(
                 AgentLoop(
                     metadata = EntityMetadata(id = agentId),
                     name = agentName,
-                    objectMapper = objectMapper,
+                    configResolver = loopConfigResolver,
                     runner = loopWorkflowRunnerService,
                     resolvedTools = resolvedTools,
                     triggerUser = resolvedUser,
-                    loopConfig = loopConfig,
                 )
             }
 

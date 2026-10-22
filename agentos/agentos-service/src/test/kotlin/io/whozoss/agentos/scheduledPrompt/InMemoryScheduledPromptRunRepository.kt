@@ -78,6 +78,16 @@ class InMemoryScheduledPromptRunRepository : ScheduledPromptRunRepository {
             .sortedBy { it.metadata.created }
     }
 
+    override fun findByLoopCaseId(loopCaseId: UUID): ScheduledPromptRun? =
+        store.values.firstOrNull { it.loopCaseId == loopCaseId }
+
+    override fun updateStatusAndLoopCase(id: UUID, status: RunStatus, loopCaseId: UUID): Boolean {
+        val entry = store.entries.firstOrNull { it.value.id == id } ?: return false
+        if (entry.value.status == RunStatus.DONE || entry.value.status == RunStatus.FAILED) return false
+        store[entry.key] = entry.value.copy(status = status, loopCaseId = loopCaseId)
+        return true
+    }
+
     /** Test helper: all stored runs. */
     fun all(): List<ScheduledPromptRun> = store.values.toList()
 

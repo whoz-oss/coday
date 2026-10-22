@@ -1,7 +1,5 @@
 package io.whozoss.agentos.agent
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.agent.CaseWorker
@@ -15,6 +13,7 @@ import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.user.User
 import io.whozoss.agentos.workflow.LoopConfig
+import io.whozoss.agentos.workflow.LoopConfigResolver
 import io.whozoss.agentos.workflow.LoopRunContext
 import io.whozoss.agentos.workflow.LoopRunOutcome
 import io.whozoss.agentos.workflow.LoopWorkflowRunnerService
@@ -29,42 +28,30 @@ import java.util.UUID
  * Unlike [AgentSimple] or [AgentAdvanced], [AgentLoop] never calls an AI provider. It is a thin
  * adapter between the case and [LoopWorkflowRunnerService]:
  *
- * 1. Resolve the [LoopConfig] from [loopConfig] stored on the [AgentConfig].
+ * 1. Resolve the [LoopConfig] via the injected [LoopConfigResolver], which is contributed by
+ *    whatever initiated the run (e.g. [io.whozoss.agentos.scheduledPrompt.ScheduledPromptExecutor]).
  * 2. Delegate the workflow to [LoopWorkflowRunnerService].
  * 3. Report the outcome in the case: a summary [MessageEvent] on completion, a [WarnEvent]
  *    when the run could not proceed. Always ends with [AgentFinishedEvent].
  *
- * The triggering message content is not read — configuration lives entirely in [loopConfig].
+ * The agent carries no loop configuration of its own — configuration is supplied by a
+ * [LoopConfigResolver] contributed by whatever initiated the run; the agent does not read
+ * the triggering message for config.
  *
- * ## Expected loopConfig format
- *
- * ```json
- * {
- *   "version": 1,
- *   "steps": [
- *     { "id": "search", "tool": "SearchTalents", "input": { "params": { "resolveTargets": ["OWNER"] } } },
- *     { "id": "act", "tool": "FreeCaseStarterForUser", "input": { "from": "search" } }
- *   ]
- * }
- * ```
- *
- * @param metadata      Agent identity, inherited from [Entity].
- * @param name          Display name of this agent instance.
- * @param objectMapper  Used to parse [loopConfig].
- * @param runner        Executes the workflow.
- * @param resolvedTools Tools available to this agent.
- * @param triggerUser   The user who triggered the run.
- * @param loopConfig    The [LoopConfig] persisted on [AgentConfig]. Must be non-null
- *                      and parseable for the run to proceed.
+ * @param metadata        Agent identity, inherited from [Entity].
+ * @param name            Display name of this agent instance.
+ * @param configResolver  Supplies the [LoopConfig] for the running case.
+ * @param runner          Executes the workflow.
+ * @param resolvedTools   Tools available to this agent.
+ * @param triggerUser     The user who triggered the run.
  */
 class AgentLoop(
     override val metadata: EntityMetadata = EntityMetadata(),
     override val name: String,
-    private val objectMapper: ObjectMapper,
+    private val configResolver: LoopConfigResolver,
     private val runner: LoopWorkflowRunnerService,
     private val resolvedTools: Collection<StandardTool<*>> = emptyList(),
     private val triggerUser: User? = null,
-    private val loopConfig: JsonNode? = null,
 ) : CaseWorker {
     override fun run(
         events: List<CaseEvent>,
@@ -99,7 +86,7 @@ class AgentLoop(
 
             val outcome =
                 try {
-                    val config = resolveConfig()
+                    val config = resolveConfig(caseId)
                     logger.info {
                         "[AgentLoop] '$name' starting — ${config.steps.size} step(s) (caseId=$caseId)"
                     }
@@ -118,7 +105,7 @@ class AgentLoop(
                         shouldContinue = shouldContinue,
                     )
                 } catch (e: InvalidLoopPayloadException) {
-                    logger.error(e) { "[AgentLoop] '$name' invalid loopConfig (caseId=$caseId): ${e.message}" }
+                    logger.error(e) { "[AgentLoop] '$name' invalid loop config (caseId=$caseId): ${e.message}" }
                     LoopRunOutcome.Aborted(e.message ?: "Invalid AgentLoop payload")
                 }
 
@@ -178,33 +165,23 @@ class AgentLoop(
     )
 
     /**
-     * Resolves the [LoopConfig] from [loopConfig].
+     * Resolves the [LoopConfig] for [caseId] via the injected [LoopConfigResolver].
      *
-     * @throws InvalidLoopPayloadException when [loopConfig] is null, version != 1, steps is empty,
-     *   or the JSON cannot be parsed.
+     * @throws InvalidLoopPayloadException when the resolver returns null (unrecognised case),
+     *   throws an exception, or the config fails validation.
      */
-    private fun resolveConfig(): LoopConfig {
-        if (loopConfig == null) {
-            throw InvalidLoopPayloadException("No loopConfig is configured on this agent.")
-        }
-        return try {
-            val config = objectMapper.treeToValue(loopConfig, LoopConfig::class.java)
-            if (config.version != 1) {
-                throw InvalidLoopPayloadException("loopConfig version must be 1, got ${config.version}.")
-            }
-            if (config.steps.isEmpty()) {
-                throw InvalidLoopPayloadException("loopConfig must have at least one step.")
-            }
-            logger.info { "[AgentLoop] '$name': loopConfig resolved (${config.steps.size} step(s))" }
-            config
-        } catch (e: InvalidLoopPayloadException) {
-            throw e
+    private fun resolveConfig(caseId: UUID): LoopConfig {
+        val config = try {
+            configResolver.resolve(caseId)
         } catch (e: Exception) {
-            throw InvalidLoopPayloadException(
-                "loopConfig could not be parsed as a valid LoopConfig: ${e.message}",
-                e,
-            )
-        }
+            throw InvalidLoopPayloadException("Could not resolve the loop configuration: ${e.message}", e)
+        } ?: throw InvalidLoopPayloadException(
+            "No loop configuration is available for this case. A loop case must be started by an " +
+                "initiator that registers its configuration (e.g. a scheduled prompt).",
+        )
+        if (config.version != 1) throw InvalidLoopPayloadException("Loop config version must be 1, got ${config.version}.")
+        if (config.steps.isEmpty()) throw InvalidLoopPayloadException("Loop config must declare at least one step.")
+        return config
     }
 
     private class InvalidLoopPayloadException(

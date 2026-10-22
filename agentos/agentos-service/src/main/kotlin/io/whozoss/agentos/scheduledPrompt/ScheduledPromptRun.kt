@@ -62,4 +62,9 @@ data class ScheduledPromptRun(
     val attempt: Int = 0,
     val finishedAt: Instant? = null,
     val error: String? = null,
+    /**
+     * The case running the AgentLoop for this run; null for legacy runs and for runs that
+     * never reached TARGETING.
+     */
+    val loopCaseId: UUID? = null,
 ) : Entity

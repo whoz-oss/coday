@@ -173,6 +173,12 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Constraint case_dispatch_key_unique ensured" }
 
+        neo4jClient
+            .query(
+                "CREATE INDEX scheduled_prompt_run_loop_case_id IF NOT EXISTS FOR (r:ScheduledPromptRun) ON (r.loopCaseId)",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Index scheduled_prompt_run_loop_case_id created" }
+
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?
         // which fails if the property is absent. Setting version = 0 makes existing nodes

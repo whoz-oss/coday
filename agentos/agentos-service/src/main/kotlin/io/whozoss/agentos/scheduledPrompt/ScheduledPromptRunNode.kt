@@ -35,6 +35,7 @@ data class ScheduledPromptRunNode(
     val attempt: Int = 0,
     val finishedAt: Instant? = null,
     val error: String? = null,
+    val loopCaseId: String? = null,
     @Version val version: Long? = null,
     @CreatedDate val created: Instant = Instant.now(),
     @CreatedBy val createdBy: String? = null,
@@ -60,6 +61,7 @@ data class ScheduledPromptRunNode(
             attempt = attempt,
             finishedAt = finishedAt,
             error = error,
+            loopCaseId = loopCaseId?.let { UUID.fromString(it) },
         )
 
     companion object {
@@ -73,6 +75,7 @@ data class ScheduledPromptRunNode(
                 attempt = run.attempt,
                 finishedAt = run.finishedAt,
                 error = run.error,
+                loopCaseId = run.loopCaseId?.toString(),
                 version = run.metadata.version,
                 created = run.metadata.created,
                 createdBy = run.metadata.createdBy,

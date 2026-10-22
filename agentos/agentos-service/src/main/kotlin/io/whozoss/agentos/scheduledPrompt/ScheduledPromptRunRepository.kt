@@ -79,6 +79,23 @@ interface ScheduledPromptRunRepository {
     fun findOrphanedTargeting(olderThan: Instant): List<ScheduledPromptRun>
 
     /**
+     * Find the run associated with a given loop case id, or null if not found.
+     * Used by [io.whozoss.agentos.scheduledPrompt.ScheduledPromptLoopConfigResolver] to
+     * look up the originating run from the running case.
+     */
+    fun findByLoopCaseId(loopCaseId: UUID): ScheduledPromptRun?
+
+    /**
+     * Atomically transition a run's status and record the associated loop case id.
+     *
+     * Must be called BEFORE [io.whozoss.agentos.caseFlow.CaseService.addMessage] so that the
+     * resolver can find the run as soon as the loop agent starts.
+     *
+     * @return true if the update was applied, false otherwise.
+     */
+    fun updateStatusAndLoopCase(id: UUID, status: RunStatus, loopCaseId: UUID): Boolean
+
+    /**
      * Find RUNNING Runs whose UserRuns are ALL in a terminal status (DONE, TIMEOUT, or FAILED).
      *
      * A Run is "settled" when none of its UserRuns are in PENDING or RUNNING status.

@@ -62,5 +62,18 @@ open class Neo4jScheduledPromptRunRepository(
     override fun findSettledRunning(): List<ScheduledPromptRun> =
         neo4jRepository.findSettledRunning().map { it.toDomain() }
 
+    override fun findByLoopCaseId(loopCaseId: UUID): ScheduledPromptRun? =
+        neo4jRepository.findByLoopCaseId(loopCaseId.toString())?.toDomain()
+
+    override fun updateStatusAndLoopCase(id: UUID, status: RunStatus, loopCaseId: UUID): Boolean {
+        val updated = neo4jRepository.updateStatusAndLoopCase(
+            id = id.toString(),
+            status = status.name,
+            loopCaseId = loopCaseId.toString(),
+            now = Instant.now(),
+        )
+        return updated > 0
+    }
+
     companion object : KLogging()
 }

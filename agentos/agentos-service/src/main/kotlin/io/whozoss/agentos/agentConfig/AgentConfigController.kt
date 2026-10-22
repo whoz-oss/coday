@@ -138,7 +138,6 @@ class AgentConfigController(
                     subAgents = resource.subAgents.nullOrNotBlankItems(),
                     delegationTimeoutSeconds = resource.delegationTimeoutSeconds,
                     skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
-                    loopConfig = resource.loopConfig,
                 ),
             ),
         )
@@ -282,7 +281,6 @@ internal fun toDomain(resource: AgentConfigDto): AgentConfig {
         subAgents = resource.subAgents.nullOrNotBlankItems(),
         delegationTimeoutSeconds = resource.delegationTimeoutSeconds,
         skillSelectors = resource.skillSelectors.nullOrNotBlankItems(),
-        loopConfig = resource.loopConfig,
     )
 }
 
@@ -309,7 +307,6 @@ internal fun toDto(entity: AgentConfig) =
         subAgents = entity.subAgents,
         delegationTimeoutSeconds = entity.delegationTimeoutSeconds,
         skillSelectors = entity.skillSelectors,
-        loopConfig = entity.loopConfig,
     )
 
 /**

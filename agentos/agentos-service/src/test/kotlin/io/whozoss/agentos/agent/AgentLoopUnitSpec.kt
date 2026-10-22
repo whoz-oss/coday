@@ -36,10 +36,10 @@ import java.util.UUID
 /**
  * Unit tests for [AgentLoop].
  *
- * AgentLoop reads its payload exclusively from [AgentLoop.loopConfig] (set at construction
- * from [AgentConfig.loopConfig]). Message content is ignored for payload resolution.
- * These tests cover loopConfig parsing and the mapping of [LoopRunOutcome] to case events.
- * The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
+ * AgentLoop reads its payload exclusively from the triggering [MessageEvent] (the last user
+ * message in the case events). The config JSON is extracted from that message's text content.
+ * These tests cover loop config parsing from the message and the mapping of [LoopRunOutcome]
+ * to case events. The workflow itself is covered by [LoopWorkflowRunnerUnitSpec].
  */
 class AgentLoopUnitSpec :
     StringSpec({
@@ -59,8 +59,6 @@ class AgentLoopUnitSpec :
             }
             """.trimIndent()
 
-        val validLoopConfig: JsonNode = objectMapper.readTree(validLoopConfigJson)
-
         val completed = LoopRunOutcome.Completed(lastStepOutput = "done")
 
         // -------------------------------------------------------------------------
@@ -75,7 +73,6 @@ class AgentLoopUnitSpec :
             name: String = "loop-agent",
             resolvedTools: Collection<StandardTool<*>> = emptyList(),
             triggerUser: User? = null,
-            loopConfig: JsonNode? = validLoopConfig,
         ) = AgentLoop(
             metadata = EntityMetadata(id = UUID.randomUUID()),
             name = name,
@@ -83,10 +80,9 @@ class AgentLoopUnitSpec :
             runner = runner,
             resolvedTools = resolvedTools,
             triggerUser = triggerUser,
-            loopConfig = loopConfig,
         )
 
-        fun userMessage(text: String = "start") =
+        fun userMessage(text: String = "@loop-agent $validLoopConfigJson") =
             MessageEvent(
                 namespaceId = namespaceId,
                 caseId = caseId,
@@ -122,7 +118,7 @@ class AgentLoopUnitSpec :
             }
         }
 
-        "config is passed to the runner" {
+        "config is parsed from the triggering message and passed to the runner" {
             val runner = runnerReturning(completed)
             val configSlot = slot<LoopConfig>()
             coEvery { runner.run(capture(configSlot), any(), any()) } returns completed
@@ -147,18 +143,28 @@ class AgentLoopUnitSpec :
             contextSlot.captured.agentName shouldBe "my-loop"
         }
 
-        "unknown fields in loopConfig are ignored" {
+        "unknown fields in loop config JSON are ignored" {
             val runner = runnerReturning(completed)
-            val withExtraFields =
-                objectMapper.readTree(
-                    """
-                    {"version": 1, "steps": [{"id": "s1", "tool": "MyTool", "extra": "x"}], "note": "ignored"}
-                    """.trimIndent(),
-                )
+            val messageWithExtra = userMessage(
+                "@loop-agent {\"version\": 1, \"steps\": [{\"id\": \"s1\", \"tool\": \"MyTool\", \"extra\": \"x\"}], \"note\": \"ignored\"}"
+            )
 
-            agent(runner = runner, loopConfig = withExtraFields).run(listOf(userMessage())).toList()
+            agent(runner = runner).run(listOf(messageWithExtra)).toList()
 
             coVerify(exactly = 1) { runner.run(match { it.steps.size == 1 }, any(), any()) }
+        }
+
+        "config is read from the LAST user message when multiple exist" {
+            val runner = runnerReturning(completed)
+            val configSlot = slot<LoopConfig>()
+            coEvery { runner.run(capture(configSlot), any(), any()) } returns completed
+
+            val firstMessage = userMessage("@loop-agent {\"version\": 1, \"steps\": [{\"id\": \"old\", \"tool\": \"OldTool\"}]}")
+            val lastMessage = userMessage("@loop-agent {\"version\": 1, \"steps\": [{\"id\": \"new\", \"tool\": \"NewTool\"}]}")
+
+            agent(runner = runner).run(listOf(firstMessage, lastMessage)).toList()
+
+            configSlot.captured.steps[0].id shouldBe "new"
         }
 
         // -------------------------------------------------------------------------
@@ -193,38 +199,57 @@ class AgentLoopUnitSpec :
         }
 
         // -------------------------------------------------------------------------
-        // Missing / invalid loopConfig
+        // Missing / invalid loop config in the triggering message
         // -------------------------------------------------------------------------
 
-        "no loopConfig emits a WarnEvent and does not call the runner" {
+        "no user message in events emits a WarnEvent and does not call the runner" {
             val runner = runnerReturning(completed)
+            // Provide only an agent message — no user message
+            val agentMessage = MessageEvent(
+                namespaceId = namespaceId,
+                caseId = caseId,
+                actor = Actor(id = "agent-1", displayName = "Bot", role = ActorRole.AGENT),
+                content = listOf(MessageContent.Text("hello")),
+            )
 
-            val emitted = agent(runner = runner, loopConfig = null).run(listOf(userMessage())).toList()
+            val emitted = agent(runner = runner).run(listOf(agentMessage)).toList()
 
             emitted shouldHaveSize 3
             emitted[0].shouldBeInstanceOf<AgentRunningEvent>()
             emitted[1].shouldBeInstanceOf<WarnEvent>()
-            emitted.warnMessage() shouldContain "No loopConfig"
+            emitted.warnMessage() shouldContain "No triggering user message"
             emitted[2].shouldBeInstanceOf<AgentFinishedEvent>()
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
 
-        "loopConfig with version != 1 emits a WarnEvent" {
+        "user message with no JSON braces emits a WarnEvent" {
             val runner = runnerReturning(completed)
-            val badVersion = objectMapper.readTree("""{"version": 2, "steps": [{"id": "s1", "tool": "T"}]}""")
 
-            val emitted = agent(runner = runner, loopConfig = badVersion).run(listOf(userMessage())).toList()
+            val emitted = agent(runner = runner).run(listOf(userMessage("start without config"))).toList()
+
+            emitted[1].shouldBeInstanceOf<WarnEvent>()
+            emitted.warnMessage() shouldContain "JSON object"
+            coVerify(exactly = 0) { runner.run(any(), any(), any()) }
+        }
+
+        "loop config with version != 1 emits a WarnEvent" {
+            val runner = runnerReturning(completed)
+
+            val emitted = agent(runner = runner).run(
+                listOf(userMessage("{\"version\": 2, \"steps\": [{\"id\": \"s1\", \"tool\": \"T\"}]}"))
+            ).toList()
 
             emitted[1].shouldBeInstanceOf<WarnEvent>()
             emitted.warnMessage() shouldContain "version"
             coVerify(exactly = 0) { runner.run(any(), any(), any()) }
         }
 
-        "loopConfig with empty steps emits a WarnEvent" {
+        "loop config with empty steps emits a WarnEvent" {
             val runner = runnerReturning(completed)
-            val noSteps = objectMapper.readTree("""{"version": 1, "steps": []}""")
 
-            val emitted = agent(runner = runner, loopConfig = noSteps).run(listOf(userMessage())).toList()
+            val emitted = agent(runner = runner).run(
+                listOf(userMessage("{\"version\": 1, \"steps\": []}"))
+            ).toList()
 
             emitted[1].shouldBeInstanceOf<WarnEvent>()
             emitted.warnMessage() shouldContain "step"

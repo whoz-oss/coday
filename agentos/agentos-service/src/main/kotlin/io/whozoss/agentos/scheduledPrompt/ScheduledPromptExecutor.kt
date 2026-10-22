@@ -1,13 +1,11 @@
 package io.whozoss.agentos.scheduledPrompt
 
-import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.Case
 import io.whozoss.agentos.caseFlow.CaseRuntime
 import io.whozoss.agentos.caseFlow.CaseService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
-import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
@@ -67,11 +65,8 @@ class ScheduledPromptExecutor(
     @Suppress("UnusedPrivateMember")
     private val userRunRepository: ScheduledPromptUserRunRepository, // retained for DI wiring; no writes on converged path
     private val userService: UserService,
-    private val promptService: PromptService,
-    private val agentConfigService: AgentConfigService,
     private val permissionService: PermissionService,
     private val caseService: CaseService,
-    private val synthesizer: ScheduledPromptLoopConfigSynthesizer,
     private val properties: SchedulerProperties,
     private val clock: Clock,
 ) {
@@ -119,8 +114,11 @@ class ScheduledPromptExecutor(
     }
 
     /**
-     * Transactional setup: resolve loop config, create case, grant permission, inject message,
-     * transition run to TARGETING.
+     * Transactional setup: create case, grant permission, transition run to TARGETING, inject message.
+     *
+     * Step ordering matters: [runRepository.updateStatusAndLoopCase] is called BEFORE
+     * [caseService.addMessage] so the [ScheduledPromptLoopConfigResolver] can find the run
+     * by loopCaseId as soon as the loop agent starts processing.
      *
      * Must NOT be a suspend function — `@Transactional` does not span coroutine suspension.
      */
@@ -130,27 +128,6 @@ class ScheduledPromptExecutor(
         scheduledPrompt: ScheduledPrompt,
         creatorId: UUID,
     ): UUID {
-        // Resolve prompt content and agent name for synthesis.
-        val prompt = checkNotNull(promptService.findById(scheduledPrompt.promptTemplateId)) {
-            "PromptTemplate ${scheduledPrompt.promptTemplateId} not found for run=${run.id}"
-        }
-        val promptContent = prompt.content.firstOrNull()?.takeIf { it.isNotBlank() }
-            ?: error("PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content")
-        val agentName = checkNotNull(agentConfigService.findById(scheduledPrompt.agentConfigId)?.name) {
-            "AgentConfig ${scheduledPrompt.agentConfigId} not found for run=${run.id}"
-        }
-
-        // Branch-free: explicit loopConfig wins, synthesis otherwise.
-        val effectiveLoopConfig = scheduledPrompt.loopConfig
-            ?: synthesizer.synthesize(
-                scheduledPrompt = scheduledPrompt,
-                agentName = agentName,
-                promptContent = promptContent,
-                title = scheduledPrompt.name,
-                runId = run.id,
-                sourceLanguage = prompt.sourceLanguage,
-            )
-
         // Create one Case for the loop agent.
         val case = caseService.create(
             Case(
@@ -170,9 +147,10 @@ class ScheduledPromptExecutor(
             PermissionRelation.ADMIN,
         )
 
-        // Inject the loop config as the first message to the loop agent.
-        val loopConfigJson = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
-            .writeValueAsString(effectiveLoopConfig)
+        // Transition CLAIMED → TARGETING and record the loop case id BEFORE injecting the
+        // message. addMessage launches the run; the resolver looks up by loopCaseId.
+        runRepository.updateStatusAndLoopCase(run.id, RunStatus.TARGETING, case.id)
+
         val actor = Actor(
             id = creatorId.toString(),
             displayName = userService.findById(creatorId)?.displayName() ?: creatorId.toString(),
@@ -181,11 +159,8 @@ class ScheduledPromptExecutor(
         caseService.addMessage(
             caseId = case.id,
             actor = actor,
-            content = listOf(MessageContent.Text("@$LOOP_AGENT_NAME $loopConfigJson")),
+            content = listOf(MessageContent.Text("@$LOOP_AGENT_NAME Run scheduled prompt '${scheduledPrompt.name}'."))
         )
-
-        // Transition CLAIMED → TARGETING.
-        runRepository.updateStatus(run.id, RunStatus.TARGETING)
 
         logger.info {
             "[Executor] Run=${run.id} → TARGETING, loop case=${case.id}, agent=$LOOP_AGENT_NAME"

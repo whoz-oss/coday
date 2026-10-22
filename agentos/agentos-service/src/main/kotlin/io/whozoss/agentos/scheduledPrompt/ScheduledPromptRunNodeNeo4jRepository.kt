@@ -2,6 +2,7 @@ package io.whozoss.agentos.scheduledPrompt
 
 import org.springframework.data.neo4j.repository.Neo4jRepository
 import org.springframework.data.neo4j.repository.query.Query
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 /**
@@ -71,6 +72,26 @@ interface ScheduledPromptRunNodeNeo4jRepository : Neo4jRepository<ScheduledPromp
      */
     @Query($$"MATCH (r:ScheduledPromptRun) WHERE r.status = $status AND r.created < $before RETURN r ORDER BY r.created")
     fun findByStatusAndCreatedBefore(status: String, before: Instant): List<ScheduledPromptRunNode>
+
+    /**
+     * Find a run by its associated loop case id.
+     */
+    @Transactional(readOnly = true)
+    @Query($$"""MATCH (r:ScheduledPromptRun {loopCaseId: $loopCaseId}) RETURN r LIMIT 1""")
+    fun findByLoopCaseId(loopCaseId: String): ScheduledPromptRunNode?
+
+    /**
+     * Atomically update status and loopCaseId on a run.
+     * Used by the executor to record the loop case before injecting the trigger message.
+     */
+    @Query(
+        $$"""
+        MATCH (r:ScheduledPromptRun {id: $id})
+        SET r.status = $status, r.loopCaseId = $loopCaseId, r.modified = $now
+        RETURN count(r)
+        """,
+    )
+    fun updateStatusAndLoopCase(id: String, status: String, loopCaseId: String, now: Instant): Int
 
     /**
      * Find RUNNING Runs whose UserRuns are all terminal (none in PENDING or RUNNING).
