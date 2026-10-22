@@ -246,7 +246,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 synthesizer = synthesizer,
             ).materialize(run, sp, creatorId)
 
-            verify(exactly = 0) { synthesizer.synthesize(any(), any(), any(), any(), any()) }
+            verify(exactly = 0) { synthesizer.synthesize(any(), any(), any(), any(), any(), any()) }
         }
 
         // -------------------------------------------------------------------------
@@ -274,7 +274,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
             val synthesizedConfig = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
                 .readTree("""{"version":1,"steps":[{"id":"synthesized"}]}""")!!
             val synthesizer = mockk<ScheduledPromptLoopConfigSynthesizer>().also {
-                every { it.synthesize(any(), any(), any(), any(), any()) } returns synthesizedConfig
+                every { it.synthesize(any(), any(), any(), any(), any(), any()) } returns synthesizedConfig
             }
 
             executor(
@@ -287,7 +287,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 synthesizer = synthesizer,
             ).materialize(run, sp, creatorId)
 
-            verify(exactly = 1) { synthesizer.synthesize(any(), any(), any(), any(), any()) }
+            verify(exactly = 1) { synthesizer.synthesize(any(), any(), any(), any(), any(), any()) }
         }
 
         // -------------------------------------------------------------------------

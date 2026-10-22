@@ -55,8 +55,8 @@ class AgentAdvanced(
     private val userExternalId: String? = null,
     private val caseEventsProvider: () -> List<CaseEvent> = { emptyList() },
     private val maxIterations: Int = 20,
-    override val llmProvider: String?,
-    override val llmModel: String?,
+    override val llmProvider: String,
+    override val llmModel: String,
     /** Metrics service for recording tool call telemetry. Null in tests that don't inject it. */
     private val toolMetricsService: ToolMetricsService? = null,
 ) : Agent {

@@ -9,6 +9,8 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.agent.CaseWorker
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -274,10 +276,9 @@ class AgentLoopUnitSpec :
             running.llmModel shouldBe null
         }
 
-        "llmProvider and llmModel are null (no LLM usage)" {
+        "AgentLoop is a CaseWorker and is NOT an Agent (no LLM identity)" {
             val loop = agent()
-
-            loop.llmProvider shouldBe null
-            loop.llmModel shouldBe null
+            loop.shouldBeInstanceOf<CaseWorker>()
+            (loop is Agent) shouldBe false
         }
     })

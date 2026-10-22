@@ -1,7 +1,7 @@
 package io.whozoss.agentos.agent
 
 import io.whozoss.agentos.delegation.SubCaseManager
-import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.agent.CaseWorker
 import java.util.UUID
 
 /**
@@ -35,7 +35,7 @@ interface AgentService {
         namePart: String,
         context: AgentExecutionContext,
         subCaseManager: SubCaseManager? = null,
-    ): Agent
+    ): CaseWorker
 
     /**
      * Resolve the fully-computed definition for an agent config, without instantiating

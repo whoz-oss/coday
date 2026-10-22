@@ -147,6 +147,7 @@ class ScheduledPromptExecutor(
                 agentName = agentName,
                 promptContent = promptContent,
                 title = scheduledPrompt.name,
+                runId = run.id,
                 sourceLanguage = prompt.sourceLanguage,
             )
 

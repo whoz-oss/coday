@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.agent.CaseWorker
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -65,11 +65,7 @@ class AgentLoop(
     private val resolvedTools: Collection<StandardTool<*>> = emptyList(),
     private val triggerUser: User? = null,
     private val loopConfig: JsonNode? = null,
-) : Agent {
-    /** AgentLoop does not call any LLM — llmProvider and llmModel are null. */
-    override val llmProvider: String? = null
-    override val llmModel: String? = null
-
+) : CaseWorker {
     override fun run(
         events: List<CaseEvent>,
         shouldContinue: () -> Boolean,

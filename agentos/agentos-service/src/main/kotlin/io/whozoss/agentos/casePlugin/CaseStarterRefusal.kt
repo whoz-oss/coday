@@ -22,4 +22,7 @@ enum class CaseStarterRefusal {
 
     /** The agent is unknown, disabled or not deployed to the target user: the three look the same. */
     AGENT_NOT_AVAILABLE,
+
+    /** A case with the same dispatchKey already exists — this dispatch was already delivered. */
+    ALREADY_DISPATCHED,
 }

@@ -19,6 +19,7 @@ import io.whozoss.agentos.user.User
 import io.whozoss.agentos.user.UserService
 import mu.KLogging
 import org.springframework.context.annotation.Lazy
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -99,6 +100,14 @@ class CaseStarterService(
             refuse(
                 CaseStarterRefusal.START_DEPTH_EXCEEDED,
                 "The current case was itself started by another case, so it cannot start a new one.",
+            )
+        }
+        // Pre-check: if a dispatchKey is set and a non-deleted case already carries it,
+        // refuse immediately before any expensive operations (no user resolution, no LLM).
+        if (request.dispatchKey != null && caseService.findByDispatchKey(request.dispatchKey) != null) {
+            refuse(
+                CaseStarterRefusal.ALREADY_DISPATCHED,
+                "A case with dispatchKey '${request.dispatchKey}' already exists — this dispatch was already delivered.",
             )
         }
         val targetUser = resolveTargetUser(request)
@@ -311,14 +320,26 @@ class CaseStarterService(
         request: CaseStarterRequest,
         effectiveTitle: String,
     ): Case =
-        caseService.create(
-            Case(
-                namespaceId = request.callerNamespaceId,
-                title = effectiveTitle.take(MAX_TITLE_LENGTH),
-                originCaseId = request.callerCaseId,
-                scheduledPromptId = request.scheduledPromptId,
-            ),
-        )
+        try {
+            caseService.create(
+                Case(
+                    namespaceId = request.callerNamespaceId,
+                    title = effectiveTitle.take(MAX_TITLE_LENGTH),
+                    originCaseId = request.callerCaseId,
+                    scheduledPromptId = request.scheduledPromptId,
+                    dispatchKey = request.dispatchKey,
+                ),
+            )
+        } catch (e: DataIntegrityViolationException) {
+            // Race backstop: the pre-check is not atomic. A concurrent create with the same
+            // dispatchKey can race past the pre-check and collide at the constraint level.
+            // Translate the constraint violation into the same ALREADY_DISPATCHED refusal.
+            logger.info { "[CaseStarter] dispatchKey constraint violation (race) for key '${request.dispatchKey}': ${e.message}" }
+            refuse(
+                CaseStarterRefusal.ALREADY_DISPATCHED,
+                "A case with dispatchKey '${request.dispatchKey}' already exists — this dispatch was already delivered (concurrent create).",
+            )
+        }
 
     /**
      * Gives the target user ADMIN on [case] and sends the first message as them. The case exists by now, so

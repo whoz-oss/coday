@@ -49,6 +49,11 @@ class BatchCaseStarterTool(
      *   target user has a different `preferredLanguage`, both are translated. Null = no translation.
      * @param scheduledPromptId UUID string of the scheduled prompt that triggered this batch;
      *   written to [io.whozoss.agentos.caseFlow.Case.scheduledPromptId] on each started case.
+     * @param runId UUID string of the scheduler run that triggered this batch. When non-blank,
+     *   a [io.whozoss.agentos.casePlugin.CaseStarterRequest.dispatchKey] is derived per element
+     *   as `"$runId:$userId"` (plus `":$entityId"` when the element has a non-blank `entityId`).
+     *   Null (the default) for interactively-triggered loops: no dispatchKey is produced.
+     *   NOT exposed in the JSON schema — set by Kotlin, never by an LLM.
      * @param previousStepOutput JSON array produced by the preceding step (typically
      *   `ListAgentUsersTool`). Each element must carry at least `userId` (a UUID string). Optional
      *   `entityId` + `entityType` fields trigger per-element `activeContext` injection.
@@ -59,6 +64,7 @@ class BatchCaseStarterTool(
         val title: String? = null,
         val translateFrom: String? = null,
         val scheduledPromptId: String? = null,
+        val runId: String? = null,
         val previousStepOutput: JsonNode? = null,
     )
 
@@ -117,11 +123,15 @@ class BatchCaseStarterTool(
         val scheduledPromptUuid = input.scheduledPromptId?.let {
             runCatching { UUID.fromString(it) }.getOrNull()
         }
+        val runUuid = input.runId?.takeIf { it.isNotBlank() }?.let {
+            runCatching { UUID.fromString(it) }.getOrNull()
+        }
 
         var started = 0
         var unknownUser = 0
         var noAgentAccess = 0
         var failed = 0
+        var skipped = 0
         val startedCaseIds = mutableListOf<UUID>()
 
         for (element in array) {
@@ -141,6 +151,12 @@ class BatchCaseStarterTool(
 
             val sessionContext = buildSessionContext(element)
 
+            // Build the dispatchKey when a runId is present: "runId:userId" or "runId:userId:entityId".
+            val entityId = element.path("entityId").asText(null)?.takeIf { it.isNotBlank() }
+            val dispatchKey = runUuid?.let { runId ->
+                if (entityId != null) DispatchKey.of(runId, targetUserId, entityId) else DispatchKey.of(runId, targetUserId)
+            }
+
             val request =
                 CaseStarterRequest(
                     callerUserId = callerUserId,
@@ -153,6 +169,7 @@ class BatchCaseStarterTool(
                     sessionContext = sessionContext,
                     translateFrom = input.translateFrom,
                     scheduledPromptId = scheduledPromptUuid,
+                    dispatchKey = dispatchKey,
                 )
 
             try {
@@ -175,6 +192,10 @@ class BatchCaseStarterTool(
                         noAgentAccess++
                         logger.warn { "[BatchCaseStarter] refused for user $targetUserId (${e.reason}): ${e.message}" }
                     }
+                    CaseStarterRefusal.ALREADY_DISPATCHED -> {
+                        skipped++
+                        logger.info { "[BatchCaseStarter] skipped user $targetUserId — already dispatched (key: $dispatchKey)" }
+                    }
                     else -> {
                         failed++
                         logger.warn { "[BatchCaseStarter] unexpected refusal for user $targetUserId (${e.reason}): ${e.message}" }
@@ -187,13 +208,15 @@ class BatchCaseStarterTool(
         }
 
         val summary =
-            "Batch complete: $started started, $unknownUser unknown users, $noAgentAccess no-access, $failed failed " +
+            "Batch complete: $started started, $skipped skipped (already dispatched), " +
+                "$unknownUser unknown users, $noAgentAccess no-access, $failed failed " +
                 "(out of ${array.size()} elements)."
         logger.info { "[BatchCaseStarter] $summary" }
 
         val structuredOutput =
             objectMapper.createObjectNode().apply {
                 put("started", started)
+                put("skipped", skipped)
                 put("unknownUser", unknownUser)
                 put("noAgentAccess", noAgentAccess)
                 put("failed", failed)
@@ -243,6 +266,7 @@ class BatchCaseStarterTool(
                   "type": "object",
                   "properties": {
                     "started":      { "type": "integer", "description": "Number of cases successfully started." },
+                    "skipped":      { "type": "integer", "description": "Elements skipped because their dispatchKey was already delivered (idempotency)." },
                     "unknownUser":  { "type": "integer", "description": "Elements whose userId was not found." },
                     "noAgentAccess": { "type": "integer", "description": "Elements where the agent is not deployed to the user or the user has no namespace access." },
                     "failed":       { "type": "integer", "description": "Elements that failed for other reasons (infrastructure, unexpected refusals)." },
@@ -252,7 +276,7 @@ class BatchCaseStarterTool(
                       "description": "UUIDs of the cases that were successfully started, in order."
                     }
                   },
-                  "required": ["started", "unknownUser", "noAgentAccess", "failed", "startedCaseIds"]
+                  "required": ["started", "skipped", "unknownUser", "noAgentAccess", "failed", "startedCaseIds"]
                 }
                 """.trimIndent(),
             )

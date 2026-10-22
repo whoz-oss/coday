@@ -82,4 +82,8 @@ class InMemoryCaseRepository : CaseRepository {
         parentCaseId: UUID,
         childCaseId: UUID,
     ): Unit = Unit
+
+    /** Finds a non-deleted case by dispatchKey, or null. */
+    override fun findByDispatchKey(dispatchKey: String): Case? =
+        delegate.findAll().firstOrNull { it.dispatchKey == dispatchKey && !it.metadata.removed }
 }

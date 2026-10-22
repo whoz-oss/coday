@@ -53,21 +53,21 @@ class LoopWorkflowRunnerService(
             val tool =
                 context.tools.find { it.name == step.tool || it.name.endsWith("__" + step.tool) }
                     ?: return LoopRunOutcome.Aborted(
-                        "Step '${step.id}': tool '${step.tool}' is not available to agent '${context.agentName}' "
-                            + "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
+                        "Step '${step.id}': tool '${step.tool}' is not available to agent '${context.agentName}' " +
+                            "(available: ${context.tools.map { it.name }}). Check the agent integrations.",
                     )
 
             // Build the input JSON node.
             val inputNode: ObjectNode =
-                (step.input.params?.deepCopy() as? ObjectNode)
+                step.input.params?.deepCopy()
                     ?: objectMapper.createObjectNode()
 
             if (step.input.from != null) {
                 val prior =
                     stepOutputs[step.input.from]
                         ?: return LoopRunOutcome.Aborted(
-                            "Step '${step.id}': references output of step '${step.input.from}' via 'from', "
-                                + "but that step has no structured output or was not executed yet.",
+                            "Step '${step.id}': references output of step '${step.input.from}' via 'from', " +
+                                "but that step has no structured output or was not executed yet.",
                         )
                 inputNode.set<com.fasterxml.jackson.databind.JsonNode>("previousStepOutput", prior)
             }

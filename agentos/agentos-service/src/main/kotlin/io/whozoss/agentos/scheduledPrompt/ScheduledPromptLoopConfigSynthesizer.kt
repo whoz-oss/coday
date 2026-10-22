@@ -3,6 +3,7 @@ package io.whozoss.agentos.scheduledPrompt
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import org.springframework.stereotype.Service
+import java.util.UUID
 
 /**
  * Synthesizes a default [io.whozoss.agentos.workflow.LoopConfig] for a [ScheduledPrompt]
@@ -32,12 +33,16 @@ class ScheduledPromptLoopConfigSynthesizer {
      * @param promptContent the resolved prompt content (source language, before per-user translation)
      * @param title the case title
      * @param sourceLanguage the BCP-47 source language of the prompt (from the linked Prompt template)
+     * @param runId UUID of the [io.whozoss.agentos.scheduledPrompt.ScheduledPromptRun] that triggered
+     *   this execution. Emitted into the fan-out step's params so [BatchCaseStarterTool] can build
+     *   per-element dispatchKeys for idempotent delivery.
      */
     fun synthesize(
         scheduledPrompt: ScheduledPrompt,
         agentName: String,
         promptContent: String,
         title: String,
+        runId: UUID,
         sourceLanguage: String = "en",
     ): JsonNode {
         // Build the two-step linear LoopConfig matching workflow/LoopConfig.kt:
@@ -66,6 +71,7 @@ class ScheduledPromptLoopConfigSynthesizer {
                             "title" to title,
                             "translateFrom" to sourceLanguage,
                             "scheduledPromptId" to scheduledPrompt.id.toString(),
+                            "runId" to runId.toString(),
                         ),
                     ),
                 ),

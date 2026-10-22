@@ -163,6 +163,16 @@ class Neo4jSchemaInitializer(
             ).run()
         logger.info { "[Neo4jSchemaInitializer] Index skill_namespace_id created" }
 
+        // Unique constraint on Case.dispatchKey for idempotent case delivery.
+        // Neo4j unique constraints ignore nodes where the property is absent/null, so ordinary
+        // interactive cases (dispatchKey = null) are unaffected.
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT case_dispatch_key_unique IF NOT EXISTS " +
+                    "FOR (c:Case) REQUIRE c.dispatchKey IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint case_dispatch_key_unique ensured" }
+
         // Backfill @Version on AgentConfig nodes created before the version field was introduced.
         // Spring Data Neo4j's optimistic-locking check generates MATCH WHERE version = ?
         // which fails if the property is absent. Setting version = 0 makes existing nodes

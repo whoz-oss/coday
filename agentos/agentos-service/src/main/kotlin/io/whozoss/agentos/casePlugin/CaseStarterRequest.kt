@@ -23,6 +23,8 @@ import java.util.UUID
  * @param scheduledPromptId Id of the [io.whozoss.agentos.scheduledPrompt.ScheduledPrompt] that triggered
  *   this start, written to [io.whozoss.agentos.caseFlow.Case.scheduledPromptId]. Null for non-scheduled starts.
  *   This field is NOT exposed in the JSON schema of any LLM-facing tool.
+ * @param dispatchKey Optional idempotency key; when a non-deleted case already carries it the start is
+ *   refused as a duplicate and nothing is written. NOT exposed in any LLM-facing tool schema.
  */
 data class CaseStarterRequest(
     val callerUserId: UUID,
@@ -35,4 +37,5 @@ data class CaseStarterRequest(
     val sessionContext: Map<String, Any?>? = null,
     val translateFrom: String? = null,
     val scheduledPromptId: UUID? = null,
+    val dispatchKey: String? = null,
 )
