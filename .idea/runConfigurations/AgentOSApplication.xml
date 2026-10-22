@@ -6,6 +6,12 @@
       <env name="AGENTOS_ENCRYPTION_SALT" value="NONE" />
       <env name="AGENTOS_PROMPT_SCHEDULER_ENABLED" value="true" />
       <env name="AGENTOS_HTTP_API_ALLOW_LOCAL_HTTP" value="true" />
+      <env name="AGENTOS_USAGE_ENABLED" value="true" />
+      <env name="AGENTOS_GIT_WORKSPACES_ENABLED" value="true" />
+      <env name="AGENTOS_URL" value="http://localhost:8124" />
+      <env name="FACTORY_URL" value="http://localhost:8141" />
+      <env name="LOGGING_LEVEL_ROOT" value="DEBUG" />
+      <env name="LOGGING_LEVEL_IO_WHOZOSS_AGENTOS" value="DEBUG" />
     </envs>
     <module name="coday.agentos-service.main" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.agentos.AgentOSApplication" />

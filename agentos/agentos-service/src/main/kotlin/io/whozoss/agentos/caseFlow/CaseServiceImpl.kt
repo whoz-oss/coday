@@ -12,6 +12,7 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
@@ -984,6 +985,17 @@ class CaseServiceImpl(
         }
         descendants.forEach { descendant -> killSingleCase(descendant.id) }
         killSingleCase(caseId)
+    }
+
+    override fun reopenCase(caseId: UUID): Case {
+        val case = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        if (!case.status.isTerminal()) {
+            throw ConflictException("Only a terminated case can be reopened")
+        }
+        caseLaunchGate?.requireReopenable(caseId)
+        logger.info { "Reopening case: $caseId (was ${case.status})" }
+        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+        return findById(caseId) ?: error("Case $caseId not found after reopen status change")
     }
 
     override fun resumeSubCase(
