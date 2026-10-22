@@ -8,7 +8,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
-import org.springframework.test.web.client.match.MockRestRequestMatchers.header
+import org.springframework.test.web.client.match.MockRestRequestMatchers.headerDoesNotExist
 import org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess
@@ -78,7 +78,7 @@ class AgentOsAgentTurnTest {
     }
 
     @Test
-    fun `the agent turn transmits the attempt id and capability token to case creation`() {
+    fun `the legacy agent turn keeps attempt and capability internal`() {
         val (client, server) = build()
         val running = """[{"id":"e1","type":"CaseStatusEvent","status":"RUNNING"}]"""
         val idle = """
@@ -86,16 +86,17 @@ class AgentOsAgentTurnTest {
              {"id":"e2","type":"CaseStatusEvent","status":"IDLE"}]
         """.trimIndent()
         server.expect(requestTo("$baseUrl/api/cases"))
-            .andExpect(header("X-External-Context-Attempt-Id", "attempt-9"))
-            .andExpect(header("X-External-Context-Capability-Token", "clear-token"))
+            .andExpect(headerDoesNotExist("X-External-Context-Attempt-Id"))
+            .andExpect(headerDoesNotExist("X-External-Context-Capability-Token"))
             .andExpect(jsonPath("$.id").value("case-9"))
-            .andExpect(jsonPath("$.attemptId").value("attempt-9"))
-            .andExpect(jsonPath("$.capabilityToken").value("clear-token"))
+            .andExpect(jsonPath("$.attemptId").doesNotExist())
+            .andExpect(jsonPath("$.capabilityToken").doesNotExist())
             .andRespond(withSuccess("""{"id":"case-9","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
         server.expect(requestTo("$baseUrl/api/case-events/by-parentId/case-9"))
             .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
         server.expect(requestTo("$baseUrl/api/cases/case-9/messages"))
-            .andExpect(header("X-External-Context-Attempt-Id", "attempt-9"))
+            .andExpect(headerDoesNotExist("X-External-Context-Attempt-Id"))
+            .andExpect(headerDoesNotExist("X-External-Context-Capability-Token"))
             .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
         server.expect(requestTo("$baseUrl/api/case-events/by-parentId/case-9"))
             .andRespond(withSuccess(running, MediaType.APPLICATION_JSON))
