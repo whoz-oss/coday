@@ -5,8 +5,9 @@
       <env name="AGENTOS_ENCRYPTION_KEY" value="NONE" />
       <env name="AGENTOS_ENCRYPTION_SALT" value="NONE" />
       <env name="AGENTOS_PROMPT_SCHEDULER_ENABLED" value="true" />
-      <env name="AGENTOS_HTTP_API_ALLOW_LOCAL_HTTP" value="true" />
+      <env name="AGENTOS_HTTP_API_ALLOW_UNSECURE" value="true" />
       <env name="AGENTOS_USAGE_ENABLED" value="true" />
+      <env name="AGENTOS_GIT_WORKER_ENABLED" value="true" />
       <env name="AGENTOS_GIT_WORKSPACES_ENABLED" value="true" />
       <env name="AGENTOS_URL" value="http://localhost:8124" />
       <env name="FACTORY_URL" value="http://localhost:8141" />
