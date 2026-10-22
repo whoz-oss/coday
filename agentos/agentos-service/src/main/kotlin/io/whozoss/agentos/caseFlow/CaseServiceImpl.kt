@@ -707,7 +707,14 @@ class CaseServiceImpl(
                 usageAccumulator = usageAccumulator,
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
+        val agentResolutionStartedAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
         val agent = agentService.findAgentByName(agentName, context, this)
+        if (agentResolutionStartedAtNanos != 0L) {
+            logger.debug {
+                "Case $caseId: agent $agentName resolved in " +
+                    "${(System.nanoTime() - agentResolutionStartedAtNanos) / 1_000_000}ms"
+            }
+        }
         var outcome = UsageOutcome.COMPLETED
         val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         try {
@@ -960,6 +967,10 @@ class CaseServiceImpl(
 
     override fun isCostPaused(caseId: UUID): Boolean = usageConfig.enabled && runCostService?.isPaused(caseId) == true
 
+    override fun recordActivity(caseId: UUID) {
+        activeRuntimes[caseId]?.recordActivity()
+    }
+
     override fun emitParentEvent(event: CaseEvent) {
         require(event is SubCaseStartedEvent || event is SubCaseFinishedEvent) {
             "emitParentEvent is reserved for sub-case observation events; got ${event.type}."
@@ -1036,6 +1047,10 @@ class CaseServiceImpl(
         val runtime = getCaseRuntime(subCaseId)
         caseLaunchGate?.requireAccepting(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
+        // A launch gate marks the queued turn PENDING itself. Without one, the turn starts asynchronously:
+        // mark it queued now, in memory (run() publishes RUNNING), so that the delegation waiting on this
+        // sub-case does not take the IDLE left by its previous turn for the end of this one.
+        if (gatedRuns == null) runtime.claimPending()
         launchRun(runtime)
         logger.info { "Sub-case $subCaseId resumed under parent $parentCaseId, agent=$agentName" }
         return runtime
@@ -1103,7 +1118,20 @@ class CaseServiceImpl(
 
     /** Start an agent turn: now without a [caseLaunchGate], once it admits the turn with one. */
     private fun launchRun(runtime: CaseRuntime) {
-        if (gatedRuns != null) gatedRuns.launch(runtime) else scope.launch { runtime.run() }
+        if (gatedRuns != null) {
+            gatedRuns.launch(runtime)
+        } else {
+            val scheduledAtNanos = if (logger.isDebugEnabled) System.nanoTime() else 0L
+            scope.launch {
+                if (scheduledAtNanos != 0L) {
+                    logger.debug {
+                        "Case ${runtime.id}: coroutine dispatch delayed by " +
+                            "${(System.nanoTime() - scheduledAtNanos) / 1_000_000}ms"
+                    }
+                }
+                runtime.run()
+            }
+        }
     }
 
     override fun resumeIfPending(caseId: UUID) {
