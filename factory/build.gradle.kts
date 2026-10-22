@@ -75,25 +75,12 @@ tasks.register("deployPlugins") {
                     ?: emptyList<File>().also { logger.warn("No JAR found in $buildDir") }
             }
 
-        // Derive the base name (artifact id without version) of each JAR we are about to deploy.
-        // Convention: "<artifactId>-<version>.jar" — the artifact id never contains a digit
-        // immediately after a hyphen, so we split on the first "-<digit>" boundary.
-        val baseNames: Set<String> =
-            jarsToDeploy
-                .map { jar ->
-                    jar.nameWithoutExtension.replace(Regex("-\\d.*$"), "")
-                }.toSet()
-
-        // Remove only JARs in the destination that belong to one of our plugin artifacts
-        // (version-insensitive match). External JARs are left untouched.
-        if (dest.exists()) {
-            dest.listFiles { f -> f.extension == "jar" }?.forEach { existing ->
-                val existingBase = existing.nameWithoutExtension.replace(Regex("-\\d.*$"), "")
-                if (existingBase in baseNames) {
-                    existing.delete()
-                    logger.lifecycle("Removed stale: ${existing.name}")
-                }
-            }
+        // Strict cleanup: plugins/ must contain exactly what was just built, nothing else.
+        // Any other JAR (old version, plugin removed from the build, hand-copied file) would be
+        // loaded by PF4J and make the running behaviour impossible to explain.
+        dest.listFiles { f -> f.extension == "jar" }?.forEach { existing ->
+            existing.delete()
+            logger.lifecycle("Removed stale: ${existing.name}")
         }
 
         jarsToDeploy.forEach { jar ->

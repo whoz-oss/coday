@@ -28,7 +28,7 @@ import org.springframework.web.client.RestClientResponseException
  */
 class HttpAgentOsProxyClient(
     builder: RestClient.Builder,
-    baseUrl: String,
+    private val baseUrl: String,
     private val pollIntervalMs: Long = DEFAULT_POLL_INTERVAL_MS,
     private val startTimeoutMs: Long = DEFAULT_START_TIMEOUT_MS,
     private val workTimeoutMs: Long = DEFAULT_WORK_TIMEOUT_MS,
@@ -127,7 +127,13 @@ class HttpAgentOsProxyClient(
         } catch (error: Exception) {
             // AgentOsUnavailableException or any transport failure: degrade, do
             // not propagate — /metrics must still answer 200.
-            logger.warn(error) { "run-cost unavailable for case $caseId; degrading" }
+            // One line with the root cause; the full stack trace stays at DEBUG.
+            val root = generateSequence<Throwable>(error) { it.cause?.takeIf { cause -> cause !== it } }.last()
+            logger.warn {
+                "run-cost unavailable for case $caseId (AgentOS $baseUrl): " +
+                    "${root.javaClass.simpleName}${root.message?.let { ": $it" } ?: ""}; degrading"
+            }
+            logger.debug(error) { "run-cost failure details for case $caseId" }
             null
         }
 

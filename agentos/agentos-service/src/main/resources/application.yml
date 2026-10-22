@@ -1,6 +1,8 @@
 spring:
   application:
     name: agentos
+  config:
+    import: "optional:file:../.env[.properties]"
   jackson:
     mapper:
       sort-properties-alphabetically: true
@@ -108,6 +110,8 @@ agentos:
     # Disabled by default in every profile, including Whoz.
     enabled: ${AGENTOS_USAGE_ENABLED:true}
   git:
+    worker:
+      enabled: ${AGENTOS_GIT_WORKER_ENABLED:false}
     workspaces:
       # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
       # runs exactly as without Git, whatever the namespace's Git association.
