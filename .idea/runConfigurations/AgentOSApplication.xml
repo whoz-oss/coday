@@ -7,8 +7,8 @@
       <env name="AGENTOS_PROMPT_SCHEDULER_ENABLED" value="true" />
       <env name="AGENTOS_HTTP_API_ALLOW_UNSECURE" value="true" />
       <env name="AGENTOS_USAGE_ENABLED" value="true" />
-      <env name="AGENTOS_GIT_WORKER_ENABLED" value="true" />
-      <env name="AGENTOS_GIT_WORKSPACES_ENABLED" value="true" />
+      <env name="AGENTOS_GIT_WORKER_ENABLED" value="false" />
+      <env name="AGENTOS_GIT_WORKSPACES_ENABLED" value="false" />
       <env name="AGENTOS_URL" value="http://localhost:8124" />
       <env name="FACTORY_URL" value="http://localhost:8141" />
       <env name="LOGGING_LEVEL_ROOT" value="DEBUG" />
