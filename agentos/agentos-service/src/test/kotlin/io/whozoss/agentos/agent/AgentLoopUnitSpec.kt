@@ -20,6 +20,8 @@ import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
 import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseEvent.MessageEvent
+import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.agent.CaseWorker
 import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
@@ -274,10 +276,10 @@ class AgentLoopUnitSpec :
             running.llmModel shouldBe null
         }
 
-        "llmProvider and llmModel are sentinel values signalling no LLM usage" {
+        "AgentLoop is a CaseWorker and is NOT an Agent (no LLM identity)" {
             val loop = agent()
 
-            loop.llmProvider shouldBe AgentLoop.PROVIDER_NAME
-            loop.llmModel shouldBe AgentLoop.MODEL_NAME
+            loop.shouldBeInstanceOf<CaseWorker>()
+            (loop is Agent) shouldBe false
         }
     })

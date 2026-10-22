@@ -33,6 +33,7 @@ import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.redirect.RedirectToolPlugin
 import io.whozoss.agentos.redirect.globToRegex
 import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.agent.CaseWorker
 import io.whozoss.agentos.sdk.aiProvider.AiModel
 import io.whozoss.agentos.sdk.aiProvider.AiProvider
 import io.whozoss.agentos.sdk.api.agentConfig.ExecutionMode
@@ -118,7 +119,7 @@ class AgentServiceImpl(
         namePart: String,
         context: AgentExecutionContext,
         subCaseManager: SubCaseManager?,
-    ): Agent {
+    ): CaseWorker {
         require(namePart.isNotBlank()) { "Blank agent name, cannot resolve agent" }
         val agentConfig =
             if (context.userId != null) {
@@ -139,6 +140,7 @@ class AgentServiceImpl(
         val definition = resolveAgentDefinition(agentConfig, context, resolvedUser, subCaseManager)
         return instantiateAgent(definition, context, resolvedUser)
     }
+
 
     override suspend fun resolveDefinition(
         agentConfigId: UUID,
@@ -488,7 +490,7 @@ class AgentServiceImpl(
         definition: ResolvedAgentDefinition,
         context: AgentExecutionContext,
         resolvedUser: User?,
-    ): Agent {
+    ): CaseWorker {
         val modelConfig = definition.resolvedModel
         val providerConfig = definition.resolvedProvider
 
@@ -572,7 +574,7 @@ class AgentServiceImpl(
         resolvedUser: User?,
         redirectGuideline: String? = null,
         loopConfig: com.fasterxml.jackson.databind.JsonNode? = null,
-    ): Agent {
+    ): CaseWorker {
         logger.info { "Creating agent '$agentName' for namespace ${context.namespaceId} (userId=${context.userId}) mode=$executionMode" }
         logger.info { "Loaded ${resolvedTools.size} tool(s) for agent '$agentName'" }
         logger.debug { "Tools for '$agentName': ${resolvedTools.map { it.name }}" }

@@ -1,28 +1,19 @@
 package io.whozoss.agentos.sdk.agent
 
-import io.whozoss.agentos.sdk.caseEvent.CaseEvent
-import io.whozoss.agentos.sdk.entity.Entity
-import kotlinx.coroutines.flow.Flow
-
-interface Agent : Entity {
-    val name: String
+/**
+ * A [CaseWorker] that delegates to a real LLM provider.
+ *
+ * Extends [CaseWorker] with the provider and model identity needed to record
+ * telemetry, build chat clients, and populate usage records.
+ *
+ * Both [llmProvider] and [llmModel] are non-null: every [Agent] implementation
+ * must have a concrete provider and model. Implementations that do not call an LLM
+ * (e.g. [io.whozoss.agentos.agent.AgentLoop]) implement [CaseWorker] directly instead.
+ */
+interface Agent : CaseWorker {
+    /** Name of the AI provider (e.g. `"anthropic"`, `"openai"`). */
     val llmProvider: String
-    val llmModel: String
 
-    /**
-     * Run the agent with the given case events.
-     * Returns a Flow of CaseEvents that are emitted during execution:
-     * - ThinkingEvent when processing
-     * - ToolRequestEvent when calling a tool
-     * - ToolResponseEvent when tool execution completes
-     * - MessageEvent for agent responses
-     * - AgentFinishedEvent when done
-     *
-     * @param events The full event history for this case.
-     * @param shouldContinue A lambda the agent must poll before each LLM call and
-     *   before each tool execution. When it returns false the agent must emit
-     *   [AgentFinishedEvent] and stop — this is how interrupt and kill signals
-     *   propagate into the running agent without coroutine cancellation.
-     */
-    fun run(events: List<CaseEvent>, shouldContinue: () -> Boolean = { true }): Flow<CaseEvent>
+    /** API model name used for LLM calls (e.g. `"claude-sonnet-4-5"`). */
+    val llmModel: String
 }

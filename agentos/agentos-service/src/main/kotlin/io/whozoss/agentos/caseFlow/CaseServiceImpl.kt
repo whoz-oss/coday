@@ -23,6 +23,7 @@ import io.whozoss.agentos.prompt.PromptCommandParser
 import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.ResolvedCommand
 import io.whozoss.agentos.sdk.actor.Actor
+import io.whozoss.agentos.sdk.agent.Agent
 import io.whozoss.agentos.sdk.actor.ActorRole
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
@@ -707,6 +708,7 @@ class CaseServiceImpl(
             )
         // Resolve the agent before registering so resolution failures cannot leave a live cost session.
         val agent = agentService.findAgentByName(agentName, context, this)
+        val llmAgent = agent as? Agent
         var outcome = UsageOutcome.COMPLETED
         val costRegistration = usageAccumulator?.let { runCostService?.register(caseId, it) }
         try {
@@ -717,8 +719,8 @@ class CaseServiceImpl(
                         caseId = caseId,
                         agentId = agent.id,
                         agentName = agent.name,
-                        llmProvider = agent.llmProvider,
-                        llmModel = agent.llmModel,
+                        llmProvider = llmAgent?.llmProvider,
+                        llmModel = llmAgent?.llmModel,
                     )
                 storeEvent(runningEvent).also { saved ->
                     runtime.pushEvents(listOf(saved))
@@ -796,7 +798,7 @@ class CaseServiceImpl(
                 // The write is wrapped in runCatching so that a Neo4j failure or constraint
                 // violation never propagates into the agent execution path — observability
                 // must not bring down the domain.
-                if (usageAccumulator?.hasData == true) {
+                if (usageAccumulator?.hasData == true && llmAgent != null) {
                     runCatching {
                         usageAccumulator.recordGroups().forEach { group ->
                             usageRecordService.create(
@@ -808,8 +810,8 @@ class CaseServiceImpl(
                                     outcome = outcome,
                                     userId = userId,
                                     agentConfigId = agent.id,
-                                    providerName = agent.llmProvider,
-                                    apiModelName = agent.llmModel,
+                                    providerName = llmAgent.llmProvider,
+                                    apiModelName = llmAgent.llmModel,
                                 ),
                             )
                         }

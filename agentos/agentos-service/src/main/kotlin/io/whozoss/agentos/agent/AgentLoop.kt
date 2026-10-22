@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
-import io.whozoss.agentos.sdk.agent.Agent
+import io.whozoss.agentos.sdk.agent.CaseWorker
 import io.whozoss.agentos.sdk.caseEvent.AgentFinishedEvent
 import io.whozoss.agentos.sdk.caseEvent.AgentRunningEvent
 import io.whozoss.agentos.sdk.caseEvent.CaseEvent
@@ -66,14 +66,7 @@ class AgentLoop(
     private val resolvedTools: Collection<StandardTool<*>> = emptyList(),
     private val triggerUser: User? = null,
     private val loopConfig: JsonNode? = null,
-) : Agent {
-    /**
-     * AgentLoop does not call any LLM — these fields satisfy the [Agent] contract
-     * but carry no runtime meaning for this implementation.
-     */
-    override val llmProvider: String = PROVIDER_NAME
-    override val llmModel: String = MODEL_NAME
-
+) : CaseWorker {
     override fun run(
         events: List<CaseEvent>,
         shouldContinue: () -> Boolean,
@@ -208,12 +201,5 @@ class AgentLoop(
         cause: Exception? = null,
     ) : IllegalArgumentException(message, cause)
 
-    companion object : KLogging() {
-        /**
-         * Sentinel values satisfying the [Agent.llmProvider] and [Agent.llmModel] contract.
-         * AgentLoop never calls an LLM — these values identify the implementation, not a provider.
-         */
-        const val PROVIDER_NAME = "none"
-        const val MODEL_NAME = "agent-loop"
-    }
+    companion object : KLogging()
 }
