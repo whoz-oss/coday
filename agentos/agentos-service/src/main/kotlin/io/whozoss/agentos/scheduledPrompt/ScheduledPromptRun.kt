@@ -9,9 +9,23 @@ import java.util.UUID
 enum class RunStatus {
     /** The run has been claimed by the scheduler; execution is imminent. */
     CLAIMED,
+    /**
+     * Converged path: the loop case has been created and is executing.
+     * No [ScheduledPromptUserRun] rows exist for runs in this status.
+     *
+     * TARGETING is intentionally excluded from [ScheduledPromptRunNodeNeo4jRepository.findSettledRunning],
+     * which matches `status = 'RUNNING'` with no PENDING/RUNNING UserRun. Since the converged
+     * path writes NO UserRun rows, adding TARGETING to that query would close every live
+     * converged run as DONE within ~30s. Orphaned TARGETING runs are swept separately
+     * by [SchedulerScanner.recoverOrphanedTargetingRuns].
+     */
+    TARGETING,
     /** The run was skipped (misfire or overlap). */
     SKIPPED,
-    /** The agent is currently executing the run. */
+    /**
+     * Legacy path only. Never written by converged code; retained so old nodes deserialize.
+     * The agent is currently executing the run via per-user UserRun rows.
+     */
     RUNNING,
     /** The run completed successfully. */
     DONE,
@@ -28,8 +42,9 @@ enum class RunStatus {
  *
  * ### Lifecycle
  *
- * CLAIMED → RUNNING → DONE (happy path)
- *               → FAILED (execution error)
+ * Converged path: CLAIMED → TARGETING → DONE | FAILED
+ * Legacy path:     CLAIMED → RUNNING → DONE (happy path)
+ *                                    → FAILED (execution error)
  * SKIPPED (misfire or overlap, decided before claiming)
  *
  * [attempt] starts at 0 for the first try; future retry logic may increment it.

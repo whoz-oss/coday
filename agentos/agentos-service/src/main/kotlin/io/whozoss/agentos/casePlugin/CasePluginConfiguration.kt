@@ -1,5 +1,6 @@
 package io.whozoss.agentos.casePlugin
 
+import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.sdk.tool.ToolPlugin
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -25,11 +26,13 @@ import org.springframework.context.annotation.Configuration
 class CasePluginConfiguration(
     private val caseToolService: CaseToolService,
     private val caseStarterService: CaseStarterService,
+    private val limitsConfig: LimitsConfigProperties,
 ) {
     @Bean
     fun caseToolPlugin(): ToolPlugin =
         CaseToolPlugin(
             caseEventsLoader = caseToolService::findCaseEvents,
             caseStarterService = caseStarterService,
+            limitsConfig = limitsConfig,
         )
 }

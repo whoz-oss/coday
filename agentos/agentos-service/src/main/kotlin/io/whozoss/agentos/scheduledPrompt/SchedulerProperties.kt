@@ -17,6 +17,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties
  * | `agentos.prompt.scheduler.empty-poll-delay-ms` | `AGENTOS_PROMPT_SCHEDULER_EMPTY_POLL_DELAY_MS` | 5000 | Delay (ms) when claimBatch returns empty — avoids busy-looping |
  * | `agentos.prompt.scheduler.paused-poll-delay-ms` | `AGENTOS_PROMPT_SCHEDULER_PAUSED_POLL_DELAY_MS` | 10000 | Delay (ms) between producer iterations when consume is paused |
  * | `agentos.prompt.scheduler.launch-timeout-seconds` | `AGENTOS_PROMPT_SCHEDULER_LAUNCH_TIMEOUT_SECONDS` | 30 | Max seconds to wait for a Case to reach IDLE or terminal after launch |
+ * | `agentos.prompt.scheduler.loop-case-timeout-seconds` | `AGENTOS_PROMPT_SCHEDULER_LOOP_CASE_TIMEOUT_SECONDS` | 600 | Max seconds to wait for the converged-path loop case to reach IDLE or terminal |
+ * | `agentos.prompt.scheduler.targeting-orphan-threshold-minutes` | `AGENTOS_PROMPT_SCHEDULER_TARGETING_ORPHAN_THRESHOLD_MINUTES` | 30 | TARGETING runs older than this are swept as orphaned; the real upper bound on a loop run |
  * | `agentos.prompt.scheduler.lease-minutes` | `AGENTOS_PROMPT_SCHEDULER_LEASE_MINUTES` | 30 | Lease duration for RUNNING UserRuns (minutes) |
  * | `agentos.prompt.scheduler.windows` | `AGENTOS_PROMPT_SCHEDULER_WINDOWS` | [] | Comma-separated `DAYOFWEEK HH:mm` boundaries, grouped as open/close pairs. See [ExecutionWindowService]. |
  */
@@ -60,6 +62,20 @@ data class SchedulerProperties(
      * Must be strictly less than [leaseMinutes] × 60 — enforced at startup by [SchedulerScanner].
      */
     val launchTimeoutSeconds: Long = 30L,
+    /**
+     * Max seconds to wait for the converged-path loop case to reach IDLE or terminal.
+     * Unlike [launchTimeoutSeconds] (calibrated for a single case launch health-check),
+     * this is calibrated for a full fan-out run which may take many minutes.
+     * On timeout, the run stays TARGETING and the orphan sweep decides later.
+     */
+    val loopCaseTimeoutSeconds: Long = 600L,
+    /**
+     * TARGETING runs older than this threshold (in minutes) are presumed orphaned.
+     * This is the real upper bound on a loop run — choose deliberately.
+     * Must be longer than [loopCaseTimeoutSeconds] ÷ 60.
+     * NOT the same as [ORPHAN_THRESHOLD][SchedulerScanner.Companion] (5 min, for CLAIMED runs).
+     */
+    val targetingOrphanThresholdMinutes: Long = 30L,
     /**
      * Lease duration for RUNNING UserRuns in minutes. Expired leases are reclaimed by the
      * producer loop, creating a second Case for the same user (at-least-once delivery).

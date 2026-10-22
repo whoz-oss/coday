@@ -9,7 +9,7 @@ package io.whozoss.agentos.prompt
  * - [CONTENT] — one instruction element sent to the agent when the case starts.
  *   It is directive in tone and may be technical or detailed.
  */
-internal enum class TextKind(
+enum class TextKind(
     val context: String,
 ) {
     TITLE(

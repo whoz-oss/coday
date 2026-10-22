@@ -92,6 +92,28 @@ class PromptTranslationServiceImpl(
         )
     }
 
+    override fun translateText(
+        text: String,
+        sourceLanguage: String,
+        targetLanguage: String,
+        namespaceId: UUID,
+        kind: TextKind,
+    ): String =
+        runCatching {
+            val (model, provider) = resolveModelAndProvider(namespaceId)
+            val chatClient = chatClientProvider.getChatClient(model, provider)
+            translateText(
+                text = text,
+                sourceLanguage = sourceLanguage,
+                targetLanguage = targetLanguage,
+                chatClient = chatClient,
+                kind = kind,
+                modelId = model.metadata.id,
+            )
+        }.onFailure { e ->
+            logger.warn(e) { "[PromptTranslation] translateText failed for namespace $namespaceId — returning original" }
+        }.getOrElse { text }
+
     // -------------------------------------------------------------------------
     // Internals
     // -------------------------------------------------------------------------
