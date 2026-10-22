@@ -26,6 +26,7 @@ import io.whozoss.agentos.sdk.caseEvent.MessageContent
 import io.whozoss.agentos.sdk.caseFlow.CaseStatus
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.context.UserSessionContextResolver
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
 import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.user.User
@@ -183,6 +184,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
         caseService = caseService,
         properties = properties,
         clock = clock,
+        caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
     )
 
     init {
@@ -586,6 +588,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 caseService = caseService,
                 properties = shortTimeoutProperties,
                 clock = clock,
+                caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
             ).processUserRun(userRun)
 
             val updated = userRunRepo.all().first { it.id == userRun.id }
@@ -1342,6 +1345,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
                 dispatcher = testDispatcher,
+                caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
             )
 
             runTest(testDispatcher) {
@@ -1404,6 +1408,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 properties = SchedulerProperties(batchSize = 5, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
                 dispatcher = testDispatcher,
+                caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
             )
 
             runTest(testDispatcher) {
@@ -1473,6 +1478,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 properties = SchedulerProperties(batchSize = 10, leaseMinutes = 30L, emptyPollDelayMs = 10L),
                 clock = clock,
                 dispatcher = testDispatcher,
+                caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
             )
 
             runTest(testDispatcher) {
@@ -1537,6 +1543,7 @@ class ScheduledPromptExecutorUnitSpec : StringSpec() {
                 clock = clock,
                 dispatcher = testDispatcher,
                 executionWindowService = closedWindowService,
+                caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
             )
 
             runTest(testDispatcher) {

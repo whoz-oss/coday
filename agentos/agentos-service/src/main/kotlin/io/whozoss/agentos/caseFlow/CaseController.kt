@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -67,6 +68,7 @@ class CaseController(
     private val permissionService: PermissionService,
     private val favoriteService: FavoriteService,
     private val caseReadService: CaseReadService,
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
@@ -208,6 +210,9 @@ class CaseController(
                         "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
                 }
             }.isSuccess
+        if (granted) {
+            caseListUpdateBroadcaster.publishCaseCreated(saved.namespaceId)
+        }
 
         // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
         // (delete) on the new case immediately, without waiting for a list refresh to enrich it.

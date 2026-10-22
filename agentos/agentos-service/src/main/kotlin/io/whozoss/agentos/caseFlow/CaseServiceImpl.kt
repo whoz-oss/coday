@@ -16,6 +16,7 @@ import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -96,6 +97,7 @@ class CaseServiceImpl(
      * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
      * in tests so all coroutines run on the test scheduler and virtual time applies.
      */
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
     coroutineContext: CoroutineContext = Dispatchers.IO,
 ) : CaseService,
     SubCaseManager {
@@ -1089,6 +1091,7 @@ class CaseServiceImpl(
                 }
             throw AccessDeniedException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
+        caseListUpdateBroadcaster.publishCaseCreated(subCase.namespaceId)
 
         val runtime = activeRuntimes[subCase.id]!!
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))

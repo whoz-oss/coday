@@ -12,7 +12,11 @@ import {
 } from '@angular/core'
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop'
 import { ActivatedRoute, Router } from '@angular/router'
-import { NamespaceControllerService, NamespaceListItem } from '@whoz-oss/agentos-api-client'
+import {
+  NamespaceCaseListUpdateSseService,
+  NamespaceControllerService,
+  NamespaceListItem,
+} from '@whoz-oss/agentos-api-client'
 import { debounceTime, map, skip } from 'rxjs'
 import { CaseChatComponent } from '../case-chat/case-chat.component'
 import { CaseHomeComponent } from '../case-home/case-home.component'
@@ -61,6 +65,7 @@ export class CaseShellComponent {
   private readonly themePort = inject(THEME_PORT)
   private readonly userState = inject(UserStateService)
   private readonly caseState = inject(CaseStateService)
+  private readonly caseListUpdates = inject(NamespaceCaseListUpdateSseService)
   protected readonly workspaceService = inject(CaseWorkspaceService)
   private readonly namespaceState = inject(NamespaceStateService)
   private readonly destroyRef = inject(DestroyRef)
@@ -201,12 +206,15 @@ export class CaseShellComponent {
       }
     })
 
-    // Reload the case list whenever the namespace changes.
-    effect(() => {
+    // Load the list and independently watch namespace-level list invalidations.
+    // Effect cleanup closes the previous EventSource on namespace switches.
+    effect((cleanup) => {
       const nsId = this.namespaceId()
-      if (nsId) {
-        this.caseState.loadCases(nsId)
-      }
+      if (!nsId) return
+
+      this.caseState.loadCases(nsId)
+      const subscription = this.caseListUpdates.connect(nsId).subscribe(() => this.caseState.refreshCases(nsId))
+      cleanup(() => subscription.unsubscribe())
     })
   }
 
