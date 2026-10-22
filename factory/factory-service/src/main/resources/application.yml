@@ -46,11 +46,9 @@ factory:
     embedded-bolt-host: ${FACTORY_EMBEDDED_BOLT_HOST:localhost}
     embedded-bolt-port: ${FACTORY_EMBEDDED_BOLT_PORT:0}
   cockpit:
-    v2:
-      # Angular build output of `apps/cockpit-v2`, the sole Factory UI, served
-      # same-origin at /cockpit-v2. Relative paths are resolved against the
-      # working directory and then its parent.
-      assets-dir: ${FACTORY_COCKPIT_V2_ASSETS_DIR:apps/cockpit-v2/dist/browser}
+    # Optional external override. When unset, Factory serves the cockpit
+    # embedded in its JAR from classpath:/static/factory/.
+    assets-dir: ${FACTORY_COCKPIT_ASSETS_DIR:}
   bind:
     host: ${FACTORY_BIND_HOST:127.0.0.1}
     unsafe-allow-remote-bind: ${FACTORY_UNSAFE_ALLOW_REMOTE_BIND:false}

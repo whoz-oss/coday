@@ -3,6 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
   "sourceRoot": "factory/factory-service/src",
+  "implicitDependencies": ["factory-cockpit"],
   "targets": {
     "bootRun": {
       "executor": "nx:run-commands",
@@ -20,7 +21,7 @@
         "command": "./gradlew :factory-service:bootJar",
         "cwd": "factory"
       },
-      "dependsOn": ["assemble"]
+      "dependsOn": ["factory-cockpit:build", "assemble"]
     },
     "generate-openapi-spec": {
       "executor": "nx:run-commands",

@@ -4,7 +4,7 @@ import java.time.Instant
 
 /**
  * Bounded read model of a durable agent attempt exposed over the workflow HTTP
- * surface (Cockpit V2).
+ * surface (Factory Cockpit).
  *
  * It deliberately carries only the stable, operator-visible identity and
  * lifecycle fields. All execution secrets and internal recovery/lease data are

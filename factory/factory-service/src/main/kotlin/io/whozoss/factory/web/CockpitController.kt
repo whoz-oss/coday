@@ -4,20 +4,14 @@ import io.swagger.v3.oas.annotations.Hidden
 import org.springframework.stereotype.Controller
 import org.springframework.web.bind.annotation.GetMapping
 
-/**
- * Compatibility redirects to the sole Factory UI, Cockpit V2.
- *
- * The legacy vanilla dashboard assets are no longer served. Keeping these
- * redirects avoids breaking saved entry-point URLs while ensuring every
- * browser entry reaches the Angular cockpit.
- */
+/** Compatibility redirects to the Factory Cockpit served under `/factory`. */
 @Hidden
 @Controller
 class CockpitController {
 
     @GetMapping("/")
-    fun root(): String = "redirect:/cockpit-v2"
+    fun root(): String = "redirect:/factory"
 
     @GetMapping("/cockpit", "/cockpit/", "/cockpit.html")
-    fun cockpit(): String = "redirect:/cockpit-v2"
+    fun cockpit(): String = "redirect:/factory"
 }

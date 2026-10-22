@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RestController
  * AgentOS relay endpoints.
  *
  * Preserves the `/api/agents` and `/api/cases/:caseId/events` relay contract
- * used by Cockpit V2. The authenticated user id is propagated as the
+ * used by Factory Cockpit. The authenticated user id is propagated as the
  * `X-External-User-Id`.
  */
 @RestController

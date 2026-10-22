@@ -72,7 +72,7 @@ class WorkflowController(
     private val agentOsProxyClient: AgentOsProxyClient,
     private val workstreamService: WorkstreamService,
     /**
-     * Read side of the durable execution attempts, used by the Cockpit V2
+     * Read side of the durable execution attempts, used by the Factory Cockpit
      * attempts listing route.
      */
     private val durableAgentAttemptService: DurableAgentAttemptService,
@@ -498,7 +498,7 @@ class WorkflowController(
     // ----- attempts / explicit cancellation ------------------------------
 
     /**
-     * List every durable execution attempt of a workflow (Cockpit V2).
+     * List every durable execution attempt of a workflow (Factory Cockpit).
      *
      * Returns a bounded, secret-free read model per attempt. An unknown or
      * attempt-less workflow degrades cleanly to an empty `{ "data": [] }` with
