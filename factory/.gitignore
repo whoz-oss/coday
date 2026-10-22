@@ -10,4 +10,4 @@ build/
 .DS_Store
 
 # PF4J drop-in plugin directory (created at runtime by factory-service)
-factory-service/plugins/
+plugins/

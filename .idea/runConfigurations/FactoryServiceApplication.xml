@@ -1,0 +1,21 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="FactoryServiceApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
+    <option name="ACTIVE_PROFILES" value="development" />
+    <envs>
+      <env name="FACTORY_ENCRYPTION_KEY" value="NONE" />
+      <env name="FACTORY_ENCRYPTION_SALT" value="NONE" />
+      <env name="FACTORY_PROMPT_SCHEDULER_ENABLED" value="true" />
+      <env name="AGENTOS_URL" value="http://localhost:8124" />
+      <env name="FACTORY_URL" value="http://localhost:8141" />
+      <env name="LOGGING_LEVEL_ROOT" value="DEBUG" />
+      <env name="LOGGING_LEVEL_IO_WHOZOSS_FACTORY" value="DEBUG" />
+    </envs>
+    <module name="factory-service.main" />
+    <option name="SPRING_BOOT_MAIN_CLASS" value="io.whozoss.factory.FactoryServiceApplication" />
+    <option name="WORKING_DIRECTORY" value="file://factory" />
+    <method v="2">
+      <option name="Gradle.BeforeRunTask" enabled="true" tasks="deployPlugins" externalProjectPath="$PROJECT_DIR$/factory" vmOptions="" scriptParameters="" />
+      <option name="Make" enabled="true" />
+    </method>
+  </configuration>
+</component>

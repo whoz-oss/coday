@@ -26,7 +26,6 @@ class SecurityModeBanner(
     private val logger = KotlinLogging.logger {}
 
     override fun afterPropertiesSet() {
-        check(LEGACY_PROPERTIES.none(environment::containsProperty)) { LEGACY_MESSAGE }
         val mode = properties.security.mode
         logger.info { "[Security] Factory security mode: ${mode.name.lowercase()}" }
         val host = properties.bind.host
@@ -46,17 +45,6 @@ class SecurityModeBanner(
     }
 
     companion object {
-        const val LEGACY_MESSAGE =
-            "FACTORY_INSECURE_MODE / factory.security.insecure-mode was removed. " +
-                "Use FACTORY_SECURITY_MODE=local|auth (default local)."
-
-        /**
-         * `factory.security.insecure-mode` also matches `FACTORY_SECURITY_INSECURE_MODE`
-         * through Spring's relaxed environment lookup; the historical short variable name
-         * needs its own entry.
-         */
-        private val LEGACY_PROPERTIES = listOf("factory.security.insecure-mode", "FACTORY_INSECURE_MODE")
-
         private val LOOPBACK_HOSTS = setOf("127.0.0.1", "::1", "[::1]", "localhost")
 
         fun isLoopback(host: String): Boolean = host.trim().lowercase() in LOOPBACK_HOSTS
