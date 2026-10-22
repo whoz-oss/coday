@@ -82,4 +82,7 @@ class InMemoryCaseRepository : CaseRepository {
         parentCaseId: UUID,
         childCaseId: UUID,
     ): Unit = Unit
+
+    /** In tests, no graph edge is needed: an insert is a save. */
+    override fun insert(case: Case): Case = save(case)
 }

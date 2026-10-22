@@ -164,10 +164,9 @@ class CaseServiceImpl(
         val caseToSave =
             entity.copy(runCostThreshold = resolvedThreshold)
 
-        val saved = caseRepository.save(caseToSave)
-        // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
-        // transaction, so a failed link rolls the case back instead of leaving an orphan.
-        saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
+        // insert is transactional by itself: startSubCase calls create without the proxy, so outside
+        // create's transaction.
+        val saved = caseRepository.insert(caseToSave)
         caseWorkspaceProvisioning?.onCaseCreated(saved)
         activeRuntimes[saved.id] = buildRuntime(saved)
         logger.info { "Case created: ${saved.id} for namespace ${entity.namespaceId}" }
@@ -1041,7 +1040,8 @@ class CaseServiceImpl(
         return runtime
     }
 
-    @Transactional
+    // No transaction: the run launched below reads the sub-case from another thread, so the sub-case
+    // must be committed first. DelegationTool calls this method on the service itself, not its proxy.
     override fun startSubCase(
         parentCaseId: UUID,
         namespaceId: UUID,

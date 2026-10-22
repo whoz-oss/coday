@@ -54,14 +54,14 @@ class NamespaceCreationLockSpec : StringSpec({
         val allowConfigWrite = CountDownLatch(1)
         val persisted = InMemoryCaseRepository()
         val repository = object : CaseRepository by persisted {
-            override fun save(entity: Case): Case {
+            override fun insert(case: Case): Case {
                 current.get()?.let { tx ->
                     attemptedCaseWrite.countDown()
-                    tx.execute("CREATE (:Case {id: \$id})", mapOf("id" to entity.id.toString())).close()
+                    tx.execute("CREATE (:Case {id: \$id})", mapOf("id" to case.id.toString())).close()
                     tx.execute("MATCH (c:Case {id: \$id}), (n:Namespace {id: \$ns}) MERGE (c)-[:BELONGS_TO]->(n)",
-                        mapOf("id" to entity.id.toString(), "ns" to namespaceId.toString())).close()
+                        mapOf("id" to case.id.toString(), "ns" to namespaceId.toString())).close()
                 }
-                return persisted.save(entity)
+                return persisted.insert(case)
             }
         }
         val settings = GitRepositorySettings(UUID.randomUUID(), namespaceId, "https://forge.example/repo.git", "main", UUID.randomUUID(), true, null)
