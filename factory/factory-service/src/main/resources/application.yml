@@ -4,6 +4,8 @@ server:
 spring:
   application:
     name: factory-service
+  config:
+    import: "optional:file:../.env[.properties]"
   # Connection coordinates for the remote `neo4j` persistence mode.
   # EmbeddedNeo4jConfiguration provides its own Driver using the port assigned at startup.
   neo4j:

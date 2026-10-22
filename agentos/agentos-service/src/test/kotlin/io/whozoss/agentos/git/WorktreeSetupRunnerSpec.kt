@@ -51,6 +51,15 @@ class WorktreeSetupRunnerSpec :
             fixtures.clear()
         }
 
+        "setup pins the pnpm store inside its own support directory instead of deriving it from HOME" {
+            val directory = directory()
+            val home = directory()
+            val runner = WorktreeSetupRunner(GitExecutionProperties(setupTimeout = Duration.ofSeconds(5)))
+            runner.run(settings("printenv npm_config_store_dir > store.txt"), directory, home)
+            directory.resolve("store.txt").readText().trim() shouldBe
+                home.toAbsolutePath().normalize().resolve(WorktreeSetupRunner.PNPM_STORE_DIRECTORY).toString()
+        }
+
         "setup drains large output and keeps it out of its failure message" {
             val directory = directory()
             val runner = WorktreeSetupRunner(GitExecutionProperties(setupTimeout = Duration.ofSeconds(5), maxOutputChars = 128))

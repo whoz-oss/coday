@@ -9,5 +9,7 @@ build/
 # OS
 .DS_Store
 
-# PF4J drop-in plugin directory (created at runtime by factory-service)
-plugins/
+### Factory ###
+# Plugin JARs copied by scripts
+plugins/*.jar
+!plugins/.gitkeep
