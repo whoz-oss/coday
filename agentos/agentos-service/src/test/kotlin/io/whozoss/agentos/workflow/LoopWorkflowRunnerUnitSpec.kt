@@ -1,5 +1,6 @@
 package io.whozoss.agentos.workflow
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.kotest.core.spec.style.StringSpec
@@ -12,14 +13,11 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
-import io.whozoss.agentos.agentConfig.AgentConfig
-import io.whozoss.agentos.agentConfig.AgentConfigService
-import io.whozoss.agentos.caseFlow.SessionContextKeys
+import io.whozoss.agentos.casePlugin.CaseStarterOutput
 import io.whozoss.agentos.config.LimitsConfigProperties
-import io.whozoss.agentos.context.UserSessionContextResolver
+import io.whozoss.agentos.sdk.caseEvent.CaseEvent
+import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
-import io.whozoss.agentos.sdk.scheduledPrompt.UserContextProvider
-import io.whozoss.agentos.sdk.scheduledPrompt.UserContextResult
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
 import io.whozoss.agentos.sdk.tool.ToolExecutionResult
@@ -29,10 +27,11 @@ import java.util.UUID
 
 /**
  * Unit tests for [LoopWorkflowRunnerService]: guards, SEARCH phase error handling and ACT phase
- * per-entity outcomes. Case creation is observed through a recording [CaseLauncherService].
+ * per-entity outcomes. Cases are started through the `FreeCaseStarter` tool, observed here through a recording
+ * stand-in that answers like the real one.
  *
  * Convention used in search tool JSON:
- * - `entityId` (root) = business entity id, e.g. `"task-alice"` — injected into the prompt.
+ * - `entityId` (root) = business entity id, e.g. `"task-alice"` — injected into the context.
  * - `targets[0].entityId` = AgentOS user external id, e.g. `"alice"` — used for user resolution.
  */
 class LoopWorkflowRunnerUnitSpec :
@@ -41,6 +40,7 @@ class LoopWorkflowRunnerUnitSpec :
         val objectMapper = ObjectMapper().registerKotlinModule()
         val namespaceId: UUID = UUID.randomUUID()
         val caseId: UUID = UUID.randomUUID()
+        val prompt = "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
 
         val triggerUser =
             User(metadata = EntityMetadata(id = UUID.randomUUID()), externalId = "ext-trigger", email = "t@example.com")
@@ -53,19 +53,22 @@ class LoopWorkflowRunnerUnitSpec :
                         "tool": "SearchTalents",
                         "params": {"talentId": ["6ac76692a909eaaae0b078d6"], "resolveTargets": ["MANAGER"], "next": null}
                     },
-                    "act": {"agentName": "ProfileCaretaker", "promptTemplate": "This talent has not completed their profile. As their manager, I need you to help me review and improve it."}
+                    "act": {"agentName": "ProfileCaretaker", "promptTemplate": "$prompt"}
                 }
                 """.trimIndent(),
                 AgentLoopPayload::class.java,
             )
 
-        data class Launch(
-            val namespaceId: UUID,
-            val agentName: String,
-            val task: String,
-            val userId: UUID,
-            val sessionContext: Map<String, Any?>? = null,
-        )
+        /** One call received by the stand-in `FreeCaseStarter` tool. */
+        data class Call(
+            val input: JsonNode,
+            val toolContext: ToolContext,
+        ) {
+            val agentName: String get() = input["agentName"].asText()
+            val prompt: String get() = input["prompt"].asText()
+            val userId: UUID? get() = input["userId"]?.asText()?.let(UUID::fromString)
+            val context: JsonNode get() = input["sessionContext"]
+        }
 
         // -------------------------------------------------------------------------
         // Fixture — fresh mocks per test
@@ -74,27 +77,37 @@ class LoopWorkflowRunnerUnitSpec :
         class Fixture(
             objectMapper: ObjectMapper,
             maxItems: Int = 50,
-            userSessionContextResolver: UserSessionContextResolver = UserSessionContextResolver(),
         ) {
             val userService = mockk<UserService>()
-            val agentConfigService = mockk<AgentConfigService>()
-            val launches = mutableListOf<Launch>()
-            val launchedIds = mutableListOf<UUID>()
-            var failLaunchForUser: UUID? = null
-            private val launcher =
-                CaseLauncherService { namespaceId, agentName, task, userId, sessionContext ->
-                    if (failLaunchForUser != null && userId == failLaunchForUser) error("boom")
-                    launches += Launch(namespaceId, agentName, task, userId, sessionContext)
-                    UUID.randomUUID().also { launchedIds += it }
+            val calls = mutableListOf<Call>()
+            val startedIds = mutableListOf<UUID>()
+
+            /** What the stand-in answers; set a refusal or a throw to test the loop's reading of it. */
+            var answer: (Call) -> ToolExecutionResult = { success(UUID.randomUUID().also { startedIds += it }) }
+
+            /** Stands in for the `FreeCaseStarter` tool: records the call, answers like the real one. */
+            val starterTool: StandardTool<*> =
+                mockk<StandardTool<*>>().also { tool ->
+                    every { tool.name } returns "FreeCaseStarterForUser"
+                    coEvery { tool.executeWithJson(any(), any()) } answers {
+                        val call = Call(objectMapper.readTree(firstArg<String>()), secondArg())
+                        calls += call
+                        answer(call)
+                    }
                 }
+
             val runner =
                 LoopWorkflowRunnerService(
                     objectMapper = objectMapper,
                     userService = userService,
-                    agentConfigService = agentConfigService,
                     limitsConfig = LimitsConfigProperties(agentLoopMaxItems = maxItems),
-                    userSessionContextResolver = userSessionContextResolver,
-                    caseLauncherService = launcher,
+                )
+
+            fun success(id: UUID): ToolExecutionResult =
+                ToolExecutionResult.success(
+                    "Case $id started.",
+                    metadata = mapOf("caseId" to id.toString(), "agentName" to "ProfileCaretaker"),
+                    structuredOutput = objectMapper.valueToTree(CaseStarterOutput(caseId = id)),
                 )
 
             fun knownUser(externalId: String): User =
@@ -103,20 +116,6 @@ class LoopWorkflowRunnerUnitSpec :
                     externalId = externalId,
                     email = "$externalId@example.com",
                 ).also { every { userService.findByExternalId(externalId) } returns it }
-
-            fun grantAgent(
-                user: User,
-                vararg agentNames: String,
-            ) {
-                val configs = agentNames.map { n -> mockk<AgentConfig>().also { every { it.name } returns n } }
-                every {
-                    agentConfigService.findDeployedByNamespaceIdAndUserIdAndName(
-                        any(),
-                        user.metadata.id,
-                        any(),
-                    )
-                } returns configs
-            }
         }
 
         /**
@@ -162,22 +161,23 @@ class LoopWorkflowRunnerUnitSpec :
         }
 
         fun context(
-            fixture: Fixture,
             tools: Collection<StandardTool<*>>,
             user: User? = triggerUser,
+            caseEvents: List<CaseEvent> = emptyList(),
         ) = LoopRunContext(
             namespaceId = namespaceId,
             caseId = caseId,
             agentName = "loop-agent",
             triggerUser = user,
             tools = tools,
-            caseEvents = emptyList(),
+            caseEvents = caseEvents,
         )
 
+        /** Runs with the search tool and the `FreeCaseStarter` stand-in both available, as a configured loop is. */
         suspend fun Fixture.run(
-            tools: Collection<StandardTool<*>>,
+            search: StandardTool<*>,
             shouldContinue: () -> Boolean = { true },
-        ): LoopRunOutcome = runner.run(payload, context(this, tools), shouldContinue)
+        ): LoopRunOutcome = runner.run(payload, context(listOf(search, starterTool)), shouldContinue)
 
         fun LoopRunOutcome.reason(): String = shouldBeInstanceOf<LoopRunOutcome.Aborted>().reason
 
@@ -189,8 +189,37 @@ class LoopWorkflowRunnerUnitSpec :
             val f = Fixture(objectMapper)
 
             f.runner
-                .run(payload, context(f, listOf(searchTool(listOf("a"))), user = null)) { true }
+                .run(payload, context(listOf(searchTool(listOf("a")), f.starterTool), user = null)) { true }
                 .reason() shouldContain "identified user"
+        }
+
+        "aborts when FreeCaseStarter is not among the agent tools, before searching" {
+            val f = Fixture(objectMapper)
+            val search = searchTool(listOf("a"))
+
+            val reason = f.runner.run(payload, context(listOf(search))) { true }.reason()
+
+            reason shouldContain "'FreeCaseStarterForUser' tool is not available"
+            reason shouldContain "CASE integration"
+            coVerify(exactly = 0) { search.executeWithJson(any(), any()) }
+        }
+
+        "finds FreeCaseStarter under its integration prefix" {
+            val f = Fixture(objectMapper)
+            val prefixed =
+                mockk<StandardTool<*>>().also { tool ->
+                    every { tool.name } returns "STARTER__FreeCaseStarterForUser"
+                    coEvery { tool.executeWithJson(any(), any()) } returns f.success(UUID.randomUUID())
+                }
+            // the end user is the triggering user, so no ADMIN right is involved
+            every { f.userService.findByExternalId("alice") } returns triggerUser
+
+            val outcome =
+                f.runner
+                    .run(payload, context(listOf(searchTool(listOf("alice")), prefixed))) { true }
+                    .shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.started shouldBe 1
         }
 
         // -------------------------------------------------------------------------
@@ -198,7 +227,10 @@ class LoopWorkflowRunnerUnitSpec :
         // -------------------------------------------------------------------------
 
         "aborts when the search tool is not among the agent tools" {
-            Fixture(objectMapper).run(emptyList()).reason() shouldContain "Search tool 'SearchTalents' is not available"
+            val f = Fixture(objectMapper)
+
+            f.runner.run(payload, context(listOf(f.starterTool))) { true }.reason() shouldContain
+                "Search tool 'SearchTalents' is not available"
         }
 
         "aborts when the search tool throws" {
@@ -206,18 +238,18 @@ class LoopWorkflowRunnerUnitSpec :
             every { tool.name } returns "SearchTalents"
             coEvery { tool.executeWithJson(any(), any()) } throws IllegalStateException("backend down")
 
-            Fixture(objectMapper).run(listOf(tool)).reason() shouldContain "backend down"
+            Fixture(objectMapper).run(tool).reason() shouldContain "backend down"
         }
 
         "aborts when the search tool reports a failure" {
             Fixture(objectMapper)
-                .run(listOf(searchTool(listOf("a"), success = false)))
+                .run(searchTool(listOf("a"), success = false))
                 .reason() shouldContain "returned a failure"
         }
 
         "aborts when the search tool returns no structured output" {
             Fixture(objectMapper)
-                .run(listOf(searchTool(listOf("a"), structured = false)))
+                .run(searchTool(listOf("a"), structured = false))
                 .reason() shouldContain "no structured output"
         }
 
@@ -231,7 +263,7 @@ class LoopWorkflowRunnerUnitSpec :
                     structuredOutput = objectMapper.readTree("""{"items": 3}"""),
                 )
 
-            Fixture(objectMapper).run(listOf(tool)).reason() shouldContain "expected format"
+            Fixture(objectMapper).run(tool).reason() shouldContain "expected format"
         }
 
         "search tool receives the searchInput and the triggering user identity" {
@@ -240,7 +272,7 @@ class LoopWorkflowRunnerUnitSpec :
             val json = slot<String>()
             val toolContext = slot<ToolContext>()
 
-            f.run(listOf(tool))
+            f.run(tool)
 
             coVerify { tool.executeWithJson(capture(json), capture(toolContext)) }
             objectMapper.readTree(json.captured) shouldBe payload.search.params
@@ -253,32 +285,53 @@ class LoopWorkflowRunnerUnitSpec :
         // ACT phase
         // -------------------------------------------------------------------------
 
-        "launches one case per entity on behalf of the resolved end user and reports its id" {
+        "starts one case per entity through FreeCaseStarter, for the end user, and reports its id" {
             val f = Fixture(objectMapper)
-            val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            val alice = f.knownUser("alice")
 
-            val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launchedCaseIds shouldBe f.launchedIds
-            outcome.summary() shouldContain f.launchedIds.single().toString()
-            // task is the static promptTemplate — entityId is injected via activeContext in sessionContext
-            f.launches.single().also { launch ->
-                launch.namespaceId shouldBe namespaceId
-                launch.agentName shouldBe "ProfileCaretaker"
-                launch.task shouldBe
-                    "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
-                launch.userId shouldBe alice.metadata.id
-                @Suppress("UNCHECKED_CAST")
-                val activeContext = launch.sessionContext!!["activeContext"] as List<Map<String, Any?>>
-                activeContext.single()["type"] shouldBe "TALENT"
-                @Suppress("UNCHECKED_CAST")
-                (activeContext.single()["data"] as Map<String, Any?>)["id"] shouldBe "task-alice"
+            outcome.startedCaseIds shouldBe f.startedIds
+            outcome.summary() shouldContain f.startedIds.single().toString()
+            f.calls.single().also { call ->
+                call.agentName shouldBe "ProfileCaretaker"
+                call.prompt shouldBe prompt
+                call.userId shouldBe alice.metadata.id
+                // the entity travels as the context of the new case, not in the prompt
+                val activeContext = call.context["activeContext"].single()
+                activeContext["type"].asText() shouldBe "TALENT"
+                activeContext["data"]["id"].asText() shouldBe "task-alice"
             }
+        }
+
+        "FreeCaseStarter is called as the triggering user, in the loop's namespace and with the loop's case events" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            val loopEvents = listOf<CaseEvent>(WarnEvent(namespaceId = namespaceId, caseId = caseId, message = "x"))
+
+            f.runner.run(payload, context(listOf(searchTool(listOf("alice")), f.starterTool), caseEvents = loopEvents)) { true }
+
+            f.calls.single().toolContext.also {
+                it.userId shouldBe triggerUser.metadata.id
+                it.userExternalId shouldBe "ext-trigger"
+                it.namespaceId shouldBe namespaceId
+                // the tool reads the loop's case from these events and records it as the origin of the new one
+                it.caseEvents shouldBe loopEvents
+            }
+        }
+
+        "when the end user is the triggering user, they are sent as userId too: the service treats them as the caller" {
+            val f = Fixture(objectMapper)
+            every { f.userService.findByExternalId("ext-trigger") } returns triggerUser
+
+            f.run(searchTool(listOf("ext-trigger")))
+
+            f.calls.single().input["userId"].asText() shouldBe triggerUser.metadata.id.toString()
         }
 
         "rows without entityType and with unknown fields are still processed" {
             val f = Fixture(objectMapper)
-            val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            val alice = f.knownUser("alice")
             // The spec's plain ObjectMapper fails on unknown properties by default: this also checks
             // that SearchResult types ignore them explicitly, independently of the mapper configuration.
             val node =
@@ -295,17 +348,15 @@ class LoopWorkflowRunnerUnitSpec :
                         ToolExecutionResult(output = "ok", success = true, structuredOutput = node)
                 }
 
-            val outcome = f.run(listOf(tool)).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(tool).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 1
-            f.launches.single().userId shouldBe alice.metadata.id
-            f.launches.single().task shouldBe
-                "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
+            outcome.started shouldBe 1
+            f.calls.single().userId shouldBe alice.metadata.id
+            f.calls.single().prompt shouldBe prompt
         }
 
         "skips entities whose targets list is null" {
             val f = Fixture(objectMapper)
-            // Build a tool returning an item with no targets field
             val node =
                 objectMapper.readTree(
                     """{"data": [{"entityType": "TALENT", "entityId": "task-ghost"}], "metadata": {"totalCount": 1, "next": null}}""",
@@ -317,11 +368,11 @@ class LoopWorkflowRunnerUnitSpec :
                         ToolExecutionResult(output = "ok", success = true, structuredOutput = node)
                 }
 
-            val outcome = f.run(listOf(tool)).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(tool).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.unknownUser shouldBe 1
-            outcome.launched shouldBe 0
-            f.launches shouldBe emptyList()
+            outcome.started shouldBe 0
+            f.calls shouldBe emptyList()
         }
 
         "skips entities whose targets list is empty" {
@@ -337,11 +388,11 @@ class LoopWorkflowRunnerUnitSpec :
                         ToolExecutionResult(output = "ok", success = true, structuredOutput = node)
                 }
 
-            val outcome = f.run(listOf(tool)).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(tool).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.unknownUser shouldBe 1
-            outcome.launched shouldBe 0
-            f.launches shouldBe emptyList()
+            outcome.started shouldBe 0
+            f.calls shouldBe emptyList()
         }
 
         "skips entities without a matching AgentOS user (target present but unknown)" {
@@ -349,46 +400,107 @@ class LoopWorkflowRunnerUnitSpec :
             // targets[0].entityId = "ghost" but no user registered with that external id
             every { f.userService.findByExternalId("ghost") } returns null
 
-            val outcome = f.run(listOf(searchTool(listOf("ghost")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(listOf("ghost"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.unknownUser shouldBe 1
-            outcome.launched shouldBe 0
-            f.launches shouldBe emptyList()
+            outcome.started shouldBe 0
+            f.calls shouldBe emptyList()
         }
 
-        "refuses users who cannot access the target agent, including prefix-only matches" {
-            val f = Fixture(objectMapper)
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker-v2") }
+        // -------------------------------------------------------------------------
+        // Reading what FreeCaseStarter answers
+        // -------------------------------------------------------------------------
 
-            val outcome = f.run(listOf(searchTool(listOf("bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+        "a FreeCaseStarter refusal because the agent is not available counts as no agent access" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.answer = { ToolExecutionResult.error("not deployed", errorType = "AGENT_NOT_AVAILABLE") }
+
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.noAgentAccess shouldBe 1
-            f.launches shouldBe emptyList()
+            outcome.failed shouldBe 0
         }
 
-        "a failed launch is counted and does not stop the loop" {
+        "any other FreeCaseStarter refusal counts as failed, and does not stop the loop" {
             val f = Fixture(objectMapper)
-            val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            f.failLaunchForUser = alice.metadata.id
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
+            f.knownUser("bob")
+            var first = true
+            f.answer = {
+                if (first) {
+                    first = false
+                    ToolExecutionResult.error(
+                        "Only an administrator of the namespace can start a case for another user.",
+                        errorType = "FORBIDDEN",
+                    )
+                } else {
+                    f.success(UUID.randomUUID().also { f.startedIds += it })
+                }
+            }
 
-            val outcome =
-                f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.failed shouldBe 1
-            outcome.launched shouldBe 1
-            f.launches.map { it.task } shouldBe
-                listOf("This talent has not completed their profile. As their manager, I need you to help me review and improve it.")
+            outcome.started shouldBe 1
+            f.calls.size shouldBe 2
         }
+
+        "a FreeCaseStarter that throws (say, its user's context is unavailable) counts as failed, and the loop goes on" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.knownUser("bob")
+            var first = true
+            f.answer = {
+                if (first) {
+                    first = false
+                    error("boom")
+                } else {
+                    f.success(UUID.randomUUID().also { f.startedIds += it })
+                }
+            }
+
+            val outcome = f.run(searchTool(listOf("alice", "bob"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.failed shouldBe 1
+            outcome.noAgentAccess shouldBe 0
+            outcome.started shouldBe 1
+            f.calls.size shouldBe 2
+        }
+
+        "a success without a readable case id is counted as failed, not as started" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.answer = { ToolExecutionResult.success("started, apparently") }
+
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.failed shouldBe 1
+            outcome.started shouldBe 0
+        }
+
+        "the case id is read from the structured output only: one found in the metadata alone counts as failed" {
+            val f = Fixture(objectMapper)
+            f.knownUser("alice")
+            f.answer = { ToolExecutionResult.success("ok", metadata = mapOf("caseId" to UUID.randomUUID().toString())) }
+
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+
+            outcome.startedCaseIds shouldBe emptyList()
+            outcome.failed shouldBe 1
+        }
+
+        // -------------------------------------------------------------------------
+        // Limits
+        // -------------------------------------------------------------------------
 
         "processes at most agentLoopMaxItems entities" {
             val f = Fixture(objectMapper, maxItems = 2)
-            listOf("a", "b", "c").forEach { f.knownUser(it).also { u -> f.grantAgent(u, "ProfileCaretaker") } }
+            listOf("a", "b", "c").forEach { f.knownUser(it) }
 
-            val outcome =
-                f.run(listOf(searchTool(listOf("a", "b", "c")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(listOf("a", "b", "c"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 2
+            outcome.started shouldBe 2
             outcome.overLimit shouldBe 1
             outcome.summary() shouldContain "over the limit of 2"
             verify(exactly = 0) { f.userService.findByExternalId("c") }
@@ -397,122 +509,52 @@ class LoopWorkflowRunnerUnitSpec :
         "reports that more pages exist" {
             val f = Fixture(objectMapper)
 
-            val outcome =
-                f.run(listOf(searchTool(emptyList(), next = "cursor-2"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(emptyList(), next = "cursor-2")).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.hasMorePages shouldBe true
             outcome.summary() shouldContain "only the first page"
         }
 
-        "stops launching when interrupted" {
+        "stops starting cases when interrupted" {
             val f = Fixture(objectMapper)
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            f.knownUser("alice")
 
-            val outcome =
-                f.run(listOf(searchTool(listOf("alice")))) { false }.shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(listOf("alice"))) { false }.shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
             outcome.interrupted shouldBe true
-            outcome.launched shouldBe 0
-            f.launches shouldBe emptyList()
+            outcome.started shouldBe 0
+            f.calls shouldBe emptyList()
         }
 
         "uses targets entityId for user resolution, not root entityId" {
             val f = Fixture(objectMapper)
             // entityId root = "task-alice", targets[0].entityId = "alice"
             // The runner must call findByExternalId("alice"), NOT findByExternalId("task-alice")
-            val alice = f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
+            val alice = f.knownUser("alice")
             every { f.userService.findByExternalId("task-alice") } returns null // must NOT be called
 
-            val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 1
-            f.launches.single().userId shouldBe alice.metadata.id
+            outcome.started shouldBe 1
+            f.calls.single().userId shouldBe alice.metadata.id
             verify(exactly = 0) { f.userService.findByExternalId("task-alice") }
             verify(exactly = 1) { f.userService.findByExternalId("alice") }
         }
 
         // -------------------------------------------------------------------------
-        // sessionContext transmission
+        // Context handed to FreeCaseStarter
         // -------------------------------------------------------------------------
 
-        "sessionContext from provider is forwarded to the launcher" {
-            val providerContext = mapOf("talentId" to "t42", "score" to 9.5)
-            val provider =
-                mockk<UserContextProvider>().also {
-                    every { it.provideUserContext(any(), any()) } returns UserContextResult.Success(providerContext)
-                }
-            val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-
-            val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
-
-            outcome.launched shouldBe 1
-            val ctx = f.launches.single().sessionContext!!
-            ctx["talentId"] shouldBe "t42"
-            ctx["score"] shouldBe 9.5
-            @Suppress("UNCHECKED_CAST")
-            val activeContext = ctx["activeContext"] as List<Map<String, Any?>>
-            activeContext.single()["type"] shouldBe "TALENT"
-        }
-
-        "preferredLanguage from user is forwarded to the launcher in sessionContext" {
+        "only the entity is handed over as the context: the end user's own context is resolved by FreeCaseStarter" {
             val f = Fixture(objectMapper)
-            // User with preferredLanguage set, no provider
-            val alice =
-                User(
-                    metadata = EntityMetadata(id = UUID.randomUUID()),
-                    externalId = "alice",
-                    email = "alice@example.com",
-                    preferredLanguage = "fr",
-                ).also {
-                    every { f.userService.findByExternalId("alice") } returns it
-                    f.grantAgent(it, "ProfileCaretaker")
-                }
+            f.knownUser("alice")
 
-            val outcome = f.run(listOf(searchTool(listOf("alice")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
+            val outcome = f.run(searchTool(listOf("alice"))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
 
-            outcome.launched shouldBe 1
-            f.launches.single().sessionContext!![SessionContextKeys.PREFERRED_LANGUAGE] shouldBe "fr"
-            @Suppress("UNCHECKED_CAST")
-            val activeContext = f.launches.single().sessionContext!!["activeContext"] as List<Map<String, Any?>>
-            activeContext.single()["type"] shouldBe "TALENT"
-        }
-
-        "PermanentFailure from provider counts entity as failed and loop continues" {
-            val provider =
-                mockk<UserContextProvider>().also {
-                    every { it.provideUserContext(eq("alice"), any()) } returns
-                        UserContextResult.PermanentFailure("user not in external system")
-                    every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
-                }
-            val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
-
-            val outcome =
-                f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
-
-            outcome.failed shouldBe 1
-            outcome.launched shouldBe 1
-            f.launches.single().task shouldBe
-                "This talent has not completed their profile. As their manager, I need you to help me review and improve it."
-        }
-
-        "TransientFailure from provider counts entity as failed and loop continues" {
-            val provider =
-                mockk<UserContextProvider>().also {
-                    every { it.provideUserContext(eq("alice"), any()) } returns
-                        UserContextResult.TransientFailure("upstream timeout")
-                    every { it.provideUserContext(eq("bob"), any()) } returns UserContextResult.Success(null)
-                }
-            val f = Fixture(objectMapper, userSessionContextResolver = UserSessionContextResolver(provider))
-            f.knownUser("alice").also { f.grantAgent(it, "ProfileCaretaker") }
-            f.knownUser("bob").also { f.grantAgent(it, "ProfileCaretaker") }
-
-            val outcome =
-                f.run(listOf(searchTool(listOf("alice", "bob")))).shouldBeInstanceOf<LoopRunOutcome.Completed>()
-
-            outcome.failed shouldBe 1
-            outcome.launched shouldBe 1
+            outcome.started shouldBe 1
+            val ctx = f.calls.single().context
+            ctx.fieldNames().asSequence().toList() shouldBe listOf("activeContext")
+            ctx["activeContext"].single()["type"].asText() shouldBe "TALENT"
+            ctx["activeContext"].single()["data"]["id"].asText() shouldBe "task-alice"
         }
     })

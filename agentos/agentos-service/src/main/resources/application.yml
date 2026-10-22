@@ -106,7 +106,7 @@ agentos:
   usage:
     # Opt in to LLM usage accounting, analytical records and the run-cost guard.
     # Disabled by default in every profile, including Whoz.
-    enabled: ${AGENTOS_USAGE_ENABLED:false}
+    enabled: ${AGENTOS_USAGE_ENABLED:true}
   git:
     workspaces:
       # Case-family Git worktrees. Off (default): every case keeps its own Exchange directory and
@@ -225,6 +225,24 @@ agentos:
     # Create-only: setting this back to false does NOT delete an existing row.
     # Override with env var: AGENTOS_USER_GROUP_ENABLED_BY_DEFAULT
     enabled-by-default: true
+  case-plugin:
+    # Declare that a platform-scoped 'CASE' integration configuration should exist. When true
+    # (shipped default), CaseIntegrationConfigSeeder creates it at startup if absent, so an agent
+    # only has to name 'CASE' in its integrations to receive ReadCase, FreeCaseStarter (cases for the
+    # current user) and FreeCaseStarterForUser (cases for a user it names, ADMIN of the namespace only).
+    #
+    # Unlike QUERY_USER, the seeded configuration is NOT auto-granted: the starter tools start work,
+    # possibly as another user, so each agent opts in explicitly (and may narrow it to some of the
+    # tools, e.g. CASE: [ReadCase, FreeCaseStarter]).
+    #
+    # This declares EXISTENCE, not content: once it exists it belongs to the administrator and
+    # startup never rewrites it. It is create-only: setting this back to false does NOT delete an
+    # already-seeded configuration (a warning is logged instead).
+    #
+    # Restrict the startable agents for a namespace by creating a configuration named 'CASE' scoped
+    # to it. A user may also create one for themselves, to narrow their own runs.
+    # Override with env var: AGENTOS_CASE_PLUGIN_ENABLED_BY_DEFAULT
+    enabled-by-default: true
   limits:
   # Maximum number of internal steps per user message in the CaseRuntime before the case
   # transitions to ERROR status. A "step" is one processNextStep() call covering agent
@@ -239,7 +257,7 @@ agentos:
   # of the loop, producing its final response based on what it has gathered so far.
   # Override with env var: AGENTOS_LIMITS_AGENT_MAX_ITERATIONS
   # agent-max-iterations: 20
-  # Maximum number of entities processed by one AgentLoop run. Each entity launches one case
+  # Maximum number of entities processed by one AgentLoop run. Each entity starts one case
   # immediately, so this bounds concurrent agent runs started by a single loop.
   # Override with env var: AGENTOS_LIMITS_AGENT_LOOP_MAX_ITEMS
   agent-loop-max-items: 50

@@ -68,12 +68,12 @@ factory:
     fake-idp-secret: ${FACTORY_FAKE_IDP_SECRET:dev-fake-idp-secret-key-change-in-prod-32bytes}
   runs:
     dir: ${FACTORY_RUNS_DIR:factory/runs}
-    agentos-url: ${AGENTOS_URL:http://localhost:8080}
+    agentos-url: ${AGENTOS_URL:http://localhost:8124}
     jira-base-url: ${JIRA_BASE_URL:}
     jira-email: ${JIRA_EMAIL:}
     jira-api-token: ${JIRA_API_TOKEN:}
   proxy:
-    agentos-url: ${AGENTOS_URL:http://localhost:8080}
+    agentos-url: ${AGENTOS_URL:http://localhost:8124}
   outbox:
     # Background drain of the transactional outbox (`result_submitted` →
     # sequencer continuation). Enabled in production; the shared integration

@@ -37,7 +37,7 @@ val pluginBuilds =
 
 // Resolve all paths at configuration time into plain File values
 // so that doLast closures are configuration-cache compatible.
-val pluginsDestDir: File = layout.projectDirectory.dir("factory-service/plugins").asFile
+val pluginsDestDir: File = layout.projectDirectory.dir("plugins").asFile
 val pluginLibsDirs: List<File> = pluginBuilds.map { gradle.includedBuild(it).projectDir.resolve("build/libs") }
 
 tasks.register("cleanPlugins") {
@@ -55,7 +55,7 @@ tasks.register("jarPlugins") {
 
 tasks.register("deployPlugins") {
     group = "plugins"
-    description = "Builds all plugins and copies their JARs into factory-service/plugins/."
+    description = "Builds all plugins and copies their JARs into plugins/."
 
     // Clean each plugin build first (removes stale JARs from previous branch checkouts),
     // then build the JAR. The cleanPlugins task runs first, jarPlugins depends on it.
@@ -98,7 +98,7 @@ tasks.register("deployPlugins") {
 
         jarsToDeploy.forEach { jar ->
             jar.copyTo(dest.resolve(jar.name), overwrite = true)
-            logger.lifecycle("Deployed: ${jar.name} → factory-service/plugins/")
+            logger.lifecycle("Deployed: ${jar.name} → plugins/")
         }
     }
 }
