@@ -1,3 +1,23 @@
+## 3.40.0 (2026-10-22)
+
+### 🚀 Features
+
+- reopen a terminated case (service + API) ([#1476](https://github.com/whoz-oss/coday/pull/1476))
+
+### ❤️ Thank You
+
+- thomas-martin-whoz @thomas-martin-whoz
+
+## 3.39.0 (2026-10-21)
+
+### 🚀 Features
+
+- **agentos-service:** #WZ-35441 FreeCaseStarter Tool ([#1450](https://github.com/whoz-oss/coday/pull/1450))
+
+### ❤️ Thank You
+
+- Frédéric Delsert @frederic-delsert-whoz
+
 ## 3.38.1 (2026-10-20)
 
 ### 🩹 Fixes
