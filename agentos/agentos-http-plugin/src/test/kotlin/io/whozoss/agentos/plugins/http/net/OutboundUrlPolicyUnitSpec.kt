@@ -113,31 +113,33 @@ class OutboundUrlPolicyUnitSpec : StringSpec({
         policy.isDisallowedAddress(InetAddress.getByName("2606:2800:220:1:248:1893:25c8:1946")) shouldBe false
     }
 
-    "runtime opt-in accepts loopback and localhost" {
-        val lenient = OutboundUrlPolicy(allowLoopbackHttp = true)
-        lenient.validate("https://127.0.0.1:8443/api").shouldBeInstanceOf<UrlCheck.Ok>()
-        lenient.validate("https://localhost:8443/api").shouldBeInstanceOf<UrlCheck.Ok>()
-        lenient.isDisallowedAddress(InetAddress.getByName("127.0.0.1")) shouldBe false
-    }
-
-    "runtime opt-in accepts plain http on loopback only" {
-        val lenient = OutboundUrlPolicy(allowLoopbackHttp = true)
-        lenient.validate("http://127.0.0.1:8080/api").shouldBeInstanceOf<UrlCheck.Ok>()
-        lenient.validate("http://127.0.0.2:8080/api").shouldBeInstanceOf<UrlCheck.Ok>()
-        lenient.validate("http://localhost:8080/api").shouldBeInstanceOf<UrlCheck.Ok>()
-        lenient.validate("http://[::1]:8080/api").shouldBeInstanceOf<UrlCheck.Ok>()
-        val rejected = lenient.validate("http://api.example.com/api").shouldBeInstanceOf<UrlCheck.Rejected>()
-        rejected.reason shouldContain "https"
-    }
-
-    "runtime opt-in still rejects private networks" {
-        val lenient = OutboundUrlPolicy(allowLoopbackHttp = true)
+    "unsecure HTTP remains denied by default" {
         listOf(
+            "http://localhost:8080/api",
+            "http://127.0.0.1:8080/api",
+            "http://whatever.lan/api",
+            "http://api.example.com/api",
+        ).forEach { policy.validate(it).shouldBeInstanceOf<UrlCheck.Rejected>() }
+    }
+
+    "runtime opt-in accepts plain HTTP for every host class" {
+        val lenient = OutboundUrlPolicy(allowUnsecure = true)
+        listOf(
+            "http://localhost:8080/api",
+            "http://127.0.0.1:8080/api",
             "http://10.0.0.1/api",
-            "http://169.254.169.254/api",
-            "http://100.64.0.1/api",
-            "http://[fd00::1]/api",
-        ).forEach { lenient.validate(it).shouldBeInstanceOf<UrlCheck.Rejected>() }
-        lenient.validate("https://10.0.0.1/api").shouldBeInstanceOf<UrlCheck.Rejected>()
+            "http://whatever.lan/api",
+            "http://api.example.com/api",
+        ).forEach { lenient.validate(it).shouldBeInstanceOf<UrlCheck.Ok>() }
+    }
+
+    "runtime opt-in relaxes address restrictions consistently for all requests" {
+        val lenient = OutboundUrlPolicy(allowUnsecure = true)
+        listOf(
+            "https://localhost:8443/api",
+            "https://127.0.0.1:8443/api",
+            "https://10.0.0.1/api",
+        ).forEach { lenient.validate(it).shouldBeInstanceOf<UrlCheck.Ok>() }
+        lenient.isDisallowedAddress(InetAddress.getByName("127.0.0.1")) shouldBe false
     }
 })

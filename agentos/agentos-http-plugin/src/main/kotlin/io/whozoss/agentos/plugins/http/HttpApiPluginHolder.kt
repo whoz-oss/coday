@@ -20,7 +20,7 @@ object HttpApiPluginHolder {
         get() = checkNotNull(started?.services) { "HTTP API plugin is not started" }
 
     fun start() {
-        val policy = OutboundUrlPolicy(allowLoopbackHttp = allowLocalHttp())
+        val policy = OutboundUrlPolicy(allowUnsecure = allowUnsecure())
         val clientHolder = HttpClientHolder(policy)
         val cache = OperationCatalogueCache(fetcher = SpecFetcher(clientHolder.client, policy), urlPolicy = policy)
         started = Started(
@@ -40,9 +40,9 @@ object HttpApiPluginHolder {
         started = null
     }
 
-    /** Only the explicit value "true" (case-insensitive) enables local HTTP; all other values fail closed. */
-    internal fun allowLocalHttp(value: String? = System.getenv(ALLOW_LOCAL_HTTP_ENV)): Boolean =
+    /** Only the explicit value "true" (case-insensitive) enables unsecure HTTP; all other values fail closed. */
+    internal fun allowUnsecure(value: String? = System.getenv(ALLOW_UNSECURE_ENV)): Boolean =
         value?.equals("true", ignoreCase = true) == true
 
-    internal const val ALLOW_LOCAL_HTTP_ENV = "AGENTOS_HTTP_API_ALLOW_LOCAL_HTTP"
+    internal const val ALLOW_UNSECURE_ENV = "AGENTOS_HTTP_API_ALLOW_UNSECURE"
 }
