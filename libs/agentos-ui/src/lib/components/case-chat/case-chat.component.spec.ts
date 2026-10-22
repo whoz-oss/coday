@@ -316,6 +316,56 @@ describe('CaseChatComponent — submit with attachments', () => {
     expect(ref.instance['canSend']).toBe(false)
   })
 
+  describe('kill with confirmation', () => {
+    it('clicking kill does not call the API until confirmed', () => {
+      const ref = makeComponent()
+      // Simulate clicking the kill button (sets confirmingKill to true, does NOT call API)
+      ref.instance['confirmingKill'].set(true)
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
+    it('cancelling the kill dialog fires no request and closes the dialog', () => {
+      const ref = makeComponent()
+      ref.instance['confirmingKill'].set(true)
+      // Simulate cancel (what the (cancelled) output does)
+      ref.instance['confirmingKill'].set(false)
+      expect(http.post).not.toHaveBeenCalled()
+      expect(ref.instance['confirmingKill']()).toBe(false)
+    })
+
+    it('confirming kill POSTs to the kill endpoint and closes the dialog', () => {
+      const ref = makeComponent()
+      ref.instance['confirmingKill'].set(true)
+      // Simulate confirming (what the (confirmed) output does)
+      ref.instance['kill']()
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/kill', {})
+      expect(ref.instance['confirmingKill']()).toBe(false)
+    })
+  })
+
+  describe('reopen', () => {
+    let caseState: { addCase: jest.Mock; updateCaseTitle: jest.Mock; updateCaseStatus: jest.Mock }
+
+    beforeEach(() => {
+      caseState = TestBed.inject(CaseStateService) as typeof caseState
+    })
+
+    it('POSTs to the reopen endpoint, clears terminal state, and notifies CaseStateService', () => {
+      const ref = makeComponent()
+      // Put the component in terminal state
+      ref.instance['isTerminal'].set(true)
+
+      ref.instance['reopen']()
+
+      expect(http.post).toHaveBeenCalledWith('/api/cases/c-1/reopen', {})
+
+      // http.post returns of({}) by default, so the next callback fires synchronously
+      expect(caseState.updateCaseStatus).toHaveBeenCalledWith('c-1', 'IDLE')
+      // reinitialise() clears terminal state
+      expect(ref.instance['isTerminal']()).toBe(false)
+    })
+  })
+
   it('replaces the generic delegate tool card when its real content-wrapped output contains delegation JSON', () => {
     const ref = makeComponent()
     const toolRequestId = 'tool-request-1'
