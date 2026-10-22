@@ -17,7 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 /**
  * Server-Sent Events stream of projection invalidations.
  *
- * Factory workflow projection stream consumed by Cockpit V2:
+ * Factory workflow projection stream consumed by Factory Cockpit:
  *
  * ```http
  * GET /api/factory/workflows/stream?namespaceId=<uuid>

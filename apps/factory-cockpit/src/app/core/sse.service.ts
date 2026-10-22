@@ -24,7 +24,7 @@ export interface SseInvalidation {
 /** Factory used to instantiate the underlying `EventSource` (overridable in tests). */
 export type EventSourceFactory = (url: string) => EventSource
 
-export const EVENT_SOURCE_FACTORY = new InjectionToken<EventSourceFactory>('COCKPIT_V2_EVENT_SOURCE_FACTORY', {
+export const EVENT_SOURCE_FACTORY = new InjectionToken<EventSourceFactory>('FACTORY_COCKPIT_EVENT_SOURCE_FACTORY', {
   providedIn: 'root',
   factory: () => (url: string) => {
     if (typeof EventSource === 'undefined') {

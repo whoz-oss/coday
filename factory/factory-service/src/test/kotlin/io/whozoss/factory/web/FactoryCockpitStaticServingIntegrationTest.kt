@@ -1,7 +1,7 @@
 package io.whozoss.factory.web
 
-import io.whozoss.factory.config.CockpitV2Properties
-import io.whozoss.factory.config.CockpitV2WebConfig
+import io.whozoss.factory.config.FactoryCockpitProperties
+import io.whozoss.factory.config.FactoryCockpitWebConfig
 import io.whozoss.factory.config.FactoryProperties
 import io.whozoss.factory.error.FactoryExceptionHandler
 import io.whozoss.factory.web.security.SecurityConfiguration
@@ -20,36 +20,26 @@ import org.springframework.test.web.servlet.get
 import java.nio.file.Files
 import java.nio.file.Path
 
-/**
- * HTTP tests of the Cockpit V2 same-origin hosting.
- *
- * Uses a MockMvc slice (no Neo4j) with a temporary asset directory so the
- * assertions do not depend on a prior `nx build cockpit-v2`:
- *
- *  1. `/cockpit-v2` (and a client route below it) returns the SPA shell as
- *     `text/html`;
- *  2. a missing `.js` / `.css` asset returns `404` and never the HTML shell;
- *  3. former legacy entry points redirect to Cockpit V2.
- */
-@WebMvcTest(controllers = [CockpitV2Controller::class, CockpitController::class])
-@EnableConfigurationProperties(FactoryProperties::class, CockpitV2Properties::class)
+/** HTTP tests of the Factory Cockpit same-origin hosting under `/factory`. */
+@WebMvcTest(controllers = [FactoryCockpitController::class, CockpitController::class])
+@EnableConfigurationProperties(FactoryProperties::class, FactoryCockpitProperties::class)
 @Import(
-    CockpitV2Assets::class,
-    CockpitV2WebConfig::class,
+    FactoryCockpitAssets::class,
+    FactoryCockpitWebConfig::class,
     AuthenticationFilter::class,
     JwtTokenVerifier::class,
     LocalDevMembershipResolver::class,
     SecurityConfiguration::class,
     FactoryExceptionHandler::class,
 )
-class CockpitV2StaticServingIntegrationTest {
+class FactoryCockpitStaticServingIntegrationTest {
 
     @Autowired
     private lateinit var mockMvc: MockMvc
 
     @Test
-    fun `serves the Spa shell at slash cockpit-v2`() {
-        mockMvc.get("/cockpit-v2").andExpect {
+    fun `serves the Spa shell at slash factory`() {
+        mockMvc.get("/factory").andExpect {
             status { isOk() }
             content { contentTypeCompatibleWith(MediaType.TEXT_HTML) }
             content { string(containsString("<sf-root>")) }
@@ -58,11 +48,11 @@ class CockpitV2StaticServingIntegrationTest {
 
     @Test
     fun `falls back to the Spa shell for a client route`() {
-        mockMvc.get("/cockpit-v2/sandboxes").andExpect {
+        mockMvc.get("/factory/sandboxes").andExpect {
             status { isOk() }
             content { contentTypeCompatibleWith(MediaType.TEXT_HTML) }
         }
-        mockMvc.get("/cockpit-v2/sessions/872641a8").andExpect {
+        mockMvc.get("/factory/sessions/872641a8").andExpect {
             status { isOk() }
             content { contentTypeCompatibleWith(MediaType.TEXT_HTML) }
         }
@@ -70,15 +60,15 @@ class CockpitV2StaticServingIntegrationTest {
 
     @Test
     fun `serves an existing hashed javascript asset`() {
-        mockMvc.get("/cockpit-v2/main-abc123.js").andExpect {
+        mockMvc.get("/factory/main-abc123.js").andExpect {
             status { isOk() }
-            content { string(containsString("console.log('cockpit-v2')")) }
+            content { string(containsString("console.log('factory-cockpit')")) }
         }
     }
 
     @Test
     fun `returns 404 and never Html for a missing javascript asset`() {
-        mockMvc.get("/cockpit-v2/non-existent-xyz.js").andExpect {
+        mockMvc.get("/factory/non-existent-xyz.js").andExpect {
             status { isNotFound() }
             content { string(not(containsString("<!doctype html"))) }
         }
@@ -86,35 +76,42 @@ class CockpitV2StaticServingIntegrationTest {
 
     @Test
     fun `returns 404 and never Html for a missing stylesheet asset`() {
-        mockMvc.get("/cockpit-v2/non-existent-xyz.css").andExpect {
+        mockMvc.get("/factory/non-existent-xyz.css").andExpect {
             status { isNotFound() }
             content { string(not(containsString("<!doctype html"))) }
         }
     }
 
     @Test
-    fun `redirects former legacy entry points to Cockpit V2`() {
+    fun `redirects former entry points to Factory Cockpit`() {
         listOf("/", "/cockpit", "/cockpit/", "/cockpit.html").forEach { path ->
             mockMvc.get(path).andExpect {
                 status { is3xxRedirection() }
-                redirectedUrl("/cockpit-v2")
+                redirectedUrl("/factory")
             }
         }
     }
 
+    @Test
+    fun `does not expose the removed cockpit v2 route`() {
+        mockMvc.get("/cockpit-v2").andExpect {
+            status { isNotFound() }
+        }
+    }
+
     companion object {
-        private val cockpitV2Dir: Path = Files.createTempDirectory("cockpit-v2-assets").also { root ->
+        private val cockpitDir: Path = Files.createTempDirectory("factory-cockpit-assets").also { root ->
             Files.writeString(
                 root.resolve("index.html"),
-                "<!doctype html><html><head><title>Cockpit V2</title></head><body><sf-root></sf-root></body></html>",
+                "<!doctype html><html><head><title>Factory Cockpit</title></head><body><sf-root></sf-root></body></html>",
             )
-            Files.writeString(root.resolve("main-abc123.js"), "console.log('cockpit-v2')")
+            Files.writeString(root.resolve("main-abc123.js"), "console.log('factory-cockpit')")
         }
 
         @JvmStatic
         @DynamicPropertySource
         fun registerAssets(registry: DynamicPropertyRegistry) {
-            registry.add("factory.cockpit.v2.assets-dir") { cockpitV2Dir.toAbsolutePath().toString() }
+            registry.add("factory.cockpit.assets-dir") { cockpitDir.toAbsolutePath().toString() }
         }
     }
 }
