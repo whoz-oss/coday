@@ -44,7 +44,6 @@ class AgentOsAdapterConfiguration {
     ): AgentOsExecutionAdapter = DefaultAgentOsExecutionAdapter(
         builder = builder.clone(),
         baseUrl = proxyProperties.agentosUrl,
-        bindingSecret = properties.bindingSecret,
         registry = activeCaseRegistry,
         sseClientFactory = { baseUrl ->
             AgentOsSseClient(

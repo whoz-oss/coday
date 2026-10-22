@@ -17,9 +17,9 @@ class AgentOsCaseBusyException(caseId: String, status: String) : RuntimeExceptio
  *
  * REST calls (`/api/cases`, `/api/cases/{id}/messages`,
  * `/api/case-events/by-parentId/{id}`, `/api/cases/{id}/kill`) mirror the
- * proven shapes of `HttpAgentOsProxyClient` (same bodies, same trusted
- * `X-External-User-Id` and `X-External-Context-*` headers); SSE streaming uses the
- * JDK `HttpClient` through [AgentOsSseClient].
+ * proven shapes of `HttpAgentOsProxyClient`; the trusted external identity is
+ * propagated through `X-External-User-Id`. SSE streaming uses the JDK
+ * `HttpClient` through [AgentOsSseClient].
  *
  * Idempotency: a boundary record keyed by `attemptId` remembers the case it
  * created; a repeated [createOrRecoverExecution] with the same `attemptId`
@@ -41,7 +41,6 @@ class AgentOsCaseBusyException(caseId: String, status: String) : RuntimeExceptio
 class DefaultAgentOsExecutionAdapter(
     builder: RestClient.Builder,
     private val baseUrl: String,
-    private val bindingSecret: String? = null,
     private val sseClientFactory: (baseUrl: String) -> AgentOsSseClient = { AgentOsSseClient(it) },
     private val checkpointStore: HighWaterMarkStore = HighWaterMarkStore(),
     private val registry: ActiveCaseRegistry = ActiveCaseRegistry(),
@@ -100,22 +99,12 @@ class DefaultAgentOsExecutionAdapter(
         body["title"] = binding.title?.takeIf { it.isNotBlank() }
             ?: "Factory session $workflowId · step $stepId"
         body["id"] = binding.caseId
-        body["attemptId"] = binding.attemptId
         if (!binding.parentCaseId.isNullOrBlank()) body["parentCaseId"] = binding.parentCaseId
-        if (!binding.capabilityToken.isNullOrBlank()) body["capabilityToken"] = binding.capabilityToken
         val spec = client.post()
             .uri("/api/cases")
             .contentType(MediaType.APPLICATION_JSON)
             .body(body)
         if (!binding.externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", binding.externalUserId)
-        spec.header("X-External-Context-Attempt-Id", binding.attemptId)
-        if (!binding.capabilityToken.isNullOrBlank()) {
-            val secret = bindingSecret?.takeIf { it.isNotBlank() }
-                ?: throw IllegalStateException("Factory worker binding secret is required before creating a capability-bound AgentOS case")
-            spec.header("X-External-Context-Capability-Token", binding.capabilityToken)
-            spec.header("X-External-Context-Agent-Name", binding.agentName ?: "*")
-            spec.header("X-External-Context-Secret", secret)
-        }
         val response = try {
             spec.retrieve().body(object : ParameterizedTypeReference<Map<String, Any?>>() {})
         } catch (conflict: HttpClientErrorException.Conflict) {
@@ -227,8 +216,6 @@ class DefaultAgentOsExecutionAdapter(
             .contentType(MediaType.APPLICATION_JSON)
             .body(mapOf("content" to "@$persona $brief"))
         if (!binding.externalUserId.isNullOrBlank()) spec.header("X-External-User-Id", binding.externalUserId)
-        spec.header("X-External-Context-Attempt-Id", binding.attemptId)
-        if (!binding.capabilityToken.isNullOrBlank()) spec.header("X-External-Context-Capability-Token", binding.capabilityToken)
         spec.retrieve().toBodilessEntity()
         registry.markState(caseId, ActiveCaseState.RUNNING)
         return TurnToken(caseId, binding.attemptId, baseline)
@@ -248,8 +235,6 @@ class DefaultAgentOsExecutionAdapter(
             caseId = caseId,
             timeoutMs = timeoutMs,
             externalUserId = record?.externalUserId,
-            attemptId = turn.attemptId,
-            capabilityToken = record?.capabilityToken,
             checkpoint = checkpoint,
             context = contextFor(caseId),
             reconcile = { reconcileResult(caseId, record?.externalUserId, baseline.takeIf { it.isPositioned() }) },
@@ -398,15 +383,12 @@ class DefaultAgentOsExecutionAdapter(
     ) {
         require(answer.isNotBlank()) { "answer must not be blank" }
         require(answer.length <= MAX_ANSWER_LENGTH) { "answer must contain at most $MAX_ANSWER_LENGTH characters" }
-        val record = executions[attemptId] ?: executions.values.firstOrNull { it.caseId == caseId }
         val spec = client.post()
             .uri("/api/cases/$caseId/messages")
             .contentType(MediaType.APPLICATION_JSON)
             .body(mapOf("content" to answer, "answerToEventId" to questionEventId))
         require(answeringUserId.isNotBlank()) { "answeringUserId must not be blank" }
         spec.header("X-External-User-Id", answeringUserId)
-        spec.header("X-External-Context-Attempt-Id", attemptId)
-        record?.capabilityToken?.takeIf { it.isNotBlank() }?.let { spec.header("X-External-Context-Capability-Token", it) }
         spec.retrieve().toBodilessEntity()
     }
 

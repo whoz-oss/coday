@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.web.client.MockRestServiceServer
 import org.springframework.test.web.client.match.MockRestRequestMatchers.header
+import org.springframework.test.web.client.match.MockRestRequestMatchers.headerDoesNotExist
 import org.springframework.test.web.client.match.MockRestRequestMatchers.jsonPath
 import org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo
 import org.springframework.test.web.client.response.MockRestResponseCreators.withServerError
@@ -43,7 +44,7 @@ class DefaultAgentOsExecutionAdapterTest {
     ): Pair<DefaultAgentOsExecutionAdapter, MockRestServiceServer> {
         val builder = RestClient.builder()
         val server = MockRestServiceServer.bindTo(builder).build()
-        return DefaultAgentOsExecutionAdapter(builder, baseUrl, "binding-secret", sseClientFactory) to server
+        return DefaultAgentOsExecutionAdapter(builder, baseUrl, sseClientFactory) to server
     }
 
     private fun sseFactory(): (String) -> AgentOsSseClient = {
@@ -63,13 +64,13 @@ class DefaultAgentOsExecutionAdapterTest {
         server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
         server.expect(requestTo("$baseUrl/api/cases"))
             .andExpect(header("X-External-User-Id", "user-1"))
-            .andExpect(header("X-External-Context-Attempt-Id", "attempt-1"))
-            .andExpect(header("X-External-Context-Capability-Token", "token-1"))
-            .andExpect(header("X-External-Context-Secret", "binding-secret"))
-            .andExpect(header("X-External-Context-Agent-Name", "*"))
+            .andExpect(headerDoesNotExist("X-External-Context-Attempt-Id"))
+            .andExpect(headerDoesNotExist("X-External-Context-Capability-Token"))
+            .andExpect(headerDoesNotExist("X-External-Context-Secret"))
+            .andExpect(headerDoesNotExist("X-External-Context-Agent-Name"))
             .andExpect(jsonPath("$.id").value("case-1"))
-            .andExpect(jsonPath("$.attemptId").value("attempt-1"))
-            .andExpect(jsonPath("$.capabilityToken").value("token-1"))
+            .andExpect(jsonPath("$.attemptId").doesNotExist())
+            .andExpect(jsonPath("$.capabilityToken").doesNotExist())
             .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
 
         val created = adapter.createOrRecoverExecution(
@@ -364,17 +365,16 @@ class DefaultAgentOsExecutionAdapterTest {
     }
 
     @Test
-    fun `capability-bound creation fails before HTTP when the binding secret is absent`() {
-        val builder = RestClient.builder()
-        val server = MockRestServiceServer.bindTo(builder).build()
-        val adapter = DefaultAgentOsExecutionAdapter(builder, baseUrl)
-        // The cold-cache probe still runs before the secret check.
+    fun `capability-bound creation succeeds without a transport binding secret`() {
+        val (adapter, server) = build()
         server.expect(requestTo("$baseUrl/api/cases/case-1")).andRespond(withStatus(HttpStatus.NOT_FOUND))
+        server.expect(requestTo("$baseUrl/api/cases"))
+            .andExpect(headerDoesNotExist("X-External-Context-Secret"))
+            .andRespond(withSuccess("""{"id":"case-1","namespaceId":"ns-1"}""", MediaType.APPLICATION_JSON))
 
-        assertThatThrownBy {
-            adapter.createOrRecoverExecution("ns-1", "wf-1", "step-1", null, "attempt-1", "token-1", "case-1")
-        }.isInstanceOf(IllegalStateException::class.java)
-            .hasMessageContaining("binding secret")
+        val handle = adapter.createOrRecoverExecution("ns-1", "wf-1", "step-1", null, "attempt-1", "token-1", "case-1")
+
+        assertThat(handle).isEqualTo(CaseHandle("case-1", "ns-1", recovered = false))
         server.verify()
     }
 
@@ -399,7 +399,7 @@ class DefaultAgentOsExecutionAdapterTest {
         server.expect(requestTo(eventsUrl)).andRespond(withSuccess("[]", MediaType.APPLICATION_JSON))
         server.expect(requestTo("$baseUrl/api/cases/case-1/messages"))
             .andExpect(header("X-External-User-Id", "user-1"))
-            .andExpect(header("X-External-Context-Attempt-Id", "attempt-1"))
+            .andExpect(headerDoesNotExist("X-External-Context-Attempt-Id"))
             .andExpect(jsonPath("$.content").value("@architect do the thing"))
             .andRespond(withSuccess("", MediaType.APPLICATION_JSON))
 
@@ -412,7 +412,8 @@ class DefaultAgentOsExecutionAdapterTest {
     fun `answerQuestion forwards bounded correlated answer metadata`() {
         val (adapter, server) = build()
         server.expect(requestTo("$baseUrl/api/cases/case-1/messages"))
-            .andExpect(header("X-External-Context-Attempt-Id", "attempt-1"))
+            .andExpect(headerDoesNotExist("X-External-Context-Attempt-Id"))
+            .andExpect(headerDoesNotExist("X-External-Context-Capability-Token"))
             .andExpect(header("X-External-User-Id", "actual-answerer"))
             .andExpect(jsonPath("$.content").value("use main"))
             .andExpect(jsonPath("$.answerToEventId").value("question-1"))

@@ -14,9 +14,8 @@ import kotlin.concurrent.thread
  *
  * Implements the observation protocol frozen in `app_docs/agentos-sse-contract.md`:
  * - Opens `GET /api/cases/{caseId}/events?includePreviousEvents=true` with the
- *   trusted `X-External-User-Id` header (and the `X-External-Context-*` capability
- *   headers when supplied), streaming over the JDK [HttpClient] (servlet
- *   stack — no WebFlux).
+ *   trusted `X-External-User-Id` header, streaming over the JDK [HttpClient]
+ *   (servlet stack — no WebFlux).
  * - Every (re)connection replays the full durable history (the server honours
  *   no cursor), so deduplication is client-side by `eventId` through an
  *   [EventCheckpoint] `(timestamp, lastEventId)` high-water mark.
@@ -71,8 +70,6 @@ class AgentOsSseClient(
         caseId: String,
         timeoutMs: Long,
         externalUserId: String? = null,
-        attemptId: String? = null,
-        capabilityToken: String? = null,
         checkpoint: EventCheckpoint = EventCheckpoint(),
         context: VerdictDeriver.DerivationContext = VerdictDeriver.DerivationContext(caseId),
         reconcile: (String) -> ReconcileResult? = { null },
@@ -174,7 +171,7 @@ class AgentOsSseClient(
             }
             when (
                 val outcome = streamOnce(
-                    caseId, externalUserId, attemptId, capabilityToken, checkpoint,
+                    caseId, externalUserId, checkpoint,
                     ::currentDeadline, observed, onEvent, onAnswerObserved, ::applyLifecycleEvent, ::evaluateVerdict,
                 )
             ) {
@@ -225,8 +222,6 @@ class AgentOsSseClient(
     private fun streamOnce(
         caseId: String,
         externalUserId: String?,
-        attemptId: String?,
-        capabilityToken: String?,
         checkpoint: EventCheckpoint,
         deadline: () -> Long,
         observed: MutableList<CaseEventView>,
@@ -240,8 +235,6 @@ class AgentOsSseClient(
             .header("Accept", "text/event-stream")
             .GET()
         if (!externalUserId.isNullOrBlank()) requestBuilder.header("X-External-User-Id", externalUserId)
-        if (!attemptId.isNullOrBlank()) requestBuilder.header("X-External-Context-Attempt-Id", attemptId)
-        if (!capabilityToken.isNullOrBlank()) requestBuilder.header("X-External-Context-Capability-Token", capabilityToken)
         val response = try {
             httpClient.send(requestBuilder.build(), HttpResponse.BodyHandlers.ofInputStream())
         } catch (_: Exception) {
