@@ -36,13 +36,22 @@ class NamespaceCaseInvalidationSseControllerUnitSpec : StringSpec({
             otherSignals++
         }
 
-        broadcaster.publishCaseCreated(expectedNamespaceId)
-        withTimeout(2_000) { expectedCollector.join() }
+        try {
+            withTimeout(2_000) {
+                broadcaster.events(expectedNamespaceId).subscriptionCount.first { it == 1 }
+                broadcaster.events(otherNamespaceId).subscriptionCount.first { it == 1 }
+            }
 
-        expectedSignals shouldBe 1
-        otherSignals shouldBe 0
-        otherCollector.cancel()
-        scope.cancel()
+            broadcaster.publishCaseCreated(expectedNamespaceId)
+            withTimeout(2_000) { expectedCollector.join() }
+
+            expectedSignals shouldBe 1
+            otherSignals shouldBe 0
+            otherCollector.isActive shouldBe true
+        } finally {
+            otherCollector.cancel()
+            scope.cancel()
+        }
     }
 
     "controller subscribes to the requested namespace stream" {
