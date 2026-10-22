@@ -52,7 +52,7 @@ class NamespaceCaseSseFrameSerializationSpec : StringSpec({
         broadcaster.publishCaseCreated(namespaceId)
 
         withTimeout(2_000) {
-            while (sent.none { it.data == NamespaceCaseInvalidationSseController.NEUTRAL_PAYLOAD }) delay(10)
+            while (sent.none { it.data == "{}" }) delay(10)
         }
         sent.any { it.data.toString().contains("namespace-case-invalidation") } shouldBe true
         sent.any { it.data == "{}" } shouldBe true

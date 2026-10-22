@@ -40,12 +40,12 @@ class NamespaceCaseInvalidationSseController(
         tags = ["sse"],
         summary = "Stream namespace case-list invalidations via SSE",
         description =
-            "Each 'namespace-case-invalidation' event has no data payload. " +
+            "Each 'namespace-case-invalidation' event carries the neutral JSON payload '{}', with no business data. " +
                 "Reload GET /api/cases/by-parentId/{namespaceId}/mine when it arrives or when the stream reconnects.",
         responses = [
             ApiResponse(
                 responseCode = "200",
-                description = "SSE stream of payload-free namespace case-list invalidations.",
+                description = "SSE stream of namespace case-list invalidations carrying data: {}.",
                 content = [Content(mediaType = "text/event-stream")],
             ),
         ],
@@ -78,7 +78,8 @@ class NamespaceCaseInvalidationSseController(
                         SseEmitter
                             .event()
                             .id(sequence.incrementAndGet().toString())
-                            .name(NAMESPACE_CASE_INVALIDATION_EVENT),
+                            .name(NAMESPACE_CASE_INVALIDATION_EVENT)
+                            .data(NEUTRAL_PAYLOAD),
                     )
                 }
             } catch (e: CancellationException) {
@@ -110,6 +111,9 @@ class NamespaceCaseInvalidationSseController(
 
     companion object : KLogging() {
         const val NAMESPACE_CASE_INVALIDATION_EVENT = "namespace-case-invalidation"
+
+        /** SSE requires a data field for browsers to dispatch the event; this carries no business data. */
+        const val NEUTRAL_PAYLOAD = "{}"
         private val sequence = AtomicLong()
     }
 }
