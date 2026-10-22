@@ -12,6 +12,8 @@ import java.util.UUID
  * @param targetUserId The user the new case runs for. Null, or the caller itself: the caller. Any
  *   other user requires the caller to be ADMIN of the namespace; the target must exist and be able to
  *   read the namespace.
+ * @param prompt The first message sent to the agent on behalf of the target user. Ignored when
+ *   [promptId] is set — in that case content and title are resolved from the stored Prompt instead.
  * @param title Name of the new conversation. Null or blank: derived from the start of [prompt].
  * @param sessionContext What the caller hands to the new case: free key/value data, passed on as given to the
  *   first message, under the context the system resolves for the target user (see [CaseStarterService]). The
@@ -25,6 +27,11 @@ import java.util.UUID
  *   This field is NOT exposed in the JSON schema of any LLM-facing tool.
  * @param dispatchKey Optional idempotency key; when a non-deleted case already carries it the start is
  *   refused as a duplicate and nothing is written. NOT exposed in any LLM-facing tool schema.
+ * @param promptId Id of a stored [io.whozoss.agentos.prompt.Prompt] whose content and title supply the
+ *   first message. When set it takes precedence over [prompt] and [translateFrom], and is resolved per
+ *   target user via `PromptService.translate(...)`, which reuses persisted translations before falling back
+ *   to an LLM. Null (the default) uses [prompt] verbatim. NOT exposed in the JSON schema of any LLM-facing
+ *   tool.
  */
 data class CaseStarterRequest(
     val callerUserId: UUID,
@@ -38,4 +45,5 @@ data class CaseStarterRequest(
     val translateFrom: String? = null,
     val scheduledPromptId: UUID? = null,
     val dispatchKey: String? = null,
+    val promptId: UUID? = null,
 )

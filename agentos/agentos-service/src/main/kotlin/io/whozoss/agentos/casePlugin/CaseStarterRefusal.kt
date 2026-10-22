@@ -25,4 +25,7 @@ enum class CaseStarterRefusal {
 
     /** A case with the same dispatchKey already exists — this dispatch was already delivered. */
     ALREADY_DISPATCHED,
+
+    /** The referenced Prompt does not exist, or has no usable content. */
+    PROMPT_NOT_FOUND,
 }

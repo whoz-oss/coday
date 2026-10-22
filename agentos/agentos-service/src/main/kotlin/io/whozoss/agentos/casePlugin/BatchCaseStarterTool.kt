@@ -44,9 +44,18 @@ class BatchCaseStarterTool(
     /**
      * @param agentName Name of the agent to start for each user.
      * @param prompt The prompt sent to the agent, on behalf of each user. Self-contained.
-     * @param title Optional conversation title; derived from [prompt] when blank.
+     *   Ignored when [promptId] is set — in that case content and title are resolved from the
+     *   stored Prompt per target user via `PromptService.translate(...)`.
+     * @param promptId UUID string of a stored [io.whozoss.agentos.prompt.Prompt] whose content
+     *   and title supply the first message. When set it takes precedence over [prompt] and
+     *   [translateFrom], and is resolved per target user by [CaseStarterService], which reuses
+     *   persisted translations before falling back to an LLM. Null (the default) uses [prompt]
+     *   verbatim. NOT exposed in the JSON schema — set by Kotlin, never by an LLM.
+     * @param title Optional conversation title; derived from [prompt] (or the Prompt's own title)
+     *   when blank. Used as fallback when the Prompt itself has no title.
      * @param translateFrom BCP-47 source language of [prompt]/[title]. When non-null and the
      *   target user has a different `preferredLanguage`, both are translated. Null = no translation.
+     *   Ignored when [promptId] is set.
      * @param scheduledPromptId UUID string of the scheduled prompt that triggered this batch;
      *   written to [io.whozoss.agentos.caseFlow.Case.scheduledPromptId] on each started case.
      * @param runId UUID string of the scheduler run that triggered this batch. When non-blank,
@@ -60,7 +69,8 @@ class BatchCaseStarterTool(
      */
     data class Input(
         val agentName: String,
-        val prompt: String,
+        val prompt: String? = null,
+        val promptId: String? = null,
         val title: String? = null,
         val translateFrom: String? = null,
         val scheduledPromptId: String? = null,
@@ -86,8 +96,23 @@ class BatchCaseStarterTool(
         input: Input?,
         context: ToolContext,
     ): ToolExecutionResult {
-        if (input == null || input.agentName.isBlank() || input.prompt.isBlank()) {
-            return ToolExecutionResult.error("agentName and prompt are required.", errorType = "MISSING_INPUT")
+        if (input == null || input.agentName.isBlank()) {
+            return ToolExecutionResult.error("agentName and prompt (or promptId) are required.", errorType = "MISSING_INPUT")
+        }
+        val hasPrompt = !input.prompt.isNullOrBlank()
+        val hasPromptId = !input.promptId.isNullOrBlank()
+        if (!hasPrompt && !hasPromptId) {
+            return ToolExecutionResult.error(
+                "Either a non-blank prompt or a non-blank promptId is required.",
+                errorType = "MISSING_INPUT",
+            )
+        }
+        val promptUuid = input.promptId?.takeIf { it.isNotBlank() }?.let {
+            runCatching { UUID.fromString(it) }.getOrNull()
+                ?: return ToolExecutionResult.error(
+                    "promptId '${input.promptId}' is not a valid UUID.",
+                    errorType = "INVALID_INPUT",
+                )
         }
 
         val array = input.previousStepOutput
@@ -120,7 +145,7 @@ class BatchCaseStarterTool(
                     errorType = "MISSING_CASE_CONTEXT",
                 )
 
-        val scheduledPromptUuid = input.scheduledPromptId?.let {
+        val scheduledPromptUuid = input.scheduledPromptId?.takeIf { it.isNotBlank() }?.let {
             runCatching { UUID.fromString(it) }.getOrNull()
         }
         val runUuid = input.runId?.takeIf { it.isNotBlank() }?.let {
@@ -163,13 +188,14 @@ class BatchCaseStarterTool(
                     callerNamespaceId = context.namespaceId,
                     callerCaseId = callerCaseId,
                     agentName = input.agentName,
-                    prompt = input.prompt,
+                    prompt = input.prompt ?: "",
                     title = input.title,
                     targetUserId = targetUserId,
                     sessionContext = sessionContext,
                     translateFrom = input.translateFrom,
                     scheduledPromptId = scheduledPromptUuid,
                     dispatchKey = dispatchKey,
+                    promptId = promptUuid,
                 )
 
             try {
@@ -195,6 +221,10 @@ class BatchCaseStarterTool(
                     CaseStarterRefusal.ALREADY_DISPATCHED -> {
                         skipped++
                         logger.info { "[BatchCaseStarter] skipped user $targetUserId — already dispatched (key: $dispatchKey)" }
+                    }
+                    CaseStarterRefusal.PROMPT_NOT_FOUND -> {
+                        failed++
+                        logger.error { "[BatchCaseStarter] prompt not found for user $targetUserId (${e.reason}): ${e.message}" }
                     }
                     else -> {
                         failed++

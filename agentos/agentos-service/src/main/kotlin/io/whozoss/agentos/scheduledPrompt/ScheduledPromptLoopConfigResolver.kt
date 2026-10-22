@@ -3,7 +3,6 @@ package io.whozoss.agentos.scheduledPrompt
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.whozoss.agentos.agentConfig.AgentConfigService
 import io.whozoss.agentos.caseFlow.CaseService
-import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.workflow.LoopConfig
 import io.whozoss.agentos.workflow.LoopConfigResolver
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -30,7 +29,6 @@ class ScheduledPromptLoopConfigResolver(
     private val runRepository: ScheduledPromptRunRepository,
     private val scheduledPromptRepository: ScheduledPromptRepository,
     private val agentConfigService: AgentConfigService,
-    private val promptService: PromptService,
     private val synthesizer: ScheduledPromptLoopConfigSynthesizer,
     private val objectMapper: ObjectMapper,
 ) : LoopConfigResolver {
@@ -52,23 +50,12 @@ class ScheduledPromptLoopConfigResolver(
                 ?: throw IllegalStateException(
                     "AgentConfig ${scheduledPrompt.agentConfigId} not found while resolving loop config for run=${run.id}",
                 )
-        val prompt =
-            promptService.findById(scheduledPrompt.promptTemplateId)
-                ?: throw IllegalStateException(
-                    "PromptTemplate ${scheduledPrompt.promptTemplateId} not found while resolving loop config for run=${run.id}",
-                )
-        val promptContent =
-            prompt.content.firstOrNull { it.isNotBlank() }
-                ?: throw IllegalStateException(
-                    "PromptTemplate ${scheduledPrompt.promptTemplateId} has empty content for run=${run.id}",
-                )
         return synthesizer.synthesize(
             scheduledPrompt = scheduledPrompt,
             agentName = agentName,
-            promptContent = promptContent,
+            promptId = scheduledPrompt.promptTemplateId,
             title = scheduledPrompt.name,
             runId = run.id,
-            sourceLanguage = prompt.sourceLanguage,
         )
     }
 }

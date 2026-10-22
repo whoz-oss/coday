@@ -9,6 +9,7 @@ import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
 import io.whozoss.agentos.permissions.PermissionService
+import io.whozoss.agentos.prompt.PromptService
 import io.whozoss.agentos.prompt.PromptTranslationService
 import io.whozoss.agentos.prompt.TextKind
 import io.whozoss.agentos.sdk.actor.Actor
@@ -88,6 +89,7 @@ class CaseStarterService(
     private val permissionService: PermissionService,
     private val userSessionContextResolver: UserSessionContextResolver,
     private val promptTranslationService: PromptTranslationService,
+    private val promptService: PromptService,
 ) {
     /**
      * Starts the case and returns it.
@@ -123,11 +125,7 @@ class CaseStarterService(
 
         val sessionContext = resolveSessionContext(targetUser = targetUser, request = request)
 
-        val (effectivePrompt, effectiveTitle) = maybeTranslate(
-            request = request,
-            targetLanguage = targetUser.preferredLanguage?.takeIf { it.isNotBlank() },
-            namespaceId = request.callerNamespaceId,
-        )
+        val (effectivePrompt, effectiveTitle) = resolveMessage(request, targetUser)
 
         val case = createCase(request, effectiveTitle ?: effectivePrompt)
         startConversation(
@@ -152,25 +150,32 @@ class CaseStarterService(
      * reads a few cases at most.
      */
     private fun isInStartedCase(callerCaseId: UUID): Boolean {
-        val callerCase = checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
+        val callerCase =
+            checkNotNull(caseService.findById(callerCaseId)) { "Calling case $callerCaseId no longer exists" }
         return generateSequence(callerCase, ::findParent).any { ancestor -> ancestor.originCaseId != null }
     }
 
     /** The case [case] was delegated from, deleted or not, or null for a top-level case. */
-    private fun findParent(case: Case): Case? =
-        case.parentCaseId?.let { parentId -> caseService.findById(parentId, withRemoved = true) }
+    private fun findParent(case: Case): Case? = case.parentCaseId?.let { parentId -> caseService.findById(parentId, withRemoved = true) }
 
     private fun resolveTargetUser(request: CaseStarterRequest): User {
         // Null when the case runs for the caller: no userId, or the caller's own.
         val otherUserId = request.targetUserId?.takeIf { it != request.callerUserId }
         return when {
-            otherUserId == null -> resolveCaller(request.callerUserId)
-            !hasNamespacePermission(request.callerUserId, request.callerNamespaceId, Action.WRITE) ->
+            otherUserId == null -> {
+                resolveCaller(request.callerUserId)
+            }
+
+            !hasNamespacePermission(request.callerUserId, request.callerNamespaceId, Action.WRITE) -> {
                 refuse(
                     CaseStarterRefusal.FORBIDDEN,
                     "Only an administrator of the namespace can start a case for another user.",
                 )
-            else -> resolveOtherUser(userId = otherUserId, namespaceId = request.callerNamespaceId)
+            }
+
+            else -> {
+                resolveOtherUser(userId = otherUserId, namespaceId = request.callerNamespaceId)
+            }
         }
     }
 
@@ -270,6 +275,85 @@ class CaseStarterService(
     }
 
     /**
+     * Resolves the prompt text and optional title to use when creating the case.
+     *
+     * Resolution order:
+     * 1. When [CaseStarterRequest.promptId] is set, delegate to [resolveStoredPrompt], which reads the
+     *    persisted [io.whozoss.agentos.prompt.Prompt] and reuses its curated translations via
+     *    `PromptService.translate(...)`. A missing or empty prompt refuses the start.
+     * 2. Otherwise fall through to [maybeTranslate] (the existing free-text LLM path), which translates
+     *    [CaseStarterRequest.prompt] on-the-fly when the target user speaks a different language.
+     */
+    private fun resolveMessage(
+        request: CaseStarterRequest,
+        targetUser: User,
+    ): Pair<String, String?> {
+        val targetLanguage = targetUser.preferredLanguage?.takeIf { it.isNotBlank() }
+        return when (val promptId = request.promptId) {
+            null -> maybeTranslate(request, targetLanguage, request.callerNamespaceId)
+            else -> resolveStoredPrompt(promptId, targetLanguage, request)
+        }
+    }
+
+    /**
+     * Resolves content and title from a persisted [io.whozoss.agentos.prompt.Prompt].
+     *
+     * When [targetLanguage] is null the source-language content is used directly.
+     * Otherwise `PromptService.translate(...)` is called, which reuses persisted translations
+     * before falling back to an LLM.
+     *
+     * A [NoSuchElementException] from `translate` (prompt not found) and a missing/blank content
+     * both surface as [CaseStarterRefusal.PROMPT_NOT_FOUND]. Any other translation exception
+     * degrades gracefully to the source-language content rather than failing the start.
+     */
+    private fun resolveStoredPrompt(
+        promptId: UUID,
+        targetLanguage: String?,
+        request: CaseStarterRequest,
+    ): Pair<String, String?> {
+        if (targetLanguage == null) {
+            val prompt =
+                promptService.findById(promptId)
+                    ?: refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId not found.")
+            val content =
+                prompt.content.firstOrNull { it.isNotBlank() }
+                    ?: refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId has no usable content.")
+            return content to (prompt.title ?: request.title)
+        }
+        // Try translated path; NoSuchElementException = prompt not found → refuse.
+        val translation =
+            try {
+                promptService.translate(
+                    id = promptId,
+                    targetLanguage = targetLanguage,
+                    callerNamespaceId = request.callerNamespaceId,
+                )
+            } catch (e: NoSuchElementException) {
+                refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId not found: ${e.message}")
+            } catch (e: Exception) {
+                // Degrade to source-language content rather than failing the start.
+                logger.warn(e) { "[CaseStarter] translation of stored prompt $promptId failed — using source content" }
+                val prompt =
+                    promptService.findById(promptId)
+                        ?: refuse(
+                            CaseStarterRefusal.PROMPT_NOT_FOUND,
+                            "Prompt $promptId not found after translation failure.",
+                        )
+                val content =
+                    prompt.content.firstOrNull { it.isNotBlank() }
+                        ?: refuse(CaseStarterRefusal.PROMPT_NOT_FOUND, "Prompt $promptId has no usable content.")
+                return content to (prompt.title ?: request.title)
+            }
+        val content =
+            translation.content.firstOrNull { it.isNotBlank() }
+                ?: refuse(
+                    CaseStarterRefusal.PROMPT_NOT_FOUND,
+                    "Prompt $promptId has no usable content after translation.",
+                )
+        return content to (translation.title ?: request.title)
+    }
+
+    /**
      * Translates [CaseStarterRequest.prompt] and [CaseStarterRequest.title] when translation is opted in.
      * Returns originals unchanged on any failure or when conditions are not met.
      */
@@ -365,7 +449,12 @@ class CaseStarterService(
             // The @mention routes the message to the agent through the normal agent selection.
             caseService.addMessage(
                 caseId = case.id,
-                actor = Actor(id = targetUser.id.toString(), displayName = targetUser.displayName(), role = ActorRole.USER),
+                actor =
+                    Actor(
+                        id = targetUser.id.toString(),
+                        displayName = targetUser.displayName(),
+                        role = ActorRole.USER,
+                    ),
                 content = listOf(MessageContent.Text("@$agentName $prompt")),
                 sessionContext = sessionContext,
             )
