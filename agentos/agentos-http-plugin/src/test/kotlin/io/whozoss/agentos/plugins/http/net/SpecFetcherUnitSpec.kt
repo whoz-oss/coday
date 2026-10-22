@@ -12,7 +12,7 @@ import io.whozoss.agentos.plugins.http.testing.TestResponse
 class SpecFetcherUnitSpec : StringSpec({
     isolationMode = IsolationMode.InstancePerLeaf
 
-    val policy = OutboundUrlPolicy(allowLoopbackHttp = true)
+    val policy = OutboundUrlPolicy(allowUnsecure = true)
     val holder = HttpClientHolder(policy)
     val server = TestHttpServer()
     afterSpec {

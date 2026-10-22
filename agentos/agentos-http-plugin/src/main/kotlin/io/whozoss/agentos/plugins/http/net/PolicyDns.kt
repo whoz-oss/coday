@@ -7,7 +7,9 @@ import java.net.UnknownHostException
 /**
  * DNS resolver that keeps only the addresses the [OutboundUrlPolicy] allows, so that the addresses actually
  * connected to are the ones checked: a public host name resolving (or rebinding) to a private range is
- * refused with an [UnknownHostException].
+ * refused with an [UnknownHostException]. When the explicit unsecure policy is enabled, address
+ * restrictions are relaxed for the shared HTTP/HTTPS DNS resolver as documented by
+ * [OutboundUrlPolicy].
  */
 class PolicyDns(
     private val policy: OutboundUrlPolicy,
