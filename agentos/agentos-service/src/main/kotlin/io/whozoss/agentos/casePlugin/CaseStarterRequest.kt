@@ -16,6 +16,10 @@ import java.util.UUID
  * @param sessionContext What the caller hands to the new case: free key/value data, passed on as given to the
  *   first message, under the context the system resolves for the target user (see [CaseStarterService]). The
  *   calling case's own session context is never inherited.
+ * @param dispatchKey Names this delivery, so starting it twice starts one case. A second start carrying a key
+ *   already used is refused with [CaseStarterRefusal.ALREADY_DISPATCHED], before anything is written. Null for
+ *   a caller that does not repeat itself — an agent starting a case on its own initiative — and set by one that
+ *   may be re-run, such as a scheduled fan-out. See [DispatchKey] for how the scheduler composes it.
  */
 data class CaseStarterRequest(
     val callerUserId: UUID,
@@ -26,4 +30,5 @@ data class CaseStarterRequest(
     val targetUserId: UUID? = null,
     val title: String? = null,
     val sessionContext: Map<String, Any?>? = null,
+    val dispatchKey: String? = null,
 )

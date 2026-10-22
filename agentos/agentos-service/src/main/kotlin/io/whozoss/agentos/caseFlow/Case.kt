@@ -42,6 +42,17 @@ data class Case(
      */
     val originCaseId: UUID? = null,
     /**
+     * Names the delivery this case fulfils, when it was started by a caller that may be re-run
+     * ([io.whozoss.agentos.casePlugin.DispatchKey]). Null for a case nobody will try to start twice.
+     *
+     * Backed by a UNIQUE constraint, so a second start carrying the same key is refused rather than creating
+     * a duplicate case. That is what makes a scheduled fan-out safely re-runnable without a work queue.
+     *
+     * Rewritten to a tombstone form on soft-delete ([io.whozoss.agentos.caseFlow.Neo4jCaseRepository.delete]),
+     * so a deleted case does not hold its key for ever and block re-delivery.
+     */
+    val dispatchKey: String? = null,
+    /**
      * Per-case override of the run cost threshold, expressed in the platform's currency unit.
      *
      * **`null` means "inherit from the namespace or platform default", never "no limit" or "zero".**

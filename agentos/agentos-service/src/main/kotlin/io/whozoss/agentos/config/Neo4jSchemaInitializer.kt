@@ -147,6 +147,17 @@ class Neo4jSchemaInitializer(
             logger.info { "[Neo4jSchemaInitializer] Constraint $constraintName ensured" }
         }
 
+        // Case dispatchKey uniqueness: one case per intended delivery, so re-running a fan-out skips
+        // what it already delivered instead of duplicating it. Null keys are exempt (Neo4j ignores NULL
+        // in uniqueness), which is what lets ordinary cases carry none. Soft-deleted cases keep a
+        // tombstoned key (Neo4jCaseRepository.delete) so a deletion frees the slot for re-delivery.
+        neo4jClient
+            .query(
+                "CREATE CONSTRAINT case_dispatch_key_unique IF NOT EXISTS " +
+                    "FOR (c:Case) REQUIRE c.dispatchKey IS UNIQUE",
+            ).run()
+        logger.info { "[Neo4jSchemaInitializer] Constraint case_dispatch_key_unique ensured" }
+
         // Skill doubleKey uniqueness constraint: enforces uniqueness on (namespaceId, lowercased name)
         // while allowing soft-deleted entities via tombstoned doubleKeys.
         neo4jClient

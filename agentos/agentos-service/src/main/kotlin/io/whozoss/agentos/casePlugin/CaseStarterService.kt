@@ -34,6 +34,10 @@ import java.util.UUID
  *    it: the [Case.parentCaseId] chain of the calling case is walked up, which delegation caps at a few
  *    levels. A started case counts in no delegation depth, so without this an agent could start itself
  *    without end. One level is all a caller like AgentLoop needs.
+ * 1b. **Already dispatched.** When the caller names the delivery with a [CaseStarterRequest.dispatchKey], a
+ *    case already carrying that key means the delivery happened: the start is refused rather than repeated.
+ *    This is what lets a caller that may be re-run — a scheduled fan-out — retry as a whole without
+ *    re-delivering to everyone it already reached. See [DispatchKey].
  * 2. **Target user.** The caller, unless [CaseStarterRequest.targetUserId] names someone else. Then the
  *    caller must be an ADMIN of the namespace (the federation: Namespace WRITE, which super-admins also
  *    hold), and the target must exist and read the namespace. A plain member cannot run a case on behalf
@@ -98,6 +102,7 @@ class CaseStarterService(
                 "The current case was itself started by another case, so it cannot start a new one.",
             )
         }
+        refuseIfAlreadyDispatched(request.dispatchKey)
         val targetUser = resolveTargetUser(request)
         val agentName =
             findDeployedAgent(
@@ -141,6 +146,28 @@ class CaseStarterService(
     /** The case [case] was delegated from, deleted or not, or null for a top-level case. */
     private fun findParent(case: Case): Case? =
         case.parentCaseId?.let { parentId -> caseService.findById(parentId, withRemoved = true) }
+
+    /**
+     * Refuses a delivery already made under [dispatchKey].
+     *
+     * Checked first, before the start does any other work: a repeat is the cheapest thing to detect and the
+     * only one whose answer does not depend on the caller's rights.
+     *
+     * The read is not a lock — two concurrent starts carrying the same key can both pass it. The UNIQUE
+     * constraint on `Case.dispatchKey` is what actually guarantees one case: the loser's `create` fails and
+     * surfaces as an infrastructure failure rather than a refusal. That asymmetry is deliberate. The common
+     * case (a re-run, minutes or hours later) reads cleanly and reports a refusal the caller can count; the
+     * rare case (two runs racing on the same key, which the overlap guard already prevents for the scheduler)
+     * fails loudly rather than silently duplicating.
+     */
+    private fun refuseIfAlreadyDispatched(dispatchKey: String?) {
+        if (dispatchKey == null) return
+        val existing = caseService.findByDispatchKey(dispatchKey) ?: return
+        refuse(
+            CaseStarterRefusal.ALREADY_DISPATCHED,
+            "A case was already started for this delivery (case ${existing.id}).",
+        )
+    }
 
     private fun resolveTargetUser(request: CaseStarterRequest): User {
         // Null when the case runs for the caller: no userId, or the caller's own.
@@ -251,13 +278,14 @@ class CaseStarterService(
         return ((request.sessionContext ?: emptyMap()) + (resolved ?: emptyMap())).takeIf { it.isNotEmpty() }
     }
 
-    /** Creates the case, tracing the calling one as its origin. */
+    /** Creates the case, tracing the calling one as its origin and the delivery it fulfils. */
     private fun createCase(request: CaseStarterRequest): Case =
         caseService.create(
             Case(
                 namespaceId = request.callerNamespaceId,
                 title = (request.title?.takeIf { it.isNotBlank() } ?: request.prompt).take(MAX_TITLE_LENGTH),
                 originCaseId = request.callerCaseId,
+                dispatchKey = request.dispatchKey,
             ),
         )
 

@@ -1,5 +1,6 @@
 package io.whozoss.agentos.caseFlow
 
+import io.whozoss.agentos.casePlugin.DispatchKey
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
 import org.springframework.data.repository.findByIdOrNull
@@ -71,12 +72,24 @@ open class Neo4jCaseRepository(
                 namespaceId = namespaceId.toString(),
             ).map { it.toDomain() }
 
+    /**
+     * Soft-deletes the case and **releases its dispatch key**.
+     *
+     * The UNIQUE constraint binds removed nodes too, so leaving the key in place would let one deleted case
+     * block that delivery for ever. Rewriting it to a tombstone keeps the row auditable while freeing the slot —
+     * the same treatment `ScheduledPromptNode.tripleKey` and `SkillNode.doubleKey` receive.
+     */
     override fun delete(id: UUID): Boolean =
         caseNodeNeo4jRepository
             .findByIdOrNull(id.toString())
             ?.takeIf { it.removed != true }
             ?.let { node ->
-                caseNodeNeo4jRepository.save(node.copy(removed = true))
+                val tombstoned =
+                    node.copy(
+                        removed = true,
+                        dispatchKey = node.dispatchKey?.let { DispatchKey.tombstone(id) },
+                    )
+                caseNodeNeo4jRepository.save(tombstoned)
                 logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id" }
                 true
             } ?: false
@@ -92,6 +105,8 @@ open class Neo4jCaseRepository(
             .map { it.toDomain() }
 
     override fun countAncestorDepth(caseId: UUID): Int = caseNodeNeo4jRepository.countAncestorDepth(caseId.toString())
+
+    override fun findByDispatchKey(dispatchKey: String): Case? = caseNodeNeo4jRepository.findByDispatchKey(dispatchKey)?.toDomain()
 
     override fun linkParentToChild(
         parentCaseId: UUID,

@@ -23,6 +23,8 @@ data class CaseNode(
     val parentCaseId: String? = null,
     val scheduledPromptId: String? = null,
     val originCaseId: String? = null,
+    /** See [Case.dispatchKey]. Null for cases nobody re-delivers; tombstoned on soft-delete. */
+    val dispatchKey: String? = null,
     val runCostThreshold: Double? = null,
     val created: Instant = Instant.now(),
     val createdBy: String? = null,
@@ -49,6 +51,7 @@ data class CaseNode(
             parentCaseId = parentCaseId?.let { UUID.fromString(it) },
             scheduledPromptId = scheduledPromptId?.let { UUID.fromString(it) },
             originCaseId = originCaseId?.let { UUID.fromString(it) },
+            dispatchKey = dispatchKey,
             runCostThreshold = runCostThreshold,
         )
 
@@ -62,6 +65,7 @@ data class CaseNode(
                 parentCaseId = case.parentCaseId?.toString(),
                 scheduledPromptId = case.scheduledPromptId?.toString(),
                 originCaseId = case.originCaseId?.toString(),
+                dispatchKey = case.dispatchKey,
                 runCostThreshold = case.runCostThreshold,
                 created = case.metadata.created,
                 createdBy = case.metadata.createdBy,

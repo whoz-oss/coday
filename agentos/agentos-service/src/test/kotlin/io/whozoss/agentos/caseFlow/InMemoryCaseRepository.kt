@@ -82,4 +82,11 @@ class InMemoryCaseRepository : CaseRepository {
         parentCaseId: UUID,
         childCaseId: UUID,
     ): Unit = Unit
+
+    /**
+     * Mirrors the Neo4j behaviour: only live cases hold their key. Production tombstones the key on
+     * soft-delete; here filtering removed rows gives the same observable result.
+     */
+    override fun findByDispatchKey(dispatchKey: String): Case? =
+        delegate.findAll().firstOrNull { it.dispatchKey == dispatchKey && !it.metadata.removed }
 }

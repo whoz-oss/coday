@@ -230,6 +230,8 @@ class CaseServiceImpl(
 
     override fun findByParent(parentId: UUID): List<Case> = caseRepository.findByParent(parentId)
 
+    override fun findByDispatchKey(dispatchKey: String): Case? = caseRepository.findByDispatchKey(dispatchKey)
+
     override fun findAccessibleByUserInNamespace(
         userId: UUID,
         namespaceId: UUID,

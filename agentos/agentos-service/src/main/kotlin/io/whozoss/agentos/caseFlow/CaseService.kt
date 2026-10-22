@@ -67,6 +67,15 @@ interface CaseService : EntityService<Case, UUID> {
      */
     fun findConcerningUserInNamespace(userId: UUID, namespaceId: UUID): List<Case>
 
+    /**
+     * The non-removed case already delivered for [dispatchKey], or null when it has not been delivered.
+     *
+     * Read by [io.whozoss.agentos.casePlugin.CaseStarterService] so a caller that may be re-run skips a
+     * delivery it already made. No permission filter: the key is not guessable and the answer is only ever
+     * used to refuse a duplicate, never to expose the case.
+     */
+    fun findByDispatchKey(dispatchKey: String): Case?
+
     // ========================================
     // Runtime Instance Management
     // ========================================

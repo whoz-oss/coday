@@ -81,4 +81,12 @@ interface CaseRepository : EntityRepository<Case, UUID> {
         parentCaseId: UUID,
         childCaseId: UUID,
     )
+
+    /**
+     * The non-removed case already delivered for [dispatchKey], or null when it has not been delivered.
+     *
+     * Lets [io.whozoss.agentos.casePlugin.CaseStarterService] skip a delivery it already made, which is what
+     * makes a re-run of a fan-out safe. Implementations must exclude soft-deleted cases.
+     */
+    fun findByDispatchKey(dispatchKey: String): Case?
 }

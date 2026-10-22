@@ -170,6 +170,26 @@ interface CaseNodeNeo4jRepository : Neo4jRepository<CaseNode, String> {
         @Param("childCaseId") childCaseId: String,
     )
 
+    /**
+     * The non-removed case already delivered for [dispatchKey], or null when the delivery has not happened.
+     *
+     * Read by [io.whozoss.agentos.casePlugin.CaseStarterService] before it starts, so a re-run skips what it
+     * already delivered. Soft-deleted cases are excluded because their key has been tombstoned by
+     * [Neo4jCaseRepository.delete] — the filter is belt-and-braces, not load-bearing.
+     *
+     * Served by the `case_dispatch_key_unique` constraint's index: an exact seek, not a label scan.
+     */
+    @Transactional(readOnly = true)
+    @Query(
+        $$"""MATCH (c:Case {dispatchKey: $dispatchKey})
+            WHERE (c.removed IS NULL OR c.removed = false)
+            RETURN c LIMIT 1
+            """,
+    )
+    fun findByDispatchKey(
+        @Param("dispatchKey") dispatchKey: String,
+    ): CaseNode?
+
     // -------------------------------------------------------------------------
     // WATCHES — consolidated per-user case state (favorite + read).
     //

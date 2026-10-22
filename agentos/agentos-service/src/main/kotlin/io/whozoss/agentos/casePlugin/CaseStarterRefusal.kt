@@ -22,4 +22,10 @@ enum class CaseStarterRefusal {
 
     /** The agent is unknown, disabled or not deployed to the target user: the three look the same. */
     AGENT_NOT_AVAILABLE,
+
+    /**
+     * A case was already started for this [CaseStarterRequest.dispatchKey]: the delivery happened, so it is not
+     * repeated. This is how a re-run skips what it already delivered rather than duplicating it.
+     */
+    ALREADY_DISPATCHED,
 }
