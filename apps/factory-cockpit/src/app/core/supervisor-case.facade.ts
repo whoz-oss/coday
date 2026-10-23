@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core'
 import { Observable, catchError, of, switchMap, tap } from 'rxjs'
 import { AgentOsApiService } from './agentos-api.service'
-import { AGENTOS_BASE_URL, buildAgentOsCaseUrl } from './factory.store'
+import { buildAgentOsCaseUrl } from './factory.store'
 import { FactoryRun, SupervisorCaseResult } from './models'
 import { SupervisorCaseStoreService } from './supervisor-case-store.service'
 
@@ -9,7 +9,7 @@ import { SupervisorCaseStoreService } from './supervisor-case-store.service'
 @Injectable({ providedIn: 'root' })
 export class SupervisorCaseFacade {
   private readonly agentOs = inject(AgentOsApiService)
-  private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
+
   private readonly store = inject(SupervisorCaseStoreService)
 
   restore(run: FactoryRun): SupervisorCaseResult | undefined {
@@ -21,7 +21,7 @@ export class SupervisorCaseFacade {
     return {
       caseId: entry.caseId,
       namespaceId: entry.namespaceId,
-      agentOsUrl: buildAgentOsCaseUrl(entry.caseId, entry.namespaceId, this.agentOsBaseUrl),
+      agentOsUrl: buildAgentOsCaseUrl(entry.caseId, entry.namespaceId),
     }
   }
 
@@ -44,7 +44,7 @@ export class SupervisorCaseFacade {
             of<SupervisorCaseResult>({
               caseId: createdCase.id,
               namespaceId,
-              agentOsUrl: buildAgentOsCaseUrl(createdCase.id, namespaceId, this.agentOsBaseUrl),
+              agentOsUrl: buildAgentOsCaseUrl(createdCase.id, namespaceId),
             })
           )
         )

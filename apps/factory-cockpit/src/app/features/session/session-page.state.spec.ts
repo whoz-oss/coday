@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing'
-import { AGENTOS_BASE_URL, FactoryStore } from '../../core/factory.store'
+import { FactoryStore } from '../../core/factory.store'
 import { SessionPageState } from './session-page.state'
 
 describe('SessionPageState', () => {
@@ -15,11 +15,7 @@ describe('SessionPageState', () => {
     jest.clearAllMocks()
     sessions.clear()
     TestBed.configureTestingModule({
-      providers: [
-        SessionPageState,
-        { provide: FactoryStore, useValue: store },
-        { provide: AGENTOS_BASE_URL, useValue: '' },
-      ],
+      providers: [SessionPageState, { provide: FactoryStore, useValue: store }],
     })
   })
 

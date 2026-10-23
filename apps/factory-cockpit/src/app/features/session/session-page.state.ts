@@ -1,12 +1,11 @@
 import { Injectable, computed, inject, signal } from '@angular/core'
-import { AGENTOS_BASE_URL, FactoryStore, buildAgentOsCaseUrl } from '../../core/factory.store'
+import { FactoryStore, buildAgentOsCaseUrl } from '../../core/factory.store'
 import { BlockSelection, TimelineBlock } from '../../core/models'
 
 /** Page-scoped selection and derived presentation model for one session. */
 @Injectable()
 export class SessionPageState {
   private readonly store = inject(FactoryStore)
-  private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
   private readonly runId = signal('')
   private readonly namespace = signal<string | undefined>(undefined)
 
@@ -93,7 +92,7 @@ export class SessionPageState {
   }
 
   caseLink(caseId: string): string {
-    return buildAgentOsCaseUrl(caseId, this.namespaceId() || undefined, this.agentOsBaseUrl)
+    return buildAgentOsCaseUrl(caseId, this.namespaceId() || undefined)
   }
 
   destroy(): void {

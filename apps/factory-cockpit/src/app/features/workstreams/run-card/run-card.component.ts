@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router'
 import { MatCardModule } from '@angular/material/card'
 import { MatButtonModule } from '@angular/material/button'
 import { MatIconModule } from '@angular/material/icon'
-import { AGENTOS_BASE_URL, FactoryStore, buildAgentOsCaseUrl } from '../../../core/factory.store'
+import { FactoryStore, buildAgentOsCaseUrl } from '../../../core/factory.store'
 import { AgentOsApiError } from '../../../core/agentos-api.service'
 import { FactoryRun, SupervisorCaseResult } from '../../../core/models'
 import { StatusChipComponent } from '../../../shared/ui/status-chip.component'
@@ -59,7 +59,6 @@ export class RunCardComponent {
   readonly action = output<RunAction>()
 
   private readonly store = inject(FactoryStore)
-  private readonly agentOsBaseUrl = inject(AGENTOS_BASE_URL)
 
   /** Tracks the async state of the supervisor case-creation flow. */
   protected readonly supervisorState = signal<SupervisorState>('idle')
@@ -111,7 +110,7 @@ export class RunCardComponent {
     const run = this.run()
     const caseId = run.controllerCaseId
     if (!caseId) return null
-    return buildAgentOsCaseUrl(caseId, run.namespaceId, this.agentOsBaseUrl)
+    return buildAgentOsCaseUrl(caseId, run.namespaceId)
   }
 
   /**
