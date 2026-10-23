@@ -60,6 +60,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import mu.KLogging
+import org.springframework.dao.OptimisticLockingFailureException
 import org.springframework.security.access.AccessDeniedException
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.stereotype.Service
@@ -151,7 +152,7 @@ class CaseServiceImpl(
     override fun create(entity: Case): Case = caseWorkspaceProvisioning?.aroundCreation(entity) { createCase(entity) } ?: createCase(entity)
 
     private fun createCase(entity: Case): Case {
-        checkCaseCreationPreconditions(entity)
+        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
         // Materialise runCostThreshold at creation time from the resolution chain:
         // Case (caller-supplied) ?: Namespace.runCostThreshold ?: platform default.
         // A non-null value on the incoming entity is an explicit caller override — kept as-is.
@@ -164,7 +165,7 @@ class CaseServiceImpl(
         val caseToSave =
             entity.copy(runCostThreshold = resolvedThreshold)
 
-        val saved = caseRepository.save(caseToSave)
+        val saved = saveNewCase(caseToSave)
         // The [:PARENT_OF] edge lets countAncestorDepth walk the chain. It is written in this
         // transaction, so a failed link rolls the case back instead of leaving an orphan.
         saved.parentCaseId?.let { caseRepository.linkParentToChild(it, saved.id) }
@@ -176,15 +177,15 @@ class CaseServiceImpl(
     }
 
     /**
-     * Guards case creation: rejects duplicate ids (including soft-deleted ones) and
-     * validates the parent when one is provided.
+     * Inserts a new case. A versioned node is only created when its id is free, soft-deleted
+     * cases included, so a client-supplied id can neither overwrite nor resurrect another case.
      */
-    private fun checkCaseCreationPreconditions(entity: Case) {
-        // Soft-deleted ids count: reusing one would resurrect the old node with its existing
-        // relationships, including its place in another family.
-        require(findById(entity.id, withRemoved = true) == null) { "Duplicate entity id: ${entity.id}" }
-        entity.parentCaseId?.let { requireValidParent(it, entity.namespaceId) }
-    }
+    private fun saveNewCase(case: Case): Case =
+        try {
+            caseRepository.save(case)
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Duplicate entity id: ${case.id}", e)
+        }
 
     /** A sub-case needs an existing parent in its namespace, below the depth limit, that still accepts input. */
     private fun requireValidParent(
@@ -213,9 +214,31 @@ class CaseServiceImpl(
             // handleStatusChange already persisted the new status; return fresh view.
             findById(entity.id) ?: entity
         } else {
-            caseRepository.save(entity)
+            saveEdit(entity)
         }
     }
+
+    override fun edit(
+        id: UUID,
+        change: (Case) -> Case,
+    ): Case {
+        val current = findById(id) ?: throw ResourceNotFoundException("Case not found: $id")
+        return try {
+            caseRepository.saveChange(current) { case ->
+                change(case).copy(status = case.status, namespaceId = case.namespaceId)
+            }
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Case $id kept changing concurrently, retry", e)
+        }
+    }
+
+    /** An edit read before a concurrent write is refused rather than overwriting it: the client reloads. */
+    private fun saveEdit(entity: Case): Case =
+        try {
+            caseRepository.save(entity)
+        } catch (e: OptimisticLockingFailureException) {
+            throw ConflictException("Case ${entity.id} was changed concurrently, reload it and retry", e)
+        }
 
     override fun findById(
         id: UUID,
@@ -860,7 +883,7 @@ class CaseServiceImpl(
     ) {
         val case = getById(caseId)
         val oldStatus = case.status
-        val updated = caseRepository.save(case.copy(status = newStatus))
+        val updated = caseRepository.saveChange(case) { it.copy(status = newStatus) }
 
         if (newStatus == CaseStatus.ERROR) {
             logger.error { "Case $caseId status: $oldStatus -> $newStatus" }
