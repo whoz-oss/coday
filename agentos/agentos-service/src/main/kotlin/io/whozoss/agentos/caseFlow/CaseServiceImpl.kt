@@ -12,9 +12,11 @@ import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.delegation.SubCaseManager
 import io.whozoss.agentos.exception.BadRequestException
+import io.whozoss.agentos.exception.ConflictException
 import io.whozoss.agentos.exception.PromptResolutionException
 import io.whozoss.agentos.exception.ResourceNotFoundException
 import io.whozoss.agentos.exception.UnprocessableEntityException
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.EntityType
 import io.whozoss.agentos.permissions.PermissionRelation
@@ -95,6 +97,7 @@ class CaseServiceImpl(
      * Defaults to [Dispatchers.IO] in production; override with [UnconfinedTestDispatcher]
      * in tests so all coroutines run on the test scheduler and virtual time applies.
      */
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
     coroutineContext: CoroutineContext = Dispatchers.IO,
 ) : CaseService,
     SubCaseManager {
@@ -984,6 +987,17 @@ class CaseServiceImpl(
         killSingleCase(caseId)
     }
 
+    override fun reopenCase(caseId: UUID): Case {
+        val case = findById(caseId) ?: throw ResourceNotFoundException("Case not found: $caseId")
+        if (!case.status.isTerminal()) {
+            throw ConflictException("Only a terminated case can be reopened")
+        }
+        caseLaunchGate?.requireReopenable(caseId)
+        logger.info { "Reopening case: $caseId (was ${case.status})" }
+        handleStatusChange(caseId, CaseStatus.IDLE, postProcess = false)
+        return findById(caseId) ?: error("Case $caseId not found after reopen status change")
+    }
+
     override fun resumeSubCase(
         subCaseId: UUID,
         parentCaseId: UUID,
@@ -1084,6 +1098,7 @@ class CaseServiceImpl(
                 }
             throw AccessDeniedException("Failed to grant permissions on sub-case ${subCase.id}: ${e.message}", e)
         }
+        caseListUpdateBroadcaster.publishCaseCreated(subCase.namespaceId)
 
         val runtime = activeRuntimes[subCase.id]!!
         runtime.addUserMessage(actor, listOf(MessageContent.Text(mentionedTask)))

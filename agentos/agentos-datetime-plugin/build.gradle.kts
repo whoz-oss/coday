@@ -101,6 +101,17 @@ kotlin {
     }
 }
 
+tasks.jar {
+  manifest {
+    attributes(
+      "Plugin-Id" to "agentos-datetime-plugin",
+      "Plugin-Version" to version,
+      "Plugin-Provider" to "whoz-oss",
+      "Plugin-Class" to "io.whozoss.agentos.plugins.datetime.DateTimePlugin",
+    )
+  }
+}
+
 tasks.withType<Test> {
     useJUnitPlatform()
 }

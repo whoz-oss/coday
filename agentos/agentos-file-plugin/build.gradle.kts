@@ -115,6 +115,14 @@ kotlin {
 }
 
 tasks.jar {
+    manifest {
+      attributes(
+        "Plugin-Id" to "agentos-file-plugin",
+        "Plugin-Version" to version,
+        "Plugin-Provider" to "whoz-oss",
+        "Plugin-Class" to "io.whozoss.agentos.plugins.file.FilePlugin",
+      )
+    }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     // Bundle PDFBox and POI with their transitive deps (fontbox, pdfbox-io, commons-logging,
     // xmlbeans, poi-ooxml-lite, commons-compress/io/codec/collections4/math3, curvesapi) into

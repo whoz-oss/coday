@@ -39,6 +39,7 @@ import io.whozoss.agentos.git.GitMetadataEntries
 import io.whozoss.agentos.git.InMemoryCaseResourceBindingService
 import io.whozoss.agentos.git.WorkspaceLifecycleLocks
 import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.PermissionService
 import io.whozoss.agentos.prompt.Prompt
@@ -225,6 +226,7 @@ class CaseServiceImplSpec :
 
         val permissionService: PermissionService = mockk(relaxed = true)
         val promptService: PromptService = mockk(relaxed = true)
+        val caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true)
 
         /** Build a fully-wired [CaseServiceImpl] backed by in-memory repositories. */
         fun buildService(
@@ -277,6 +279,7 @@ class CaseServiceImplSpec :
                 caseNamingService = noOpCaseNamingService,
                 usageRecordService = UsageRecordServiceImpl(usageRecordRepository),
                 usageConfig = usageConfig,
+                caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 caseLaunchGate = caseLaunchGate,
                 runCostService = runCostService,
                 coroutineContext = coroutineContext,
@@ -1329,6 +1332,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1573,6 +1577,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1679,6 +1684,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1764,6 +1770,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1823,6 +1830,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1912,6 +1920,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -1993,6 +2002,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -2118,6 +2128,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -2229,6 +2240,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -2597,6 +2609,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val parentCase = service.create(Case(namespaceId = namespaceId))
 
@@ -2656,6 +2669,90 @@ class CaseServiceImplSpec :
             val allEvents = withTimeout(8_000) { receivedEvents.await() }
             val messageEvent = allEvents.filterIsInstance<MessageEvent>().first { it.actor.role == ActorRole.USER }
             messageEvent.sessionContext shouldBe sessionCtx
+        }
+
+        // -------------------------------------------------------------------------
+        // reopenCase: terminal -> IDLE transitions
+        // -------------------------------------------------------------------------
+
+        listOf(CaseStatus.KILLED, CaseStatus.ERROR).forEach { terminalStatus ->
+            "reopenCase transitions a $terminalStatus case back to IDLE and persists a CaseStatusEvent" {
+                val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+                val caseRepository = InMemoryCaseRepository()
+                val service = buildService(caseEventService = caseEventService, caseRepository = caseRepository)
+                val case = service.create(Case(namespaceId = namespaceId))
+                // Drive to the target terminal status via the repository directly so the
+                // test does not depend on the kill machinery or any other service path.
+                caseRepository.save(caseRepository.findByIds(listOf(case.id)).single().copy(status = terminalStatus))
+                service.getById(case.id).status shouldBe terminalStatus
+
+                val reopened = service.reopenCase(case.id)
+
+                reopened.status shouldBe CaseStatus.IDLE
+                service.getById(case.id).status shouldBe CaseStatus.IDLE
+                // A CaseStatusEvent with IDLE must have been persisted
+                caseEventService
+                    .findByParent(case.id)
+                    .filterIsInstance<CaseStatusEvent>()
+                    .last()
+                    .status shouldBe CaseStatus.IDLE
+            }
+        }
+
+        "reopenCase of a non-terminal case throws ConflictException" {
+            val service = buildService()
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Case starts in CREATED status — not terminal
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an IDLE case throws ConflictException" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val service = buildService(caseEventService = caseEventService)
+            val case = service.create(Case(namespaceId = namespaceId))
+            // Drive to IDLE via a normal message + agent run
+            val runtime = service.getCaseRuntime(case.id)
+            val scope = CoroutineScope(Dispatchers.IO)
+            val awaiter = scope.expectCaseStatus(runtime, CaseStatus.IDLE)
+            awaitSubscribers(runtime)
+            service.addMessage(case.id, userActor, listOf(MessageContent.Text("hello")))
+            awaiter.join()
+            service.getById(case.id).status shouldBe CaseStatus.IDLE
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+        }
+
+        "reopenCase of an unknown case throws ResourceNotFoundException" {
+            val service = buildService()
+            shouldThrow<ResourceNotFoundException> {
+                service.reopenCase(UUID.randomUUID())
+            }
+        }
+
+        "reopenCase is blocked when the launch gate vetoes it" {
+            val caseEventService = CaseEventServiceImpl(InMemoryCaseEventRepository())
+            val blockingGate =
+                object : CaseLaunchGate {
+                    override fun launchDecision(caseId: UUID): LaunchDecision = LaunchDecision.Admit
+
+                    override fun requireReopenable(caseId: UUID) {
+                        throw io.whozoss.agentos.exception.ConflictException("The workspace is being removed or has been removed")
+                    }
+                }
+            val service = buildService(caseEventService = caseEventService, caseLaunchGate = blockingGate)
+            val case = service.create(Case(namespaceId = namespaceId))
+            service.killCase(case.id)
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
+
+            shouldThrow<io.whozoss.agentos.exception.ConflictException> {
+                service.reopenCase(case.id)
+            }
+            // Status must not have changed
+            service.getById(case.id).status shouldBe CaseStatus.KILLED
         }
 
         "killing a parent case also kills its active sub-cases" {
@@ -2785,6 +2882,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -2942,6 +3040,7 @@ class CaseServiceImplSpec :
                     noOpCaseNamingService,
                     LimitsConfigProperties(),
                     UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val parent = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(parent.id)
@@ -3066,6 +3165,7 @@ class CaseServiceImplSpec :
                     promptService = multiPromptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
 
             val case = service.create(Case(namespaceId = namespaceId))
@@ -3162,6 +3262,7 @@ class CaseServiceImplSpec :
                     promptService = throwingPromptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
 
             val case = service.create(Case(namespaceId = namespaceId))
@@ -3240,6 +3341,7 @@ class CaseServiceImplSpec :
                     limitsConfig = LimitsConfigProperties(runCostThreshold = 0.001),
                     usageRecordService = usageRecordService,
                     runCostService = runCostService,
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             try {
                 val case = service.create(Case(namespaceId = namespaceId, runCostThreshold = 0.003))
@@ -3318,6 +3420,7 @@ class CaseServiceImplSpec :
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
                     usageConfig = UsageConfigProperties(enabled = true),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -3418,6 +3521,7 @@ class CaseServiceImplSpec :
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
                     usageConfig = UsageConfigProperties(enabled = true),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -3489,6 +3593,7 @@ class CaseServiceImplSpec :
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = failingUsageRecordService,
                     usageConfig = UsageConfigProperties(enabled = true),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = throwingService.create(Case(namespaceId = namespaceId))
             val runtime = throwingService.getCaseRuntime(case.id)
@@ -3800,6 +3905,7 @@ class CaseServiceImplSpec :
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(usageRepo),
                     usageConfig = UsageConfigProperties(enabled = true),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
             val case = service.create(Case(namespaceId = namespaceId))
             val runtime = service.getCaseRuntime(case.id)
@@ -3905,6 +4011,7 @@ class CaseServiceImplSpec :
                     caseNamingService = noOpCaseNamingService,
                     limitsConfig = LimitsConfigProperties(),
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
 
             // Parent lives in namespaceId
@@ -4047,6 +4154,7 @@ class CaseServiceImplSpec :
                     promptService = promptService,
                     caseNamingService = noOpCaseNamingService,
                     usageRecordService = UsageRecordServiceImpl(InMemoryUsageRecordRepository()),
+                    caseListUpdateBroadcaster = caseListUpdateBroadcaster,
                 )
 
             // Insert the case directly into the repository so no runtime is created in

@@ -16,6 +16,7 @@ import io.whozoss.agentos.caseEvent.InMemoryCaseEventRepository
 import io.whozoss.agentos.config.LimitsConfigProperties
 import io.whozoss.agentos.config.UsageConfigProperties
 import io.whozoss.agentos.namespace.Namespace
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.sdk.actor.Actor
 import io.whozoss.agentos.sdk.actor.ActorRole
@@ -172,6 +173,7 @@ private class AnalyticsFailureFixture(threshold: Double?) {
             usageRecordService = records,
             runCostService = costs,
             usageConfig = usageConfig,
+            caseListUpdateBroadcaster = mockk<NamespaceCaseListUpdateBroadcaster>(relaxed = true),
         )
     val case = service.create(Case(namespaceId = namespaceId, runCostThreshold = threshold))
 

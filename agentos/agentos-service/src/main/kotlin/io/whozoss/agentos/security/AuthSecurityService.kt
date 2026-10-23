@@ -1,7 +1,7 @@
 package io.whozoss.agentos.security
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.whozoss.agentos.security.AuthSecurityService.Companion.CF_AUTHORIZATION_HEADER
+import io.whozoss.agentos.security.AuthSecurityService.Companion.CF_ACCESS_JWT_ASSERTION_HEADER
 import io.whozoss.agentos.security.AuthSecurityService.Companion.X_EXTERNAL_USER_ID_HEADER
 import io.whozoss.agentos.security.AuthSecurityService.Companion.X_FORWARDED_EMAIL_HEADER
 import mu.KLogging
@@ -18,7 +18,7 @@ import java.util.Base64
  *
  * 1. [X_EXTERNAL_USER_ID_HEADER] — set by an upstream gateway after authentication
  *    (e.g. the Whoz Express proxy). Trusted unconditionally when present.
- * 2. [CF_AUTHORIZATION_HEADER] — Cloudflare Access JWT. Cloudflare validates the
+ * 2. [CF_ACCESS_JWT_ASSERTION_HEADER] — Cloudflare Access JWT. Cloudflare validates the
  *    signature at the edge; this implementation only decodes the payload to extract
  *    the `email` claim. No signature verification needed.
  * 3. `Authorization: Bearer <jwt>` — extracts `preferred_username` from the JWT payload.
@@ -37,13 +37,13 @@ class AuthSecurityService(
         val request = (RequestContextHolder.currentRequestAttributes() as ServletRequestAttributes).request
 
         val externalUserIdHeader = request.getHeader(X_EXTERNAL_USER_ID_HEADER)
-        val cfHeader = request.getHeader(CF_AUTHORIZATION_HEADER)
+        val cfHeader = request.getHeader(CF_ACCESS_JWT_ASSERTION_HEADER)
         val authHeader = request.getHeader(AUTHORIZATION_HEADER)
         val emailHeader = request.getHeader(X_FORWARDED_EMAIL_HEADER)
         logger.info {
             "[Security/auth] Resolving identity — " +
                 "$X_EXTERNAL_USER_ID_HEADER present=${!externalUserIdHeader.isNullOrBlank()}, " +
-                "$CF_AUTHORIZATION_HEADER present=${!cfHeader.isNullOrBlank()}, " +
+                "$CF_ACCESS_JWT_ASSERTION_HEADER present=${!cfHeader.isNullOrBlank()}, " +
                 "$AUTHORIZATION_HEADER present=${!authHeader.isNullOrBlank()}, " +
                 "$X_FORWARDED_EMAIL_HEADER='$emailHeader'"
         }
@@ -58,7 +58,7 @@ class AuthSecurityService(
             throw ResponseStatusException(
                 HttpStatus.UNAUTHORIZED,
                 "No identity header found. Expected '$X_EXTERNAL_USER_ID_HEADER', " +
-                    "'$CF_AUTHORIZATION_HEADER' or '$X_FORWARDED_EMAIL_HEADER'.",
+                    "'$CF_ACCESS_JWT_ASSERTION_HEADER' or '$X_FORWARDED_EMAIL_HEADER'.",
             )
         }
     }
@@ -156,7 +156,7 @@ class AuthSecurityService(
 
     companion object : KLogging() {
         const val X_EXTERNAL_USER_ID_HEADER = "X-External-User-Id"
-        const val CF_AUTHORIZATION_HEADER = "CF_Authorization"
+        const val CF_ACCESS_JWT_ASSERTION_HEADER = "Cf-Access-Jwt-Assertion"
         const val X_FORWARDED_EMAIL_HEADER = "x-forwarded-email"
         const val AUTHORIZATION_HEADER = "Authorization"
         const val BEARER = "Bearer "

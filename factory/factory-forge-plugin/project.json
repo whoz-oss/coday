@@ -1,0 +1,17 @@
+{
+  "name": "factory-forge-plugin",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "library",
+  "sourceRoot": "factory/factory-forge-plugin/src",
+  "targets": {
+    "deploy-plugin": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "command": "./gradlew :factory-forge-plugin:deployPlugin",
+        "cwd": "factory"
+      }
+    }
+  },
+  "tags": ["type:lib", "platform:jvm-factory", "scope:plugin"]
+}

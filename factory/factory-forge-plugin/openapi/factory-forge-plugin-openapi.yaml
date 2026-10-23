@@ -1,0 +1,387 @@
+openapi: 3.1.0
+info:
+  title: Factory Forge Plugin API
+  description: >-
+    REST API contributed by the optional `factory-forge-plugin` (PF4J) — the
+    Forge/BMAD runs, gates and story operations, plus the Jira ticket relay.
+    These routes are mounted dynamically by factory-service when the plugin JAR
+    is present in the host `plugins/` directory; without the plugin they return
+    `404`.
+  version: 0.0.1
+servers:
+  - url: http://localhost:8141
+    description: Factory Service host
+tags:
+  - name: forge
+    description: "Forge/BMAD runs, gates and story operations"
+  - name: jira
+    description: Jira ticket relay
+paths:
+  /api/forge/runs:
+    get:
+      tags: [forge]
+      summary: List Forge run projections for a namespace.
+      operationId: listForgeRuns
+      parameters:
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The Forge run projections.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MapStringObject"
+  /api/factory/forge/runs:
+    get:
+      tags: [forge]
+      summary: List Forge run projections for a namespace (alias).
+      operationId: listForgeRunsAlias
+      parameters:
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The Forge run projections.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MapStringObject"
+  /api/factory/forge/runs/create:
+    post:
+      tags: [forge]
+      summary: Create a Forge EpicRun ledger.
+      operationId: createForgeRun
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: The created run id and ledger path.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+        "400":
+          description: Invalid Forge run request.
+  /api/forge/runs/{id}/gates/G1:
+    get:
+      tags: [forge]
+      summary: Read the G1 gate of a Forge run.
+      operationId: getForgeGateG1
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The G1 gate projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+  /api/forge/runs/{id}/gates/G2:
+    get:
+      tags: [forge]
+      summary: Read the G2 gate of a Forge run.
+      operationId: getForgeGateG2
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The G2 gate projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+    post:
+      tags: [forge]
+      summary: Evaluate the deterministic G2 gate against a spec file.
+      operationId: evaluateForgeGateG2
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/namespaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: Recorded gate evaluation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+        "409":
+          description: Gate conflict.
+  /api/factory/forge/runs/{id}/gates/G2:
+    get:
+      tags: [forge]
+      summary: Read the G2 gate of a Forge run (alias).
+      operationId: getForgeGateG2Alias
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The G2 gate projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+    post:
+      tags: [forge]
+      summary: Evaluate the deterministic G2 gate against a spec file (alias).
+      operationId: evaluateForgeGateG2Alias
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/namespaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: Recorded gate evaluation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+  /api/forge/runs/{id}/gates/G1/decision:
+    post:
+      tags: [forge]
+      summary: Record a human G1 decision.
+      operationId: recordForgeG1Decision
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/namespaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: The recorded decision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+        "409":
+          description: Conflicting or invalid G1 decision.
+  /api/factory/forge/runs/{id}/gates/G1/decision:
+    post:
+      tags: [forge]
+      summary: Record a human G1 decision (alias).
+      operationId: recordForgeG1DecisionAlias
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/namespaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: The recorded decision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+  /api/forge/runs/{epicRunId}/stories/{storyRunId}/executions:
+    get:
+      tags: [forge]
+      summary: List Story executions.
+      operationId: listForgeStoryExecutions
+      parameters:
+        - $ref: "#/components/parameters/epicRunId"
+        - $ref: "#/components/parameters/storyRunId"
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The Story executions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MapStringObject"
+    post:
+      tags: [forge]
+      summary: Execute the read-only Story analysis phase.
+      operationId: executeForgeStoryAnalysis
+      parameters:
+        - $ref: "#/components/parameters/epicRunId"
+        - $ref: "#/components/parameters/storyRunId"
+        - $ref: "#/components/parameters/namespaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: The analysis execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+  /api/forge/runs/{epicRunId}/stories/{storyRunId}/edits:
+    get:
+      tags: [forge]
+      summary: List Story edits.
+      operationId: listForgeStoryEdits
+      parameters:
+        - $ref: "#/components/parameters/epicRunId"
+        - $ref: "#/components/parameters/storyRunId"
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The Story edits.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MapStringObject"
+    post:
+      tags: [forge]
+      summary: Execute the write-enabled Story edit phase.
+      operationId: executeForgeStoryEdit
+      parameters:
+        - $ref: "#/components/parameters/epicRunId"
+        - $ref: "#/components/parameters/storyRunId"
+        - $ref: "#/components/parameters/namespaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: The edit execution.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+  /api/forge/runs/{epicRunId}/stories/{storyRunId}/oracles:
+    get:
+      tags: [forge]
+      summary: List Story oracle campaigns.
+      operationId: listForgeStoryOracles
+      parameters:
+        - $ref: "#/components/parameters/epicRunId"
+        - $ref: "#/components/parameters/storyRunId"
+        - $ref: "#/components/parameters/namespaceId"
+      responses:
+        "200":
+          description: The Story oracle campaigns.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MapStringObject"
+    post:
+      tags: [forge]
+      summary: Execute the Story oracle campaign (G3).
+      operationId: executeForgeStoryOracles
+      parameters:
+        - $ref: "#/components/parameters/epicRunId"
+        - $ref: "#/components/parameters/storyRunId"
+        - $ref: "#/components/parameters/namespaceId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MapStringObject"
+      responses:
+        "201":
+          description: The oracle campaign result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+  /api/jira/{ticketId}:
+    get:
+      tags: [jira]
+      summary: Fetch a Jira ticket as Markdown.
+      operationId: getJiraTicket
+      parameters:
+        - $ref: "#/components/parameters/ticketId"
+      responses:
+        "200":
+          description: The relayed ticket.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+        "501":
+          description: Jira credentials are not configured.
+  /api/factory/jira/{ticketId}:
+    get:
+      tags: [jira]
+      summary: Fetch a Jira ticket as Markdown (alias).
+      operationId: getJiraTicketAlias
+      parameters:
+        - $ref: "#/components/parameters/ticketId"
+      responses:
+        "200":
+          description: The relayed ticket.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MapStringObject"
+        "501":
+          description: Jira credentials are not configured.
+components:
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    epicRunId:
+      name: epicRunId
+      in: path
+      required: true
+      schema:
+        type: string
+    storyRunId:
+      name: storyRunId
+      in: path
+      required: true
+      schema:
+        type: string
+    ticketId:
+      name: ticketId
+      in: path
+      required: true
+      schema:
+        type: string
+    namespaceId:
+      name: namespaceId
+      in: query
+      required: false
+      schema:
+        type: string
+  schemas:
+    MapStringObject:
+      type: object
+      additionalProperties: true

@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "1",
+  "steps": [
+    {
+      "dependsOn": [],
+      "id": "architect-analyse",
+      "name": "Architect analyses the accessibility ticket",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Architect"
+      }
+    },
+    {
+      "dependsOn": ["architect-analyse"],
+      "id": "frontend-implement",
+      "name": "Frontend implements the accessibility changes",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Frontend"
+      }
+    },
+    {
+      "dependsOn": ["frontend-implement"],
+      "id": "frontend-build",
+      "name": "Factory builds affected frontend hosts",
+      "responsibility": {
+        "kind": "code",
+        "name": "frontend-build"
+      }
+    },
+    {
+      "dependsOn": ["frontend-build"],
+      "id": "frontend-tests",
+      "name": "Factory tests affected frontend projects",
+      "responsibility": {
+        "kind": "code",
+        "name": "frontend-tests"
+      }
+    },
+    {
+      "dependsOn": ["frontend-tests"],
+      "id": "a11y-audit",
+      "name": "Accessibility auditor validates the implementation read-only",
+      "responsibility": {
+        "kind": "agent",
+        "name": "A11yAuditor"
+      }
+    },
+    {
+      "dependsOn": ["a11y-audit"],
+      "id": "architect-prepare-pr",
+      "name": "Architect validates readiness and prepares pull request metadata",
+      "responsibility": {
+        "kind": "agent",
+        "name": "Architect"
+      }
+    },
+    {
+      "dependsOn": ["architect-prepare-pr"],
+      "id": "approve-merge",
+      "name": "Human review approves the exact verified HEAD",
+      "responsibility": {
+        "kind": "human",
+        "name": "Reviewer"
+      }
+    },
+    {
+      "dependsOn": ["approve-merge"],
+      "id": "merge-approved",
+      "name": "Factory Delivery merges the exact approved HEAD",
+      "responsibility": {
+        "kind": "code",
+        "name": "Delivery"
+      }
+    }
+  ],
+  "title": "Accessibility ticket implementation and governed delivery",
+  "version": "1.1.0",
+  "workflowType": "accessibility-ticket"
+}

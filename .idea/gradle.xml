@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="GradleMigrationSettings" migrationVersion="1" />
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="SCRIPT">
+            <builds>
+              <build path="$PROJECT_DIR$/agentos/agentos-bash-plugin" name="agentos-bash-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-bash-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-datetime-plugin" name="agentos-datetime-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-datetime-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-file-plugin" name="agentos-file-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-file-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-git" name="agentos-git">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-git" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-git-plugin" name="agentos-git-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-git-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-http-plugin" name="agentos-http-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-http-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-mcp-plugin" name="agentos-mcp-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-mcp-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-plugins-filesystem" name="agentos-plugins-filesystem">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-plugins-filesystem" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-sdk" name="agentos-sdk">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-sdk" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-service" name="agentos-service">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-service" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/agentos/agentos-tmux-plugin" name="agentos-tmux-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/agentos/agentos-tmux-plugin" />
+                </projects>
+              </build>
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
+        <option name="externalProjectPath" value="$PROJECT_DIR$/agentos" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$/agentos" />
+            <option value="$PROJECT_DIR$/agentos/agentos-bash-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-datetime-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-file-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-git" />
+            <option value="$PROJECT_DIR$/agentos/agentos-git-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-http-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-mcp-plugin" />
+            <option value="$PROJECT_DIR$/agentos/agentos-plugins-filesystem" />
+            <option value="$PROJECT_DIR$/agentos/agentos-sdk" />
+            <option value="$PROJECT_DIR$/agentos/agentos-service" />
+            <option value="$PROJECT_DIR$/agentos/agentos-tmux-plugin" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+      <GradleProjectSettings>
+        <compositeConfiguration>
+          <compositeBuild compositeDefinitionSource="SCRIPT">
+            <builds>
+              <build path="$PROJECT_DIR$/factory/factory-forge-plugin" name="factory-forge-plugin">
+                <projects>
+                  <project path="$PROJECT_DIR$/factory/factory-forge-plugin" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/factory/factory-sdk" name="factory-sdk">
+                <projects>
+                  <project path="$PROJECT_DIR$/factory/factory-sdk" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/factory/factory-service" name="factory-service">
+                <projects>
+                  <project path="$PROJECT_DIR$/factory/factory-service" />
+                </projects>
+              </build>
+              <build path="$PROJECT_DIR$/factory/factory-verification-core" name="factory-verification-core">
+                <projects>
+                  <project path="$PROJECT_DIR$/factory/factory-verification-core" />
+                </projects>
+              </build>
+            </builds>
+          </compositeBuild>
+        </compositeConfiguration>
+        <option name="externalProjectPath" value="$PROJECT_DIR$/factory" />
+        <option name="modules">
+          <set>
+            <option value="$PROJECT_DIR$/factory" />
+            <option value="$PROJECT_DIR$/factory/factory-forge-plugin" />
+            <option value="$PROJECT_DIR$/factory/factory-sdk" />
+            <option value="$PROJECT_DIR$/factory/factory-service" />
+            <option value="$PROJECT_DIR$/factory/factory-verification-core" />
+          </set>
+        </option>
+      </GradleProjectSettings>
+    </option>
+  </component>
+</project>

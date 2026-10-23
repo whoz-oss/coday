@@ -2,6 +2,7 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.caseEvent.CaseEventService
 import io.whozoss.agentos.exception.ResourceNotFoundException
+import io.whozoss.agentos.namespace.NamespaceCaseListUpdateBroadcaster
 import io.whozoss.agentos.namespace.NamespaceService
 import io.whozoss.agentos.permissions.Action
 import io.whozoss.agentos.permissions.EntityType
@@ -67,6 +68,7 @@ class CaseController(
     private val permissionService: PermissionService,
     private val favoriteService: FavoriteService,
     private val caseReadService: CaseReadService,
+    private val caseListUpdateBroadcaster: NamespaceCaseListUpdateBroadcaster,
 ) : CaseApi {
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'Case', 'READ')")
@@ -208,6 +210,9 @@ class CaseController(
                         "Recovery: a super-admin or namespace ADMIN must grant ADMIN on the case manually."
                 }
             }.isSuccess
+        if (granted) {
+            caseListUpdateBroadcaster.publishCaseCreated(saved.namespaceId)
+        }
 
         // Surface the creator's fresh direct relation so the UI enables ADMIN-only actions
         // (delete) on the new case immediately, without waiting for a list refresh to enrich it.
@@ -339,6 +344,20 @@ class CaseController(
         logger.info { "Killing case: $caseId" }
         caseService.killCase(caseId)
         logger.info { "Case killed: $caseId" }
+    }
+
+    /** POST /api/cases/{caseId}/reopen — reopen a terminal case, transitioning it back to IDLE. */
+    @PostMapping("/{caseId}/reopen")
+    @ResponseStatus(HttpStatus.OK)
+    @PreAuthorize("hasPermission(#caseId, 'Case', 'DELETE')")
+    override fun reopenCase(
+        @PathVariable caseId: UUID,
+    ): CaseDto {
+        logger.info { "Reopening case: $caseId" }
+        val userId = userService.getCurrentUser().id.toString()
+        val reopened = caseService.reopenCase(caseId)
+        logger.info { "Case reopened: $caseId" }
+        return reopened.withCallerMeta(userId)
     }
 
     /** POST /api/cases/{caseId}/read — record that the current user has read this case. Returns the updated case. */
