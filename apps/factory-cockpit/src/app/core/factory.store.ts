@@ -1,4 +1,4 @@
-import { Injectable, InjectionToken, OnDestroy, computed, inject, signal } from '@angular/core'
+import { Injectable, OnDestroy, computed, inject, signal } from '@angular/core'
 import {
   Observable,
   Subscription,
@@ -39,30 +39,6 @@ import { SESSION_872641A8 } from './mock-data'
 import { SseService } from './sse.service'
 
 /**
- * Base URL of the AgentOS UI, used to build deep-link URLs pointing to the
- * AgentOS case viewer (`/agentos/home?ns=…&case=…`).
- *
- * - **Production**: empty string — both apps are served behind the same gateway
- *   origin, so an absolute path (`/agentos/home?…`) resolves correctly.
- * - **Development**: `'http://localhost:4200'` — the AgentOS UI (`apps/client`)
- *   runs on port 4200 while the cockpit runs on port 4300. A path-only URL
- *   would resolve to the cockpit origin and land on a 404.
- *
- * `isDevMode()` is intentionally NOT used here: it reflects the Angular build
- * mode (optimization flag), not the runtime environment. A production build
- * served locally would still get an empty string and break.
- *
- * Override this token in `app.config.ts` for any environment:
- *   `{ provide: AGENTOS_BASE_URL, useValue: 'http://localhost:4200' }`
- */
-export const AGENTOS_BASE_URL = new InjectionToken<string>('AGENTOS_BASE_URL', {
-  providedIn: 'root',
-  // Default: empty — correct for production (same-origin gateway).
-  // For local dev, override explicitly in app.config.ts (see comment above).
-  factory: () => '',
-})
-
-/**
  * Build an AgentOS deep-link URL for a case, using the configured base URL.
  *
  * All four link-generation paths in the cockpit (supervisor case, conversation
@@ -71,13 +47,12 @@ export const AGENTOS_BASE_URL = new InjectionToken<string>('AGENTOS_BASE_URL', {
  *
  * @param caseId      The AgentOS case id.
  * @param namespaceId The namespace the case belongs to (omitted when falsy).
- * @param baseUrl     Origin prefix injected via {@link AGENTOS_BASE_URL}.
  */
-export function buildAgentOsCaseUrl(caseId: string, namespaceId: string | undefined, baseUrl: string): string {
+export function buildAgentOsCaseUrl(caseId: string, namespaceId: string | undefined): string {
   const params = new URLSearchParams()
   if (namespaceId) params.set('ns', namespaceId)
   params.set('case', caseId)
-  return `${baseUrl}/agentos/home?${params.toString()}`
+  return `/agentos/home?${params.toString()}`
 }
 
 /**
@@ -85,8 +60,8 @@ export function buildAgentOsCaseUrl(caseId: string, namespaceId: string | undefi
  * Kept for backwards-compat with the supervisor-case flow; will be removed
  * once all callers are migrated.
  */
-export function buildSupervisorCaseUrl(caseId: string, namespaceId: string, baseUrl = ''): string {
-  return buildAgentOsCaseUrl(caseId, namespaceId, baseUrl)
+export function buildSupervisorCaseUrl(caseId: string, namespaceId: string): string {
+  return buildAgentOsCaseUrl(caseId, namespaceId)
 }
 
 /**
@@ -977,10 +952,6 @@ export class FactoryStore implements OnDestroy {
    * entry exists, or `undefined` when no entry is found (first visit, storage
    * unavailable, or corrupt entry).
    *
-   * The AgentOS URL is always reconstructed from the current
-   * {@link AGENTOS_BASE_URL} injection — never stored as a frozen string — so
-   * it remains correct across environment changes.
-   *
    * **Scope**: local browser only. A different browser, incognito context, or
    * device will return `undefined` (see {@link SupervisorCaseStoreService}).
    */
@@ -996,8 +967,7 @@ export class FactoryStore implements OnDestroy {
    * after creation (before the message POST). This ensures that a page refresh
    * restores the association even if the message delivery fails. The persisted
    * entry is keyed by `workflowId + namespaceId` — both stable backend
-   * identifiers — and the AgentOS URL is always reconstructed from the current
-   * {@link AGENTOS_BASE_URL} injection so it is never frozen.
+   * identifiers.
    *
    * **Namespace**: `run.namespaceId` must be a valid UUID string — the
    * AgentOS backend validates `namespaceId` with `@NotNull UUID`. The caller

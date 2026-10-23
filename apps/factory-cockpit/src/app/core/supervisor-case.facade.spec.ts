@@ -1,7 +1,6 @@
 import { TestBed } from '@angular/core/testing'
 import { of, throwError } from 'rxjs'
 import { AgentOsApiService } from './agentos-api.service'
-import { AGENTOS_BASE_URL } from './factory.store'
 import { FactoryRun } from './models'
 import { SupervisorCaseFacade } from './supervisor-case.facade'
 import { SupervisorCaseStoreService } from './supervisor-case-store.service'
@@ -18,7 +17,6 @@ describe('SupervisorCaseFacade', () => {
         SupervisorCaseFacade,
         { provide: AgentOsApiService, useValue: agentOs },
         { provide: SupervisorCaseStoreService, useValue: persistence },
-        { provide: AGENTOS_BASE_URL, useValue: 'https://agentos.example' },
       ],
     })
   })

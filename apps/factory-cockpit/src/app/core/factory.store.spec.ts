@@ -191,7 +191,7 @@ describe('FactoryStore', () => {
     http.expectOne((r) => r.url.endsWith('/wf-1/evidence')).flush({ data: { workflowId: 'wf-1', items: [] } })
     http.expectOne((r) => r.url.endsWith('/wf-1/metrics')).flush({ data: metrics })
     http.expectOne((r) => r.url.endsWith('/wf-1/interactions')).flush({ data: interactions })
-    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush(attempts)
+    http.expectOne((r) => r.url.endsWith('/wf-1/attempts')).flush(attempts as unknown as any)
     http.expectOne((r) => r.url.endsWith('/wf-1/actions')).flush({ data: actions })
     http.expectOne((r) => r.url.endsWith('/wf-1/agent-questions')).flush({ data: [] })
   }
@@ -880,7 +880,7 @@ describe('FactoryStore', () => {
     expect(store.activeRuns()).toEqual([])
     expect(store.workstreams()).toEqual([])
     expect(store.costs()).toEqual({ active: 0, workflowsUsd: 0, totalUsd: 0, unknownCostCount: 0 })
-    expect(store.session('872641a8').id).toBe('872641a8')
+    expect(store.session('872641a8')?.id).toBe('872641a8')
   })
 
   it('does not fabricate a demo session for an unknown real run id', () => {

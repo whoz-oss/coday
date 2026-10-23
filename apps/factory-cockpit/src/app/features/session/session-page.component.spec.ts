@@ -2,7 +2,7 @@ import { signal } from '@angular/core'
 import { TestBed } from '@angular/core/testing'
 import { ActivatedRoute } from '@angular/router'
 import { BehaviorSubject, of } from 'rxjs'
-import { AGENTOS_BASE_URL, FactoryStore } from '../../core/factory.store'
+import { FactoryStore } from '../../core/factory.store'
 import { AgentQuestion, FactoryRun, SessionDetail } from '../../core/models'
 import { ShellState } from '../../core/shell-state'
 import { SessionPageComponent } from './session-page.component'
@@ -93,7 +93,6 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
       providers: [
         SessionPageState,
         { provide: FactoryStore, useValue: store },
-        { provide: AGENTOS_BASE_URL, useValue: '' },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -203,7 +202,6 @@ describe('SessionPageComponent — currentNamespaceId()', () => {
     TestBed.configureTestingModule({
       providers: [
         { provide: FactoryStore, useValue: store },
-        { provide: AGENTOS_BASE_URL, useValue: '' },
         {
           provide: ActivatedRoute,
           useValue: { paramMap: routeIds.asObservable(), queryParamMap: routeQuery.asObservable() },
