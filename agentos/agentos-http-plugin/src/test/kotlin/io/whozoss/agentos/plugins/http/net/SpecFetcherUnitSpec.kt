@@ -66,7 +66,9 @@ class SpecFetcherUnitSpec : StringSpec({
     }
 
     "rejects a URL refused by the policy without any request" {
-        val failed = fetcher.fetch("https://10.0.0.1/openapi.yaml", maxBytes = 10_000, etag = null)
+        // allowUnsecure relaxes the restricted-address checks, so this test needs the default (strict) policy.
+        val strictFetcher = SpecFetcher(holder.client, OutboundUrlPolicy())
+        val failed = strictFetcher.fetch("https://10.0.0.1/openapi.yaml", maxBytes = 10_000, etag = null)
         failed.shouldBeInstanceOf<FetchOutcome.Failed>().reason shouldContain "private"
         server.requests.size shouldBe 0
     }

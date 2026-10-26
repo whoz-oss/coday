@@ -26,6 +26,12 @@ class SecurityModeBanner(
     private val logger = KotlinLogging.logger {}
 
     override fun afterPropertiesSet() {
+        // containsProperty, not getProperty: an explicit `false` or an empty value must fail too.
+        // The dotted name also matches FACTORY_SECURITY_INSECURE_MODE through the relaxed lookup of
+        // the system environment property source.
+        if (LEGACY_PROPERTIES.any { environment.containsProperty(it) }) {
+            throw IllegalStateException(LEGACY_MESSAGE)
+        }
         val mode = properties.security.mode
         logger.info { "[Security] Factory security mode: ${mode.name.lowercase()}" }
         val host = properties.bind.host
@@ -46,6 +52,12 @@ class SecurityModeBanner(
 
     companion object {
         private val LOOPBACK_HOSTS = setOf("127.0.0.1", "::1", "[::1]", "localhost")
+
+        private val LEGACY_PROPERTIES = listOf("factory.security.insecure-mode", "FACTORY_INSECURE_MODE")
+
+        private const val LEGACY_MESSAGE =
+            "FACTORY_INSECURE_MODE / factory.security.insecure-mode was removed. " +
+                "Use FACTORY_SECURITY_MODE=local|auth (default local)."
 
         fun isLoopback(host: String): Boolean = host.trim().lowercase() in LOOPBACK_HOSTS
     }

@@ -39,11 +39,11 @@ import { SESSION_872641A8 } from './mock-data'
 import { SseService } from './sse.service'
 
 /**
- * Build an AgentOS deep-link URL for a case, using the configured base URL.
+ * Build a relative AgentOS deep-link URL (`/agentos/home?ns=…&case=…`) for a case.
  *
  * All four link-generation paths in the cockpit (supervisor case, conversation
  * link, action-bar case links, session-page case links) must go through this
- * helper so the base URL is applied consistently.
+ * helper so links are built consistently.
  *
  * @param caseId      The AgentOS case id.
  * @param namespaceId The namespace the case belongs to (omitted when falsy).
