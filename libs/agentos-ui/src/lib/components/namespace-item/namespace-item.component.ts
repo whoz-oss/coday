@@ -24,6 +24,7 @@ export class NamespaceItemComponent {
   readonly aiModelsRequested = output<Namespace>()
   readonly agentConfigsRequested = output<Namespace>()
   readonly promptsRequested = output<Namespace>()
+  readonly skillsRequested = output<Namespace>()
   readonly scheduledPromptsRequested = output<Namespace>()
   readonly userGroupsRequested = output<Namespace>()
   readonly usageRequested = output<Namespace>()
@@ -58,6 +59,9 @@ export class NamespaceItemComponent {
   }
   protected onPrompts(): void {
     this.promptsRequested.emit(this.namespace())
+  }
+  protected onSkills(): void {
+    this.skillsRequested.emit(this.namespace())
   }
   protected onScheduledPrompts(): void {
     this.scheduledPromptsRequested.emit(this.namespace())
