@@ -228,15 +228,12 @@ class CaseController(
         @PathVariable id: UUID,
         @Valid @RequestBody resource: CaseDto,
     ): CaseDto {
-        val existing =
-            caseService.findById(id)
-                ?: throw ResourceNotFoundException("Case not found: $id")
+        // namespaceId and status are mass-assignment-guarded by edit: namespaceId is the
+        // transitivity key for permissions; status is driven by the runtime lifecycle, not PUT.
+        // The change is applied again to the fresh case if a concurrent write wins.
         val updated =
-            caseService.update(
+            caseService.edit(id) { existing ->
                 existing.copy(
-                    // namespaceId and status are mass-assignment-guarded:
-                    // namespaceId is the transitivity key for permissions;
-                    // status is driven by the runtime lifecycle, not PUT.
                     title = resource.title ?: existing.title,
                     // runCostThreshold: keep the existing value when the caller omits the field
                     // (null in DTO = not provided, not an explicit reset). An explicit reset to
@@ -244,8 +241,8 @@ class CaseController(
                     // creation is sticky. The enforcement mechanism raises the limit by writing
                     // a concrete value here when the user chooses to continue after a breach.
                     runCostThreshold = resource.runCostThreshold ?: existing.runCostThreshold,
-                ),
-            )
+                )
+            }
         return updated.withCallerMeta(userService.getCurrentUser().id.toString())
     }
 

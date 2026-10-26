@@ -2,7 +2,6 @@ package io.whozoss.agentos.caseFlow
 
 import io.whozoss.agentos.persistence.Neo4jChildLinkService
 import mu.KLogging
-import org.springframework.data.repository.findByIdOrNull
 import org.springframework.transaction.annotation.Transactional
 import java.time.Clock
 import java.time.Instant
@@ -72,14 +71,10 @@ open class Neo4jCaseRepository(
             ).map { it.toDomain() }
 
     override fun delete(id: UUID): Boolean =
-        caseNodeNeo4jRepository
-            .findByIdOrNull(id.toString())
-            ?.takeIf { it.removed != true }
-            ?.let { node ->
-                caseNodeNeo4jRepository.save(node.copy(removed = true))
-                logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id" }
-                true
-            } ?: false
+        findByIds(listOf(id))
+            .firstOrNull()
+            ?.let { case -> saveChange(case) { it.copy(metadata = it.metadata.markAsRemoved()) } }
+            ?.also { logger.debug { "[Neo4jCaseRepository] Soft-deleted case $id" } } != null
 
     override fun findActiveByParentCaseId(parentCaseId: UUID): List<Case> =
         caseNodeNeo4jRepository
