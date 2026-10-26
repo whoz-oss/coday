@@ -531,6 +531,7 @@ class AgentServiceImpl(
         logger.info {
             "Resolved model '${baseModel.alias ?: baseModel.apiModelName}' " +
                 "-> apiName='${baseModel.apiModelName}' (priority=${baseModel.priority}, " +
+                "reasoningEffort=${baseModel.reasoningEffort}, " +
                 "provider='${providerConfig.name}', userId=$userId)"
         }
         return baseModel to providerConfig

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Service
  * The two entities carry everything [ChatModelFactory] needs:
  * - provider connectivity ([AiProvider.apiType], [AiProvider.baseUrl], [AiProvider.apiKey])
  * - model identity and inference parameters ([AiModel.apiModelName],
- *   [AiModel.temperature], [AiModel.maxCompletionTokens])
+ *   [AiModel.temperature], [AiModel.maxCompletionTokens], [AiModel.reasoningEffort])
  *
  * Resolution of which model/provider pair to use is the responsibility of the caller
  * (currently [io.whozoss.agentos.agent.AgentServiceImpl]).
@@ -43,6 +43,7 @@ class ChatClientProvider(
                 temperature = modelConfig.temperature,
                 maxCompletionTokens = modelConfig.maxCompletionTokens,
                 headers = providerConfig.headers + (caseId?.let { mapOf(X_SESSION_ID to it) } ?: emptyMap()),
+                reasoningEffort = modelConfig.reasoningEffort,
             )
         val trackedModel =
             if (usageConfig.enabled && accumulator != null) {
