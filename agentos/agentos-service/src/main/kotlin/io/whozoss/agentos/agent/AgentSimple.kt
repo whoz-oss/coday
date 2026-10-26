@@ -15,7 +15,6 @@ import io.whozoss.agentos.sdk.caseEvent.TextChunkEvent
 import io.whozoss.agentos.sdk.caseEvent.ThinkingEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolRequestEvent
 import io.whozoss.agentos.sdk.caseEvent.ToolResponseEvent
-import io.whozoss.agentos.sdk.caseEvent.WarnEvent
 import io.whozoss.agentos.sdk.entity.EntityMetadata
 import io.whozoss.agentos.sdk.tool.StandardTool
 import io.whozoss.agentos.sdk.tool.ToolContext
@@ -276,15 +275,7 @@ class AgentSimple(
                     emit(toolEvent)
                 }
 
-                maxIterationsReached?.let {
-                    emit(
-                        WarnEvent(
-                            namespaceId = namespaceId,
-                            caseId = caseId,
-                            message = "Agent reached maximum iterations ($it) without completing",
-                        ),
-                    )
-                }
+                maxIterationsReached?.let { emitMaxIterationsWarning(namespaceId, caseId, it) }
 
                 // Emit the final assistant message
                 if (content.isNotEmpty()) {

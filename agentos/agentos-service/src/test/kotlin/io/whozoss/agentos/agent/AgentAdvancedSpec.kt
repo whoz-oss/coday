@@ -554,8 +554,11 @@ class AgentAdvancedSpec :
         // Iteration limit
         // -------------------------------------------------------------------------
 
-        /** Runs an agent with [maxIterations] = 2 whose generator returns [intentions] in order. */
-        suspend fun runWithIterationLimit(vararg intentions: String): List<CaseEvent> {
+        /** Runs an agent limited to [maxIterations] whose generator returns [intentions] in order. */
+        suspend fun runWithIterationLimit(
+            vararg intentions: String,
+            maxIterations: Int = 2,
+        ): List<CaseEvent> {
             val namespaceId = UUID.randomUUID()
             val caseId = UUID.randomUUID()
             val mockChatClient = mockk<ChatClient>(relaxed = true)
@@ -595,7 +598,7 @@ class AgentAdvancedSpec :
                         ),
                     intentionGenerator = mockGenerator,
                     objectMapper = testObjectMapper,
-                    maxIterations = 2,
+                    maxIterations = maxIterations,
                     llmProvider = "test-provider",
                     llmModel = "test-model",
                 )
@@ -615,6 +618,17 @@ class AgentAdvancedSpec :
             val events = runWithIterationLimit("FILES__List", "Answer")
 
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
+            (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe null
+        }
+
+        "a repetition stop at the last iteration is not reported as the iteration limit" {
+            // Identical calls fill the repetition window after REPETITION_WINDOW iterations: the next
+            // iteration force-stops before asking for an intention. Make that one the last allowed.
+            val lastIteration = AgentAdvanced.REPETITION_WINDOW + 1
+            val events = runWithIterationLimit(*Array(lastIteration) { "FILES__List" }, maxIterations = lastIteration)
+
+            events.filterIsInstance<ToolResponseEvent>() shouldHaveSize AgentAdvanced.REPETITION_WINDOW
+            events.filterIsInstance<WarnEvent>().single().message shouldContain "Forcing loop termination"
             (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe null
         }
 

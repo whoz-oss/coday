@@ -107,9 +107,10 @@ class AgentSimpleToolRoundLimitSpec :
             (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe 2
         }
 
-        "a run that answers before the limit is not flagged" {
-            val events = run { _, request -> if (request == 0) toolCall(request) else answer("Finished.") }
+        "a run that answers right after its last allowed tool round is not flagged" {
+            val events = run { _, request -> if (request < 2) toolCall(request) else answer("Finished.") }
 
+            events.filterIsInstance<ToolResponseEvent>() shouldHaveSize 2
             events.filterIsInstance<WarnEvent>() shouldHaveSize 0
             (events.filterIsInstance<MessageEvent>().single().content.single() as MessageContent.Text).content shouldBe "Finished."
             (events.last() as AgentFinishedEvent).maxIterationsReached shouldBe null

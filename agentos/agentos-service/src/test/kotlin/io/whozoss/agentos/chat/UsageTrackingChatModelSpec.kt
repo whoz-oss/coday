@@ -49,12 +49,12 @@ class UsageTrackingChatModelSpec :
         fun response(
             tool: Boolean = false,
             withUsage: Boolean = true,
-            text: String = "Done",
+            text: String = if (tool) "" else "Done",
         ): ChatResponse {
             val message =
                 AssistantMessage
                     .builder()
-                    .content(if (tool) "" else text)
+                    .content(text)
                     .toolCalls(if (tool) listOf(AssistantMessage.ToolCall("call-1", "function", "testTool", "{}")) else emptyList())
                     .build()
             val metadata = ChatResponseMetadata.builder()
@@ -279,23 +279,27 @@ class UsageTrackingChatModelSpec :
         listOf(false, true).forEach { streaming ->
             val mode = if (streaming) "stream" else "call"
 
-            /** A model that always wants a tool; [summary] answers the request made at the limit, if any. */
-            fun loopingRun(summary: ChatResponse?): LoopingRun {
+            /** [reply] gets the request index, and whether that request is the summary asked at the limit. */
+            fun limitedRun(
+                maxToolRounds: Int = 2,
+                reply: (index: Int, summaryRequested: Boolean) -> ChatResponse,
+            ): LoopingRun {
                 val toolsExecuted = AtomicInteger()
                 val options = ToolCallingChatOptions.builder().toolCallbacks(toolCallback { "ok".also { toolsExecuted.incrementAndGet() } }).build()
                 val prompts = CopyOnWriteArrayList<Prompt>()
                 fun answer(prompt: Prompt): ChatResponse {
+                    val index = prompts.size
                     prompts.add(prompt)
                     val messages = prompt.instructions
-                    val atLimit = messages.last() is UserMessage && messages.getOrNull(messages.size - 2) is ToolResponseMessage
-                    return if (atLimit && summary != null) summary else response(tool = true)
+                    val summaryRequested = messages.last() is UserMessage && messages.getOrNull(messages.size - 2) is ToolResponseMessage
+                    return reply(index, summaryRequested)
                 }
                 val raw = mockk<ChatModel>()
                 every { raw.defaultOptions } returns options
                 every { raw.call(any<Prompt>()) } answers { answer(firstArg()) }
                 every { raw.stream(any<Prompt>()) } answers { Flux.just(answer(firstArg())) }
                 val accumulator = UsageAccumulator()
-                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model, maxToolRounds = 2)
+                val tracked = UsageTrackingChatModel(raw, accumulator, AiApiType.OpenAI, model, maxToolRounds = maxToolRounds)
                 val prompt = Prompt(listOf(UserMessage("Hello")), options)
                 val responses =
                     if (streaming) {
@@ -306,29 +310,61 @@ class UsageTrackingChatModelSpec :
                 return LoopingRun(responses, prompts, toolsExecuted.get(), accumulator)
             }
 
-            "$mode: at the tool round limit the model is asked to summarize, and the run completes" {
-                val (responses, prompts, toolsExecuted, accumulator) = loopingRun(summary = response(text = "Summary of the work"))
+            fun LoopingRun.text() = responses.joinToString("") { it.result?.output?.text.orEmpty() }
 
-                responses.joinToString("") { it.result?.output?.text.orEmpty() } shouldBe "Summary of the work"
-                responses.last().metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe 2
-                toolsExecuted shouldBe 2
-                // The summary request replaces the next round: no request is wasted.
-                prompts.size shouldBe 3
-                (prompts.last().instructions.last() as UserMessage).text shouldContain "Do not call any tool"
-                accumulator.snapshot().calls shouldBe 3L
-                accumulator.total.totalTokens shouldBe 45L
-                accumulator.failed shouldBe false
+            fun LoopingRun.limitMarker() = responses.last().metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED)
+
+            "$mode: tool calls requested past the limit are dropped and the model is asked to summarize" {
+                val result = limitedRun { _, summaryRequested -> if (summaryRequested) response(text = "Summary") else response(tool = true) }
+
+                result.text() shouldBe "Summary"
+                result.limitMarker() shouldBe 2
+                result.toolsExecuted shouldBe 2
+                // The third request still asked for tools: the summary request replaces them.
+                result.prompts.size shouldBe 4
+                (result.prompts[3].instructions.last() as UserMessage).text shouldContain "Do not call any tool"
+                result.prompts[3].instructions.dropLast(1) shouldBe result.prompts[2].instructions
+                result.accumulator.snapshot().calls shouldBe 4L
+                result.accumulator.failed shouldBe false
+                if (!streaming) result.responses.single().metadata.usage.totalTokens shouldBe 15
             }
 
-            "$mode: tool calls in the summary answer are not executed and a missing text gets a fallback" {
-                val (responses, prompts, toolsExecuted, accumulator) = loopingRun(summary = null)
+            "$mode: an answer right after the last allowed tool round completes the run normally" {
+                val result = limitedRun { index, _ -> if (index < 2) response(tool = true) else response(text = "Finished") }
 
-                responses.joinToString("") { it.result?.output?.text.orEmpty() } shouldContain
-                    "maximum number of tool rounds (2)"
-                responses.last().metadata.get<Int>(UsageTrackingChatModel.MAX_ITERATIONS_REACHED) shouldBe 2
-                toolsExecuted shouldBe 2
-                prompts.size shouldBe 3
-                accumulator.failed shouldBe false
+                result.text() shouldBe "Finished"
+                result.limitMarker() shouldBe null
+                result.toolsExecuted shouldBe 2
+                result.prompts.size shouldBe 3
+                result.prompts.none { (it.instructions.last() as? UserMessage)?.text?.contains("Do not call") == true } shouldBe true
+            }
+
+            "$mode: a summary that only calls a tool gets the fallback text" {
+                val result = limitedRun { _, _ -> response(tool = true) }
+
+                result.text() shouldBe "I reached the maximum number of tool rounds (2) before finishing. Ask me to continue."
+                result.limitMarker() shouldBe 2
+                result.toolsExecuted shouldBe 2
+                result.accumulator.failed shouldBe false
+            }
+
+            "$mode: a summary that announces a tool call ends with the fallback text" {
+                val result =
+                    limitedRun { _, summaryRequested ->
+                        if (summaryRequested) response(tool = true, text = "Let me check one more file.") else response(tool = true)
+                    }
+
+                result.text() shouldBe
+                    "Let me check one more file.\n\nI reached the maximum number of tool rounds (2) before finishing. Ask me to continue."
+                result.toolsExecuted shouldBe 2
+            }
+
+            "$mode: with a zero limit, an answer without tool calls is left untouched" {
+                val result = limitedRun(maxToolRounds = 0) { _, _ -> response() }
+
+                result.text() shouldBe "Done"
+                result.limitMarker() shouldBe null
+                result.prompts.single().instructions.single().text shouldBe "Hello"
             }
         }
 

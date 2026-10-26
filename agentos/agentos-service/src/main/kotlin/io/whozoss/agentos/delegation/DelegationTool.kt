@@ -286,8 +286,9 @@ class DelegationTool(
             } else {
                 outcome = SubCaseOutcome.SUCCESS
                 finishErrorType = null
-                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true, result = extractLastAgentMessage(events),
-                    maxIterationsReached = events.filterIsInstance<AgentFinishedEvent>().lastOrNull()?.maxIterationsReached)
+                val lastRun = events.filterIsInstance<AgentFinishedEvent>().lastOrNull()
+                DelegationResult(agentName, subCaseId, delegationId, toolRequestId, true,
+                    result = extractLastAgentMessage(events), maxIterationsReached = lastRun?.maxIterationsReached)
             }
         } catch (error: Exception) {
             outcome = SubCaseOutcome.ERROR

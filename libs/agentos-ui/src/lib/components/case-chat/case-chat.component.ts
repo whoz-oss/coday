@@ -523,7 +523,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
         const qe = e as QuestionEvent
         // A question is answered when a legitimate AnswerEvent exists in the stream (same rule as the backend).
         items.push({ kind: 'question', event: qe, answer: findLegitimateAnswer(qe, allEvents) })
-      } else if (e.type === 'AgentFinishedEvent' && (e as AgentFinishedEvent).maxIterationsReached) {
+      } else if (e.type === 'AgentFinishedEvent' && (e as AgentFinishedEvent).maxIterationsReached != null) {
         // Not a diagnostic: the run stopped before finishing, and only the user can let it continue.
         items.push({ kind: 'notice', notice: this.toIterationLimitNotice(e as AgentFinishedEvent), eventId: e.id })
         lastMessageRole = null
@@ -557,7 +557,7 @@ export class CaseChatComponent implements OnInit, OnDestroy {
     for (let i = events.length - 1; i >= 0; i--) {
       const e = events[i]
       if (e?.type === 'MessageEvent' && (e as CaseMessageEvent).actor.role === 'USER') return null
-      if (e?.type === 'AgentFinishedEvent') return (e as AgentFinishedEvent).maxIterationsReached ? e.id : null
+      if (e?.type === 'AgentFinishedEvent') return (e as AgentFinishedEvent).maxIterationsReached != null ? e.id : null
     }
     return null
   })
@@ -1055,7 +1055,8 @@ export class CaseChatComponent implements OnInit, OnDestroy {
 
   /** The agent resumes from the history: its tool calls and its summary of the work so far. */
   protected continueAfterLimit(): void {
-    if (this.isRunning() || this.isTerminal()) return
+    // An attachment send in flight is not running yet: posting now would send two messages.
+    if (this.submitting || this.attachments.isUploading() || this.isRunning() || this.isTerminal()) return
     this.sendMessage('Continue')
   }
 

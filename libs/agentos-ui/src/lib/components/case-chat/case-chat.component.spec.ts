@@ -536,6 +536,22 @@ describe('CaseChatComponent — submit with attachments', () => {
       expect(ref.instance['continuableStopId']()).toBeNull()
     })
 
+    it('treats a limit of 0 as reached', () => {
+      const ref = makeComponent()
+      ref.instance['events'].set([finished('f-0', 0)])
+
+      expect(ref.instance['timeline']().map((item) => item.kind)).toEqual(['notice'])
+      expect(ref.instance['continuableStopId']()).toBe('f-0')
+    })
+
+    it('does not continue while a message with attachments is being sent', () => {
+      const ref = makeComponent()
+      ref.instance['submitting'] = true
+      ref.instance['continueAfterLimit']()
+
+      expect(http.post).not.toHaveBeenCalled()
+    })
+
     it('continues by sending a message, once, and not while the agent runs', () => {
       const ref = makeComponent()
       ref.instance['continueAfterLimit']()

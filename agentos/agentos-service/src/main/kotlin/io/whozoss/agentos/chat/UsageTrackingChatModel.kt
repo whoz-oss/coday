@@ -7,6 +7,7 @@ import io.whozoss.agentos.sdk.usage.LlmUsage
 import io.whozoss.agentos.usage.CostRunStopped
 import org.springframework.ai.chat.messages.AssistantMessage
 import org.springframework.ai.chat.messages.UserMessage
+import org.springframework.ai.chat.metadata.ChatGenerationMetadata
 import org.springframework.ai.chat.metadata.ChatResponseMetadata
 import org.springframework.ai.chat.model.ChatModel
 import org.springframework.ai.chat.model.ChatResponse
@@ -31,9 +32,11 @@ import java.util.concurrent.atomic.AtomicReference
  * callbacks are executed here, after accounting and the user's cost confirmation.
  * Native chunks are inspected BEFORE MessageAggregator discards their native metadata.
  *
- * After [maxToolRounds] tool rounds, the next request asks the model to answer without tools
- * and summarize its progress. That last answer executes no tool, is never empty and carries
- * [MAX_ITERATIONS_REACHED] in its metadata, so the agent can tell the user it stopped early.
+ * After [maxToolRounds] tool rounds, a response that still asks for tools is not executed:
+ * one more request asks the model to answer without tools and summarize its progress. That
+ * summary never ends on a dropped tool call, and it carries [MAX_ITERATIONS_REACHED] in its
+ * metadata so the agent can tell the user it stopped early. A response without tool calls at
+ * that point completes the run normally.
  */
 class UsageTrackingChatModel(
     private val delegate: ChatModel,
@@ -55,17 +58,14 @@ class UsageTrackingChatModel(
         prompt: Prompt,
         round: Int,
     ): ChatResponse {
-        awaitPermission()
-        val lastRound = round >= maxToolRounds
-        val response = delegate.call(if (lastRound) summaryPrompt(prompt) else prompt)
-        accumulator.record(CostCalculator.extract(response, apiType, model))
+        val response = trackedCall(prompt)
         return when {
-            lastRound -> {
-                limitReached(response.result?.output?.text.orEmpty().ifBlank { fallbackSummary() })
-            }
-
             !response.hasToolCalls() -> {
                 response
+            }
+
+            round >= maxToolRounds -> {
+                callSummary(prompt)
             }
 
             else -> {
@@ -80,6 +80,31 @@ class UsageTrackingChatModel(
         }
     }
 
+    private fun trackedCall(prompt: Prompt): ChatResponse {
+        awaitPermission()
+        return delegate.call(prompt).also { accumulator.record(CostCalculator.extract(it, apiType, model)) }
+    }
+
+    /** Keeps the provider's metadata (usage, id, model) and its generation unless the text must be completed. */
+    private fun callSummary(prompt: Prompt): ChatResponse {
+        val summary = trackedCall(summaryPrompt(prompt))
+        val text = summary.result?.output?.text.orEmpty()
+        val completed = completeSummary(text, droppedCall = summary.hasToolCalls())
+        val generations =
+            if (completed == text) {
+                summary.results
+            } else {
+                val generationMetadata = summary.result?.metadata ?: ChatGenerationMetadata.NULL
+                listOf(Generation(AssistantMessage(completed), generationMetadata))
+            }
+        return ChatResponse
+            .builder()
+            .from(summary)
+            .generations(generations)
+            .metadata(MAX_ITERATIONS_REACHED, maxToolRounds)
+            .build()
+    }
+
     override fun stream(prompt: Prompt): Flux<ChatResponse> = streamRound(externalTools(prompt), 0).doOnError(::markFailure)
 
     private fun streamRound(
@@ -87,32 +112,17 @@ class UsageTrackingChatModel(
         round: Int,
     ): Flux<ChatResponse> =
         Flux.defer {
-            val lastRound = round >= maxToolRounds
             val aggregated = AtomicReference<ChatResponse?>(null)
-            val lastUsage = AtomicReference<LlmUsage?>(null)
-            val raw =
-                Mono
-                    .fromFuture(accumulator.beforeCall())
-                    .thenMany(Flux.defer { delegate.stream(if (lastRound) summaryPrompt(prompt) else prompt) })
-                    .doOnNext { response ->
-                        val usage = CostCalculator.extract(response, apiType, model)
-                        if (usage != LlmUsage.ZERO) lastUsage.set(usage)
-                    }.doOnComplete { lastUsage.getAndSet(null)?.let(accumulator::record) }
-                    .doOnError {
-                        lastUsage.getAndSet(null)?.let(accumulator::record)
-                    }.doOnCancel { lastUsage.getAndSet(null)?.let(accumulator::record) }
-            MessageAggregator().aggregate(raw, aggregated::set).concatWith(
+            MessageAggregator().aggregate(trackedStream(prompt), aggregated::set).concatWith(
                 Flux.defer {
                     val response = aggregated.get()
                     when {
-                        lastRound -> {
-                            // The answer was already streamed: only a missing one is replaced.
-                            val streamed = response?.result?.output?.text.orEmpty()
-                            Flux.just(limitReached(if (streamed.isBlank()) fallbackSummary() else ""))
-                        }
-
                         response == null || !response.hasToolCalls() -> {
                             Flux.empty()
+                        }
+
+                        round >= maxToolRounds -> {
+                            streamSummary(prompt)
                         }
 
                         else -> {
@@ -135,6 +145,35 @@ class UsageTrackingChatModel(
             )
         }
 
+    /** The provider stream behind the cost gate; its last native usage is recorded once, however it ends. */
+    private fun trackedStream(prompt: Prompt): Flux<ChatResponse> {
+        val lastUsage = AtomicReference<LlmUsage?>(null)
+        return Mono
+            .fromFuture(accumulator.beforeCall())
+            .thenMany(Flux.defer { delegate.stream(prompt) })
+            .doOnNext { response ->
+                val usage = CostCalculator.extract(response, apiType, model)
+                if (usage != LlmUsage.ZERO) lastUsage.set(usage)
+            }.doOnComplete { lastUsage.getAndSet(null)?.let(accumulator::record) }
+            .doOnError {
+                lastUsage.getAndSet(null)?.let(accumulator::record)
+            }.doOnCancel { lastUsage.getAndSet(null)?.let(accumulator::record) }
+    }
+
+    /** The summary is streamed as it comes; a last chunk adds what completes it, and the limit marker. */
+    private fun streamSummary(prompt: Prompt): Flux<ChatResponse> =
+        Flux.defer {
+            val aggregated = AtomicReference<ChatResponse?>(null)
+            MessageAggregator().aggregate(trackedStream(summaryPrompt(prompt)), aggregated::set).concatWith(
+                Flux.defer {
+                    val summary = aggregated.get()
+                    val streamed = summary?.result?.output?.text.orEmpty()
+                    val completed = completeSummary(streamed, droppedCall = summary?.hasToolCalls() == true)
+                    Flux.just(limitReached(completed.removePrefix(streamed)))
+                },
+            )
+        }
+
     /** Tools stay declared (Anthropic rejects a tool history without tool definitions): the prompt forbids them. */
     private fun summaryPrompt(prompt: Prompt): Prompt =
         Prompt(
@@ -147,6 +186,17 @@ class UsageTrackingChatModel(
                 ),
             prompt.options,
         )
+
+    /** An empty summary, or one announcing a tool call that will not run, gets the fallback sentence. */
+    private fun completeSummary(
+        text: String,
+        droppedCall: Boolean,
+    ): String =
+        when {
+            text.isBlank() -> fallbackSummary()
+            droppedCall -> "$text\n\n${fallbackSummary()}"
+            else -> text
+        }
 
     private fun fallbackSummary() =
         "I reached the maximum number of tool rounds ($maxToolRounds) before finishing. Ask me to continue."

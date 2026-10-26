@@ -47,6 +47,24 @@ suspend fun FlowCollector<CaseEvent>.emitProviderErrorAndFinishEvents(
 }
 
 /**
+ * Emits the warning both execution modes share when a run stops at the iteration limit
+ * (`agentos.limits.agent-max-iterations`), before its final answer.
+ */
+suspend fun FlowCollector<CaseEvent>.emitMaxIterationsWarning(
+    namespaceId: UUID,
+    caseId: UUID,
+    maxIterations: Int,
+) {
+    emit(
+        WarnEvent(
+            namespaceId = namespaceId,
+            caseId = caseId,
+            message = "Agent reached maximum iterations ($maxIterations) without completing",
+        ),
+    )
+}
+
+/**
  * Handles any [Exception] that escapes the agent's main loop by first checking whether
  * it wraps a provider HTTP error on the streaming path (a [WebClientResponseException]
  * buried under Reactor envelopes).
