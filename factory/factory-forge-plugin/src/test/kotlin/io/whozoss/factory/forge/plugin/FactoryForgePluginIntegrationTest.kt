@@ -1,17 +1,20 @@
 package io.whozoss.factory.forge.plugin
 
 import io.whozoss.factory.FactoryServiceApplication
+import io.whozoss.factory.config.FactoryPluginsDirectory
 import io.whozoss.factory.sdk.spi.FactoryRouteContributor
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.pf4j.PluginManager
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
+import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.boot.test.web.client.TestRestTemplate
+import org.springframework.context.annotation.Bean
+import org.springframework.context.annotation.Import
+import org.springframework.context.annotation.Primary
 import org.springframework.http.HttpStatus
 import org.springframework.test.context.ActiveProfiles
-import org.springframework.test.context.DynamicPropertyRegistry
-import org.springframework.test.context.DynamicPropertySource
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -20,7 +23,7 @@ import java.nio.file.StandardCopyOption
  * "Core WITH plugin" integration test (W7.3 Step F.3).
  *
  * It boots the real `factory-service` application with the freshly built
- * `factory-forge-plugin` JAR deployed into a temporary PF4J drop-in directory,
+ * `factory-forge-plugin` JAR deployed into a temporary PF4J runtime directory,
  * then asserts the plugin's contributed routes behave exactly like the W6a
  * Surfaces:
  *   - `GET /api/forge/runs` → `400 MISSING_NAMESPACE_ID` (route mounted, query
@@ -42,6 +45,7 @@ import java.nio.file.StandardCopyOption
     classes = [FactoryServiceApplication::class],
 )
 @ActiveProfiles("openapi")
+@Import(FactoryForgePluginTestConfiguration::class)
 class FactoryForgePluginIntegrationTest {
 
     @Autowired
@@ -78,17 +82,22 @@ class FactoryForgePluginIntegrationTest {
     }
 
     companion object {
-        private val pluginsDir: Path = Files.createTempDirectory("factory-forge-plugin-it")
+        internal val pluginsDir: Path = Files.createTempDirectory("factory-forge-plugin-it")
 
-        @JvmStatic
-        @DynamicPropertySource
-        fun registerPluginDropIn(registry: DynamicPropertyRegistry) {
+        init {
             val jarPath = System.getProperty("factory.forge.plugin.jar")
                 ?: error("System property 'factory.forge.plugin.jar' must point at the built plugin JAR")
             val jar = Path.of(jarPath)
             require(Files.exists(jar)) { "Plugin JAR not found at $jar; the Gradle `jar` task must run first" }
             Files.copy(jar, pluginsDir.resolve(jar.fileName), StandardCopyOption.REPLACE_EXISTING)
-            registry.add("factory.plugins.dir") { pluginsDir.toAbsolutePath().toString() }
         }
     }
+}
+
+@TestConfiguration(proxyBeanMethods = false)
+class FactoryForgePluginTestConfiguration {
+    @Bean
+    @Primary
+    fun isolatedFactoryPluginsDirectory(): FactoryPluginsDirectory =
+        FactoryPluginsDirectory { FactoryForgePluginIntegrationTest.pluginsDir }
 }

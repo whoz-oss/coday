@@ -16,9 +16,9 @@ import org.springframework.web.servlet.function.RouterFunction
  * directory: the core routes respond, and the optional Forge plugin surfaces are
  * absent (`404`) until the plugin JAR is deployed.
  *
- * The `factory.plugins.dir` property is pinned to a temp directory by
- * [io.whozoss.factory.Neo4jIntegrationTest], so this test always exercises the
- * "core without plugin" contract.
+ * [io.whozoss.factory.Neo4jIntegrationTest] replaces the internal plugin
+ * directory bean with a temporary directory, so this test always exercises the
+ * "core without plugin" contract without exposing production configurability.
  */
 class FactoryPluginSystemIntegrationTest : Neo4jDomainIntegrationTest() {
 
