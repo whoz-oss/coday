@@ -112,15 +112,11 @@ tasks.withType<Test> {
 }
 
 /**
- * Assemblies the plugin JAR into the host drop-in directory so a running
- * factory-service loads it. The target directory defaults to
- * `factory-service/plugins/` and can be overridden with
- * `-Pfactory.plugins.dir=<dir>` (or the `plugins.dir` project property).
+ * Installs the plugin JAR into Factory's sole PF4J runtime directory.
+ * `build/libs/` remains build output only; runtime artifacts live in
+ * `factory/plugins/`, matching the AgentOS deployment layout.
  */
-val pluginsDir: Provider<String> =
-    providers.gradleProperty("factory.plugins.dir")
-        .orElse(providers.gradleProperty("plugins.dir"))
-        .orElse(layout.projectDirectory.dir("../factory-service/plugins").asFile.absolutePath)
+val pluginsDir = layout.projectDirectory.dir("../plugins")
 
 tasks.register<Copy>("deployPlugin") {
     group = "distribution"

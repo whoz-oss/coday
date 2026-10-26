@@ -5,8 +5,8 @@ info:
     REST API contributed by the optional `factory-forge-plugin` (PF4J) — the
     Forge/BMAD runs, gates and story operations, plus the Jira ticket relay.
     These routes are mounted dynamically by factory-service when the plugin JAR
-    is present in the host `plugins/` directory; without the plugin they return
-    `404`.
+    is installed in `factory/plugins/`; without the plugin they return `404`.
+    The plugin module's `build/libs/` directory is build output only.
   version: 0.0.1
 servers:
   - url: http://localhost:8141
