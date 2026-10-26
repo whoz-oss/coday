@@ -268,6 +268,7 @@ agentos:
   # Override with env var: AGENTOS_LIMITS_RUN_COST_THRESHOLD
   # run-cost-threshold: 10.0
   defaults:
+    # Seconds a delegation waits without activity from its sub-case before stopping it.
     # Default for every agent without a delegationTimeoutSeconds override. Requires restart.
     delegation-timeout-seconds: ${AGENTOS_DEFAULTS_DELEGATION_TIMEOUT_SECONDS:600}
   # Environment-level fallback agent name. Consulted when a namespace has no
