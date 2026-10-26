@@ -39,6 +39,7 @@ interface SubCaseManager {
      * 3. The sub-case and the parent must share the same namespace (tenant isolation).
      * 4. The sub-case must be in [io.whozoss.agentos.sdk.caseFlow.CaseStatus.IDLE].
      * 5. [agentName] must be in [allowedAgents] (secondary consistency check).
+     * 6. The sub-case's previous turn must have released its runtime.
      *
      * Error messages are designed to be actionable for a legitimate LLM caller
      * without disclosing information about cases the caller does not own

@@ -4299,6 +4299,53 @@ class CaseServiceImplSpec :
             }
         }
 
+        "resumeSubCase refuses a sub-case whose previous turn has not released it yet" {
+            // The previous turn persists IDLE, then records its status event before it releases the runtime: a
+            // turn launched in between would be skipped, and the delegation would return the previous answer.
+            val idleEventReached = CountDownLatch(1)
+            val releaseIdleEvent = CountDownLatch(1)
+            val holdOnce = AtomicBoolean(true)
+            val events = spyk(CaseEventServiceImpl(InMemoryCaseEventRepository()))
+            every { events.create(match { it is CaseStatusEvent && it.status == CaseStatus.IDLE }) } answers {
+                if (holdOnce.compareAndSet(true, false)) {
+                    idleEventReached.countDown()
+                    releaseIdleEvent.await(5, TimeUnit.SECONDS)
+                }
+                callOriginal()
+            }
+            val answering = { text: String ->
+                { caseId: UUID ->
+                    flow {
+                        emit(agentAnswer(caseId, text))
+                        emit(agentFinished(caseId))
+                    }
+                }
+            }
+            val service =
+                buildService(agent = scriptedAgent(answering("first"), answering("second")), caseEventService = events)
+            try {
+                val parent = service.create(Case(namespaceId = namespaceId))
+                val tool = delegationTool(service, events, parent.id, timeoutMs = 5_000)
+                val first = jacksonObjectMapper().readTree(tool.execute(delegateTo(), delegationContext).output)[0]
+                val subCaseId = UUID.fromString(first["subCaseId"].asText())
+                idleEventReached.await(5, TimeUnit.SECONDS) shouldBe true
+
+                val refusedOutput = tool.execute(delegateTo(subCaseId), delegationContext).output
+                val refused = jacksonObjectMapper().readTree(refusedOutput)[0]
+
+                refused["success"].asBoolean() shouldBe false
+                refused["error"].asText() shouldContain "previous turn"
+                releaseIdleEvent.countDown()
+                val runtime = service.getCaseRuntime(subCaseId)
+                withTimeout(5_000) { while (runtime.isRunning()) delay(10) }
+                val resumedOutput = tool.execute(delegateTo(subCaseId), delegationContext).output
+                jacksonObjectMapper().readTree(resumedOutput)[0]["result"].asText() shouldBe "second"
+            } finally {
+                releaseIdleEvent.countDown()
+                service.shutdown()
+            }
+        }
+
         "rehydrated case with AgentRunningEvent as last event runs agent exactly once and reaches IDLE" {
             // Regression: when a case is rehydrated from persistence after a crash,
             // the last persisted event may be an AgentRunningEvent (emitted by runAgent

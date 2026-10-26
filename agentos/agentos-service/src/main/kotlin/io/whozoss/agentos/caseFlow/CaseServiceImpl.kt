@@ -1059,6 +1059,11 @@ class CaseServiceImpl(
 
         val actor = resolveActor(userId)
         val runtime = getCaseRuntime(subCaseId)
+        // 6. The previous turn persists IDLE before it releases the runtime: a turn launched until then
+        //    would be skipped, and the delegation would return the previous answer.
+        check(!runtime.isRunning()) {
+            "Cannot resume sub-case $subCaseId: its previous turn is still ending, try again."
+        }
         caseLaunchGate?.requireAccepting(subCaseId)
         runtime.addUserMessage(actor, listOf(MessageContent.Text("@$agentName $task")))
         // A launch gate marks the queued turn PENDING itself. Without one, the turn starts asynchronously:
